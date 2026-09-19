@@ -100,7 +100,6 @@ describe("the rooms of every project, in one list", () => {
     expect(ids).toContain("only-b");
   });
 
-  // cm:guard the kept row carries a project the room really is about, because the selection is built from it — a row keyed to a project the caller holds no role on would open a room the server then refuses, which reads as a broken list rather than as a rule.
   it("keeps a real project for the room it kept", async () => {
     list.mockImplementation(async (projectId: string) => ({
       items: [room("shared", "2026-09-15T10:00:00.000Z", "About both")],
@@ -128,9 +127,6 @@ describe("the rooms of every project, in one list", () => {
 });
 
 describe("the archived rooms of every project, in the same list", () => {
-  // cm:guard the mock branches on the ARCHIVED argument rather than answering one set for every
-  // call, for the reason `conversation-panel.test.tsx` gives over the same two reads: a mock that
-  // ignored the flag would let a hook that never sends it still look like it had switched sides.
   const bothSides = (liveIds: string[], archivedIds: string[]) =>
     list.mockImplementation(async (_projectId: string, _pageSize: number, wantArchived: boolean) => {
       const ids = wantArchived ? archivedIds : liveIds;
@@ -172,10 +168,6 @@ describe("the archived rooms of every project, in the same list", () => {
     expect(keysIn(qc)).toContainEqual(["conversations", "list", "p1", "archived"]);
   });
 
-  // cm:guard the two sets are asserted to sit in the cache AT THE SAME TIME holding DIFFERENT rows,
-  // which is the ISS-1028 rule the issue restates: one key filtered two ways would leave whichever
-  // read landed last serving both sides, and the moment that bites is the one right after somebody
-  // archived a room and is watching to see it go.
   it("keeps the two sets apart in one cache rather than serving one list filtered", async () => {
     bothSides(["live-1"], ["arch-1"]);
     const qc = newClient();
@@ -221,11 +213,6 @@ describe("the archived rooms of every project, in the same list", () => {
   });
 });
 
-// cm:guard the key is asserted WHOLE and never by its trailing segment alone: a fan-out keyed
-// `["conversations","across-projects",projectId,"live"]` satisfies every segment-level assertion
-// while occupying a different cache entry from the one `ConversationList` — and so the dock —
-// reads, which is two fetches per project and two copies that go stale apart. The proof is the
-// cache itself: both readers alive at once, one entry, one request (ISS-1040 consult F1).
 describe("the fan-out and the per-project reader are ONE read, per project per side", () => {
   const bothSidesFor = () =>
     list.mockImplementation(async (_projectId: string, _pageSize: number, wantArchived: boolean) => ({
@@ -260,10 +247,6 @@ describe("the fan-out and the per-project reader are ONE read, per project per s
   }
 });
 
-// cm:guard ISS-1039 criterion 23 — an Agent turn moves between `dispatched`, `running` and
-// `delivered` with nothing sent to the browser, because what changes is a SESSION's state and no row
-// change publishes it. So the room re-reads itself while a turn is live and stops the moment none
-// is, which is the second half of the same rule: a room in Assistant mode must poll not at all.
 describe("useConversation \u00b7 watching an Agent turn move", () => {
   const roomWith = (turns: Array<{ state: string }>) => ({
     id: "c1",
@@ -312,8 +295,6 @@ describe("useConversation \u00b7 watching an Agent turn move", () => {
       await vi.advanceTimersByTimeAsync(4000);
       await vi.waitFor(() => expect(result.current.data?.agentTurns?.[0]?.state).toBe("delivered"));
 
-      // cm:guard and then it STOPS: a settled room polling forever is this feature quietly costing
-      // every open tab a request every four seconds for as long as it is left open.
       const settled = detail.mock.calls.length;
       await vi.advanceTimersByTimeAsync(20_000);
       expect(detail.mock.calls.length).toBe(settled);

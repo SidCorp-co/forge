@@ -62,7 +62,6 @@ describe('updatePipelineConfig — STAGE_POOL_UNKNOWN_RUNNER (per-state runner p
   const DEVICE_OK = '11111111-1111-4111-8111-111111111111';
   const DEVICE_MISSING = '22222222-2222-4222-8222-222222222222';
 
-  // cm:why a pool naming a device with no runner on the project produces a job nothing can place — queued forever while the fleet reads healthy — so the write is the only moment an operator can be told about the typo
   it('rejects a pool naming a device with no runner on this project', async () => {
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
     pushSelect([{ deviceId: DEVICE_OK }]);
@@ -118,7 +117,6 @@ describe('updatePipelineConfig — round-trips', () => {
   });
 });
 
-// cm:why ISS-917 AC3 / B5 — the schema's `superRefine` sees ONE document. A patch carrying half of a forbidden pair passes on its own, so without a merged-doc re-validation the pair reaches storage in two writes and the rule the schema declares is enforceable only against operators who write it in one.
 describe('updatePipelineConfig — CONFIG_CONFLICT (merged-document rules)', () => {
   const PROJECT = '00000000-0000-0000-0000-000000000001';
 
@@ -174,7 +172,6 @@ describe('updatePipelineConfig — CONFIG_CONFLICT (merged-document rules)', () 
     expect(dbExecute).toHaveBeenCalled();
   });
 
-  // cm:guard a config already unparseable is NOT this write's doing. Refusing here would answer an unrelated edit with a rule the operator did not break, and leave them no edit that succeeds — including the one that fixes it.
   it('does not refuse when the STORED config was already invalid', async () => {
     pushSelect([{ agentConfig: { pipelineConfig: { poolBacklog: { statuses: ['open'] } } } }]);
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
@@ -191,7 +188,6 @@ describe('updatePipelineConfig — CONFIG_CONFLICT (merged-document rules)', () 
 describe('updatePipelineConfig — contractInputChanged', () => {
   const PROJECT = '00000000-0000-0000-0000-000000000001';
 
-  // cm:guard the emit carries NO issue, and that absence is what makes the subscriber fan out over the project rather than over one issue. Naming an issue here would make a project's own settings save the one contract change that never reached a check run.
   it('announces a change to `statusEntryCriteria`, naming the project and no issue', async () => {
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
     pushSelect([
@@ -208,7 +204,6 @@ describe('updatePipelineConfig — contractInputChanged', () => {
     expect(heard[0]?.issueId).toBeUndefined();
   });
 
-  // cm:guard a patch about something else must NOT republish. Every announcement costs one GitHub request per open pull request on the project, and a stage's model moving changes nothing the contract's answer reads.
   it('stays silent for a patch that names something else entirely', async () => {
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
     pushSelect([{ agentConfig: { pipelineConfig: { lockedSkills: ['forge-drive'] } } }]);

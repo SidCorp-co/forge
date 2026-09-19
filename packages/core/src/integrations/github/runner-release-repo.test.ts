@@ -81,7 +81,6 @@ describe('the reads', () => {
     );
   });
 
-  // cm:guard the contents API answers `encoding: "none"` and an empty body for a file over 1MB instead of failing. Decoding that gives an empty string, and every version check over an empty string passes — so the refusal here is what keeps a file nobody could read from reading as agreement.
   it('refuses a file GitHub served with no content rather than reading it as empty', async () => {
     const { client } = stubClient(() => ({ encoding: 'none', content: '' }));
     await expect(readFileAtRef(client, 'packages/runner/Cargo.lock', 'abc1234')).rejects.toThrow(
@@ -96,7 +95,6 @@ describe('the reads', () => {
         : { id: 7, default_branch: 'main' },
     );
     expect(await readTagRef(absent.client, 'runner-v9.9.9')).toBeNull();
-    // cm:guard the repository was ASKED before that 404 was read as absence, and its answer is what makes the reading a reading.
     expect(absent.calls.map((c) => c.path)).toEqual([
       '/repos/SidCorp-co/forge/git/ref/tags/runner-v9.9.9',
       '/repos/SidCorp-co/forge',
@@ -105,7 +103,6 @@ describe('the reads', () => {
     expect(await readTagRef(present.client, 'runner-v0.13.2')).toEqual({ sha: 'abc1234' });
   });
 
-  // cm:guard a peel that 404s says NOTHING about the ref, which GitHub answered a moment ago. Sharing the ref lookup's 404-as-absence with it turns a tag Forge has seen into a tag it reports missing — and the sequence walks straight on and cuts over it. The defect did not exist before the peel did.
   it('refuses a peel that 404s rather than reading the tag as absent', async () => {
     const { client } = stubClient((call) =>
       call.path.includes('/git/ref/tags/')
@@ -117,7 +114,6 @@ describe('the reads', () => {
     expect(err.beforeWrite).toBe(true);
   });
 
-  // cm:guard every `runner-v*` tag on this repository is annotated, Forge's own now included, and an annotated ref points at a tag OBJECT. Criterion 2 says the refusal names the COMMIT the tag points at, so the object is peeled — without it the refusal prints a sha that is real, is not a commit, and is called one, and whoever reads it goes looking for a commit that does not exist.
   it('peels an annotated tag to the commit it points at', async () => {
     const { client, calls } = stubClient((call) =>
       call.path.includes('/git/ref/tags/')
@@ -169,7 +165,6 @@ describe('the one write', () => {
   const onRefCreate = (answer: (call: Call) => unknown) =>
     stubClient((call) => (call.path.endsWith('/git/tags') ? { sha: 'tagobj1' } : answer(call)));
 
-  // cm:guard ANNOTATED, in two calls, because that is what every hand-cut `runner-v*` tag on this repository is — `runner-v0.14.0`, cut on 2026-09-18, carries a tagger and the message `forge-runner 0.14.0`. A single ref create would trigger the same workflow and serve the same release while leaving an object of a different kind from every other release's, and the point of this operation is that Forge does what was done by hand.
   it('creates an annotated tag as the App, then the ref pointing at it', async () => {
     const { client, calls } = onRefCreate(() => ({ object: { sha: 'tagobj1' } }));
     expect(await createTagRef(client, 'runner-v0.13.3', 'abc1234', 'forge-runner 0.13.3')).toEqual({
@@ -187,7 +182,6 @@ describe('the one write', () => {
         type: 'commit',
       },
     });
-    // cm:guard the ref points at the TAG OBJECT and not at the commit: pointed at the commit it is a lightweight tag again, with an unreferenced object beside it naming nothing.
     expect(calls[1]).toEqual({
       op: 'create',
       method: 'POST',
@@ -197,7 +191,6 @@ describe('the one write', () => {
     expect(tagRefName('runner-v0.13.3')).toBe('refs/tags/runner-v0.13.3');
   });
 
-  // cm:guard a create that GitHub ANSWERED wrote nothing; a create that timed out may have. These two assertions are the whole basis of `tag_state` in `runner-release.ts`, and folding them is how a second attempt cuts over a tag that already exists.
   it('says an answered refusal wrote nothing and a timeout may have', async () => {
     const answered = onRefCreate(
       () => new GitHubPublishError({ op: 'create', status: 403, message: 'forbidden' }),
@@ -226,7 +219,6 @@ describe('the one write', () => {
     expect(t.refusal.status).toBeNull();
   });
 
-  // cm:guard the object write names nothing until a ref points at it, so its failure — timeout included — leaves no tag on the repository at all, and no ref request was ever sent. That precision is what the split buys; folding it into the ref's classification would leave `unknown` for a release nothing was written for, and `unknown` is the one state that refuses the version for ever.
   it('says a failure at the tag object wrote no tag, whatever the failure was', async () => {
     const answered = stubClient(
       () => new GitHubPublishError({ op: 'create', status: 403, message: 'forbidden' }),
@@ -280,7 +272,6 @@ describe('the one write', () => {
     expect(saysRefExists(err.refusal)).toBe(true);
   });
 
-  // cm:guard the refusal this case builds is the REAL one, through `describePublishRefusal`, and that is the whole point: Forge's own 422 sentence ends "usually a ref that already exists, or a commit this repository does not hold", so a test matching a hand-written message passes over a function that matches every 422 alike. Here GitHub says the commit is missing, and reading that as a tag already on the repository records `present` for a tag nobody cut and refuses the version for ever.
   it('does NOT read a 422 about a missing commit as a ref that already exists', async () => {
     const { client } = onRefCreate(
       () =>
@@ -305,7 +296,6 @@ describe('the one write', () => {
 });
 
 describe('a 404 that is not the thing being absent', () => {
-  // cm:guard GitHub answers 404 for "there is no such thing" and for "you may not see that" alike — a private repository the App was removed from masks itself rather than admitting it exists, with the same status, the same body and the same headers. Reading that as absence puts `publication = 'absent'` and the sentence "nothing is published" on a release GitHub is holding perfectly well, and it puts "the tag does not exist" on a repository Forge cannot see.
   it('refuses a tag 404 the repository itself will not confirm', async () => {
     const { client } = stubClient(
       () => new GitHubPublishError({ op: 'lookup', status: 404, message: 'not found' }),
@@ -324,7 +314,6 @@ describe('a 404 that is not the thing being absent', () => {
     );
   });
 
-  // cm:guard a tag object may point at another tag object; the chain ends at a commit whenever it ends. One peel returns the inner TAG's sha, which is a real object and not a commit, and that is what gets stored as the commit the tag points at.
   it('peels a chain of annotated tags all the way to the commit', async () => {
     const { client } = stubClient((call) => {
       if (call.path.includes('/git/ref/tags/')) return { object: { sha: 'tagA', type: 'tag' } };
@@ -334,7 +323,6 @@ describe('a 404 that is not the thing being absent', () => {
     expect(await readTagRef(client, 'runner-v0.14.0')).toEqual({ sha: 'abc1234' });
   });
 
-  // cm:guard git lets a ref point at a tree or a blob, and both are legal objects this peel would hand back as "the commit the tag points at" — a sha that is real, is not a commit, and is stored under `tag_commit_sha` and printed as one. The release is refused either way; what is at stake is whether the record says something true.
   it('refuses a tag pointing at a tree rather than calling it a commit', async () => {
     const { client } = stubClient(() => ({ object: { sha: 'treeaaa', type: 'tree' } }));
     await expect(readTagRef(client, 'runner-v0.14.0')).rejects.toThrow(
@@ -360,7 +348,6 @@ describe('a 404 that is not the thing being absent', () => {
     await expect(readTagRef(client, 'runner-v0.14.0')).rejects.toThrow(/reaches no commit/);
   });
 
-  // cm:guard `client.publish` mints an installation token before every call and raises the mint's own failure as a `GitHubPublishError` too, so a 404 from the mint — an installation that no longer exists — is byte-identical in status to a tag that is not there. Reading it as absence tells the sequence the tag is missing on a repository Forge could not reach at all, and tells a completed build's publication reading that GitHub holds no release.
   it('refuses a mint 404 rather than reading it as a missing tag', async () => {
     const { client } = stubClient(
       () =>
@@ -392,7 +379,6 @@ describe('a 404 that is not the thing being absent', () => {
 });
 
 describe('the refusal sentences this path uses', () => {
-  // cm:guard the App holds both `checks: write` and `contents: write`, GitHub answers 403 on either identically, and the two sentences send an operator to two different rows of the same settings page. Naming the wrong one costs the afternoon.
   it('name `contents: write` and never `checks: write`', () => {
     const subject = runnerReleaseSubject({ lookup: 'looking the tag up' });
     expect(subject.permission).toContain('contents: write');

@@ -21,6 +21,7 @@ import {
   Input,
   MonoTag,
   PageContainer,
+  PageTitle,
   Pagination,
   Skeleton,
   Textarea,
@@ -345,7 +346,7 @@ export function PmScreen({ scope }: PmScreenProps) {
   return (
     <PageContainer className="min-h-dvh">
       <header className="mb-6">
-        <h1 className="fg-h2">PM Agent</h1>
+        <PageTitle className="fg-h2">PM Agent</PageTitle>
         <p className="fg-body-sm mt-1">
           Autonomous project management — cadence, triggers, and the decision audit log.
         </p>

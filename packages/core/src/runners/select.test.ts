@@ -58,7 +58,6 @@ describe('getTrippedDeviceIds (device circuit breaker)', () => {
 describe('onlineCapableDeviceIds (retry round-robin candidate set)', () => {
   const PROJECT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-  // cm:why ISS-825 — without the health gate the retry rotation pins a quarantined device the claim then refuses (the ISS-823 wedge class), because the round-robin candidate set and the claim would disagree on who is eligible
   it('health-gated (default) query excludes quarantined runners', async () => {
     execute.mockResolvedValueOnce([]);
     await onlineCapableDeviceIds(PROJECT_A);
@@ -87,7 +86,6 @@ describe('onlineCapableDeviceIds (retry round-robin candidate set)', () => {
     await onlineCapableDeviceIds(PROJECT_A, undefined, { allowDeviceIds: ['dev-pool'] });
     const q = new PgDialect().sqlToQuery(execute.mock.calls.at(-1)?.[0] as SQL);
     expect(q.sql).toContain('device_id IN (');
-    // cm:guard the pool must render as placeholders, never as a `::uuid[]` cast over an interpolated array — drizzle expands that as a ROW CONSTRUCTOR and Postgres refuses it, which dead-lettered every dispatch on forge-dev for 11 days
     expect(q.sql).not.toContain('::uuid[]');
     expect(q.params).toContain('dev-pool');
   });

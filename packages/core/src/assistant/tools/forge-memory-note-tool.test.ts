@@ -49,7 +49,6 @@ describe('forge_memory.note stamps where a note came from', () => {
     expect(out).toMatchObject({ id: 'm1', sourceRef: written.sourceRef, degraded: false });
   });
 
-  // cm:guard two notes in one turn must be TWO rows: `runMemoryWrite` upserts on the ref, so a ref built from the message id would leave the second note standing on the first one's grave (ISS-1034 criterion 25).
   it('gives two notes from one room two different refs', async () => {
     const c = ctx({ conversationId: 'c1', speakerUserId: 'alice', handleUserId: 'handle-1' });
     await call(c, { text: 'one' });
@@ -77,7 +76,6 @@ describe('forge_memory.note stamps where a note came from', () => {
     expect(runMemoryWrite).not.toHaveBeenCalled();
   });
 
-  // cm:guard the schema is read for the arguments it does NOT declare: `forge_memory.write`'s `source`, `sourceRef` and `metadata` are how a room would file under `knowledge` or `policy`, and the assertion that a `source` argument is refused whole is what makes "never a source other than note" a fact (ISS-1034 criteria 24, 27).
   it('takes only text and an optional title, and refuses a source', async () => {
     const schema = forgeMemoryNoteTool(ctx(undefined)).inputSchema as {
       properties: Record<string, unknown>;

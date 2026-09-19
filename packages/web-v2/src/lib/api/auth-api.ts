@@ -26,11 +26,6 @@ export const authApi = {
 
   logout: () => apiClient<void>('/auth/logout', { method: 'POST' }),
 
-  /**
-   * The refresh token now rides the httpOnly `forge_refresh` cookie. The
-   * browser sends it automatically on this same-origin POST; client code
-   * doesn't see it, doesn't pass it, and shouldn't try to.
-   */
   refresh: () =>
     apiClient<RefreshResponse>('/auth/refresh', { method: 'POST' }),
 };

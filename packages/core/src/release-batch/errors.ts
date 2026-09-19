@@ -1,12 +1,3 @@
-/**
- * Every refusal `createReleaseBatch` and `finishReleaseBatch` make, as types.
- *
- * Split out of `service.ts` when the multi-channel refusal pushed that file past its 500-line
- * budget (ISS-1046). They belong together because they are one vocabulary: each is a way a
- * project's own declaration says a release cannot be performed, and `release-batch/refusals.ts`
- * maps each to the sentence an operator reads. A refusal with no class is a 500.
- */
-
 export class NoReleaseGateError extends Error {
   constructor() {
     super('NO_RELEASE_GATE');
@@ -14,11 +5,6 @@ export class NoReleaseGateError extends Error {
   }
 }
 
-/**
- * The project named a release pool and no runner is in it. Distinct from
- * `NoRunnerOnlineError` on purpose: "nobody is online" and "the box that holds
- * the deploy credential lost its label" need different remedies.
- */
 export class ReleasePoolEmptyError extends Error {
   constructor(public readonly label: string) {
     super('RELEASE_POOL_EMPTY');
@@ -37,22 +23,6 @@ export class ReleaseRunnerUndeclaredError extends Error {
   }
 }
 
-/**
- * The project has more than one live deploy channel, and a run can prove only one.
- *
- * ISS-1046 widened what core RETURNS from one live binding to the whole live SET, which is the
- * right answer to "where does this project release to". It did NOT widen the attempt ledger:
- * `commitBefore` is one string on the run, `readLiveState` reads one channel's probes, and
- * `finishReleaseBatch` closes the whole roster on that single reading. So a two-endpoint release
- * would be verified at one endpoint and closed for both — the quietest possible way to claim a
- * ship nobody checked.
- *
- * It refuses instead. Measured over the fleet at the 0253 cutover: of the 12 projects carrying a
- * live deploy binding, zero carry two, so this refuses nothing anyone does today and stands
- * between the first operator who adds a second one and a silently half-verified release. The way
- * out is per-binding verification, which is its own piece of work:
- * `docs/proposals/release-verifies-one-endpoint.md`.
- */
 export class ReleaseMultiChannelUnsupportedError extends Error {
   readonly code = 'RELEASE_MULTI_CHANNEL_UNSUPPORTED';
   constructor(readonly count: number) {
@@ -67,7 +37,6 @@ export class ReleaseMultiChannelUnsupportedError extends Error {
  * The project declares a release gate and no verification probes, so nothing
  * but the agent's own word could say the release happened.
  */
-// cm:guard the gate and the probes are ONE declaration, refused together. `finish` is the only thing in Forge that writes `closed`, and with no probes its whole verification block was skipped — sid-desk ISS-191 is 42 issues closed on a release that was not running. Refusing at creation is what makes the operator declare probes instead of discovering at close time that nothing checked. `finish` refuses too, and must: a run created before this rule existed reaches it with no probes and would close its roster on the agent's word.
 export class ReleaseProbesUndeclaredError extends Error {
   constructor() {
     super('RELEASE_PROBES_UNDECLARED');
@@ -99,7 +68,6 @@ export class ReleaseNotVerifiedError extends Error {
 /**
  * `finish` was called on a run somebody aborted.
  */
-// cm:guard refused BY NAME and never answered with an empty success. ISS-1032's own guard states the rule this completes: `completed` and never "terminal", because a silent empty success on a `cancelled` run makes finish and abort report the same thing. Before ISS-1042's abort cancelled a concluded run, this case fell through to the probes and came back RELEASE_NOT_VERIFIED — a sentence about the deploy for a condition that is about the batch having been called off, which sends an agent to production over a decision a person already took.
 export class ReleaseBatchAbortedError extends Error {
   constructor() {
     super('RELEASE_BATCH_ABORTED');
@@ -118,7 +86,6 @@ export class ClaimConflictError extends Error {
  * One or more issues in the batch have no release note, so the batch would
  * close them claiming a ship nobody wrote anything about.
  */
-// cm:guard distinct from ClaimConflictError ON PURPOSE — "wrong status or already claimed" and "nothing written about what shipped" need different remedies, and folding the second into the first is how a caller retries forever against an error that will never clear on its own
 export class ReleaseRecordMissingError extends Error {
   constructor(public readonly issueIds: string[]) {
     super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);

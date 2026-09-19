@@ -1,21 +1,5 @@
 "use client";
 
-// Gallery lightbox for issue/comment image attachments (ISS-363 follow-up).
-// Previously each image thumbnail was an `<a target="_blank">` that dumped the
-// full-size file into a new browser tab. Multiple attachments meant multiple
-// tabs. This modal keeps the viewer in-app: click a thumbnail to open it here,
-// then page through the rest of the image set, and zoom/pan an individual
-// image.
-//
-// Navigation: arrow keys or the on-screen prev/next controls (desktop), or
-// horizontal swipe (touch). Zoom: +/-/0 keys, the on-screen zoom controls,
-// double-click / double-tap, Ctrl+wheel, or pinch (touch). When zoomed, drag
-// (mouse) or one-finger drag (touch) pans; swipe-to-navigate is suspended so
-// the gesture pans instead. Esc closes; the backdrop is dismissable; focus is
-// restored to the trigger on close. Layout is responsive — controls and the
-// thumbnail strip shrink their hit targets / sizing on small screens.
-//
-// Non-image attachments never reach here — `AttachmentList` only opens images.
 
 import {
   type PointerEvent as ReactPointerEvent,
@@ -231,7 +215,7 @@ export function ImageLightbox({
       aria-label={`Image ${index + 1} of ${count}: ${current.name}`}
       tabIndex={-1}
       className="fixed inset-0 z-[60] flex flex-col outline-none"
-      style={{ background: "rgba(15,17,21,0.82)", backdropFilter: "blur(6px)" }}
+      style={{ background: "var(--scrim-media)", backdropFilter: "blur(6px)" }}
       onClick={onClose}
     >
       {/* Top bar: name, counter, zoom controls, open-original, close. */}

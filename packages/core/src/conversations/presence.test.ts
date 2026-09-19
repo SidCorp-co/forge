@@ -5,7 +5,6 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why `proactivity.js` is imported only for its four constants, and it reaches `db/client.js`, which validates env at import — mocked so this pure-function suite needs no DATABASE_URL
 vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
@@ -65,7 +64,6 @@ describe('foldPresence', () => {
     expect(foldPresence([{ answerInGroup: 'window' }, {}]).answerInGroup).toBe('window');
   });
 
-  // cm:guard the default JOINS the fold as a value: one handle loosening a guard beside one that said nothing folds to the tighter of the two, which is the default (codex F4).
   it('a handle that left a key unset votes its default, so one loosening cannot govern (criterion 35)', () => {
     expect(foldPresence([{ backoffAfter: 20 }, {}]).backoffAfter).toBe(BACKOFF_AFTER);
     expect(foldPresence([{ loopBounceMs: 60_000 }, {}]).loopBounceMs).toBe(LOOP_BOUNCE_MS);
@@ -205,7 +203,6 @@ describe('a room’s own presence (ISS-1087)', () => {
     expect(applyRoomPresence(fold, {})).toEqual(fold);
   });
 
-  // cm:guard the refusal NAMES heartbeat as a handle's own and lists what a room takes, because the person fixing the payload reads the error and not this file (criterion 3).
   it('refuses heartbeat by name, listing the five room keys (criterion 3)', () => {
     expect(() => validateRoomPresence({ heartbeat: { enabled: true } })).toThrow(
       /`heartbeat` is a handle's own and is not set on a room; a room takes only: dormantMs, backoffAfter, loopBounceMs, loopLimit, answerInGroup/,

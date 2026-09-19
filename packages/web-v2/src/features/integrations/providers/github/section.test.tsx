@@ -139,10 +139,6 @@ describe("GitHubSection", () => {
     expect(connectMutate).not.toHaveBeenCalled();
   });
 
-  // cm:guard ISS-1074 made github `core-mediated`, so this form now carries the grant, and this
-  // pair of cases is what says the default did not move with it. A repository bound without
-  // touching the switch must reach the server as `none`: the previous shape sent no key at all and
-  // the column's own default answered, which stops being true the moment the key is present.
   it("offers the agent grant and sends it closed unless the operator opens it", async () => {
     connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
     render(<GitHubSection projectId="proj-1" />);
@@ -161,10 +157,6 @@ describe("GitHubSection", () => {
     expect(bindMutate.mock.calls[0]?.[0].body).toMatchObject({ agentAccess: "all" });
   });
 
-  // cm:guard github binds as `service` and offers no stage choice, because
-  // `providerCanDeploy('github')` is false. A screen that offered one would be
-  // an affordance defect: the create schema refuses `role: 'deploy'` on github
-  // by name, so the operator would fill in a field the server then rejects.
   it("offers no stage choice, because github declares canDeploy false", () => {
     connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
     render(<GitHubSection projectId="proj-1" />);

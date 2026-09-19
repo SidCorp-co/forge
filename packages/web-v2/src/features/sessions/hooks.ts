@@ -1,6 +1,5 @@
 "use client";
 
-// cm:guard every key in this file starts with `['agent-sessions']`, which is the exact prefix `lib/ws/event-router.ts` invalidates on `agent-session.created/updated/status/deleted` and on `replayOnReconnect`. A key under any other prefix looks live on screen and silently never refreshes (ISS-291).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";

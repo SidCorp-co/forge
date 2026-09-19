@@ -51,7 +51,6 @@ describe('agentConfig declared keys and their doors', () => {
     expect(Object.keys(RETIRED_AGENT_CONFIG_KEYS).filter((k) => declared.has(k))).toEqual([]);
   });
 
-  // cm:guard the migration's arrays are read out of the .sql file rather than restated here: a copy in this test would go green against a migration that says something else, which is the one failure this case exists to catch.
   it('deletes in 0285 exactly the keys the doors refuse by name', () => {
     expect(migrationArray('retired_keys').sort()).toEqual(
       Object.keys(RETIRED_AGENT_CONFIG_KEYS).sort(),
@@ -68,7 +67,6 @@ describe('agentConfig declared keys and their doors', () => {
       baseBranch: 'projects.base_branch',
       productionBranch: 'projects.live_branch',
       activeDeviceId: 'projects.default_device_id',
-      // cm:why the one retirement with no column: nothing owns it, and the message says what decides instead
       runnerFallback: 'pipelineConfig.states[*].runner',
     };
     const missing = Object.entries(owners).filter(
@@ -118,7 +116,6 @@ describe('refuseAgentConfigRecord', () => {
     expect(messages).toHaveLength(3);
   });
 
-  // cm:guard the bodies that carry NO key, which a per-key walk answers with nothing: `{}` and `[]` reached `updateProjectSchema`, were stripped, and left a 200 with the field dropped — the silent discard this refusal exists to remove, arrived at by the one shape that names nothing. Found by review of ISS-1070 rather than by a case, which is why each is its own row here.
   it.each([
     ['null', null],
     ['an empty record', {}],
@@ -131,7 +128,6 @@ describe('refuseAgentConfigRecord', () => {
     expect(messages[0]).toContain('Clear each value through its own door');
   });
 
-  // cm:guard the clearing guide names `pipelineConfig` as the one value with NO clear, because its door merges a patch onto the stored document and no request removes a key from it (measured on beta for ISS-1076). A message that promised a null-clear for every key would send the operator from this refusal to another one.
   it('does not promise a clear that pipelineConfig has no door for', () => {
     const message = refusalsFor(null)[0] ?? '';
     expect(message).toContain('`pipelineConfig` is the one value with no clear');
@@ -164,7 +160,6 @@ describe('agentConfigSchema', () => {
     expect(parsed.success).toBe(true);
   });
 
-  // cm:guard the point of `.strict()`: a non-strict object STRIPS the key and answers success, which is the 200-and-silent-discard shape ISS-994 and ISS-1000 established and this schema exists to make unrepresentable. Without the assertion on `success`, the case passes either way.
   it('refuses a document holding an undeclared key rather than stripping it', () => {
     const parsed = agentConfigSchema.safeParse({ personaStyle: 'terse', uxContractProfile: {} });
     expect(parsed.success).toBe(false);

@@ -5,21 +5,11 @@ import { describe, expect, it } from 'vitest';
 import { collectIssueFieldUpdates } from '../issues/patch-fields.js';
 import { bodyText } from './prepare.js';
 
-/**
- * `refuseUnrecordedClose` states the shape of the rule this file gates: a rule
- * with two doors has to stand at both. A body reaches core through seven
- * caller-supplied doors, and a gate on six of them is a gate on none — so this
- * suite is what turns the enumeration in ISS-898's plan from a claim into a
- * check. The chat-guard suite is the precedent, and it works: it caught
- * `descriptionFormat` reaching chat unclassified within the hour.
- */
-
 const SRC = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /** Every write path that takes a body from its CALLER. Each must gate it. */
 const DOORS: Record<string, RegExp> = {
   'comments/service.ts': /prepareBody\(/,
-  // cm:guard ISS-969 — this entry named `prepareBodyOrThrow` until the create door was collapsed into `insertComment`. `updateCommentBody(` alone would have kept the row green while create's gate moved somewhere this file no longer looked, so both verbs are named.
   'comments/routes.ts': /insertComment\(|updateCommentBody\(/,
   'issues/create-service.ts': /prepareBody\(/,
   'issues/patch-fields.ts': /prepareBody\(/,
@@ -34,20 +24,11 @@ const DOORS: Record<string, RegExp> = {
  */
 const KERNEL_AUTHORED = [
   'agent-sessions/steer-session.ts',
-  // cm:why ISS-1050 — it builds the whole body itself from a box checkpoint and a lease `next`, and
-  // takes no caller text at all, so there is nothing for a door to gate. The one thing it does
-  // carry from elsewhere is the run's own words, and those are printed byte for byte inside a fence
-  // sized past the content on purpose: passing them through `prepareBody` would normalise a
-  // statement the block is labelled as quoting.
   'assistant/weekly/post.ts',
   'devices/run-evidence.ts',
   'issues/apply-transition.ts',
   'issues/drop-unblock.ts',
   'issues/merge-marker.ts',
-  // cm:why ISS-1073 — it writes `issues.merged_at` and `issues.merged_commit_sha` and no text at
-  // all, so there is no caller body for a door to gate. It is listed rather than exempted by the
-  // pattern, because `WRITES_A_BODY` asks which TABLE is written and the honest answer for this
-  // one is "that table, and none of its text columns".
   'issues/merge-record.ts',
   'issues/transition-reason.ts',
   'issues/extras-routes.ts',
@@ -57,16 +38,6 @@ const KERNEL_AUTHORED = [
   'pipeline/autonomous-rescue-comment.ts',
   'pm/routes.ts',
   'release-batch/releasing-recovery.ts',
-  // cm:why ISS-1085 slice 3, moved by slice 4 — the same shape as `webhooks/github-adapter.ts`
-  // below, and classified the same way for the same reason: core formats the whole body from a
-  // template of its own and takes the `markdown` column default, so there is no caller format for a
-  // door to gate. What it interpolates IS untrusted — Sentry event text — and that is answered by
-  // the chokepoint this list is not about: `sanitizeUntrusted` at ingestion and `markUntrusted` at
-  // the agent-facing projection, described in `integrations/sentry/intake.ts`'s header and asserted
-  // in `integrations/sentry/chokepoint.test.ts`. `prepareBody` would normalise a body core wrote
-  // and would answer no question this path has. The entry names `intake-issue.ts` rather than
-  // `intake.ts` because slice 4 lifted the filing and the re-sighting comment out of the pull loop
-  // so the webhook could share them — one body writer, reached by two doors.
   'integrations/sentry/intake-issue.ts',
   'webhooks/github-adapter.ts',
 ];
@@ -113,7 +84,6 @@ const WARNING_SURFACES: Record<string, RegExp[]> = {
   'mcp/tools/forge-issues.ts': [/out\.warnings = /, /updateResult\.warnings = /],
 };
 
-// cm:why comments are stripped before the scan because a cm:guard that QUOTES `db.insert(comments)` to explain the rule is not a write path — the first one written flagged `db/schema.ts` as an unclassified writer
 function codeOf(file: string): string {
   return readFileSync(file, 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -132,7 +102,6 @@ function walk(dir: string): string[] {
 }
 
 describe('every caller-supplied body door is gated', () => {
-  // cm:guard ISS-969 — three `KERNEL_AUTHORED` entries named files that had been deleted, and the list is read as a Set of names, so a rotted entry is invisible: it classifies nothing and reports nothing. This is what stops the list from silently becoming an inventory of a repo that no longer exists.
   it('every name in the enumeration is a file that still exists', () => {
     const declared = [...Object.keys(DOORS), ...KERNEL_AUTHORED, ...PREPARED_UPSTREAM];
     expect(declared.filter((rel) => !existsSync(join(SRC, rel)))).toEqual([]);
@@ -259,7 +228,6 @@ describe('the read projection is safe on stored rows', () => {
    * that was already html emits `description` with no format. Measured live on
    * forge-beta: ISS-899's body was re-embedded as raw markup.
    */
-  // cm:guard the sniff that reads a leading `<forge-` as html is NOT dead now that the vocabulary is refused on write (2026-09-14): it is what keeps the rows written before that projecting to text when their format is lost in transit.
   it('projects a component body whose format was lost in transit, rather than embedding markup', () => {
     const body = '<forge-symptom><forge-opening>patched</forge-opening></forge-symptom>';
     const text = bodyText(body, null);

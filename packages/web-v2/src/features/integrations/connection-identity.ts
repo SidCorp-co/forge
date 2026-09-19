@@ -1,9 +1,3 @@
-// What tells one connection apart from another on the directory.
-//
-// Two credentials of the same provider are indistinguishable by provider
-// alone, so a card is built from three things in order: the name its owner
-// gave it, the target its config points at, and the projects using it. Pure,
-// so the rules are testable without rendering.
 
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { connectionTargetFor, providerLabel } from "./providers/registry";
@@ -16,15 +10,6 @@ export function connectionTitle(connection: {
   return connection.displayName ?? providerLabel(connection.provider);
 }
 
-/**
- * The endpoint or workspace this credential points at — the second thing that
- * distinguishes two connections of one provider. Null when the config carries
- * nothing identifying, so the card omits the line rather than showing a blank.
- *
- * Each provider says how to read its own, on its module. The key list this replaced was one
- * union of every provider's config keys, so a provider whose identifying key was not in it — Sentry's
- * `host`, Google's `clientEmail` — silently had no target line at all.
- */
 export function connectionTarget(connection: {
   provider: string;
   config: Record<string, unknown>;

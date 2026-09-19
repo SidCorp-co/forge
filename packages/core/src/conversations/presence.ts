@@ -56,7 +56,6 @@ export const PRESENCE_KEYS = [
 ] as const;
 const HEARTBEAT_KEYS = ['enabled', 'intervalMs'] as const;
 
-// cm:guard `strict` on both objects and a refusal that NAMES the accepted keys: a presence knob nobody reads is a setting an admin believes is in force, and the silent absorb is worse than the refusal. The messages carry the bound because the person fixing the payload is reading the error, not this file.
 export const presenceConfigSchema = z
   .object({
     dormantMs: bounded('dormantMs').optional(),
@@ -111,9 +110,7 @@ export interface ResolvedPresence {
  * One set of thresholds for a room with several handles: each key folds by
  * its own operator, and a key nobody set folds as its default.
  */
-// cm:guard the operator is PER KEY and not one "most conservative" rule, because conservatism points different ways: a shorter `dormantMs` and a smaller `backoffAfter`/`loopLimit` stop speech sooner (min), while a LONGER `loopBounceMs` counts more exchanges as bounces (max), and `mention` speaks less than `window`. A single min over the lot would make the loop breaker looser in exactly the room that set it tighter (ISS-1034, codex F4).
 export function foldPresence(selves: readonly PresenceConfig[]): ResolvedPresence {
-  // cm:guard a handle that left a key UNSET joins the fold with that key's DEFAULT rather than dropping out of it: one handle at `backoffAfter: 20` beside one that said nothing folds to min(20, 3) = 3, because the silent handle asked for the default and the default is a value, not an abstention. Dropping it would let one handle's loosening govern a room another handle expected to be tighter (ISS-1034 criterion 35, codex F4).
   const pick = <K extends keyof ResolvedPresence>(
     key: K,
     op: (values: number[]) => number,
@@ -135,7 +132,6 @@ export function foldPresence(selves: readonly PresenceConfig[]): ResolvedPresenc
 /**
  * The one mode a room of several handles answers in.
  */
-// cm:guard `mention` over `tool` over `window`: a handle that asked to be summoned is never spoken for by one that did not, and `tool` is stricter than `window` about what reaches the room while still taking the turn. An unset key is `window`, the default, and folds like one (ISS-1087 criterion 16).
 export function foldAnswerInGroup(
   modes: readonly (AnswerInGroupMode | undefined)[],
 ): AnswerInGroupMode {
@@ -153,7 +149,6 @@ export const ROOM_PRESENCE_KEYS = [
   'answerInGroup',
 ] as const;
 
-// cm:guard a schema of the room's OWN and not `presenceConfigSchema` reused whole: the difference is `heartbeat`, which is a handle's clock resolved per handle by `heartbeatOf` and never folded — a room that could set it would go on speaking on that clock after an admin quietened the room. The refusal names the key as a handle's and lists what a room takes (ISS-1087 criterion 3).
 export const roomPresenceSchema = z
   .object({
     dormantMs: bounded('dormantMs').optional(),
@@ -164,7 +159,6 @@ export const roomPresenceSchema = z
   })
   .strict();
 
-/** The room's shape, or a refusal that says which key or bound was wrong. */
 export function validateRoomPresence(input: unknown): RoomPresence {
   const parsed = roomPresenceSchema.safeParse(input);
   if (parsed.success) return parsed.data;
@@ -185,7 +179,6 @@ export function validateRoomPresence(input: unknown): RoomPresence {
 /**
  * The room's thresholds: what the room set wins, key by key, over the fold.
  */
-// cm:guard applied AFTER the fold and per KEY, never as a replacement of the whole: an admin who tunes one knob on a room expects the handles' other knobs to stand, and a room row of `{}` or null changes nothing (ISS-1087 criteria 5, 6).
 export function applyRoomPresence(
   fold: ResolvedPresence,
   room: RoomPresence | null | undefined,
@@ -211,7 +204,6 @@ export function heartbeatOf(self: PresenceConfig): { enabled: boolean; intervalM
 /**
  * Whether a message names a handle: `@handle` or the bare handle as a word.
  */
-// cm:guard the name matched is the ORG HANDLE and the match is a whole word, case-insensitive: a handle `forge` must not fire on "forgery", and `@Forge` typed by a person on a phone is the same address. A null handle — an org that has minted none — can be named by nobody, so it never matches (ISS-1034 criteria 66, 67).
 export function namesHandle(content: string, handle: string | null): boolean {
   if (!handle) return false;
   const escaped = handle.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
@@ -230,7 +222,6 @@ export function windowNamesAHandle(
  * Whether the window addresses a handle: names one, or replies to something
  * a handle sent.
  */
-// cm:guard a reply or a quote is an address as plain as typing the name, and it is judged by IDS the store resolved rather than by text: `sentByHandle` is the set of reply targets that are the handle's own delivered messages, so a reply to a person's message names nobody however it is worded (ISS-1087 criteria 13, 14).
 export function windowAddressesAHandle(
   messages: readonly { content: string; replyToExternalId: string | null }[],
   handles: readonly (string | null)[],

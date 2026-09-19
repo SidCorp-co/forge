@@ -46,7 +46,7 @@ export function RunnerLabels({
 					value={draft}
 					onChange={(e) => setDraft(e.target.value)}
 					placeholder="release, gpu"
-					className="h-7 w-56 text-[12px]"
+					className="h-7 w-56 text-12"
 				/>
 				<Button type="submit" size="sm" variant="secondary" loading={save.isPending}>
 					Save labels

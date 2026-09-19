@@ -51,7 +51,6 @@ projectOnboardRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    // cm:why admin, not member: this opens a conversation that can end up proposing knowledge entries / pipelineConfig changes, so starting it is a project-setup action rather than a read.
     const access = await loadProjectAccess(id, userId);
     assertProjectRole(access, 'admin', 'project admin required');
 
@@ -62,7 +61,6 @@ projectOnboardRoutes.post(
       .limit(1);
     if (!project) throw new HTTPException(404, { message: 'project not found' });
 
-    // cm:guard refuse by name when the project owns no install_only `forge-onboard` copy — the copy is adopted by a domain-template apply, and starting the session anyway hands the runner a slash-command that resolves to nothing, which reads to the operator as the chat being broken rather than the skill being absent.
     const effective = await resolveRegisteredEffectiveSkills(project.id);
     if (!effective.some((s) => s.name === ONBOARD_SKILL_NAME && s.installOnly)) {
       throw new HTTPException(503, {

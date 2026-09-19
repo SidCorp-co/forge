@@ -1,0 +1,9 @@
+{
+  "hook": false,
+  "tokenFile": "packages/web-v2/src/styles/tokens.css",
+  "stylesheets": {},
+  "sizes": {},
+  "typeRamp": {},
+  "contrast": {},
+  "unknownTokens": {}
+}

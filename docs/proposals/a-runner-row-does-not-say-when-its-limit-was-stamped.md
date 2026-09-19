@@ -45,7 +45,7 @@ a success dated *ahead* of the box is not a success the box watched happen at al
 
 That reduces the race to at most one nudge period of wrong dispatch, after which either lane
 observes the refusal again and re-stamps. It is carried in the tree as
-`cm:hack ISS-1060 until:/me/runners carries the instant a limit was stamped`.
+`amnesty ISS-1060 until:/me/runners carries the instant a limit was stamped`.
 
 ## What would close it
 

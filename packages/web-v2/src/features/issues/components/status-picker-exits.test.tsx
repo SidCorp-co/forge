@@ -88,7 +88,6 @@ describe("StatusEdit, once the exits have answered", () => {
     expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
   });
 
-  // cm:guard focus MUST enter the panel on a rung whose every row is inert — the panel owns the key handler, so a menu that leaves focus on the trigger cannot be escaped and never announces what it opened to say. Plant it by asserting the trigger is NOT the active element (ISS-982)
   it("puts focus on the inert row, and Escape still closes the menu", async () => {
     get.mockResolvedValue(ANSWERED);
     openPicker("dropped");
@@ -115,7 +114,6 @@ describe("StatusEdit, once the exits have answered", () => {
     expect(labels()).toEqual(["Running", "Needs a human", "Paused", "Done", "Dropped"]);
   });
 
-  // cm:guard the autonomous vocabulary is many-to-one, so a narrowed menu can offer the same word twice — `open` exits to both `confirmed` and `in_progress` and both read "Running". Two identical rows IS the menu at that rung (ISS-982).
   it("carries the kernel status where one label would appear twice", async () => {
     get.mockResolvedValue(ANSWERED);
     openPicker("open");
@@ -147,7 +145,6 @@ describe("StatusEdit, before the exits have answered", () => {
     expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
   });
 
-  // cm:guard assert the LOADING line first and the failure line after it: a case that only waits for the failure text passes just as well against code that shows it while the read is still in flight, which is the substitution ISS-982's criteria 12 and 14 were split apart to catch
   it("says the moves could not be loaded once the read has failed", async () => {
     get.mockRejectedValue(new Error("offline"));
     openPicker("open");
@@ -156,7 +153,6 @@ describe("StatusEdit, before the exits have answered", () => {
     expect(labels()).toEqual(["Couldn't load status moves"]);
   });
 
-  // cm:guard a core that predates `statusExits` must land here and NOT in the answered branch — the field is optional precisely so the two halves deploy in either order, and an answered-but-absent map rendered as "no moves from this rung" would read as a terminal issue (ISS-982)
   it("treats an answer carrying no statusExits as a failed read", async () => {
     get.mockResolvedValue({ version: 6, runnerCapabilities: { "claude-code": ["drive"] } });
     openPicker("open");
@@ -172,7 +168,6 @@ describe("BulkActionBar", () => {
     return () => screen.getByRole("button", { name: /Set status/ });
   }
 
-  // cm:guard every one of the three refusals is asserted as RENDERED TEXT and as the button's accessible description — a `title` assertion passes against a reason no keyboard or touch user can reach, which is the shape this control shipped in (ISS-982)
   const describedBy = (el: HTMLElement) =>
     document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent;
 
@@ -192,7 +187,6 @@ describe("BulkActionBar", () => {
     expect(describedBy(btn())).toBe("Couldn't load the status moves");
   });
 
-  // cm:guard the two disabled reasons must stay distinct: one says come back in a moment, the other says re-pick the selection
   it("names the empty intersection differently from an unread read", async () => {
     get.mockResolvedValue(ANSWERED);
     const btn = bulk([row({ status: "dropped" }), row({ id: "i2", status: "open" })]);
@@ -210,7 +204,6 @@ describe("BulkActionBar", () => {
   });
 });
 
-// cm:guard the row overflow menu is the THIRD surface criteria 18-21 name and the only one that renders status moves beside unrelated items — proving the picker and the bulk bar leaves it read off the other two, which is how it shipped untested (ISS-982)
 describe("row overflow menu", () => {
   const actions = { patch: vi.fn(), transition: vi.fn(), isPending: false };
 
@@ -268,7 +261,6 @@ describe("StatusEdit, while an agent is working the issue", () => {
     expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
   });
 
-  // cm:guard `needs_info` is the one park a person's answer restarts — the lock must never reach it, or the only way forward on a resident session is greyed out.
   it("leaves needs_info answerable however busy the issue is", () => {
     get.mockReturnValue(ANSWERED);
     openPicker("needs_info", "running");
@@ -328,7 +320,6 @@ describe("row overflow menu, while an agent is working the row", () => {
     expect(labels().filter((l) => l.startsWith("Complexity: "))).toEqual([]);
   });
 
-  // cm:guard the reason is a rendered MENU ITEM, not a silent shrink from fourteen entries to one
   it("says why it offers nothing, rather than going quiet", async () => {
     get.mockResolvedValue(ANSWERED);
     openRowMenu("in_progress", "running");
@@ -343,7 +334,6 @@ describe("row overflow menu, while an agent is working the row", () => {
     expect(labels()).toContain("Open issue");
   });
 
-  // cm:guard `needs_info` is the one park a person's answer restarts — the lock must never reach it on any surface, or the only way forward on a resident session is closed off.
   it("leaves a needs_info row its moves however busy it is", async () => {
     get.mockResolvedValue(ANSWERED);
     openRowMenu("needs_info", "running");
@@ -358,7 +348,6 @@ describe("row overflow menu, while an agent is working the row", () => {
     expect(labels()).not.toContain(held);
   });
 
-  // cm:guard a deferred retry reads as `failed`; locking it refuses a person on a row nothing is working (ISS-903's own shape)
   it("locks nothing on a row whose last session failed", async () => {
     get.mockResolvedValue(ANSWERED);
     openRowMenu("in_progress", "failed");
@@ -390,7 +379,6 @@ describe("BulkActionBar, while an agent is working part of the selection", () =>
     expect(btn(/Set priority/)).toBeDisabled();
   });
 
-  // cm:guard the count is in the sentence: "one of nine" and "nine of nine" are different re-selections for the person holding the mouse
   it("says how many of the selection an agent is holding", async () => {
     get.mockResolvedValue(ANSWERED);
     const btn = bulk([
@@ -401,7 +389,6 @@ describe("BulkActionBar, while an agent is working part of the selection", () =>
     expect(describedBy(btn(/Set status/))).toMatch(/1 of the 2 selected issues/);
   });
 
-  // cm:guard the live job outranks the registry states — "loading the status moves" over a selection that would be overwritten anyway sends the person off to wait for a menu they must not use
   it("names the live job rather than the unread registry", () => {
     get.mockReturnValue(new Promise(() => {}));
     bulk([row({ status: "open", agentStatus: "running" })]);

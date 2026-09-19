@@ -22,7 +22,6 @@ vi.mock("next/link", () => ({
 
 afterEach(cleanup);
 
-// cm:guard pin the clock for EVERY test here, not only the ones asserting a duration — `heartbeatState` reads the wall clock, so a fixture heartbeat written relative to NOW goes stale on its own once real time passes it, and this file was green the day it was written and red the next
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);

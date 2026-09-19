@@ -205,17 +205,10 @@ describe('a chat turn stores what it actually did', () => {
           thinkingCount?: number;
         }
       | undefined;
-    // cm:guard the tool call AND its output: before ISS-1030 the runner's own
-    // parser kept assistant text and returned nothing for every other frame, so a
-    // chat transcript could not say a tool had run at all.
     const read = assistant?.toolCalls?.find((t) => t.name === 'Read');
     expect(read).toMatchObject({ name: 'Read', output: 'file body' });
     expect(read?.durationMs).toBeTypeOf('number');
 
-    // cm:guard read off the ORDERED blocks, which is what the thread draws. The
-    // fold merges consecutive assistant lines into one growing entry — the same
-    // merge the pipeline path uses — so `content` holds the last line's text
-    // while `blocks` accumulate in the order they arrived.
     const blocks = messages.flatMap((m) =>
       Array.isArray(m.blocks) ? (m.blocks as Array<Record<string, unknown>>) : [],
     );
@@ -256,11 +249,6 @@ describe('a chat turn stores what it actually did', () => {
       },
     ]);
     await patchSession(id, { status: 'completed' });
-    // cm:guard `thinkingCount` and not a `thinking` block, because that is what
-    // Claude Code's derive writes and this issue's rule is that a chat turn is
-    // folded by the SAME parser as every other producer — measured on beta, all
-    // 12,899 thinking blocks in three days carried an empty string, which is why
-    // the parser counts them (ISS-1079).
     const turn = (await transcriptOf(id)).find((m) => m.type === 'assistant');
     expect(turn?.thinkingCount).toBe(2);
   });
@@ -308,9 +296,6 @@ describe('the delivery contract', () => {
     expect(second.status).toBe(200);
     expect(await second.json()).toMatchObject({ accepted: 0, duplicates: batch.length });
 
-    // cm:guard asserted on the TRANSCRIPT and not only on a row count: a retried
-    // batch that stored a second copy would read as the turn saying everything
-    // twice, which is what a reader would actually see.
     expect(await storedSeqs(id)).toHaveLength(batch.length + 1);
     await patchSession(id, { status: 'completed' });
     const blocks = (await transcriptOf(id)).flatMap((m) =>
@@ -346,9 +331,6 @@ describe('the delivery contract', () => {
     expect((await postLines(id, [first])).status).toBe(200);
     await patchSession(id, { status: 'completed' });
 
-    // cm:guard the ASSERTION is the order the lines left the CLI, not the order
-    // they arrived. A `> lastSeq` cursor would have folded 3, checkpointed there,
-    // and excluded 1 and 2 for ever.
     const said = (await transcriptOf(id))
       .flatMap((m) => (Array.isArray(m.blocks) ? (m.blocks as Array<Record<string, unknown>>) : []))
       .filter((b) => b.type === 'text')
@@ -369,15 +351,8 @@ describe('the delivery contract', () => {
       { seq: base + 3, line: { type: 'result', total_cost_usd: 1 } },
     ]);
     expect(res.status).toBe(400);
-    // cm:guard the refusal NAMES the seq. A 400 saying only "bad request" leaves
-    // an operator with a turn that stopped and no way to find out where, which is
-    // the difference this criterion is about.
     expect(JSON.stringify(await res.json())).toContain(`seq ${base + 2}`);
 
-    // cm:guard NOTHING is stored, and the good lines are refused with the bad
-    // one. Keeping them would leave a hole in the seq run, and the fold holds at
-    // a hole for ever — so the transcript would stop there looking exactly like a
-    // turn that went quiet.
     expect(await storedSeqs(id)).toEqual([base]);
   });
 
@@ -412,9 +387,6 @@ describe('the delivery contract', () => {
     expect(await storedSeqs(id)).toEqual([baseOf(s)]);
   });
 
-  // cm:guard the discriminating case for the device gate: a project OWNER is
-  // refused. The transcript is derived precisely so nobody can write one by hand,
-  // and a user principal reaching this route would be exactly that.
   it('refuses a user principal, project owner included', async () => {
     const s = await chatSession();
     const { signUserToken } = await import('../../src/auth/jwt.js');

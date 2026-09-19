@@ -1,19 +1,3 @@
-//! Where one assigned project's checkout is on this box, and keeping its
-//! skills in step with what core holds.
-//!
-//! It used to run jobs too: a claimed pool row became a process here, with the
-//! event drain, the salvage and the lifecycle calls that a job needed. ISS-933
-//! took all of that out, because a run is a subagent inside the master's own
-//! session and never reaches this process. What is left is the two things every
-//! other part of the daemon still asks this module for.
-//!
-//! The four kinds with no issue to rank came back in ISS-1080, and they came
-//! back somewhere else: `daemon/pool_jobs.rs` opens a pane per job and watches
-//! it, with no job token, no event drain and no salvage. Nothing of the machinery
-//! this module lost is wanted there, and a caller looking for the pool reader
-//! here would find this header instead.
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — the pool reader core's `devices/pool-routes.ts`, `ws/master-wake.ts` and `jobs/prepare-claimed-job.ts` all point at. Until 2026-09-17 those three annotations named THIS file and no box read a pool at all.
-
 use std::path::PathBuf;
 
 use serde_json::Value;
@@ -181,7 +165,6 @@ mod tests {
         assert_eq!(r.repo_path, PathBuf::from("/local/app"));
     }
 
-    // cm:guard whitespace must resolve to `None`, not to `Some("   ")`. An owner who clears the fact by blanking it in the editor is asking for the skill's defaults back, and a brief that then carries an empty policy heading tells the master the owner said nothing in particular — which is a different instruction from having set none.
     #[test]
     fn a_blank_master_policy_is_no_policy() {
         let mut server = vec![me("p-1", "app", Some("/srv/app"))];

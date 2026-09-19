@@ -4,22 +4,6 @@ import { type IssueStatus, issueLabels, labels, projects } from '../db/schema.js
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 
-/**
- * ISS-606 — per-project intake gate.
- *
- * Projects with a public intake surface can require a human check before any
- * new issue enters the pipeline: `pipelineConfig.intakeGate.enabled` rewrites
- * every create that would land at `open` (explicit or default, ALL channels —
- * REST, MCP, webhook, member-created included) to `draft` + label `intake`.
- *
- * `draft` is the existing parked state the dispatcher never touches, so this
- * is a creation-time park, NOT a dispatch-time block — an `open` issue that
- * silently never runs would violate "state never lies". Approval is the
- * existing one-click `draft → open` transition; reject is `closed`.
- * Creates that explicitly target non-open statuses (agent notes at draft,
- * system drafts) pass through untouched.
- */
-
 export interface IntakeGateConfig {
   enabled: boolean;
   /** Notify the project owner on gated arrivals. Default true. */
@@ -61,19 +45,6 @@ export async function resolveIntakeGate(projectId: string): Promise<IntakeGateCo
   return intakeGateOf(await readPipelineConfig(projectId));
 }
 
-/**
- * ISS-1076 — the external door, and the whole of what the project decides about it.
- *
- * `pipelineConfig.githubIntake.enabled` says whether this project admits a report
- * from outside at all; absent is closed, because the door used to be open on every
- * project bound to the GitHub App with nobody having asked. Once open, the status
- * the report lands at is `intakeGate`'s answer and not this door's, which is why
- * both are read from one document here rather than decided at the webhook.
- *
- * Three answers, and the refusal is one of them rather than an empty create: a
- * caller that cannot tell a closed door from a delivery that never arrived is the
- * silence this returns a named reason to avoid.
- */
 export type ExternalIntakeDecision =
   | { admitted: false; reason: 'github-intake-closed' }
   | { admitted: true; status: IssueStatus; gated: boolean };

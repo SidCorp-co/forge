@@ -1,12 +1,3 @@
-/**
- * Gather what a door's cell asks for, then screen at that door.
- *
- * A caller names a door and nothing else. The pair the message is read under
- * comes off the door's own row, so there is no second place an audience or an
- * intent can be declared — which is what ISS-997 left open and what a second
- * adapter would otherwise have to get right again on its own (ISS-1002).
- */
-
 import type { Tx } from '../db/client.js';
 import type { DoorId, MessageVerdict } from './contract.js';
 import { doorCell } from './doors.js';
@@ -29,7 +20,6 @@ export interface ReplyScreenInput {
   /**
    * The snapshot the writer's own turn was shown.
    */
-  // cm:guard three distinct meanings and they do not collapse (ISS-818): a snapshot screens against itself; `null` means the computation failed and fails CLOSED; `'legacy-session'` is the ONE case that self-computes, for a row written before snapshots were stored. Screening against a fresh re-query bounces a reply that was accurate for what the model actually saw.
   readonly progress: ProgressFacts | null | 'legacy-session';
   /** A caller inside a transaction MUST pass its own handle. */
   readonly executor?: Tx;

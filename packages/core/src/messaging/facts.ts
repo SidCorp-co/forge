@@ -1,9 +1,3 @@
-/**
- * What a rule is judged against, gathered once per screen and only where a rule
- * in the cell asks for it.
- */
-
-/** The deterministic completion snapshot a stated figure is screened against. */
 export interface ProgressFacts {
   shipped: number;
   closedUnshipped: number;
@@ -37,10 +31,6 @@ export interface MessageFacts {
     isError?: boolean;
   }[];
   readonly progress: ProgressFacts | null;
-  /**
-   * Set where the issue lookup itself failed. The existence rules stand down
-   * rather than refusing everything on an infra blip.
-   */
   readonly issueLookupFailed: boolean;
 }
 

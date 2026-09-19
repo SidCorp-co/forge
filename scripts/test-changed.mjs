@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-// The local iteration lane: run the tests this change can reach, not all 5,154.
-//
-// NOT A GATE, and deliberately wired to nothing — no entry in verify's CHECKS, no
-// step in ci.yml, no line in CI_COVERAGE. `pnpm test` stays the full run and is
-// what CI runs and what you owe before a push. This exists for the loop in
-// between, where 112 seconds per edit is the cost being paid.
-//
-// Two lanes, because vitest's module graph cannot see one of them:
-//   selected — tests reached from the changed files (`vitest list --changed`)
-//   always   — tests that read the SOURCE TREE rather than importing it
-//
-// The second lane is the reason this is a script and not a bare vitest flag.
-// Measured 2026-09-06: the graph selection for `src/memory/knowledge-promotion.ts`
-// is 3 files and misses `issues/one-create-path.test.ts` and `body/doors.test.ts`
-// — the exact two gates that file's own commit had to edit. They enforce an
-// allowlist by scanning the tree, so nothing imports them into any graph. 14 such
-// files in core, 2 in web, 4.5s to run the lot.
-//
-// Exit: 0 the selected tests passed · 1 a test failed · 2 the selection could not be made.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -28,11 +9,9 @@ import { selectionFor } from './lib/changed-selection.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-// cm:guard the lane is DERIVED by scanning, never a hand-kept list — a list is a second copy of a fact the test files already carry, and the copy is what goes stale. A tree-scanning test added next month joins this lane the first time this runs, with nobody remembering to add it.
 const TREE_COUPLED =
   /from ['"]node:fs['"]|readFileSync|readdirSync|globSync|execFileSync|spawnSync/;
 
-// cm:guard past this share of a package's suite the selection has stopped being a saving, so it runs the whole thing and says so — a fast path that quietly becomes the slow one is worse than not having one, and a hub like `db/schema.ts` reaches most of the suite by itself
 const FULL_RUN_SHARE = 0.5;
 
 const PACKAGES = [
@@ -57,7 +36,6 @@ function vitest(pkgDir, args, capture) {
 function listFiles(pkg, args) {
   const r = vitest(pkg.dir, ['list', '--filesOnly', ...args], true);
   if (r.error) die(`could not run vitest in ${pkg.dir}: ${r.error.message}`);
-  // cm:guard a non-zero exit is a FAILED answer, never an empty collection — a config that errored and one that matched nothing print the same empty stdout, and reading either as zero would shrink the selection until it passes on a package that runs no tests at all
   if (r.status !== 0) die(`vitest list failed in ${pkg.dir}:\n${r.stderr ?? ''}`);
   return (r.stdout ?? '')
     .split('\n')
@@ -120,7 +98,6 @@ for (const pkg of PACKAGES) {
   worst = Math.max(worst, r.status ?? 1);
 }
 
-// cm:guard this line is the whole safety story — nothing consumes this script's exit code, so the only thing keeping a selected run from being read as a pass is that it says it is not one, every time, including when it is green
 console.log(
   '\ntest-changed: a SELECTED run — this is not a green.\n' +
     '  The graph follows imports. A test that reaches its subject any other way — a route by\n' +

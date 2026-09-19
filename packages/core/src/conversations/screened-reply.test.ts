@@ -18,7 +18,6 @@ describe('declinedTurn', () => {
     expect(declinedTurn('  (Nothing To Add).  ')).toBe(true);
   });
 
-  // cm:guard the red this criterion was filed on: under equality this whole string reached the room (criterion 22).
   it('is true for a reply that begins with the sentinel and continues (criterion 22)', () => {
     expect(declinedTurn('(nothing to add) — though you may want to check the build')).toBe(true);
   });

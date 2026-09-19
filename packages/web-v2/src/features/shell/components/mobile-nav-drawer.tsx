@@ -43,7 +43,7 @@ function DrawerNavButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
         active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
       )}
     >
@@ -134,8 +134,6 @@ export function MobileNavDrawer({
     </>
   );
 
-  // Workspace — destinations consolidated into the menu so the tier stays
-  // reachable once the bottom bar shows the project tier.
   const workspaceSection = (
     <>
       <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Workspace</span>
@@ -204,7 +202,7 @@ export function MobileNavDrawer({
         type="button"
         aria-label="Close navigation"
         className="fixed inset-0 z-40 cursor-default"
-        style={{ background: "rgba(24,27,34,0.4)" }}
+        style={{ background: "var(--scrim-strong)" }}
         onClick={onClose}
       />
       <div

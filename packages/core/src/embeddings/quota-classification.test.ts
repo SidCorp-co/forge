@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { isQuotaRejection } from './client.js';
 
 describe('isQuotaRejection', () => {
-  // cm:guard this exact 400 body is the one that cost a session's learning — it must classify as a quota rejection so the memory write degrades instead of throwing
   it('classifies the real budget-exceeded 400 that lost a learning', () => {
     expect(
       isQuotaRejection(
@@ -24,7 +23,6 @@ describe('isQuotaRejection', () => {
     expect(isQuotaRejection(400, 'BUDGET HAS BEEN EXCEEDED')).toBe(true);
   });
 
-  // cm:guard a genuine client error must NOT be misread as a quota problem — degrading a real bug into a silent keyword-only write would hide it
   it('does not classify an unrelated 400', () => {
     expect(isQuotaRejection(400, 'invalid model name')).toBe(false);
     expect(isQuotaRejection(404, 'not found')).toBe(false);

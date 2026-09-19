@@ -35,8 +35,6 @@ import { seedTurn } from './session-events.js';
 import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
-// cm:guard the SINGLE publisher of `agent:start` / `agent:send`, and every entry point funnels here — POST /start, POST /send, schedule.run, escalation, RocketChat agent-chat, schedule failover. That is what lets device selection, turn persistence and the ISS-927 token mint each exist in exactly one place; a caller that publishes its own frame gets none of them and drifts silently, which is the bug this module replaced.
-
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
 /**
@@ -51,25 +49,11 @@ export function deriveChatTitle(raw: string): string {
   return collapsed.length > 80 ? `${collapsed.slice(0, 79)}…` : collapsed;
 }
 
-/**
- * A session title is "placeholder" when it carries no human-meaningful value —
- * null/blank, or the literal "Chat" the web bootstrap used to stamp on create.
- * Auto-titling only ever replaces a placeholder, so a user-renamed session
- * (or a fork/rerun derived title) is never clobbered.
- */
 function isPlaceholderTitle(title: string | null | undefined): boolean {
   const t = title?.trim();
   return !t || t === 'Chat';
 }
 
-/**
- * Read the durable `metadata.lensOverride` marker (ISS-674) — the convention
- * a session's initiator (e.g. an external product-bot escalating to a runner)
- * uses to pin the chat voice regardless of the principal's assigned lens.
- * Survives migration cold-start rehydrate, since that path rebuilds the
- * preamble from this same session row. Guards against a stray non-array
- * value; absent/malformed → null (principal-derived lens, normal chat).
- */
 function readLensOverride(metadata: unknown): MemberLens[] | null {
   const value = (metadata as { lensOverride?: unknown } | null)?.lensOverride;
   if (!Array.isArray(value)) return null;
@@ -109,29 +93,6 @@ export interface ChatClient {
   migrated?: boolean;
 }
 
-/**
- * Resolve which Claude client handles a chat turn for `session`.
- *
- * - origin='desktop' → local (the desktop runs Claude itself); deviceId=null.
- * - `overrideDeviceId` set (the chat runner picker) → honour that explicit
- *   choice when it is a chat-capable online runner for the project; else return
- *   a null device so the caller 409s (we do NOT silently fall back elsewhere —
- *   that would defeat the point of picking a specific runner). A pick that
- *   differs from the current pin is a `migrated` switch (rehydrate from DB, drop
- *   the old `--resume` id — same machinery as an auto self-heal).
- * - otherwise (web / schedule) → reuse the session's already-pinned device IF it
- *   is still online; else (no pin, or the pin went offline) pick the freshest
- *   online runner via `findAvailableDeviceForProject`. Verifying the pin is what
- *   keeps ISS-420 (don't dispatch to a dead device) — but instead of 409-ing on
- *   a stale pin we self-heal to a live runner, so only a truly empty pool fails.
- *   When the self-heal lands on a DIFFERENT device than the pin, `migrated` is
- *   set so the dispatcher rehydrates from DB history instead of issuing a
- *   `--resume` against a session file that does not exist on the new box.
- *
- * Never throws and never persists. The caller decides what a null REMOTE device
- * means — an HTTP 409 (`noClaudeClient`) for /start + /send, a `skipped` cron
- * result for schedules — and `dispatchChatTurn` persists a freshly-picked pin.
- */
 export async function resolveChatDevice(
   session: Pick<AgentSessionRow, 'projectId' | 'deviceId' | 'metadata'>,
   origin?: string | null,
@@ -141,7 +102,6 @@ export async function resolveChatDevice(
   const pinned =
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
   if (overrideDeviceId) {
-    // cm:why honour the explicit pick regardless of health — an unhealthy pick fails the turn, then the agent-chat failover retries onto a healthy runner, rather than silently overriding the user's choice
     const picked = await findChatCapableDeviceForProject(session.projectId, overrideDeviceId, {
       allowLimited: true,
     });
@@ -149,10 +109,8 @@ export async function resolveChatDevice(
     return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
   }
   if (pinned) {
-    // cm:why try the chat-capable (runners table) gate before devices.status — a live CLI runner can have devices.status stale offline, which would otherwise self-heal away from a just-picked runner
     const capable = await findChatCapableDeviceForProject(session.projectId, pinned);
     if (capable) return { deviceId: capable, isLocal: false, migrated: false };
-    // cm:why distinguish "limited but live" (migrate to a healthy runner below) from "offline runner row" (the existing devices.status self-heal, which only re-grabs the pin while its device row is still online)
     const liveButLimited = await findChatCapableDeviceForProject(session.projectId, pinned, {
       allowLimited: true,
     });
@@ -188,13 +146,6 @@ const MAX_REHYDRATION_CHARS = 12_000;
  * migrates to a different runner (the on-disk `--resume` state is unreachable).
  * Returns '' when there is no prior history (a genuine cold start).
  */
-// cm:guard the label is read off the canonical `type` and there is no `role`
-// branch left to fall back to. Until ISS-1030 this read `role` alone; every
-// entry at rest is now canonical, so a `role` reading here would have labelled
-// the WHOLE prior conversation `?:` — the new box would be handed the words with
-// nothing saying which were the person's and which were its own answers, and it
-// would still have returned a prompt. That is a silent substitution, not a
-// missing feature, which is why it is a guard and not a comment.
 const TYPE_LABEL: Readonly<Record<string, string>> = {
   user: 'User',
   assistant: 'Assistant',
@@ -249,7 +200,6 @@ export async function createChatSessionRow(args: CreateChatSessionArgs): Promise
     kind: args.runKind ?? 'interactive',
     ...(args.runMetadata ? { metadata: args.runMetadata } : {}),
   });
-  // cm:guard stamped HERE, from the `runKind` the caller already passes, and not read back off `pipeline_runs.kind` at dispatch time — the dispatcher would need a join it otherwise never makes, and a marker every unattended caller must remember to set itself is a marker one of them eventually forgets. `runKind: 'system'` is already what every unattended entry point passes (schedule.run, escalation, RocketChat agent-chat, schedule failover) and nothing else does.
   const metadata =
     args.runKind === 'system' ? { ...(args.metadata ?? {}), unattended: true } : args.metadata;
   const [row] = await db
@@ -291,12 +241,6 @@ export interface DispatchChatTurnArgs {
   attachmentIds?: string[] | undefined;
   /** /start passes prompts that already embed the preamble (skip rebuilding it). */
   preBuilt?: boolean;
-  /**
-   * ISS-674 — pin the cold-start preamble's chat voice to these lenses
-   * regardless of the principal's assigned member lens(es). Falls back to
-   * the session's durable `metadata.lensOverride` marker when omitted; both
-   * absent → the existing principal-derived lens (normal desktop/CLI chat).
-   */
   forceLenses?: readonly MemberLens[] | null;
   /**
    * Which session event to broadcast. A freshly-created session (/start,
@@ -304,43 +248,10 @@ export interface DispatchChatTurnArgs {
    * follow-up (/send) wants `agent-session.updated`. Default: updated.
    */
   broadcastEvent?: 'agent-session.created' | 'agent-session.updated';
-  /**
-   * ISS-733 — run an installed skill's slash-command as turn 1 of this chat
-   * session (the "chat-runs-skill" mechanism). Only applied on the COLD-START
-   * branch (first turn / post-migration rehydrate): the slash-command is
-   * prepended as line 1 of the `-p` prompt, exactly how a pipeline job embeds
-   * `/forge-<stage>` (see `prompt/user.ts`) — no runner change needed, since
-   * the command travels inside the existing prompt string. Ignored on a
-   * `--resume` follow-up (the skill is already active in that Claude session).
-   * Callers MUST validate this resolves to an install_only/user_invocable
-   * project skill BEFORE calling — this module only sanity-checks the shape.
-   */
   skillName?: string | null;
-  /**
-   * ISS-718 — the model this turn (and every later turn of this session) runs
-   * on, as a THREE-state value:
-   *   - `undefined` — no override: inherit `metadata.model`, so a plain /send
-   *     keeps the last pick.
-   *   - a tier — switch to it, and remember it on `metadata.model`.
-   *   - `null` — select Claude Code's Default for this turn and later ones.
-   *     Collapsing this into `undefined` would make "back to Default" silently
-   *     keep the old model.
-   */
   model?: ModelTier | null | undefined;
 }
 
-/**
- * Append one user turn to a session and dispatch it to its Claude client.
- *
- * Decides `agent:start` vs `agent:send` from whether the turn is *resumable* —
- * a Claude session id exists AND the client did not migrate to a new device.
- *   - no id (first turn)        → `agent:start` (system prompt + chat preamble)
- *   - id + same device          → `agent:send` (`--resume`, fast path)
- *   - id + migrated to new box  → `agent:start` with the DB transcript rehydrated
- *     (the old `--resume` file is unreachable on the new runner)
- * A web cold start (empty session, first /send) therefore correctly starts a
- * fresh Claude session instead of 409-ing on a pin nobody ever set.
- */
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
   const { session, project, client } = args;
   const { deviceId, isLocal } = client;
@@ -357,7 +268,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     ? `${formatPageContextLine(args.pageContext as PageContext)}\n${args.message}`
     : args.message;
 
-  // cm:guard repoPath must be re-resolved whenever this turn's device differs from the one it was resolved for, else claude spawns in a nonexistent cwd and hangs the session
   const deviceChanged = !!deviceId && (migrated || deviceId !== (session.deviceId ?? null));
   let repoPath = session.repoPath ?? null;
   if (!repoPath || deviceChanged) {
@@ -372,10 +282,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
 
   const prevMessages = Array.isArray(session.messages) ? session.messages : [];
   const now = new Date();
-  // cm:guard CANONICAL (`type`), never `role`. This is the one entry core writes
-  // into a transcript itself, and while it wore the legacy shape every reader of
-  // `agent_sessions.messages` needed a branch for both — which is what ISS-1030
-  // removed. A `role` here puts both branches back.
   const userMessage: Record<string, unknown> = {
     id: randomUUID(),
     type: 'user',
@@ -390,10 +296,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // the remote branch only ever publishes a WS event, it never writes the DB.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
-  // cm:guard an explicit Default must emit `--model default` on resume, because omission inherits the prior Claude session model instead of the configured default
   const model =
     args.model === undefined ? readSessionModel(session.metadata) : (args.model ?? 'default');
-  // cm:guard validate BEFORE any write, never inside the cold-start publish branch below — a bad `skillName` caught after the transaction leaves the user turn and `status='running'` committed with nothing that will ever dispatch them, and the session sits live with no listener.
   if (args.skillName && !isSlashCommandSkillName(args.skillName)) {
     throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
   }
@@ -412,37 +316,14 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   if (migrated) updates.claudeSessionId = null;
   const nextMeta = { ...prevMeta };
   if (deviceId) nextMeta.deviceId = deviceId;
-  // cm:why `default` must remain in jsonb — omission means inherit the existing selection, while an explicit null asks Claude Code to clear its restored model
   if (args.model !== undefined) nextMeta.model = args.model ?? 'default';
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
-  // ISS-733 fix — mark this turn as "invoked a skill on cold start" so the
-  // PATCH /:id terminal-report handler can detect the sync-then-dispatch race
-  // (skill not yet synced to the runner's disk → CLI short-circuits with
-  // "Unknown command: /<skillName>", zero turns, but still reports success —
-  // see `detectUnexpandedSkillFailure` in session-failure.ts) instead of
-  // silently completing. Remote cold-start only: `isLocal` never applies
-  // skillName (see the known limitation on the desktop trigger path).
-  // `pendingSkillBaselineCount` is stamped now (== `messages.length`, i.e. the
-  // count right after the user turn and BEFORE any assistant reply) rather
-  // than recomputed from `existing.messages.length` at terminal-PATCH time —
-  // the runner flushes interim `running` PATCHes every ~750ms that persist
-  // assistant messages before the final `completed` PATCH; a priorCount
-  // recomputed then could already include this turn's own messages and slice
-  // them out of the scan (review finding, `session-failure.ts` re-review).
   if (!resumable && !isLocal && args.skillName) {
     nextMeta.pendingSkillName = args.skillName;
     nextMeta.pendingSkillBaselineCount = messages.length;
   }
   updates.metadata = nextMeta;
 
-  // Auto-title a brand-new, still-untitled session from its first user message
-  // (ISS-462, upgraded to AI titling by ISS-725) so the history switcher can
-  // tell conversations apart instead of showing a wall of "Chat". Strict guard
-  // — FIRST turn only AND title still a placeholder — so a follow-up turn or
-  // a user-renamed session is never overwritten. Uses the RAW message (not
-  // `decoratedMessage`) to keep the `[Context: …]` header out of the title,
-  // and filters system/error strings (e.g. a `[RESULT_ERROR] …` first
-  // message) so they never become the title.
   const shouldAutoTitle = prevMessages.length === 0 && isPlaceholderTitle(session.title);
   let fallbackTitle: string | null = null;
   if (shouldAutoTitle) {
@@ -460,10 +341,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     // Materialize the appended user turn in the same transaction so the legacy
     // blob and per-turn rows can never diverge if the turn insert throws.
     const s = await syncTurnsWithMessages(row.id, prevMessages, messages, tx);
-    // cm:guard the seed goes in the SAME transaction as the turn it is the
-    // record of. Written after it, a crash in between leaves a session whose
-    // stored transcript holds a prompt its carrier does not, and the next rebuild
-    // silently drops that prompt.
     const seeded = await seedTurn(tx, row.id, {
       priorMessages: prevMessages,
       entry: userMessage,
@@ -481,7 +358,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   if (isLocal) {
-    // cm:guard a local turn is run by the CALLER, not by us — we only mirror it to web viewers. The resolved `model` deliberately does not travel here (ISS-718 AC#6): the only client that ever set origin='desktop' was packages/dev, deleted 2026-08-23. `metadata.model` is still persisted above, so a future local client inherits the pick — but it has to read that marker itself, because nothing on this branch hands it over.
     roomManager.publish(projectRoom(project.id), {
       event: 'agent:user-message',
       data: {
@@ -495,7 +371,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   const target = deviceId as string;
-  // cm:why resolved on EVERY turn, not just cold start — each turn re-spawns `claude` with a fresh `--mcp-config`, so a follow-up that skipped this would silently lose every MCP server mid-conversation
   const {
     mcpServers: mcpServersOverride,
     resolvedNames,
@@ -511,17 +386,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     let prompt = decoratedMessage;
     if (!args.preBuilt) {
       try {
-        // Pass the reader's userId so the preamble adopts their assigned
-        // working lens(es) (ISS role-aware chat). Nullable for system/scheduled
-        // sessions → non-technical default. `forceLenses` (explicit arg or the
-        // session's durable `metadata.lensOverride` marker) pins the voice for
-        // product-bot-initiated runner sessions instead (ISS-674).
         const forceLenses = args.forceLenses ?? readLensOverride(session.metadata);
         const preamble = await buildChatPreamble(project.id, session.userId, forceLenses, {
           resolved: resolvedNames,
           dropped: droppedNames,
         });
-        // cm:edge lockstep -> packages/core/src/agent-sessions/lifecycle-routes.ts — POST /:id/runner drops claudeSessionId at pin time, so this must rehydrate on any cold start with history, not just `migrated`
         const history = buildRehydrationBlock(prevMessages);
         prompt = preamble + history + decoratedMessage;
       } catch {

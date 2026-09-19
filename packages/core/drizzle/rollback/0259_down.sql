@@ -92,30 +92,6 @@ BEGIN
   END IF;
 END $$;
 
--- === 1b. refuse a DENIAL the old model cannot say ========================
---
--- Refusal 1 asks whether a grant moved AWAY from what 0259 set. This one asks the other
--- question, which that check reads as a pass: a binding created AFTER the forward run has no
--- image row, so its baseline is the column default `none` and it matches. The comment above
--- called that "losing nothing", and it is exactly backwards. Going back does not take access
--- away from such a row, it ADDS it: the old model had no way to deny a single binding, so a
--- core-mediated one an operator deliberately left closed becomes agent-callable the moment the
--- column is dropped, and a direct-MCP one becomes injectable as soon as another binding's
--- restored `<provider>: true` sentinel re-enables its project's whole active set.
---
--- That is the forward file's own rule run backwards: a row the old schema cannot represent
--- stops the rollback naming the row, rather than being dropped so the DDL succeeds.
---
--- cm:guard the kinds below are 0259's own classification, copied deliberately. The forward file
--- builds `iss1071_provider_agent_path` and DROPS it at the end, so it is not here to read, and
--- this file is a photograph pinned to that migration — a provider added later is not one 0259
--- ever classified, and falls to the `IS NULL` arm, which refuses rather than assumes.
---
--- `b.active` is part of the predicate, not an oversight: an inactive binding injects nothing and
--- answers nothing, so going back adds no access to it and there is nothing to refuse. It is also
--- what makes "deactivate it" a way out this message can honestly offer — and a refusal whose
--- advertised escape does not clear it is the affordance defect that teaches operators to reach
--- for the one escape that always works, which is deleting the check.
 DO $$
 DECLARE denied text; n int;
 BEGIN

@@ -1,13 +1,3 @@
-/**
- * ISS-196 — real-Postgres smoke test for the reconciler tick. The unit suite
- * in `src/pipeline/reconciler.test.ts` mocks `db.execute`, so a drizzle-side
- * regression in how the SELECT is parameterised (e.g. JS arrays expanding as
- * a record tuple under `ANY(...::text[])`) only surfaces against a live
- * Postgres. This test boots the real schema and asserts `runReconcilerOnce`
- * executes both the stuck-issue SELECT and the stale-outbox SELECT without
- * throwing.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -43,10 +33,6 @@ describe('ISS-196 reconciler (real Postgres)', () => {
   });
 
   it('runs the stuck-issue and stale-outbox SELECTs without throwing', async () => {
-    // Seed an issue that the reconciler should NOT rescue — `updated_at` is
-    // fresh, so the 60-second filter excludes it. The point of the test is
-    // that the query parses and executes; we don't want a real
-    // `reEnqueueForIssue` to fire here (no pg-boss in this harness).
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
     const issueId = randomUUID();

@@ -49,7 +49,7 @@ the real one permits a row per project. So on a device bound to two projects the
 whichever row Postgres hands back first, and `capabilities.pm` — the PM opt-in — is read from an
 arbitrary project's runner.
 
-ISS-990 corrected the false claim to a `cm:guard` that says what is actually true. What it did not
+ISS-990 corrected the false claim to a invariant that says what is actually true. What it did not
 decide is what a device-only caller should mean: the union of the device's runners, the row for a
 project the caller has not named, or a signature that takes the project too. That is the same
 question as above wearing different clothes — whether a per-device fact is really a per-binding one.

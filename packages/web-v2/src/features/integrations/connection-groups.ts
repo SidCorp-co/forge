@@ -1,14 +1,3 @@
-// The connections directory, grouped by the app a credential belongs to (ISS-1035).
-//
-// An org holding several credentials of one app — a Coolify token per
-// environment, a service account held both org-wide and per project — reads as
-// an undifferentiated wall when every connection is an equal card. The screen
-// asks the operator to pick an APP first, so the header of a closed group has
-// to carry enough to decide on: how many credentials are under it, how many
-// want attention, and how many are switched off.
-//
-// Pure, like derive.ts beside it, so the counting rules are testable without
-// rendering anything.
 
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { providerLabel } from "./providers/registry";
@@ -17,8 +6,6 @@ import { type DirectoryStatus, deriveConnectionStatus } from "./derive";
 /** Which of the header's two tallies a directory state counts toward, if either. */
 export type GroupTally = "attention" | "off" | null;
 
-// cm:guard `unverified` counts toward NEITHER tally and `disabled` toward `off` alone — derive.ts calls unverified "no signal is not a live problem, just an unproven one", and a header counting it as attention sends the operator into a group where nothing is wrong
-// cm:edge contract -> packages/web-v2/src/features/integrations/derive.ts — EVERY member of DirectoryStatus is named here and the default branch is a `never` assignment, so adding a state there fails the build until somebody classifies it. A silent `default: null` was the alternative, and it would have let a new unhealthy state land uncounted: the header would keep saying nothing needs attention while a row under it went amber.
 export function tallyOf(status: DirectoryStatus): GroupTally {
   switch (status) {
     case "degraded":
@@ -60,12 +47,6 @@ export function appLabel(provider: string): string {
   return providerLabel(provider);
 }
 
-/**
- * One group per provider present in `items`, ordered by the label the operator
- * reads rather than by the order the API returned connections in, so the
- * directory does not reshuffle between loads. Connections keep their incoming
- * order within a group.
- */
 export function groupConnectionsByApp(items: ConnectionDirectoryItem[]): ConnectionGroup[] {
   const byProvider = new Map<string, ConnectionGroup>();
   for (const connection of items) {
@@ -90,12 +71,6 @@ export function groupConnectionsByApp(items: ConnectionDirectoryItem[]): Connect
   );
 }
 
-/**
- * The sentence under an app's name. A zero tally is omitted rather than
- * printed as "0 need attention" — a closed header is read at a glance, and a
- * row of zeroes is noise the operator has to parse before finding the number
- * that is not zero.
- */
 export function groupSummary(group: Pick<ConnectionGroup, "connections" | "needsAttention" | "off">): string {
   const count = group.connections.length;
   const parts = [`${count} connection${count === 1 ? "" : "s"}`];

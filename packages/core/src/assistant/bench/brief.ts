@@ -71,10 +71,6 @@ const errorText = (err: unknown): string => (err instanceof Error ? err.message 
 const clamp = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max)}…`;
 
-// cm:guard the grounding block is the half `projectBrief` never truncates, so every author-supplied
-// string in it is clamped HERE: a project name or a waiting issue's title is unbounded, and one long
-// enough would push the counts and the pipeline past the cap and out of the brief through the final
-// slice — which is exactly the failure the two budgets exist to prevent (ISS-1066).
 const NAME_MAX = 120;
 const TITLE_MAX = 200;
 
@@ -114,11 +110,6 @@ interface AuthorSection {
 
 const authorSections = (src: ProjectBriefSource): AuthorSection[] => {
   const facts = Object.entries(src.facts);
-  // cm:guard the entries whose bodies the brief actually fetched render FIRST. This section gets a
-  // share of the author budget and is cut at its end, so a capped index prefix of title-only
-  // entries long enough to fill that share would slice away the always-injected prose the filtered
-  // read went and paid a request for — recovering the row is ingestion, and this is delivery
-  // (ISS-1066, codex F1). `sort` is stable, so within each half the index's own order stands.
   const knowledge = [...src.knowledge]
     .sort((a, b) => Number(b.body !== null) - Number(a.body !== null))
     .map((e) => {
@@ -259,7 +250,6 @@ async function waitingOrNone(client: BenchClient, projectId: string): Promise<Is
   try {
     return await client.waitingIssue(projectId);
   } catch (err) {
-    // cm:guard status 200 is the route answering with an empty list, which is a fact about the project; a 403 or a 500 is not, and must not read as "no waiting issue"
     if (err instanceof DeploymentRefusal && err.status === 200) return null;
     throw err;
   }
@@ -279,11 +269,6 @@ export async function readProjectBrief(
       `cannot read this project's knowledge: ${errorText(err)}. The benchmark's project brief is assembled from it and handed to the judge on every turn, so a run without it would grade every project answer against nothing. Give the credential membership of ${project.slug}, or run against a project it already holds.`,
     );
   }
-  // cm:guard the always-injected entries are read with the route's own filter, NOT by filtering the
-  // index: the index arrives as a prefix once it passes the deployment's 38,000-character response
-  // cap (`knowledge/service.ts:MAX_RESPONSE_CHARS`), so a project whose always-injected rules fall
-  // past that prefix would contribute none of its load-bearing prose while the brief read as
-  // complete (codex F1).
   const always = await client.knowledge(project.id, 'always');
   const wanted = always.rows.slice(0, BRIEF_KNOWLEDGE_BODIES);
   const bodies = new Map<string, string>();
@@ -307,9 +292,6 @@ export async function readProjectBrief(
     intakeGate: config.intakeGate,
     facts,
     knowledge: mergeKnowledge(index.rows, wanted, bodies),
-    // cm:guard the omitted count is what the cap left out of the INDEX minus the always-injected
-    // entries recovered by the filtered read, so an entry the brief does carry is never also
-    // reported missing
     knowledgeOmitted: Math.max(
       0,
       index.total -

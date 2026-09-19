@@ -3,9 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const startMock = vi.fn(async () => {});
 const stopMock = vi.fn(async () => {});
 
-// cm:guard mock the DEFAULT export, matching the pin — pg-boss 10 has no named `PgBoss`, and a mock that supplies one passes while the real module hands back `undefined` (ISS-963, see queue/boss.ts)
 vi.mock('pg-boss', () => ({
-  // cm:why vitest 5 constructs a `vi.fn` spy by calling its implementation with `new`; an arrow impl is not a constructor and throws, so the mock uses a regular function.
   default: vi.fn(function pgBossMock() {
     return { start: startMock, stop: stopMock };
   }),
@@ -72,10 +70,6 @@ describe('queue/boss', () => {
     expect(isBossStarted()).toBe(false);
   });
 
-  // cm:guard this case used to read "throws at import time", and it passed for a reason that was not
-  // about this module: `config/env.ts` threw while being imported. That is gone (ISS-1067), and what
-  // is left is the property boss.ts's own header claims — "importing this module side-effect free".
-  // The refusal is unchanged; it arrives at first use, which is where this module always meant it to.
   it('does not throw at import when DATABASE_URL is missing', async () => {
     delete process.env.DATABASE_URL;
 

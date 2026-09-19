@@ -113,8 +113,6 @@ describe('two writers opening the same unseen venue', () => {
   /**
    * Wait until some connection is blocked on a lock, and not merely slow.
    */
-  // cm:guard it reads `pg_stat_activity` rather than sleeping, because a duration is a guess that a busy runner falsifies in both directions: too short and the conflict path is never entered, too long and the test pays for it on every run.
-  // cm:guard it matches the STATEMENT and not the venue key, because drizzle sends the key as a bind parameter and `pg_stat_activity.query` holds the text with `$1` in its place — a LIKE on the key never matches and the wait becomes a hang.
   async function blockedOnConversationInsert(within = 10_000): Promise<boolean> {
     const until = Date.now() + within;
     while (Date.now() < until) {
@@ -128,18 +126,15 @@ describe('two writers opening the same unseen venue', () => {
     return false;
   }
 
-  // cm:guard the loser's branch is forced rather than hoped for: a third connection holds the row uncommitted, so the writer under test MUST take the `DO NOTHING` path and re-read.
   it('takes the conflict path and re-reads rather than trusting an empty return', async () => {
     const key = `chat.example.co ${randomUUID()}`;
     const blocker = postgres(harness.url, { max: 1, onnotice: () => {} });
     clients.push(blocker);
 
-    // cm:why the competing writer is a REAL one, committing the room and its handle together, because that is what the loser has to find when it re-reads.
     const sibling = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
     const [handle] = await participants.listParticipants(sibling.id);
     const handleUserId = handle?.userId;
     expect(handleUserId).toBeTruthy();
-    // cm:guard the planted row carries the handle's project, because since ISS-1003 a live handle without one violates `conversation_participants_handle_has_project` — a competing writer that could not exist is no competitor, and the loser's branch would never be reached.
     const handleProjectId = handle?.projectId;
     expect(handleProjectId).toBeTruthy();
 
@@ -165,15 +160,12 @@ describe('two writers opening the same unseen venue', () => {
       await held;
     });
 
-    // cm:guard the opener does not start until the planted row is actually IN the blocker's transaction, and this was a 250ms sleep: on a loaded runner the opener won it, committed its own row first, and the planted INSERT — which is raw and has no `ON CONFLICT` — died on `conversations_venue_unique` as an unhandled rejection. The test then reported the loser's branch as broken when what had failed was its own scaffolding (measured on CI 2026-09-14).
     await plantedRow;
     const a = independent();
     const opening = store.openConversation(venue(key), { db: a as never });
-    // cm:guard the release waits for the opener to be BLOCKED ON THE LOCK rather than for a duration, which is what makes "the loser's branch is forced" a fact: released early the opener's pre-read finds the committed row and the conflict path is never taken, so the assertion passes over the case it exists for.
     const forced = await blockedOnConversationInsert();
     release();
     await blocking;
-    // cm:guard asserted rather than assumed: released before the opener reached its insert, the pre-read finds the committed row and the conflict path is never entered, so the assertion below would pass over the case this test exists for.
     expect(forced).toBe(true);
 
     const opened = await opening;
@@ -209,7 +201,6 @@ describe('two writers opening the same unseen venue', () => {
 });
 
 describe('two first-time venues of one project with no handle yet', () => {
-  // cm:guard the lock is what this proves: both writers are released at the same instant with neither able to see the other's uncommitted user row, and the project must still end with ONE handle.
   it('mint exactly one handle between them', async () => {
     const gate = postgres(harness.url, { max: 1, onnotice: () => {} });
     clients.push(gate);
@@ -266,7 +257,6 @@ describe('appending turns', () => {
     expect(new Set(rows.map((r) => r.content)).size).toBe(4);
   });
 
-  // cm:guard an append TOUCHES no row already there: the blob it replaced was rewritten whole on every turn, which is how a concurrent write lost one, and the ids and timestamps here are what say so.
   it('leaves every row already in the conversation exactly as it was', async () => {
     const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
     const first = await store.appendMessage({
@@ -299,7 +289,6 @@ describe('appending turns', () => {
     expect(await store.countMessages(room.id)).toBe(5);
   });
 
-  // cm:guard the receipt reaches the row through the ONE record door and nothing else stamps it: a turn that screens writes no answer row of its own, so an answer with no receipt on it is an answer nothing can show was ever posted (ISS-1002 replaced `recordDelivery`, which by then had no caller a screened turn could reach).
   it('records a delivered reply as the assistant row, with the receipt the transport returned', async () => {
     const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
 
@@ -394,9 +383,6 @@ describe('the canonical blocks column', () => {
     expect(entry.toolCalls).toEqual([(blocks[1] as { toolCall: unknown }).toolCall]);
   });
 
-  // cm:guard criterion 20 — the previous shape, which names no blocks at all, still writes. The
-  // migration adds a NULLABLE column with no default precisely so this holds; a NOT NULL there
-  // would have made every older writer's insert a 500 the moment the ALTER landed.
   it('still accepts an insert that names no blocks', async () => {
     const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
     const written = await store.appendMessage({
@@ -407,9 +393,6 @@ describe('the canonical blocks column', () => {
     expect(written.blocks).toBeNull();
   });
 
-  // cm:guard criterion 19 — a row carrying the pre-column shape reads back through the NEW reader
-  // as the answer it holds, not as an empty turn. This is written with raw SQL naming only the
-  // columns that existed before 0247, which is exactly what a row already in the table looks like.
   it('reads a row written in the pre-column shape as a single text block', async () => {
     const room = await store.openConversation(venue(`chat.example.co ${randomUUID()}`));
     await harness.db.execute(sql`

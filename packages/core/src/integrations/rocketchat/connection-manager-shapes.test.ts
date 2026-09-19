@@ -23,7 +23,6 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 /** Whether the room is still bound to the turn's project; flipped by the rebind case. */
 const roomBound = true;
-// cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
   roomStillBoundTo: async () => roomBound,
@@ -131,7 +130,6 @@ const openConversation = vi.fn(
   }),
 );
 
-// cm:why ISS-1004 split the old `handle()` in two: a message is COLLECTED into its conversation and its window, and the turn is taken later over everything the window holds. These fakes stand in for the rows that path reads, and `handle` below drives both halves so every assertion in this file still measures one message in and one reply out.
 const collected: Array<Record<string, unknown>> = [];
 const conversationsById = new Map<
   string,
@@ -139,7 +137,6 @@ const conversationsById = new Map<
 >();
 let lastOpened: { id: string; shape: 'direct' | 'group'; externalId: string } | null = null;
 
-// cm:guard the two ISS-1034 reads the window makes are answered at the module seam: `roomHandles`/`handleForProject` join tables this fake `select().from().where()` chain has no verb for, and `readSelvesFor` would otherwise consume a row the FIFO below queued for somebody else. Empty means "no self, no handle", which folds to today's constants — the regression these cases already guard (ISS-1034).
 vi.mock('../../conversations/participants.js', async (orig) => ({
   ...(await orig<typeof import('../../conversations/participants.js')>()),
   roomHandles: async () => [],
@@ -206,14 +203,12 @@ const recordDeliveredReply = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('../../conversations/transcript.js', () => ({
   recordDeliveredReply: (...a: unknown[]) => recordDeliveredReply(...(a as [never])),
 }));
-// cm:why `conversations/ports.js` is NOT stubbed: it is the registry the runner reads to find a venue's transport, so a stub would leave the adapter registering into one map and the turn reading another, and every delivery would refuse for a reason no room ever sees (ISS-1002).
 const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-server-id-9' }));
 const { clearConversationTransports, registerConversationTransport } = await import(
   '../../conversations/ports.js'
 );
 
 const { rocketChatManager } = await import('./connection-manager.js');
-// cm:why the route half left the manager for `window-drain.ts` when the manager reached the size budget; the harness still drives collect-then-route as one call because that is the pair production runs.
 const { routeOne } = await import('./window-drain.js');
 
 interface Loose {
@@ -282,10 +277,7 @@ const MESSAGE = {
   images: [],
 };
 
-// cm:why a turn's conversation is a ROW resolved per message, not a pointer on this instance: the Map it lived in emptied on every restart, so a room talking for weeks restarted empty (ISS-1001 criterion 1).
-// cm:guard the fake transport is the FOUR ports and the registry is the real one: `handle` is a caller of the neutral turn now, and a suite that stubbed the registry would prove the adapter against a delivery path production does not have (ISS-1002).
 beforeEach(() => {
-  // cm:why every message now resolves its speaker, whatever the room's shape — ISS-1004 attributes a collected message to whoever actually spoke, while authority still follows the shape. In a group room an unlinked speaker is a fact and not a refusal, so this default is the ordinary case.
   resolveSpeaker.mockResolvedValue({
     linked: false,
     refusal: { code: 'SPEAKER_UNLINKED', message: 'UNLINKED' },
@@ -360,7 +352,6 @@ describe('connection-manager conversation identity', () => {
     expect(conversationSentOn(1)).toBe('conv:chat.example.co room-continue-thread thread-a');
   });
 
-  // cm:guard the conversation is looked up on EVERY message and again on every window routed, rather than remembered: a manager that cached it would pass every other test here and still lose the room the moment the process died. Twice per message here because this driver collects AND routes; in the field a window carrying five messages pays five collects and one route (ISS-1004).
   it('resolves the venue from the store on every message rather than remembering it', async () => {
     const ac = makeAc();
     const room = { ...ROUTE, rid: 'room-restart' };
@@ -373,7 +364,6 @@ describe('connection-manager conversation identity', () => {
     expect(openConversation).toHaveBeenCalledTimes(4);
   });
 
-  // cm:guard this REPLACES "clears only the failing conversation session": the manager used to drop the room's pointer when a turn threw, and a failed turn is now recorded as a silence instead.
   it('keeps the room in its conversation after a turn throws', async () => {
     const ac = makeAc();
     const room = { ...ROUTE, rid: 'room-failing' };

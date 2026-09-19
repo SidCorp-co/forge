@@ -1,10 +1,5 @@
-// web-v2 feature module: workspace overview — the client mirror of what
-// `GET /api/me/pulse` answers.
-//
-// cm:edge contract -> packages/core/src/me/pulse-types.ts — mirrored field for field; web-v2 cannot import core, so the shape lives twice and the two move together or the dashboard draws a figure the endpoint stopped sending.
 
 /** A set the response counts in full and names only the first `shown.length` of. */
-// cm:guard render `total` as the figure and `shown` as the sample: `shown` is capped server-side, so a panel showing `shown.length` as the count presents a truncation as the whole (ISS-988 criterion 46).
 export interface PulseCapped<T> {
   total: number;
   shown: T[];
@@ -46,7 +41,6 @@ export interface PulseProjectIdentity {
 }
 
 /** Every cutoff the surface marks against, so the client owns none of them. */
-// cm:guard read a mark off this object and never off a constant here — a threshold typed on both sides is two thresholds the moment one moves (ISS-988 criterion 23).
 export interface PulseThresholds {
   abandonedIssueSeconds: number;
   releaseWaitingSeconds: number;
@@ -131,7 +125,6 @@ export interface PulseResponse {
 }
 
 /** The statuses each work bucket is drawn from — a bucket cell's destination. */
-// cm:edge contract -> packages/core/src/me/pulse-types.ts#PULSE_OPEN_STATUSES — the same four tuples, so a cell links to exactly the rows its figure counted. A status added there and not here makes the cell's list smaller than the number above it (ISS-988 criterion 47).
 export const PULSE_BUCKET_STATUSES: Record<keyof PulseWorkBuckets, readonly string[]> = {
   open: ["open", "confirmed", "clarified", "approved"],
   inProgress: ["in_progress", "developed", "testing", "tested", "reopen"],

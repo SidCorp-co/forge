@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { FORGE_GUIDES, getGuide, listGuides } from './registry.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
-// cm:why `GET /api/guides` is fully unauthenticated, so a secret-shaped literal in a guide body is a real leak rather than a style problem — which is why a test, not review, is what stops one landing
 const SECRET_SHAPE_RE = /password\s*[:=]|Bearer [A-Za-z0-9]{12,}|forge_pat_|crmk_/i;
 
 describe('FORGE_GUIDES registry', () => {
@@ -28,7 +27,6 @@ describe('FORGE_GUIDES registry', () => {
     }
   });
 
-  // cm:guard keep this in step with prompt/facts/registry.test.ts, which asserts the same three things about the prompt — an agent reads the prompt and a human reads this guide, and the two disagreeing about who may write `waiting` is how ISS-163 became six interventions
   it('the lifecycle guide teaches the RFC 0002 park model and nothing of the deleted one', () => {
     const body = getGuide('pipeline-and-issue-lifecycle')?.body ?? '';
     expect(body).toContain('A human is needed');
@@ -39,7 +37,6 @@ describe('FORGE_GUIDES registry', () => {
     expect(body).not.toContain('data.unblock');
   });
 
-  // cm:guard keep this in step with prompt/facts/registry.test.ts, which asserts the same of the prompt an AGENT reads — the guide and the prompt disagreeing about what a park owes is the shape of ISS-163, one rung further on.
   it('the lifecycle guide teaches the two fields a `needs_info` park takes', () => {
     const body = getGuide('pipeline-and-issue-lifecycle')?.body ?? '';
     expect(body).toContain('`needs`');

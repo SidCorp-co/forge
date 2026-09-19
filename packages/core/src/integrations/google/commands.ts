@@ -64,7 +64,6 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
       'this project has no Google connection bound — add one under Settings → Integrations → Google, or bind an existing org service account to this project.',
     );
   }
-  // cm:guard oldest-first, mirroring `listActiveBindingsForProjectProvider`'s own guard — a caller taking row [0] must not have its pick flipped by somebody adding a second binding (ISS-431)
   const usable = rows
     .filter((r) => r.binding.active && r.connection.active)
     .sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime());
@@ -79,13 +78,6 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
       `this project's Google connection exists but ${which} — re-enable it under Settings → Integrations → Google. Nothing was sent to Google.`,
     );
   }
-  // ISS-1071 — the agent boundary. `google` is core-mediated: core holds the service-account key and
-  // makes the call, so the only question a grant answers here is whether an AGENT may ask core to
-  // make it. Until this issue there was no gate on a core-mediated provider at all, which is why the
-  // migration could not simply close everything: closing google would have taken away reachability
-  // that existed, so migration 0255 grants every binding a core-mediated provider already reached.
-  // The refusal names the binding and the switch, because "tool not available" sends an agent
-  // looking for a credential problem that does not exist.
   if (!grantHolds(getIntegration('google'), usable[0].binding)) {
     throw new GoogleCommandError('NOT_GRANTED', notGrantedMessage('google', usable[0].binding.id));
   }
@@ -94,7 +86,6 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
 
 /** Which spreadsheet the caller means: the one it named, else the binding's
  *  declared default, else a refusal — never a guess. */
-// cm:guard the fallback is read off `binding.config` and NEVER off `effectiveConfig`. The overlay would let a `defaultSpreadsheetId` sitting on the shared connection — which the owner-scoped connection routes could store before ISS-1036 narrowed their schema — become the answer for every project bound to that credential, which is the one outcome the binding tier exists to prevent.
 export function resolveSpreadsheetId(
   pair: BindingWithConnection,
   explicit: string | undefined,
@@ -117,10 +108,6 @@ function clientArgsFor(pair: BindingWithConnection): GoogleClientArgs {
       'the bound Google connection holds no service-account key — re-enter the key file under Settings → Integrations → Google.',
     );
   }
-  // cm:guard the retained key travels with the primary one. Without it the
-  // healthcheck recovers through the rotation window and every agent call does
-  // not, so the directory reports healthy while `forge_google_sheets` refuses —
-  // a health verdict about a code path nobody uses (ISS-1036).
   const previous = secrets.previousServiceAccountJson;
   const carryPrevious =
     typeof previous === 'string' && previous.length > 0 && isPreviousCredentialValid(secrets);

@@ -155,7 +155,6 @@ describe('the transcript rule: the repair pass (ISS-1027)', () => {
     expect(await fx.metadataOf(sessionId)).toHaveProperty('transcriptFinalizeAttemptedAt');
   });
 
-  // cm:guard a derive is a full REBUILD that replaces `agent_sessions.messages` outright, so running one over a suffix of a job's events overwrites a complete stored transcript with a truncated one and then marks that truncation final. The pre-ISS-1027 sweep deleted `job_events` per ROW, so a job that ran across its window really does leave a suffix behind, and this is the case that would go green if the repair pass stopped checking.
   it('refuses to rebuild a transcript from a partial history, and reports the session instead', async () => {
     const complete = [
       { id: 'm1', role: 'user', content: 'the first turn' },
@@ -183,7 +182,6 @@ describe('the transcript rule: the repair pass (ISS-1027)', () => {
     expect(rows[0]?.n).toBe(2);
   });
 
-  // cm:guard `ts` on a job event comes FROM THE CALLER while `seq` is assigned here, so the two orders need not agree and a sweep deleting on `ts` can take an INTERIOR event. A prefix check alone passes this history and rebuilds a transcript with a hole in it.
   it('refuses a history with a hole in the middle, not only one missing its start', async () => {
     const complete = [
       { id: 'm1', role: 'user', content: 'the first turn' },
@@ -202,7 +200,6 @@ describe('the transcript rule: the repair pass (ISS-1027)', () => {
     expect(result.repair.withTruncatedHistory).toEqual([sessionId]);
   });
 
-  // cm:guard this is the anti-starvation property and the only thing that makes the per-run bound safe: order the candidates by the job's age instead and the two sessions attempted longest ago take the budget on every run for ever, and the one never tried is never tried. The bound is one here so a wrong ORDER BY cannot hide behind a budget wide enough to reach everybody anyway.
   it('spends the repair bound least-recently-attempted first', async () => {
     process.env.RETENTION_FINALIZE_REPAIR_MAX = '1';
     const yesterday = new Date(Date.now() - 86_400_000).toISOString();
@@ -241,11 +238,6 @@ describe('the transcript rule: the repair pass (ISS-1027)', () => {
 describe('the chat carrier leaves whole or not at all (ISS-1030)', () => {
   const sessionEvents = () => fx.count('agent_session_events');
 
-  // cm:guard ONE batch, deliberately smaller than the carrier it must not cut.
-  // The rule is not "the sweep eventually removes them all" — a sweep stopped by
-  // its own batch cap, by a crash or by a deploy is the ordinary case, and a
-  // carrier holding its newest rows and not its oldest rebuilds a transcript
-  // that is a truncation of the one it replaces.
   it('takes every event of a releasable session in one batch, never a prefix of them', async () => {
     const sessionId = await fx.insertSession({
       metadata: { transcriptFinalizedAt: new Date().toISOString() },

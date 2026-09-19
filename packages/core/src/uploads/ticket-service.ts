@@ -94,12 +94,10 @@ export async function createUploadTicket(
       `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and mint again`,
     );
   }
-  // cm:edge protocol -> packages/core/src/issues/attachment-service.ts — advisory only, and the persist-time check is the authority: a name free at mint can be taken before the PUT arrives, so removing the check there would leave the rule unenforced while this one still passed (ISS-963)
   const taken = await takenNameOn(input.targetType, input.targetId, input.name);
   if (taken) {
     throw new UploadTicketError(
       'ATTACHMENT_NAME_TAKEN',
-      // cm:guard only the ISSUE branch may offer a delete — `DELETE /api/attachments/:id` reads `issue_attachments` alone, so promising it for a comment target names a verb the API does not publish (ISS-963)
       `an attachment named "${taken.name}" is already on this ${input.targetType} (id ${taken.id}, ${taken.url}) — ${
         input.targetType === 'issue'
           ? 'cite it, delete it, or mint under a different name'

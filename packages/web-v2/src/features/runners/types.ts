@@ -1,6 +1,3 @@
-// web-v2 feature module: runners/devices. Types verified against
-// `packages/core/src/devices/routes.ts` (GET /me/devices) and
-// `packages/core/src/devices/login-routes.ts` (POST /devices/login/init).
 import type { HealthKey } from "@/design";
 export type { ProjectGitAccessView, SshConnTestResult } from "@forge/contracts";
 
@@ -15,11 +12,6 @@ export interface DeviceRow {
 	/** True when this device's agentVersion lags `latestAgentVersion` (ISS-392). */
 	agentOutdated: boolean;
 	status: "online" | "offline" | "revoked";
-	/**
-	 * Operator "turn off" timestamp (reversible, distinct from `revoked`). When
-	 * set, the device is ignored by dispatch + chat across every project; null =
-	 * on/eligible. Toggle via `PATCH /devices/:id { disabled }`.
-	 */
 	disabledAt: string | null;
 	lastSeenAt: string | null;
 	pairedAt: string | null;
@@ -37,12 +29,6 @@ export interface PairingCode {
 	expires_at: string;
 }
 
-/**
- * One row of `GET /api/devices/:id/runners` (owner-scoped) — a (device ×
- * project) runner assignment. `repoPath`/`branch` are this device's per-project
- * checkout; `projectDefaultRepoPath`/`baseBranch` are the project defaults the
- * UI prefills from. Verified against `packages/core/src/devices/routes.ts`.
- */
 export interface DeviceRunnerAssignment {
 	runnerId: string;
 	projectId: string;
@@ -76,20 +62,8 @@ export interface ProjectRunner {
 	deviceName: string | null;
 	platform: "macos" | "linux" | "windows" | null;
 	deviceStatus: "online" | "offline" | "revoked" | null;
-	/**
-	 * Operator "turn off" timestamp on the device (reversible). A disabled
-	 * device's runner keeps heartbeating, so `deviceStatus` stays "online" and
-	 * this is the only signal explaining why it is never offered work: pool
-	 * admission excludes it, and the claim refuses `device_disabled`. Null =
-	 * enabled. (It named the central dispatcher until that was deleted.)
-	 */
 	deviceDisabledAt: string | null;
 	runnerStatus: string;
-	/**
-	 * Last recorded fault: a limit mirror, a `preflight_failed:` box fault, or a
-	 * dispatch hand-over error. Cleared by a successful job, by the heartbeat once
-	 * a mirrored limit lapses, or by the operator's Clear & retry.
-	 */
 	lastError: string | null;
 	/** Why the runner is currently limited (rate/usage/auth), or null. */
 	limitReason: RunnerLimitReason | null;
@@ -131,12 +105,6 @@ export interface RunnerSessionActivity {
 export interface RunnerActivity {
 	events: RunnerEvent[];
 	sessions: RunnerSessionActivity[];
-	/**
-	 * How many days of runner activity this deployment keeps, or null where it
-	 * keeps all of it. Served from core's retention policy rather than typed into
-	 * a string here, so the empty state names the window actually in force
-	 * (ISS-1027). Optional because a core older than that change sends nothing.
-	 */
 	retentionDays?: number | null;
 }
 
@@ -171,11 +139,6 @@ export interface ActiveRunnersSnapshot {
 	total: number;
 }
 
-/**
- * Format the elapsed time since a job's `startedAt` as a compact `Mm Ss` /
- * `Hh Mm` string for the live "running … · 3m 12s" line. Returns null when no
- * start time is known. `now` is injected so a `useNow(1000)` tick re-renders it.
- */
 export function formatElapsed(startedAt: string | null, now: number = Date.now()): string | null {
 	if (!startedAt) return null;
 	const start = Date.parse(startedAt);
@@ -271,12 +234,6 @@ export interface RunnerLimitDisplay {
 	detail: string | null;
 }
 
-/**
- * Derive the limited-state display for a runner, or null when it is not
- * limited. A time-based limit whose `rateLimitedUntil` has already passed is
- * still surfaced (active=false, "reset passed") until the next job clears it,
- * so an operator sees the recent throttle.
- */
 export function runnerLimitDisplay(
 	runner: Pick<ProjectRunner, "limitReason" | "rateLimitedUntil" | "limitDetail">,
 	now: number = Date.now(),

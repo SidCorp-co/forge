@@ -1,36 +1,3 @@
-/**
- * `0255` and its rollback classify every provider by agent path, and the registry declares the
- * same thing. Nothing else notices when the two disagree.
- *
- * ISS-1071 criterion 44. The migration cannot import the registry — it is SQL, applied by a
- * container that has already replaced the code — so it carries the classification as a literal
- * `VALUES` list, and that list is a second copy of `capabilities.agentPath.kind`. The forward file
- * refuses a provider it cannot classify, which covers a provider ADDED after it; what nothing
- * covered is a provider whose declared kind CHANGES.
- *
- * ISS-1074 is that case, and it is answered the other way round from what this header used to
- * imply. The migration is not a mirror of the registry, it is a RECORD OF WHAT WAS TRUE WHEN IT
- * RUNS — and its `core-mediated` arm force-grants `agent_access = 'all'` for a reason the file
- * states in full: those tools answered any project member's agent with no gate at all, so closing
- * them would have taken away a path that was open. `forge_github` was gated from the moment it
- * existed. Writing `('github','core-mediated')` into 0259 would therefore grant every GitHub
- * binding a path ISS-1074 requires to be closed by default — on any database applying 0259 after
- * this change, which is the one population the literal still decides for.
- *
- * So the drift is NAMED rather than the SQL rewritten, and the entry is loud in both directions:
- * the migration going back to something else fails the first test, and the registry moving BACK
- * onto the migration's own value fails the second. An entry is never a licence to differ — it is a
- * dated statement that a provider moved, with the issue that moved it.
- *
- * The rollback carries its own copy for a harder reason: the forward file DROPS
- * `iss1071_provider_agent_path` at the end, so the table is not there to read on the way back. Both
- * copies are checked here, against each other and against the registry, because a renumber or an
- * edit that touches one is exactly the moment the other is forgotten.
- *
- * Read as TEXT, deliberately: the point is what the SQL a database will execute actually says, not
- * what a TypeScript mirror of it says.
- */
-
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,15 +7,6 @@ import { listIntegrations } from './registry.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-/**
- * Found by what the file SAYS, never by its index.
- *
- * The first version of this test opened `0255_*.sql` by name, and a rebase past another wave's
- * migration renumbered it to `0259` two hours later — so the test that exists to catch silent drift
- * went red for the one reason that is not drift. An index is positional: it says "one slot above
- * whatever was highest when this was written" and moves at every rebase. The table names do not,
- * which is also how `tests/integration/mcp-sentinel-migration.fixture.ts` finds the same two files.
- */
 function byMarker(dir: string, marker: string): string {
   const full = join(HERE, dir);
   const hits = readdirSync(full)
@@ -64,13 +22,6 @@ function byMarker(dir: string, marker: string): string {
 const FORWARD = byMarker('../../drizzle/migrations', 'iss1071_provider_agent_path');
 const ROLLBACK = byMarker('../../drizzle/rollback', 'iss1071_agent_access_set');
 
-/**
- * Every `('<provider>', '<kind>')` pair in a file, comment lines removed first.
- *
- * Both files spell the pairs the same way, and both keep prose beside them — the forward file
- * explains why `agent` is `none`, the rollback why it holds a copy at all — so a naive scan would
- * read a provider name out of a sentence and compare it to nothing.
- */
 function declaredPairs(file: string, start: RegExp): Record<string, string> {
   const sql = readFileSync(file, 'utf8')
     .split('\n')
@@ -92,13 +43,6 @@ function declaredPairs(file: string, start: RegExp): Record<string, string> {
 const FORWARD_BLOCK = /INSERT INTO iss1071_provider_agent_path \(provider, kind\) VALUES/;
 const ROLLBACK_BLOCK = /LEFT JOIN \(VALUES/;
 
-/**
- * Providers whose declared kind has MOVED since 0259 was written, and the issue that moved each.
- *
- * `was` is what 0259 classifies the provider as, and it stays what 0259 classifies it as. Adding a
- * row here is a decision about a migration that has already run in the field, so it carries the
- * issue that took it.
- */
 const MOVED_SINCE_0259: Record<string, { was: string; issue: string }> = {
   // ISS-1074 gave github an agent path — `core-mediated`, reached through `forge_github`. 0259 keeps
   // `none`: its core-mediated arm force-grants `all` on the ground that those tools were ungated

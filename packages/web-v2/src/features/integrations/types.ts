@@ -1,15 +1,3 @@
-// web-v2 feature module: integrations hub.
-//
-// Cutover-agnostic shapes (status cards, delivery rows, health result, provider
-// config/secret inputs, confirm-live result, the role and stage enums) now live in
-// @forge/contracts (ISS-400) so web + dev share ONE contract instead of local
-// duplicates. They are re-exported here under the existing local names (aliased
-// where the contract name differs) so import sites in api.ts / hooks.ts /
-// components stay unchanged.
-//
-// Nothing provider-SHAPED belongs here. A provider's own read-shape lives beside its module under
-// `providers/<provider>/config.ts`; the permissive union of every provider's config keys that used
-// to sit in this file is exactly the duplication ISS-1071 collapsed.
 
 import type {
   IntegrationHealthResult,
@@ -38,9 +26,6 @@ export type {
   RocketchatSecretsInput,
   GoogleConfigInput,
   GoogleSecretsInput,
-    // The project-facing binding summary + the owner-facing connection summary,
-  // plus the connection CRUD request/response envelopes. All exclude secret
-  // bytes by construction (only `hasSecrets`/`integrationSecretSet` booleans).
   BindingSummary,
   ConnectionSummary,
   ConnectionCreateInput,
@@ -85,30 +70,12 @@ export interface SentryConfig {
   targets?: SentryTarget[];
   /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   organizationSlug?: string;
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   projectSlug?: string;
   environment?: string;
 }
 
-/**
- * Project-facing integration row consumed by the web-v2 UI. ISS-401/C cuts this
- * over to the contracts `BindingSummary` returned by the merged cutover-A REST
- * (ISS-399): it is a superset of the old local shape (adds `connectionId`). The
- * alias keeps every import site (`api.ts`/`hooks.ts`/components) unchanged. No
- * secret bytes are present — `hasSecrets`/`integrationSecretSet` only signal one
- * is stored.
- */
 export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
 
-/**
- * What `POST .../integrations/github/connect` hands back. Nothing is persisted
- * yet: `state` is a signed claim that Forge asked for this App, redeemed once at
- * the manifest callback, and `manifest` is the App definition GitHub renders for
- * approval.
- */
-/** One repository an installation of the App actually granted. `installationId`
- *  rides along because a binding needs both: the installation mints the token,
- *  the repository is what the project points at. */
 export interface InstallationRepo {
   installationId: number;
   account: string;
@@ -145,7 +112,6 @@ export interface IntegrationTestResult extends IntegrationHealthResult {
   };
 }
 
-// === ISS-395 — Coolify + Epodsystem integration CRUD (ported from v1) ===
 
 /** ISS-925 — one Coolify application, as the deploy-target picker shows it. */
 export interface CoolifyApplication {
@@ -174,10 +140,6 @@ export interface RocketchatRoom {
   type: "c" | "p";
 }
 
-// cm:why both request shapes are re-exports and not local unions: the eight-arm create union and
-// the six-arm patch union repeated the provider list a third and fourth time, so adding a provider
-// was a breaking type change for every caller. The server resolves each provider's own schemas from
-// its declaration and refuses an undeclared name by name.
 export type {
   IntegrationBindingCreateInput as CreateIntegrationInput,
   IntegrationBindingUpdateInput as UpdateIntegrationInput,

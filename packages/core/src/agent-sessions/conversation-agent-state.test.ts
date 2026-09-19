@@ -85,8 +85,6 @@ beforeEach(() => {
 });
 
 describe('what a turn is read as', () => {
-  // cm:guard `dispatchChatTurn` commits `status: 'running'` before it has published anything to any
-  // box, so core's own status cannot tell these two apart — which is the whole of criterion 19.
   it('is dispatched while the session is running and no box has reported in', async () => {
     expect((await served([row()]))[0]?.state).toBe('dispatched');
   });
@@ -95,10 +93,6 @@ describe('what a turn is read as', () => {
     expect((await served([row({ runtimeState: 'working' })]))[0]?.state).toBe('running');
   });
 
-  // cm:guard the claim is a writer winning the right to deliver, NOT a delivery: between it and the
-  // transcript row there is a screening turn and a post, and serving `delivered` across that window
-  // shows a finished turn with no answer under it — and the thread, reading `delivered`, prints
-  // nothing at all and stops polling.
   it('is still running while the bridge holds the claim and has delivered nothing', async () => {
     const claimed = row({
       status: 'completed',
@@ -118,9 +112,6 @@ describe('what a turn is read as', () => {
     expect((await served([done]))[0]?.state).toBe('delivered');
   });
 
-  // cm:guard the claim is what stops a second writer taking the turn, so a process that died holding
-  // one has left a turn nothing will ever finish. Past the bound it is a failure with a sentence,
-  // rather than a room told indefinitely that a box is working.
   it('is failed once a claim has been held far past any delivery', async () => {
     const stuck = row({
       status: 'completed',
@@ -145,9 +136,6 @@ describe('what a turn is read as', () => {
     expect(turn?.reason).toBe('nothing to show you');
   });
 
-  // cm:guard a row written before the two stamps were split carries `deliveredAt` alone, and it must
-  // still read delivered: treating it as unclaimed re-opens it to a second delivery into a room that
-  // already has the answer.
   it('reads a pre-split row, which carries no claim at all, as delivered', async () => {
     const old = row({
       status: 'completed',
@@ -158,15 +146,6 @@ describe('what a turn is read as', () => {
 });
 
 describe('the session a reclaimed window finds', () => {
-  // cm:guard `createChatSessionRow` commits the row and its marker BEFORE `dispatchChatTurn` sends
-  // anything, so this is the state a core that died between the two leaves: a session naming the
-  // window that no box was ever asked about. Reading it as a handoff closes the window saying a box
-  // is working on it, and the reservation then stops the recovery dispatching one (criterion 26 read
-  // backwards into a room that waits forever).
-  // cm:why the case that PROVES the filter — a real row with a null `startedAt` — is in
-  // `tests/integration/conversation-mode-e2e.test.ts`, against Postgres: the filter is a fragment of
-  // SQL, and a mock that never runs it would assert the shape of a query builder rather than which
-  // rows come back.
   it('finds the session once its dispatch was accepted', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'session-1' }]);
     expect(await conversationAgentTurnForWindow('win-1')).toEqual({ sessionId: 'session-1' });

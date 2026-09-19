@@ -95,8 +95,6 @@ describe('the project brief a run is judged against (ISS-1066)', () => {
     expect(result.tasks[0]?.notApplicable).toBe(
       'the project holds no issue waiting on information',
     );
-    // cm:guard no room was opened for it: the old path ran three trials, failed all three on a
-    // refusal that was RIGHT, and left the capability reading 0/3
     expect(deployment.state.rooms.size).toBe(0);
     const summary = result.capabilities?.[0];
     expect(summary?.tasks).toEqual([]);
@@ -110,10 +108,6 @@ describe('the project brief a run is judged against (ISS-1066)', () => {
     ]);
   });
 
-  // cm:why before the first room and not at the first trial: every trial reads the preferences to
-  // restore them, so a token that cannot reach that route fails all 51 trials of a full run AFTER
-  // paying for each one's turns, and reports 0/n as if the assistant had failed them. Found running
-  // the landed change against `forge-plugin` with a personal access token (ISS-1066).
   it('refuses a credential that cannot reach the preferences, before any room, naming the way out', async () => {
     const deployment = createFakeDeployment({
       script: () => ({ attempts: [{ reply: 'x' }] }),

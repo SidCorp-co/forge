@@ -83,7 +83,6 @@ async function rowsNow(): Promise<WindowRowSeen[]> {
 }
 
 describe('a window that never goes quiet is still due', () => {
-  // cm:guard the red this issue was filed on: a window opened 20s ago and extended 1s ago satisfies neither `extended_at <= now - 4s` nor, before ISS-1086, anything else — and was never claimed (criterion 1).
   it('is claimed once it has been collecting longer than the hold, however recently it was extended (criterion 1)', async () => {
     await openAt(0, ago(20_000));
     await openAt(1, ago(1_000));
@@ -112,7 +111,6 @@ describe('a window that never goes quiet is still due', () => {
     expect(taken?.cutReason).toBe('deadline');
   });
 
-  // cm:guard re-claimed after the lease with `extended_at` now old enough to read as quiet: COALESCE is what keeps `deadline`, and without it the second claimant would tell the turn the room had finished speaking (criterion 5).
   it('keeps the first claim’s reason across a lease recovery (criterion 5)', async () => {
     await openAt(0, ago(16_000));
     await openAt(1, ago(500));
@@ -132,7 +130,6 @@ describe('a window that never goes quiet is still due', () => {
     expect(Math.abs((taken?.dueAt.getTime() ?? 0) - (opened.getTime() + 15_000))).toBeLessThan(50);
   });
 
-  // cm:guard the interleaving whole-set review F1 named: while A is held, its quiet successor is NOT due, so no other core can answer a range A's split may still lower into (criterion 28).
   it('claims one conversation’s windows in the order they opened (criterion 28)', async () => {
     await openAt(0, ago(20_000));
     const [head] = await claim();
@@ -148,7 +145,6 @@ describe('a window that never goes quiet is still due', () => {
     expect(next?.firstSeq).toBe(1);
   });
 
-  // cm:guard the tie the recheck named: same `opened_at` to the millisecond, and the later first_seq is still the later window (criterion 28).
   it('fences a later window that opened in the same millisecond as the held one (criterion 28)', async () => {
     const same = ago(20_000);
     await openAt(0, same);
@@ -203,14 +199,11 @@ describe('a window that collected more than a turn may carry', () => {
     expect(head?.claimed_at).not.toBeNull();
     expect(successor).toMatchObject({ first_seq: 50, last_seq: 59, cut_reason: null });
     expect(successor?.claimed_at).toBeNull();
-    // the tail has been waiting since its first message, so the successor's clocks start there
-    // cm:guard `execute` hands back the driver's string for a timestamptz, not a Date: parse it before comparing.
     expect(
       Math.abs(new Date(successor?.opened_at ?? 0).getTime() - firstAt.getTime()),
     ).toBeLessThan(50);
   });
 
-  // cm:guard the successor a mid-route message already opened ABSORBS the tail: two collecting windows for one room is what the partial index forbids, and the upsert lowers `first_seq` so the messages between the head and that successor are not left in neither (criterion 12).
   it('folds the tail into a collecting successor that already exists (criterion 12)', async () => {
     await openRange(0, 59);
     const [taken] = await claim({ settleMs: 0 });
@@ -223,7 +216,6 @@ describe('a window that collected more than a turn may carry', () => {
     expect(rows[1]?.claimed_at).toBeNull();
   });
 
-  // cm:guard whole-set review F2: a successor stamped with the tail's FIRST arrival reads as quiet the moment it exists, and a drain would answer it as `quiet` while the room was mid-sentence (criterion 29).
   it('starts the successor’s quiet clock at the tail’s last arrival, not its first (criterion 29)', async () => {
     await openRange(0, 59);
     const [taken] = await claim({ settleMs: 0 });

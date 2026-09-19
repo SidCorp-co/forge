@@ -1,24 +1,3 @@
-/**
- * ISS-890 — the bound on autonomous rescue, and the park it ends in.
- *
- * The staged cap (`stage-stall-guard.ts`, ISS-626) cannot see this loop: it
- * resolves a stage's job type through `resolveJobTypeForStatus`, derived from
- * `PIPELINE_STEPS`, where `drive` has no entry. On every autonomous project it
- * counts a job type that never exists, so its tail is 0 forever and the cap has
- * never once fired — ISS-880's run held three drive jobs with none in play.
- *
- * Swapping in `drive` does not fix it: on an autonomous project EVERY job is a
- * drive job, so "a done job of another type in between proves the issue
- * advanced" has nothing to cut the tail on, and three legitimate human-answer
- * cycles would pause a healthy run.
- *
- * So the count here is of RESCUES, not jobs — what this pass itself mints, held
- * on the run that owns them. Progress is read from evidence, not a timer: a
- * rescue mints exactly one drive job, so a run whose done-drive count grew by
- * MORE than one since the last rescue had a job from elsewhere (a human
- * answering at `needs_info`), which is proof the issue moved.
- */
-
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
@@ -93,14 +72,12 @@ export async function checkAutonomousRescueCap(args: {
     if (!state) return { capped: false, runId: run.id };
 
     const doneDriveJobs = await countDoneDriveJobs(run.id);
-    // cm:guard MORE than one, never one: the rescue this state was written for mints exactly one drive job, so a growth of one is that job and nothing else — the loop. Reading `>= 1` as progress makes every loop look healthy and the cap never fires again.
     if (doneDriveJobs - state.doneDriveJobs > 1) return { capped: false, runId: run.id };
     if (state.count < AUTONOMOUS_RESCUE_CAP) return { capped: false, runId: run.id };
 
     await parkForHuman({ ...args, runId: run.id, doneDriveJobs });
     return { capped: true, runId: run.id };
   } catch (err) {
-    // cm:guard FAIL-OPEN, matching stage-stall-guard: a cap that throws must let the rescue through. A wedged issue nobody rescues is the defect this whole pass exists to remove, and it is worse than one extra drive session.
     logger.error(
       { err, issueId: args.issueId },
       'autonomous-rescue-cap: check failed, failing open (allowing rescue)',
@@ -109,7 +86,6 @@ export async function checkAutonomousRescueCap(args: {
   }
 }
 
-// cm:guard this park must NOT advance the run's rescue watermark. The reset after a human answers works precisely because the stored `doneDriveJobs` stays at the value the third rescue wrote: the answer's own drive job then makes growth read 2, `> 1` trips, and the count restarts at 1. Recording state here — the obvious tidy-up — freezes the count at the cap forever, and the comment's closing promise that a resumed issue gets a full allowance becomes a lie the code tells.
 async function parkForHuman(args: {
   projectId: string;
   issueId: string;
@@ -133,7 +109,6 @@ async function parkForHuman(args: {
     return;
   }
 
-  // cm:guard the ISSUE moves, not just the run. Pausing the run alone leaves the issue at its in-flight status, which the board renders as running — the shape orchestrator.ts warns about, and the wedge again with extra steps. `needs_info` is the one park a human answer restarts (pipeline/answer-resume.ts), so it is the only status here that names who is waited on AND has a way back.
   await applyStatusTransition(
     {
       id: args.issueId,
@@ -143,7 +118,6 @@ async function parkForHuman(args: {
     },
     AUTONOMOUS_QUESTION_STATUS,
     { id: actorId, ownerId: actorId },
-    // cm:why skip:true mirrors the in-flight wedge reset — a system park, not an agent asserting a plan or evidence exists
     { reason: 'autonomous_rescue_cap_reached', skip: true },
   );
 
@@ -185,7 +159,6 @@ export async function recordAutonomousRescue(runId: string): Promise<void> {
     await db
       .update(pipelineRuns)
       .set({
-        // cm:edge protocol -> packages/core/src/pipeline/run-pause.ts — merge in SQL, never read-modify-write in JS: the same row carries `pauseReason`, and a minute-cadence writer that rebuilds the object clobbers whichever sibling key it did not read
         metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${METADATA_KEY}::text, jsonb_build_object('count', ${count}::int, 'doneDriveJobs', ${doneDriveJobs}::int))`,
       })
       .where(eq(pipelineRuns.id, runId));

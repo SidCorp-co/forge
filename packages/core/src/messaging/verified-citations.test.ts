@@ -32,10 +32,6 @@ const qa = (over: Partial<MessageFacts> = {}): MessageFacts =>
 const why = (breaks: readonly { why: string }[]): string => breaks.map((b) => b.why).join(' | ');
 
 describe('only-verified-citations reads what the turn looked up (ISS-1057)', () => {
-  // cm:guard this is the measured case and not an invented one: `forge issue ISS-11` on beta's QA
-  // project returns the title `ISS-538 TC2 exe reject`, the reply quoted it, and the screen refused
-  // the citation of ISS-538 — 28 times in one 146-turn window, with `one-issue-by-key` 0/6 and a
-  // correct first attempt every trial (ISS-1057, criterion 27).
   it('passes an id the tracker returned inside a row it printed, which this project does not hold', () => {
     const f = qa({
       toolCalls: [
@@ -46,10 +42,6 @@ describe('only-verified-citations reads what the turn looked up (ISS-1057)', () 
     expect(ONLY_VERIFIED_CITATIONS.check(text, f)).toEqual([]);
   });
 
-  // cm:guard `resultPreview` is 500 characters and 186 of the 356 calls in that window hit the cap,
-  // so the reference set is taken from the WHOLE result: reading the preview instead would refuse a
-  // reply quoting a row the model really was shown, which is this same defect one listing longer
-  // (criterion 28, codex F1).
   it('passes an id the result named only past the preview cap', () => {
     const f = qa({
       toolCalls: [
@@ -59,9 +51,6 @@ describe('only-verified-citations reads what the turn looked up (ISS-1057)', () 
     expect(ONLY_VERIFIED_CITATIONS.check('The listing includes ISS-538.', f)).toEqual([]);
   });
 
-  // cm:guard the two refusals below are the reason the arm reads a RETURNED reference rather than
-  // "an id that appeared anywhere this turn": either one passing would mean the model can verify
-  // its own invention, which is the whole of what this rule is for (criteria 29, 30; codex F1, F2).
   it('refuses an id the model asked for and read back out of the call it errored', () => {
     const f = qa({
       toolCalls: [
@@ -109,9 +98,6 @@ describe('only-verified-citations reads what the turn looked up (ISS-1057)', () 
     );
   });
 
-  // cm:guard the plant: the rule as it stood BEFORE this change asked whether the project held the
-  // row, so it refused the first case above. Without this the green on that case proves only that
-  // the rule is lenient, not that it stopped being wrong (criterion 38).
   it('pre-change: asking only whether the project holds the row refuses the correct reply', () => {
     const preChange = (text: string, f: MessageFacts): string[] =>
       [...text.matchAll(/\b(ISS)-(\d{1,6})\b/gi)]
@@ -126,16 +112,6 @@ describe('only-verified-citations reads what the turn looked up (ISS-1057)', () 
 /**
  * What the widened arm does NOT buy, asserted rather than assumed.
  */
-// cm:guard codex F3 of the whole-set read: a tracker result carries user-authored TITLES and
-// DESCRIPTIONS, so an id sitting in that prose is evidence that SOME row named it and never
-// evidence that the row it names was looked up. The rule splits the two uses, because only the
-// second is a claim — quoting the title `ISS-538 TC2 exe reject` back is the measured fix (beta's
-// QA titles name other projects' keys), and `ISS-9999 is shipped` sourced from the same prose is a
-// state claim nothing checked. `status-matches-the-row` cannot cover it: that rule abstains where
-// this project holds no such row, which is right for another project's key and is exactly the gap.
-// The cell composition is the second bound and not the only one: the reader who cannot open the
-// tracker is ALSO screened by `issue-references-exist`, so removing that sibling from
-// `public:report` reds here rather than passing quietly.
 describe('a prose-sourced id may be mentioned and not asserted about (ISS-1057, codex F3)', () => {
   const prose = qa({
     progress: { shipped: 4, closedUnshipped: 0, inFlight: 0, remaining: 0, total: 4 },
@@ -209,10 +185,6 @@ const snapshot: ProgressFacts = {
 const withProgress = facts({ progress: snapshot });
 
 describe('progress-figures-match reads `not started` as a label (ISS-1057)', () => {
-  // cm:guard the reply below is the one beta actually sent, and it is CORRECT: every figure matches
-  // the snapshot. `authoritativeSummary` renders the remaining bucket as `not started=N`, so the
-  // corrective message handed the model that wording, the model restated it, and the denial arm
-  // refused it again — 6 refusals that no rewrite could clear (criterion 32).
   it('passes the summary that quotes the snapshot own label back', () => {
     const text =
       'Current authoritative progress: **4 shipped**, **5 closed without a recorded release**, **4 in progress**, and **4 not started** — **17 total**.';
@@ -228,9 +200,6 @@ describe('progress-figures-match reads `not started` as a label (ISS-1057)', () 
     ).toEqual([]);
   });
 
-  // cm:guard the label's number is now CHECKED, which it never was: before this change `not started`
-  // was in no keyword list, so a count stated in the snapshot's own words was screened against
-  // nothing at all while the phrase itself was read as a denial (criteria 34, 35).
   it('refuses a wrong number beside the label, naming the mismatch and not the denial', () => {
     const breaks = PROGRESS_FIGURES_MATCH.check('There are 9 not started.', withProgress);
     expect(why(breaks)).toContain('does not match authoritative progress');
@@ -243,28 +212,16 @@ describe('progress-figures-match reads `not started` as a label (ISS-1057)', () 
     ).toContain('claims no work has been done');
   });
 
-  // cm:guard stripping a figure context removes the MATCHED SPAN and never the sentence, so a reply
-  // that states a true figure and then denies all progress is still refused: a denial that could be
-  // bought by prefixing it with a correct number is no denial rule at all (criterion 37, codex F4).
   it('still refuses a correct figure followed by a totalizing denial', () => {
     expect(
       why(PROGRESS_FIGURES_MATCH.check('4 completed, but the work has not started.', withProgress)),
     ).toContain('claims no work has been done');
   });
 
-  // cm:guard the plant: the alternative as it stood matched the bare phrase, so the correct summary
-  // above was refused for DENYING progress it had just stated correctly (criterion 39).
   it('pre-change: the bare `not started` alternative refuses the correct summary', () => {
     const preChange = /\bnot\s+started\b/i;
     expect(preChange.test('and **4 not started** — **17 total**.')).toBe(true);
   });
-  // cm:guard the reply below is the one beta sent on the AFTER benchmark run at e5184fe8, and it is
-  // CORRECT in both languages: 4 shipped, 5 closed unshipped, 4 in progress, 4 not started, 17
-  // total. It was refused, repaired into a WRONG answer (8 open), refused again, and the door sent
-  // its fallback — `vietnamese-count` went pass^3 100% -> 0% and that drop is what found this. Two
-  // halves, both this change's own: the markdown `**` between the figure and its label defeated the
-  // adjacency strip, and the bare Vietnamese label was still a denial alternative — the same shape the
-  // English narrowing removed, left standing in the other language this door serves (ISS-1057).
   it('passes the emphasised Vietnamese summary beta refused on the after run', () => {
     const text =
       'Hiện dự án có **4 issue đang mở**.\n\nTổng quan tiến độ: **4** đã phát hành, **5** đã đóng không có bản phát hành được ghi nhận, **4** đang thực hiện và **4** chưa bắt đầu (tổng **17**).'; // i18n-allow: the Vietnamese reply under test, quoted verbatim from the benchmark run
@@ -277,8 +234,6 @@ describe('progress-figures-match reads `not started` as a label (ISS-1057)', () 
     ).toEqual([]);
   });
 
-  // cm:guard emphasis widens what counts as adjacent and must not widen what counts as correct:
-  // a wrong figure beside the label is still refused through the markdown.
   it('refuses a wrong emphasised figure beside the label', () => {
     const wrongFigure = '**9** chưa bắt đầu.'; // i18n-allow: the Vietnamese figure label under test
     expect(why(PROGRESS_FIGURES_MATCH.check(wrongFigure, withProgress))).toContain(
@@ -296,9 +251,6 @@ describe('progress-figures-match reads `not started` as a label (ISS-1057)', () 
     }
   });
 
-  // cm:guard the plant for the pair above: the adjacency regex as it stood required a bare run of
-  // whitespace between the figure and the keyword, so the emphasised figure was invisible to it and
-  // the bare Vietnamese alternative then matched the label it had left standing.
   it('pre-change: the emphasised figure is invisible to the adjacency strip', () => {
     const emphasised = '**4** chưa bắt đầu'; // i18n-allow: the Vietnamese figure label under test
     const preChange = /(\d+)\s+(chưa bắt đầu|not started)/gi; // i18n-allow: the pre-change adjacency regex, quoted to plant its own failure

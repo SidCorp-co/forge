@@ -102,10 +102,6 @@ describe('handlePmJobFailedAutoDisable', () => {
     expect(transactionMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard ISS-1063 — the record goes INSIDE the transaction and the delivery outside
-  // it, and this case holds both halves: the row and the cadence disable land together or
-  // neither, while who is told is written after the commit. A delivery failure must not
-  // roll back the disable it was announcing.
   it('disables config, records the escalation in the transaction and delivers after it', async () => {
     queueCount([{ count: 3 }]);
     const { setSpy, whereSpy } = setupTxUpdateChain();

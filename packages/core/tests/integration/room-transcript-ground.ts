@@ -1,13 +1,3 @@
-/**
- * ISS-1090 — the ground the two transcript-index suites stand on: a room, some
- * things said in it, and a window that closed on something other than an answer.
- *
- * Shared rather than copied because the two halves ask different questions of
- * the same fixtures — who may read a room, and what the index holds — and a
- * second copy of `closeSilentWindow` would be a second definition of what a
- * silence is.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { TestDatabase } from '../helpers/index.js';
@@ -52,12 +42,6 @@ export async function say(
   });
 }
 
-/**
- * A window that closed on something other than an answer.
- */
-// cm:guard written as a ROW rather than through the router, because what the suites need is the
-// state a silence leaves behind and not the path that reaches it: the index must be indifferent to
-// this row's existence, and driving the router would prove the router instead (ISS-1090 rule 2).
 export async function closeSilentWindow(
   harness: TestDatabase,
   args: {

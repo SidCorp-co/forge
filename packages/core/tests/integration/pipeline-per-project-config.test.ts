@@ -84,7 +84,6 @@ async function seedProject(
     skillIdByName.set(name, await insertGlobalSkill(name));
   }
 
-  // cm:guard registrations for the STAGED ladder, kept as the noise this fixture proves the driver ignores: ISS-897 left one job type and ISS-933 left core minting none at all, so a registered skill must change nothing core produces.
   const stagePairs: Array<[string, string]> = [
     ['open', 'forge-triage'],
     ['confirmed', 'forge-clarify'],
@@ -105,7 +104,6 @@ async function seedProject(
   }
 
   const states = { ...mods.defaultStatesConfig(), ...(args.statesOverride ?? {}) };
-  // cm:guard this UPDATE REPLACES agent_config wholesale, so anything seeded at create time is gone by here — `enabled` has to be written again or `considerEnqueue` returns before it reaches dispatch and every case below asserts an empty jobs table for the wrong reason.
   const pipelineConfig = { enabled: true, states };
   await harness.db.execute(sql`
     UPDATE projects
@@ -116,7 +114,6 @@ async function seedProject(
   return { owner, project, skillIdByName };
 }
 
-// cm:edge contract -> packages/core/src/issues/release-record-required.ts — the release note is this fixture's precondition, not scenery: `drive` walks every hop as a DEVICE, and a device close with none is refused
 async function insertOpenIssue(projectId: string, createdById: string): Promise<IssueRow> {
   const id = randomUUID();
   await harness.db.execute(sql`
@@ -155,7 +152,6 @@ async function jobsFor(issueId: string): Promise<JobSnapshot[]> {
  * `to` already. The orchestrator catches pg-boss errors so the test does not
  * need a running queue.
  */
-// cm:guard this list is the happy-path lifecycle FORWARD, and `drive` reads it to tell whether the eager soft-skip already carried the issue to or PAST the target stage — reorder it and an explicit drive reads a forward hop as a backward one and re-runs finished work.
 const PIPELINE_ORDER: import('../../src/db/schema.js').IssueStatus[] = [
   'open',
   'confirmed',
@@ -186,12 +182,10 @@ async function drive(
   // cleanly so the test's explicit walk tolerates the eager soft-skip.
   const live = await readIssue(issue.id);
   if (orderOf(live.status) >= orderOf(to)) return live;
-  // cm:why this file drives the FULL status walk as a device actor, so it trips both transition-evidence rules in turn: planRequiredRule at `approved`, noWorkEvidenceRule at `developed`/`testing`. Neither plan text nor branch name is under test here — per-stage skill routing is — so each hop's precondition is seeded just before it.
-  // cm:edge contract -> packages/core/src/issues/transition-evidence.ts — the trigger statuses ('approved' for plan, NO_WORK_EVIDENCE_STATUSES for branch) and the accepted evidence shapes live there; widen that set without widening this and all three fixtures fail at a hop instead of at their assertion
   if (to === 'approved') {
     await harness.db.execute(sql`
       UPDATE issues
-      SET plan = COALESCE(NULLIF(TRIM(plan), ''), 'fixture plan — see cm:why above')
+      SET plan = COALESCE(NULLIF(TRIM(plan), ''), 'fixture plan')
       WHERE id = ${live.id}
     `);
   }
@@ -282,7 +276,6 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     mods.registerActivitySubscribers(mods.hooks);
   });
 
-  // cm:guard ZERO jobs at every status including the entry one, since ISS-933: `drive` reaches a box as a run session the master opens itself, and a job minted here would claim the same issue from the other side with the box's ledger able to see only one of them.
   it('enqueues nothing at the entry status, and nothing at any other', async () => {
     const { owner, project } = await seedProject();
     let issue = await insertOpenIssue(project.id, owner.id);
@@ -296,8 +289,6 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     expect(await jobsFor(issue.id)).toEqual([]);
   });
 
-  // cm:guard the three rungs ISS-895 deleted must enqueue NOTHING, and they are named one by one rather than covered by the walk above — the walk goes `in_progress → released → closed`, which never touches them, so it would stay green with a staged rung dispatching beside it.
-  // cm:guard what actually holds this is the ENTRY-STATUS SHORT-CIRCUIT in `pipeline/orchestrator.ts`, not `autonomousStepFor`. Measured 2026-09-05 by planting a `status === 'approved'` arm in `autonomousStepFor` alone: this test stayed GREEN, because the transition handler returns before ever consulting it. It goes red only when the short-circuit is widened too — so a future edit that keeps the short-circuit and re-adds a resolver arm will NOT be caught here, and the falsification that matters is on the orchestrator line.
   it.each(['approved', 'developed', 'testing'] as const)(
     'enqueues nothing at the deleted staged rung %s',
     async (rung) => {
@@ -311,8 +302,6 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     },
   );
 
-  // cm:guard the driver skill name reaches the agent as TEXT in the prompt and is never resolved from `skill_registrations` — the fixture registers eight `forge-*` skills precisely so a resolver that started reading them would produce a different skillName here and go red.
-  // cm:guard the skill a run session uses is named by the runner's brief (`run_session.rs:brief`), not by a job payload core writes — core stopped writing one at ISS-933. A registered skill must still not be substituted for it: this asserts that registering several changes nothing core mints, which is nothing.
   it('registers skills without any of them becoming work core mints', async () => {
     const { owner, project } = await seedProject();
     const issue = await insertOpenIssue(project.id, owner.id);
@@ -322,7 +311,6 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     expect(await jobsFor(issue.id)).toEqual([]);
   });
 
-  // cm:guard the entry stage gated to a human must enqueue NOTHING. It is the operator's one way to hold an issue before a session starts, and `dispatchAutonomous` is the only place it is honoured — the staged copy of this check went with the lane.
   it('enqueues nothing when the entry stage is gated to a human', async () => {
     const { owner, project } = await seedProject({
       statesOverride: { open: { enabled: true, mode: 'manual' } },
@@ -341,7 +329,6 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
       sql`UPDATE issues SET status='waiting', waiting_kind='needs_decision' WHERE id=${issue.id}`,
     );
 
-    // cm:why the `drive` helper is deliberately bypassed — it short-circuits when the live status is not in PIPELINE_ORDER, and `waiting` is a park that sits outside that walk, so routing through it would silently assert nothing
     const parked = await readIssue(issue.id);
     await mods.applyStatusTransition(parked, 'open', { id: owner.id, ownerId: owner.id });
     let guard = 0;
@@ -350,7 +337,6 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     }
 
     expect((await readIssue(issue.id)).status).toBe('open');
-    // cm:guard the hand-back is the STATUS reaching the entry, not a job appearing. A park a human answers is offered to a master again exactly as a fresh issue is; core mints nothing for either since ISS-933.
     expect(await jobsFor(issue.id)).toEqual([]);
   });
 });

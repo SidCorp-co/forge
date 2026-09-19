@@ -63,7 +63,6 @@ export const forgeAgentSessionsGetTool: ContextScopedMcpToolFactory = ({ princip
     if (!row) throw new Error('NOT_FOUND: agent session not found');
     await assertPrincipalIsMember(principal, row.projectId);
 
-    // cm:guard ISS-1023 — the tail and the total are the database's now; see `service.ts`.
     return { session: row };
   },
 });

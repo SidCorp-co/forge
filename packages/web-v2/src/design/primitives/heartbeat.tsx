@@ -18,8 +18,6 @@ export interface HeartbeatProps {
 /**
  * A day-by-day trace of how much the control plane executed.
  */
-// cm:guard an all-zero window draws a FLATLINE and never an empty frame: "nothing ran for thirty days" is the single most important thing this surface says, and a figure that renders nothing when its series is all zeros hides exactly the state it exists to show (ISS-988 criterion 26).
-// cm:guard no door, so no `<button>`, no `tabIndex` and no cursor — a day is a date-windowed aggregate this response cannot list the records behind, and an affordance that opens nothing is worse than no affordance (ISS-988 criteria 42-44).
 export function Heartbeat({
   days,
   width = 640,

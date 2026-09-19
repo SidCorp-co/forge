@@ -1,21 +1,3 @@
-/**
- * The registry is the vocabulary. These are the assertions that make it one rather than a cache of
- * whatever happened to be imported.
- *
- * ISS-1071's rule is that a provider is declared in exactly ONE place, its adapter, and that every
- * generic path resolves it here. That rule has two failure modes, and only the first is obvious:
- *
- *   1. A provider is added to the `IntegrationProvider` union and nobody registers it. The type
- *      accepts it everywhere, every screen offers it, and every request for it is refused as
- *      undeclared — a provider that exists to the compiler and to nobody else.
- *   2. A declaration is registered for a name the union does not carry. Then `getIntegration` finds
- *      it while `IntegrationProvider` refuses it, so the provider works at runtime and cannot be
- *      typed — which is how a name sneaks past the compile-time half of the `agent` exclusion the
- *      provider-literals checker declares.
- *
- * The union/registry equality below is the only thing in the repository that catches either.
- */
-
 import { beforeEach, describe, expect, it } from 'vitest';
 import { registerAllIntegrations } from './register-all.js';
 import {
@@ -127,11 +109,6 @@ describe('derived questions, asked instead of naming a provider', () => {
 });
 
 describe('dispatchThrough — the one place an unimplemented dispatch is refused', () => {
-  // cm:guard ISS-1062's rule is that a capability is DECLARED or it is ABSENT, never declared and
-  // unimplemented. Six of seven adapters used to carry a throwing stub for this sentence, which made
-  // `dispatchOutbound` look implemented to the type system on every provider that implements none —
-  // so the refusal moved here and this is the only assertion that it still happens, and still names
-  // the provider a caller has to act on.
   const ctx = () => ({}) as unknown as Parameters<typeof dispatchThrough>[1];
   const input = () => ({}) as unknown as Parameters<typeof dispatchThrough>[2];
 

@@ -32,7 +32,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
     failed |= !check_bin("claude", "Claude Code CLI");
     failed |= !check_bin("git", "git");
-    // cm:guard tmux is REQUIRED, not advisory. Since ISS-919 a master is a tmux session, and a box without it starts no master at all — it sits online, heartbeats, reports healthy and never runs a single job. This line is where an operator finds that out in ten seconds instead of by noticing a quiet project.
     failed |= !check_bin("tmux", "tmux (hosts the master session)");
 
     let cfg_path = Config::path()?;
@@ -92,7 +91,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         _ => println!("✔ cred store   {backend}"),
     }
 
-    // cm:guard report the PAT's ABSENCE, never its value or a prefix of it. `doctor` output is what people paste into a bug report, and a token fragment there is a token disclosed — the only fact worth printing is whether `forge-runner api` has a credential at all.
     match cred_store::load_pat() {
         Ok(Some(_)) => println!("✔ rest token   personal access token present (`forge-runner api`)"),
         _ => println!(
@@ -190,9 +188,6 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
             if rows.is_empty() {
                 println!("• runners      not assigned to any project on the server");
             }
-            // cm:guard start every project's MCP fetch BEFORE the per-project
-            // loop prints, so the whole section costs one `ONLINE_TIMEOUT`
-            // rather than one each. See `spawn_mcp_rows`.
             let mut mcp_rows = spawn_mcp_rows(&client, &rows);
             for r in &rows {
                 let local_path = cfg
@@ -255,16 +250,6 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     failed
 }
 
-/// Start one MCP fetch per project at once, keyed by project id.
-///
-/// Every request then shares one `ONLINE_TIMEOUT` window instead of taking its
-/// own in series: a box with 25 assignments against a stalled core cost about
-/// two minutes of apparent hang, after the runner list had already answered.
-// cm:guard a task RETURNS its line and never prints it. Tasks finish in whatever
-// order core answers, so a task that printed would drop project B's MCP row
-// between project A's runner row and A's — output that changes from run to run
-// and reads as a row belonging to the project above it. Awaiting in row order
-// orders the awaits, not what has already been written to stdout.
 fn spawn_mcp_rows(
     client: &CoreClient,
     rows: &[runners::MeRunner],
@@ -294,15 +279,6 @@ fn print_mcp_row(line: Option<(bool, String)>) -> bool {
     }
 }
 
-/// What this box can actually give a master for one project, as a doctor row.
-///
-/// ISS-1043 rule 5: a declared server must not read as `ok` on the strength of
-/// the declaration. Core is the only party that can say whether a sentinel has
-/// an active integration behind it, so the row asks core and reports what came
-/// back rather than what the project config says.
-///
-/// Returns `true` when the row is a problem.
-// cm:edge contract -> packages/core/src/devices/mcp-servers-routes.ts — `droppedNames` is what makes this row possible; a response folding the dropped names into the map would leave this printing `ok` for exactly the project ISS-1043 was filed from.
 async fn mcp_servers_line(
     client: &CoreClient,
     project_id: &str,
@@ -330,12 +306,6 @@ async fn mcp_servers_line(
     mcp_verdict(&found).map(|(ok, line)| (ok, format!("{slug}: {line}")))
 }
 
-/// The row's text and whether it is a pass, separated from the printing so the
-/// three shapes are testable.
-///
-/// `None` is the SILENT case: a project that declares nothing has nothing to
-/// say, and every project on the fleet but a handful is that one.
-// cm:guard a project with servers this box cannot supply is `✖` even though nothing is broken on the box. The operator reading this is deciding whether work on that project can run here, and ISS-1043 exists because the answer was printed as `ok` for days while every run on `mowment` reached none of its tools.
 fn mcp_verdict(found: &mcp_servers::ProjectMcpServers) -> Option<(bool, String)> {
     if found.is_empty() {
         return None;
@@ -430,9 +400,6 @@ mod tests {
         }
     }
 
-    /// F4. Every project's MCP fetch shares ONE wait, and every project still
-    /// gets exactly one row.
-    // cm:guard the elapsed assertion is the point and the delay is what makes it real: in series three 300ms answers cost 900ms, so a bound of 600ms cannot be met by a sequential version. The second half — a handle per project id — is the silence this could fail into instead: a row dropped from the map prints nothing for that project and reads as a project with no declaration.
     #[tokio::test]
     async fn every_project_mcp_row_shares_one_wait_and_none_is_dropped() {
         let delay = std::time::Duration::from_millis(300);
@@ -456,10 +423,6 @@ mod tests {
         );
     }
 
-    /// F4. A task hands its line back; it must not write to stdout itself, or
-    /// the row for whichever project core answered first lands under whichever
-    /// project the print loop had reached.
-    // cm:guard the assertion is on the RETURNED value, which is the only thing the print loop can order. A version that printed inside the task would still return something, so asserting only that a row comes back proves nothing — what makes this test real is that `mcp_servers_line` carries the slug INSIDE the string it hands over, so the caller can place it without knowing the project.
     #[tokio::test]
     async fn a_projects_mcp_row_is_handed_back_carrying_its_own_name_not_printed() {
         // A project that declares nothing owes no line at all.
@@ -508,7 +471,6 @@ mod tests {
         }
     }
 
-    // cm:guard this is criterion 12 and the whole of ISS-1043's rule 5. A version returning `Some((true, ..))` here reads as `✔ mcp` for the project the issue was filed from, which is the state that went unnoticed for days.
     #[test]
     fn a_declared_server_this_box_cannot_supply_is_a_problem_and_is_named() {
         let (ok, line) = mcp_verdict(&found(&[], &["epodsystem"])).expect("a row is owed");
@@ -538,7 +500,6 @@ mod tests {
         assert!(line.contains("playwright"), "{line}");
     }
 
-    // cm:guard the absent case prints NOTHING. Every project on this fleet but a handful declares no servers, and a reassuring `✔ mcp  none declared` row per project is noise an operator learns to skip past — including on the project where it later matters.
     #[test]
     fn a_project_that_declares_nothing_gets_no_row_at_all() {
         assert!(mcp_verdict(&mcp_servers::ProjectMcpServers::default()).is_none());

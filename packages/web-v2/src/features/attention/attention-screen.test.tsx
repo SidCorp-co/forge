@@ -91,7 +91,6 @@ describe("AttentionScreen · unseen drafts", () => {
     expect(screen.getByRole("button", { expanded: true })).toBe(toggle);
   });
 
-  // cm:guard the badge reports MATCHES, not rows sent. A 22-deep backlog badged "20" is the failure this bucket exists to remove, one layer up.
   it("badges the unclipped total and says the list is clipped", () => {
     view = emptyView({ unseenDrafts: drafts(20), unseenDraftsTotal: 22 });
     render(<AttentionScreen />);
@@ -100,7 +99,6 @@ describe("AttentionScreen · unseen drafts", () => {
     expect(screen.getByText(/Showing 20 of 22/)).toBeInTheDocument();
   });
 
-  // cm:guard a group that GROWS past the threshold between renders must collapse too — seeding the open flag from the first render is the easy way to get this wrong, and the symptom is 20 rows appearing where 3 were.
   it("collapses a group that grows past the threshold after first render", () => {
     view = emptyView({ unseenDrafts: drafts(3), unseenDraftsTotal: 3 });
     const { rerender } = render(<AttentionScreen />);
@@ -111,7 +109,6 @@ describe("AttentionScreen · unseen drafts", () => {
     expect(screen.queryByText("proposal 900")).toBeNull();
   });
 
-  // cm:guard the reachability floor: a group that stops being collapsible must show its rows again, whatever the user last toggled. Otherwise a draft cleared live (this diff invalidates ['attention'] on comment.created) shrinks the list under the threshold and strands the survivors behind a button that no longer renders.
   it("shows the rows again when a collapsed group shrinks back under the threshold", () => {
     view = emptyView({ unseenDrafts: drafts(20), unseenDraftsTotal: 22 });
     const { rerender } = render(<AttentionScreen />);
@@ -122,7 +119,6 @@ describe("AttentionScreen · unseen drafts", () => {
     expect(screen.getByText("proposal 900")).toBeInTheDocument();
   });
 
-  // cm:guard assert the NESTING DIRECTION, not that a heading exists: jsdom resolves role=heading for an h2 nested inside a button, so `getByRole('heading')` passes on the very defect this guards — real AT folds that h2 into the button's accessible name and the group leaves heading navigation.
   it("keeps the group title a heading with the disclosure inside it, not the reverse", () => {
     view = emptyView({ unseenDrafts: drafts(20), unseenDraftsTotal: 22 });
     render(<AttentionScreen />);
@@ -132,7 +128,6 @@ describe("AttentionScreen · unseen drafts", () => {
     expect(toggle.querySelector("h1,h2,h3,h4,h5,h6")).toBeNull();
   });
 
-  // cm:guard collapsing is opt-in per bucket. Deriving it from length alone hides an unbounded client-derived bucket (offline runners) behind a closed disclosure the operator never asked for.
   it("leaves other buckets expanded however long they get", () => {
     view = emptyView({
       offlineRunners: Array.from({ length: 9 }, (_, i) => ({

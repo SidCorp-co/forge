@@ -25,16 +25,6 @@ async function loadConfigs(now: number) {
   return cached;
 }
 
-/**
- * Run one cadence tick: for each `pm_config` with a cron expression, fire a
- * spawn if the expression's next-fire time falls inside the just-elapsed
- * minute window. The window is anchored to the minute boundary so a tick
- * that runs late still picks up the correct expressions.
- *
- * At-most-once per minute is reinforced by the spawner's per-project unique
- * index (`jobs_pm_per_project_unique_idx`); duplicate firings within the
- * same window resolve to `{ok:false, reason:'already-active'}` cleanly.
- */
 export async function runPmCadenceTickOnce(now: Date = new Date()): Promise<string[]> {
   const cfgs = await loadConfigs(now.getTime());
   const fired: string[] = [];

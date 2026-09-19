@@ -38,11 +38,6 @@ const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe("what the form sends", () => {
-  // cm:guard `projectIds` PLURAL, with both ticked projects in it. The route's body schema
-  // is `.strict()`, so a form sending the old singular `projectId` is refused by name — but
-  // a form sending only the FIRST of several is accepted, and creates an agent whose
-  // credential silently reaches one project. That is the exact shape `mintAgentCredential`'s
-  // `.limit(1)` had, arriving from the other end.
   it("sends every project the admin ticked", async () => {
     render(<CreateAgentForm orgId="org-1" />);
     type("Handle", "forge-vm");

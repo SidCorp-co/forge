@@ -21,11 +21,6 @@ use tokio::process::Command;
 /// only statement of the budget rather than the second copy of one.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Paths Forge itself rewrites inside a provisioned workspace. A project that
-/// commits `.forge/` therefore has a dirty tree that is nobody's
-/// work-in-progress, so these can never be what blocks a refresh.
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/orientation.rs — that module rewrites `.forge/orientation.md` in full and the marker block in `CLAUDE.md` on every provision; a path added there and not here starts failing every refresh on a project that tracks it
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/worktree.rs — `ensure_gitignore` appends the `.worktrees` line to a tracked `.gitignore`
 const FORGE_OWNED_PATHS: [&str; 3] = [".forge/orientation.md", "CLAUDE.md", ".gitignore"];
 
 /// What the workspace was sitting on when the agent got it. Recorded even when
@@ -182,10 +177,8 @@ pub async fn refresh(repo_path: &Path, base_branch: Option<&str>) -> WorkspaceGi
         return state;
     }
 
-    // cm:guard restore the Forge-owned paths BEFORE the fast-forward and never merge over them. Provision rewrites `.forge/orientation.md` in full, so on a project that COMMITS `.forge/` the tree is permanently dirty on a Forge-authored file; without this every refresh on such a project fails with "local changes would be overwritten" — which is this repo itself. Forge owns those files, so the incoming version wins.
     let foreign = foreign_dirty_paths(repo_path).await;
     if !foreign.is_empty() {
-        // cm:guard record WHY this refresh stopped, not just that it did. Every other `!refreshed` reason is a fault a repair agent should fix; this one is someone else's work, and the repair agent's only tool for an obstacle is `git stash`. Flattening the two into one boolean is what let a setup agent stash an interactive session's uncommitted files on 2026-08-31 — the careful branch reported backing off, and the report summoned the branch that does not back off.
         state.foreign_work = true;
         state.detail = Some(format!(
             "tree has uncommitted changes outside the Forge-owned paths ({}) — left alone",
@@ -263,7 +256,6 @@ mod tests {
         assert!(status.success(), "git {args:?} failed");
     }
 
-    // cm:guard this test owns the SETTER, and nothing else does. `refresh_is_repairable` in dispatch.rs reads the flag, so a unit test of the predicate stays green while the flag is never written — the branch that suppresses the finding would then be unreachable and the stash would come back with every gate still passing.
     #[tokio::test]
     async fn a_tree_holding_someone_elses_work_reports_it_and_refuses_to_move() {
         let root = temp_path("foreign");

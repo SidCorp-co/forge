@@ -1,10 +1,3 @@
-// Project-resolution layer for the Forge Facts registry. The registry's
-// render() is pure; this module fetches the per-project inputs (currently the
-// enabled status ladder from `agentConfig.pipelineConfig`) and produces the
-// `FactRenderContext`, then renders facts into the shape the REST + MCP
-// surfaces return. Lives apart from registry.ts so the registry stays free of
-// DB/env coupling.
-
 import { and, eq } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../../db/client.js';
@@ -115,22 +108,14 @@ interface IntegrationRow {
   hasOrgGuide?: boolean;
 }
 
-// cm:edge contract -> packages/core/src/integrations/types.ts — a provider's usage hint, its guide
-// slug and its one extra line are fields on the declaration in `integrations/<provider>/adapter.ts`.
-// Until ISS-1071 this comment pointed at a `usage-registry.ts` table and was only two thirds true:
-// the sentry targets line was an `if (r.provider === 'sentry')` right here, so adding a provider
-// that wanted one meant editing this renderer after all. That branch is gone and the claim now holds.
-// cm:why one query, shared by the pipeline facts block and the chat preamble — a chat-only copy of the active-filter + sentry-target mapping would drift from what a job sees
 export async function loadActiveIntegrationRows(
   projectId: string,
   orgId?: string | null,
 ): Promise<IntegrationRow[]> {
-  // cm:guard both flags must hold — an inactive binding on an active connection (or vice versa) injects nothing at dispatch, so listing it here would advertise tools the agent will not receive
   const pairs = await listBindingsForProject(projectId);
   const active = pairs.filter((p) => p.binding.active && p.connection.active);
   if (active.length === 0) return [];
 
-  // cm:why the guide lookup is skipped when nothing is connected — an unconnected project must not pay a query to discover guides it will never be pointed at
   const orgGuides = orgId ? await loadOrgGuideProviders(orgId) : new Set<string>();
 
   return active.map((p) => ({
@@ -153,7 +138,6 @@ function ungrantedNote(provider: string): string {
   return `connected, but agents on this project may NOT use it: agent access is off for this \`${provider}\` binding. You will not be given its tools; do not treat their absence as a credential or auth fault, and do not retry. An org owner or admin turns it on beside the integration under Settings → Integrations.`;
 }
 
-// cm:why indented as a markdown sub-block so multi-line operator text cannot break out of its bullet and read as a new top-level instruction to the agent
 function indentBlock(text: string): string {
   return text
     .split('\n')
@@ -169,23 +153,13 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     const decl = getIntegration(r.provider);
     const hint = decl?.usage?.hint ?? GENERIC_USAGE;
     const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : '';
-    // cm:why the org's runtime guide WINS over the seeded slug — an org authors one precisely to correct or replace the shipped default, so pointing at the default would send the agent to the text they overrode
     const guideSlug = r.hasOrgGuide ? integrationGuideSlug(r.provider) : decl?.usage?.guideSlug;
     const guidePointer = guideSlug ? ` Full guide: \`forge_guide get ${guideSlug}\`.` : '';
-    // cm:why the bracket says `service` or the stages rather than an environment: it used to print
-    // `[prod]` for every sentry, rocketchat, github and postman binding in the fleet, which was the
-    // filler value the column forced them to carry and told the agent nothing.
     const scope = r.role === 'service' ? 'service' : r.stages.join('+') || 'deploy';
-    // ISS-1038 — connected is not reachable. A binding no agent may use used to render the same
-    // "here is how to use it" line as one an agent could, so a session was told to reach for tools
-    // it would never be given and read their absence as a credential fault. The bullet now says
-    // which it is, and where the switch is, INSTEAD of the usage hint — not beside it, because a
-    // line telling an agent how to use something it cannot use is the thing being removed.
     const body = r.agentGranted === false ? ungrantedNote(r.provider) : `${hint}${guidePointer}`;
     const bullet = `- **${r.provider}** [${scope}]${health} — ${body}`;
     const extra: string[] = [];
     if (r.agentGranted !== false && r.extraLine) extra.push(r.extraLine);
-    // cm:guard operator text, rendered VERBATIM and last so it is the final word for this provider — never summarise, reorder or truncate it here
     const instructions = r.instructions?.trim();
     if (instructions) {
       extra.push(
@@ -197,16 +171,6 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
   return `## Project integrations\nConnected integrations and how to use them:\n${lines.join('\n')}`;
 }
 
-/**
- * `{{project:<key>}}` resolver. Every key it answers derives from a first-class
- * project column or from `environments`; there is no author-owned map behind it
- * any more. A key outside the reserved set resolves to a refusal naming the
- * knowledge store, NOT to `undefined` — an unresolved reference renders as the
- * empty string, so returning nothing would silently delete a sentence from the
- * prompt of every project whose skill body still carries one, and no gate in
- * this repository can see a skill body in another. That is the same decision
- * `production-branch` carries above it. Pure.
- */
 export function makeProjectResolver(src: {
   baseBranch: string | null;
   liveBranch: string | null;
@@ -217,23 +181,13 @@ export function makeProjectResolver(src: {
 }): ProjectVarResolver {
   const reserved: Record<(typeof RESERVED_PROJECT_FACT_KEYS)[number], () => string | undefined> = {
     'base-branch': () => src.baseBranch ?? undefined,
-    // cm:guard resolves ONLY under `promote`, for the same reason `formatProjectConfig` prints the
-    // line only there: 25 of 32 fleet projects carry a `live_branch` that nothing promotes to, and a
-    // skill body splicing one in would state a branch as this project's release target when the
-    // project declares it has no release step.
     'live-branch': () =>
       src.releaseModel === 'promote' ? (src.liveBranch ?? undefined) : undefined,
-    // cm:guard a REFUSAL and not `undefined`, which is the whole point: an unresolved
-    // `{{project:<key>}}` renders as empty, so leaving this key out would silently delete a sentence
-    // from the prompt of every project whose skill body still uses it — and no gate in this repo can
-    // see a skill body in another one. A loud break beats a silent substitution (ISS-1046).
     'production-branch': () =>
       '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the project declares `releaseModel: promote`. Update this skill body.',
     'repo-path': () => src.repoPath ?? undefined,
     'test-urls': () => renderTestUrls(src.environments),
     'test-creds': () => TEST_CREDS_POINTER,
-    // cm:guard the KEY stays `test-notes` though the FIELD is now `limits` — the reason is stated
-    // once, on `prompt/facts/environment-keys.ts`, which owns all three of these keys.
     'test-notes': () => src.environments.limits ?? undefined,
     integrations: () => renderIntegrations(src.integrations),
   };
@@ -247,8 +201,6 @@ export function makeProjectResolver(src: {
  * Parent comes back as a NAME because the only consumer writes it into a system prompt, where an
  * id is noise an agent cannot act on: `forge_issues` resolves a module by name as well as by uuid.
  */
-// cm:guard an EMPTY array is what keeps the `module-attribution` fact out of a taxonomy-less project's prompt, so this must stay a plain read with no placeholder row and no fallback list
-// cm:why read here rather than through `labels/module-service.ts`, which owns modules: that import is an EIGHTH module edge out of this file and `no-coordinator-blob` freezes it at seven. The invariants module-service holds are all about WRITES; a list has none to hold.
 export async function loadProjectModules(projectId: string): Promise<ProjectModuleFact[]> {
   const parents = alias(labels, 'parent_labels');
   const rows = await db
@@ -312,11 +264,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     // defaults → full ladder, empty {{project:}} resolver
   }
 
-  // The knowledge store is the only source of project prose. There is no second
-  // one to fall back to, so a failure here is reported into the prompt rather
-  // than swallowed: this runs at dispatch, and throwing would fail the job
-  // instead of the read, while rendering nothing would tell the agent this
-  // project has no guides — which is a different claim from "could not look".
   try {
     let heldSlugs: string[];
     [alwaysInjectFacts, projectFactKeys, heldSlugs] = await Promise.all([
@@ -324,7 +271,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       selectOnDemandSlugsFromKnowledge(projectId),
       selectAllSlugsFromKnowledge(projectId),
     ]);
-    // cm:edge contract -> packages/core/src/projects/autonomous-contract.ts — the SAME function `release-batch/readiness.ts` asks. Two lists is how the contract and the readiness gaps came to disagree about what a project owes, and this is the second reader that makes one list load-bearing rather than tidy.
     missingObligations = missingProjectKnowledge({ repoPath, repoUrl, releaseModel }, heldSlugs);
   } catch (err) {
     factsUnavailable = true;
@@ -364,17 +310,6 @@ function demoteHeadings(text: string): string {
   return text.replace(/^## /gm, '### ');
 }
 
-/**
- * Pure renderer behind `renderStageFactsBlock` — exported for unit tests.
- *
- * Inlines ONLY what steers mandatory behaviour: the stage-applicable
- * contextual facts (status ladder, enums, protocols) plus the connected
- * integrations (tool-routing info). Everything an agent can fetch through a
- * Forge tool is pointed-to, not inlined — the project's `on_demand` knowledge
- * entries render as a slug index the agent fetches through `forge_knowledge`,
- * which is the tool that holds them, and test URLs/creds are already covered by
- * the Project Context pointer to `forge_projects.get`.
- */
 export function renderStageFactsText(
   inputs: ProjectFactInputs,
   projectId: string,
@@ -387,7 +322,6 @@ export function renderStageFactsText(
     modules: inputs.modules,
   };
 
-  // cm:guard `relevant` is asked LAST and its absence means yes, so a fact that does not opt in renders exactly as it did before the predicate existed — the property the pinned-heading test in `resolve.test.ts` rests on
   const forgeText = FORGE_FACTS.filter(
     (f) =>
       f.tier === 'contextual' &&
@@ -399,9 +333,6 @@ export function renderStageFactsText(
 
   const projectParts: string[] = [];
 
-  // cm:guard the cap decides only whether a warning is logged: every flagged body renders whatever the summed size, because a truncated hard rule is worse than a warned-but-present one.
-  // cm:why "Follow them exactly." stays, and ISS-936 is where that was decided rather than overlooked. Nothing verifies the rule was obeyed, and the honest sentence about that (`ALWAYS_INJECT_GUARANTEE_NOTE`) is owed to the OWNER who sets the flag, on the surfaces that offer it. Putting it here instead tells the agent, inside the rule, that ignoring the rule costs nothing — which converts an unverified rule into an ignored one.
-  // cm:edge contract -> packages/core/src/projects/project-facts.ts — `ALWAYS_INJECT_GUARANTEE_NOTE` describes THIS render to an owner; a change to what is guaranteed here has to move that sentence
   const alwaysInject = inputs.alwaysInjectFacts;
   const alwaysInjectKeys = new Set(alwaysInject.map((f) => f.key));
   if (alwaysInject.length > 0) {

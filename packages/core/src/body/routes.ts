@@ -1,16 +1,3 @@
-/**
- * The one read a body composer needs.
- *
- * It touches no row: `preview` is `prepareBody` on bytes nobody stored, so what
- * the pane draws and what a save would store come from one function, including
- * the refusal.
- *
- * `GET /components` and `GET /projects/:id/body-adoption` stood here until
- * 2026-09-14, when the component vocabulary and the per-stage mandate it fed
- * were removed — the registry served one dropdown and the number counted a rule
- * no project ever turned on.
- */
-
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -48,7 +35,6 @@ bodyRoutes.post(
       format: prepared.format,
       warnings: prepared.warnings,
       text: prepared.text,
-      // cm:why the tree is parsed from the PREPARED bytes, not the typed ones: the pane must draw what the row would hold, and `serializeBody` wraps loose prose in `<p>` and drops what the sanitizer removed
       nodes: prepared.format === 'html' ? parseBody(prepared.body) : null,
     });
   },

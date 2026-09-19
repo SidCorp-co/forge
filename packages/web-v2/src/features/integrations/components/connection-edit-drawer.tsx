@@ -15,6 +15,7 @@ import { Suspense, lazy, useMemo, useState } from "react";
 import {
   Banner,
   Button,
+  CardTitle,
   Divider,
   ErrorState,
   Field,
@@ -39,8 +40,6 @@ import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from ".
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 
-// cm:guard built ONCE at module scope — `lazy()` mints a new component type per call, and one
-// rebuilt during a render remounts the form and drops what the operator typed.
 const CONNECTION_SECTIONS = new Map(
   PROVIDER_MODULES.flatMap((m) =>
     m.connectionSection ? [[m.provider, lazy(m.connectionSection)] as const] : [],
@@ -160,10 +159,7 @@ function CredentialSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="fg-h4">Credential</h3>
-      {/* cm:guard a provider with no `secretField` gets NO box: its credential is never typed, and
-          the fall-through this replaced offered one whose PATCH sent `{ apiKey }` to a provider
-          whose schema has no such field — a Save that could only ever 400. */}
+      <CardTitle>Credential</CardTitle>
       {canManage && secretField === null && (
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
           {module?.connectionNote ??
@@ -223,9 +219,6 @@ function CredentialSection({
   );
 }
 
-// cm:guard the key here is the CONNECTION id, not the provider: `useState` initialisers do not
-// re-run, so a form seeded for one credential would keep showing that credential's values after the
-// drawer switched to another of the same provider.
 /** The provider's own connection-tier form, or a line saying where its config is edited instead. */
 function ConfigSection({
   connection,
@@ -240,7 +233,7 @@ function ConfigSection({
   if (!Section) {
     return (
       <section className="flex flex-col gap-2">
-        <h3 className="fg-h4">Configuration</h3>
+        <CardTitle>Configuration</CardTitle>
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
           {module?.connectionNote ??
             `${providerLabel(connection.provider)} has no configuration at the credential tier.`}
@@ -287,7 +280,7 @@ function ProjectsSection({
 
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="fg-h4">Projects using it</h3>
+      <CardTitle>Projects using it</CardTitle>
       {bindingsLoading ? (
         <Skeleton className="h-8 w-full" />
       ) : bindingsError ? (
@@ -368,7 +361,7 @@ function DangerZone({
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="fg-h4">Danger zone</h3>
+      <CardTitle>Danger zone</CardTitle>
       <div className="flex items-center gap-2">
         {connection.active ? (
           <Button

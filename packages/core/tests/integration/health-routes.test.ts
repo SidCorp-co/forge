@@ -108,7 +108,6 @@ describe('ISS-267 /api/projects/health integration', () => {
       headers: { authorization: `Bearer ${token}` },
     });
 
-    // cm:why the pre-fix bug threw before any row work, so even an empty project returned 500 — asserting 200 on nothing at all is what locks the binding fix in.
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ projectSlug: string; throughput: number }>;
     const row = body.find((r) => r.projectSlug === project.slug);
@@ -180,7 +179,6 @@ describe('ISS-267 /api/projects/health integration', () => {
       projectId: project.id,
       createdById: user.id,
     });
-    // cm:why eight days puts this outside the rolling seven-day window by a full day, so a boundary drifting by hours cannot make the case pass by accident.
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
     await insertActivity({
       issueId,

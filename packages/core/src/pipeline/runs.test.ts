@@ -23,12 +23,10 @@ const insertCalls: InsertCall[] = [];
 const updateCalls: UpdateCall[] = [];
 const selectResponses: Array<Record<string, unknown>[]> = [];
 let nextInsertReturnsEmpty = false;
-// cm:guard the queue defaults to one canonical row when empty, so a test that forgets to push still sees a close that "worked" — push explicitly whenever the assertion is about whether the write happened at all.
 const nextUpdateReturning: Array<Record<string, unknown>[]> = [];
 
 const emitMock = vi.fn(async (..._args: unknown[]) => {});
 
-// cm:edge contract -> packages/core/src/pipeline/deploy-confirmations.test.ts — the gate's own verdicts are proved there; here it is pinned CLEAR so these tests keep asserting the write shapes they were written for rather than the gate's logic twice.
 const deployGateMock = vi.fn(() => ({ verdict: 'clear' }) as const);
 const readHoldsMock = vi.fn(async () => ({}) as Record<string, unknown>);
 const markDeferredMock = vi.fn();
@@ -123,7 +121,6 @@ vi.mock('../db/client.js', () => {
           setCapture = s;
           return {
             where: () => {
-              // cm:why recorded here rather than in `.returning()` so the callers that never call it (setCurrentStep) still produce an entry
               const idx = updateCalls.length;
               updateCalls.push({ set: setCapture, returnedRows: [] });
               const p = Promise.resolve(undefined) as Promise<unknown> & {
@@ -163,8 +160,6 @@ vi.mock('../db/client.js', () => {
     // db handle — drizzle's tx surface is structurally identical to db
     // for the calls these helpers issue (update/select/execute).
     transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(mockDb),
-    // cm:why applyKernelTransition stamps `forge.kernel_txn` through `exec.execute` before its
-    // CAS, so the detector trigger can tell an audited flip from a hand-written one
     execute: async () => undefined,
   });
   return { db: mockDb };
@@ -435,7 +430,6 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     expect(markDeferredMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard this asserts ORDER, not that both happened — the marker must be written before the verdict is read, or a confirmation settling the last hold in between leaves nobody to close the run for an hour.
   it('marks the deferral before it reads the verdict, so the settle-in-between window cannot strand the run', async () => {
     const order: string[] = [];
     markDeferredMock.mockImplementation(async () => {

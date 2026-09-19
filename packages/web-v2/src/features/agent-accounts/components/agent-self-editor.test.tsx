@@ -103,7 +103,6 @@ describe("a first read that fails (codex F6)", () => {
 });
 
 describe("patchOf", () => {
-  // cm:guard an emptied number goes out as NULL, which the server reads as "unset this key, fold the default back": sending 0 would be a real value the bounds refuse, and omitting the key would leave a stale value standing (ISS-1034 criterion 51).
   it("sends an emptied number as null and a set one scaled to server units", () => {
     const patch = patchOf({
       soul: "",

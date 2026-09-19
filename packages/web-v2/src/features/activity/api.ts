@@ -1,8 +1,3 @@
-// web-v2 feature module: activity — REST surface.
-//
-// Backs the cross-project Activity feed on `GET /api/chat-logs`. Omitting
-// `projectSlug` yields the caller-visible cross-project view (owned + member
-// projects), scoped server-side — see `packages/core/src/chat-logs/routes.ts`.
 import { apiClientList } from "@/lib/api/client";
 import type { ChatLogRow, QaRating, SourceFilter } from "./types";
 

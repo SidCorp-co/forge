@@ -1,18 +1,3 @@
-/**
- * ISS-447 (ISS-442 C1, I2) — the single-writer GUARD.
- *
- * Fails the build if any file under `packages/core/src` (other than the
- * chokepoint `lifecycle/transition.ts` itself) writes a TERMINAL status to one
- * of the three kernel tables via a Drizzle `.update(<table>).set({ status:
- * <terminal> })`, or via a raw-SQL `UPDATE <table> SET ... status = '<terminal>'`.
- *
- * This is what makes invariant I2 real: a new code path that flips a job /
- * session / run terminal WITHOUT routing through `applyKernelTransition` (and
- * therefore without writing the `kernel_transitions` audit row) cannot land —
- * CI rejects it here. Non-terminal writes (queued/running/dispatched/idle/
- * paused resets) are deliberately allowed.
- */
-
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -55,12 +40,7 @@ function listSourceFiles(dir: string): string[] {
  *  status='failed'`" in a JSDoc header can't trip the scanners. Heuristic, not a
  *  full lexer: good enough for guard-rail purposes. */
 function stripComments(src: string): string {
-  return (
-    src
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      // cm:why the leading [^:] is what keeps a `scheme://` inside a string from being eaten as a line comment
-      .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
-  );
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
 /** Scan one file for bypassing terminal writes; returns human-readable hits. */
@@ -80,7 +60,6 @@ function findViolations(path: string, rawBody: string): string[] {
       const seg = segEnd === -1 ? rest : rest.slice(0, segEnd);
       const statusValue = seg.match(/status\s*:\s*([^,\n}]+)/)?.[1]?.trim();
       if (statusValue) {
-        // cm:guard a status written from a VARIABLE counts as a violation, because the guard cannot prove it is non-terminal — and that is not hypothetical: `markSessionTerminal` wrote `status: terminal` typed `'completed_via_recovery' | 'cancelled_stale'`, both terminal, and slipped past the literal scan for as long as it existed, leaving no `kernel_transitions` row behind. Measured 2026-09-02: exactly one such site in the tree, so this rule costs no false positives. A legitimate non-terminal write from a variable must name its statuses as literals, or route through the chokepoint.
         if (!/^['"]/.test(statusValue)) {
           hits.push(`${path}: .update(${table}).set({ status: ${statusValue} }) — non-literal`);
         } else {

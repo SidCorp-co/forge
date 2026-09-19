@@ -8,7 +8,6 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
-// cm:guard `assertEmailVerified` makes the FIRST select of every authenticated test, so the FIFO queue on `selectLimit` must be primed with its row before the one the test is about — a queue that starts with the test's own row hands it to the email check and 403s.
 const selectLimit = vi.fn();
 const selectWhere = vi.fn((): unknown => ({ limit: selectLimit }));
 const selectOn = vi.fn(() => ({ where: selectWhere }));
@@ -16,7 +15,6 @@ const innerJoin = vi.fn(() => ({ on: selectOn, where: selectWhere }));
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
   innerJoin,
-  // cm:why the `innerJoin` arm ends here with no `limit`/`where`, because the queries that take it (project_members for the /:id detail) chain neither
 }));
 
 // GET / visibility query:
@@ -40,11 +38,9 @@ const txInsertMembers = vi.fn(() => ({ values: txInsertMembersValues }));
 
 const txInsert = vi.fn();
 
-// cm:guard ONE spy for both handles, because ISS-1070 moved every scoped `agentConfig` write onto `tx.execute` INSIDE the PATCH transaction while `/:id/plugins` still writes on the bare db. A per-call `vi.fn()` here would make the statement unassertable and every scoped-write case would read as green while writing nothing.
 const dbExecute = vi.fn(async (_statement: unknown): Promise<unknown[]> => []);
 
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  // cm:why the PATCH now writes through the transaction, so the tx carries the same update/select doubles the bare db does (ISS-992)
   const tx = {
     insert: txInsert,
     execute: dbExecute,
@@ -108,7 +104,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// cm:guard only the db-touching authz resolvers are stubbed — `assertProjectRole`, `assertOrgRoleOnProject` and `maxProjectRole` stay REAL, so these cases exercise the production role logic rather than a mock of the decision under test
 const projectAccess = vi.fn();
 const personalOrg = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
@@ -276,7 +271,6 @@ describe('POST /api/projects', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  // cm:guard a 23505 is not automatically a slug collision. Three unique indexes can raise on this insert, and the route reported EVERY one of them as SLUG_TAKEN until both transports came through `createProject` — which sent a caller off to rename a slug that was never the problem, on an apiKey collision they could not see.
   it.each([
     ['projects_slug_unique', 409],
     ['projects_api_key_unique', 500],
@@ -599,7 +593,6 @@ describe('PATCH /api/projects/:id', () => {
     });
   });
 
-  // cm:guard assert on `updateSet`, not on the response — `updateReturning` is mocked, so a body assertion passes even when the handler never maps `kind` into the SET, which is the exact bug that kept the field create-only
   it('200 kind: reaches the UPDATE, so an existing project can be re-shaped as a storefront', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -681,10 +674,6 @@ describe('PATCH /api/projects/:id', () => {
  * of the route.
  */
 describe('PATCH /api/projects/:id · environments', () => {
-  // cm:guard ISS-1069 — the PATCH contract for `environments` is WHOLESALE REPLACEMENT and not a
-  // merge, at any depth. The two cases below are the two halves of that claim: what a partial patch
-  // does to the sides it did not name, and what `null` does. Relax either into a merge and every
-  // client's clearing write stops clearing.
   it('200 REPLACES environments outright — a patch sending only limits leaves no live, no preview and no credentials', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -734,9 +723,6 @@ describe('PATCH /api/projects/:id · environments', () => {
     expect(updateSet).toHaveBeenCalledWith({ environments });
   });
 
-  // cm:guard the catchall at EVERY level, which is the one row rule ISS-1069 changed: a plain
-  // `z.object` one level down strips an unknown key silently, which is the 200-and-a-discard the
-  // retired keys are refused by name to avoid.
   it('200 stores an unknown key at the top level, inside preview, inside live, and inside a row', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -807,8 +793,6 @@ describe('PATCH /api/projects/:id · environments', () => {
     expect(updateSet.mock.calls[0]?.[0]).not.toHaveProperty('environments');
   });
 
-  // cm:guard one case per FIELD the schema refuses, because each is its own rule and a single
-  // malformed-URL case would go green with every other rule deleted.
   const REFUSED_ENVIRONMENTS: [string, Record<string, unknown>, string][] = [
     ['a preview.url that is not a URL', { preview: { url: 'nope' } }, 'preview'],
     ['a preview.apiUrl that is not a URL', { preview: { apiUrl: 'nope' } }, 'apiUrl'],
@@ -893,9 +877,6 @@ describe('PATCH /api/projects/:id · environments', () => {
     });
   }
 
-  // cm:guard the NINE fields that take JSON null and the ones that do not, as one pair of lists.
-  // A null inside a row is a MISSING REQUIRED STRING and not a cleared optional one, and the two
-  // readings differ only here — nothing downstream could tell them apart.
   const NULLABLE_PATHS: [string, Record<string, unknown>][] = [
     ['preview', { preview: null }],
     ['live', { live: null }],
@@ -968,17 +949,7 @@ describe('PATCH /api/projects/:id · environments', () => {
   }
 });
 
-/**
- * ISS-1000, ISS-1048, ISS-1069, ISS-1070 — the retired keys and the `agentConfig` record, as their
- * own block.
- *
- * Its own `describe` and not the one above, because that block was at the function line budget and
- * these cases are about a different thing: what this route REFUSES, and what each scoped field
- * writes when it does not.
- */
 describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', () => {
-  // cm:guard ISS-1000 — each case below is a DOOR and not a repetition: the scoped field, the same key inside the wholesale `agentConfig` record this route still accepts, and the two stage keys that record could otherwise carry past `pipelineConfigPatchSchema`. Drop any one refusal and that door answers 200 and writes a phantom back.
-  // cm:guard each case asserts the MESSAGE as well as the status, and that is the whole value of it: with the refusal removed, a body naming only `stateContext` is stripped to `{}` and refused 400 by the schema's own `no fields to update` — so a case testing the status alone stays green against the defect it exists to catch.
   const RETIRED_BODIES: [string, Record<string, unknown>, string][] = [
     [
       'the scoped stateContext field',
@@ -1079,7 +1050,6 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     expect(text).toContain('pipelineConfig.states[*].budget');
   });
 
-  // cm:guard this case USED to be the positive control — "a wholesale agentConfig carrying some other key still goes through" — and it is inverted deliberately (ISS-1070). The record was the escape hatch four settings surfaces wrote through; it closed because the two values that lacked a named field got one, so the record refuses every key by naming the door that writes it.
   it.each([
     ['a declared key', { plugins: [] }, '`PATCH /api/projects/:id/plugins`'],
     ['a declared key with a scoped field', { personaStyle: 'terse' }, '`personaStyle` field'],
@@ -1103,7 +1073,6 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     },
   );
 
-  // cm:guard each scoped field writes ONE key and never a document: the assertion is on what the statement carried, not on a blob the route assembled. Before ISS-1070 these cases asserted `updateSet` was called with the WHOLE agentConfig the route had just read, which is the read- modify-write this change removed — that assertion passes for a route that also silently restores every sibling key another request changed in between, which is what it did.
   it.each([
     ['rocketChatAnswerMode', 'agent', { rocketChatAnswerMode: 'agent' }, []],
     ['rocketChatAnswerMode', null, {}, ['rocketChatAnswerMode']],
@@ -1136,7 +1105,6 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     },
   );
 
-  // cm:guard the sibling-preservation claim, made about the STATEMENT rather than about a document the route built: nothing the route sends names a key it was not asked to write, so a sibling written between this request's read and its write cannot be restored — there is no read.
   it('names no key it was not asked to write', async () => {
     const token = await signUserToken('uuid-owner');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
@@ -1155,7 +1123,6 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     ]);
   });
 
-  // cm:guard the scoped write runs INSIDE the route's transaction, which is the whole of the rollback promise: `db.execute` outside it would commit the config change of a request that then failed on the prefix and answered the operator an error.
   it('writes the scoped key through the transaction handle and not the bare db', async () => {
     const token = await signUserToken('uuid-owner');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
@@ -1628,7 +1595,6 @@ describe('PATCH /api/projects/:id — contractInputChanged', () => {
     });
   }
 
-  // cm:guard ISS-1070 — this route no longer takes `agentConfig`, so `statusEntryCriteria` cannot reach the column through it and `updatePipelineConfig` is the one writer that announces the move. The announcement branch went with the door; this case is what says the door is shut.
   it('refuses the agentConfig door that used to carry a statusEntryCriteria write', async () => {
     const res = await patchAs({
       agentConfig: { pipelineConfig: { statusEntryCriteria: { developed: ['plan'] } } },
@@ -1649,7 +1615,6 @@ describe('PATCH /api/projects/:id — contractInputChanged', () => {
     },
   );
 
-  // cm:guard a patch about something else must NOT republish: every announcement costs one GitHub request per open pull request on the project, and a renamed project moves nothing the contract's answer reads.
   it('stays silent for a patch that names none of them', async () => {
     const res = await patchAs({ name: 'New name' });
     expect(res.status).toBe(200);

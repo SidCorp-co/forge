@@ -56,8 +56,6 @@ describe("reportTransportFailure", () => {
     expect(captureException).not.toHaveBeenCalled();
   });
 
-  // cm:why the tag must not name a cause: `Failed to fetch` is what the browser
-  // returns for CORS, DNS and TLS alike, so a `cors` tag would be a guess.
   it("never claims to know which transport cause it was", () => {
     reportTransportFailure(new TypeError("Failed to fetch"), REQ);
 

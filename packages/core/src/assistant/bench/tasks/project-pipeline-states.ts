@@ -1,11 +1,5 @@
 import type { Task } from '../task.js';
 
-/**
- * The project's EFFECTIVE pipeline, in order: the product's canonical ladder with this project's
- * stage overrides applied. Not the keys of the stored `pipelineConfig.states` map — that is
- * per-stage configuration, `forge-plugin` stores one of them, and asking for "the keys the config
- * names" pointed the assistant at exactly the one-state answer this task now rejects (ISS-1066).
- */
 export const projectPipelineStates: Task = {
   id: 'project-pipeline-states',
   capability: 'project-understanding',
@@ -21,7 +15,6 @@ export const projectPipelineStates: Task = {
         'What are this project’s pipeline states, in order, from the first an issue enters to the last? Give the state names as the pipeline uses them.',
       checks: [
         { kind: 'listInOrder', list: '{stateList}' },
-        // cm:why onlyFrom beside listInOrder: on 2026-09-16 the assistant listed the product's whole lifecycle and passed, since the three configured states stood in order among ten (ISS-1065)
         { kind: 'onlyFrom', list: '{stateList}' },
         { kind: 'notFallback' },
         { kind: 'noHelp' },

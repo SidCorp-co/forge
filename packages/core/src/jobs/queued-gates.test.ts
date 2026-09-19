@@ -67,7 +67,6 @@ function selectChainOnce(rows: unknown[]): void {
   }));
 }
 
-// cm:why the cap read and the CASE row are queued ONLY when `job` is non-null, mirroring the asserter's short-circuit to not_found — queueing them unconditionally leaves two stubs unconsumed, and vitest carries a `mockResolvedValueOnce` queue across tests
 function mockAssertChain(opts: {
   job: { projectId: string } | null;
   caseResult: { reason: string | null } | null | undefined;
@@ -86,7 +85,6 @@ describe('countInFlightForRunner', () => {
     dbExecute.mockResolvedValueOnce([{ n: '7' }]);
     expect(await countInFlightForRunner('r1')).toBe(7);
   });
-  // cm:guard ISS-258 — a job under a TERMINAL parent run must not count toward a runner's load; an orphan that still counts burns a slot nothing will ever free.
   it('joins pipeline_runs and filters to running|paused parents', async () => {
     dbExecute.mockResolvedValueOnce([{ n: '0' }]);
     await countInFlightForRunner('r1');
@@ -97,8 +95,6 @@ describe('countInFlightForRunner', () => {
 });
 
 describe('the `held` asymmetry (RFC 0002)', () => {
-  // cm:guard assert BOTH halves together, never one alone — `held` in the issue-busy arm only stops a second job for the same issue, while NO load count existing anywhere in this builder is the entire reason a held job may wait indefinitely; reintroduce a load CTE that counts `held` and one held job occupies a box forever, which is the `waiting` park RFC 0002 deletes, moved one axis down
-  // cm:edge lockstep -> packages/core/src/devices/claim.ts — L1 there lists the same three statuses, and it is the arm that actually REFUSES rather than merely explains; a status added here and not there reports a block the claim does not enforce
   it('sits in the issue-busy arm, and no CTE counts load at all', async () => {
     dbExecute.mockResolvedValueOnce([]);
     await gateReasonsForQueuedJobs('p1');
@@ -108,7 +104,6 @@ describe('the `held` asymmetry (RFC 0002)', () => {
       /FROM\s+jobs\s+other[\s\S]*?other\.status\s+IN\s*\(([^)]*)\)/,
     )?.[1];
 
-    // cm:guard keep this positive assertion — a regex that stopped matching leaves the slice `undefined`, and the `toContain` below then passes on nothing, so the test would go green precisely when the SQL it guards was rewritten
     expect(issueBusy).toBeTruthy();
     expect(issueBusy).toContain("'held'");
 
@@ -148,7 +143,6 @@ describe('assertDispatchable', () => {
     expect(await assertDispatchable('j1')).toEqual({ ok: false, reason: 'not_found', hint: 'j1' });
   });
 
-  // cm:guard every reason must appear in the SQL text, because both readers cast the raw CASE string into `GateSkipReason` unchecked — an arm renamed without this test going red is invisible to tsc, and it silently changes the answer for every consumer keying on the reason (`alarmStalledQueuedJobs`'s `gated.has`, the `gateReason` field `forge_jobs.list` publishes).
   it('SQL enumerates every GateSkipReason in the CASE', async () => {
     mockAssertChain({
       job: { projectId: 'p1' },
@@ -161,28 +155,21 @@ describe('assertDispatchable', () => {
     expect(text).not.toMatch(/'manual_hold'/);
     expect(text).toMatch(/'retry_cooldown'/);
     expect(text).toMatch(/'issue_busy'/);
-    // cm:why asserting the ABSENCE of `stale_trigger` is what keeps ISS-895 done: the arm was scoped to `TRIGGER_STATUS_BY_JOB_TYPE`, i.e. the staged step types, and `drive` was deliberately outside it — so on the one lane that is left the arm could never match a job that exists. Re-adding it would stamp the driver stale the moment its own agent moved the issue, and nothing re-enqueues at any status but the entry one.
     expect(text).not.toMatch(/'stale_trigger'/);
-    // cm:why asserting the ABSENCE of these two is the point: `blocked_by` and `project_cap` were the gates this design deleted, and a CASE arm reappearing under either name is a routing decision moving back into the kernel
     expect(text).not.toMatch(/'blocked_by'/);
     expect(text).not.toMatch(/'project_cap'/);
-    // cm:why asserting the ABSENCE of `release_decompose_pending` is the only way this stays fixed — it sat in `GateSkipReason` for months naming an arm the CASE never had, and `assertDispatchable` casts the raw reason into that union, so tsc cannot tell a member from a fiction
     expect(text).not.toMatch(/'release_decompose_pending'/);
-    // cm:why the decompose parent gate was removed with the lifecycle in 2026-09; a CASE arm reappearing under either name is a mechanism nobody decided to bring back
     expect(text).not.toMatch(/'decompose_children_pending'/);
-    // cm:why `runner_full` belongs with these two: core enforces no job ceiling since the master began claiming from the pool, so the arm could only report a hold nothing applies — an operator sent to wait for a slot that was never occupied. A capacity arm reappearing here is the kernel deciding capacity again.
     expect(text).not.toMatch(/'runner_full'/);
     expect(text).toMatch(/'runner_stale'/);
     expect(text).toMatch(/'runner_too_old'/);
   });
 
-  // cm:guard the ORDER is the assertion, not the presence. `runner_stale` matches whenever the CTE is empty, and a below-floor box IS in the CTE — so an arm placed after it would be dead code, and every too-old fleet would keep reporting "no runner is online" about hosts whose heartbeats are green. Measured 2026-09-05: dev1 served 20 projects at 0.10.5 against a 0.11.0 floor.
   it('reports a too-old fleet as too old rather than as no fleet at all', async () => {
     mockAssertChain({ job: { projectId: 'p1' }, caseResult: { reason: null } });
     await assertDispatchable('j1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text.indexOf("'runner_stale'")).toBeLessThan(text.indexOf("'runner_too_old'"));
-    // cm:guard the CTE must carry NO capacity column at all. `cap` and `in_flight` were the two the deleted arm read, and re-adding either is how a capacity arm gets written back: the column arrives first, looking harmless, and the CASE follows.
     expect(text).not.toMatch(/\bin_flight\b/);
     expect(text).not.toMatch(/\bAS cap\b/);
   });
@@ -200,7 +187,6 @@ describe('assertDispatchable', () => {
     expect(text).toMatch(/WHERE\s+j\.id\s*=/);
   });
 
-  // cm:guard capture BOTH readers in one run and compare — they inherit their CTEs and EXISTS predicates from `buildBarrierFragments`, so this is what stops a fragment edited for one of them silently leaving the other behind.
   it('parity: both readers share the same CTEs + EXISTS predicates', async () => {
     dbExecute.mockResolvedValueOnce([]);
     await gateReasonsForQueuedJobs('p-parity');
@@ -222,16 +208,13 @@ describe('assertDispatchable', () => {
       expect(asserterSql, `asserter missing ${re}`).toMatch(re);
     }
 
-    // cm:guard assert the ABSENCE of `running_ids` on both sides — that CTE existed only to count a project's concurrent issues against a cap, and the cap is what this design removed; a reader that reintroduces it has put the ceiling back where the master cannot see it
     expect(reasonsSql).not.toMatch(/running_ids/);
     expect(asserterSql).not.toMatch(/running_ids/);
-    // cm:guard `device_load` goes with `running_ids` for the same reason one axis over — it counted a box's jobs against a cap core no longer enforces, so a reader that brings it back has put a ceiling where neither the master nor the runner can see it
     expect(reasonsSql).not.toMatch(/device_load/);
     expect(asserterSql).not.toMatch(/device_load/);
   });
 });
 
-// cm:guard this and `assertDispatchable` MUST take their CASE from the one builder — the arm ORDER is the answer they return, so two copies report a different "most specific reason" for the same job and the surfaces that read them start contradicting each other
 describe('gateReasonsForQueuedJobs', () => {
   it('maps only the gated jobs, leaving dispatchable ones out', async () => {
     dbExecute.mockResolvedValueOnce([
@@ -254,7 +237,6 @@ describe('gateReasonsForQueuedJobs', () => {
     expect((await gateReasonsForQueuedJobs('p1')).size).toBe(0);
   });
 
-  // cm:guard the batch query must stay scoped to `status='queued'` — a dispatched or running job has no gate to report, and including one would label live work with the reason it passed on its way out of the queue
   it('scopes the scan to the project and to queued jobs', async () => {
     dbExecute.mockResolvedValueOnce([]);
 
@@ -273,14 +255,12 @@ describe('freshRunnerAvailability', () => {
     expect(await freshRunnerAvailability('p1')).toEqual({ total: 3 });
   });
 
-  // cm:guard an empty pool must read as 0, never as an absent row the caller coerces to "available" — pipelineHealth turns total===0 into "no runner is online" and anything else into no reason at all, opposite verdicts
   it('reads an empty result as no runners at all', async () => {
     dbExecute.mockResolvedValueOnce([]);
 
     expect(await freshRunnerAvailability('p1')).toEqual({ total: 0 });
   });
 
-  // cm:guard it must read `fresh_capable_runners`, not a local copy of the availability WHERE — a second copy is how pipelineHealth came to disagree with the gate and report nothing for 11 jobs stuck behind dead runners
   it('counts from the barrier builder’s CTE, scoped to the project', async () => {
     dbExecute.mockResolvedValueOnce([{ total: 0, with_capacity: 0 }]);
 

@@ -1,19 +1,3 @@
-/**
- * ISS-1085 slice 2 — core's outbound half of the Forge/Sentry loop.
- *
- * Two operations and no more: read one Sentry issue's detail, and set one Sentry issue's status.
- * Together they are what lets a Forge issue that closed carrying a merged SHA tell Sentry so,
- * instead of a person copying an id between two tabs.
- *
- * Every call here goes through `withDelivery`, so an operator reading the binding's delivery log
- * sees the request, the response and the duration — including the refusals, which is the point: a
- * dispatch that named a target this binding does not declare is a thing somebody has to see, and a
- * refusal that leaves no row is indistinguishable from a call nobody made.
- *
- * There is still NO inbound surface. Ingesting Sentry event text is slice 3's, and the chokepoint
- * it owes is written on `SentryIssueDetail` in `types.ts`.
- */
-
 import { sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { isPreviousCredentialValid } from '../rotation.js';
@@ -25,8 +9,6 @@ import type {
   OutboundDispatchResult,
 } from '../types.js';
 import { sentryIssueUrl, sentryOrgIssuesUrl } from './endpoints.js';
-// cm:edge contract -> packages/core/src/integrations/sentry/listing.ts — the listing's vocabulary
-// and its pure decisions live there; this file makes the call and owns the delivery row.
 import {
   assertListLimit,
   confinementRefusal,
@@ -49,9 +31,6 @@ import {
 
 const CALL_TIMEOUT_MS = 15_000;
 
-// cm:why re-exported rather than left to `listing.js` alone: `issues.ts` is the module the adapter,
-// the tests and the intake path already import from, and splitting a file for a LINE BUDGET must
-// not move every caller's import. The definitions live in one place; this is the door.
 export {
   nextSentryCursor,
   SENTRY_LIST_DEFAULT_LIMIT,
@@ -118,8 +97,6 @@ async function attempt(
       signal: controller.signal,
     });
     if (res.ok) return { kind: 'ok', body: await res.json(), link: res.headers.get('link') };
-    // cm:guard 401 and 403 are different verdicts and must not collapse — a 403 read as
-    // `needs_reauth` sends the operator to replace a token that works (ISS-924).
     if (res.status === 401) {
       return {
         kind: 'refused',
@@ -260,16 +237,6 @@ function count(value: unknown): number | null {
   return null;
 }
 
-/**
- * One Sentry issue serialization read into `SentryIssueDetail`, whatever door it arrived by.
- *
- * Exported since ISS-1085 slice 4 because a webhook's `data.issue` is the SAME serialization the
- * REST issue endpoint answers with — same `shortId`, `substatus`, `count`, `userCount`, `level` and
- * `metadata.value` — and reading it with a second parser would mean two places deciding what
- * Sentry's `count` is when it arrives as a string, and two places remembering that the three
- * free-text fields go through `sanitizeUntrusted`. A parser a caller can forget to use is the
- * chokepoint with a door beside it.
- */
 export function projectIssue(body: unknown, fallbackId: string): SentryIssueDetail {
   const raw = (body ?? {}) as Record<string, unknown>;
   const project = (raw.project ?? {}) as Record<string, unknown>;
@@ -399,16 +366,6 @@ export async function setSentryIssueStatus(
   return { result, issue: value };
 }
 
-/**
- * Every unresolved Sentry issue a target holds, confined to that target.
- *
- * TWO halves, and the second is not redundant. The query carries `project:<slug>` so Sentry does
- * the narrowing, and every answer is then checked against the target again — because a filter that
- * is only ever ASKED for is a filter nobody has verified, and `forge-core` and `forge-web` both sit
- * under the `canawan` organization, so an org-scoped listing reaches both. An answer that fails
- * confinement is not dropped quietly: it is named in the delivery row by its Sentry issue id and
- * the project it belongs to, which is what an operator needs to fix a mis-declared target.
- */
 export async function listSentryIssues(
   ctx: SentryAdapterContext,
   input: SentryListRequest,
@@ -431,10 +388,6 @@ export async function listSentryIssues(
       const turnedAway: SentryListRefusal[] = [];
       let cursor: string | undefined;
 
-      // cm:guard the cursor is FOLLOWED, and the bound is SPOKEN. Sentry orders by last seen, so
-      // the issues past the last page this walk takes are the same ones on the next tick and the
-      // one after — a listing that read page one and reported an ordinary success would be a
-      // permanent blind spot nobody could see from the run record.
       while (pages < SENTRY_LIST_MAX_PAGES) {
         const url = sentryOrgIssuesUrl(ctx.config.host, target.organizationSlug, {
           query,
@@ -442,10 +395,6 @@ export async function listSentryIssues(
           ...(cursor ? { cursor } : {}),
         });
         const out: { link: string | null } = { link: null };
-        // cm:guard the partial travels WITH the failure. Everything decided on the pages already
-        // walked — every confinement refusal, by name — is local to this callback, so a bare throw
-        // deletes it and the operator is left a transport error where there were also six named
-        // refusals they have to act on.
         let body: unknown;
         try {
           body = await callSentry(ctx, url, 'GET', undefined, out);
@@ -482,9 +431,6 @@ export async function listSentryIssues(
           refused = turnedAway;
           return {
             value: admitted,
-            // cm:guard the refusals go in the RESPONSE, not only in the return value — the delivery
-            // log is where an operator looks, and a confinement that refused forty answers while
-            // the row says `ok` with ten issues is a state that lies about itself.
             response: {
               query,
               limit,

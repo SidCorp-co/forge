@@ -188,7 +188,6 @@ describe('forge_projects.list', () => {
 
   it('a pairing that derives no role surfaces role null rather than a guess', async () => {
     const tool = forgeProjectsListTool(patCtx());
-    // cm:guard org `member` derives nothing and there is no membership row, so the visibility predicate would not return this project at all — if it ever did, the role must be null rather than defaulted to something the caller can act on
     mockVisibleProjects([{ id: PROJECT_A, memberRole: null, orgRole: 'member' }]);
 
     const result = (await tool.handler({})) as { projects: Array<{ role: unknown }> };
@@ -216,7 +215,6 @@ describe('forge_projects.list', () => {
 
   it('PAT principal with projectIds allowlist filters output to allowed projects only (ISS-150)', async () => {
     const tool = forgeProjectsListTool(patCtx({ scopes: ['read'], projectIds: [PROJECT_A] }));
-    // cm:why the query returns both projects and the allowlist is what narrows the answer to one
     mockVisibleProjects([
       { id: PROJECT_A, memberRole: 'member', orgRole: null },
       { id: PROJECT_B, memberRole: 'member', orgRole: null },
@@ -478,7 +476,6 @@ describe('forge_projects.update', () => {
   });
 });
 
-// cm:why its own describe, because the block above was at the function line budget. The subject is narrow: REST replaces the column wholesale and this door must do the opposite, so an agent recording a limit cannot delete the credentials beside it (ISS-1069).
 describe('forge_projects.update · environments', () => {
   const STORED = {
     live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'commit' },
@@ -497,10 +494,6 @@ describe('forge_projects.update · environments', () => {
     return () => applied;
   }
 
-  // cm:guard a READ-MODIFY-WRITE and never a replacement: `environments` holds the credentials and
-  // the live address, so a door that replaced the blob would delete a project's test logins the
-  // first time somebody recorded a limit. That is the price stated for keeping REST's own
-  // wholesale-replacement semantics beside this narrow write.
   it('writes limits and keeps the live side, the preview side, the credentials and an unknown key', async () => {
     mockAccess({ memberRole: null, orgRole: 'owner' });
     mockSelect([{ environments: STORED }]);
@@ -530,9 +523,6 @@ describe('forge_projects.update · environments', () => {
     expect(applied()?.environments).toEqual({ ...STORED, limits: null });
   });
 
-  // cm:guard the retired key is refused with a message NAMING its replacement, not with zod's own
-  // "Unrecognized key". An agent holding a tool description one version old is told what to send
-  // instead, which is the whole difference between a refusal and a dead end.
   const RETIRED: [string, string | null][] = [
     ['a value', 'anything'],
     ['null', null],
@@ -735,7 +725,6 @@ describe('forge_projects.get', () => {
     expect(res.project.orgId).toBe(ORG_ID);
     expect(res.project.createdBy).toBe(OWNER_ID);
     expect(res.project.repoPath).toBe('/srv/a');
-    // cm:guard the handler hand-builds its response, so asserting the KEY EXISTS is not enough — a selected column dropped from the return literal still yields a key with `undefined`, which is how this field shipped invisible on 2026-08-18. Assert the value.
     expect(res.project.workspaceSetup).toBe('pnpm install --frozen-lockfile');
     expect(res.project.defaultDeviceId).toBe(DEVICE_ID);
     expect(selectImpl).toHaveBeenCalledTimes(2);
@@ -852,7 +841,6 @@ describe('forge_projects.get', () => {
   });
 });
 
-// cm:why its own describe, for the reason the update block was split: that callback was at the function line budget. The subject is the READING — the handler hand-builds its response, so a column selected and then dropped from the return literal yields a key holding `undefined`, which is how `workspaceSetup` shipped invisible on 2026-08-18.
 describe('forge_projects.get · environments', () => {
   it('environments=null returns normalized defaults instead of crashing', async () => {
     mockProjectSelect({ ...FULL_PROJECT_ROW, environments: null });
@@ -869,9 +857,6 @@ describe('forge_projects.get · environments', () => {
     });
   });
 
-  // cm:guard the READING and not the stored blob. The handler hand-builds its response, so a
-  // column selected and then dropped from the return literal yields a key holding `undefined` —
-  // which is how `workspaceSetup` shipped invisible on 2026-08-18. Assert the VALUES.
   it('returns the normalised reading of environments, both sides', async () => {
     mockProjectSelect(FULL_PROJECT_ROW);
     mockAccess({ memberRole: 'member', orgRole: null });

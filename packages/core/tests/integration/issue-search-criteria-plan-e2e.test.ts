@@ -89,7 +89,6 @@ describe('issue search reaches acceptanceCriteria and plan (ISS-960)', () => {
     await createTestProjectMember(harness.db, { userId, projectId, role: 'admin' });
     token = await signUserToken(userId);
 
-    // cm:why the clause sits in exactly ONE field per issue — an issue citing it in both fields would pass "across criteria and plan" for a single-field implementation too, which is the assertion this file exists to make unfakeable (ISS-960)
     await seedIssue(1, 'criteriaOnly', {
       title: 'Runner claims a job it cannot hold',
       description: 'Body that names no clause at all.',
@@ -199,7 +198,6 @@ describe('issue search reaches acceptanceCriteria and plan (ISS-960)', () => {
       'acceptanceCriteria',
     ]);
     expect(rows.find((r) => r.id === ids.planOnly)?.matchedFields).toEqual(['plan']);
-    // cm:why ISS-562's light projection is what makes this browse cheap, so widening the predicate must not widen the payload
     for (const heavy of ['description', 'plan', 'acceptanceCriteria', 'sessionContext']) {
       expect(rows[0]).not.toHaveProperty(heavy);
     }

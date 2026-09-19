@@ -11,7 +11,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why the factory pulls in `db/client.js` through the issue services, which validates the real environment at import; this is the same stub `forge-issues.test.ts` uses, and none of the checks below reach a database
 vi.mock('../../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
@@ -45,7 +44,6 @@ interface OperativeRule {
   readonly negatedInPlace: string;
 }
 
-// cm:guard these four are the rules ISS-984 compressed the description AROUND, so a trim that drops one is the trim failing. Adding a fifth is fine; deleting one of these needs the issue that argues the caller no longer needs it.
 const OPERATIVE_RULES: Record<string, OperativeRule> = {
   'list-refuses-filters-issue': {
     states: 'list refuses filters.issue and filters.taskStatus; they belong to listTasks',
@@ -119,7 +117,6 @@ describe('forge_issues description — the rules it must still carry', () => {
     expect(ruleHolds(rule, description)).toBe(true);
   });
 
-  // cm:guard the window, not the whole string: `buildToolset` truncates at DESCRIPTION_CAP, so a rule ordered past the cut is a rule the chat model never reads however plainly the file states it.
   it.each(entries)('states %s inside the chat door window', (_key, rule) => {
     expect(ruleHolds(rule, description.slice(0, DESCRIPTION_CAP))).toBe(true);
   });
@@ -148,7 +145,6 @@ describe('forge_issues description — each check goes red on its own', () => {
     expect(ruleHolds(rule, planted)).toBe(false);
   });
 
-  // cm:guard the reversal that keeps EVERY matched phrase in place is the one a keyword check waves through, so it is the one that has to be planted: `list never REFUSES them` carries `filters.issue` and `refuses` and means the opposite.
   it.each(entries)('reads %s as missing once its obligation is negated in place', (_key, rule) => {
     const planted = description.replace(rule.span, rule.negatedInPlace);
     expect(planted).not.toBe(description);
@@ -157,7 +153,6 @@ describe('forge_issues description — each check goes red on its own', () => {
 });
 
 describe('forge_issues description — what it costs to ship', () => {
-  // cm:guard the ceiling is ISS-984's acceptance criterion, not a style preference: this description is 46% of the nine-tool chat catalog and every turn pays for it.
   it('stays under the 4,200 characters ISS-984 bought it down to', () => {
     expect(description.length).toBeLessThan(4_200);
   });

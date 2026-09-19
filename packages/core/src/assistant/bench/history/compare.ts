@@ -20,7 +20,6 @@ export interface GroupComparison {
 
 export interface HistoryComparison {
   groups: GroupComparison[];
-  /** Each file's judge block, for the agreement lines; null where the file had none. */
   judge: { before: HistoryJudge | null; after: HistoryJudge | null };
   differences: string[];
   /** The after file's counts per group, for the advice block. */

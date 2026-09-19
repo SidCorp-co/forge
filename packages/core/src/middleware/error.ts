@@ -72,7 +72,6 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
       captureToSentry(err, c, body.code);
     }
 
-    // cm:guard the 401 test is load-bearing twice over: a Bearer-only challenge is what suppresses the MCP HTTP transport's automatic OAuth Dynamic Client Registration fallback (see `require-pat.ts` and the MCP spec §Authorization), and `WWW-Authenticate` on any other status is meaningless and RFC 7235-violating. Widen this to whatever carries `cause.wwwAuthenticate` and a 5xx starts advertising a challenge.
     if (status === 401 && wwwAuthenticate) {
       c.header('WWW-Authenticate', wwwAuthenticate);
     }

@@ -107,8 +107,8 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[14vh]"
-      style={{ background: "rgba(24,27,34,0.25)", backdropFilter: "blur(8px)" }}
+      className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-palette-top"
+      style={{ background: "var(--scrim)", backdropFilter: "blur(8px)" }}
       onClick={onClose}
     >
       <div

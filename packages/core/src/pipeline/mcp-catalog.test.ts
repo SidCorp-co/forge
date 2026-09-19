@@ -121,9 +121,6 @@ describe('expandMcpServers', () => {
     expect(out).toEqual({});
   });
 
-  // ISS-1071: what used to be a preserved sentinel is now simply an unknown name. `true` for a
-  // provider is dropped and warned here exactly as any other typo is, because the write schema
-  // refuses it up front and nothing downstream reads it any more.
   it('drops `true` for every former integration sentinel name', () => {
     for (const name of ['postman', 'sentry', 'epodsystem', 'epodsystem_store_a']) {
       expect(expandMcpServers({ [name]: true })).toEqual({});

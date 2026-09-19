@@ -1,19 +1,3 @@
-/**
- * ISS-1030 — rewrite every transcript entry still in the legacy
- * `role`/`contentBlocks` shape into the canonical one, and its inverse.
- *
- * This is a DATA migration and it is written here rather than in SQL for one
- * reason: the conversion has exactly one implementation
- * (`agent-sessions/canonical-legacy.ts`), which the live amnesty on
- * `PATCH /api/agent-sessions/:id` also calls. A plpgsql copy of the same rules
- * would be a second converter, and the two would drift the first time either was
- * corrected — which is the divergence this whole issue exists to end.
- *
- * cm:guard a row the canonical shape cannot represent ABORTS, naming the row.
- * It is not skipped, not dropped and not coerced. A conversation quietly
- * discarded so a deploy could succeed is the failure this repository refuses by
- * name, and the caller (`db/migrate.ts`) exits non-zero on the throw.
- */
 import type postgres from 'postgres';
 import {
   legacyEntryOf,
@@ -30,13 +14,6 @@ export interface BackfillReport {
 
 type Sql = postgres.Sql<Record<string, never>>;
 
-/**
- * Rows still holding a legacy entry.
- *
- * cm:guard the predicate is a `jsonb` containment test and NOT a `::text LIKE`.
- * `agent_sessions.messages` averages 233 KB and peaks at 35 MB, so casting it to
- * text detoasts every row in the table; `@>` answers from the stored jsonb.
- */
 const LEGACY_MESSAGES = `messages @> '[{"role": "user"}]'
    OR messages @> '[{"role": "assistant"}]'
    OR messages @> '[{"role": "tool"}]'
@@ -45,17 +22,6 @@ const LEGACY_MESSAGES = `messages @> '[{"role": "user"}]'
    OR jsonb_path_exists(messages, '$[*].contentBlocks')
    OR jsonb_path_exists(messages, '$[*].role')`;
 
-/**
- * A jsonb parameter as a STRING, never through `sql.json`.
- *
- * cm:guard measured on the real deploy path 2026-09-17: this backfill runs on
- * the same postgres client drizzle's migrator has just used, and `sql.json` on
- * that client then throws `The "string" argument must be of type string ...
- * Received an instance of Array` for every array it is handed. The integration
- * suite could not see it — there the client has never run a migration — so the
- * first thing that would have met it is a container boot. A stringified
- * parameter with an explicit cast does not depend on the driver's state.
- */
 function asJsonb(value: unknown): string {
   return JSON.stringify(value);
 }
@@ -84,16 +50,6 @@ async function backfillSessions(sql: Sql): Promise<{ sessions: number; entries: 
   return { sessions, entries };
 }
 
-/**
- * Convert `agent_session_turns.content.value`.
- *
- * cm:guard the turn table is converted TOO, and it is not an extra: the web
- * formatter reads a turn row's own entry (`parseTurns`), so leaving these in the
- * legacy shape would make every stored user turn render as an agent row the
- * moment `entryRole` loses its `role` branch. The blob and the turn rows are one
- * transcript in two places and a half-converted one is the divergence with a
- * smaller blast radius, not a smaller problem.
- */
 async function backfillTurns(sql: Sql): Promise<{ turns: number; entries: number }> {
   const rows = await sql<{ id: string; content: unknown }[]>`
     SELECT id, content FROM agent_session_turns
@@ -125,17 +81,6 @@ export async function backfillCanonicalTranscripts(sql: Sql): Promise<BackfillRe
   return { sessions: s.sessions, turns: t.turns, entries: s.entries + t.entries };
 }
 
-/**
- * The inverse: put every converted entry back as it stood.
- *
- * cm:guard this exists because the forward pass rewrites rows IN PLACE, so
- * restoring the legacy readers does not restore the rows they read. It is a
- * rewrite and not a guess only because `toCanonicalEntry` kept the original
- * under `__legacyEntry`; an entry with no such key was already canonical and is
- * left alone. `The way back` on ISS-1030 names this as the step that runs BEFORE
- * a rolled-back core serves `role`-shaped readers against canonical rows —
- * which is the class of failure ISS-807 was.
- */
 /** The name this backfill's completion is recorded under in `backfill_markers`. */
 export const CANONICAL_BACKFILL_KEY = 'canonical-transcripts';
 
@@ -144,17 +89,6 @@ export type BackfillOnce =
   | { ran: false; reason: 'already-done' }
   | { ran: true; report: BackfillReport };
 
-/**
- * Run the canonical backfill unless it has already run to completion.
- *
- * cm:guard the marker is written only when the conversion RETURNS, and that is
- * the whole of what this wrapper is for. Gating on the drizzle ledger instead —
- * the shape this replaced — asks whether the DDL applied, which a boot that
- * applied it and then threw on a row it could not represent answers yes to for
- * ever: the deploy's refusal lasts exactly one attempt, and every boot after it
- * serves canonical-only readers a table still holding legacy rows.
- * cm:edge lockstep -> packages/core/src/db/migrate.ts — its only caller
- */
 export async function runCanonicalBackfillOnce(sql: Sql): Promise<BackfillOnce> {
   const marked = await sql<{ n: number }[]>`
     SELECT count(*)::int AS n FROM backfill_markers WHERE key = ${CANONICAL_BACKFILL_KEY}
@@ -169,11 +103,6 @@ export async function runCanonicalBackfillOnce(sql: Sql): Promise<BackfillOnce> 
 }
 
 export async function revertCanonicalTranscripts(sql: Sql): Promise<BackfillReport> {
-  // cm:guard the marker goes FIRST, before a single row is restored. The inverse
-  // puts legacy entries back; leaving the completion marker standing would make
-  // the next boot of this release skip the forward pass and start canonical-only
-  // readers against the data the inverse restored — the same "new code, old
-  // data" silence the marker exists to end, arrived at by the way back.
   await sql`DELETE FROM backfill_markers WHERE key = ${CANONICAL_BACKFILL_KEY}`;
   const sessionRows = await sql<{ id: string; messages: unknown }[]>`
     SELECT id, messages FROM agent_sessions

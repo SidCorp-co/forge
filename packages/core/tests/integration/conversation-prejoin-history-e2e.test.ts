@@ -30,7 +30,6 @@ import {
 /** Every message array the provider was handed, newest call last. */
 const handed: ChatMessage[][] = [];
 
-// cm:guard the PROVIDER is stubbed and nothing else is: the store is real Postgres, the route is the real route, the collector and the window are the real ones. What a model would have answered is the only thing this test has no use for, and what it was ASKED is the whole subject.
 vi.mock('../../src/assistant/providers/registry.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/assistant/providers/registry.js')>();
   return {
@@ -123,7 +122,6 @@ async function say(id: string, content: string): Promise<void> {
 /**
  * A SECOND agent on the same project, so a room can gain one without widening.
  */
-// cm:guard the same project deliberately: an agent from a second project makes the room span two, and a web send into such a room is refused by name — which is a different criterion with its own case. Proving the pre-join claim through a refused send would prove nothing at all.
 async function secondAgentOn(projectId: string): Promise<string> {
   const { db } = await import('../../src/db/client.js');
   const handle = `second-${randomUUID().slice(0, 8)}`;
@@ -166,7 +164,6 @@ describe('an agent added to a live room', () => {
     handed.length = 0;
     await say(id, 'what do you make of that?');
 
-    // cm:guard the assertion is on the LINE said before the agent joined, and not on a message count: a join-time cut that kept the count and dropped the content would pass a length test.
     expect(handedText()).toContain('the pipeline wedged on Tuesday and nobody noticed');
   });
 
@@ -188,7 +185,6 @@ describe('an agent added to a live room', () => {
     const { appendMessages } = await import('../../src/conversations/store.js');
     const id = await openRoom();
 
-    // cm:guard the filler is written as ROWS rather than sent, because what bounds the model's view is the window over the stored room and not the number of turns taken in it — and 30 real sends to prove a slice is 30 turns paid for one assertion.
     await appendMessages({
       conversationId: id,
       messages: [
@@ -205,7 +201,6 @@ describe('an agent added to a live room', () => {
     const last = handed.at(-1) ?? [];
     expect(handedText()).not.toContain('the oldest thing anybody said in this room');
     expect(handedText()).toContain('and now a question');
-    // cm:guard one over the window is the system prompt, which is not history.
     expect(last.length).toBeLessThanOrEqual(PROVIDER_HISTORY_WINDOW + 1);
   });
 });

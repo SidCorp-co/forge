@@ -1,28 +1,3 @@
-/**
- * Handoff-as-completion override (false-failure fix).
- *
- * Root cause: the runner classifies a job `failed` whenever it cannot capture
- * the Claude CLI terminal `result` event — `succeeded_opt.unwrap_or(false)` in
- * `packages/runner/.../runner/claude_code.rs` defaults a *missing* result line
- * (EOF/child-exit race, MCP grandchildren holding the pipe, late buffering) to
- * failure, surfacing as `"Agent completed with errors"` (exit_code NULL) even
- * though the agent ran the step to completion. On forge-dev this was the
- * dominant failure mode (≈253 null-exit "Agent completed with errors" / 10d),
- * and it ALSO masks the silent-runner-death class when the agent finished its
- * work first.
- *
- * Fix: the agent's own `forge_step_handoff.write` is a far more reliable
- * "I ran the step to completion" signal — it is a near-terminal action written
- * AFTER the substantive work. So at the single failure-finalize chokepoint
- * (`finalizeFailedJob`), if a terminal handoff exists for this attempt, trust
- * it over the runner's exit detection and mark the job `done`.
- *
- * Note: this is the JOB lifecycle axis only. The issue STATUS is still
- * agent-driven (prompt-layer) — we do not auto-advance status here. So this
- * does not reverse the deliberate "handoff is not a status gate" decision; it
- * only stops a completed step from being recorded as a failure.
- */
-
 import { and, eq, gte } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStepContexts, jobs } from '../db/schema.js';
@@ -38,16 +13,6 @@ import { deriveSessionFinal } from './session-transcript.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
-/**
- * True when the agent wrote a terminal step-handoff for THIS job's step during
- * (or after) this attempt's dispatch window.
- *
- * Scoped by `pipeline_run_id + step` plus an `updated_at >= dispatched_at`
- * time window rather than by attempt number, because agents hard-code
- * `attempt: 1` in the termination-protocol template — a retry upserts the same
- * (issueId, step, attempt) handoff row, so only `updated_at` distinguishes a
- * fresh write for this attempt from a stale prior one.
- */
 export async function hasTerminalHandoffForAttempt(job: JobRow): Promise<boolean> {
   if (!job.pipelineRunId) return false;
   const since = job.dispatchedAt ?? job.queuedAt ?? null;

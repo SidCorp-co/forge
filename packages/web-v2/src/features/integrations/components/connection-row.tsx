@@ -1,15 +1,5 @@
 "use client";
 
-// One credential, as one row of its app's group (ISS-1035).
-//
-// This was a 148px card in a three-column grid (ISS-429) until an org holding
-// several credentials of one app made that wall unreadable. The row answers the
-// same three questions the card did — what is this, what does it point at, who
-// uses it — in two dense lines, so several credentials of one app are on the
-// screen at once. BINDING-scoped management (environment, webhook rotate,
-// delivery log, disconnect) is still project settings → Integrations' and
-// deliberately absent here; the row names the bindings and manages none of
-// them. Opening it hands the rest to the edit drawer (ISS-435).
 
 import { useId, useState } from "react";
 import { Badge, Button, Icon } from "@/design";
@@ -57,34 +47,6 @@ function UsageLine({
   );
 }
 
-/**
- * What assistive technology and voice control call the control that opens a
- * row's drawer. `aria-label` overrides every descendant, so a bare "Manage
- * connection <title>" announces the four unnamed Coolify credentials of one
- * org identically — the very wall this issue set out to remove, rebuilt in the
- * accessibility tree where nobody looks at it.
- *
- * What goes in is the row's IDENTITY, in the order the row shows it: the name
- * its owner gave it, the app it belongs to on the same condition the visible
- * pill uses, the target its config points at, and the projects using it — each
- * binding carried with the environment and the off marker its chip shows,
- * because two tokens for one project in two environments are told apart on
- * screen by that word alone. Each clause is independent of the others: a name
- * carries every discriminator the row shows, never the first one it finds.
- *
- * What stays out is the row's STATE — the health line and the status pill.
- * Those move under the credential rather than distinguishing it, they are read
- * from the row's own text and its pill, and putting them in the name would make
- * a control rename itself when a health check landed. `aria-describedby`
- * carries them, and the owner badge and the not-used-by-any-project sentence
- * with them. The two partition the row rather than overlapping: every token the
- * row renders is in exactly one of them, so nothing is announced twice and
- * nothing is lost.
- *
- * Where the row shows nothing that tells two apart, neither does this:
- * suffixing an id would name the rows by something no one can see, and two rows
- * that read the same are then honestly the same.
- */
 export function connectionRowLabel(
   connection: ConnectionDirectoryItem,
   projectName: (id: string) => string,
@@ -161,7 +123,6 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
   );
 }
 
-// cm:guard show the provider pill only when the TITLE is not already the provider label — `displayName` falls back to that label, so printing both rendered "Coolify deploy Coolify deploy" on every one of the 17 unnamed rows on forge-beta 2026-09-06
 export function ConnectionRow({
   connection,
   ownerLabel,
@@ -190,7 +151,6 @@ export function ConnectionRow({
   const providerLabel = labelFor(connection.provider);
 
   return (
-    // cm:guard the element that opens the drawer is a REAL <button> holding only what it describes, and the Disable/Enable/Remove buttons are its SIBLINGS — the card this row replaced wrapped them all in a role="button" div (ISS-429), which exposes one control containing four others: a nested-interactive structure that flattens the inner controls' semantics for assistive technology. What it costs is that the gap between the text and the status pill no longer opens the drawer; what it buys is a native keyboard path and no hand-written Enter/Space handler.
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
       <button
         type="button"
@@ -276,7 +236,6 @@ export function ConnectionRow({
             <RemoveButton connection={connection} />
           </>
         ) : (
-          // cm:guard say WHY the actions are absent rather than rendering buttons that 403 — a plain org member can see this credential and cannot change it, and a disabled button with no reason reads as a bug
           <span className="fg-body-sm text-subtle">
             Read-only — only an admin of {ownerLabel} can change this credential.
           </span>

@@ -1,22 +1,3 @@
-/**
- * ISS-1027 — the nightly sweep that enforces `policy.ts`.
- *
- * One pass per stated rule, each a bounded batch loop that stops on a short
- * batch, and one report per table per tick: what the window resolved to, how
- * many rows went, how many the rule held back, and how long it took. The
- * held-back figure is the half that makes the deleted one readable — a table
- * reporting `deleted: 0` is either swept clean or wedged, and only the second
- * number tells them apart.
- *
- * Then the repair pass. A `job_events` row is removable only once the transcript
- * it would rebuild is recorded as finalised, so a session whose finalisation
- * never happened would hold its events for ever. It is not expired: the events
- * are still there, so the rebuild is exactly the record ISS-1027 says must
- * survive, and the sweep derives it. The bound stops one tick rebuilding a whole
- * backlog; spending it least-recently-attempted first stops a session that keeps
- * failing from holding that bound for ever.
- */
-
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
@@ -37,7 +18,6 @@ import {
   truncatedHistories,
 } from './statements.js';
 
-// cm:why the queue name still says `job-event-retention` although this sweep now covers six tables: the string is pg-boss's SCHEDULE key, and renaming it leaves the old queue's cron row in the database with no worker attached to it — a job enqueued nightly for ever that nothing runs. The name is stale; a stranded schedule is a leak.
 export const RETENTION_QUEUE = 'job-event-retention';
 
 const BATCH_SIZE = 10_000;
@@ -46,7 +26,6 @@ const MAX_BATCHES = 1000;
 /** How many held sessions a tick names in the log before it stops listing them. */
 const NAMED_HELD_SESSIONS = 20;
 
-// cm:guard this exists so a test can reach the batch cap, which is otherwise ten million rows away, and reaching it is the only way to prove `heldBack` counts what a rule exempts rather than what a tick failed to drain. It is NOT an operator knob: the scheduled worker passes nothing and there is no environment variable behind it, so the production shape is the two constants above and stays readable in one place.
 /** The batch shape the delete loop runs at. */
 export interface SweepBounds {
   batchSize: number;

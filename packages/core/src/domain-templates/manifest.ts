@@ -1,10 +1,6 @@
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
 
-// Manifest shape stored in `domain_templates.manifest`. Keep this stable —
-// `contentHash` is sha256 over the canonical JSON, so any field change bumps
-// the hash and re-seeds builtins on next boot. See ../skills/builtin-seed.ts
-// for the same content-addressed pattern used for skills.
 export const domainTemplateManifestSchema = z
   .object({
     agentConfig: z

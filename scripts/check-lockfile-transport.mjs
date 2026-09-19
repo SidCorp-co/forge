@@ -1,19 +1,4 @@
 #!/usr/bin/env node
-// Refuse a lockfile entry that can only be fetched over SSH.
-//
-// Runs inside `.github/actions/setup-workspace` BEFORE `pnpm install`, because
-// the install is what the offending entry kills. On 2026-09-14 a Dependabot
-// pull request rewrote `forge-plugin`'s resolution from a codeload tarball to
-// `git+https://git@github.com:SidCorp-co/forge-plugin.git#<sha>`; six jobs then
-// died inside `pnpm install` with `git clone git@github.com:… exited 128`, and
-// the four open dependency updates sat unmergeable for two days because nothing
-// named the cause (ISS-1045).
-//
-// The rule is repository-wide and the price is stated: CI here holds no SSH
-// key, so a dependency that can only be fetched over SSH is one no job can
-// install, and adding one has to be argued rather than merged.
-//
-// Exit: 0 clean · 1 an entry resolves over SSH · 2 could not run.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -30,8 +15,6 @@ if (!existsSync(LOCKFILE)) {
 
 const { scanned, offenders } = sshResolutions(readFileSync(LOCKFILE, 'utf8'));
 
-// cm:guard a lockfile holding no resolution at all exits 2 and never 0: an empty scope is
-// indistinguishable from a clean one here, and forwarding "I read nothing" as a pass is the failure.
 if (scanned === 0) {
   console.error(
     'lockfile-transport: pnpm-lock.yaml holds no `resolution:` entry — the file, ' +

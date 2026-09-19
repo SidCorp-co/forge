@@ -60,9 +60,6 @@ export interface BodyViewProps {
   /**
    * The `forge-record` block core parsed out of this body, where it carries one.
    */
-  // cm:guard this arrives PARSED and is never derived from `body` here: the same parse screened the
-  // comment at the write door, and a second one in the browser could draw a record the door judged
-  // differently. `at` and `to` are where the block sat, so the prose around it keeps its place.
   record?: ForgeRecordView | null;
   /** Which reading this project is drawn under; `product` where unknown. */
   recordLens?: RecordLens;
@@ -90,7 +87,6 @@ function renderNode(node: BodyNode, ctx: RenderCtx, key: string): ReactNode {
   if (node.type === "text") return node.value;
   if (isComponent(node)) return <ComponentNode key={key} node={node} ctx={ctx} />;
 
-  // cm:guard look the tag up with `Object.hasOwn`, never with a bare index. The scanner accepts any `[A-Za-z][A-Za-z0-9-]*` name, so `<constructor>` and `<tostring>` are bodies a person can write, and a plain index reaches `Object.prototype` and emits the tag instead of unwrapping it.
   const cls = Object.hasOwn(COMPACT_TAG_CLASS, node.name)
     ? COMPACT_TAG_CLASS[node.name]
     : undefined;
@@ -122,7 +118,6 @@ function renderNode(node: BodyNode, ctx: RenderCtx, key: string): ReactNode {
       </div>
     );
   }
-  // cm:guard an unrecognised tag is UNWRAPPED, never dropped and never emitted: `createElement` with an author-supplied name would put arbitrary markup on the page, and dropping it loses the prose inside. Core's sanitizer already unwraps the same way, so this only ever fires on a row written before a tag left the allowlist.
   if (cls === undefined) return <span key={key}>{children}</span>;
   if (VOID_TAGS.has(node.name)) return createElement(node.name, { key, className: cls });
   return createElement(node.name, { key, className: cls }, children);
@@ -138,7 +133,6 @@ function ComponentNode({ node, ctx }: { node: BodyNode; ctx: RenderCtx }) {
     return <>{ctx.renderArtifact(node.attrs.id)}</>;
   }
 
-  // cm:guard render `children` IN ORDER — do not split prose from slots and concatenate. A slot is an ordinary child, so partitioning moves a `forge-artifact` written mid-paragraph to the end of the block and silently reorders what the author wrote.
   return (
     <section className="my-3 rounded-md border border-line bg-surface first:mt-0">
       <header className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-3 py-2">
@@ -158,10 +152,6 @@ const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/;
 /**
  * One half carved into the prose it draws and the reference definitions it declared.
  */
-// cm:guard the carve walks lines and tracks FENCE STATE rather than running a regex over the half,
-// because a definition-shaped line inside a fenced code example is the example's own text: a
-// comment showing somebody how to write `[proof]: https://…` would have had that line silently
-// deleted from the code block it is teaching (codex F5).
 function carve(text: string): { prose: string; definitions: string[] } {
   const prose: string[] = [];
   const definitions: string[] = [];
@@ -186,14 +176,6 @@ function carve(text: string): { prose: string; definitions: string[] } {
 /**
  * A markdown body split at the record's own extent: prose, card, prose.
  */
-// cm:guard the prose either side is drawn by `<Markdown>` in its own place rather than concatenated
-// around the card, and the card sits exactly where the fence sat. Moving it to the end would
-// silently reorder what the writer wrote, which is the same rule `ComponentNode` states for slots.
-// cm:guard splitting one markdown document in two splits its reference table with it, so each half
-// gets the WHOLE table and neither keeps its own copy. CommonMark resolves a label to its FIRST
-// definition, so a body defining `[proof]` above the record and again below it links to the first
-// under a single parse; a half that still carried its own second definition would see it before the
-// shared table and link to the second (codex F3).
 function BodyWithRecord({
   body,
   record,
@@ -234,13 +216,12 @@ export function BodyView({
   }
   if (format !== "html") return <Markdown className={className}>{body}</Markdown>;
   if (!nodes) {
-    // cm:guard a component body with no tree is a row THIS build's scanner could not read, and it must never fall through to `<Markdown>` — react-markdown escapes the tags and the screen shows literal `<forge-…>`, which is the exact defect ISS-967 exists to remove.
     return (
       <div className={cn("min-w-0 max-w-full", className)}>
         <p className="fg-body-sm text-muted">
           Couldn&apos;t read this body — showing its text.
         </p>
-        <pre className="mt-2 overflow-x-auto rounded-md bg-sunken p-3 font-mono text-[12.5px] text-fg">
+        <pre className="mt-2 overflow-x-auto rounded-md bg-sunken p-3 font-mono text-12-5 text-fg">
           {body}
         </pre>
       </div>

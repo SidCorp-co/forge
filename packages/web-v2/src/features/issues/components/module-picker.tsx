@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
+  CardTitle,
   Checkbox,
   EmptyState,
   ErrorState,
@@ -55,7 +56,6 @@ export function ModulePicker({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [primary, setPrimary] = useState<string>(NO_PRIMARY);
 
-  // cm:guard `attached` is memoized on `labels`, which is what keeps this from re-seeding on every render — an unmemoized dep here resets the drawer under the reader mid-edit, and a dep on `open` alone leaves it stale after the save invalidates `['issue', id]`
   useEffect(() => {
     if (!open) return;
     setSelected(new Set(attached.map((l) => l.id)));
@@ -71,7 +71,6 @@ export function ModulePicker({
       else copy.delete(id);
       return copy;
     });
-    // cm:why un-ticking the primary clears it rather than promoting a secondary — which module leads is the reader's call, and a silent promotion writes an attribution nobody chose
     if (!next && primary === id) setPrimary(NO_PRIMARY);
   }
 
@@ -119,7 +118,7 @@ export function ModulePicker({
       ) : (
         <div className="flex h-full flex-col gap-6">
           <section>
-            <h3 className="fg-overline mb-2">Primary</h3>
+            <CardTitle className="fg-overline mb-2">Primary</CardTitle>
             <p className="fg-caption mb-2.5 text-muted">
               The one module this issue belongs to. Pick at most one.
             </p>
@@ -132,7 +131,7 @@ export function ModulePicker({
           </section>
 
           <section>
-            <h3 className="fg-overline mb-2">Also touches</h3>
+            <CardTitle className="fg-overline mb-2">Also touches</CardTitle>
             <p className="fg-caption mb-2.5 text-muted">
               Every other module this issue reaches into.
             </p>

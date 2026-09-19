@@ -1,16 +1,3 @@
-/**
- * ISS-868 / ISS-931 — which `forge_project_pm` actions are reachable over
- * `/mcp`, and whether the refusal is answerable.
- *
- * The gate used to cover all six actions, so a PAT could neither write the
- * dependency graph nor read it, and the refusal named only the condition that
- * failed (ISS-868 fixed both). ISS-931 took the device off `/mcp` entirely and
- * moved the remaining refusal to `assertPmActor`, which two actions reach and
- * nothing passes: `dispatch` and `write_decision` need a `runners` row keyed on
- * a paired device. `set_dependency` came OUT of the gate in the same change —
- * its handler asks for plain project membership and always did.
- */
-
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { expect, it, vi } from 'vitest';
@@ -63,7 +50,6 @@ async function callAsPat(
   }
 }
 
-// cm:guard assert the CONDITION and the WAY OUT, not just the code. The bare `PM_REQUIRES_DEVICE` sent callers hunting for a scope that does not exist (ISS-787/ISS-868); since ISS-931 it must additionally say the credential class cannot reach `/mcp` at all, because "pair a device" is no longer a remedy and a caller told to do it would pair one and try again.
 it('names the condition and the way out when it refuses write_decision', async () => {
   const text = await callAsPat('00000000-0000-4000-8000-0000000000c1', 'write_decision');
   expect(text).toContain('PM_REQUIRES_DEVICE');
@@ -74,7 +60,6 @@ it('names the condition and the way out when it refuses write_decision', async (
   expect(text).toContain('data.relations');
 });
 
-// cm:guard `dispatch` answers ISS-895's refusal, NOT the credential one, and the two are not interchangeable. `dispatchPmJob` throws because the staged lane is gone for every project — an operator told "needs a paired device" would pair a box and get the same failure. Put `assertPmActor` in front of dispatch and this case is what goes red.
 it('answers dispatch with the reason it is gone, not with the credential', async () => {
   const text = await callAsPat('00000000-0000-4000-8000-0000000000c6', 'dispatch', {
     issueId: '00000000-0000-4000-8000-0000000000cc',
@@ -85,7 +70,6 @@ it('answers dispatch with the reason it is gone, not with the credential', async
   expect(text).toContain('ISS-895');
 });
 
-// cm:guard the reachable list in the refusal is DERIVED from PM_ACTIONS (project-authz.ts), so this case is what catches a hand-typed copy: it asserts the four reachable names are advertised and the two unreachable ones are not.
 it('advertises exactly the actions that are reachable', async () => {
   const text = await callAsPat('00000000-0000-4000-8000-0000000000c5', 'write_decision');
   const advertised = /These forge_project_pm actions do work here: ([^.]*)\./.exec(text)?.[1] ?? '';
@@ -102,7 +86,6 @@ it('refuses write_decision, the one action left that needs runner state', async 
   expect(text).toContain('PM_REQUIRES_DEVICE');
 });
 
-// cm:guard `set_dependency` is in THIS list and not the one above, and the two lists are the whole of the ISS-931 decision. Its handler calls `assertPrincipalIsMember`, not `assertPmActor` (ISS-131 moved it off), so gating it refused 651 lifetime calls of live traffic for a capability its own code never asks for. Move it back up and that traffic starts failing again with nothing else going red.
 it('lets a token past the gate on every action that needs no runner state', async () => {
   for (const action of ['snapshot', 'graph', 'runner_load', 'set_dependency']) {
     const text = await callAsPat('00000000-0000-4000-8000-0000000000c3', action);

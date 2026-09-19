@@ -137,12 +137,6 @@ pub fn https_host(url: &str) -> Option<String> {
     }
 }
 
-/// `git -c …` flags that point one host's credential lookups at this binary.
-///
-/// Used for the clone itself, where there is no repo yet to hold config.
-// cm:guard the EMPTY helper value comes first and is not decoration — git collects `credential.<url>.helper` from system, then global, then local config and asks them IN THAT ORDER, so an ambient helper (a box with `gh` installed configures one) answers before a repo-local entry and the push lands as that identity instead. The empty value resets the list; measured 2026-09-08, without it `git credential fill` returned a personal `gho_` token for a repository this helper was configured for, and with it git fails loudly having asked nobody else.
-// cm:guard `useHttpPath` is not optional either — without it git sends only the host, and `git-credential` cannot tell which repository is being fetched, so it refuses rather than guess. All three entries are written together or none of them are.
-// cm:edge protocol -> packages/runner/crates/forge-runner/src/cmd/git_credential.rs — `!` makes git run this through a shell, so the exe path is quoted here; the subcommand name is the contract between the two.
 pub fn credential_helper_git_args(host: &str) -> Vec<String> {
     let exe = std::env::current_exe()
         .map(|p| p.display().to_string())
@@ -168,8 +162,6 @@ pub fn set_repo_credential_helper(repo_path: &std::path::Path, host: &str) {
         .and_then(|v| v.split_once('=').map(|(_, v)| v.to_string()))
         .unwrap_or_default();
 
-    // cm:guard `--replace-all` with the empty value, THEN `--add` ours — a plain `git config` would
-    // leave whatever the key already held and re-create the ordering problem the reset exists for.
     let steps: Vec<Vec<String>> = vec![
         vec![
             "config".into(),
@@ -305,7 +297,6 @@ mod tests {
         std::fs::remove_dir_all(&repo).ok();
     }
 
-    // cm:guard this test is the only place the RESET is proven against git itself rather than against our own argument list — `-c` flags and a config FILE are different code paths in git, and only the file one governs every fetch and push after the clone. It plants an ambient global helper that would answer, so a reset that stops working turns it red with `ambient` in the message.
     #[test]
     fn an_ambient_global_helper_is_not_asked_once_the_checkout_resets_the_list() {
         let repo = tmp_repo("order");

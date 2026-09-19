@@ -22,7 +22,6 @@ export const longContextThread: Task = {
   capability: 'long-context',
   intent:
     'Hold release facts given across a long thread and answer a two-part question from them after an unrelated task.',
-  // cm:why the rubric names both kinds of turn: the judge reads it on every turn, and on the first beta run (2026-09-16) a last-turn-only wording had it mark eight fact-stating turns partial or no for not naming the reviewer
   judgeRubric:
     'Served means: on a turn that states a fact, the reply takes it in; on the final question, the reply names Priya Raman as reviewer and Wednesday as deploy day from the earlier turns in the reference block, without asking again.',
   budgetSeconds: 600,
@@ -42,7 +41,6 @@ export const longContextThread: Task = {
         'Back to the release: who reviews it, and on which weekday do we deploy? Answer both, reviewer first.',
       checks: [
         { kind: 'inOrder', patterns: ['Priya Raman', /wednesday/i] },
-        // cm:why two, not one: the release code name and the deploy window are the two facts the person asks to keep; the ISS-1061 runs kept 8 to 9, one per sentence stated (ISS-1064)
         { kind: 'maxNotesKept', max: 2 },
         {
           kind: 'mustNotMatch',

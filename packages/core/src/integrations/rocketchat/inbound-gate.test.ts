@@ -30,7 +30,6 @@ describe('decideSkip', () => {
     expect(decideSkip(msg({ text: '' }), BOT)).toBe('empty');
   });
 
-  // cm:why the point of ISS-1004 asserted at the level the gate lives on: the message that used to be dropped here for naming nobody is now the message the collector is handed.
   it('admits a message that names nobody, in any room', () => {
     expect(decideSkip(msg({ text: 'how does the pipeline work?' }), BOT)).toBeNull();
     expect(
@@ -38,7 +37,6 @@ describe('decideSkip', () => {
     ).toBeNull();
   });
 
-  // cm:guard a captionless screenshot is a question and must reach the log: dropped here it was in no conversation and no window, so nothing could ever be asked about it (review pass 2 F6).
   it('admits an image posted with no caption at all', () => {
     const shot = [{ name: 's.png', mime: 'image/png', ref: 'https://chat/f/s.png' }];
     expect(decideSkip(msg({ text: '   ', images: shot }), BOT)).toBeNull();
@@ -52,7 +50,6 @@ describe('decideSkip', () => {
   });
 });
 
-// cm:guard the criterion is about the TREE and not about this module, so it is measured over the tree: a mention gate reintroduced anywhere — a second helper, a branch in the connection manager, a field on the frame — would leave this file's own assertions perfectly green (ISS-1004 criterion 22).
 describe('the @-mention gate', () => {
   const SRC = join(import.meta.dirname, '..', '..');
   const FILES = [
@@ -94,7 +91,6 @@ describe('createSeenTracker', () => {
   });
 });
 
-// cm:guard the tracker's mark is a claim that the message is durable SOMEWHERE, so work that rolled back must withdraw it: RC re-emits the same id after enrichment, and a mark left by a failed attempt makes that second delivery a false duplicate — the question is then in no log at all (review pass 2 F3).
 describe('the duplicate tracker', () => {
   it('swallows a second sighting of the same id', () => {
     const seen = createSeenTracker();

@@ -1,8 +1,14 @@
 "use client";
 
-// cm:guard callers pass `activeRuns(...)`, never `liveRuns(...)` — a run parked at the manual release gate is not live work (`AwaitingReleaseCard` owns those), and passing the wider set re-absorbs the exact noise this card was split out of (ISS-379)
 import { useRouter } from "next/navigation";
-import { Card, CardContent, Icon, LiveDot, StatusChip } from "@/design";
+import {
+  Card,
+  CardContent,
+  CardTitle,
+  Icon,
+  LiveDot,
+  StatusChip,
+} from "@/design";
 import { stageColor } from "@/design/stages";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunKind, PipelineRunListItem } from "@/features/pipeline/types";
@@ -26,8 +32,6 @@ export function LiveRunsCard({
   slug: string;
   /** ISS-789 — runs still open with no live JOB on them. Shown as a count
    *  rather than hidden: they were invisible before. */
-  // cm:guard this bucket is job-liveness, NOT idleness, so the copy must never invite a human to go unstick it: a master-lane run carries agent_sessions and no jobs row, so it lands here while heartbeating. This read "open with nothing running" beside 14 live sessions (2026-09-12).
-  // cm:edge contract -> packages/web-v2/src/features/project-dashboard/derive.ts — `idleRuns` fills this prop; if its predicate ever widens past `liveJobs === 0`, this wording has to move with it
   idle?: PipelineRunListItem[];
 }) {
   const router = useRouter();
@@ -41,7 +45,7 @@ export function LiveRunsCard({
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
         <div className="flex items-center gap-2">
           <Icon name="pipeline" size={16} className="text-subtle" />
-          <h3 className="fg-h3">Live runs</h3>
+          <CardTitle>Live runs</CardTitle>
         </div>
         <LiveDot state={runs.length > 0 ? "live" : "offline"} />
       </div>
@@ -51,7 +55,6 @@ export function LiveRunsCard({
         ) : (
           <ul className="flex flex-col gap-2">
             {runs.map((run) => {
-              // cm:why the run's OWN `currentStep` is the dot's colour and the chip's word. It used to go through `jobTypeToStage`, whose `default` answered `triage`, so a `drive` run — the only kind an autonomous project has — showed a triage-coloured dot for a step named nothing like triage (ISS-999).
               return (
                 <li key={run.id}>
                   <button

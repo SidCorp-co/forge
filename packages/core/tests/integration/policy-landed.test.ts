@@ -8,7 +8,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:why before the stage ① producer existed, `policy.landed` had a reader and no writer, so assembleBundle item 11 was permanently empty and the verifier's hard constraint was always null
 describe('policy.landed sweep (stage ①)', () => {
   let harness: TestDatabase;
   let schema: typeof import('../../src/db/schema.js');
@@ -68,7 +67,6 @@ describe('policy.landed sweep (stage ①)', () => {
     expect(event?.trigger).toBe('deploy');
   });
 
-  // cm:why §7 principle 1 — the log records transitions, not passes, so a boot that changes nothing must write nothing or every deploy floods the feed
   it('is idempotent: a second sweep with an unchanged invariant set writes nothing', async () => {
     await sweepPolicyLanded();
     const afterFirst = await policyEvents();
@@ -85,7 +83,6 @@ describe('policy.landed sweep (stage ①)', () => {
     await sweepPolicyLanded();
 
     const [event] = await policyEvents();
-    // cm:why this is the exact shape assembleBundle reads for the bundle's `invariantSet`
     expect(event).toMatchObject({
       reason: expect.stringContaining('in force'),
       deltaSummary: expect.any(String),

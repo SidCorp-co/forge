@@ -68,7 +68,6 @@ describe("ConversationThread", () => {
     expect(screen.queryByTestId("thread-silence")).toBeNull();
   });
 
-  // cm:guard a message row carrying `silence_reason` is a turn that RAN and declined, and it is a THIRD state beside the two above — the window may well be `answered`, because the silence itself was the answer. Rendering it as an empty assistant bubble is how it used to be invisible.
   it("renders a recorded silence as a silence rather than an empty bubble", () => {
     render(
       <ConversationThread
@@ -82,7 +81,6 @@ describe("ConversationThread", () => {
     expect(screen.getByText(/The agent said nothing here/)).toBeInTheDocument();
   });
 
-  // cm:guard asserted by test id AND by the absence of the assistant renderer's text: a system line that came out as a bubble would still contain the text, so the text alone proves nothing (ISS-1034 criterion 48).
   it("renders a system row as one muted line, not as an assistant bubble", () => {
     const joined: ConversationMessage = {
       ...asked,
@@ -100,11 +98,6 @@ describe("ConversationThread", () => {
     expect(line.closest("[class*='rounded-lg']")).toBeNull();
   });
 
-  // cm:guard ISS-1039 criteria 19 to 22 — a runner-hosted turn is four different things on screen,
-  // and the two that owe the person something are `failed` and only `failed`: which failure it was,
-  // and what to do about it. A single grey line reading "agent" for all four is the blank thread
-  // this feature exists to remove, and it passes any assertion made on the test id alone — so each
-  // case here reads the SENTENCE.
   describe("a turn handed to a paired box", () => {
     const handed: ConversationWindow = { ...closed("handed-off") };
     const turn = (over: Partial<AgentTurn> = {}): AgentTurn => ({
@@ -177,9 +170,6 @@ describe("ConversationThread", () => {
       expect(row).toHaveTextContent(/Ask again to start a fresh session/);
     });
 
-    // cm:guard the one sentence this thread must NEVER print over a live turn: "sent and never
-    // confirmed" is what a `handed-off` window read as before it had a branch of its own, and it
-    // tells a person their answer is lost while a box is still working on it (criterion 27).
     it("never reads a live turn as a reply that was sent and never confirmed", () => {
       for (const state of ["dispatched", "running", "failed"] as const) {
         cleanup();
@@ -192,10 +182,6 @@ describe("ConversationThread", () => {
   });
 });
 
-// cm:guard ISS-1078 criteria 10, 11, 12, 13, 15 and 19. Each case here asserts on the BLOCKS reaching
-// the screen and not on the thread's own markup, because the whole of what this change did to this
-// file is stop composing its own paragraph and hand the canonical entry to the renderer a runner
-// session uses — a case that asserted the text alone would pass against either.
 describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () => {
   const replied = (over: Partial<ConversationMessage> = {}): ConversationMessage => ({
     ...asked,
@@ -246,14 +232,9 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
       />,
     );
     expect(screen.getByText("Read release.md")).toBeInTheDocument();
-    // cm:guard the output is one click away rather than inline since ISS-1083 — the card summarizes
-    // what came back and opens onto it — so this asserts the same property through the new
-    // affordance rather than being dropped: the stored block's OUTPUT reaches the screen.
     expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Text · 25 characters");
     fireEvent.click(screen.getByTestId("tool-result-toggle"));
     expect(screen.getByTestId("tool-result-body")).toHaveTextContent("three issues, one blocked");
-    // cm:guard the text either SIDE of the tool call, in order: a renderer that appended the cards
-    // after the prose would satisfy an assertion on the card alone while losing what ISS-348 fixed.
     expect(screen.getByText("let me look")).toBeInTheDocument();
     expect(screen.getByText("two issues left")).toBeInTheDocument();
   });
@@ -274,8 +255,6 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
     );
     expect(screen.getByTestId("thinking-line")).toHaveTextContent("Thought for 1.4s");
     expect(screen.getByText("two issues left")).toBeInTheDocument();
-    // cm:guard collapsed, so the reasoning is not on the page until a person asks for it: a turn
-    // that thought for a page and answered in a line must not read as a page of answer.
     expect(screen.queryByText("the release note is the gate")).toBeNull();
   });
 
@@ -375,10 +354,6 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
     expect(container.querySelector(".forge-caret")).toBeNull();
   });
 
-  // cm:guard the case the marker was BUILT wrong for, watched in Chrome on a local walk 2026-09-17:
-  // `conversation.settled` clears the progress key within a few milliseconds of the correction frame,
-  // so a marker drawn off `progress.replaced` alone was on screen for 13 ms and then gone. It has to
-  // survive the handover to the stored row, which is what keying it by entry id buys.
   it("keeps the withdrawal beside the stored row once the turn has settled", () => {
     render(
       <ConversationThread
@@ -393,8 +368,6 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
     expect(screen.getByText("two issues left")).toBeInTheDocument();
   });
 
-  // cm:guard keyed by ENTRY ID, so a room that has held two corrected turns marks each beside its own
-  // — a single sticky flag would print the newest draft above every one of them.
   it("marks only the turn the draft was withdrawn from", () => {
     render(
       <ConversationThread
@@ -429,10 +402,6 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
     expect(screen.queryByTestId("thread-live-turn")).toBeNull();
   });
 
-  // cm:guard the reduction is by ENTRY ID and by nothing else, which is why the two turns here say
-  // exactly the SAME thing under different ids: asked twice and answered twice is two answers, and a
-  // reduction on text would silently draw the second turn as one — the identical fixture is the only
-  // one that can tell the two rules apart.
   it("keeps a live turn that is not the stored row's turn, even saying the same thing", () => {
     render(
       <ConversationThread
@@ -471,9 +440,6 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
       expect(screen.queryByTestId("thread-live-turn")).toBeNull();
     });
 
-    // cm:guard the window is STILL OPEN here, because that is what a room read mid-turn holds: the
-    // collector closes it when the turn ends. A thread that answered an open window with "nobody has
-    // answered this yet" regardless would print that line directly above the answer being typed.
     it("shows the answer arriving and stops saying nobody has answered", () => {
       render(<ConversationThread messages={[asked]} windows={[openWindow]} progress={live()} />);
       expect(screen.getByTestId("thread-live-turn")).toBeInTheDocument();
@@ -483,10 +449,6 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
   });
 });
 
-// cm:guard the compounding defect could only be seen through BOTH components at once: each file's
-// cap was correct on its own, and nested they multiplied to 0.85 x 0.85 = 0.7225 — a turn got 72%
-// of the panel. `conversation-width.test.tsx` counts the caps inside the shared renderer; this one
-// counts them through the wrapper, which is the render a person was actually looking at (ISS-1083).
 describe("the assistant column, drawn through the chat wrapper", () => {
   const answered: ConversationMessage = {
     id: "m1",
@@ -512,11 +474,6 @@ describe("the assistant column, drawn through the chat wrapper", () => {
   });
 });
 
-// cm:guard the wire's OWN shape, end to end, because the unit tests around `summarizeResult` fed it
-// objects and every real path hands it a string: the accumulator writes
-// `JSON.stringify(ev.result ?? '')` into `output` and the CLI path lifts the stream-json result's
-// text. A summary that met only objects read `Text · N characters` on every card in the product
-// while 31 assertions stayed green (ISS-1083, implementation consult F1).
 describe("a tool's output as the wire actually carries it", () => {
   const replied = (over: Partial<ConversationMessage> = {}): ConversationMessage => ({
     ...asked,
@@ -568,12 +525,6 @@ describe("a tool's output as the wire actually carries it", () => {
   });
 });
 
-// cm:guard THE moment this store exists for (ISS-1083 criterion 24): a turn settling on this
-// surface is not a re-render, it is a SWAP — `threadEntries` stops emitting the `progress` entry and
-// emits a `said` row instead, so React unmounts `LiveTurn` and mounts `Said` at that position. A
-// tool result a reader had opened while the answer was arriving used to go with it, and no key
-// inside the turn survives that, because the component at the position changes type. The scope on
-// `ConversationThread` does.
 describe("what a reader has opened, across the settle", () => {
   const blocks: CanonicalBlock[] = [
     { type: "text", text: "let me look" },
@@ -625,9 +576,6 @@ describe("what a reader has opened, across the settle", () => {
     expect(screen.getByTestId("tool-result-body")).toHaveTextContent('"open": 3');
   });
 
-  // cm:guard and it was CLOSED before the settle, so what survives is the reader's decision either
-  // way rather than a card that happens to default open. Without this the case above would pass
-  // against an implementation that opened every card on a settled row.
   it("keeps a tool result closed when the reader never opened it", () => {
     const { rerender } = render(
       <ConversationThread messages={[asked]} windows={[]} progress={arriving} />,

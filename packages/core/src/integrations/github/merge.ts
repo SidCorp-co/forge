@@ -1,36 +1,3 @@
-/**
- * Merging a pull request, which is the operation that stamps the issue.
- * ISS-1073, ISS-1062's layer 3.
- *
- * ## Why this is on the dispatch face and not on `forge_github`
- *
- * Everything `agent-ops.ts` carries needs judgement — which diff matters, what a
- * failing log says, what to write in a review. A merge needs none: the decision
- * is made from what GitHub reports (`merge-eligibility.ts`), and the state it
- * moves is the kernel's. So it happens without an agent present, it is recorded
- * whether or not one was, and `agent-ops.ts:KERNEL_VERBS` refuses the word on
- * the other face by name.
- *
- * ## The one thing this file is for
- *
- * `merged_at` was caller-asserted: a run merged with `gh` under a person's
- * account and then, separately, told the tracker it had. Two operations that can
- * disagree — and `gh pr merge` prints its refusal on stdout and exits 0 while
- * printing nothing on a real merge, so a caller checking the exit status was
- * told the opposite of what happened. Here the merge and the stamp are one
- * operation: GitHub's answer IS the evidence, and it is written in a transaction
- * with the projection row that records the same landing.
- *
- * What that cannot be is atomic with GitHub, and this file does not pretend
- * otherwise. Where the transaction fails after GitHub merged, the failure names
- * the commit that landed and the record is repaired by the next reading of it —
- * the `pull_request.closed` delivery, or another call to this verb, which finds
- * the pull request already merged and writes the evidence without sending a
- * second `PUT`.
- */
-// cm:guard NOTHING here retries and nothing falls back to another credential. The App is the only identity on this path, which is ISS-1073's outcome 4, and a refusal is the deliverable rather than a step on the way to trying something else. The queue this verb can be reached through retries with 5x exponential backoff (`jobs/queue-name.ts`), which is why the FIRST thing a merge does after resolving its inputs is ask whether GitHub already merged this pull request: a retry then records the evidence instead of merging again.
-// cm:edge lockstep -> packages/core/src/integrations/github/adapter.ts — `MERGE_EVENT` is the outbound verb name that reaches this, and the adapter's refusal lists it; a rename here without one there refuses the verb this file serves.
-
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { pipelineRuns } from '../../db/schema.js';
@@ -118,7 +85,6 @@ async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
  * project could hand this verb any run id at all and have it recorded as the
  * authority for a merge on another.
  */
-// cm:guard this throws rather than writing a delivery row, and it is the only refusal on this path that does. A delivery row is scoped to a binding and says Forge attempted something against a repository; nothing was attempted here, and a row saying otherwise is a history that did not happen.
 async function assertCaller(req: MergeRequest, projectId: string): Promise<void> {
   if (!req.requestedBy.trim()) {
     throw new MergeInputError(
@@ -146,7 +112,6 @@ async function assertCaller(req: MergeRequest, projectId: string): Promise<void>
 }
 
 /** The evidence write: the issue's stamp and the projection row, together or not at all. */
-// cm:guard ONE transaction, and its failure is loud. GitHub has already merged by the time this runs, so a rollback leaves a landed pull request with no record of it — which is recoverable, because the `pull_request.closed` delivery and a second call to this verb both write the same evidence idempotently. What is NOT recoverable is a caller told the merge failed, or told it succeeded when the record did not land: the throw names the commit so whoever reads it knows exactly what is on the base branch.
 async function writeEvidence(args: {
   row: StoredRow;
   commitSha: string;
@@ -179,8 +144,6 @@ async function writeEvidence(args: {
 }
 
 /** Republish the contract on this issue's OTHER open pull requests; never inside the transaction. */
-// cm:guard emitted AFTER the commit and never inside it. `HooksBus.emit` awaits every subscriber and one of them calls GitHub (docs/proposals/a-tracker-write-waits-on-github.md), so emitting inside would hold a database transaction open across a network call — on the one path where the transaction has already outlived a merge nobody can undo.
-// cm:guard the pull request just merged is no longer open, so this does NOT republish the check on it, and that is the honest shape rather than an oversight: what the stamp moved is the contract answer for every OTHER open pull request of the same issue, which is what `openPullRequestsForIssue` returns.
 async function announce(row: StoredRow): Promise<void> {
   if (!row.issueId) return;
   try {
@@ -195,7 +158,6 @@ async function announce(row: StoredRow): Promise<void> {
 }
 
 async function refuse(deliveryId: string, reason: string, detail: string): Promise<MergeOutcome> {
-  // cm:guard a refusal is `failed` with its sentence, unlike the contract check's deliberate skips: nothing here is a non-merge Forge chose on the operator's behalf. Every one of them is a merge somebody asked for that did not happen, which is a red row they want to see.
   await updateDelivery(deliveryId, {
     status: 'failed',
     errorMessage: detail,
@@ -219,7 +181,7 @@ interface MergeAnswer {
  * holding a context for binding A and a row belonging to binding B would
  * validate A and then MERGE on B's repository.
  */
-// cm:why the annotation sits ON the function and not in the file header, where ISS-1073 first put it: `lib/flow-coverage.mjs:fnHitsAt` resolves a step to the tightest function containing its line (or one declared within 5 lines below), so a `cm:flow` above the imports belongs to no function and reads `nofn` — which the gate reports word for word as "no test enters it at all", whatever the integration suite actually walked.
+// the annotation sits ON the function and not in the file header, where ISS-1073 first put it: `lib/flow-coverage.mjs:fnHitsAt` resolves a step to the tightest function containing its line (or one declared within 5 lines below), so a `cm:flow` above the imports belongs to no function and reads `nofn` — which the gate reports word for word as "no test enters it at all", whatever the integration suite actually walked.
 // cm:flow release/stamp — the merge is the stamp: one operation writes issues.merged_at, issues.merged_commit_sha and the projection row's merged state
 export async function mergeStoredPullRequest(
   req: MergeRequest,
@@ -274,12 +236,6 @@ export async function mergeStoredPullRequest(
     return refuse(deliveryId, refusal.cause, refusal.message);
   }
 
-  // cm:guard the already-merged arm is decided from the PULL REQUEST ALONE and before the protection
-  // and check reads, which is not an optimisation. This arm is the whole of this path's recovery: a
-  // merge whose response was lost, or whose transaction failed after GitHub took it, is repaired by
-  // calling this verb again. Reading the checks first put that recovery behind two more calls that
-  // can time out or hit a rate limit — so an issue holding every piece of evidence it needs went
-  // unstamped because a check-runs request for a pull request nobody is going to merge failed.
   if (pull.merged) {
     const commitSha = pull.mergeCommitSha;
     const mergedAt = pull.mergedAt ? new Date(pull.mergedAt) : null;
@@ -317,10 +273,6 @@ export async function mergeStoredPullRequest(
     return refuse(deliveryId, refusal.cause, refusal.message);
   }
 
-  // cm:guard `already-merged` is unreachable from here — `pull.merged` was answered above — and the
-  // arm stays for the compiler rather than being narrowed away, because the decision function is the
-  // one place the answer is defined and a caller that stopped handling one of its cases is a caller
-  // that will stop handling the next one somebody adds.
   if (decision.kind === 'already-merged') {
     return refuse(
       deliveryId,
@@ -332,7 +284,6 @@ export async function mergeStoredPullRequest(
 
   let answer: MergeAnswer;
   try {
-    // cm:guard the body carries the head sha and the method and NOTHING else. There is no field here that bypasses branch protection — GitHub has none for an App, and an admin's override is a person's credential, which is exactly the identity this layer removed. `sha` is what makes the merge conditional on the head Forge judged: GitHub answers 409 if it moved, rather than landing commits nobody looked at.
     answer = await client.publish<MergeAnswer>({
       op: 'merge',
       method: 'PUT',
@@ -356,12 +307,6 @@ export async function mergeStoredPullRequest(
     );
   }
 
-  // cm:guard the merge TIME is read back from GitHub and is never this box's clock. The `PUT` answers
-  // a sha and no timestamp, so `new Date()` was the obvious filler and it is wrong twice: it differs
-  // from GitHub's `merged_at` by the round trip and by whatever the clocks disagree by, and the
-  // evidence predicate then stops the `pull_request.closed` delivery from ever correcting it. The
-  // row would permanently contradict the one thing this whole path promises — that the time on it is
-  // the time the merge happened.
   let mergedAt: Date;
   try {
     const after = await readPullRequest(client, row.number);
@@ -371,9 +316,6 @@ export async function mergeStoredPullRequest(
     }
     mergedAt = reported;
   } catch (err) {
-    // cm:guard loud, and in the same shape as a failed transaction: the merge HAPPENED, and what
-    // could not be established is when. Writing the server clock here to get past it is the silent
-    // substitution — it would look identical to a correct record and could never be corrected.
     throw new Error(
       `github: pull request #${row.number} MERGED at ${answer.sha}, and reading back when GitHub ` +
         `merged it failed — the commit is on the base branch and Forge's record of it is not. The ` +

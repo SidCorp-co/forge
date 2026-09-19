@@ -280,9 +280,6 @@ describe('createJudgeFromProvider (ISS-1056)', () => {
   });
 });
 
-// cm:why the pre-change text is written out here rather than derived: a "byte-identical" claim
-// checked against a function that builds both sides can only ever be true. This is what the block
-// was before ISS-1066 split it, and the assertion goes red if either half moves.
 describe('the reference block after the brief joined it (ISS-1066)', () => {
   const base = { query: 'q', reply: 'r', calls: [], error: null };
   const FIXTURES = 'openCount: 682\nclosedCount: 482';
@@ -291,7 +288,6 @@ describe('the reference block after the brief joined it (ISS-1066)', () => {
     const content = judgeMessages(input)[1]?.content;
     return typeof content === 'string' ? content : '';
   };
-  // cm:why not named `before`: biome reads a call of that name as a test hook (noDuplicateTestHooks)
   const preChange = (reference: string | undefined): string =>
     [
       `${ASKED_HEADER}\nq`,

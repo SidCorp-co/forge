@@ -156,7 +156,6 @@ describe('applyEventsToState', () => {
   });
 
   it('settles a tool result whose call was folded in an earlier pass', () => {
-    // cm:why split at 4 and no other number: t1's tool_use is event 2 and its tool_result is event 5, so this is the split that puts the settle in a later pass than the call it settles — the case a plain seq cursor with an append would lose.
     const split = foldInTwo(4);
     const call = split.messages.flatMap((m) => m.toolCalls ?? []).find((t) => t.id === 't1');
     expect(call?.output).toBe('file body');

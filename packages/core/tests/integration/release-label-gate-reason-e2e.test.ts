@@ -154,7 +154,6 @@ describe('the release label is a gate reason', () => {
     expect(await reasonFor(w)).toBe('release_label_missing');
   });
 
-  // cm:guard the ambiguity case answers the SAME reason and not a new one. `RELEASE_LABEL_FOR_JOB` returns NULL for two live bindings with different labels — its `CASE WHEN count(*) = 1` refusal — and `labels ? NULL` is UNKNOWN, so the job matches nobody. An operator sees one condition here because there is one: no box can take this release.
   it('names the label when two live bindings disagree about it', async () => {
     const w = await seed({ type: 'release_batch', labels: [LABEL], declaredLabel: LABEL });
     const owner = (await harness.db.execute(sql`
@@ -191,8 +190,6 @@ describe('the release label is a gate reason', () => {
     });
   });
 
-  // cm:guard the precedence, and it is the arm's whole placement: a project with NO live box is
-  // `runner_stale`, and only a project that has one is being told the label is what hides the job.
   it('still says runner_stale when there is no live box at all', async () => {
     const w = await seed({
       type: 'release_batch',
@@ -204,8 +201,6 @@ describe('the release label is a gate reason', () => {
     expect(await reasonFor(w)).toBe('runner_stale');
   });
 
-  // cm:guard the narrowing is `release_batch` and nothing else. An arm reading every type would
-  // report a label problem for every job on every project that happens to declare one.
   it('never names the label for a job of another type', async () => {
     const w = await seed({ type: 'code', labels: [], declaredLabel: LABEL });
 
@@ -214,9 +209,6 @@ describe('the release label is a gate reason', () => {
 });
 
 describe('the surfaces that report a waiting job', () => {
-  // cm:guard this pair is one test in two halves and neither half means anything alone. The second
-  // is what proves the alarm can reach this fixture at all — without it a silent first half is
-  // indistinguishable from an alarm that never runs, which is the failure mode ISS-1080 found.
   it('raises no wedge for a job the label hides', async () => {
     const w = await seed({
       type: 'release_batch',
@@ -244,9 +236,6 @@ describe('the surfaces that report a waiting job', () => {
     expect(await wedgeCount()).toBe(1);
   });
 
-  // cm:guard A3 is the OTHER direction from the wedge above, deliberately. A gate reason means "this
-  // is explained, stay quiet"; runner starvation means "no box can take this, say so". A release job
-  // no label admits is both, and it must reach an operator through exactly one of them.
   it('counts a label-hidden release job as starvation', async () => {
     const w = await seed({
       type: 'release_batch',

@@ -56,7 +56,6 @@ export async function chunkContextPrefix(parent: PrefixInput): Promise<string> {
   return contextPrefix({ ...parent, issueLabel: await issueLabel(parent) });
 }
 
-// cm:guard the comparison is over what was EMBEDDED, never over the fields it came from: each row carries both halves of its embed input (`context_prefix` and `text_content`), so a prefix moved by a metadata edit, a passage moved by a `chunkText` change and a set left half-embedded are all visible here. Comparing `memories.text_content` alone would skip a rebuild the vectors needed (ISS-1024), and a stale chunk vector ranks every later search wrong with nothing going red.
 /** True when the live set at the parent's generation IS the set this write would publish. */
 export async function chunkSetMatches(
   tx: Tx,
@@ -102,7 +101,6 @@ export async function chunkAndPublish(
   );
   const generation = parent.chunkGeneration;
 
-  // cm:guard publish is ONE transaction guarded by `chunk_generation = generation` — a concurrent write that bumped the generation between embed and publish makes the guard match nothing, and then the set just inserted is deleted here rather than left behind: the search join would never select it, but a leftover set is a second copy of text the parent no longer says
   return db.transaction(async (tx) => {
     await tx
       .insert(memoryChunks)

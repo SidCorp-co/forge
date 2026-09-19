@@ -28,9 +28,6 @@ vi.mock('./projection.js', () => ({
   findRowByNumber: (...a: unknown[]) => findRowByNumber(...a),
   openPullRequestsOnBase: (...a: unknown[]) => openPullRequestsOnBase(...a),
   branchOfPush: (p: { ref?: string }) => p.ref?.replace('refs/heads/', '') ?? null,
-  // cm:guard `stateOf` is the REAL one and not a stub, because it is the single definition of what
-  // `merged` means and the merged arm this suite exercises is decided by it. A stub here would let
-  // the two disagree, which is the thing the projection exists to stop.
   stateOf: (pr: { merged?: boolean; merged_at?: string | null; state?: string }) =>
     pr.merged === true || pr.merged_at ? 'merged' : pr.state === 'closed' ? 'closed' : 'open',
 }));
@@ -105,11 +102,6 @@ describe('the pull_request arm publishes', () => {
   });
 });
 
-// cm:guard ISS-1075 criterion 8 — the build's outcome reaches a release through THIS door and no
-// other. `runner-release-events.test.ts` calls `applyWorkflowRunEvent` directly, which says the arm
-// works and says nothing about whether a delivery ever reaches it: `workflow_run` could be dropped
-// from `PROJECTED_EVENTS` and every case in that file would still pass, because the door is what
-// resolves a delivery to its binding, its config and its credential and the arm is handed all three.
 describe('the workflow_run arm is on the same door as the rest', () => {
   it('admits a `workflow_run` delivery at all', () => {
     expect(PROJECTED_EVENTS).toContain('workflow_run');
@@ -136,7 +128,6 @@ describe('the workflow_run arm is on the same door as the rest', () => {
 });
 
 describe('the arms that must not publish', () => {
-  // cm:guard this is criterion 41, and it is the one assertion that stops a delivery loop. Forge's OWN check run arrives back as a `check_run` delivery; publishing on it republishes on its own echo, forever, and a check run moves nothing the tracker's contract answers.
   it('publishes nothing on a `check_run` delivery, which is Forge`s own run coming back', async () => {
     await applyProjectedEvent(ctx, 'check_run', {
       action: 'completed',
@@ -205,9 +196,6 @@ describe('a merge somebody else made', () => {
     );
   });
 
-  // cm:guard the stamp is taken from the PAYLOAD, so a delivery the ordering guard skipped still
-  // records the merge. `applyPullRequestEvent` answers 0 for a row whose scalars were not written,
-  // and treating that as "nothing to do" would lose a landing to a retry arriving out of order.
   it('stamps even when the projection wrote no row', async () => {
     applyPullRequestEvent.mockResolvedValueOnce(0);
     await applyProjectedEvent(ctx, 'pull_request', merged());
@@ -230,9 +218,6 @@ describe('a merge somebody else made', () => {
     expect(recordIssueMerge).not.toHaveBeenCalled();
   });
 
-  // cm:guard announced only when THIS delivery wrote. The kernel's own merge announces its own, so
-  // announcing on a delivery that stamped nothing would republish the same change twice — once per
-  // route — on every merge Forge made itself.
   it('does not announce a stamp it did not write', async () => {
     recordIssueMerge.mockResolvedValueOnce({ wrote: false, mergedAt: null, commitSha: null });
     const heard: unknown[] = [];

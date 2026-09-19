@@ -39,10 +39,6 @@ const tx = {
       where: async () => updated.push({ values }),
     }),
   }),
-  // cm:guard the membership read inside the fence lock answers from the rows this same fake just
-  // recorded, so the fence a token is minted with is derived here exactly as it is in Postgres —
-  // read back from `project_members` rather than handed the caller's own list. A stub returning a
-  // fixed set would assert the stub (ISS-1093, review finding F2).
   select: () => ({
     from: () => ({
       where: async () =>
@@ -106,7 +102,6 @@ describe('createAgentAccount', () => {
     },
   );
 
-  // cm:guard the project's org is compared against the ROUTE's org, not merely looked up. Without it an org admin mints an agent into any project id they can guess, and the agent — a real member from that moment — carries the authority out of the org that approved it.
   it('refuses a project that belongs to another org, and mints nothing', async () => {
     selectLimit.mockResolvedValueOnce([{ id: PROJECT, orgId: 'some-other-org' }]);
     const err = await createAgentAccount(args).catch((e) => e);
@@ -120,11 +115,6 @@ describe('createAgentAccount', () => {
     expect((err as { status: number }).status).toBe(404);
   });
 
-  // cm:guard ISS-1093 — EVERY id is checked, not the first one. The lookup used to read a
-  // single row, so widening the input without widening the check would enrol an agent into
-  // a project of another org as long as the first id in the list was legitimate. The
-  // refusal must also NAME the offending id: an admin sending eight cannot find the wrong
-  // one from a count.
   it('refuses when only ONE of several projects is outside the org, and names it', async () => {
     const STRANGER = '00000000-0000-4000-8000-00000000f999';
     selectLimit.mockResolvedValueOnce([
@@ -139,11 +129,6 @@ describe('createAgentAccount', () => {
     expect(mintPat).not.toHaveBeenCalled();
   });
 
-  // cm:guard several projects mint an ALLOWLIST and no bound project, one project mints a
-  // bound project and no allowlist. Mint both and the token is refused by `pat/routes.ts`'s
-  // mutual exclusion; mint neither and it is the account-wide credential `boundProjectId`
-  // exists to prevent. Swap the two shapes and an agent on one project silently loses the
-  // default project a slug-less call resolves to.
   it('fences an agent on several projects with an allowlist, not a bound project', async () => {
     const SECOND = '00000000-0000-4000-8000-00000000f001';
     selectLimit.mockResolvedValueOnce([
@@ -206,7 +191,6 @@ describe('createAgentAccount', () => {
     expect(user.emailVerifiedAt).toBeInstanceOf(Date);
   });
 
-  // cm:guard org `member`, never `admin`. An agent holding org admin could reach `POST /api/orgs/:orgId/agents` and mint further agents with any project it liked — a scoped credential minting unscoped ones, which is the same hole `/api/pat`'s absence from `PAT_ALLOWED_PREFIXES` closes from the other side.
   it('joins the org as a plain member', async () => {
     selectLimit.mockResolvedValueOnce([{ id: PROJECT, orgId: ORG }]);
     await createAgentAccount(args);
@@ -228,7 +212,6 @@ describe('revokeAgentAccount', () => {
     expect(updated).toEqual([]);
   });
 
-  // cm:guard the `users` row SURVIVES, and this is the assertion that keeps it. `activity_log.actor_id`, `kernel_transitions.actor_id` and `jobs.created_by` all point at it, so deleting it either cascades away the record of what the agent did or fails on a restrict — and a real principal whose history vanishes on retirement answers "who made this write" with nothing, which is the whole thing the AAT exists to fix.
   it('revokes the tokens and both memberships, and never deletes the user row', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'agent-1' }]);
     expect(await revokeAgentAccount(ORG, 'agent-1')).toBe(true);

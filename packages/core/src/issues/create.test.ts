@@ -20,7 +20,6 @@ const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const txInsert = vi.fn(() => ({ values: insertValues }));
-// cm:guard `transaction` records when the tx OPENS; `txCommit` is the only witness of when it closes. An ordering assertion against `transaction` alone cannot fail — the tx opens first in both the fixed and the broken arrangement — so the edge-inside-the-transaction rule needs this second marker to mean anything.
 const txCommit = vi.fn();
 const transaction = vi.fn(async (fn: (tx: { insert: typeof txInsert }) => Promise<unknown>) => {
   const result = await fn({ insert: txInsert });
@@ -62,7 +61,6 @@ const applyRelations = vi.fn(async () => [
   },
 ]);
 const flushRelations = vi.fn(async () => undefined);
-// cm:guard keep `issueRelationInputSchema` REAL here — it is the create route's own request schema, so stubbing it would make every assertion below pass against a shape the route never validates
 vi.mock('./relations-service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./relations-service.js')>()),
   writeIssueRelations: (...args: unknown[]) => applyRelations(...(args as [])),
@@ -236,7 +234,6 @@ describe('POST /api/projects/:id/issues — relations declared at create (ISS-88
       relations: [{ kind: 'blocks', dependsOnId: BLOCKER_ID }],
     });
 
-    // cm:guard the WRITE goes inside the create transaction and the ANNOUNCE comes after it — `transaction` is the only witness that separates the two. Asserting the announce lands before `issueCreated` was already true when the edge itself was written after the commit, which is the crash window ISS-889 closed.
     expect(applyRelations.mock.invocationCallOrder[0]).toBeLessThan(
       txCommit.mock.invocationCallOrder[0] as number,
     );

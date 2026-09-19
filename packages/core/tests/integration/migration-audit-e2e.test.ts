@@ -57,7 +57,6 @@ describe('migration audit E2E (ISS-809)', () => {
     expect(recorded.length).toBeGreaterThan(0);
   });
 
-  // cm:guard a fresh database is the one case where the ledger MUST be complete — if this fails, drizzle changed how it records migrations and every deploy will start warning
   it('reports zero unrecorded migrations against a freshly migrated database', () => {
     const missing = mods.findUnrecordedMigrations(entries, recorded);
     expect(missing.map((m) => m.tag)).toEqual([]);

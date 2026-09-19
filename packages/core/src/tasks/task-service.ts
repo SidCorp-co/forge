@@ -39,7 +39,6 @@ export async function listTasksForIssue(
     })
     .from(tasks)
     .where(where)
-    // cm:edge contract -> packages/core/src/tasks/routes.ts — the board's own order is (sortOrder, createdAt); a browse that sorts by createdAt alone hands an agent a different sequence than the human is looking at
     .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
 
   return opts.limit === undefined ? q : q.limit(opts.limit);

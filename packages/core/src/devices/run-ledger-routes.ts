@@ -22,7 +22,6 @@ const forbidden = () =>
 export const runLedgerRoutes = new Hono<{ Variables: AuthVars }>();
 runLedgerRoutes.use('/:id/run-sessions', requireAuth(), assertEmailVerified());
 
-// cm:guard a PROJECT-member read and never the device's owner alone. The whole point of ISS-934 is that a box's registry is readable by people who are not on that box; scoping it to the pairer would leave it as machine-local as `/run/user/<uid>/cc-socks` was.
 runLedgerRoutes.get(
   '/:id/run-sessions',
   zValidator('param', paramsSchema, (r) => {

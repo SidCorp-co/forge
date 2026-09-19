@@ -11,15 +11,6 @@ interface Envelope {
 
 type Listener = (env: Envelope) => void;
 
-/**
- * Which open this is, and when it happened.
- *
- * `first` false is a reconnect: every event in the gap was dropped and the whole
- * replay is owed. `first` true is a cold load, where most of the page's queries
- * are still in flight and replaying them wholesale is a second round of requests
- * for a gap that is usually empty — `openedAt` is what lets the caller tell the
- * queries with a real gap from the ones without one.
- */
 export interface SocketOpen {
   first: boolean;
   openedAt: number;
@@ -48,13 +39,6 @@ class ForgeWebSocket {
   private explicitlyClosed = false;
   private bearerToken: string | undefined;
 
-  /**
-   * Optionally set a bearer token to authenticate via the
-   * `forge.bearer.<jwt>` Sec-WebSocket-Protocol subprotocol (ISS-286). Web
-   * normally relies on the same-origin `forge_auth` cookie and leaves this
-   * unset; cross-origin embeds (widget, future Tauri-style hosts) call this
-   * before `connect()` so the JWT never appears in the URL / access logs.
-   */
   setBearerToken(token: string | undefined): void {
     this.bearerToken = token;
   }

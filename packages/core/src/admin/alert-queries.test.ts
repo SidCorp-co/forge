@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why alert-queries.ts imports db/client.js at module scope, which validates env at import time; stub it so this pure-function suite doesn't need real env/Postgres (integration coverage: tests/integration/admin-alerts-e2e.test.ts)
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 const {
@@ -56,9 +55,7 @@ describe('classifyStuck (A2)', () => {
   });
 });
 
-// cm:guard every threshold below is a LITERAL, never read back from the module that classifies against it — an assertion against the implementation's own constant agrees with whatever the implementation does and cannot go red on a wrong derivation (ISS-654)
 describe('classifySpend (A4)', () => {
-  // cm:why $0.5 is a 50x ratio over a $0.01 baseline, but never clears the $5 floor
   it('stays ok below the absolute floor regardless of ratio', () => {
     expect(classifySpend(0.5, 0.01, 2)).toBe('ok');
   });

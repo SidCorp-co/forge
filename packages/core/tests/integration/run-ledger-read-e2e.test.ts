@@ -241,7 +241,6 @@ describe('what one box reported', () => {
     expect(body.items.map((r) => r.runId)).toEqual(['run-1']);
   });
 
-  // cm:guard every paired box in the fleet holds a valid device token, so the project on a snapshot entry is a CLAIM. Without this check any box could put a worktree path and a pid into any project's read surface (ISS-934).
   it('drops a run naming a project this box is not bound to', async () => {
     const a = await member();
     const b = await member();
@@ -259,7 +258,6 @@ describe('what one box reported', () => {
   });
 });
 
-// cm:why criterion 52 wants the three close-loop marks rendered as THREE, and the UI can only render what this surface carries: `issues[].leaseReturned` was the only one of them here, so a screen built on today's shape could show one flag and would have to guess the other two. `snapshot` publishes unclosed runs only, which is exactly the window where the three disagree.
 describe('the three close-loop marks', () => {
   it('carries each mark separately, so a half-closed run reads as half-closed', async () => {
     const m = await member();

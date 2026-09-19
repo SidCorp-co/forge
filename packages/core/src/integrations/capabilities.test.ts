@@ -13,13 +13,6 @@ import {
   type IntegrationDeclarationInput,
 } from './types.js';
 
-// Contract test for the registry mechanics ISS-1071 introduced: `declareIntegration`'s default,
-// and the two registry readers (`providerCanDeploy` / `deployCapableProviders`,
-// `directMcpIntegrations`) that answer from the declared capabilities rather than a per-provider
-// list. `__resetRegistry()` + locally-declared fixtures keep this independent of the real eight
-// providers, whose own agreement with `@forge/contracts` is `deploy-capability-parity.test.ts`'s
-// job.
-
 const emptySchema = z.object({}).strict();
 
 /** The minimum a declaration must carry, so each fixture below only states what it varies. */

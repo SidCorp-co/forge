@@ -68,7 +68,7 @@ Choosing "not now" is not free, and these are the bills it leaves:
 
 - **The table keeps three roles and one of them is undocumented in its own shape.** A reader of
   `personal_access_tokens` cannot tell a box's credential from a person's except by a nullable
-  column, and the only thing that says which is which is a `cm:guard`. Anyone adding a fourth
+  column, and the only thing that says which is which is a invariant. Anyone adding a fourth
   surface to that table inherits that ambiguity rather than a type.
 - **`device_id` stays a second identity axis beside `agentUserId`.** ISS-1003 added a clean answer
   to "which agent is speaking" and left "which box is this" where it was, so two questions of the

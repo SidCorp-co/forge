@@ -1,12 +1,5 @@
 "use client";
 
-// Toasts for the two dependency-unblock events (ISS-64, ISS-40 PR-E).
-//
-// `issue.unblockCascade` fires once per blocker that went terminal, naming the
-// dependents it released; `dependency.unblocked` fires when one of those
-// actually dispatches. Neither is persisted, so this is a confirmation the
-// cascade fired, not a record of it — the record is a comment on each
-// dependent, written by core.
 
 import { useEffect } from "react";
 import { wsClient } from "@/lib/ws/client";

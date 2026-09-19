@@ -107,7 +107,6 @@ describe('the injected step-handoff fact follows the same lane split', () => {
 });
 
 describe('the mandatory preamble blocks fork with the lane', () => {
-  // cm:guard `forge_uploads` is the ONE deliberate name, and the exception is real rather than a lapse: reading an attached image needs a multimodal fetch that returns an image content block, which no shell command can produce. Everything else must resolve to a `forge-runner api` path — and assert the staged half too, because a zero-count alone passes on a block that renders empty.
   it('hands a driver a preamble naming only the tool with no shell form', () => {
     const { pipelineRules, toolReference } = mandatoryPreambleBlocks('drive');
     const text = `${pipelineRules}\n${toolReference}`;
@@ -145,10 +144,6 @@ describe('the mandatory preamble blocks fork with the lane', () => {
     }
   });
 
-  // cm:guard the four claimable NON-drive job types, derived from `RUNNER_CAPABILITIES` rather
-  // than listed: this used to name `code`/`review`/`test`/`triage`, job types no runner can claim,
-  // so it asserted the other arm over an audience that does not exist while saying nothing about
-  // the one that does (ISS-1047). `null` stays because the chat/preview path passes it.
   it('leaves every other claimable job type on the byte-identical shared prefix', () => {
     const others = [...new Set(Object.values(RUNNER_CAPABILITIES).flat())].filter(
       (t) => t !== 'drive',
@@ -166,7 +161,6 @@ describe('the release-notes fact clears the gate it describes', () => {
   const render = (stage: 'drive' | 'release') =>
     getFact('release-notes-format')?.render?.({ stage } as never) ?? '';
 
-  // cm:guard RELEASE_RECORD_REQUIRED refuses an agent close while `releaseNotes` is null, so this fact is the driver's own exit instruction — naming a tool it cannot call leaves it stuck at a gate with no reachable remedy
   it('names a call the driver can make', () => {
     expect([...render('drive').matchAll(/forge_[a-z_.]+/g)].map((m) => m[0])).toEqual([]);
     expect(render('drive')).toContain('forge-runner api issues/<id> -X PATCH');
@@ -176,8 +170,6 @@ describe('the release-notes fact clears the gate it describes', () => {
     expect(render('release')).toContain('forge_issues.update');
   });
 
-  // cm:guard the driver is the last stage there is, so a promise that forge-release writes its CHANGELOG line is a stage that never runs — and `RELEASE_RECORD_REQUIRED` gates the close on `releaseNotes` alone, so the missing entry closes green
-  // cm:guard this fact is `scope: 'global'` — it reaches every project, so the drive half states the mechanism ("no later stage appends it") unconditionally and the changelog only conditionally; asserting a `CHANGELOG.md` outright sends a driver on a project that keeps none after a file that does not exist
   it('does not promise the driver a changelog append no later stage performs', () => {
     expect(render('drive')).not.toContain('forge-release appends');
     expect(render('drive')).toContain('no later stage appends it');
@@ -190,7 +182,6 @@ describe('the release-notes fact clears the gate it describes', () => {
 });
 
 describe('the worktree lifecycle reaches the one job that runs unattended', () => {
-  // cm:guard both halves or neither: `worktree-protocol` says create-and-reuse and `worktree-cleanup` is the only place removal is asked for, so adding drive to the first alone gives the driver a worktree nothing ever removes — the shape that put 17G of `.claude/worktrees` on one box
   it('gives the driver both halves', () => {
     expect(getFact('worktree-protocol')?.appliesTo).toContain('drive');
     expect(getFact('worktree-cleanup')?.appliesTo).toContain('drive');
@@ -222,7 +213,6 @@ describe('the driver lane is told to recall, to capture, and where a defect goes
     );
   });
 
-  // cm:guard the verify-report half is what makes recall self-cleaning — a hit read and silently discarded leaves a stale row scoring for the next session
   it('names the route that reports a hit verified or stale', () => {
     expect(rules()).toContain('forge-runner api memory/feedback');
   });
@@ -237,7 +227,6 @@ describe('the driver lane is told to recall, to capture, and where a defect goes
     expect(p).toContain('Extra fixes:');
   });
 
-  // cm:guard every path the preamble names must be one the job PAT can execute: `issuePatchSchema` is `.strict()` and carries no `status`, so the example this replaced answered 400 `Unrecognized key: "status"` for every driver that copied it — measured live on 2026-09-05
   it('writes a status through the transition endpoint, not the patch route', () => {
     const { pipelineRules, toolReference } = mandatoryPreambleBlocks('drive');
     const text = `${pipelineRules}\n${toolReference}`;

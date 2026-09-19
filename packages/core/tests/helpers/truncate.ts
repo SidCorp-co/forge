@@ -1,11 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
-/**
- * Wipe every user table in the current search_path schema with a single
- * TRUNCATE. Call from `beforeEach` to give each test a clean slate without
- * paying migration / schema-creation cost per test.
- */
 export async function truncateAll(db: PostgresJsDatabase<Record<string, unknown>>): Promise<void> {
   const rows = await db.execute<{ table_name: string }>(sql`
     SELECT table_name
@@ -26,22 +21,12 @@ export async function truncateAll(db: PostgresJsDatabase<Record<string, unknown>
 
   const truncate = sql.raw(`TRUNCATE ${tables.join(', ')} RESTART IDENTITY CASCADE`);
 
-  // In container mode every parallel test worker shares ONE database, so
-  // concurrent `TRUNCATE ... CASCADE` calls take overlapping table locks and
-  // Postgres aborts one as a deadlock victim (40P01). The victim's transaction
-  // is rolled back cleanly, so a bounded retry resolves it — this is the
-  // standard remedy for concurrent truncation, not a real failure.
   const MAX_ATTEMPTS = 25;
   for (let attempt = 1; ; attempt++) {
     try {
       await db.execute(truncate);
       return;
     } catch (err) {
-      // 40P01 deadlock_detected / 55P03 lock_not_available — transient: the
-      // TRUNCATE raced a detached fire-and-forget write (e.g. memory usage
-      // tracking / retrieval-analytics inserts that outlive the prior test),
-      // Postgres aborted one side, the rollback is clean → retry. drizzle
-      // wraps the PostgresError, so the code lives on `.cause`, not the top.
       const code = pgErrorCode(err);
       if ((code !== '40P01' && code !== '55P03') || attempt >= MAX_ATTEMPTS) throw err;
       // Growing, de-synchronizing backoff so the next attempt lands after the

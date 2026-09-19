@@ -1,24 +1,3 @@
-/**
- * ISS-1085 slice 3 — the inbound prompt-injection chokepoint, proved end to end.
- *
- * WHAT THIS IS FOR. Sentry event text is untrusted: an error message usually carries whatever a
- * user typed into the app that crashed, so whoever can trigger an error can write text into an
- * agent's prompt. The adapter's header said for two slices that there was no inbound surface and
- * that any path rendering that text into a prompt would owe framing. This slice builds the path.
- *
- * THE FRAME IS NOT ADDED HERE, AND THAT IS THE POINT. `markUntrusted` runs `stripFrameTokens` over
- * its own input, so a frame stored in the database would be DESTROYED by the projection frame and
- * the text would reach the agent bare. The frame therefore belongs at the projection, and what this
- * slice owes is a proof that a Sentry payload actually arrives inside it rather than a comment
- * saying it should. These assertions plant the payload at the Sentry end and read the two
- * agent-facing projections at the other.
- *
- * cm:guard the THIRD projection, `mcp/tools/forge-issues.ts:serializeListRow`, char-strips a title
- * and does NOT frame it, by the priced decision in its own `cm:why` — the token cap the lean
- * projection exists for. That is asserted here too, as a fact rather than as a pass, so nobody
- * reads these tests as "framed everywhere". It is recorded at
- * `docs/proposals/an-mcp-list-title-is-char-stripped-and-not-framed.md`.
- */
 import { describe, expect, it } from 'vitest';
 import { serialize, serializeListRow } from '../../mcp/tools/forge-issues.js';
 import { buildJobPromptString } from '../../prompt/user.js';
@@ -175,10 +154,6 @@ describe('the MCP single-issue projection an agent reads', () => {
 });
 
 describe('the MCP LIST projection — recorded, not repaired', () => {
-  // cm:guard this asserts the gap rather than a fix. `serializeListRow` char-strips and does not
-  // frame, priced against the token cap in its own `cm:why`. If somebody later frames it, THIS test
-  // goes red and is the place to record that the trade-off was re-decided — which is the whole
-  // reason it asserts the current behaviour rather than staying silent about it.
   it('char-strips the title and does NOT frame it', async () => {
     const row = await hostileRow();
     const out = serializeListRow(

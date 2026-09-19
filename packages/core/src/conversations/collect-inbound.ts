@@ -1,17 +1,3 @@
-/**
- * One inbound message, taken in rather than answered.
- *
- * This is the half of `inbound-turn.ts` that runs at the edge: which venue this
- * frame is, who spoke, whose authority a turn here would run under — and then
- * the message goes into the conversation's log and into its collecting window,
- * under one commit. The answer is somebody else's job, taken later over
- * everything the window accumulated (`route-window.ts`).
- *
- * Nothing is gated here. A message that names nobody is collected exactly like
- * one that names the bot; what bounds a room's cost is the window and the
- * guards, which is the argument ISS-1004 makes for removing the @-mention gate.
- */
-
 import { db } from '../db/client.js';
 import type { Executor } from './db-executor.js';
 import type { ConversationAdapterPorts } from './ports.js';
@@ -20,7 +6,6 @@ import { openOrExtendWindow } from './windows.js';
 
 export interface InboundCollection<Frame> {
   ports: ConversationAdapterPorts<Frame>;
-  /** The transport's own message, in its own terms. */
   frame: Frame;
   /** What was said. */
   message: string;
@@ -39,7 +24,6 @@ export interface InboundCollection<Frame> {
   /**
    * One more write the caller wants committed with this message, or not at all.
    */
-  // cm:guard it is handed the transaction and told NOTHING about what it writes, which is the whole of why it is here rather than a branch in this function: the adapter that needs a second write knows what it is, and a collector that knew would be a collector with an adapter's decision in it. A throw from it takes the message and its window with it, which is the point — a caller whose own write lost has not collected anything (ISS-1039, plan consult F2).
   withinCollection?: (
     tx: Executor,
     collected: { conversationId: string; seq: number },
@@ -49,7 +33,6 @@ export interface InboundCollection<Frame> {
 /**
  * How collecting a frame ended.
  */
-// cm:guard `venue-unresolved` is the ONLY ending before anything is written: a frame nobody could place has no conversation to write into. An unlinked speaker is NOT one of them any more — the message is collected and `route-window.ts` refuses it under the window's delivery key, which is the only arrangement that sends the refusal exactly once. Refusing here first meant a transport that accepted the text and then dropped the connection got a second refusal from the window (ISS-1004, review pass 1 F3 and the plan's own read).
 export type CollectOutcome =
   | {
       kind: 'collected';
@@ -64,9 +47,6 @@ export type CollectOutcome =
 /**
  * Take one inbound frame into its conversation and its window.
  */
-// cm:guard the authority follows the venue's SHAPE and is settled at ROUTE time, not here: a one-to-one venue has exactly one human and runs as them, a many-speaker venue runs under the binding's principal because there is no single authority to be (ISS-987). What this does is remember who spoke, as the transport names them, so the window can ask the directory the same question.
-// cm:guard ATTRIBUTION is the resolved SPEAKER and not the authority, and the two are different questions: filing every group-room message under the binding's principal makes a second agent's message look like a person's, which blinds the loop breaker to the exact case it exists for. A speaker nothing has linked is filed as nobody plus the label the transport gave, which is a fact rather than a gap (ISS-1003, ISS-1004).
-// cm:guard the append and the window are ONE transaction: a message durable with no window is owed an answer nothing knows to give, and a window with no message is a decision about nothing (ISS-1004 review F3).
 export async function collectInboundMessage<Frame>(
   inbound: InboundCollection<Frame>,
 ): Promise<CollectOutcome> {
@@ -105,7 +85,6 @@ export async function collectInboundMessage<Frame>(
       },
       tx,
     );
-    // cm:guard AFTER the message and the window and inside the same transaction: the caller's write is about a message that exists, and it is still free to throw and take both back out with it.
     await inbound.withinCollection?.(tx as unknown as Executor, {
       conversationId: conversation.id,
       seq: row.seq,

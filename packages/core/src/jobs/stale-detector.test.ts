@@ -47,7 +47,6 @@ vi.mock('./loop-monitor.js', () => ({
   RESULT_QUIET_MINUTES: 60,
 }));
 
-// cm:why kill-gate is mocked for its IMPORT CHAIN and not its behaviour — it reaches `ws/server.js`, which validates env at module scope and throws here for want of a DATABASE_URL. Only the grace number is read.
 const KILL_GRACE_MS = 90_000;
 vi.mock('./kill-gate.js', () => ({ killGraceMs: () => KILL_GRACE_MS }));
 
@@ -106,16 +105,12 @@ describe('runStaleSweep (alarm-only)', () => {
     expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
     expect(text).toMatch(/interval\s+'\s*65\s*minutes'/);
     expect(text).toMatch(/COALESCE\(le\.max_ts,\s*j\.dispatched_at\)/);
-    // cm:guard ISS-1013 — BOTH halves, because either alone passes a query that no longer
-    // guards anything: the lateral without the guard reads `job_events` and ignores it, and
-    // `lr.job_id IS NULL` without the lateral is an unbound alias the type checker cannot see.
     expect(text).toMatch(
       /LEFT\s+JOIN\s+LATERAL[\s\S]*job_events\s+e\s+WHERE\s+e\.job_id\s*=\s*j\.id\s+AND\s+e\.kind\s*=\s*'result'[\s\S]*\)\s*lr\s+ON\s+true/,
     );
     expect(text).toMatch(/s\.runtime_state\s+IS\s+NOT\s+NULL\s+OR\s+lr\.job_id\s+IS\s+NULL/);
   });
 
-  // cm:guard reads `job_events` through a lateral keyed on the driving row, never an aggregate over the table. The `GROUP BY job_id` assertion is negative and deliberately so: the shape this replaced was correct and merely unbounded, so nothing about the alarm's OUTPUT can go red when it comes back.
   it('reaches both history tables per driving job, with no unrestricted aggregate', async () => {
     executeMock.mockResolvedValueOnce([]);
     await runStaleSweep();
@@ -130,7 +125,6 @@ describe('runStaleSweep (alarm-only)', () => {
     expect(text).not.toMatch(/GROUP\s+BY\s+run_id/);
   });
 
-  // cm:guard each of the four terms the pre-ISS-1013 copy had lost. A phase-only driver, a human park and a gated job were each wedging a false operator alert every five minutes; the residency guard is the one that made the alarm see LESS, going permanently blind to a duplex job after its first turn wrote a `result`.
   it('carries the loop\u2019s own phase, park, residency and kill-gate terms', async () => {
     executeMock.mockResolvedValueOnce([]);
     await runStaleSweep();
@@ -141,7 +135,6 @@ describe('runStaleSweep (alarm-only)', () => {
     expect(text).toMatch(/j\.kill_requested_at\s+IS\s+NULL\s+OR\s+j\.kill_requested_at\s*<=/);
   });
 
-  // cm:guard the kill-gate cutoff is the SWEEP's clock and not `Date.now()` at module load — a cutoff pinned to the wrong instant excludes every gated row forever or none of them, and either way the assertion above still passes.
   it('pins the kill-gate cutoff one grace window behind the sweep instant', async () => {
     executeMock.mockResolvedValueOnce([]);
     const now = new Date('2026-06-12T12:00:00.000Z');

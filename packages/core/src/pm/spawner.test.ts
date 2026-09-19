@@ -47,8 +47,6 @@ function queueSelect(rows: Row[]): void {
   }));
 }
 
-// Variant where `.where()` is awaited directly (no `.limit()`) — used by the
-// rate-limit count query.
 function queueSelectScalar(rows: Row[]): void {
   selectMock.mockImplementationOnce(() => ({
     from: () => ({

@@ -16,10 +16,6 @@ const flat = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
 describe('the layers, sentence by sentence (ISS-1057)', () => {
   /** A layer's instruction BLOCKS: each bullet or paragraph whole, headings and blanks dropped. */
-  // cm:guard a block and not a line, because a guide body wraps at 100 columns: walking lines made
-  // every clause that straddles a wrap unclaimable, and the honest fix for that failure is to
-  // shorten the clause until it proves nothing (the same reason `flat` exists above). Blocks are
-  // also not split on `.`, which breaks on `forge issue ISS-<n>.` and on every abbreviation.
   const sentencesOf = (text: string): string[] => {
     const blocks: string[] = [];
     for (const line of text.split('\n')) {
@@ -39,16 +35,6 @@ describe('the layers, sentence by sentence (ISS-1057)', () => {
     ALL_LAYERS.map((l: { id: string; text: string }) => [l.id, sentencesOf(l.text)]),
   );
 
-  // cm:guard this is the assertion the split is FOR: one place per sentence. Without it, moving the
-  // text into layers buys a directory and nothing else — a clause copied into `base` and `tools`
-  // renders twice at every door and each copy drifts on its own (criterion 23).
-  // cm:guard the duplicate check runs over SENTENCES and the claimed check over blocks, and the two
-  // grains are deliberate rather than an oversight: a duplicated sentence hidden inside two
-  // otherwise-different bullets leaves both blocks distinct AND leaves both claimed by whichever
-  // ledger clause each already carried, so a block-grained duplicate check cannot see it (codex F2
-  // of the whole-set read). Going the other way — demanding a ledger row per sentence — would mean
-  // a row for every clause of every bullet, which is a ledger nobody maintains and therefore a
-  // check that gets deleted the first time it is inconvenient.
   const sentencesIn = (block: string): string[] =>
     block
       .split(/(?<=[.!?])\s+(?=[A-Z`*"'(])/)
@@ -66,8 +52,6 @@ describe('the layers, sentence by sentence (ISS-1057)', () => {
     }
   });
 
-  // cm:guard the check above is only worth its line if it can fail, and the shape it has to fail on
-  // is the one codex F2 named: the same sentence inside two bullets that differ everywhere else.
   it('would catch a sentence copied into two otherwise-different bullets', () => {
     const copied = 'The documentId is the only thing that goes in that last segment.';
     const a = sentencesIn(`- keep only verified facts. ${copied}`);
@@ -77,8 +61,6 @@ describe('the layers, sentence by sentence (ISS-1057)', () => {
     expect(a.filter((x) => b.includes(x))).toEqual([copied]);
   });
 
-  // cm:guard the other half: a sentence no ledger row claims is an instruction that arrived without
-  // anybody recording that it did, which is the drop check read forwards (criterion 24).
   it('finds every sentence of every layer claimed by a ledger entry (criterion 24)', () => {
     for (const [id, sentences] of BY_LAYER) {
       for (const sentence of sentences) {
@@ -90,9 +72,6 @@ describe('the layers, sentence by sentence (ISS-1057)', () => {
     }
   });
 
-  // cm:guard the ledger is read against the LAYERS and not only against what a door rendered, so a
-  // claim whose owner changed file is caught here rather than surviving on a door that still
-  // happens to render both (criterion 22).
   it('resolves each of the thirty-three claims in exactly one layer or non-layer fragment (criterion 22)', () => {
     for (const claim of LEDGER) {
       const owners = [...BY_LAYER].filter(([, sentences]) =>

@@ -7,7 +7,6 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-// cm:why the shape `readJobGate` answers with, not the whole `jobs` row: a double omitting `ackedAt` makes the handler's new gate read every job as already acked (ISS-1014).
 const jobRow: {
   id: string;
   projectId: string;
@@ -55,12 +54,10 @@ const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
 
 const selectFor = vi.fn(() => ({}));
 const selectLimit = vi.fn(async () => [jobRow]);
-// cm:why the same `.where()` link ends two different chains — `readJobGate` stops at `.limit()`, the heartbeat's locking CTE at `.for('update')`.
 const selectWhere = vi.fn(() => ({ limit: selectLimit, for: selectFor }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
-// cm:why the writes through this double end the chain at different links — the heartbeat is `.set().from().where().returning()`, the ack stamp and the runtime-state sync stop at `.where()` — so it answers every shape or a branch fails on the mock rather than on the route.
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => {
   const p = {
@@ -74,7 +71,6 @@ const updateFrom = vi.fn(() => ({ where: updateWhere }));
 const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere, from: updateFrom }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
-// cm:guard `$with` and the transaction's `with` both have to answer, and a double missing either is not a loud failure: the heartbeat's `try/catch` swallows the TypeError and logs a warning, so every assertion in the file still passes while the write under it never happens (found on ISS-1014).
 vi.mock('../db/client.js', () => ({
   db: { select: dbSelect, transaction, update: dbUpdate, $with: dbWith },
 }));
@@ -166,9 +162,6 @@ describe('jobs/events-routes · a beat is not a turn', () => {
     );
   }
 
-  // cm:guard THE case. `{"source":"pool_jobs","state":"running"}` is the whole of what the pane lane
-  // sends before a turn runs, and the key it does NOT carry is `runtimeState` — reading `state` here
-  // by mistake would make every one of these a flip again and this test would still be named right.
   it("writes no status for the pane lane's own beat, which carries no runtimeState", async () => {
     const r = await postOne({ kind: 'progress', data: { source: 'pool_jobs', state: 'running' } });
 
@@ -177,7 +170,6 @@ describe('jobs/events-routes · a beat is not a turn', () => {
     expect(heartbeatSet()?.startedAt).toBeUndefined();
   });
 
-  // cm:guard `starting` is the state a box beats while a prompt sits in a pane nobody submitted.
   it('writes no status for a beat that reports starting', async () => {
     const r = await postOne({ kind: 'progress', data: { runtimeState: 'starting' } });
 
@@ -185,8 +177,6 @@ describe('jobs/events-routes · a beat is not a turn', () => {
     expect(heartbeatSet()?.status).toBeUndefined();
   });
 
-  // cm:guard the beat is still a heartbeat — the box IS alive, and refusing the bump as well would
-  // put every claimed-but-unstarted session under the queue reaper's never-claimed arm instead.
   it('still bumps the heartbeat for a beat that reports nothing about the agent', async () => {
     const r = await postOne({ kind: 'progress', data: { source: 'pool_jobs', state: 'running' } });
 
@@ -194,7 +184,6 @@ describe('jobs/events-routes · a beat is not a turn', () => {
     expect(heartbeatSet()?.lastHeartbeatAt).toBeInstanceOf(Date);
   });
 
-  // cm:guard the discriminating half: a state that DOES report a turn still flips.
   it('writes the status for a beat that reports working', async () => {
     const r = await postOne({ kind: 'progress', data: { runtimeState: 'working' } });
 
@@ -203,8 +192,6 @@ describe('jobs/events-routes · a beat is not a turn', () => {
     expect(heartbeatSet()?.startedAt).toBeDefined();
   });
 
-  // cm:guard `closed` reports that the session ENDED, which is not a report that a turn began, and
-  // it is a `sessionRuntimeStates` member so a set built as "anything but awaiting_input" admits it.
   it('writes no status for a beat that reports closed', async () => {
     const r = await postOne({ kind: 'progress', data: { runtimeState: 'closed' } });
 
@@ -212,9 +199,6 @@ describe('jobs/events-routes · a beat is not a turn', () => {
     expect(heartbeatSet()?.status).toBeUndefined();
   });
 
-  // cm:guard the print-mode lane's evidence, which arrives as the agent's own output and never as a
-  // runtime state at all — a rule written only on `runtimeState` leaves every print-mode pipeline
-  // session queued for its whole life.
   it('writes the status for a tool call, which cannot exist unless a turn was asked', async () => {
     const r = await postOne({ kind: 'tool_call', data: { name: 'Bash' } });
 
@@ -222,8 +206,6 @@ describe('jobs/events-routes · a beat is not a turn', () => {
     expect(heartbeatSet()?.status).toBe('running');
   });
 
-  // cm:guard a mixed batch takes the evidence, the same way the park rule takes the activity: one
-  // frame proving a turn began is proof whatever else arrived with it.
   it('writes the status when a bare beat arrives alongside a working report', async () => {
     jobRow.agentSessionId = 'session-1';
     txExecute.mockResolvedValueOnce([]);

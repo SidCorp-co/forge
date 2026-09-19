@@ -1,17 +1,3 @@
-/**
- * Personal Access Tokens — mint, verify, revoke, rotate (ISS-150).
- *
- * The one credential species in Forge: a person's PAT, an agent's AAT, a
- * job's or session's short-lived token, and a paired box's token are all rows
- * in this table verified through this file. It offers:
- *  - constant-time prefix verification: we iterate all candidate rows
- *    even after a hit so timing does not leak which row matched
- *  - asynchronous `last_used_at`/`last_used_ip` updates so the request
- *    path is never blocked on a write
- *  - explicit user-scoped revoke + bulk revoke (used by password-change
- *    and account-disable hooks).
- */
-
 import argon2 from 'argon2';
 import { and, eq, type InferSelectModel, isNull, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
@@ -42,7 +28,6 @@ export interface MintPatInput {
   name: string;
   scopes?: string[] | undefined;
   projectIds?: string[] | null | undefined;
-  // cm:edge contract -> packages/core/src/pat/routes.ts — mutual exclusion with `projectIds` is enforced at the REST layer ONLY, so a direct caller of `mintPat` can set both and no type says otherwise. `devices/credential.ts` is such a caller: it sets `projectIds: []` and leaves `boundProjectId` for the agent the box pairs as.
   boundProjectId?: string | null | undefined;
   /**
    * The permission names granted, or omitted for every group. See
@@ -65,14 +50,6 @@ async function hashPatPlaintext(plaintext: string): Promise<string> {
   return argon2.hash(plaintext + env.PAT_PEPPER, ARGON2_OPTIONS);
 }
 
-/**
- * Lazy-computed dummy argon2 hash used to keep `verifyPat` constant-time
- * when the prefix bucket is empty. Without this, a timing attacker who can
- * speak the auth endpoint could distinguish "prefix has no live PAT" from
- * "prefix has live PAT(s) but body is wrong" via the absence of any
- * argon2.verify call. The hash itself is over a random secret that is
- * never returned to the caller.
- */
 let dummyHashPromise: Promise<string> | null = null;
 function getDummyHash(): Promise<string> {
   if (!dummyHashPromise) {
@@ -118,7 +95,6 @@ export interface VerifiedPat {
    * The kind of the principal the token belongs to. Read here so the one place
    * a PAT principal is built can answer `agency` from WHO holds the token.
    */
-  // cm:guard joined in the verify query rather than looked up by the caller, because `authenticatePat` builds the principal for `/mcp` AND for REST off this one return — a second lookup in one of them is how the two surfaces start disagreeing about whether a caller is an agent, and the ISS-786/812 evidence gates read exactly that answer.
   ownerKind: UserKind;
 }
 
@@ -141,7 +117,6 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     .where(and(eq(personalAccessTokens.tokenPrefix, prefix), patIsLive()));
 
   if (rows.length === 0) {
-    // cm:guard verify a dummy hash when the bucket is empty so an absent prefix costs the same as a wrong secret — skipping it makes prefix existence measurable by timing.
     try {
       await argon2.verify(await getDummyHash(), plaintext + env.PAT_PEPPER);
     } catch {}
@@ -156,7 +131,6 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     } catch {
       ok = false;
     }
-    // cm:guard do NOT short-circuit on the first match — a non-matching token must cost the same work as a matching one, or the loop's exit point measures which prefix exists.
     if (ok && matched === null) matched = { row: row.pat, ownerKind: row.ownerKind };
   }
 
@@ -229,16 +203,6 @@ export interface RotatePatInput {
   expiresAt?: Date | null;
 }
 
-/**
- * Rotate a PAT — mint a fresh plaintext, revoke the old row immediately.
- * Returns null if the (id, userId) pair does not match. The new row
- * carries over `name`/`scopes`/`projectIds`/`boundProjectId`/`rateLimitMax`
- * from the old — the project binding is a property of token identity, not
- * the secret, so it survives rotation.
- *
- * The rename/revoke + insert run in a single transaction so a failed mint
- * cannot leave the user with a revoked old PAT and no replacement.
- */
 export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null> {
   const [existing] = await db
     .select()
@@ -249,7 +213,6 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
     .limit(1);
   if (!existing) return null;
 
-  // cm:why hashed OUTSIDE the transaction because argon2id at these parameters costs ~100ms, and holding a row-level lock on the token being rotated for that long serializes every concurrent rotation behind it.
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
   const tokenHash = await hashPatPlaintext(plaintext);
@@ -270,10 +233,8 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
         tokenPrefix,
         scopes: existing.scopes,
         projectIds: existing.projectIds,
-        // cm:guard carried over, and the direction of the mistake is what makes this load-bearing: dropping it turns a token narrowed to one group back into the whole menu, silently, because absence IS the full menu (ISS-973). A rotation is a new secret for the same grant, never a re-grant.
         permissions: existing.permissions,
         boundProjectId: existing.boundProjectId,
-        // cm:guard carried over for the same reason the project binding is: `device_id` is part of the token's IDENTITY, not of its secret. Dropping it on rotate silently demotes a paired box's credential to an ordinary PAT, and the box then 401s on every `requireDevice` route with nothing in the rotate path to say why.
         deviceId: existing.deviceId,
         expiresAt: input.expiresAt ?? existing.expiresAt,
         rateLimitMax: existing.rateLimitMax,
@@ -286,7 +247,6 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
 }
 
 /** Count active PATs for a user. Used for the per-user cap. */
-// cm:why machine-minted tokens are created under the same user and MUST NOT count: a fleet running ten jobs and a box running scheduled sessions would otherwise eat the cap, and the user could no longer create a token of their own, with an error naming a limit they never approached. Reads the whole family (`job:`, `session:`), never one member — see `auth/pat-format.ts`.
 export async function countActivePatsForUser(userId: string): Promise<number> {
   const rows = await db
     .select({ id: personalAccessTokens.id })
@@ -295,7 +255,6 @@ export async function countActivePatsForUser(userId: string): Promise<number> {
       and(
         eq(personalAccessTokens.userId, userId),
         isNull(personalAccessTokens.revokedAt),
-        // cm:guard the cap counts tokens a PERSON hand-made, and a machine's is excluded by being BOUND TO A BOX rather than by being named like one (ISS-932 wave 4). An operator pairing five machines would otherwise spend five of `PAT_MAX_PER_USER` on tokens they never minted; keying that off the name let a hand-made `device:` token buy the same exemption.
         isNull(personalAccessTokens.deviceId),
       ),
     );

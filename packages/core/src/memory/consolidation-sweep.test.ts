@@ -1,19 +1,3 @@
-/**
- * ISS-1021 criterion 29 — `runConsolidationSweep` discovers its projects from `projects`.
- *
- * Its own file rather than a block in `consolidation.test.ts`, which is already over its frozen
- * size budget, and because the assertion needs a db stub that RECORDS its builder arguments while
- * that file's stub deliberately swallows them.
- *
- * `runConsolidationSweep` had no test at all — it appears exactly twice in the tree, at its
- * definition and at its queue call site — so the DISTINCT scan over `memories` it replaced could
- * have come back and nothing would have said so. Found while re-judging the criteria on
- * 2026-09-18.
- *
- * What the criterion is about is WHICH TABLE the sweep reads, so the assertion reads the table off
- * the drizzle object the builder was handed, not off this file's imports.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** Every builder call the sweep made, in order — method name and its argument. */
@@ -38,9 +22,6 @@ vi.mock('../db/client.js', () => {
   return { db: { select: () => chain(), selectDistinct: () => chain() } };
 });
 
-// cm:edge contract -> packages/core/src/memory/consolidation.test.ts — these five stubs exist only
-// because `consolidation.ts` validates its environment and opens its queue at import time; that
-// file owns the behaviour each of them stands in for.
 vi.mock('../config/env.js', () => ({
   env: { OPENAI_API_KEY: 'test-key', NODE_ENV: 'test' },
 }));

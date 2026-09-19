@@ -42,7 +42,6 @@ describe('dropped status E2E', () => {
     projectId = (await createTestProject(harness.db, owner.id)).id;
   });
 
-  // cm:edge contract -> packages/core/src/issues/release-record-required.ts — the release note is this fixture's precondition, not scenery: the close below is a DEVICE close and one with no note is refused, so without it this file would fail at the close instead of at the `merged_at` assertion it is about
   async function insertIssue(seq: number, status: string): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
@@ -62,7 +61,6 @@ describe('dropped status E2E', () => {
     return rows[0]?.merged_at ?? null;
   }
 
-  // cm:guard the CHECK is the defence-in-depth mirror of the TS enum — without it a typo'd status reaches the column and every consumer that switches on status silently takes its default branch
   it('accepts dropped and still refuses a status nobody defined', async () => {
     const id = await insertIssue(1, 'dropped');
     expect(await mergedAt(id)).toBeNull();
@@ -76,7 +74,6 @@ describe('dropped status E2E', () => {
     const closed = await insertIssue(4, 'open');
     const actor = { id: ownerId, ownerId } as const;
 
-    // cm:why raw SQL returns snake_case; applyStatusTransition reads the drizzle row shape
     const load = async (id: string) => {
       const rows = await harness.db.execute(sql`
         SELECT id, project_id AS "projectId", status, reopen_count AS "reopenCount"

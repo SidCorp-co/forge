@@ -3,7 +3,16 @@
 // Project settings → Basics. Name + description, persisted via PATCH
 // /api/projects/:id. Mirrors the account-tab dirty/save pattern.
 import { useEffect, useState } from "react";
-import { Button, Card, CardContent, Field, Input, MonoTag, Textarea } from "@/design";
+import {
+  Button,
+  Card,
+  CardContent,
+  Field,
+  Input,
+  MonoTag,
+  SectionTitle,
+  Textarea,
+} from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import { useUpdateProject } from "../hooks";
 
@@ -33,7 +42,7 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-4">Basics</h2>
+        <SectionTitle className="fg-h3 mb-4">Basics</SectionTitle>
         <div className="space-y-4">
           <Field label="Slug" hint="The project's URL identifier (read-only).">
             <MonoTag>{project.slug}</MonoTag>

@@ -65,7 +65,6 @@ describe('phase_journal E2E', () => {
     `);
   }
 
-  // cm:why drizzle wraps the driver error, so the constraint name is on the cause, not the message — asserting the name rather than regex-matching prose is what makes this fail if a DIFFERENT constraint starts rejecting the row
   async function violatedConstraint(p: Promise<unknown>): Promise<string | undefined> {
     try {
       await p;
@@ -76,7 +75,6 @@ describe('phase_journal E2E', () => {
     }
   }
 
-  // cm:guard HISTORY protection: rows from before 2026-09-02 carry the reviewer's decision under `source: 'runner'`, and an accepted overwrite keeps that source so the driver's prose reads as the reviewer's (getcontent 2026-08-21: 9 of 10 closed issues lost a real verdict this way). Nothing writes such rows now; this keeps the ones that exist honest.
   it('refuses to let an agent note overwrite a historical verdict row', async () => {
     const { endPhase } = await import('../../src/pipeline/phase-journal.js');
     await insertPhase('review', 'runner', {
@@ -105,7 +103,6 @@ describe('phase_journal E2E', () => {
     expect(rows[0]?.ended_at).toBeNull();
   });
 
-  // cm:guard this is the removal's own witness, not an aspiration: the CHECK that refused this insert is gone with migration 0194, and a test that still asserted the refusal would be the stale claim the changelog warns about. If this ever fails, the constraint came back — decide that on purpose.
   it('no longer refuses a verdict-shaped row from an agent — the CHECK is gone', async () => {
     await insertPhase('review', 'agent', { kind: 'verdict', decision: 'approve' });
     const rows = await harness.db.execute(
@@ -159,9 +156,6 @@ describe('phase_journal E2E', () => {
    * operator could read what a run was stuck on and never what it had done.
    */
   describe('listPhases', () => {
-    // cm:guard the rows are inserted OUT of order on purpose. Ordering by `id` would pass against
-    // rows inserted in order and is wrong on every real journal, because `id` is a random uuid: a
-    // case that seeds chronologically cannot tell the two apart.
     it('answers oldest first, whatever order the rows were written in', async () => {
       const { listPhases } = await import('../../src/pipeline/phase-journal.js');
       await insertPhase('ship', 'agent', null, 1, '2026-09-03T00:00:00Z');
@@ -173,9 +167,6 @@ describe('phase_journal E2E', () => {
       expect(rows.map((r) => r.phase)).toEqual(['plan', 'code', 'ship']);
     });
 
-    // cm:guard the tie-break is `attempt` and it is the whole reason a second sort key exists: a
-    // phase re-entered inside the same millisecond is exactly the retry a reader is looking for,
-    // and with no tie-break the two come back in whatever order the planner chose.
     it('orders two attempts of one phase written at the same instant by attempt', async () => {
       const { listPhases } = await import('../../src/pipeline/phase-journal.js');
       await insertPhase('code', 'agent', null, 2, '2026-09-01T00:00:00Z');
@@ -186,8 +177,6 @@ describe('phase_journal E2E', () => {
       expect(rows.map((r) => r.attempt)).toEqual([1, 2]);
     });
 
-    // cm:guard scoped to the run. A listing that leaked another run's phases would put one issue's
-    // history into another's timeline, which is worse than no listing at all.
     it('answers only this run’s phases', async () => {
       const { listPhases } = await import('../../src/pipeline/phase-journal.js');
       const otherRun = randomUUID();

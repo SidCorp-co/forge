@@ -132,15 +132,9 @@ describe('what a dead run left, written onto its issues', () => {
     const text = body as string;
     expect(text).toContain('### Reconstructed from the box');
     expect(text).toContain('### What the run said about itself');
-    // cm:guard the two headings must appear in this order and both must be present. A body with one
-    // heading is the two records merged, and a master reading it cannot tell which half it has.
     expect(text.indexOf('### Reconstructed from the box')).toBeLessThan(
       text.indexOf('### What the run said about itself'),
     );
-    // cm:guard each block is sliced and checked for what must NOT be in it, not only for what must.
-    // An earlier version of this test asserted only that both strings appeared somewhere in the
-    // body, and a planted counterexample that copied the box's branch INTO the run's own words
-    // passed it — the one failure this whole design exists to prevent, invisible to its own test.
     const at = text.indexOf('### What the run said about itself');
     const boxBlock = text.slice(text.indexOf('### Reconstructed from the box'), at);
     const runBlock = text.slice(at);
@@ -160,9 +154,6 @@ describe('what a dead run left, written onto its issues', () => {
     ).toBe(false);
   });
 
-  // cm:guard an empty testimony block is the HONEST answer and must stay visibly empty. Filling it
-  // from the box would be core inventing a statement nobody made, under a heading that says the run
-  // made it (ISS-1050 criterion 25).
   it('says the run wrote nothing rather than filling the block from the box', async () => {
     const { device, issueIds, session } = await aRunOver([9], null);
 
@@ -182,10 +173,6 @@ describe('what a dead run left, written onto its issues', () => {
     ).not.toContain('ISS-9-feature');
   });
 
-  // cm:guard the run own words are arbitrary text it wrote, so a fixed three-backtick fence is
-  // breakable by the content: a `next` that itself contains a fenced block would close this one
-  // early and the rest would render beside the box findings, which is the two blocks merging by
-  // accident rather than by design.
   it('cannot be broken out of by a run that wrote a fenced block into its lease', async () => {
     const said = 'I tried:\n```sh\ngit push --force\n```\nand it was refused';
     const { device, issueIds, session } = await aRunOver([9], said);
@@ -208,11 +195,6 @@ describe('what a dead run left, written onto its issues', () => {
     ).toBeGreaterThan(3);
   });
 
-  // cm:guard whitespace is NOT nothing, which is ISS-1050 finding F5. Criterion 24 says the run's own
-  // text appears byte for byte and nowhere else, and `next.trim() === ''` answered for a run that
-  // wrote spaces with this module's sentence instead — a substitution on the one surface built to
-  // keep what the box read apart from what the run said. Only a lease with no text at all earns the
-  // empty block.
   it('prints whitespace the run wrote rather than calling it nothing written', async () => {
     const said = '   \n\t ';
     const { device, issueIds, session } = await aRunOver([9], said);
@@ -257,9 +239,6 @@ describe('what a dead run left, written onto its issues', () => {
     ).toHaveLength(1);
   });
 
-  // cm:guard this is the case the evidence exists for. A run whose box died is reaped by
-  // `reapDeadRunSessions` after ten minutes; the box comes back and reports what it left. Refusing
-  // because the session is terminal drops the evidence in exactly that situation.
   it('accepts the evidence for a session core has already reaped', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'died mid-rebase');
     await harness.db.execute(
@@ -291,8 +270,6 @@ describe('what a dead run left, written onto its issues', () => {
     }
   });
 
-  // cm:guard an undeclared payload is refused by NAME rather than labelled by this end. Printing it
-  // under "reconstructed from the box" would be core vouching for something it did not read.
   it('refuses a checkpoint that does not declare what it is', async () => {
     const { device, session } = await aRunOver([9], 'x');
 
@@ -348,9 +325,6 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     }
   });
 
-  // cm:guard the retry says nothing the second time. The box re-attempts the release every thirty
-  // seconds and re-reports on each sweep; keying the no-op on the session alone would be enough for
-  // THIS assertion, which is why the next test exists.
   it('says the same hold once however many sweeps report it', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
 
@@ -367,8 +341,6 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(await bodiesOn(first)).toHaveLength(1);
   });
 
-  // cm:guard a run that commits again while held has changed WHAT is at risk, and that is a second
-  // thing to say. This is the assertion that a session-only idempotency key would fail.
   it('says it again when the head the box is holding has moved', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
 
@@ -390,9 +362,6 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(bodies[1]).toContain('commits on no remote: 4');
   });
 
-  // cm:guard the report decides nothing and asks for nothing. A box refusing to release a checkout
-  // is already the strongest act available to it; a status move, or prose that reads as a request
-  // for one, would be the kernel deciding what happens to work whose owner it cannot ask.
   it('moves the issue nowhere and says plainly that the box keeps trying', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
 
@@ -413,9 +382,6 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(body).toContain('releases the checkout with no action from anybody');
   });
 
-  // cm:guard a box that could not count says so, rather than printing a zero it did not measure. A
-  // `0` here reads as "nothing is at risk", which is the opposite of what an unreachable remote
-  // established.
   it('prints not-counted rather than a zero the box never measured', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
 
@@ -437,8 +403,6 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(body).toContain('branch: _not read_');
   });
 
-  // cm:guard the same status-blindness `writeRunEvidence` has, for the same reason: the report
-  // exists for the run whose box died, and core reaps that session after ten minutes.
   it('accepts a hold reported for a session core has already reaped', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
     await harness.db.execute(

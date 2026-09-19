@@ -31,10 +31,8 @@ export function DescriptionCard({ issue, attachments, canWrite }: DescriptionCar
   const [draft, setDraft] = useState<string | null>(null);
   const save = useSaveDescription(issue.id);
   const editing = draft !== null;
-  // cm:guard only the way IN is locked. A draft already open keeps its Save, because a drive job that starts mid-edit would otherwise discard text the person has already typed — a worse loss than the overwrite this lock exists to stop, and one they cannot recover (ISS-1010).
   const held = heldByAgent(issue.status, issue.agentStatus);
 
-  // cm:guard the artifact resolves against the ISSUE's attachments here, in the feature, and never inside `<BodyView>` — the design layer holds no API client (arch `web-design-holds-no-api-client`), and a `forge-artifact` whose id is not in this list must fall through to the generic block rather than draw a broken link.
   const renderArtifact = (id: string) => {
     const row = attachments.find((a) => a.id === id);
     return row ? <AttachmentList rows={[row]} /> : null;

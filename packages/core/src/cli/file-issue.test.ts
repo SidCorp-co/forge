@@ -146,7 +146,6 @@ describe('the near-duplicate check', () => {
     expect(out.filed === false && out.refusal).toContain(CLI_DEDUP_OVERRIDE);
   });
 
-  // cm:guard the two halves of one case: the SAME match, refused and then filed. Asserting only the wording leaves a refusal advertising a way out nobody built, which is what this pair exists to catch.
   it('files the same match when the caller sends that flag, so the way out is real', async () => {
     reset();
     duplicate.mockResolvedValue({ id: 'x', issSeq: 42, title: 'The door refuses a body' });

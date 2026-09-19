@@ -35,7 +35,6 @@ vi.mock('../db/client.js', () => ({
         where: () => ({
           limit: async () => [{ id: 'iss-1', projectId: 'proj-1' }],
         }),
-        // cm:guard the stage read `insertComment` does (ISS-969) — the issue's status joined to the project's stored policy. Without this link the create path resolves at `where().limit()` and every case here fails on a row that is not the one it asked for.
         innerJoin: () => ({
           where: () => ({
             limit: async () => [{ stage: 'open', agentConfig: null }],
@@ -60,7 +59,6 @@ vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 const { registerIssueCommentRoutes } = await import('./routes.js');
 
 /** The three credentials a comment door really meets, as the middleware sets them. */
-// cm:guard model the CREDENTIAL and not the field: a harness that set `agency` with no `principal` tag could not tell a signed-in person from an unestablished token, which is the very distinction `restEstablishedAgency` reads the tag to make (ISS-1003).
 type Credential = 'session' | 'agent-token' | 'person-token';
 
 const CREDENTIALS: Record<Credential, { principal: string; agency: ActorAgency | null }> = {
@@ -112,7 +110,6 @@ describe('comment create — authorship follows the token', () => {
       const { values } = await post(credential);
 
       expect(values?.authorId).toBe('u1');
-      // cm:guard the KEY SET, not just the absence of `isAi` — the defect this replaces was a column the writer filled in about itself, and a differently-named one (`writtenByBot`) would be the same defect. A new column here is a deliberate change to what a comment asserts, so it must break this list first.
       expect(Object.keys(values ?? {}).sort()).toEqual([...WRITTEN_COLUMNS].sort());
     },
   );
@@ -122,12 +119,10 @@ describe('comment create — authorship follows the token', () => {
     expect((await post('session')).values?.authorAgency).toBe('human');
   });
 
-  // cm:guard a person's token stores NULL and claims NOTHING, and this is the case ISS-1003 flipped: it asserted `human` before, which was wrong for the majority of agents, since most run on a borrowed personal token. The column is nullable, so no value has to be invented — and `restActor(c).agency` would resolve the same request to `agent` for the GATES, which is the other half of the split and must not leak into the stored claim. Plant `restActor(c).agency` back into the door and this goes red.
   it('claims nothing about a person-owned token, which establishes nobody', async () => {
     expect((await post('person-token')).values?.authorAgency).toBeNull();
   });
 
-  // cm:guard THE `is_ai` line. That column was a request field a client filled in about itself; this one must be unreachable from the body, or ISS-969 has re-created the defect it was careful to describe as the opposite of.
   it('ignores an `authorAgency` a client puts in the request body', async () => {
     insertValues.mockClear();
     const res = await appWith('session').request('/1f0a4c8e-3b7d-4a2e-9c51-6d8e2f4a7b30/comments', {

@@ -11,8 +11,6 @@ use super::CoreClient;
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 
-/// The one relation kind any dispatch decision reads.
-// cm:guard CROSS-REPO and CROSS-LANGUAGE, so no `cm:edge` can hold it: core's own copy is `DISPATCH_GATING_KIND` in `packages/core/src/issues/dependency-effects.ts`, and the master's is `gatesDispatch` in forge-plugin's `src/flow/earned.mjs`. All three must name the same string. `RELATIONS` sends every kind on purpose — the master is shown the whole relation set — so a reader that forgets this filter treats a grouping label as an ordering (ISS-1100).
 pub const DISPATCH_GATING_KIND: &str = "blocks";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -21,7 +19,6 @@ pub struct Relation {
     pub kind: String,
     #[serde(default)]
     pub depends_on_key: Option<String>,
-    // cm:guard these three stay RAW and are never folded into a boolean on the way through. The master decides what a blocker means; a `dropped` blocker and one that merged then went `reopen` need different answers, and both collapse to the same `false`.
     #[serde(default)]
     pub blocker_status: Option<String>,
     #[serde(default)]
@@ -30,7 +27,6 @@ pub struct Relation {
     pub edge_valid_until: Option<String>,
 }
 
-// cm:guard there is no `job_id` on this type and there must never be one — an admissible issue is a candidate for a wave, not a row anything on this box can claim. A field that made it look claimable would be inviting back the verb this runner deleted.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdmissibleIssue {
@@ -55,15 +51,12 @@ pub struct AdmissibleIssue {
     pub relations: Vec<Relation>,
 }
 
-// cm:guard `items` carries `#[serde(default)]` so a core that predates this route (or a project with no `poolBacklog`) decodes to an empty vec rather than a parse error. Same rule as every field above: a runner must survive talking to a core older OR newer than itself.
 #[derive(Debug, Deserialize)]
 struct AdmissibleResponse {
     #[serde(default)]
     items: Vec<AdmissibleIssue>,
 }
 
-/// The issues this box's master may open a wave over.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `GET /me/issues/admissible`, whose only input is `pipelineConfig.poolBacklog.statuses`. It is that config key's one remaining reader.
 pub async fn admissible(
     client: &CoreClient,
     project_id: Option<&str>,
@@ -112,7 +105,6 @@ mod tests {
         assert!(rel.blocker_merged_at.is_none());
     }
 
-    // cm:guard core may add fields at any time and a runner that predates them must still parse. Deserialisation here is permissive on purpose; making it strict turns a core deploy into a fleet-wide parse failure.
     #[test]
     fn an_issue_with_unknown_fields_still_parses() {
         let raw = serde_json::json!({
@@ -124,7 +116,6 @@ mod tests {
         assert_eq!(issue.issue_key.as_deref(), Some("ISS-1"));
     }
 
-    // cm:guard an absent `items` is an EMPTY wave, never a decode failure: this is the newer of the two routes the daemon ever had, and a box talking to an older core must go quiet on that project rather than on every project at once.
     #[test]
     fn a_response_with_no_items_reads_as_no_work() {
         let parsed: AdmissibleResponse = serde_json::from_value(serde_json::json!({})).unwrap();

@@ -23,7 +23,6 @@ export interface RunsPaneProps {
 /**
  * How many pipeline runs on this project are open with nothing working on them.
  */
-// cm:guard this renders ABOVE the ledger and OUTSIDE its first-run-empty branch, which is not a layout choice: an orphaned pipeline run is one whose box is long gone, so it has no ledger row at all and the ledger's "No runs on this project" screen is exactly the state it shows up in. Put inside that branch the count would be invisible in the only case it was built for (ISS-998).
 function StalledBand({ projectId, now }: { projectId: string; now: number }) {
   const runsQ = useProjectRuns(projectId);
   const loading = runsQ.isLoading;
@@ -38,7 +37,6 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
     return <Skeleton variant="rect" className="h-8 w-full max-w-md" aria-busy="true" />;
   }
 
-  // cm:guard a failed read says so and offers the retry rather than rendering "0 runs": a zero a reader cannot tell from an unanswered question is the reassurance this band exists to stop giving.
   if (failed) {
     return (
       <p className="fg-caption text-muted">
@@ -72,7 +70,6 @@ export function RunsPane({ scope }: RunsPaneProps) {
   const { data, isLoading, isError, error, refetch } = useRunSessions(scope.projectId);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<StateFilter>("all");
-  // cm:guard ONE instant for the whole pane, ticking on its own: two rows grading the same heartbeat against two `Date.now()` calls can straddle a threshold and disagree, and a clock read once at mount freezes the silence count on an open screen (ISS-998).
   const now = useNow(10_000);
 
   const all = data?.items ?? [];
@@ -93,7 +90,6 @@ export function RunsPane({ scope }: RunsPaneProps) {
           <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
         </div>
       ) : all.length === 0 ? (
-        // cm:guard the first-run empty and the empty-SEARCH are different screens, and this is the branch that keeps them apart: a box that is simply idle needs telling that runs will appear here, and a reader whose filter matched nothing needs the filter cleared. One shared "nothing here" sends the second reader looking for a fault that is not there. The rule: first-run empty and empty-search are two states, and a searchable surface owes both.
         <div className="grid min-h-[40vh] place-items-center">
           <EmptyState
             title="No runs on this project"

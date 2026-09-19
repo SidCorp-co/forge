@@ -47,7 +47,7 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
               </TD>
               <TD>
                 <span className="flex items-center gap-1.5">
-                  <span className="truncate font-mono text-[13.5px] font-semibold text-fg">{p.name}</span>
+                  <span className="truncate font-mono text-13-5 font-semibold text-fg">{p.name}</span>
                   <button
                     type="button"
                     aria-label={p.pinned ? 'Unpin project' : 'Pin project'}
@@ -80,7 +80,7 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
               <TD>
                 <Stat icon="server">{p.runnerCount}</Stat>
               </TD>
-              <TD className="text-right font-mono text-[12px] text-subtle">
+              <TD className="text-right font-mono text-12 text-subtle">
                 {formatSpend(p.spend24hUsd)}
                 <span className="ml-1.5 text-disabled">{formatRelativeTime(p.lastActivityAt, now)}</span>
               </TD>

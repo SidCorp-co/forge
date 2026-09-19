@@ -19,7 +19,7 @@ stdout is parsed — every genuine violation `archmap check` reports becomes `co
 `archmap` exits non-zero precisely when it has findings to print. That is a gate going quiet in the
 one direction a gate must never go quiet, and it is a two-line reordering away at all times.
 
-Nothing committed holds that ordering down. The proof that exists is a `cm:guard` above the
+Nothing committed holds that ordering down. The proof that exists is a invariant above the
 function stating the intent in prose, and stubs its author ran by hand and described in the commit
 message (a `kill -9` self-killer, an exit-3 stub, and the real binary). Both are records of a past
 run. Neither fails if someone reorders the two branches tomorrow, which is the repo's own bar:
@@ -59,7 +59,7 @@ Priced against the two shapes above, not against the false red that found this.
 |---|---|
 | The audit stops being a script that runs top to bottom. Whichever shape is chosen, `conformance-audit.mjs` gains an execution mode it does not have today — an `isMain` guard around 16 top-level statements, or a second file the rule's logic lives in. Every future reader of the gate pays the indirection. | whoever reads the audit next |
 | A third rewrite of a file already rewritten twice in one day, with the conflict cost that implies for anything open against it. `scripts/conformance-audit.mjs` conflicted once already on 2026-09-17, and a conflicting PR on this repo gets no CI runs at all. | whoever holds an open branch touching it |
-| The extraction shape splits a rule from its `cm:guard`s. The two guards that make this function comprehensible sit inline; moving the body to `scripts/lib/` either moves them away from the spawn they describe or duplicates them. | whoever maintains the guard text |
+| The extraction shape splits a rule from its invariants. The two guards that make this function comprehensible sit inline; moving the body to `scripts/lib/` either moves them away from the spawn they describe or duplicates them. | whoever maintains the guard text |
 | A test harness must fake the child process, so it proves the reading and not the tool. `archmap`'s real wordings stay verified by the regex comment alone, and a third phrasing would pass the new tests and still fail the gate. | whoever upgrades archmap |
 | Whatever makes the second spawn come back unreadable is not fixed by any of this, and a green test suite here may read as if it were. The tests would pin the READING of a child process; they say nothing about why a child that ran goes quiet. | whoever next sees R7 red inside a full `verify` |
 
@@ -89,7 +89,7 @@ cannot be made concurrency-safe from this repo, so anything else that learns to 
 that group. The amnesty ends when archmap is safe to run twice at once in one checkout.
 
 **What this leaves for the test.** The shortfall at the top of this document is untouched by any of
-it: the ordering — count parsed before exit status — is still held down by a `cm:guard` and nothing
+it: the ordering — count parsed before exit status — is still held down by a invariant and nothing
 that fails. The value of the test went UP rather than down, because the honest `could not run` path
 is now rare, and a reading bug in a path nobody exercises is a reading bug nobody finds. A harness
 here should still plant the child's behaviour rather than race a real `archmap`; racing it is now a

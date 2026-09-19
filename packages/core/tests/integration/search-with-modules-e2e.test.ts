@@ -145,7 +145,6 @@ describe('ISS-594 · search ?withModules', () => {
     return (await res.json()) as { items: Array<Record<string, unknown>>; total: number };
   };
 
-  // cm:guard `withModules` is the ONLY source for web-v2's module column (ISS-594) — the search response carries no labels otherwise, so a row missing the key renders an em dash for an issue that HAS a module, and nothing on either side reports the gap
   it('omits `modules` entirely unless the caller opts in', async () => {
     await seedTwoIssues();
     const body = (await search('')) as unknown as { items: Array<Record<string, unknown>> };

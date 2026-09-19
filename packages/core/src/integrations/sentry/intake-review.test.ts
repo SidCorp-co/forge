@@ -1,11 +1,3 @@
-/**
- * ISS-1085 slice 3 — the six findings the whole-set review of the landing head raised, each one
- * real, each one fixed, and each one with the assertion that would have caught it.
- *
- * Its own file because `intake.test.ts` reached the 500-line budget. These cases are separated by
- * what they are FOR rather than by what they touch: every one of them is a case my own tests did
- * not have until somebody else read the diff, which is worth keeping visible.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const executed: string[] = [];
@@ -45,9 +37,6 @@ const handle = {
 vi.mock('../../db/client.js', () => ({
   db: {
     ...handle,
-    // cm:why the transaction handle is the same object: what these assert is which statements the
-    // code issues, and postgres's own atomicity is not something a mock can answer for. That it
-    // issues BOTH writes through `db.transaction` is asserted directly in intake-review.test.ts.
     transaction: (fn: (tx: typeof handle) => Promise<unknown>) => {
       transactions.push(1);
       return fn(handle);
@@ -150,10 +139,6 @@ describe('F6 — the baseline sighting goes in WITH the filed row', () => {
     await runSentryPull({ projectId: PROJECT });
 
     const stmt = executed[0] ?? '';
-    // cm:guard the COLUMN LIST is asserted whole, not `toContain('metadata')`. A first attempt at
-    // this test passed against a statement whose column was renamed `metadata_unused`, because that
-    // string contains `metadata` too — the mocked db validates no column name, so a loose assertion
-    // here covers nothing at all.
     expect(stmt).toContain(
       'INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, detector_key, status, created_via, metadata)',
     );
@@ -179,9 +164,6 @@ describe('F6 — the baseline sighting goes in WITH the filed row', () => {
     expect(insertedComments).toEqual([]);
   });
 
-  // cm:guard the case the old code got wrong: metadata that has NEVER held a sighting. Before the
-  // baseline went into the insert this was every newly filed issue, and `previous === null` was read
-  // as growth, so the tick after filing always posted a note saying the error had got worse.
   it('posts NO comment where no sighting was ever recorded, rather than treating null as growth', async () => {
     bindingFound();
     creatorFound();
@@ -197,12 +179,6 @@ describe('F6 — the baseline sighting goes in WITH the filed row', () => {
 });
 
 describe('F2 — the two writes an observation makes, and the order between them', () => {
-  // cm:why the ordering test that stood here is gone rather than kept. It monkey-patched the two
-  // recording arrays to watch which write went first, and it is superseded: both writes are now
-  // inside ONE transaction, so their order no longer decides anything, and the assertion that
-  // matters is that the transaction exists. It is in 'F1 second round' below. Keeping a passing
-  // test whose subject the code no longer has is how a suite stops describing the code.
-
   it('OBSERVES the row that won a race instead of throwing the sighting away', async () => {
     bindingFound();
     creatorFound();
@@ -269,10 +245,6 @@ describe('F1 — the listing stops at a bound and SAYS it stopped', () => {
 });
 
 describe('F5 — a long record is KEPT, because the record is the point of the record', () => {
-  // cm:guard this used to assert a 16,000-character cap and a truncation notice. The review was
-  // right that announcing a deletion is not the same as not deleting: these lines are the only
-  // record an admission refusal ever gets, and `schedule_runs.output` is unbounded postgres `text`.
-  // The cap was the defect, not the safeguard, and this test is what stops one coming back.
   it('keeps every named refusal however long the list, rather than trimming the tail', async () => {
     bindingFound();
     creatorFound();
@@ -309,10 +281,6 @@ describe('F5 — a long record is KEPT, because the record is the point of the r
 // ── The SECOND whole-set read, at the head the first round's fixes made. Five more, all real. ────
 
 describe('F3 second round — an absent count must not erase an established baseline', () => {
-  // cm:guard this is the defect the FIRST round's fix created, which is why it is here rather than
-  // above: making null-is-not-growth true meant a null observation overwrote a real 17, and the 41
-  // that followed then looked like a first observation and passed in silence. A fix to a silence
-  // that introduces a different silence is the error this whole file exists to catch.
   it('carries the last known count forward when this sighting carries none', async () => {
     bindingFound();
     creatorFound();

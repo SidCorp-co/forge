@@ -1,17 +1,3 @@
-/**
- * ISS-1021 — a bounded notify-only pass must still reach every candidate.
- *
- * These passes write nothing on the rows they surface, so a row stays eligible after it has been
- * notified. That makes a plain `ORDER BY ... LIMIT n` a permanent blind spot rather than a
- * deferral: the same first page is read on every tick and candidate n+1 is never surfaced at all,
- * which is strictly worse than the unbounded scan it replaces. The cursor in
- * `src/pipeline/sweep-cursor.ts` is the other half of the bound.
- *
- * The property under test is liveness, and it is not visible in one call — it only appears across
- * consecutive passes over a candidate set larger than one page. That is why this is an integration
- * test with a real page of rows rather than a unit test with a stubbed query.
- */
-
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -109,9 +95,6 @@ describe('a bounded notify-only sweep reaches every candidate (ISS-1021)', () =>
     expect(res.detected).toBeLessThan(mods.STRANDED_SCAN_LIMIT + OVERFLOW);
   });
 
-  // cm:guard THE case F1 is about. Without the cursor this pass reads the same 200 rows forever
-  // and these last five are never surfaced at all — the count would read 200 on both passes and
-  // every assertion about detection would still look healthy.
   it('surfaces the rows past its bound on the very next pass', async () => {
     await mods.detectStrandedIssues();
     const afterFirst = new Set(await pageIds());

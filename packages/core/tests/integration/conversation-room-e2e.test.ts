@@ -149,7 +149,6 @@ describe('the reply column and the handle’s own ids', () => {
     expect(row).toMatchObject({ role: 'assistant', externalId: 'rc-bot-9' });
   });
 
-  // cm:guard the backfill is the migration's own statement, run against a row shaped like the ones written before ISS-1087: a proof with a messageId and a null external_id (criterion 12).
   it('backfills the id from the proof for rows written before the column carried it (criterion 12)', async () => {
     const c = await room();
     await store.appendMessages({

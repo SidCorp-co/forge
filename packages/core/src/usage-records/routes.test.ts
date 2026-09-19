@@ -171,8 +171,6 @@ describe('pricing.estimateCost', () => {
 // is not an error anyone sees: it is a row every cost figure omits. These cases
 // plant each spelling that would break that and assert what happens to it.
 describe('usage_records.sessionId is a uuid or null', () => {
-  // cm:guard the hex letters are the point: a digits-only uuid makes `toUpperCase()` a no-op, and
-  // the lowercasing case below then passes against a build that does no lowercasing at all.
   const LOWER = '44a4bcde-f444-4f4e-8dcb-a44444444444';
   const UPPER = LOWER.toUpperCase();
 
@@ -247,10 +245,6 @@ describe('usage_records.sessionId is a uuid or null', () => {
     expect(firstInserted().sessionId).toBeNull();
   });
 
-  // cm:guard the batch routes validate the whole array before inserting any of it, which is their
-  // existing contract for every other field. What this change owes is therefore not a new recovery
-  // mechanism but a refusal a client can act on in ONE round trip — so the answer has to name EVERY
-  // offending record, not stop at the first, and the corrected batch has to go in whole.
   it('names every offending record of a batch, stores none of it, and takes the corrected batch', async () => {
     const bad = await post('/api/usage-records/bulk', {
       records: [

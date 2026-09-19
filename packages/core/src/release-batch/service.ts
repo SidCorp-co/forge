@@ -53,8 +53,6 @@ import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
 
-// cm:why re-exported rather than moved-and-forgotten: `routes.ts`, `refusals.ts` and three test
-// suites import these from `service.js`, which is the module the release API is written against.
 export * from './errors.js';
 export { ReleaseBranchesUndeclaredError };
 export interface CreateReleaseBatchArgs {
@@ -69,8 +67,6 @@ export interface CreateReleaseBatchResult {
   issueIds: string[];
   gateStatus: IssueStatus;
   /** When this batch must have an owner, or it is cancelled and its roster handed back. */
-  // cm:guard the caller is TOLD this rather than left to infer it, and it is the whole of what core can honestly promise. ISS-1080 Rule 1 asks for "batch created => session exists or the creation refused", and the synchronous half is not buildable here: `ws/rooms.ts` publishes fire-and-forget with no buffer and no reply, so nothing inside this request can learn whether a box took the work. What is promised instead is bounded, and a deadline the caller cannot see is a promise only the code knows it made.
-  // cm:edge lockstep -> packages/core/src/release-batch/unstarted-recovery.ts — one constant decides both, deliberately: a deadline reported here and enforced from a second number is a caller told one thing while the sweeper does another.
   ownerDeadlineAt: string;
 }
 
@@ -96,23 +92,17 @@ export async function createReleaseBatch(
   );
   if (notClaimable.length > 0) throw new ClaimConflictError(notClaimable.map((r) => r.id));
 
-  // cm:guard refuse at the CLAIM, not at the close. `finish` closes with `viaReleasePath`, which the release-record refusal exempts, so this preflight IS that exemption's justification — ISS-863's own evidence row is a batch that closed two issues whose releaseNotes was null. Refusing here strands nothing: nothing has moved yet, no run is open and no issue is claimed.
-  // cm:edge lockstep -> packages/core/src/issues/release-record-required.ts — one rule, two doors. That module exempts `viaReleasePath` BECAUSE of this line; delete it and the batch path silently closes unrecorded issues again.
   const unrecorded = await issuesMissingReleaseRecord(issueIds);
   if (unrecorded.length > 0) throw new ReleaseRecordMissingError(unrecorded);
 
   const plan = await resolveReleasePlan(projectId);
-  // cm:guard a gated project MUST name its release runner, and an undeclared label refuses here rather than widening to the fleet. The pool exists because one box holds the production credential; `allowDeviceIds: null` means "anyone", and a release that lands on a box without that credential fails halfway through with the merge already pushed. Measured 2026-09-03: 0 of 20 active prod bindings carried `releaseRunnerLabel`, so this refusal is what makes the operator declare one instead of discovering the gap mid-deploy.
   if (!plan.releaseRunnerLabel) throw new ReleaseRunnerUndeclaredError();
-  // cm:edge lockstep -> packages/core/src/release-batch/service.ts finishReleaseBatch — the same refusal stands at the close, and deleting either half puts back the path where a project with no probes closes its roster on a sentence an agent wrote.
-  // cm:guard EVERY channel owes probes, not just the first: `resolveReleaseChannels` returns the whole live set (ISS-1046) and the agent works all of it, so a set where one member declares none is a release one of whose endpoints nothing can prove.
   if (plan.channels.some((c) => !c.verify)) throw new ReleaseProbesUndeclaredError();
   const allowDeviceIds = await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel);
   if (allowDeviceIds.length === 0) {
     throw new ReleasePoolEmptyError(plan.releaseRunnerLabel);
   }
 
-  // cm:guard this asks LIVENESS, never routing — it must stay a count, because the box that ends up running the batch is whichever master claims it, and a preflight that named a device here would be predicting a decision core no longer makes. `allowDeviceIds` still narrows it: the question is "is anyone in the release pool alive", not "who".
   const releasePool = await onlineCapableDeviceIds(projectId, {}, { allowDeviceIds });
   if (releasePool.length === 0) throw new NoRunnerOnlineError();
 
@@ -123,13 +113,8 @@ export async function createReleaseBatch(
     releaseStrategy: null,
   };
   const { baseBranch, liveBranch, promotePlanned } = releaseBranches(project, project.releaseModel);
-  // cm:guard `deployPlanned` names the CHANNEL, not the branches. It used to mean "the branches differ", which reported a planned deploy to every project that promotes across branches and deploys nothing — and a planned deploy that cannot happen is the kind of claim this whole gate exists to remove.
   const deployPlanned = plan.channels.length > 0;
 
-  // cm:guard read the live commit BEFORE anything moves. Without this baseline a release that deployed nothing verifies perfectly: the probes answer, the commit matches what the agent reports, and what it reports is what was already serving.
-  // cm:guard the set is refused above 1 rather than collapsed to its first member. The commit-before
-  // is one string on the run and `finish` closes the whole roster on one reading, so `channels[0]`
-  // would verify one endpoint and claim two. A loud break beats a silent substitution.
   if (plan.channels.length > 1) throw new ReleaseMultiChannelUnsupportedError(plan.channels.length);
   const firstVerify = plan.channels[0]?.verify ?? null;
   const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
@@ -147,7 +132,6 @@ export async function createReleaseBatch(
     },
   });
 
-  // cm:edge protocol -> packages/core/src/release-batch/routes.ts — this CAS UPDATE is the sole claim authority; issues.metadata is never used as a lock (see schema.ts guard)
   const claimed = await db.execute<{ id: string }>(sql`
     UPDATE issues
     SET release_batch_run_id = ${run.id}, updated_at = now()
@@ -166,8 +150,6 @@ export async function createReleaseBatch(
     throw new ClaimConflictError(issueIds.filter((id) => !claimed.some((r) => r.id === id)));
   }
 
-  // cm:guard the status moves with the CLAIM, so "a release is running over this issue" is readable from `status` and not only from a column join. Before this the issue stood at the gate status for the whole batch and `releasing` did not exist, so one status meant both "waiting to be pressed" and "being released now" — 16 batch runs, 4 failed and 2 cancelled, are the cases where those diverge.
-  // cm:guard `viaReleasePath` is required here for the same reason `finish` needs it: `release-gate-hold.ts` rewrites any other actor's move off the gate status back to it, so a claim without it would be undone by the hold on the next read.
   for (const id of claimed.map((r) => r.id)) {
     try {
       await transitionIssueStatus(
@@ -212,7 +194,6 @@ export async function createReleaseBatch(
       pipelineRunId: run.id,
       createdBy: userId,
       type: 'release_batch',
-      // cm:edge lockstep -> packages/core/src/release-batch/prompt.ts — the prompt emits the invocation line off this SAME constant. A literal here is how the job comes to name one skill while the prompt asks for another, which is the state ISS-1042 found: the column said `release-flow` and nothing in the prompt, the runner or the plugin ever read it.
       skillName: RELEASE_BATCH_SKILL,
       promptString,
       payloadExtras: {
@@ -225,7 +206,6 @@ export async function createReleaseBatch(
     jobId = result.jobId;
   } catch (err) {
     if (err instanceof ActiveJobConflictError) {
-      // cm:guard the claims were taken AND every issue was already moved to `releasing` above, so a bare clear here leaves the whole roster mid-release under a run that never got a job — recover them before the run closes, while the claim column can still find them.
       await recoverStrandedReleasing(run.id, {
         reason: 'another batch was already in flight, so this one never started',
         actorUserId: userId,
@@ -270,17 +250,6 @@ export async function finishReleaseBatch(
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
 
-  // cm:guard read BEFORE the probes, which the retry guard below needs, and the roster this read
-  // carries is safe to close from even though `verifyDeployed` may wait tens of seconds on it. The
-  // close is `transitionIssueStatus`, whose UPDATE is conditional on the snapshot's own
-  // `fromStatus` (`apply-transition.ts:executeTransitionWrite`), so an issue a concurrent
-  // `abortReleaseBatch` moved to `reopen` in that window matches no row and raises
-  // `STALE_TRANSITION` into `failed[]` — it is never closed out from under the abort.
-  // `recoverStrandedReleasing` then skips it, because it acts only on issues still at `releasing`,
-  // and `closeRunIfOneShot` matches only `running|paused`, so the abort's `cancelled` stands. The
-  // race therefore moves no state either way; what it changes is that finish now NAMES the
-  // concurrency in `failed[]` instead of returning an empty result, which is the account the abort
-  // guard below wanted when batch ee39c4ae closed 0 of 12 in silence.
   const claimed = await db
     .select({
       id: issues.id,
@@ -291,38 +260,11 @@ export async function finishReleaseBatch(
     .from(issues)
     .where(eq(issues.releaseBatchRunId, runId));
 
-  // cm:guard BOTH halves, and neither alone. A finish this function already ran is a run at
-  // `completed` WITH no claim left on it — `recoverStrandedReleasing` clears
-  // `release_batch_run_id` for the whole run — and it must answer without probing again: the probes
-  // read the world now, not then, so a release verified an hour ago fails its second read the
-  // moment the site restarts, sits behind a cache, or moves past the window in which it still
-  // serves that commit, and the caller is handed `RELEASE_NOT_VERIFIED` about a release that
-  // demonstrably landed. That is the same false account of a succeeded batch that ISS-1032 exists
-  // to remove. On the status alone this would swallow a finish it never ran: `reapConcludedRuns`
-  // closes a `running` run `completed` once its last job is `done` and an hour has passed, so a
-  // batch whose release job ended without anyone calling `finish` reaches exactly that status with
-  // every issue still claimed at `releasing` — and an empty success there would strand the whole
-  // roster with nothing left to find it by. On the claim set alone it would skip the close that is
-  // this issue's entire fix. `completed` and never "terminal": a `cancelled` run is an ABORTED
-  // batch, and a silent empty success on one would make the two verbs report the same thing.
   if (run?.status === 'completed' && claimed.length === 0) return { closed: [], failed: [] };
 
-  // cm:guard a `cancelled` run is an ABORTED batch and the refusal has to say so. It cannot share
-  // the empty success above — that answer means "this finish already ran" — and it must not fall
-  // through to the probes, which would answer RELEASE_NOT_VERIFIED about a release nobody is
-  // attempting any more. The abort already returned the roster and released the claims; what is
-  // left to tell the caller is that its own abort stands.
   if (run?.status === 'cancelled') throw new ReleaseBatchAbortedError();
 
   if (run) {
-    // cm:guard the expected skill is read off the RUN'S OWN JOB and never off `RELEASE_BATCH_SKILL`
-    // directly: a run cut before the constant last moved is still working from the skill its job
-    // named, and comparing it to today's constant would refuse a release for having been dispatched
-    // last week. The job is the record of what this run was asked to run.
-    // cm:edge lockstep -> packages/core/src/release-batch/method.ts — `assertMethodFor` is the
-    // predicate and this is its one caller. An announcement whose `loaded` is false passes on
-    // purpose; the guard there prices that amnesty.
-    // cm:why `skillName` is a key of `jobs.payload` and not a column of `jobs` — `insertAndEnqueueJob` writes it into the payload jsonb beside `promptString`, and `feedback_reports.skill_name` is a different field about a different thing.
     const [job] = await db
       .select({ payload: jobs.payload })
       .from(jobs)
@@ -336,7 +278,6 @@ export async function finishReleaseBatch(
     );
 
     const channels = await resolveReleaseChannels(run.projectId);
-    // cm:guard `if (channel.verify)` used to wrap the whole block, so a project declaring no probes fell straight through to the closes — the shape this issue is named for. It is a REFUSAL now and not a skip: an unverifiable release is not a verified one, and the operator's way out is to declare probes or abort.
     const closeVerify = channels[0]?.verify ?? null;
     if (channels.length === 0 || channels.some((c) => !c.verify) || !closeVerify) {
       throw new ReleaseProbesUndeclaredError();
@@ -347,7 +288,6 @@ export async function finishReleaseBatch(
       commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
       expected: options.commit ?? null,
     });
-    // cm:guard refuse BEFORE closing anything. A partial close would leave some issues claiming a release the probes just said did not happen, and nothing walks that back.
     if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
   }
 
@@ -365,7 +305,6 @@ export async function finishReleaseBatch(
         },
         'closed',
         actor,
-        // cm:edge protocol -> packages/core/src/issues/release-gate-hold.ts — the ONLY caller allowed to pass this. It is what makes `finish` the single writer of `closed` past the gate; an agent's own close is rewritten back to the gate without it
         { viaReleasePath: true },
       );
       closed.push(issue.id);
@@ -379,14 +318,12 @@ export async function finishReleaseBatch(
     }
   }
 
-  // cm:guard clearing the claims is not enough on its own: an issue this loop could NOT close is still at `releasing`, and the column being cleared is what makes it unreachable afterwards. The recovery lands those at `reopen` with the reason, and touches nothing it already closed.
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
     actorUserId: actor.type === 'user' ? actor.id : undefined,
     comment: true,
   });
 
-  // cm:guard `completed` and never `failed`, INCLUDING when `failed` is non-empty. `getActiveReleaseBatch` reads `running|paused`, so a finish that left the run non-terminal answered its own runId forever and refused the next cut 409 BATCH_IN_FLIGHT until a person aborted a batch that had already shipped (ISS-1032; SidPeak held 4h19m on 2026-09-15). `cancelled` would collapse finish into abort, and either non-success outcome makes the cascade cancel the still-active `release_batch` job — the job whose own session is what CALLED this — with `failureKind: 'infra'` and a kill broadcast at it, which is ISS-352's false-failed badge over a release that did land. The price of that, taken deliberately: `pipeline_runs.status` alone no longer separates a clean finish from a partial one — both read `completed`, and a reader wanting the difference must go to the response's `failed[]`, to each stranded issue sitting at `reopen`, or to the comment `recoverStrandedReleasing` writes above. The alternative was a run row that tells the truth about the roster by lying about the release, and it costs a live session its process. The trade ends when something needs the distinction FROM the run row; nothing reads it that way today.
   await closeRunIfOneShot(runId, 'completed');
 
   return { closed, failed };
@@ -411,17 +348,14 @@ export async function abortReleaseBatch(
   reason: string,
   actorUserId: string,
 ): Promise<AbortReleaseBatchResult> {
-  // cm:guard an aborted release does NOT self-heal, which is the trade this takes deliberately: a half-landed batch re-driven automatically becomes two half-landed batches. Before this the abort cleared the column and left the status untouched, so a failed release was indistinguishable from one never attempted. It goes through the shared recovery so an abort and a batch that merely died reach the same place by the same writer — and since ISS-1042 that place is chosen by whether the run PROMOTED, not by which verb called.
   const { claimsCleared, destination, promoted } = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
     actorUserId,
     comment: true,
   });
 
-  // cm:guard abort is "nothing under this run executes any further", not just "no claims" — batch ee39c4ae (2026-09-03) was aborted while its retry job kept running, shipped 20 commits to production, then `finish` found no claims and closed 0 of 12; the run must go terminal here so the cascade cancels queued retries and kills the live session
   await closeRunIfOneShot(runId, 'cancelled');
 
-  // cm:guard `closeRunIfOneShot` matches `running|paused` ONLY, so an abort arriving after anything else concluded the run wrote nothing and SAID nothing: the row went on reading `completed` about a batch somebody had called off and the caller was handed a plain success. Routed here from ISS-1032 because this issue owns "a release run cannot lie" — the second call is what makes the row agree with the verb, and the result below is what makes the caller able to tell the two cases apart.
   const after = await cancelConcludedRun(runId);
 
   return {
@@ -436,7 +370,6 @@ export async function abortReleaseBatch(
   };
 }
 
-// cm:edge naming -> packages/core/src/release-batch/queries.ts — every caller imports the batch surface from this module; the read-only half lives next door for the size budget, and re-exporting keeps that a file layout rather than an API change
 export {
   type ActiveReleaseBatchInfo,
   findReleaseBatchRun,

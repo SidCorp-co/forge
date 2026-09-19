@@ -1,14 +1,3 @@
-/**
- * ISS-1085 slice 3 — which table a schedule's run history is read from.
- *
- * `listScheduleRuns` used to branch on `kind === 'script'`. Every RUNNER-LESS kind writes
- * `schedule_runs` and starts no agent session, so the agent-sessions query answered `{ runs: [] }`
- * for the others — and `release_batch` has been one of those since the day it shipped, which means
- * every outcome it ever recorded was unreadable through the one endpoint that exists to show them.
- *
- * These assertions are about WHICH TABLE was selected from, not about the rows, because that is
- * exactly what the defect was.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
@@ -84,9 +73,6 @@ describe('isRunnerLessScheduleKind', () => {
     expect(isRunnerLessScheduleKind('prompt')).toBe(false);
   });
 
-  // cm:guard a kind in `scheduleKinds` that is neither `prompt` nor runner-less has no home: it
-  // would dispatch through the prompt arm and its history would be read off agent sessions it never
-  // creates. This is the assertion that goes red when the next kind is added to one list only.
   it('partitions scheduleKinds with nothing left over', () => {
     const unaccounted = scheduleKinds.filter((k) => k !== 'prompt' && !isRunnerLessScheduleKind(k));
     expect(unaccounted).toEqual([]);

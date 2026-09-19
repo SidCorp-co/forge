@@ -94,7 +94,6 @@ function mount() {
 }
 
 describe("OverviewScreen", () => {
-  // cm:guard the five sections answer the issue's questions IN ORDER, and the order is the requirement — a layout that reads well but answers them in another sequence fails this and nothing else catches it (ISS-988 criterion 25)
   it("renders the five sections in the issue's reading order", async () => {
     pulseApiGet.mockResolvedValue(RESPONSE);
     mount();
@@ -125,7 +124,6 @@ describe("OverviewScreen", () => {
     await waitFor(() => expect(pulseApiGet.mock.calls.length).toBeGreaterThan(calls));
   });
 
-  // cm:guard the empty state is keyed on the SCOPED project list, so an org holding nothing gets its own screen rather than five sections of zeros (ISS-988 criterion 53)
   it("renders its own empty state when the scoped org holds no project", async () => {
     pulseApiGet.mockResolvedValue({
       ...RESPONSE,
@@ -138,7 +136,6 @@ describe("OverviewScreen", () => {
     expect(screen.queryByText("Is it alive?")).toBeNull();
   });
 
-  // cm:guard spend is not an operational signal and left this surface with ISS-988; a money figure creeping back is what this assertion exists to catch (ISS-988 criterion 51)
   it("shows no spend or money figure anywhere", async () => {
     pulseApiGet.mockResolvedValue(RESPONSE);
     const { container } = mount();
@@ -146,7 +143,6 @@ describe("OverviewScreen", () => {
     expect(container.textContent).not.toMatch(/\$|spend|cost|USD/i);
   });
 
-  // cm:guard the old KPI row's `avgCycleTimeDays` was a mean of per-project averages; the words it rendered under must not return with it (ISS-988 criterion 52)
   it("shows no average-of-averages cycle-time figure", async () => {
     pulseApiGet.mockResolvedValue(RESPONSE);
     const { container } = mount();

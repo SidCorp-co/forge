@@ -4,15 +4,6 @@ const updateWhereMock = vi.fn();
 const updateSetMock = vi.fn();
 const updateWhereArgMock = vi.fn();
 const deleteWhereMock = vi.fn();
-// cm:guard ISS-1021 — `where()` RESOLVES here and there is no `returning` in the chain, which is
-// the shape the subject now runs. A stub still offering `.returning()` would let a regression that
-// re-added it pass: the whole point of the change is that these two statements report their counts
-// from the command tag instead of materialising every affected id.
-//
-// What the stub cannot prove is that `.count` IS the affected-row count — that is postgres-js's
-// behaviour, not this file's, and a mock returning `{ count: 2 }` proves only that the subject
-// reads the property it was handed. Measured against a real Postgres instead, and asserted in
-// `tests/integration/memory-decay-count.test.ts`.
 vi.mock('../db/client.js', () => ({
   db: {
     update: () => ({

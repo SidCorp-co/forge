@@ -40,8 +40,6 @@ export async function createTestUser(
   };
   const passwordHash = overrides.passwordHash ?? '!test-not-a-real-hash';
 
-  // cm:guard the default stays UNVERIFIED, and `emailVerifiedAt` is opt-in for that reason: flipping the default would turn every `assertEmailVerified` negative case green without touching the case. Callers that need a verified user pass the date rather than issuing their own UPDATE — which is what this override replaced, silently ignored until ISS-946.
-  // cm:guard an AGENT is created verified, because `orgs/agent-accounts.ts:86` stamps `emailVerifiedAt` at creation and its address is undeliverable by design — an unverified agent is a row production never writes, and a fixture that builds one fails `assertEmailVerified` on a path the real account would have passed.
   const verifiedAt =
     overrides.emailVerifiedAt?.toISOString() ??
     (overrides.kind === 'agent' ? new Date().toISOString() : null);
@@ -72,11 +70,6 @@ export interface SeedOrgOverrides {
   ownerRole?: OrgMemberRole;
 }
 
-/**
- * Inserts an organization plus an `organization_members` row for
- * `ownerUserId` (role `owner` by default). Use before inserting projects —
- * `projects.org_id` is NOT NULL.
- */
 export async function seedOrg(
   db: TestDb,
   ownerUserId: string,
@@ -169,7 +162,6 @@ export async function createTestProject(
     createdBy,
   };
 
-  // cm:guard the helper seeds NO mode by default on purpose: a fixture then resolves whatever the product default resolves, so a future flip surfaces here instead of hiding behind a helper that pinned the old answer.
   await db.execute(sql`
     INSERT INTO projects (id, slug, name, org_id, created_by, agent_config)
     VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.orgId}, ${project.createdBy},
@@ -236,10 +228,8 @@ export async function createTestDevice(
     platform: overrides.platform ?? 'linux',
     status: overrides.status ?? 'online',
   };
-  // cm:guard default to the CLAIM FLOOR, not a literal. A device with no version is below the floor, so every claim from a factory-made box is refused `runner_too_old` — which is invisible in a test that asserts something further down the claim, like the budget gate (measured 2026-09-05: 4 budget-check-e2e tests). Bind it to the constant so raising the floor cannot silently re-break them; a test that wants an OLD box sets agent_version itself.
   const agentVersion =
     overrides.agentVersion === undefined ? AGENT_NAMING_MIN_RUNNER : overrides.agentVersion;
-  // cm:guard a factory device carries NO credential, and that is the point since ISS-932: `devices` is a registry row, and the token a box authenticates with is a `personal_access_tokens` row pointing back at it. A suite that needs a device-authenticated request builds one with `pairDevice` (`tests/helpers/pair-device.ts`); a fabricated secret column here is what made that distinction invisible.
   await db.execute(sql`
     INSERT INTO devices (id, owner_id, name, platform, status, agent_version)
     VALUES (${device.id}, ${device.ownerId}, ${device.name}, ${device.platform}, ${device.status}, ${agentVersion})

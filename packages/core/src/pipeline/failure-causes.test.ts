@@ -116,11 +116,6 @@ describe('ISS-871 golden fixture — the eight undiagnosed sessions', () => {
   });
 });
 
-/**
- * One live signature per cause, each copied from the read-only replica on
- * 2026-08-29. This is the evidence half of "no member with zero live rows":
- * a cause invented to round out the set has no row to put here.
- */
 const LIVE_SIGNATURES: ReadonlyArray<[FailureCause, string]> = [
   [
     'provider_subscription_disabled',
@@ -218,7 +213,6 @@ describe('legacy rows stay readable without being rewritten', () => {
   });
 
   it('reads the free text that leaked into the column as unclassified, not as itself', () => {
-    // cm:why verbatim from `agent_sessions.failure_reason` on forge-beta 2026-08-11 — a schedule agent's own prompt, stored as the reason it failed; the point of the assertion is that this string must NEVER round-trip as itself
     const prompt =
       "You are the Forge product-map refresh agent. Your job: keep this project's curated PRODUCT map current from the issue stream";
     expect(resolveFailureCause(prompt)).toBe('unclassified');
@@ -233,7 +227,6 @@ describe('legacy rows stay readable without being rewritten', () => {
     expect(resolveFailureCause('')).toBe('unclassified');
   });
 
-  // cm:why `LEGACY_CAUSE_ALIAS` is a plain object literal, so its PROTOTYPE answers `toString`, `constructor` and `valueOf` — a bare `ALIAS[raw]` hands those back as functions typed `FailureCause`, and the column is free text on old rows, so the input is not ours to trust.
   it('does not resolve a prototype method name into a cause', () => {
     for (const raw of ['toString', 'constructor', 'valueOf', '__proto__', 'hasOwnProperty']) {
       expect(resolveFailureCause(raw), raw).toBe('unclassified');
@@ -259,7 +252,6 @@ describe('free text never reads back as itself', () => {
 });
 
 describe('the column cannot take free text', () => {
-  // cm:guard this assertion IS the enforcement — remove `{ enum: agentSessionFailureReasons }` from the column and `Insert['failureReason']` widens to `string`, which no runtime test can see and no other test asserts. It compiles to `true` only while the column is bound; unbound, the conditional resolves to `never` and `typecheck` fails here naming this line.
   it('types the insert as a FailureCause, so a sentence is a build error', () => {
     type Inserted = NonNullable<typeof agentSessions.$inferInsert.failureReason>;
     type BoundToTaxonomy = Inserted extends FailureCause ? true : never;
@@ -287,7 +279,6 @@ describe('unclassified is counted, not hidden', () => {
 });
 
 describe("the classifier's own verdicts survive the round trip", () => {
-  // cm:why `agent-session-link.ts#deriveSessionFailure` joins `jobs.failure_reason` (a classifier `reason` sentence) with `jobs.error` and classifies the pair, so the classifier reads its own output. 88 live rows proved what that costs: the job row said `cc-startup-death (≤3 msgs, no tool use)` and the session row said nothing, which is `job_failed` under a new name.
   it('classifies the startup-death verdict the job lane already wrote, joined with a detail-free CLI error', () => {
     const r = classifyFailure({
       error: 'cc-startup-death (≤3 msgs, no tool use) — [RESULT_ERROR] error_during_execution',
@@ -308,7 +299,6 @@ describe("the classifier's own verdicts survive the round trip", () => {
     expect(r.cause).toBe('provider_auth_expired');
   });
 
-  // cm:why the three branches that DISCARD the error text and write a sentence of their own are the whole exposure. Every other verdict is `reasonExcerpt`, i.e. the original text, which classifies on the second pass exactly as it did on the first.
   it('round-trips each verdict that replaces the error text rather than quoting it', () => {
     const verdicts = [
       'org/account spend limit → per-account failover with exhaustion memory',

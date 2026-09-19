@@ -81,9 +81,6 @@ describe("AddEpodsystemForm — the declaration the operator makes", () => {
     ).toBeInTheDocument();
   });
 
-  // cm:guard the defect this file exists for: the form used to send `role: "service"`
-  // whatever the operator meant, so a storefront this project publishes to was never a
-  // declared release target and the release gate silently had nothing to send to.
   it("submits a deploy role with the stages chosen, not a hardcoded service", async () => {
     openAddForm();
     typeKey();
@@ -111,9 +108,6 @@ describe("AddEpodsystemForm — the declaration the operator makes", () => {
     expect(body).not.toHaveProperty("stages");
   });
 
-  // cm:guard the refusal is the form's and it NAMES the remedy — the database refuses a
-  // stageless deploy binding by constraint, and a bare 400 names neither the field nor
-  // what a valid value looks like.
   it("refuses a stageless deploy by name, before the round trip", async () => {
     openAddForm();
     typeKey();
@@ -126,14 +120,6 @@ describe("AddEpodsystemForm — the declaration the operator makes", () => {
     expect(createMutate).not.toHaveBeenCalled();
   });
 
-  // cm:guard switching back to `service` CLEARS the stages rather than merely hiding the
-  // control. A hidden value that still submits is how a service binding reaches the
-  // server carrying a stage, which the database refuses with a 500 the form caused.
-  // cm:guard hiding the stage controls is NOT clearing them. Choose Live, switch to Service,
-  // switch back to Deploy, and a form that only hid them submits a stage the operator never
-  // re-chose — a declaration made by the form rather than by the person. The round trip is
-  // what makes this assertion able to go red; asserting on the Service payload alone cannot,
-  // because `stages` is spread only under `deploy` either way.
   it("clears the stages it hides, so a stage cannot survive a trip through service", async () => {
     openAddForm();
     typeKey();

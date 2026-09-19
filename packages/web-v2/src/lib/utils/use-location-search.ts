@@ -1,13 +1,5 @@
 'use client';
 
-// Reactive `window.location.search` — the missing primitive behind URL-as-state
-// screens (ISS-436). Next's `useSearchParams` would force a Suspense boundary
-// around every caller during prerender, so instead we subscribe to the History
-// API directly: `pushState`/`replaceState` are patched ONCE (first subscriber)
-// to emit `forge:locationchange`, and popstate (back/forward) feeds the same
-// listener. Next's client navigations land in `pushState`, so a pinned-view
-// click on the SAME route now re-renders consumers instead of silently changing
-// only the URL (the old hydrate-once-on-mount pattern went stale).
 import { useSyncExternalStore } from 'react';
 
 const EVENT = 'forge:locationchange';

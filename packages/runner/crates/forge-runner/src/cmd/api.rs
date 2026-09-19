@@ -46,7 +46,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let Some(core_url) = ctx.resolve_core_url(&cfg) else {
         return usage("no core URL — pass --core-url or run `forge-runner login`");
     };
-    // cm:guard a PAT and NOT the device token, because `requireAuth` on core rejects a device token outright: a device credential names a machine, and REST fences a caller by the projects its credential may speak for, which a machine credential cannot answer. Measured on forge-beta 2026-09-01, before this: one PAT to /mcp answered 200 and the same PAT to /api/issues answered 401, and the device token answered 401 on both.
     let Some(token) = cred_store::load_pat()? else {
         return usage(
             "no personal access token — the REST API is reached with a PAT, not the device token. \
@@ -95,7 +94,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     if !resp.stderr.is_empty() {
         eprintln!("{}", resp.stderr);
     }
-    // cm:guard `std::process::exit` and NOT an `Err` return — the taxonomy is the product here, and anyhow's bubbling would collapse every row onto 1. Nothing above this line holds a buffer that needs flushing: both streams were written with the line macros.
     std::process::exit(resp.outcome.exit_code);
 }
 

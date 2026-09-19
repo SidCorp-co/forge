@@ -1,11 +1,3 @@
-// Stage ① producer (ISS-795 §2). Without this, `policy.landed` had a reader
-// and no writer: `reconcile-service.assembleBundle()` item 11 was always empty,
-// so the verifier's hard constraint was permanently null and "stage ① binds
-// stage ②" never actually held.
-//
-// Runs at boot, next to seedBuiltinSkills — the invariant set lives in code, so
-// a deploy is exactly when it can change.
-
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, skillActivityEvents } from '../db/schema.js';
@@ -43,7 +35,6 @@ async function lastSnapshotFor(
   return { digest: row.afterHash, entries: parseEntries(row.reason) };
 }
 
-// cm:edge contract -> packages/core/src/prompt/facts/invariant-set.ts#buildPlatformInvariantSet — parses the `id vN (sha)` shape that function's `summary` emits; change the format there and the delta silently degrades to "added" for every entry
 const ENTRY_RE = /([a-z0-9-]+) v(\d+) \(([0-9a-f]{8})\)/g;
 
 function parseEntries(reason: string | null): PlatformInvariantEntry[] {
@@ -68,7 +59,6 @@ export async function ensurePolicyLandedFor(projectId: string): Promise<boolean>
   const previous = await lastSnapshotFor(projectId);
   if (previous?.digest === set.digest) return false;
 
-  // cm:guard one row per project, not one global row — assembleBundle reads `policy.landed` scoped to its project, so a global-only stamp would leave every bundle's item 11 empty
   await db.transaction(async (tx) => {
     await recordSkillActivityEvent(tx, {
       eventType: 'policy.landed',

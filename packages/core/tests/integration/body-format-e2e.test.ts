@@ -93,7 +93,6 @@ describe('body format columns', () => {
     ).rejects.toThrow();
   });
 
-  // cm:guard the round trip is asserted on a MARKDOWN fence now: a mermaid diagram was `<forge-diagram>` until the vocabulary was removed on 2026-09-14, and the fence is what the composer's own toolbar writes. What is being proved is unchanged — Postgres stores `-->` and `<br/>` byte-identically.
   it('round-trips a mermaid diagram through Postgres byte-identically', async () => {
     const issueId = await anIssue();
     const body = `\`\`\`mermaid\n${MERMAID}\n\`\`\``;

@@ -3,7 +3,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-// cm:guard the ONLY assertion that the eight staged skill bodies stay deleted. Migration 0208 removes 178 `skills` rows and 182 `skill_registrations`, but `seedBuiltinSkills` upserts every `forge-*` directory under this root on EVERY boot — so restoring one directory silently restores its rows one deploy later, and no other check in the repo would notice.
 const STAGED_SKILL_NAMES = [
   'forge-triage',
   'forge-clarify',
@@ -34,7 +33,6 @@ describe('the staged lane ships no skill body (ISS-895)', () => {
       .map((e) => e.name)
       .sort();
     expect(dirs).toEqual([
-      // cm:why served over the MCP prompt channel and never installed to a device (`MANAGED_META_SKILLS`) — it is the contract the message screen judges by, and a disk copy would be the version an agent reads while core refuses it by a newer one (ISS-997)
       'forge-message-shape',
       'forge-onboard',
       'forge-product-map',

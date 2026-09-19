@@ -39,7 +39,7 @@ forge_issues → update → { documentId, data: { releaseNotes: { section, userF
 
 That is the same order `packages/core/skills/forge-release/SKILL.md` already uses, and it is the
 order `forge_issues.update` supports in a single call: field writes commit before the status
-transition (`packages/core/src/mcp/tools/forge-issues.ts`, the two `cm:edge ordering` lines).
+transition (`packages/core/src/mcp/tools/forge-issues.ts`, the two `coupling ordering` lines).
 
 ## Honest costs
 

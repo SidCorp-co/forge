@@ -64,6 +64,19 @@ describe('sshResolutions', () => {
     expect(sshResolutions(SHIPPED).offenders).toEqual([]);
   });
 
+  it('reads a local protocol as a path, not as user@host:path', () => {
+    const local = [
+      'packages:',
+      '',
+      '  eslint-plugin-code-quality@file:.forge/code-quality:',
+      '    resolution: {directory: .forge/code-quality, type: directory}',
+      '  some-pkg@link:../elsewhere/pkg:',
+      '    resolution: {directory: ../elsewhere/pkg, type: directory}',
+      '',
+    ].join('\n');
+    expect(sshResolutions(local).offenders).toEqual([]);
+  });
+
   it('counts every resolution it read, on a clean lockfile and a dirty one alike', () => {
     expect(sshResolutions(SHIPPED).scanned).toBe(2);
     expect(sshResolutions(DEPENDABOT).scanned).toBe(2);

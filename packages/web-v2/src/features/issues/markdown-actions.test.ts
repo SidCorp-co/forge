@@ -31,7 +31,6 @@ describe("toggleWrap", () => {
     expect(e.selectTo).toBe(2);
   });
 
-  // cm:guard pressing bold twice must return the text to what it was: a second pair makes `****x****`, which renders as literal asterisks rather than as bold.
   it("unwraps when the markers are inside the selection", () => {
     const e = toggleWrap({ doc: "make it **loud**", from: 8, to: 16 }, "**");
     expect(apply("make it **loud**", e)).toBe("make it loud");
@@ -67,7 +66,6 @@ describe("togglePrefix", () => {
     expect(apply(doc, e)).toBe("one\ntwo");
   });
 
-  // cm:guard a mixed selection is prefixed THROUGHOUT rather than toggled line by line, which would leave a half-quoted block that renders as two blocks.
   it("prefixes throughout when only some lines carry it", () => {
     const doc = "> one\ntwo";
     const e = togglePrefix({ doc, from: 0, to: 9 }, "> ");
@@ -94,7 +92,6 @@ describe("toggleOrderedList", () => {
     expect(apply(doc, e)).toBe("a\nb");
   });
 
-  // cm:guard stale numbers are REWRITTEN, not kept: markdown renumbers by the first item anyway, so preserving `4.` makes the source disagree with what renders.
   it("renumbers from one rather than keeping what was typed", () => {
     const doc = "4. a\nb";
     const e = toggleOrderedList({ doc, from: 0, to: 6 });
@@ -124,7 +121,6 @@ describe("makeFence", () => {
     expect(apply(doc, e)).toBe("```mermaid\ngraph TD\n```\n");
   });
 
-  // cm:guard a fence opening on the same line as prose is not a fence to any parser — it is three backticks in a paragraph.
   it("breaks the line first when the caret is mid-prose", () => {
     const doc = "here:";
     const e = makeFence({ doc, from: 5, to: 5 }, "");
@@ -139,7 +135,6 @@ describe("makeFence", () => {
 });
 
 describe("cycleHeading", () => {
-  // cm:guard `#` is CYCLED and never appended: concatenating on a line that already has one silently demotes, so a reader pressing twice gets `##` instead of a toggle.
   it("goes none → 1 → 2 → 3 → none", () => {
     let doc = "Title";
     for (const want of ["# Title", "## Title", "### Title", "Title"]) {

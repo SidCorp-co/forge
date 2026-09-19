@@ -1,14 +1,5 @@
 "use client";
 
-// ISS-377 Tier-2 artifact card, one per step an issue ACTUALLY RAN, assembled from that step's
-// handoff payload and its summed duration/cost. The payload is free-form jsonb, so EVERYTHING here
-// is rendered defensively — known string fields become paragraphs, string arrays become lists, and
-// anything else (objects, ids) lives in the operator JSON expand. Never throws on a missing/odd
-// field; degrades to a "no handoff" note.
-//
-// ISS-999: the card used to be keyed by one of seven fixed stages and could read `Pending`, which
-// meant "this stage has not happened yet" about a ladder the kernel does not have. It is keyed by
-// the job type the kernel recorded now, and a step with no row gets no card.
 
 import { useState } from "react";
 import { Icon } from "@/design";
@@ -23,12 +14,10 @@ interface StepArtifactCardProps {
 
 const STATE_META: Record<StepState, { dot: string; label: string }> = {
   done: { dot: "var(--green-500)", label: "Done" },
-  // cm:guard cobalt --pipeline-active, never the flame --accent that primary buttons own (ISS-509)
   running: { dot: "var(--pipeline-active)", label: "Running" },
   failed: { dot: "var(--red-500)", label: "Failed" },
 };
 
-// cm:guard the envelope keys are hidden from the generic body on purpose: a handoff payload repeats the step name and its schema version, which the card already has from its own row, so printing them gave every step two lines of noise above the sentence a person came for
 const SKIP_KEYS = new Set(["step", "schema_version", "schemaVersion"]);
 
 function fmtDuration(seconds: number): string {
@@ -94,7 +83,6 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
   }
   const hasBody = paragraphs.length > 0 || lists.length > 0;
 
-  // cm:guard the header row below WRAPS and its figures are flex-none: at 375px `ml-auto` on a non-wrapping row pushed the duration and the cost past the card's edge, so a step's two measured numbers were unreadable on a phone while the document reported no horizontal overflow, because the card clipped rather than the page scrolling (ISS-999)
   return (
     <div
       id={`step-card-${outcome.step}`}
@@ -175,7 +163,7 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
                     attempt {outcome.handoff.attempt}
                     {outcome.handoff.pipelineRunId ? ` · run ${outcome.handoff.pipelineRunId}` : ""}
                   </p>
-                  <pre className="max-h-72 overflow-auto rounded-md bg-app/60 p-2 text-[11px] leading-snug">
+                  <pre className="max-h-72 overflow-auto rounded-md bg-app/60 p-2 text-11 leading-snug">
                     {JSON.stringify(outcome.handoff.payload ?? {}, null, 2)}
                   </pre>
                 </div>

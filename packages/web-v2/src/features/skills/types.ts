@@ -1,26 +1,15 @@
-// cm:edge contract -> packages/core/src/skills/crud-routes.ts — these shapes are hand-verified against that router and its sibling `routes.ts`; nothing type-checks the pair, so a field renamed there reads as `undefined` here.
 export type SkillScope = "global" | "project";
 
 /** Runtime context a skill targets — mirrors core `skillTargets`. */
 export const SKILL_TARGETS = ["dev", "cloud", "all"] as const;
 export type SkillTarget = (typeof SKILL_TARGETS)[number];
 
-/** A supporting file inside a skill's folder (e.g. `references/foo.md`,
- *  `scripts/run.sh`). `SKILL.md` is NOT here — it lives in the `skillMd`
- *  column. Mirrors core `fileSchema` (`{ path, content, encoding }`). */
 export interface SkillFile {
   path: string;
   content: string;
   encoding?: "utf8" | "base64";
 }
 
-/** A registerable pipeline stage = an `issueStatus` value (core enum). The
- *  register endpoint accepts the full status set; these are the 8 pipeline
- *  states that actually drive a skill in this project's ladder — one per
- *  `auto*` toggle in the Pipeline settings tab (`PIPELINE_STEPS` in core's
- *  `pipeline/registry.ts`). `clarified` (plan) and `reopen` (fix) were missing
- *  here, which made those two stages impossible to bind from the web UI even
- *  though their toggles still demand a registered skill — a hard dead-end. */
 export const REGISTERABLE_STAGES = [
   "open",
   "confirmed",
@@ -33,10 +22,6 @@ export const REGISTERABLE_STAGES = [
 ] as const;
 export type RegisterableStage = (typeof REGISTERABLE_STAGES)[number];
 
-/** Human label for each registerable stage — the raw `issueStatus` value is
- *  what gets stored, but `open`/`reopen`/`developed` read poorly in a picker.
- *  The label names the JOB that runs there so it lines up with the Pipeline
- *  tab's `Auto triage`/`Auto plan`/… rows. */
 export const STAGE_LABELS: Record<RegisterableStage, string> = {
   open: "Triage",
   confirmed: "Clarify",
@@ -48,12 +33,6 @@ export const STAGE_LABELS: Record<RegisterableStage, string> = {
   awaiting_release: "Release",
 };
 
-/**
- * One entry of `GET /api/skills/invokable` (ISS-718) — an install-only skill a
- * human may invoke as a slash-command inside a chat. Deliberately narrow: the
- * composer's `/` menu needs a name to insert and a line to explain it, not a
- * skill body.
- */
 export interface InvokableSkill {
   name: string;
   description: string;
@@ -76,11 +55,6 @@ export interface SkillRow {
   skillMd: string | null;
   /** Supporting files in the skill folder (default []). */
   files: SkillFile[];
-  /** True when this is a platform-managed META skill (`forge-skills`…) served
-   *  LIVE as an MCP prompt — NOT disk-synced. Such skills have no device
-   *  sync-status and are not bound to a pipeline stage. The list endpoint
-   *  computes it from core's `MANAGED_META_SKILLS`; older responses omit it,
-   *  so treat a missing value as `false`. */
   managedMeta?: boolean;
   updatedAt: string;
   createdAt: string;
@@ -112,10 +86,6 @@ export interface SkillRegistration {
 // ── Smoke-verify (ISS-455) — shapes verified against
 // `packages/core/src/skills/smoke-verify.ts` ─────────────────────────────────
 
-/** Tier-1 static-check verdict for one pipeline stage. Evidence-based:
- *  registration → usable project skill → a device reported the matching
- *  installed hash. `no_device_report` is the honest WARN-style FAIL for
- *  desktop runners that never report installs. */
 export interface SmokeTier1Entry {
   stage: string;
   jobType: string;
@@ -205,19 +175,10 @@ export function usableSkillOptions(rows: SkillRow[]): UsableSkillOption[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Names that already have a project-scoped skill — used to hide the redundant
- *  same-name global template card in the Library (the project copy stands in). */
 export function projectSkillNames(rows: { scope: SkillScope; name: string }[]): Set<string> {
   return new Set(rows.filter((r) => r.scope === "project").map((r) => r.name));
 }
 
-/**
- * Wrap a Studio form (name/description/body) into a full SKILL.md string —
- * a YAML frontmatter block (`name`, `description`) the runner writes verbatim
- * to disk, followed by the markdown body. Values are JSON-quoted (a valid YAML
- * subset) so colons/quotes in the description can't break the frontmatter.
- * `target` is a DB column, not a frontmatter key, so it is NOT emitted here.
- */
 export function buildSkillMd(input: { name: string; description: string; body: string }): string {
   const fm = `---\nname: ${JSON.stringify(input.name)}\ndescription: ${JSON.stringify(
     input.description,

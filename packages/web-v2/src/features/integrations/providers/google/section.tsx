@@ -75,10 +75,6 @@ export function GoogleSection({ projectId }: { projectId: string }) {
   );
 
   if (list.isLoading) return <p className="fg-body-sm text-muted">Loading…</p>;
-  // cm:guard a failed read is NOT "no connection". Falling through to the connect
-  // form under a failed list invites an operator to paste a second key file for
-  // an account that may already be connected, which is a credential handled for
-  // nothing and a duplicate binding to unpick.
   if (list.isError)
     return (
       <ErrorState
@@ -274,15 +270,6 @@ function GoogleBindingPanel({
 // First-time connect form
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Read the account address out of the pasted key so the share hint can name it
- * before anything is saved. Never throws — a half-typed paste is normal.
- *
- * cm:guard it returns an address only for a WHOLE key file, because its result
- * is also what enables Connect. Reading `client_email` alone would let any JSON
- * carrying that one field clear the form, and the server would then refuse the
- * paste the screen had just called valid.
- */
 function clientEmailOf(keyJson: string): string | null {
   try {
     const parsed = JSON.parse(keyJson) as {

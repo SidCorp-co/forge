@@ -35,8 +35,6 @@ impl Kind {
     }
 }
 
-/// How many lines the file keeps before the oldest are dropped.
-// cm:guard a CAP and not a rotation: this file is read by an operator asking "how often", never replayed, so the newest half is the whole of its value. Unbounded, a master stuck in a loop of undeclared dispatches writes until the disk is the symptom instead of the master.
 const MAX_LINES: usize = 500;
 
 /// `<config dir>/gate-marks.jsonl`.
@@ -44,9 +42,6 @@ pub fn marks_path(config_dir: &Path) -> PathBuf {
     config_dir.join("gate-marks.jsonl")
 }
 
-/// Append one mark, and never fail the caller.
-// cm:guard returns `()` and swallows every error, because both callers are on paths that must not break: one is a hook the agent is waiting on, the other is inside the daemon's own hook handler. A mark that could not be written is worth less than the master it would have wedged.
-// cm:guard the write is O_APPEND and one line, so two processes marking at once interleave rather than overwrite. The trim below is the only racy part and the thing it can lose is an old line, which is what the cap exists to throw away anyway.
 pub fn mark(config_dir: &Path, kind: Kind, detail: &str) {
     let path = marks_path(config_dir);
     let line = serde_json::json!({
@@ -81,11 +76,6 @@ fn trim(path: &Path) {
     let _ = std::fs::write(path, format!("{keep}\n"));
 }
 
-/// What one kind of mark amounts to, for an operator reading it back.
-// cm:guard `count` is what the FILE still holds and is never a lifetime total, because the file is
-// capped: past the cap the oldest half goes, so a box degrading steadily shows a number that falls
-// while the failures keep coming. Every reader has to say "retained" and print the window, or an
-// operator reads a shrinking number as an improving box (ISS-1094, review F7).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Tally {
     /// How many marks of this kind the file still holds — not how many ever happened.
@@ -100,8 +90,6 @@ pub struct Tally {
     pub trimmed: bool,
 }
 
-/// Read both tallies back.
-// cm:guard an unreadable or absent file answers with two empty tallies rather than an error: a box that has never degraded and a box whose file was removed read the same, and the caller prints a zero either way. There is no question here an error could answer better.
 pub fn tally(config_dir: &Path) -> (Tally, Tally) {
     let mut degraded = Tally::default();
     let mut undeclared = Tally::default();
@@ -180,9 +168,6 @@ mod tests {
         assert_eq!(undeclared.last.as_deref(), Some("subagent c1 as runner"));
     }
 
-    /// Criterion 18. The record is owed exactly when the things it could have
-    /// depended on are the ones that failed, so it depends on neither.
-    // cm:guard this test is the whole reason the marks are a file. Take the socket away, take the plugin clone away, and the mark still lands — a record routed through either would be missing at the only moment it is worth having.
     #[test]
     fn a_mark_lands_with_no_socket_and_no_plugin_clone_on_the_box() {
         let dir = Scratch::new("degraded-2");

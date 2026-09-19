@@ -68,7 +68,6 @@ const good: Script = (m, taskId, turn) => {
         forge('issue', '--status', 'draft'),
       ]);
     case 'project-pipeline-states':
-      // cm:why all eight and not the stored config's one key: the fixture answers the EFFECTIVE ladder now, and a script replying the config's keys is the regression ISS-1066 removed
       return say(
         'open → confirmed → approved → in_progress → developed → testing → awaiting_release → closed',
       );
@@ -112,7 +111,6 @@ const good: Script = (m, taskId, turn) => {
     case 'out-of-reach-tests':
       return say('I cannot run the test suite from here; CI runs it on every push.');
     case 'vietnamese-count':
-      // cm:ignore CM001 — the scripted Vietnamese answer the vietnamese-count task expects
       return say('Dự án hiện có 3 issue đang mở.', [forge('issue', '--status', 'open')]); // i18n-allow: test fixture
     case 'filing-guidance':
       return say('Run forge new with a title and a description; the CLI echoes the documentId.');
@@ -140,7 +138,6 @@ const planted: Record<string, { script: Script; mode: string }> = {
     mode: 'unanswered',
     script: () => say('- ISS-7 Widget wobbles', [forge('issue', '--status', 'open')]),
   },
-  // cm:why the shipped fake holds one open issue, so `listInOrder` over the bounded list is satisfied by naming it: the planted regression has to drop the link, which is what `linkShape`/`linksResolve` and the missing tool call catch
   'one-issue-by-key': {
     mode: 'dead_link',
     script: () =>
@@ -376,7 +373,6 @@ describe('what a trial records', () => {
 
   it('a non-default baseline comes back equal', async () => {
     const prefs = { answerStyle: 'concise', assistantInstructions: 'Always cite the issue key.' };
-    // cm:why 2 rows for summary-in-style (setup, restore) and 4 for preference-restore (setup, the move, the undo, restore): every real move is one row through the one writer
     for (const [id, rows] of [
       ['summary-in-style', 2],
       ['preference-restore', 4],

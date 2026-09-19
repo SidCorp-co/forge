@@ -96,7 +96,7 @@ export function PrivateKeyCreateSlideOver({
 							placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n…"}
 							spellCheck={false}
 							rows={6}
-							className="font-mono text-[12px]"
+							className="font-mono text-12"
 						/>
 					</Field>
 				)}

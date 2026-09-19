@@ -80,7 +80,6 @@ describe('fetchMessagesBeside (ISS-1087)', () => {
     u: { _id: 'u', username: 'alice' },
   });
 
-  // cm:guard the QUERY and the SORT are what make these the two immediately after: a history page is newest-first inside a range, and its two oldest entries are the farthest from the anchor (criterion 36).
   it('asks the server for the two immediately after, ascending, and returns them oldest-first (criteria 25, 36)', async () => {
     const fetch = answer({
       messages: [raw('m5', '2026-09-17T10:00:05Z'), raw('m4', '2026-09-17T10:00:04Z')],

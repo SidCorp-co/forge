@@ -1,50 +1,9 @@
-/**
- * ISS-452 (ISS-442 C6 / invariant I7) — no silent wedge.
- *
- * `emitPipelineWedge` is the single surfacing point for a non-progressing
- * kernel state: the loop monitor's miss-handlers and the demoted sweepers'
- * alarm passes call it when a hop exceeds its threshold. It writes a
- * `pipeline_wedge` notification to the project owner carrying WHERE + WHY +
- * WHAT to do; the `notificationCreated` hook fans it out to the owner's user
- * room AND the project room. These rows are also the raw signal behind the
- * interventions-per-issue metric (`issue_intervention_events`, migration
- * 0117).
- *
- * Spam guard: at most one UNRESOLVED wedge record per entity, keyed on
- * `resolution_key`; `resolvePipelineWedge` clears it, and since ISS-1063 so does
- * `pipeline/reevaluate-conditions.ts` when the entity it names is no longer wedged. A
- * self-clearing condition should not reach here at all — the caller knows
- * (`holdResumesItself` in `jobs/hold.ts`).
- *
- * ISS-619 — `title`/`summary`/`nextStep`/`secondaryIssueId` are optional
- * business-language fields; without them the technical template is used. Never throws.
- */
-
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { createNotification } from '../notifications/routes.js';
-
-/*
- * ISS-1063 — `WEDGE_RENOTIFY_MS` was DELETED, and the reasoning it carried is worth
- * keeping because both halves of it were right at the time.
- *
- * The floor existed because the dedupe once matched `read = false`: opening a wedge
- * re-armed it and the next monitor pass wrote another — read, re-emit, read, a closed loop
- * that put 721 unresolved rows in the owner's bell (measured forge-beta 2026-08-14). And
- * keying on `resolved_at IS NULL` alone was rejected because a wedge would then be emitted
- * once and never again, which is silence a caller cannot tell from "nothing is wrong".
- *
- * That second objection is what changed. A wedge is a CONDITION: it stays `firing` and
- * stays in the open count for as long as it is true, so being emitted once is no longer
- * being forgotten, and reading it no longer removes it from anything. A second record for
- * a condition that never stopped being true would be the 2161-rows-for-2037-conditions
- * shape this issue exists to end. The daily re-emission is now a re-derivation:
- * `reevaluate-conditions.ts` resolves the ones whose entity is done, and the rest keep
- * counting.
- */
 
 export function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
@@ -54,8 +13,6 @@ export function wedgeResolutionKey(entityId: string): string {
  * Entity id for a capacity outage: the subject is a project's runner pool, not
  * any one job.
  */
-// cm:guard the `capacity:` prefix is load-bearing — `wedgeResolutionKey` keys ONLY on entityId, so a bare projectId here would share a dedup key with any pass that ever emits about a project, and the two would silently resolve each other. Prefixing keeps the namespace separate without touching the key format every existing unresolved row already carries.
-// cm:guard key per POOL, not per project — with per-state device pools (`resolveStageOverrides`) `code` can be out of capacity while `triage` is fine, and a project-wide key would report the first outage and hide every other one. `stageKey` is `all` when no pool is in force, so the common case is still exactly one notification per project.
 export function capacityWedgeEntityId(projectId: string, stageKey: string): string {
   return `capacity:${projectId}:${stageKey}`;
 }
@@ -64,7 +21,6 @@ export function capacityWedgeEntityId(projectId: string, stageKey: string): stri
  * Entity id for a review loop going round without landing: the subject is one
  * run's rejection streak, not the issue.
  */
-// cm:guard the subject MUST be the run, never the issue id. `alarmChurningIssues` emitted under `wedge:<issueId>` until ISS-895 deleted it, and the `rounds:` namespace stays keyed to the run so a future issue-keyed pass cannot collide with this one — a shared key lets whichever fires first silence the other, and `resolvePipelineWedge` on an approve then clears a wedge nobody resolved.
 export function reviewRoundsWedgeEntityId(runId: string): string {
   return `rounds:${runId}`;
 }
@@ -73,19 +29,10 @@ export function reviewRoundsWedgeEntityId(runId: string): string {
  * Entity id for work frozen behind a paused run: the subject is the pause, not
  * any one of the steps queued behind it.
  */
-// cm:guard the `paused:` prefix is load-bearing for the same reason `rounds:` is — `wedgeResolutionKey` keys ONLY on entityId, and `alarmRejectionStreaks` already emits about a run id. A bare runId here would share a dedup key with it, so whichever fired first would silence the other and either one's resolve would clear both.
-// cm:edge lockstep -> packages/core/src/pipeline/paused-run-wedge-resolve.ts — that subscriber is the only caller that clears this key; a wedge emitted under a key nothing resolves is a permanent row in the owner's bell (721 of them, measured forge-beta 2026-08-14)
 export function pausedRunWedgeEntityId(runId: string): string {
   return `paused:${runId}`;
 }
 
-/**
- * Clear the wedge notifications for `entityId` — the condition they reported is
- * gone. Call it from whatever observes the recovery, or from a pass that
- * RE-DERIVES the condition and finds it absent; never on a timer that clears
- * blind, which is a bell emptied on a schedule rather than on a fact.
- */
-// cm:edge lockstep -> packages/core/src/pipeline/wedge.ts#emitPipelineWedge — the key both sides use comes from `wedgeResolutionKey`; a caller that hand-writes `wedge:<id>` here and the emitter drifting apart means a resolved wedge stays in the bell forever
 export async function resolvePipelineWedge(entityId: string): Promise<number> {
   return resolveNotifications(wedgeResolutionKey(entityId));
 }
@@ -97,13 +44,10 @@ export interface PipelineWedgeEvent {
   issueId?: string | null;
   /** WHERE — which loop hop missed. */
   hop: WedgeHop;
-  // cm:guard `issue` carries NO job/session id, so it only fits an alarm whose subject is the issue itself (RFC 0002 INV-7 churn) — the dedup key is `wedge:<entityId>`, so passing an issue id under `entity:'job'` silently makes the once-per-entity guard mean once-per-issue while the payload claims a job that does not exist
-  // cm:guard `capacity` is the one entity whose id is NOT a row id — build it with `capacityWedgeEntityId`, never by hand, because its whole purpose is that many jobs hitting the same empty pool collapse into ONE notification. Passing a job id here would emit per failed job, which is the spam this type exists to avoid.
   entity: 'job' | 'session' | 'run' | 'outbox' | 'issue' | 'capacity' | 'runner';
   entityId: string;
   /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
   reason: string;
-  /** WHAT — the human next step (technical; logged, and used as the body fallback). */
   action: string;
   /** Business-language title naming the stuck work (ISS-xx + title, no internal vocab). */
   title?: string;

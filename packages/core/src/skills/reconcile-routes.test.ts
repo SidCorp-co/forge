@@ -47,7 +47,6 @@ beforeEach(() => {
   serviceMock.getReconcileRun.mockResolvedValue({ id: RUN_ID, projectId: PROJECT_ID });
 });
 
-// cm:why regression guard for ISS-808 — String(err) on an Error prepends "Error: ", which used to break the BAD_REQUEST/NOT_FOUND prefix match in reconcile-routes.ts and turned every guard rejection into a 500
 describe('POST /api/projects/:projectId/reconcile-runs/:runId/reject', () => {
   it('maps a service BAD_REQUEST error to 400 with a readable message, not 500', async () => {
     serviceMock.rejectReconcileRun.mockRejectedValue(

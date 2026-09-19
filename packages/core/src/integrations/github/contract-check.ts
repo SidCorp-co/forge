@@ -1,32 +1,3 @@
-/**
- * One check-run publish for one stored pull request, and the named refusal for
- * every way it does not happen. ISS-1072.
- *
- * ## Nothing here returns quietly
- *
- * ISS-1072's fifth outcome is that a repository with no binding, a branch that
- * resolves to no issue and a project that turned the check off are each refused
- * or skipped BY NAME in the delivery log, not silently. So every path out of
- * this file writes an `integration_deliveries` row carrying its reason, and the
- * reason is a sentence rather than a code: the person reading that log is
- * deciding what to do next, and `skipped` tells them nothing.
- *
- * A skip is not a failure and is recorded `ok`. "Forge deliberately did not
- * publish, here is why" and "Forge tried and GitHub refused" are different
- * things to an operator, and a delivery log that colours them the same is one
- * they stop reading.
- *
- * ## Which refusals are reachable from here, and which is not
- *
- * `client.ts` has five: `no_binding`, `no_repository`, `no_installation`,
- * `no_connection`, `no_credential`. Four are reachable here. `no_binding` is
- * not, and that is a fact about the schema rather than an oversight:
- * `repo_pull_requests.binding_id` is NOT NULL and cascades from the binding, so
- * a stored pull request always has one and a deleted binding takes its rows with
- * it. The fifth is refused on `dispatchOutbound`'s own door, in `adapter.ts`,
- * where there is a project to name and no binding to scope a row to.
- */
-
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
@@ -87,7 +58,6 @@ async function openDelivery(row: StoredRow): Promise<string> {
 }
 
 async function skip(deliveryId: string, reason: string): Promise<ContractCheckOutcome> {
-  // cm:guard a skip is `ok` and carries its reason in `response`, never `failed` with an `errorMessage`. A deliberate non-publish recorded as a failure is what puts a red row in front of an operator for a project that turned the check off on purpose, and an operator who learns the log cries wolf stops opening it.
   await updateDelivery(deliveryId, {
     status: 'ok',
     response: { skipped: true, reason },
@@ -111,11 +81,6 @@ async function skip(deliveryId: string, reason: string): Promise<ContractCheckOu
  * repository, and a row scoped to either binding would name a repository this
  * call has no business associating with the other.
  */
-// cm:guard `expectBindingId` is how a caller that was authorised for ONE binding says so. A stored
-// pull request is addressed by its own uuid and carries its own binding, so a dispatch holding a
-// context for binding A and a row belonging to binding B would validate A and then publish to B's
-// repository on B's credential — a write nobody authorised, on the wrong repository, reported as a
-// success. The event-driven callers name no binding because the row IS what they resolved from.
 export async function publishForStoredPullRequest(
   pullRequestId: string,
   expectBindingId?: string,
@@ -141,7 +106,6 @@ export async function publishForStoredPullRequest(
   const credential = await githubBindingCredential(row.bindingId);
   if ('refusal' in credential) return skip(deliveryId, credential.refusal);
 
-  // cm:guard the switch is read off the BINDING and defaults to on. An absent key is a project that has never been asked, and reading absence as off would mean this shipped doing nothing anywhere and nobody finding out for a release.
   if (credential.config.contractCheck === false) {
     return skip(
       deliveryId,
@@ -171,7 +135,6 @@ export async function publishForStoredPullRequest(
       checkRunId: published.checkRunId,
     };
   } catch (err) {
-    // cm:guard the four client refusals are SKIPS and not failures: each names something an operator has not set up yet — no repository chosen, no installation, no credential — and none of them is GitHub refusing Forge. Recording them as failures trips the connection breaker on a binding nobody ever finished configuring.
     if (err instanceof GitHubClientError) return skip(deliveryId, err.message);
     const refusal = describeThrown(err, 'create');
     logger.warn(
@@ -217,7 +180,6 @@ export async function openPullRequestsForIssue(issueId: string): Promise<string[
   return rows.map((r) => r.id);
 }
 
-/** Every open pull request on this project that names an issue, oldest first. */
 export async function openPullRequestsForProject(projectId: string): Promise<string[]> {
   const rows = await db
     .select({ id: repoPullRequests.id })

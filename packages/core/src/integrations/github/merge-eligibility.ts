@@ -1,32 +1,3 @@
-/**
- * Whether this pull request may be merged, decided from what GitHub reported.
- * ISS-1073.
- *
- * A pure function over three readings — the pull request, the base branch's
- * protection, and the check runs on the head — holding no database and making no
- * call, because the thing worth testing here is the decision and not the
- * fetching of it.
- *
- * ## Unknown is a refusal
- *
- * GitHub computes `mergeable` asynchronously: the first read after a push
- * answers `null` with `mergeable_state: "unknown"`, and a caller that reads
- * `null` as "no reason not to" merges a pull request nothing has checked. That
- * is the affordance this file exists to refuse, and it is why `mergeable: true`
- * is a positive condition here rather than `mergeable !== false`.
- *
- * ## One condition says yes, and everything else says no by name
- *
- * The merge arm is reached only when GitHub reports the pull request mergeable
- * on the head the caller named AND every check the base branch's protection
- * requires has concluded successfully on that head. Each other answer is its own
- * reason with its own sentence, because "cannot merge" tells an operator to go
- * and look and the four causes send them to four different places: rebase,
- * resolve, wait, or ask somebody.
- */
-// cm:guard the required set is read off the BRANCH PROTECTION and not derived from the runs present on the head. A check that never started is absent from the head's runs, so deriving the set from what ran would make a missing required check look like a set with nothing missing — which is the silent pass this whole decision exists to refuse, arrived at from the safe-looking direction.
-// cm:guard a required context satisfied only by a legacy COMMIT STATUS rather than a check run is reported here as absent, and the merge is refused. That is a stated bound and it is the safe direction: the cost is a refusal an operator has to override by merging by hand, where reading the combined-status endpoint as well would cost a call on every merge for a shape this repository does not use (`ci-passed` and every other required context on it is an Actions check run). If a project ever needs it, the fix is a second reading here and not a widening of the pass.
-
 /** The pull request as GitHub answered for it, freshly read. */
 export interface MergeReadout {
   number: number;
@@ -75,7 +46,6 @@ export type MergeDecision =
   | { kind: 'already-merged' }
   | { kind: 'refuse'; reason: Exclude<MergeRefusalReason, 'already-merged'>; detail: string };
 
-// cm:guard GitHub's own rollup words, so Forge's answer agrees with the one on the pull request page. `neutral` and `skipped` are successes there and are successes here; `cancelled`, `timed_out` and `action_required` are failures. Inventing a fourth bucket makes an operator read two different answers about one check.
 const SUCCESS_CONCLUSIONS = new Set(['success', 'neutral', 'skipped']);
 
 /** The one check that answers for this required context, latest wins on the caller's ordering. */
@@ -149,7 +119,6 @@ export function decideMerge(args: {
     };
   }
 
-  // cm:guard uncomputed comes BEFORE every state-derived answer. GitHub computes `mergeable` in the background and answers `null` with `mergeable_state: "unknown"` on the first read after a push; reading that as anything but "ask again" is how a merge goes out against a pull request nothing has checked. The way out for a caller is to read again in a moment, which the refusal says.
   if (pull.mergeable === null || pull.mergeableState === 'unknown' || !pull.mergeableState) {
     return {
       kind: 'refuse',
@@ -179,7 +148,6 @@ export function decideMerge(args: {
     return { kind: 'refuse', reason: 'required-check', detail: fault };
   }
 
-  // cm:guard `blocked` reaches here only with every required CHECK green, so what is left is a protection rule that is not a check — a review that has not been approved, a code-owner who has not signed off, a conversation that is unresolved. Naming it as a failing check would send an operator to a log that says nothing is wrong.
   if (pull.mergeableState === 'blocked') {
     return {
       kind: 'refuse',

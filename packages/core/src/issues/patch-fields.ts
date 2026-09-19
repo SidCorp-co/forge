@@ -1,23 +1,3 @@
-/**
- * SSOT for the plain (no-side-effect) issue patch fields shared by the two
- * update surfaces — REST `PATCH /api/issues/:id` (issues/routes.ts) and MCP
- * `forge_issues.update` (mcp/tools/forge-issues.ts). Both previously
- * hand-maintained their own `if (x !== undefined)` ladders, so adding an
- * issue column meant editing ≥2 whitelists or silently diverging.
- *
- * Fields with per-surface guards/side effects stay OUT of this list and
- * live at their call site: REST-only `assigneeId` (member check),
- * `metadata` (branch self-reference guard), `labels` (label tx +
- * activity); MCP `status` (routes through the transition state machine).
- *
- * There is no MCP-only set any more. `sessionContext` and `detectorKey` were
- * in one until the CLI had to write them over REST; both surfaces now validate
- * them the same way (`issues/session-context.ts`, `issues/detector-key.ts`).
- *
- * Known intentional drift (do NOT "fix" casually): REST emits the
- * `issueUpdated` hook with before/after tracking; MCP update does not.
- */
-
 import { prepareBody } from '../body/prepare.js';
 
 export const SHARED_ISSUE_PATCH_FIELDS = [
@@ -30,7 +10,6 @@ export const SHARED_ISSUE_PATCH_FIELDS = [
   'acceptanceCriteria',
   'releaseNotes',
   'sessionContext',
-  // cm:why lets an existing issue adopt a detector's key so the next run lands on it instead of opening a rival; the partial unique index rejects the write if another live issue already holds that key
   'detectorKey',
 ] as const;
 
@@ -40,12 +19,6 @@ export interface CollectedIssueFieldUpdates {
   warnings: string[];
 }
 
-/**
- * Copy every defined field from `patch` into a fresh updates object,
- * invoking `onChange` per copied field for surface-specific bookkeeping
- * (REST uses it for before/after change tracking).
- */
-// cm:guard ISS-898 — the description body is validated HERE, not at the two transports, because this function IS the convergence point they share; validating at one of them is validating at neither. It returns `warnings` rather than swallowing them so a caller who typed `<div>` learns it was unwrapped. `descriptionFormat` is read off the raw patch, never from `fields`, so it can never be written to the row unvalidated.
 export function collectIssueFieldUpdates(
   patch: Record<string, unknown>,
   fields: readonly string[],
@@ -56,7 +29,6 @@ export function collectIssueFieldUpdates(
     const next = patch[field];
     if (next === undefined) continue;
     updates[field] = next;
-    // cm:why `description` skips the callback here and fires it below with the PREPARED body — the activity log's `after` must be the bytes that were stored, not the bytes that were sent, or the feed records a value the row never held
     if (field !== 'description') onChange?.(field, next);
   }
   if (updates.description === undefined) return { updates, warnings: [] };
@@ -69,7 +41,6 @@ export function collectIssueFieldUpdates(
   updates.description = prepared ? prepared.body : raw;
   updates.descriptionFormat = prepared?.format ?? 'markdown';
   onChange?.('description', updates.description);
-  // cm:edge contract -> packages/core/src/memory/indexer.ts — the `issueUpdated` hook carries only CHANGED fields, and the indexer needs the format alongside the body to project it. Reported unconditionally here, but do NOT rely on it arriving: REST's `track` drops a field whose value did not move, so an edit that leaves the format at `html` emits `description` alone. `bodyText` sniffs an absent format for that reason — this call is the cheap half, that sniff is the one that holds.
   onChange?.('descriptionFormat', updates.descriptionFormat);
   return { updates, warnings: prepared?.warnings ?? [] };
 }

@@ -309,7 +309,6 @@ describe('PATCH /api/projects/:id/runners/:runnerId (ISS-271)', () => {
     );
   });
 
-  // cm:guard `labels` is what `releaseRunnerLabel` matches against, and this route is the only PAT-reachable writer of it — drop it and a gated project's release pool can be declared by nobody (2026-09-03: sidpeak sat at RELEASE_POOL_EMPTY with three online runners because the fleet route is fenced from PATs and no UI writes the column)
   it('200 replaces labels for project admin', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);

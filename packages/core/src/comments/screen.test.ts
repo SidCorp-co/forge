@@ -61,7 +61,6 @@ describe('what an agent may claim to the person who decides', () => {
     await expect(screen('ISS-42 merged at 4366e63e.')).resolves.toBeUndefined();
   });
 
-  // cm:guard the measured reason this rule does NOT also refuse an unknown reference: 6 of 391 comments in the 18-issue sample cite a forge-plugin key, which CLAUDE.md's own carve-out REQUIRES an agent to do. An existence rule here would refuse the mandated behaviour once every 66 comments.
   it('says nothing about an issue this project does not hold, because that is another project’s key', async () => {
     tracker([]);
     await expect(
@@ -88,7 +87,6 @@ describe('what an agent may claim to the person who decides', () => {
     expect(await refusalOf('   ')).toContain('rule: comment-has-text');
   });
 
-  // cm:guard a role-holding reader CAN open the tracker, so the stakeholder rules are deliberately absent from this cell: refusing a file path or an issue key in an evidence record would refuse the record this project asks every run to write.
   it('writes the developer detail a report to somebody holding a role is made of', async () => {
     tracker([{ issSeq: 42, status: 'developed', mergedAt: new Date() }]);
     await expect(
@@ -156,10 +154,6 @@ describe('the record inside the comment, screened field by field', () => {
     ).resolves.toBeUndefined();
   });
 
-  // cm:guard the two halves of criterion 14: a comment with no fence is measured against nothing
-  // and screened against no lead. Both bodies below would be refused if either pass reached them —
-  // the first is 401 characters, the second is the developer detail `no-developer-detail` catches —
-  // so an implementation that ran either pass unconditionally reds here rather than passing quietly.
   it('leaves a comment carrying no record exactly as it was', async () => {
     await expect(screen(`${over}x`)).resolves.toBeUndefined();
     await expect(
@@ -173,9 +167,6 @@ describe('the record inside the comment, screened field by field', () => {
     expect(message).toContain('the `why` field is');
   });
 
-  // cm:guard the cell the comment door reads is UNTOUCHED by ISS-1089, and this is the case that
-  // says so by name rather than by the absence of a diff: the record screen is a second pass beside
-  // this list, and a reader who folded the two together would red here.
   it('reads the whole comment against the four rules it read before, in their order', async () => {
     const { cellFor } = await import('../messaging/cells.js');
     expect(cellFor('role', 'report')?.rules.map((r) => r.id)).toEqual([

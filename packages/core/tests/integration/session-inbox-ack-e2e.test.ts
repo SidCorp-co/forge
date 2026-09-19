@@ -116,14 +116,12 @@ describe('the inbox ack', () => {
     expect((await rowOf(id))?.send_outcome).toBe('gone');
   });
 
-  // cm:guard `unknown` is core's word for "the runner never answered". A runner reporting it is claiming a silence it is in the act of breaking, and accepting it would let one arrive that `resolveSessionSend` then reads as a live answer.
   it('refuses unknown as a reported outcome', async () => {
     const id = await sessionWithMessage();
     expect((await post(id, 'ack', { outcome: 'unknown' })).status).toBe(400);
     expect((await rowOf(id))?.send_outcome).toBeNull();
   });
 
-  // cm:guard the discriminating case for the ownership check. Any paired runner in the fleet holds a valid device token, so without the session lookup this ack succeeds — and a forged `delivered` is exactly what stops core falling back, losing the human's answer silently.
   it('refuses an ack from a device that does not own the session', async () => {
     const id = await sessionWithMessage();
     const { pairDevice } = await import('../helpers/pair-device.js');
@@ -132,7 +130,6 @@ describe('the inbox ack', () => {
     expect((await rowOf(id))?.send_outcome).toBeNull();
   });
 
-  // cm:guard the OWNER of the project is refused, and that is the point of the device-principal gate: `runtimeState` and this ack are runner-only facts, and a member who could report either could park or un-park any session in their project.
   it('refuses an ack from a user principal, project owner included', async () => {
     const id = await sessionWithMessage();
     const { signUserToken } = await import('../../src/auth/jwt.js');
@@ -148,7 +145,6 @@ describe('the inbox ack', () => {
 });
 
 describe('the applied report', () => {
-  // cm:guard the COMMIT point, and it is a different claim from the ack: a message written to stdin whose session dies before the turn finishes was never read by the model. Collapsing the two is how a lost answer looks delivered.
   it('stamps the turn that consumed the message', async () => {
     const id = await sessionWithMessage();
     expect((await post(id, 'applied', { turn: 3 })).status).toBe(200);

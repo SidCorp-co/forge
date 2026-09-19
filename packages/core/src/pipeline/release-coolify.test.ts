@@ -58,12 +58,8 @@ vi.mock('../integrations/deliveries.js', () => ({
   findDeliveryByRequestId: (id: string, req: string) => findDeliverySpy(id, req),
 }));
 
-// cm:guard Coolify integration resolution goes through the binding→connection store helper and is mocked there, while `pipeline_runs` reads and writes still go through the db stub above — mixing the two is how a case proves the stub instead of the resolver.
 const listBindingsSpy = vi.fn();
 vi.mock('../integrations/store.js', () => ({
-  // cm:guard the deploy path resolves through the DEPLOY-scoped helper. A coolify `service`
-  // binding is a facility the project uses, not somewhere Forge pushes to, and the mock is named
-  // for the query the code actually makes so a rename here cannot quietly restore the old one.
   listActiveDeployBindingsForProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
 }));
 
@@ -232,7 +228,6 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
       expect.objectContaining({ runId: RUN_ID, issueId: ISSUE_ID }),
       expect.stringContaining('no run can witness its outcome'),
     );
-    // cm:guard the report must not cancel the deploy — what ISS-922 stops is the pretence that the run proves it, and a fix that skips the dispatch here would break every deploy asked for after its run closed.
     expect(outcome.dispatched).toBe(true);
   });
 
@@ -263,7 +258,6 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
 describe('tryDispatchCoolifyRelease — prod autoProdDeploy bypass', () => {
   it('auto-dispatches prod like staging when the project opted into autoProdDeploy', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
-    // cm:guard the queue is FIFO and the order is the fixture: the run's status is read first (ISS-922), then projectAutoProdDeploy — swap them and this test proves the opposite of what it says.
     selectQueue.push([{ status: 'running' }]);
     selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
 
@@ -375,7 +369,7 @@ describe('isIssueAtReleaseStage', () => {
 describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   it('returns pendingHumanConfirm and enqueues nothing when the gate is unconfirmed', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
-    selectQueue.push([{ status: 'running' }]); // cm:why the run's own status, read first by ISS-922's terminal-run report
+    selectQueue.push([{ status: 'running' }]);
     selectQueue.push([]); // projectAutoProdDeploy: no agentConfig → gate stays on
     selectQueue.push([]); // getProdGateState: no run carries a gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read

@@ -44,11 +44,6 @@ describe('config/env', () => {
     expect(env.SMTP_PORT).toBe(2525);
   });
 
-  // cm:guard these four used to read "throws at import time", and the import is exactly where the
-  // throw must NOT be now: a module-scope throw here reaches every importer of `db/client.js`, and
-  // the failure it produces names no test and carries no assertion — three stack frames and three
-  // skipped cases, as CI reported on PR #457. The refusal is unchanged; only its moment moved
-  // (ISS-1067).
   it('does not throw at import when a required var is missing', async () => {
     delete process.env.JWT_SECRET;
 
@@ -82,9 +77,6 @@ describe('config/env', () => {
     expect(() => env.PORT).toThrow(/DEVICE_TOKEN_PEPPER/);
   });
 
-  // cm:guard the snapshot of `process.env` moved into the loader with the parse. Left at module
-  // scope the laziness would be cosmetic: the parse would still be measured against the environment
-  // as it stood at import, and this case is what tells the two apart.
   it('reads a variable supplied between the import and the first read', async () => {
     delete process.env.JWT_SECRET;
     const { env } = await import('./env.js');
@@ -147,7 +139,6 @@ describe('config/env retired rate-limit variables', () => {
     );
   });
 
-  // cm:why an empty value is how `${VAR}` reaches a container for a variable the operator never set (see `cleanedEnv`), so treating it as "set" would refuse the boot of every deployment that merely lists the name.
   it('boots when a retired name is present but empty', async () => {
     process.env.RATE_LIMIT_PAT_MAX = '';
     const { env } = await import('./env.js');

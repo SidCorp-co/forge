@@ -18,22 +18,6 @@ export interface PairResult {
 const badRequest = (code: string, message: string) =>
   new HTTPException(400, { message, cause: { code } });
 
-/**
- * Atomically redeem a pairing code and issue a device token.
- *
- * Behaviour:
- *  - INVALID_CODE — code not found
- *  - CODE_ALREADY_USED — `usedAt` is not null
- *  - CODE_EXPIRED — `expiresAt < now()`
- *  - On success, issues a device token bound to the code's owner.
- *
- * Pairing is device-scoped: redeeming a code registers the box and issues it a
- * token, never binds the device to a project. Project binding is a separate web-UI action driven by
- * `POST /projects/:id/runners` (ISS-172 Slice A).
- *
- * `projectId` on the result echoes back the code's hint so the desktop client
- * can still surface "you were invited to project X"; it has no DB side-effect.
- */
 export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
   return db.transaction(async (tx) => {
     const rows = await tx.execute<{
@@ -55,7 +39,6 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       throw badRequest('CODE_EXPIRED', 'pairing code expired');
     }
 
-    // cm:guard the code is marked used BEFORE the credential is issued, and the order is load-bearing: both writes run on the ambient `db` rather than this transaction (`mintPat` and `registerDevice` do not take one), so a failure between them must leave a spent code and no token — recoverable by asking for a new code — rather than a live code and a minted credential, which is a pairing secret that works twice.
     const device = await registerDevice({
       ownerId: row.user_id,
       name: input.name,

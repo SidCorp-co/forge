@@ -53,7 +53,7 @@ flowchart TB
 ## Guards
 
 - **A global skill is never registered or dispatched.** `global` is a read-only template; adopting
-  it materialises a project-owned clone and registers *that*. The `cm:guard` is on
+  it materialises a project-owned clone and registers *that*. The invariant is on
   `core/src/skills/service.ts` and `core/src/domain-templates/apply.ts`.
 - **Always-injected knowledge lands on disk.** An entry's body is spliced verbatim into the
   device-installed `SKILL.md`, so they are never a place for secrets — test credentials live in the

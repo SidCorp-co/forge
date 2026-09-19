@@ -1,16 +1,3 @@
-/**
- * ISS-1085 slice 3 — criteria 11 and 12: the two Sentry admission thresholds as OPERATOR POLICY.
- *
- * Its own file, not an addition to an existing admin suite, because `admin/` has no thresholds
- * test at all: `thresholds.ts` and `thresholds-routes.ts` shipped under ISS-654 covered only by
- * integration tests that need a database. These two criteria are about the shape of the policy —
- * what an absent row means, and what the write door refuses — and both are answerable without one.
- *
- * Criterion 11 is the one worth stating plainly: an `admin_thresholds` table with NO ROW must
- * admit exactly what a row written from `ADMIN_THRESHOLD_DEFAULTS` would. A fleet that has never
- * opened the Ops Console has no row, so the defaults are not a fallback — they are the policy in
- * force for every such fleet, and `judgeSentryIssue` must not be able to tell the difference.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
@@ -82,11 +69,6 @@ describe('criterion 11 — an absent row is the default policy, not a missing on
     await expect(readThresholds()).resolves.toEqual(ADMIN_THRESHOLD_DEFAULTS);
   });
 
-  // cm:guard this one exists because the mutation that swaps `row.sentryMinEventCount` for
-  // `ADMIN_THRESHOLD_DEFAULTS.sentryMinEventCount` SURVIVED the test below it: that test compares a
-  // no-row reading against a row whose values ARE the defaults, so serving the defaults in place of
-  // the stored row is undetectable there. The failure it misses is the one that matters — an
-  // operator sets 25 and the gate keeps filing at 10, with nothing anywhere saying so.
   it('reads a stored policy back verbatim, rather than serving the defaults over it', async () => {
     selectLimit.mockResolvedValueOnce([
       { ...ADMIN_THRESHOLD_DEFAULTS, sentryMinEventCount: 25, sentryMinUserCount: 7 },
@@ -129,10 +111,6 @@ describe('criterion 11 — an absent row is the default policy, not a missing on
   });
 
   it('admits and refuses identically with no row and with a row written from the defaults', async () => {
-    // cm:guard the claim is about the GATE's answer, not about two objects being equal — the
-    // reader already asserted that above. A row could carry the same numbers and still be read
-    // through a different code path, so both readings are put through `judgeSentryIssue` and the
-    // verdicts compared, including the message, which is what an operator actually sees.
     selectLimit.mockResolvedValueOnce([]);
     const fromAbsentRow = await readThresholds();
 
@@ -211,9 +189,6 @@ describe('criterion 12 — the write door refuses a threshold outside its bounds
     authedAsAdmin();
     const res = await put({ sentryMinEventCount: value });
     expect(res.status).toBe(400);
-    // cm:guard the refusal must also be a NON-WRITE. A 400 that had already upserted would leave
-    // the operator reading a value the response told them was invalid — the status code alone does
-    // not say which of the two happened.
     expect(onConflictDoUpdate).not.toHaveBeenCalled();
   });
 
@@ -244,8 +219,6 @@ describe('criterion 12 — the write door refuses a threshold outside its bounds
   });
 
   it('patches one Sentry threshold without discarding the other keys', async () => {
-    // cm:why this is the `wholesale-config-clobber` shape and the reason the handler merges over
-    // the EFFECTIVE row. A PUT naming one key must not reset the seven it did not name.
     authedAsAdmin();
     selectLimit.mockResolvedValueOnce([
       { ...ADMIN_THRESHOLD_DEFAULTS, stuckJobSeconds: 999, sentryMinEventCount: 50 },

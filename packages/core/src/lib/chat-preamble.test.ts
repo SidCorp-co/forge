@@ -103,9 +103,6 @@ describe('buildPipelinePreambleStructured', () => {
     expect(built.content).toContain('REPAIR FORWARD');
   });
 
-  // cm:guard `drive` is the case that matters since ISS-1047 — it is a CLAIMABLE step with no
-  // default block, where `custom` is merely a step no runner takes. A state block appearing for the
-  // driver would mean core had started writing the depth the `issue-flow` skill owns.
   it('omits the state-block for a claimable step with no default, and when no step given', async () => {
     mockBranchSelect([{ baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' }]);
 

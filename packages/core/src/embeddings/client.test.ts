@@ -93,13 +93,6 @@ describe('EmbeddingsClient.embed', () => {
     expect((fetchFn as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(3);
   }, 15_000);
 
-  // cm:guard the classification, not the retry count. Callers split hard on the ERROR TYPE:
-  // `upsertKnowledgeEntries` stores a row with a null vector for the backfill on
-  // `EmbeddingUnavailableError` and fails the caller's write on anything else, and memory does the
-  // same with its keyword-searchable row. Rethrowing the raw `RetriableError` meant a host that does
-  // not resolve — the plainest outage there is — took the fail-the-write branch until the breaker
-  // had opened after five consecutive failures, so whether a save survived an outage depended on how
-  // many saves had already failed ahead of it.
   it('classifies exhausted retries as unavailable, so callers can degrade', async () => {
     const fetchFn = vi.fn(async () => {
       throw new Error('getaddrinfo ENOTFOUND stub.invalid');
@@ -108,9 +101,6 @@ describe('EmbeddingsClient.embed', () => {
     await expect(client.embed('hi')).rejects.toBeInstanceOf(EmbeddingUnavailableError);
   }, 15_000);
 
-  // cm:guard a 4xx is NOT unavailability: the request was wrong, and degrading on it would store a
-  // vectorless row for every malformed call and call the outage a service problem. Only the
-  // retriable kind is reclassified above.
   it('leaves a non-retriable failure classified as it was', async () => {
     const fetchFn = mockFetchOnce(400, 'bad');
     const client = new EmbeddingsClient(cfg, fetchFn);

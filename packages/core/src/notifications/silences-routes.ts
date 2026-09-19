@@ -57,9 +57,6 @@ silenceRoutes.post(
     const body = c.req.valid('json');
     const expiresAt = new Date(body.expiresAt);
     const ms = expiresAt.getTime() - Date.now();
-    // cm:guard a silence must END, and it must end soon enough that the person who set it
-    // still remembers setting it. A week is the ceiling; an unbounded silence is a type
-    // turned off with nobody accountable, which is what ISS-1063 was filed about.
     if (ms <= 0 || ms > MAX_SILENCE_MS) {
       throw badRequest({
         expiresAt:
@@ -87,8 +84,6 @@ silenceRoutes.delete(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    // cm:why expiring rather than deleting: the record of what somebody silenced, and
-    // why, outlives the silence. A row removed takes the reason with it.
     const updated = await db
       .update(notificationSilences)
       .set({ expiresAt: new Date() })

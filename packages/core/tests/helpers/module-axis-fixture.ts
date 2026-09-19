@@ -118,7 +118,6 @@ export function installModuleAxisFixture(): ModuleAxisFixture {
     return (parseToolResult(res as never) as { documentId: string }).documentId;
   }
 
-  // cm:guard the refusal's CODE is what a test may assert, never `isError` alone — `module-service.ts` declares "the code IS the contract … MCP as the `CODE: message` prefix, and both are asserted", and an assertion on `isError` holds just as green when `MULTIPLE_PRIMARY` degrades to a bare `BAD_REQUEST`, which is the contract going out from under the agent with no test noticing (ISS-587).
   function refusalText(res: unknown): string | null {
     const r = res as { isError?: boolean; content?: Array<{ type: string; text: string }> };
     if (r.isError !== true) return null;
@@ -126,7 +125,6 @@ export function installModuleAxisFixture(): ModuleAxisFixture {
     return first?.type === 'text' ? first.text : '';
   }
 
-  // cm:edge contract -> packages/core/src/mcp/server.ts — the shape parsed here is that handler's `Error: ${text}`, after it has stripped its own `BAD_REQUEST:`/`FORBIDDEN:`/`NOT_FOUND:` class prefix; what is left leads with the domain code, and a test asserting the code as a SUBSTRING would pass on `MULTIPLE_PRIMARY_LEGACY` too, so the token is matched whole (ISS-587).
   function refusalCode(res: unknown): string | null {
     const text = refusalText(res);
     return text === null ? null : (/^Error:\s*([A-Z][A-Z0-9_]*):\s/.exec(text)?.[1] ?? null);

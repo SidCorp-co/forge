@@ -51,10 +51,6 @@ oauthRoutes.get('/oauth/:provider/callback', (c) => {
   return handleCallback(c, p as ProviderId);
 });
 
-// ISS-167 — SSO reauth entry point for password-less users. Verifies the
-// caller has a linked row for the requested provider, then runs the standard
-// OAuth dance with `mode: 'reauth'` so the callback stamps `lastFreshAuthAt`
-// instead of issuing a fresh auth cookie.
 oauthRoutes.get('/oauth/:provider/reauth-start', requireAuth(), async (c) => {
   gate();
   const p = c.req.param('provider');

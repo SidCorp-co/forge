@@ -99,7 +99,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
           )}
           {entry.groupLabel && <Badge tone="cobalt">{entry.groupLabel}</Badge>}
           {entry.jobType && (
-            <span className="font-mono text-[12.5px] font-bold text-fg">{entry.jobType}</span>
+            <span className="font-mono text-12-5 font-bold text-fg">{entry.jobType}</span>
           )}
           <span className="fg-body-sm capitalize text-muted">{entry.status}</span>
           {/* ISS-411 — surface WHERE this step ran by runner NAME (not a raw

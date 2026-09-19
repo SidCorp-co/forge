@@ -37,7 +37,6 @@ describe('parseStreamMessage', () => {
     });
   });
 
-  // cm:why ISS-1004 removed the field as well as the gate: nothing decides anything on an @-mention any more, and a parsed value nobody reads is a fact about the wire nobody has to keep true.
   it('carries no mention list — a message that names the bot parses exactly like one that does not', () => {
     const named = parseStreamMessage({
       _id: 'm2',
@@ -160,7 +159,6 @@ describe('RocketChatDdpClient subscription loss', () => {
     await connected;
     expect(client.getState()).toBe('live');
 
-    // cm:guard a `nosub` AFTER the subscription went live must close the socket and redial: it was a silent no-op, so the bot went deaf with the link still up and nothing reporting it.
     fake.emit({ msg: 'nosub', id: subFrame.id, error: { error: 'stream-not-allowed' } });
     expect(errors.some((e) => /subscription lost/i.test(e.message))).toBe(true);
     expect(client.getState()).toBe('closed');
@@ -241,7 +239,6 @@ describe('replyTargetOf (ISS-1087)', () => {
     );
   });
 
-  // cm:guard the quote WINS over the thread parent: a message inside a thread that quotes one specific message is answering that one.
   it('prefers the quote over the thread parent, and falls back to the thread parent (criterion 10)', () => {
     expect(replyTargetOf({ msg: 'x?msg=Q3', tmid: 'T1' })).toBe('Q3');
     expect(replyTargetOf({ msg: 'plain reply in a thread', tmid: 'T1' })).toBe('T1');

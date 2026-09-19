@@ -89,7 +89,6 @@ export async function keywordSearchKnowledge(
 }
 
 const RRF_K = 60;
-// cm:guard equal weights for the same reason as memory/search.ts:HYBRID_ALPHA — at 0.7/0.3 a hit only the keyword arm found never survived the cut to topK (ISS-907)
 export const HYBRID_ALPHA = 0.5;
 
 export function rrfFuse(lists: KnowledgeHit[][], weights: number[], limit: number): KnowledgeHit[] {

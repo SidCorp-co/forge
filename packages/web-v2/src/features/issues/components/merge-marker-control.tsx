@@ -12,7 +12,6 @@ import { Button, Field, Input, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { useMergeMarker } from "../hooks";
 
-// cm:guard plain prose only — this renders in a bare <p>, so markdown backticks would reach the user as literal characters (the same rule transition-reason-dialog.tsx carries, caught on forge-beta 2026-08-14)
 const BLURB =
   "For work finished outside the pipeline. This is a claim that the code shipped, not a date " +
   "field: it is what counts the issue as shipped rather than closed-with-no-evidence, and it " +

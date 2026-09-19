@@ -12,7 +12,6 @@ import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { verifyHmacSignature } from './hmac.js';
 
-// cm:guard THE GENERIC PATH'S PAIR, and only it. A provider-routed delivery is verified against the ONE header its own declaration names (`capabilities.webhookSignatureHeader`), so nothing is added here when a provider is added — that is what ISS-1085 slice 4 finished moving out of this file, and this array is what was left of the map ISS-1071 derived from the declarations. Every header here still belongs to something that actually SIGNS: `x-coolify-signature-256` went with the Coolify inbound path (ISS-922) because Coolify sends no signature at all, and an entry for a provider that signs nothing only makes an unreachable branch look reachable.
 const GENERIC_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
 
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
@@ -64,23 +63,19 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     .limit(1);
   if (!project) throw notFound();
 
-  // cm:guard a provider header claims the request for its adapter and the generic path below never sees it — so registering an adapter is what MOVES a provider off `projects.webhookSecret` onto the binding's own `integrationSecret`. Adding a header here without an adapter turns every one of that provider's deliveries into ADAPTER_NOT_REGISTERED rather than falling through.
   for (const map of providerHeaderMap()) {
     if (!c.req.header(map.header)) continue;
     const adapter = getAdapter(map.provider);
     if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-    // cm:why multi-env disambiguation: the signature is verified against each binding's own integrationSecret and dispatched on the one that matches, which is what tells a staging delivery apart from a prod one.
     const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
     if (candidatePairs.length === 0) {
       throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
     }
 
-    // cm:guard a matched provider that declares NO signature header is refused by name, never dropped through to the generic path below. Falling through would verify a provider's delivery against `projects.webhookSecret` and answer it `actions: 0` — a 200 for a payload nobody handled, which is the silent substitution the declaration was moved here to end.
     if (!map.signatureHeader) {
       throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
     }
-    // cm:guard ONE header, the one this provider declares — not whichever of a set happens to be present. A delivery that carried the right bytes under the wrong header name is a delivery from something that is not this provider, and accepting it on the strength of a verifying HMAC would mean the header name stopped identifying anything.
     const signatureHeader = c.req.header(map.signatureHeader);
     if (!signatureHeader) {
       throw unauthorized('MISSING_SIGNATURE');
@@ -131,7 +126,6 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     }
   }
 
-  // cm:guard the generic path accepts a signed body and DOES NOTHING with it — keep it that way. It exists so a provider can be pointed here while its adapter is being written, and `actions: 0` in the response is the only thing telling an operator the payload was dropped. Anything that starts acting on a body here is a second inbound path, which is what registering an adapter is for.
   if (!project.secret) {
     throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
   }

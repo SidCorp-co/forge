@@ -1,35 +1,3 @@
-// Improvement-message registry — the versioned, git-committed catalogue of
-// improvement ideas the platform suggests to project owners.
-//
-// Design mirrors `prompt/facts/registry.ts`:
-//   - Pure module: imports TYPES ONLY from the DB schema (never side-effects).
-//   - No DB seeding required — the registry is read directly from this module.
-//
-// Two surfaces consume this module:
-//   1. `GET /api/improvement-messages` — returns the catalogue, optionally
-//      annotated with per-project enablement from `schedules.template_key`.
-//   2. `/api/schedules` POST/PUT — validates `templateKey` against this
-//      registry before persisting.
-//
-// ── appliesWhen contract ─────────────────────────────────────────────────────
-// `appliesWhen` is a NATURAL-LANGUAGE condition string, NOT a TS predicate.
-// The skill-improve agent (child 4/5) loads the project's config
-// (mergeStates, baseBranch, liveBranch, releaseModel, stack, roles) plus codebase
-// context and JUDGES whether the condition holds, recording its reasoning in
-// the run report. This design is intentional: conditions like "project has a
-// FE/UI surface" or "base-merge state is a manual gate" require judgment over
-// config + code that a cheap deterministic function cannot reliably cover.
-// A future iteration MAY add an optional structured predicate for trivially-
-// checkable conditions, but structured predicates are out of v1 scope.
-//
-// ── standing templates ───────────────────────────────────────────────────────
-// When `standing === true`, the dispatch engine BYPASSES the
-// `appliedMessageVersions` idempotency gate — every cadence run fires
-// regardless of prior executions. Use for templates whose value comes from
-// observing fresh signals on every run (e.g. the skill steward). One-shot
-// templates (standing omitted / false) still skip after their version is
-// applied.
-
 import type { ScheduleMode } from '../../db/schema.js';
 
 export type ImprovementMessageCategory =
@@ -69,16 +37,9 @@ export interface ImprovementMessage {
   recommended: boolean;
   /** Default mode when the owner enables this message without specifying one. */
   defaultMode: ScheduleMode;
-  /**
-   * When true, the dispatch engine bypasses the `appliedMessageVersions`
-   * idempotency gate so the template fires on every cadence run.
-   * Standing templates have continuous value (always fresh signals to process).
-   * Default: false (one-shot semantics).
-   */
   standing?: boolean;
 }
 
-// cm:guard STRATEGY_INPUTS are applied by the standing steward when it observes the matching signal — they are NOT schedules and must not be given a cron, or the same guidance arrives twice from two owners.
 export const RETIRED_STRATEGY_INPUTS = {
   MERGED_AT_ON_PASS: {
     key: 'merged-at-on-pass',
@@ -113,12 +74,6 @@ export const RETIRED_STRATEGY_INPUTS = {
       'transition awaiting_release → reopen and post the standard conflict comment ' +
       'so forge-fix can resolve it. Never leave the issue at awaiting_release after ' +
       'a conflict — silent waiting blocks the release indefinitely.',
-    // cm:guard the condition is `releaseModel: 'promote'` and NOT a branch comparison. It read "the
-    // two branches differ" until ISS-1046, which is the same inference `release-batch/gate.ts`
-    // dropped: 25 of 32 fleet projects carry a `live_branch` left over from a column default and six
-    // of them a branch genuinely distinct from their base, so the old test handed rebase-onto-
-    // production advice to six projects that promote nothing, and withheld it from a `publish`
-    // storefront where it would be wrong for the opposite reason.
     appliesWhen:
       "The project declares releaseModel='promote' in its project config, meaning the release " +
       'moves code from baseBranch to liveBranch and ISS-* branches must track liveBranch to ' +

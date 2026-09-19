@@ -1,16 +1,5 @@
 "use client";
 
-// web-v2 feature module: session (detail) — React Query hooks for the RUN
-// thread. Every verb here rewrites or reads a run: its turns, its device, its
-// cancel. The chat-only verbs — create, runner pin, rename, archive, delete and
-// the interactive list — left with the chat surface at ISS-1004 step 5, and what
-// replaced them is `features/conversations/hooks.ts`.
-//
-// Query-key contract (ISS-292): the detail row is keyed `['agent-session', id]`
-// and turns `['agent-session', id, 'turns']` — exactly the keys the WS
-// event-router invalidates on `agent-session.turn.appended/.edited/.truncated`
-// (+ `agent-session.status/updated`). Pick any other prefix and the streaming
-// caret + live turn updates silently no-op. See `lib/ws/event-router.ts`.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
@@ -36,7 +25,6 @@ export function useSessionTurns(id: string | undefined) {
   });
 }
 
-// cm:guard follow `nextCursor` to the end — the server caps a page at 500 (`turns-helpers.ts`), and one page is not a session: run d089d6f3 has 1663 entries, so the single-page fetch rendered the first 500 and silently dropped the rest, closing the run report on "Now §E — the FAQ JSON-LD tokenizer." while the actual verdict sat in the tail.
 const TURN_PAGE_CAP = 40;
 
 export async function fetchAllTurns(id: string): Promise<TurnsResponse> {

@@ -1,14 +1,6 @@
-// web-v2 shell feature module — the workspace navigation model. Single source
-// of truth for the rail/drawer/⌘K destinations and the pathname → active-row /
-// breadcrumb derivations. The kit page (src/app/kit/page.tsx) renders these
-// same lists so the design docs can never drift from what actually ships.
 import type { BottomTabItem, Crumb, NavItem } from "@/design";
 import type { RailItem } from "./nav-rail-compact";
 
-/** Concept C (ISS-307): the left rail is two-tier — workspace destinations on
- *  top, then (when a project is active) an inline project tier with a searchable
- *  switcher flyout. Keys are globally unique (project-tier keys are prefixed
- *  `proj-`) so a single `activeKey` never lights two rows. */
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
   // (its live count rides on this row's badge).
@@ -20,10 +12,6 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
   // ISS-628 — workspace resource management, first type = Private Keys.
   { key: "resources", label: "Resources", icon: "lock", href: "/resources" },
-  // Promoted from SECONDARY_DESTINATIONS (ISS-433): since ISS-429/431 this is
-  // the owner CONNECTION DIRECTORY (manage shared credentials, enable/disable,
-  // projects-using-it) — a management surface, not a redundant status view, so
-  // it must be discoverable without ⌘K.
   { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
 ];
 
@@ -43,12 +31,6 @@ export interface ProjItem extends NavItem {
   sub: string;
 }
 
-/** Concept C: exactly 5 flat project-tier items (no clusters), matching the
- *  draft (ISS-360): Dashboard, Issues, Agents, Library, Automation. The
- *  standalone Pipeline entry was dropped — the pipeline kanban folds into the
- *  Issues views, and `/pipeline` stays reachable via issue-detail + ⌘K. Agents
- *  merges Sessions+Chat; Library merges Knowledge+Memory+Skills; Automation
- *  merges Schedules+PM. */
 export const PROJECT_ITEMS: ProjItem[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
@@ -63,16 +45,6 @@ export function activeSlug(pathname: string): string | null {
   return m ? m[1] : null;
 }
 
-/** The project the rail renders on a workspace screen (no slug in the URL):
- *  this tab's last-visited project (ISS-731), else this tab's last-RESOLVED
- *  rail project (`stickySlug`), else the shared pinned-first/first project.
- *
- *  `stickySlug` anchors a tab so a `scopedProjects` reorder or transient empty
- *  list (e.g. a projects-list refetch on window focus) can never bounce it
- *  onto a shared `list[0]` — the mechanism behind ISS-734 (same-org tabs
- *  converging on one project). Both `lastSlug` and `stickySlug` are only
- *  honored when still present in `scopedProjects`, so a foreign-org slug can
- *  never surface (ISS-470/476/480 org-scope guard). */
 export function resolveRailSlug(opts: {
   slug: string | null;
   lastSlug: string | null;
@@ -120,10 +92,6 @@ export function buildActiveKey(pathname: string, slug: string | null): string {
   return ws?.key ?? "overview";
 }
 
-/** Active bottom-tab key. Inside a project the bar carries the project tier —
- *  light the matching `proj-*` key the same way the rail does (longest `sub`
- *  wins). Outside, "Projects" → the list at /projects; the Overview dashboard
- *  at `/` is reachable via the drawer/⌘K, not a bottom tab. */
 export function buildBottomActiveKey(pathname: string, slug: string | null): string {
   if (slug) {
     const base = `/projects/${slug}`;
@@ -137,8 +105,6 @@ export function buildBottomActiveKey(pathname: string, slug: string | null): str
   return "";
 }
 
-/** Expanded-rail workspace rows. Attention is folded into Overview — its live
- *  count rides Overview's badge. */
 export function workspaceNavItems(attentionCount: number): NavItem[] {
   return WORKSPACE_ITEMS.map((it) =>
     it.key === "overview" ? { ...it, badge: attentionCount } : it,
@@ -169,12 +135,6 @@ export function projectRailItems(openIssues: number | undefined): RailItem[] {
   }));
 }
 
-/** Bottom tab bar (<md): ≤5 destinations. Inside a project it shows the fixed
- *  5-item set (ISS-681): Dashboard, Issues, Chat, Agents, Project switcher —
- *  Chat toggles the chat dock and Project switcher opens the MobileNavDrawer
- *  (both wired by the layout, not routes), so Library/Automation drop off the
- *  bar and stay reachable via the drawer's PROJECT_ITEMS list. Outside a
- *  project it shows the workspace tabs (Search opens ⌘K; You → account). */
 export function bottomTabItems(
   slug: string | null,
   attentionCount: number,
@@ -197,12 +157,6 @@ export function bottomTabItems(
   ];
 }
 
-/** Breadcrumb trail for the top header (ISS-358; ISS-359 fix). The root crumb
- *  is derived from context instead of hard-pinning "Overview" in front of every
- *  screen:
- *    • landing `/`            → "Workspace / Overview" (you're on Overview)
- *    • project-tier screens   → "Projects / <Project> / <Page>"
- *    • other workspace screens→ "Workspace / <Page>" */
 export function buildCrumbs(opts: {
   pathname: string;
   slug: string | null;

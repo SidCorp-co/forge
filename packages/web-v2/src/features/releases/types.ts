@@ -1,25 +1,10 @@
-// web-v2 feature module: releases — the wire shape of one release run.
-//
-// Mirrors `ReleaseRunState` in `packages/core/src/release-batch/state.ts` as it
-// arrives over JSON: every `timestamp` column there is an ISO string here, and
-// nothing else differs. The core file is the source of truth for the meaning of
-// each field; this one exists so the screen cannot read a field core does not
-// send.
 
-/** What an attempt was an attempt AT — `RELEASE_ATTEMPT_STAGES` in core. */
 export type ReleaseAttemptStage = "promote" | "deploy" | "verify" | "repair";
 
-/**
- * One act a release run made. The agent's half (`account`, `logTail`) and the
- * machine's half (`health`, `identity`, `verdict`, `verdictReason`, `readings`)
- * are separate fields and neither is derived from the other — the screen shows
- * both and never presents one as the other.
- */
 export interface ReleaseAttempt {
 	id: string;
 	runId: string;
 	stage: ReleaseAttemptStage;
-	/** The agent's own key for this act, unique within the run. */
 	idempotencyKey: string;
 	commit: string | null;
 	/** The provider's handle on what it did — a Coolify deployment uuid, a tag. */

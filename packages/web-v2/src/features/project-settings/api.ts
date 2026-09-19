@@ -1,6 +1,3 @@
-// web-v2 feature module: project-settings — REST surface, verified against core (ISS-316).
-// The project detail itself is NOT here: `GET /api/projects/:id` lives in the `projects`
-// feature as `projectApi.getById` and is reached through `useProject`.
 
 import type { ProjectDetail } from "@/features/projects/types";
 import { apiClient } from "@/lib/api/client";
@@ -27,8 +24,6 @@ export const projectSettingsApi = {
 			body: JSON.stringify(patch),
 		}),
 
-	/** `POST /api/projects/:id/archive` — soft archive (owner only). Returns the
-	 *  updated row with `archivedAt` set. Non-destructive (ISS-353). */
 	archive: (id: string) =>
 		apiClient<ProjectDetail>(`/projects/${id}/archive`, { method: "POST" }),
 
@@ -36,16 +31,11 @@ export const projectSettingsApi = {
 	unarchive: (id: string) =>
 		apiClient<ProjectDetail>(`/projects/${id}/unarchive`, { method: "POST" }),
 
-	/** `GET /api/projects/:id/pipeline-config` → `{ pipelineConfig }`. 404
-	 *  `FEATURE_OFF` when the `pipelineControl` flag is disabled. */
 	getPipelineConfig: (id: string) =>
 		apiClient<{ pipelineConfig: PipelineConfig }>(
 			`/projects/${id}/pipeline-config`,
 		),
 
-	/** `POST /api/projects/:id/assistant-weekly/run` — run this project's weekly
-	 *  assistant reading now (org admin/owner). Same window and already-posted
-	 *  check as the 04:00 UTC tick, so pressing it twice posts once. */
 	runAssistantWeekly: (id: string) =>
 		apiClient<
 			| { outcome: "posted"; windowId: string }
@@ -53,9 +43,6 @@ export const projectSettingsApi = {
 			| { outcome: "failed"; windowId: string; error: string }
 		>(`/projects/${id}/assistant-weekly/run`, { method: "POST" }),
 
-	/** `PATCH /api/projects/:id/pipeline-config` — full config (owner only).
-	 *  Core returns `{ pipelineConfig, warnings }`; `warnings` are non-blocking
-	 *  advisories (e.g. an enabled stage with no skill that will auto-skip). */
 	updatePipelineConfig: (id: string, pipelineConfig: PipelineConfig) =>
 		apiClient<{ pipelineConfig: PipelineConfig; warnings?: string[] }>(
 			`/projects/${id}/pipeline-config`,
@@ -77,10 +64,6 @@ export const projectSettingsApi = {
 	getReleaseReadiness: (id: string) =>
 		apiClient<ReleaseReadiness>(`/projects/${id}/release-readiness`),
 
-	/** `GET /api/projects/:id/knowledge/:slug` → one entry, or a 404 this caller
-	 *  reads as "not compiled yet". The project-facts route pair this replaced was
-	 *  retired with `agentConfig.projectFacts` in ISS-1048; the editor for these
-	 *  rows is the Knowledge screen's Rules tab. */
 	getKnowledgeEntry: (id: string, slug: string) =>
 		apiClient<{ slug: string; body: string }>(`/projects/${id}/knowledge/${slug}`),
 
@@ -88,9 +71,6 @@ export const projectSettingsApi = {
 	listMembers: (id: string) =>
 		apiClient<ProjectMemberRow[]>(`/projects/${id}/members`),
 
-	/** `POST /api/projects/:id/members` — direct-add a user who is ALREADY a
-	 *  member of the project's org (no email round trip). 409 `NOT_ORG_MEMBER`
-	 *  when the user is outside the org, 409 `ALREADY_MEMBER` when redundant. */
 	directAddMember: (
 		id: string,
 		userId: string,

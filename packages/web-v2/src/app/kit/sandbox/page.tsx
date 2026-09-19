@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { Button, Kicker } from "@/design";
+import {
+  Button,
+  Kicker,
+  PageTitle,
+} from "@/design";
 
-// cm:guard the delay is the point — without it neither this route's loading.tsx (Suspense) nor the top RouteProgress bar is demonstrable when navigating here from /kit
 async function slowData() {
   await new Promise((r) => setTimeout(r, 1100));
   return { ok: true };
@@ -12,7 +15,7 @@ export default async function Sandbox() {
   return (
     <div className="mx-auto max-w-[900px] px-6 py-10">
       <Kicker>Page load</Kicker>
-      <h1 className="fg-h1 mt-1">Sandbox route</h1>
+      <PageTitle className="mt-1">Sandbox route</PageTitle>
       <p className="fg-body-sm mt-1">
         This is a real async route. Getting here showed the top progress bar, the Suspense
         skeleton (loading.tsx), and the page enter transition.

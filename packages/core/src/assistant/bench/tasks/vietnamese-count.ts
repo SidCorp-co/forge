@@ -9,7 +9,6 @@ export const vietnameseCount: Task = {
   budgetSeconds: 120,
   turns: [
     {
-      // cm:ignore CM001 — the benchmark's own Vietnamese prompt; the assistant is graded on answering in kind
       message: 'Dự án này hiện có bao nhiêu issue đang mở? Trả lời bằng tiếng Việt.', // i18n-allow: benchmark prompt
       checks: [
         { kind: 'language', diacritics: 'vi' },

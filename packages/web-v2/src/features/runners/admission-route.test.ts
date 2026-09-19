@@ -1,10 +1,3 @@
-/**
- * Pool admission writes `runners.status`, and exactly one route accepts it.
- * The project-scoped PATCH sits one line away in the same object and takes a
- * `.strict()` body of repoPath/branch/labels, so sending admission there is a
- * 400 the UI shows as a generic "Save failed" — which is how the toggle stayed
- * broken. These assert the URL, because the URL is the whole bug.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiClient = vi.fn().mockResolvedValue({});

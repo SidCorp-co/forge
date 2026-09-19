@@ -1,13 +1,3 @@
-/**
- * ISS-889 — the structural half of "one data plane". Behaviour tests can show
- * that REST and MCP agree today; only a source scan shows that a third caller
- * cannot quietly open its own path to the table tomorrow.
- *
- * This is the assertion that would have caught the drift the issue was filed
- * about: two transports each holding their own `insert(issues)`, diverging on
- * detector-key, labels-by-name, relations and transactionality for months.
- */
-
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';

@@ -85,7 +85,6 @@ describe('memory near-duplicate writes (ISS-876)', () => {
     return { projectId: project.id, token };
   }
 
-  // cm:guard every text embeds to ONE vector here, so the probe scores a perfect 1.0 — the strongest form of the condition that used to absorb the write; a content-dependent stub would score below the threshold and the test would pass without ever exercising the rule
   function stubOneVectorForEverything() {
     const one = deterministicVector('the-same-topic');
     const fake = {
@@ -106,7 +105,6 @@ describe('memory near-duplicate writes (ISS-876)', () => {
     });
   }
 
-  // cm:guard ISS-876: a write under an unused sourceRef must CREATE that ref and leave every other row's text byte-identical — the absorb this replaced overwrote the 08-19 summary with the 08-29 one on forge-dev, and the caller could not read the loss back
   it('creates the ref asked for and leaves the older note recoverable in full', async () => {
     const { projectId, token } = await seedMember();
     stubOneVectorForEverything();
@@ -137,7 +135,6 @@ describe('memory near-duplicate writes (ISS-876)', () => {
     expect(body.dedupeScore).toBeGreaterThan(0.85);
   });
 
-  // cm:guard ISS-876: the rows the old absorb archived are the ONLY surviving copy of the notes it destroyed — if includeArchived stops reaching them, that text is unrecoverable through every read surface Forge exposes
   it('recovers text that survives only in an archived row, flagged as archived', async () => {
     const { projectId, token } = await seedMember();
     stubOneVectorForEverything();

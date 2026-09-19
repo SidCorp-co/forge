@@ -60,14 +60,6 @@ describe('toProviderMessages', () => {
     ]);
   });
 
-  // cm:guard a turn's own reasoning is NEVER replayed to the model. What stops it is the shape of
-  // this function rather than a filter inside it: every message it builds carries `role`, `content`
-  // and — where a picture was attached — content parts, and `blocks` is not read at all. Reasoning
-  // rides `blocks`, so feeding a turn's thinking back as history would take a change to this
-  // function and not merely a change to what a row holds. Asserted on the KEYS, because a filter
-  // that dropped reasoning could be removed without a single other test going red; and asserted
-  // against a history entry that really holds a thinking block, so the absence is measured rather
-  // than assumed (ISS-1079).
   it('builds a provider message out of role and content alone, so no block can reach the model', () => {
     const out = toProviderMessages(
       turn(
@@ -76,9 +68,6 @@ describe('toProviderMessages', () => {
           stored({
             role: 'assistant',
             content: 'Two issues left.',
-            // cm:why the history entry CARRIES reasoning rather than merely lacking it: a row with
-            // no `blocks` makes the two `not.toContain` assertions unfailable, and an assertion
-            // that cannot fail covers nothing.
             blocks: [
               { type: 'thinking', thinking: 'CANARY-REASONING', durationMs: 400 },
               { type: 'text', text: 'Two issues left.' },
@@ -94,8 +83,6 @@ describe('toProviderMessages', () => {
     expect(JSON.stringify(out)).not.toContain('blocks');
   });
 
-  // cm:guard a silence is a ROW and never a prompt: replaying it as an empty assistant turn teaches
-  // the model that an empty answer is a shape it may produce.
   it('leaves a recorded silence out of the prompt', () => {
     const out = toProviderMessages(
       turn([
@@ -106,8 +93,6 @@ describe('toProviderMessages', () => {
     expect(out).toEqual([{ role: 'user', content: 'asked' }]);
   });
 
-  // cm:guard an image with NO caption is the commonest way a person asks about a screenshot, and a
-  // length test on the text alone drops it — the model is asked about a picture it was never shown.
   it('sends a captionless image as its own content part', () => {
     const out = toProviderMessages(
       turn([], [stored({ content: '', images: [IMAGE] })]),
@@ -149,8 +134,6 @@ describe('toProviderMessages', () => {
   });
 });
 
-// cm:guard a silence is a handle DECLINING to speak, so it is by that handle: an unattributed one
-// cannot say which of a room's two handles went quiet, which is the distinction the row exists for.
 describe('a silence names the handle that stayed quiet', () => {
   it('is authored by the room handle, exactly as an answer would have been', () => {
     const t = turn([], [], 'handle-1');
@@ -175,8 +158,6 @@ describe('a silence names the handle that stayed quiet', () => {
   });
 });
 
-// cm:guard a persisted turn names the authority it runs as — structural, because the call sites are
-// what regress: `connection-manager.ts` omitted it and every mocked suite stayed green (ISS-1001)
 describe('every persisted turn names its authority', () => {
   it('passes a userId wherever it passes a conversation or a venue', () => {
     const root = fileURLToPath(new URL('../', import.meta.url));

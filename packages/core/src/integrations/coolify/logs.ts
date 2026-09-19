@@ -9,25 +9,9 @@ import type { CoolifyDeploymentLogLine } from './types.js';
 export const LOG_MAX_LINES = 100;
 export const LOG_MAX_BYTES = 16 * 1024;
 
-// ISS-412 — Coolify emits this banner immediately before dumping every
-// runtime env var as a KEY=value line. We use it as the start delimiter of
-// an env-dump block; the block ends at the first non-env-shaped line.
-// The value is optional — Coolify routinely emits `COOLIFY_URL=` (empty)
-// inside the dump and an over-strict regex used to end the block early,
-// leaving the rest of the env vars only gated by Layer 1's suffix rule.
 const ENV_DUMP_MARKER = /Creating \.env file with runtime variables/i;
 const ENV_ASSIGNMENT_LINE = /^(\s*(?:export\s+)?[A-Z][A-Z0-9_]*)\s*=.*$/;
 
-/**
- * Defense-in-depth before the generic {@link scrubLogText} runs. Inside the
- * `Creating .env file with runtime variables` block we redact EVERY
- * `KEY=value` value regardless of suffix — catches names like
- * `MY_PROVIDER_LOL=...` that the suffix-list rule would miss. Outside the
- * block, env-shape lines pass through untouched; the generic suffix rule in
- * `scrubLogText` still catches secret-shaped names anywhere in the log.
- *
- * No-op when the marker is absent.
- */
 export function redactCoolifyEnvDump(text: string): string {
   if (!ENV_DUMP_MARKER.test(text)) return text;
   let inBlock = false;
@@ -41,8 +25,6 @@ export function redactCoolifyEnvDump(text: string): string {
       if (!inBlock) return line;
       const m = ENV_ASSIGNMENT_LINE.exec(line);
       if (!m) {
-        // Block ends at the first non-env-shaped line (blank line,
-        // build-step output, FQDN, etc.).
         inBlock = false;
         return line;
       }
@@ -51,13 +33,6 @@ export function redactCoolifyEnvDump(text: string): string {
     .join('\n');
 }
 
-/**
- * Normalise Coolify's `logs` field to plain text. The field is most commonly a
- * JSON-encoded array of `{ output, type, timestamp }` lines, but some versions
- * answer with a raw string. Parse defensively: never throw on an unexpected
- * shape — fall back to the raw string (or empty) so the caller still gets
- * whatever signal is present.
- */
 export function flattenLogs(logs: string | CoolifyDeploymentLogLine[] | undefined): string {
   if (!logs) return '';
   if (Array.isArray(logs)) {
@@ -110,14 +85,6 @@ export function tailLog(
   return { text: out, truncated };
 }
 
-/**
- * ISS-787 — a stable fingerprint of a log snapshot, so a caller can say
- * "byte-identical across 5 calls spanning 20 minutes" from two short strings
- * instead of holding both blobs. Report `3e1dc095` had to make exactly that
- * claim by eye, and could not distinguish a running build from a stale
- * cached one. 12 hex is ~48 bits — far past collision risk for comparing two
- * consecutive reads of the same log, and short enough to sit in a comment.
- */
 export function logDigest(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 12);
 }

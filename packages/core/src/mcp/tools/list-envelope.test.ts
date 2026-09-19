@@ -93,7 +93,6 @@ describe('buildListEnvelope', () => {
   });
 
   it('keeps the one row that alone exceeds the response-size cap', () => {
-    // cm:guard ISS-956 — this used to return ZERO rows, and under a cursor an empty page is a dead end: nothing to resume from and no progress made. A single 20K-character agent report over the whole budget is ordinary, not pathological, so the one row survives and the response is deliberately over `maxChars`.
     const huge = [{ id: 0, blob: 'x'.repeat(50_000) }];
     const result = buildListEnvelope({
       key: 'issues',

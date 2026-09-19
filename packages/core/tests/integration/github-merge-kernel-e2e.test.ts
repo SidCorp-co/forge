@@ -1,27 +1,3 @@
-/**
- * The merge, end to end, against a real Postgres and a GitHub test double.
- *
- * `merge.test.ts` proves the SHAPE with a recording client handed straight in,
- * and it cannot prove the two things this file is for:
- *
- * - the merge and the stamp are ONE operation over a real transaction — the
- *   issue's `merged_at`, its `merged_commit_sha` and the projection row's merged
- *   state either all land or none do (ISS-1073's outcome 1). A fake transaction
- *   that runs its callback inline is green either way;
- * - the identity is the App and nothing else (outcome 4). Here the credential is
- *   read out of the binding, the JWT is signed RS256 for real, the installation
- *   token is minted over HTTP and every request the double receives is asserted
- *   to carry one of those two and no person's. A unit test holding a client
- *   cannot say anything about where the client's identity came from.
- *
- * WHAT IS FAKE, precisely: GitHub's HTTP answers, served by a `node:http` server
- * on loopback that the binding's `apiBaseUrl` points at. Nothing merges against
- * a real repository from a test, and the protections below are this double's,
- * not any real branch's — including `enforce_admins`, which is asserted here as
- * a thing the path tolerates rather than turned on anywhere.
- */
-// cm:guard this file is the authoritative source for the release flow's stamp step, whose annotation sits on `merge.ts:mergeStoredPullRequest`. `check-flow-coverage.mjs` counts that step reached only when the INTEGRATION suite entered the annotated function, so if this file stops calling it the gate goes red rather than quietly measuring unit coverage. The step's marker is NOT spelled out here: the checker finds its sites with `git grep` over tracked files, so writing it in prose declares a second site in a file no coverage report contains — which drags the step's merged verdict to `outofscope` and reports a configuration fault that does not exist.
-
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -56,7 +32,6 @@ const GITHUB_MERGED_AT = '2026-09-18T11:22:33Z';
 // The vault key is module scope because `createConnection` encrypts before any hook runs.
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
-// cm:why a real RSA key, because `buildAppJwt` signs RS256 for real — only GitHub's HTTP answer is faked, so a broken JWT would fail here rather than pass on a stub
 const { privateKey: APP_PRIVATE_KEY } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
@@ -196,7 +171,6 @@ beforeEach(async () => {
     ownerId,
     provider: 'github',
     displayName: 'GitHub App test',
-    // cm:guard a DISTINCT appId per seeded connection — `installationTokenWithExpiry` caches on `base|appId|installationId`, so a shared id lets one test's mint answer the next one's and the assertion on what the double was sent then measures nothing.
     secrets: { appId: randomUUID(), privateKey: APP_PRIVATE_KEY, webhookSecret: 'whs' },
   });
   const binding = await mods.createBinding({
@@ -269,9 +243,6 @@ describe('one operation writes the stamp, the evidence and the projection', () =
 
     const marked = await stamp();
     expect(marked.commitSha).toBe(MERGE_COMMIT);
-    // cm:guard the recorded instant is GITHUB's, never this box's clock. A `new Date()` here would
-    // sit within a second of the truth and be indistinguishable from it — and the evidence
-    // predicate would then stop the `pull_request.closed` delivery from ever correcting it.
     expect(marked.mergedAt?.toISOString()).toBe(new Date(GITHUB_MERGED_AT).toISOString());
 
     const pr = await projection();
@@ -395,10 +366,6 @@ describe('the stamp announces the contract input it moved', () => {
     return heard;
   }
 
-  // cm:guard this is the seam between the merge and the contract check, and until ISS-1073 wrote
-  // it NOTHING asserted the kernel merge announces at all. `announce` swallows its own failures by
-  // design, so a merge that stopped emitting would leave every other open pull request of the same
-  // issue showing a contract answer computed before the blocker landed — and no test would move.
   it('emits contractInputChanged naming the issue and the kernel as the reason', async () => {
     const heard = listen('merge-announce-test');
     const outcome = await mods.mergeStoredPullRequest({
@@ -410,10 +377,6 @@ describe('the stamp announces the contract input it moved', () => {
     expect(heard).toEqual([{ projectId, issueId, reason: 'merged by the kernel' }]);
   });
 
-  // cm:guard announced only when THIS call wrote the stamp. A second reading of one merge must not
-  // announce again: the projection subscriber republishes every open pull request of the issue on
-  // each announcement, so a retry would spend a GitHub call per pull request for a change that
-  // already happened.
   it('says nothing on a second reading of the same merge, which wrote no stamp', async () => {
     await mods.mergeStoredPullRequest({ pullRequestId, requestedBy: `user:${ownerId}` });
     const heard = listen('merge-announce-again-test');

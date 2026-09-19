@@ -1,29 +1,3 @@
-/**
- * The inverse edge: an issue asserting work that no live run is behind.
- *
- * It lives beside `stranded-issues.ts` rather than in `devices/`, where its
- * forward twin `devices/admissible.ts` is, because it is a sweeper pass and
- * the sweeper is what runs it. Under `devices/` it pushed `pipeline/sweeper.ts`
- * to a seventh module and the archmap gate refused it — correctly: a pass the
- * sweeper owns reaching back across a layer boundary is the coordination this
- * repo caps.
- *
- * `devices/admissible.ts` asks the forward question — may this issue be handed
- * out? — and excludes any issue with a live job, a live issue run, or a live
- * run session naming it. This pass asks the same question backwards: an issue
- * whose STATUS asserts work in progress, for which none of those three exists.
- *
- * It reports and moves nothing, and that is a decision rather than an omission.
- * `reapDeadRunSessions` may retract, because it holds the one fact that makes
- * retraction sound: a run session it opened stopped beating, so the assertion
- * that run made is now false and the issue goes back to the status it held when
- * that run opened. This pass holds no such fact. An issue reaches `in_progress`
- * on this project by a baseline record a person or a by-hand run wrote, not only
- * by a run session, so an arm that retracted here would pull the tree out from
- * under exactly that work. Whether the issue or the run record is the wrong half
- * is not computable from either side; saying they disagree is.
- */
-
 import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
@@ -36,8 +10,6 @@ import { sweepGroupKey } from './stranded-issues.js';
 /**
  * The statuses whose meaning is "a run is working this right now".
  */
-// cm:guard the same three as `devices/run-issue-return.ts#RETURNABLE_FROM`, and for the same reason: they are exactly the statuses a run session PUTS an issue into and takes it out of. A status outside them is one no run asserts, so its having no run behind it says nothing at all.
-// cm:edge lockstep -> packages/core/src/devices/run-issue-return.ts — widen one without the other and this pass reports issues the return path would never have touched.
 export const ASSERTS_WORK_IN_PROGRESS = ['in_progress', 'testing', 'releasing'] as const;
 
 /**
@@ -54,7 +26,6 @@ export const ORPHAN_ASSERTION_GRACE_MS = 10 * 60 * 1000;
 /**
  * How long a named orphan stays named before it may be named again.
  */
-// cm:guard this MUST stay far wider than the sweep interval (`pipeline/sweeper.ts`, 60s). The predicate matches for as long as the disagreement lasts, which is until a human resolves it, so without a cooldown this is one line per orphan per minute forever — and a warning repeated every minute is a warning nobody reads, which is the same silence it exists to break.
 export const ORPHAN_RENOTIFY_MS = 24 * 60 * 60 * 1000;
 
 export interface IssueRunInvariantResult {
@@ -67,13 +38,6 @@ export interface IssueRunInvariantResult {
 /**
  * The notification type this reports under.
  */
-// cm:guard REUSES `issue_stranded` rather than adding an enum value, and the trade-off is
-// deliberate: `stranded-issues.ts` already carries two shapes under that one type "because a reader
-// owes both the same act", and this is a third shape owing the same act — a human decides which
-// half is wrong. What it costs is that a reader filtering by type alone cannot tell the three
-// apart; the `resolutionKey` below is what tells them apart, and it is what `auto-resolve.ts`
-// keys on. What would end the amnesty is a reader that needs to subscribe to this shape and not
-// the other two, and that reader would come with the migration that adds the value.
 export function orphanedAssertionResolutionKey(issueId: string): string {
   return `issue:${issueId}:run-assertion-orphaned`;
 }
@@ -86,24 +50,10 @@ interface OrphanRow {
   status: string;
   title: string;
   /** When the issue last asserted, as the driver hands it back. */
-  // cm:guard a STRING, not a `Date`. A raw `db.execute` returns `timestamptz` in the driver's own
-  // wire form rather than through drizzle's column decoders, so typing this `Date` compiles and
-  // then throws `args.row.since.toISOString is not a function` at the moment the pass has something
-  // to report — green on every tick where there is nothing to say.
   since: string;
 }
 
-/**
- * Every issue asserting work that nothing live is behind.
- */
-// cm:guard the three NOT EXISTS clauses are the INVERSE of `devices/admissible.ts`'s three and must stay the same three. Dropping one here reports issues that are being worked by the half this forgot to look at; adding one there without adding it here leaves a way to be worked that this pass calls an orphan.
-// cm:edge lockstep -> packages/core/src/devices/admissible.ts — one predicate, read in two directions.
 async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
-  // cm:guard the bound value is an ISO STRING, not a `Date`. `db.execute` with a raw tagged
-  // template binds parameters through the driver directly rather than through drizzle's column
-  // encoders, and this driver refuses a `Date` there — `ERR_INVALID_ARG_TYPE`, at runtime, on the
-  // one pass whose whole job is to break a silence. Caught by the integration test rather than by
-  // the typechecker, because `sql` accepts `unknown`.
   const cutoff = new Date(now.getTime() - ORPHAN_ASSERTION_GRACE_MS).toISOString();
   return (await db.execute(sql`
     SELECT i.id            AS "issueId",
@@ -133,7 +83,6 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
           WHERE rs.project_id = i.project_id
             AND rs.kind = 'system'
             AND rs.status IN ('running', 'paused')
-            -- cm:guard CANONICAL, the form openRunSession stores, never the project's own
             -- prefix: matching on issue_prefix here makes a live run's issues invisible to
             -- this pass and every one of them is reported as an orphan (ISS-992)
             AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq) -- ISS-992:canonical
@@ -144,7 +93,6 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
 /**
  * Name one orphan episode, unless this episode is already named.
  */
-// cm:guard `resolved_at IS NULL` stays OUTSIDE the `or`: a resolved row is an episode that ENDED, and suppressing on it would mute a genuine second episode on the same issue for the rest of the window. Inside the `or`, unread **or** recently sent — existence alone names an episode once and never again however long it lasts, and unread alone re-names it every tick from the moment somebody reads it.
 async function nameOnce(args: { now: Date; row: OrphanRow; ref: string }): Promise<boolean> {
   const resolutionKey = orphanedAssertionResolutionKey(args.row.issueId);
   const [existing] = await db
@@ -155,7 +103,6 @@ async function nameOnce(args: { now: Date; row: OrphanRow; ref: string }): Promi
         eq(notifications.type, 'issue_stranded'),
         eq(notifications.resolutionKey, resolutionKey),
         isNull(notifications.resolvedAt),
-        // cm:guard ISS-1063 — `state <> 'resolved'` where this read `read = false`, for the reason the same guard in stranded-issues.ts carries: read state is a fact about a person and is not on this table any more, and an episode still firing is the thing that must not be named twice.
         or(
           inArray(notifications.state, ['pending', 'firing', 'inhibited']),
           gte(notifications.createdAt, new Date(args.now.getTime() - ORPHAN_RENOTIFY_MS)),
@@ -164,24 +111,11 @@ async function nameOnce(args: { now: Date; row: OrphanRow; ref: string }): Promi
     )
     .limit(1);
 
-  // cm:guard ISS-1063 — an existing episode is ALWAYS re-emitted, and the re-emission is
-  // deliberately SILENT. It does not log and does not count, because the log line below is what
-  // `reported` counts and one episode is named once; counting a re-emission would report two
-  // episodes for one orphan, which is what `ORPHAN_RENOTIFY_MS` exists to prevent. What the
-  // re-emission buys is everything the delivery layer decides per tick: a `pending` record is
-  // promoted to `firing` by a LATER emission of the same identity, and a record whose delivery a
-  // silence held back is delivered when that silence expires. Short-circuit here and neither can
-  // ever happen. `deliverTo` skips anybody already holding a member link for this record, so a
-  // re-emission tells nobody twice. The `resolvedAt IS NULL` above is what keeps this from
-  // reopening an episode that ended.
   if (existing) {
     await emit(args, resolutionKey);
     return false;
   }
 
-  // cm:guard the log line is the deliverable and is emitted whether or not anyone is reachable by
-  // notification. A project with no admin would otherwise make this pass silent on exactly the box
-  // nobody is watching, and a `reported` count of zero would be indistinguishable from no orphan.
   logger.warn(
     {
       projectId: args.row.projectId,
@@ -206,11 +140,6 @@ async function emit(
 ): Promise<void> {
   const admins = await projectAdminUserIds(args.row.projectId);
   if (admins.length === 0) return;
-  // cm:guard ISS-1063 changed the SHAPE of what this writes — one record and a delivery
-  // per admin instead of a row per admin — and changed nothing about WHEN it writes.
-  // The predicate above, the log line, and this alarm's grace window are untouched: the
-  // issue that asked for this refactor named this detector as the one thing it must not
-  // regress.
   await emitNotification({
     recipients: admins,
     projectId: args.row.projectId,

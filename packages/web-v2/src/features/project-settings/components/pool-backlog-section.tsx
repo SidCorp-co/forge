@@ -12,9 +12,14 @@
 // shallow PATCH merge.
 
 import { useEffect, useState } from "react";
-// cm:guard the SUBPATH, never the `@forge/contracts` barrel. The barrel re-exports with `.js` specifiers Next cannot resolve, so a type-only import from it is erased and compiles while a VALUE import from it fails the web-v2 build — which is exactly what this line did until it was pointed here.
 import { REGISTRY_BACKLOG_ADMISSIBLE_STATUSES } from "@forge/contracts/pipeline-registry";
-import { Banner, Button, Checkbox, Toggle } from "@/design";
+import {
+  Banner,
+  Button,
+  CardTitle,
+  Checkbox,
+  Toggle,
+} from "@/design";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
 import { formatPipelineConfigError } from "@/lib/api/error";
@@ -23,7 +28,6 @@ import type { PipelineConfig } from "../types";
 
 const DEFAULT_LIMIT = 20;
 
-// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts#BACKLOG_ADMISSIBLE_STATUSES — offered verbatim; core's `poolBacklogSchema` is a `z.enum` of the same set, so a status shown here that core dropped saves as a zod refusal naming a path rather than a status
 const ADMISSIBLE = [...REGISTRY_BACKLOG_ADMISSIBLE_STATUSES] as IssueStatus[];
 
 export function PoolBacklogSection({
@@ -54,7 +58,6 @@ export function PoolBacklogSection({
 		statuses.length !== seededStatuses.length ||
 		statuses.some((s) => !seededStatuses.includes(s));
 
-	// cm:why the one pairing core refuses outright, shown BEFORE the save so the reason reads as a rule of the product rather than as a rejected request
 	const conflict = intakeGateOn && statuses.includes("draft");
 
 	function toggleStatus(status: string, on: boolean) {
@@ -63,7 +66,6 @@ export function PoolBacklogSection({
 		);
 	}
 
-	// cm:guard an empty selection must write the key ABSENT, never `{ statuses: [] }`. Absent is the documented "no backlog" state that every other project is in, and a stored empty object is a second spelling of it that reads as "configured" on the next screen that looks.
 	function save() {
 		const next: PipelineConfig = { ...config };
 		if (statuses.length === 0) delete next.poolBacklog;
@@ -73,7 +75,7 @@ export function PoolBacklogSection({
 
 	return (
 		<div className="mt-6 border-t border-line pt-5">
-			<h3 className="fg-label text-fg">Master backlog</h3>
+			<CardTitle className="fg-label text-fg">Master backlog</CardTitle>
 			<p className="fg-body-sm mb-1 text-muted">
 				A master agent normally sees only work the pipeline has already queued.
 				Admit a status here and its issues also show up as a{" "}

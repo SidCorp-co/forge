@@ -83,12 +83,10 @@ async fn main() -> anyhow::Result<()> {
         Command::Config(a) => cmd::config::run(ctx, a).await,
         Command::Doctor(a) => cmd::doctor::run(ctx, a).await,
         Command::GitCredential(a) => cmd::git_credential::run(ctx, a).await,
-        // cm:guard takes no `ctx` and discards the outcome, and both are the point: this verb runs on every tool call of every pane, holds no credential and reaches nothing but the local socket. A `?` here would put a hook's exit code in the agent's critical path.
         Command::Hook(a) => {
             cmd::hook::run(a).await;
             Ok(())
         }
-        // cm:guard the same shape as `Hook` above and for the same reason: no `ctx`, no credential, and the outcome discarded. This one answers rather than reports, and a deliberate deny travels in what it PRINTS — never in an exit code, which Claude Code reads as the hook itself having broken.
         Command::Gate(a) => {
             cmd::gate::run(a).await;
             Ok(())

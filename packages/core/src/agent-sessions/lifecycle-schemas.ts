@@ -1,9 +1,3 @@
-// Request bodies for the static-path lifecycle routes (start / send / abort /
-// runner / build-prompt / prompt-built / desktop status). Split out of
-// `lifecycle-routes.ts` so that file stays inside its frozen length budget
-// (.forge/size-baseline.json) — the handlers are what belong there, the wire
-// shapes are a contract of their own and are what an API consumer reads.
-
 import { z } from 'zod';
 import { agentSessionStatuses } from '../db/schema.js';
 import { SKILL_NAME_RE } from '../skills/skill-name.js';
@@ -22,12 +16,6 @@ export const startBodySchema = z
     pageContext: pageContextSchema.optional(),
     /** ISS-499 — session attachments to attach to the first turn. */
     attachmentIds: z.array(z.uuid()).max(10).optional(),
-    /**
-     * ISS-733 — run an install_only project skill as turn 1 (chat-runs-skill).
-     * The route validates this against the project's registered effective
-     * skills, so an arbitrary caller cannot slash-inject a skill it has not
-     * been granted.
-     */
     skillName: z.string().regex(SKILL_NAME_RE).optional(),
     /**
      * ISS-718 — the model this session should run on, remembered on the session
@@ -47,23 +35,10 @@ export const sendBodySchema = z
      */
     message: z.string().max(40_000),
     claudeSessionId: z.string().max(500).nullable().optional(),
-    /**
-     * An explicit runner pick from the chat runner picker: dispatch THIS turn
-     * (and re-pin the session) to this device instead of reusing the pin or
-     * auto-picking. Validated in `resolveChatDevice` against the chat-capable
-     * gate.
-     */
     deviceId: z.uuid().nullable().optional(),
     origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
-    /** ISS-499 — session attachments to attach to this turn. */
     attachmentIds: z.array(z.uuid()).max(10).optional(),
-    /**
-     * ISS-718 — switch the session's model from this turn on. Three states, and
-     * the difference matters: OMITTED keeps whatever the session last picked
-     * (`metadata.model`), an explicit tier switches to it, and an explicit
-     * `null` selects Claude Code's configured Default for this and later turns.
-     */
     model: modelTierSchema.nullable().optional(),
   })
   .strict()
@@ -78,7 +53,6 @@ export const abortBodySchema = z
   })
   .strict();
 
-// cm:why deviceId: null means Auto — clears the pin so the next turn auto-picks
 export const setRunnerBodySchema = z.object({ deviceId: z.uuid().nullable() }).strict();
 
 export const buildPromptBodySchema = z

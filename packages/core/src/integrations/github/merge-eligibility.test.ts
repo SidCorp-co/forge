@@ -68,7 +68,6 @@ describe('a merge GitHub has already made', () => {
 });
 
 describe('each refusal names what is wrong', () => {
-  // cm:guard this is the planted set for criteria 13, 14, 15, 16, 17 and 19. Each row is an input the merge path must NOT take, and the reason is asserted rather than the fact of refusal: collapse any two of these into one sentence and the row naming the other goes red.
   const cases: Array<{
     what: string;
     pull: MergeReadout;
@@ -170,7 +169,6 @@ describe('each refusal names what is wrong', () => {
     expect(decision.detail).toMatch(c.says);
   });
 
-  // cm:guard uncomputed mergeability is checked BEFORE any state-derived answer, and this pins the order: a `null` mergeable arriving with a `dirty` state must still read as uncomputed, because GitHub's first answer after a push carries a stale state beside an uncomputed flag.
   it('reads an uncomputed mergeability as uncomputed even beside a state that looks decisive', () => {
     const decision = decide(open({ mergeable: null, mergeableState: 'unknown' }));
     expect(decision.kind === 'refuse' && decision.reason).toBe('mergeability-uncomputed');

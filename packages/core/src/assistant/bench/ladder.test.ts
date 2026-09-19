@@ -317,9 +317,6 @@ describe('the printers', () => {
   });
 });
 
-// cm:why a per-project group rather than one ladder: a task's pass rate is about the project it was
-// walked on, and `k` taken across every file marked a complete three-trial run thin because another
-// project's file named a larger one (codex F3 on ISS-1066).
 describe('one ladder per project (ISS-1066)', () => {
   const on = (slug: string | null, k: number, trials: Record<string, TrialResult[]>): BenchResult =>
     file(

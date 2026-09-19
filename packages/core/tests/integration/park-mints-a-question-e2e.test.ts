@@ -98,7 +98,6 @@ describe('a park mints the question it is owed', () => {
     expect(step.options, 'a free-text round carries no options at all').toBeUndefined();
   });
 
-  // cm:guard the park a PERSON entered mints nothing, and this is the same line `issues/autonomous-park.ts` draws for the `waiting` rewrite: a person who stopped the work owns their own resume, and minting a question would put their own pause in front of them as a thing they are owed.
   it('mints nothing for a person, however the park is worded', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
@@ -116,7 +115,6 @@ describe('a park mints the question it is owed', () => {
     expect(await questionsOn(issueId)).toHaveLength(0);
   });
 
-  // cm:guard a park that stated no need still mints a question, carrying the sentence that says so. The comment lane was cut on 2026-09-13, so a park with nothing to answer is a park nobody can resume — and the number of parks arriving without a stated need is now visible on the issue rather than only in a query.
   it('mints a question even when the park stated no need, saying that it did not', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
@@ -141,7 +139,6 @@ describe('a park mints the question it is owed', () => {
     expect(step.prompt).toContain('cannot name yet');
   });
 
-  // cm:guard an agent's `waiting` is rewritten to `needs_info` at write time, and the mint must follow the REWRITE rather than the ask — reading the requested status here would skip every park that arrived by this door, which is the one 27 parks used before the rewrite existed.
   it('mints for an agent that asked for `waiting`, because the park lands on the answerable status', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
@@ -168,7 +165,6 @@ describe('a park mints the question it is owed', () => {
     expect(step.needed).toBe('a deploy token for the staging environment');
   });
 
-  // cm:guard the park and its question are ONE commit. A question written after the status would be a round nobody can see on an issue that already reads `needs_info`, and a crash between the two is what makes that reachable rather than theoretical.
   it('moves no status when the question cannot be written', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);

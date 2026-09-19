@@ -37,7 +37,6 @@ let messageRows = messages;
 vi.mock('./store.js', () => ({
   getConversation: async () => conversationRow,
   readMessages: async () => messageRows,
-  // cm:guard honours `limit` and `order` like the real one, because the overflow branch reads one past the cap oldest-first and a mock returning the whole range would never let it see a cap (ISS-1086 criterion 10).
   readMessagesInRange: async (
     _id: string,
     r: { firstSeq: number; lastSeq: number; limit: number; order?: string },
@@ -49,8 +48,6 @@ vi.mock('./store.js', () => ({
   },
   deliveredDecisionUnderKey: async () => (delivered ? 'answered' : null),
   assistantSentExternalIds: async () => new Set<string>(),
-  // cm:guard the REAL reading and not a stub: what a null mode means is the claim this module now
-  // forks on, so a mock returning a fixed answer would make every case below say nothing about it.
   effectiveConversationMode: (row: { mode: 'assistant' | 'agent' | null }) =>
     row.mode ?? 'assistant',
 }));
@@ -80,7 +77,6 @@ vi.mock('./transcript.js', () => ({
 
 let verdict: unknown = { speak: true };
 const decideProactivity = vi.fn(async (_input: unknown) => verdict);
-// cm:guard `decideProactivity` alone is replaced and the module's constants stay real, because `presence.js` folds a room with no self onto those constants — a whole-module mock would fold onto `undefined` and the pass-through assertions below would compare nothing with nothing (ISS-1034 criterion 32).
 vi.mock('./proactivity.js', async (orig) => ({
   ...(await orig<typeof import('./proactivity.js')>()),
   decideProactivity: (...a: unknown[]) => decideProactivity(a[0]),
@@ -157,7 +153,6 @@ describe('the cut a window was claimed under', () => {
     });
   });
 
-  // cm:guard the one absorb, and it is asserted rather than left to a default: a row claimed before the column existed carries null and reads as quiet, which is what every such window was before ISS-1086.
   it('reads a row claimed before the column as quiet', async () => {
     await route({ cutReason: null });
     expect(contextGiven().cut.reason).toBe('quiet');
@@ -176,7 +171,6 @@ describe('the cut a window was claimed under', () => {
     expect(typeof detail.replyMs).toBe('number');
   });
 
-  // cm:guard a duration nobody measured is null and never zero: a caller whose row carries no `dueAt` has not said when the window became due, and a zero there would read as a drain that was never late.
   it('leaves routingDelayMs null where the row carries no dueAt', async () => {
     await route({ cutReason: 'quiet' });
     expect(closeDetail().routingDelayMs).toBeNull();
@@ -232,7 +226,6 @@ describe('a window over the message cap', () => {
     expect(contextGiven().messages).toHaveLength(50);
   });
 
-  // cm:guard a false split is another holder's window: no turn and no close from this one, which is the double reply the claim exists to prevent (criteria 23, 24).
   it('takes no turn and closes nothing when the split finds the claim moved on (criteria 23, 24)', async () => {
     messageRows = many(53);
     splitWindowTail.mockResolvedValueOnce(false);

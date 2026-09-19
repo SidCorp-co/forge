@@ -10,10 +10,8 @@ import type { ChatContentPart, ChatMessage } from './providers/types.js';
 
 export const PROVIDER_HISTORY_WINDOW = 30;
 
-// cm:guard 80k ESTIMATED tokens, not the model's window: `LITELLM_MODEL` defaults to gpt-4o-mini (128k) and chars/4 under-counts JSON and tool output (closer to 3 chars/token), so 80k estimated is ~107k real in the worst case and still leaves room for the answer; a 1M-context deployment raises CHAT_CONTEXT_BUDGET_TOKENS in env rather than this constant
 export const DEFAULT_CONTEXT_BUDGET_TOKENS = 80_000;
 
-// cm:guard an `image_url` part is a `data:` URI — ~1.4M chars for a 1 MB screenshot — and chars/4 would bill it as 350k tokens and gut the transcript to make room for a picture the model bills at about a thousand, so image parts cost a flat estimate
 export const IMAGE_PART_TOKENS = 1_000;
 
 export interface ElisionReport {
@@ -109,7 +107,6 @@ export interface ContextBudgetOptions {
  * history units until the estimate fits, then truncates the oldest intra-turn tool results in place
  * of dropping them. Returns new arrays and message objects; the input is never mutated.
  */
-// cm:guard never drop or reorder an assistant `tool_calls` message or a `role:'tool'` reply on its own — the pair is atomic on the wire (a `tool` message whose `tool_call_id` has no parent is a provider 400, not a degraded answer), which is why history goes in units and intra-turn results are truncated rather than removed
 export function applyContextBudget(
   messages: readonly ChatMessage[],
   opts: ContextBudgetOptions,

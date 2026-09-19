@@ -44,10 +44,6 @@ export async function generateSessionTitle(userMessage: string): Promise<string 
   if (!raw) return null;
   const title = postProcessTitle(raw);
   if (title === null) return null;
-  // cm:guard this prompt carries the same "in the SAME language as the message" instruction that
-  // ISS-962 identifies as the trigger, over the same `callFastModel`, and the result is written to
-  // `agent_sessions.title` and broadcast — a MORE visible surface than a `memories` row. Returning
-  // null leaves the deterministic title the turn already persisted, which is the whole fallback.
   const foreign = foreignScriptChars(title, sanitized);
   if (foreign.length > 0) {
     logger.warn(
@@ -66,15 +62,6 @@ export interface ApplyAutoTitleArgs {
   fallbackTitle: string;
 }
 
-/**
- * Fire-and-forget AI title upgrade, invoked AFTER the turn's own transaction
- * commits (never awaited by the caller — `void applyAutoTitleAsync(...)`).
- * Guards a user rename / fork-rerun title via compare-and-swap: the UPDATE
- * only takes when the title still equals the fallback this call was seeded
- * with, so a title that changed in the meantime is left untouched. Omits
- * `updatedAt` (schema has no `$onUpdate`) so list sort order is undisturbed.
- * Never throws — a failure here must not surface anywhere near the chat turn.
- */
 export async function applyAutoTitleAsync(args: ApplyAutoTitleArgs): Promise<void> {
   try {
     const ai = await generateSessionTitle(args.userMessage);

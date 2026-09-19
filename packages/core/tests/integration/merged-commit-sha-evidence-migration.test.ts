@@ -101,18 +101,12 @@ const FULL = 'e45b4ecf596c58e10135c25af4f7279a0a804802';
 const STAMPED_AT = '2026-09-17T12:17:12.321Z';
 
 describe('migration 0284 — merged_commit_sha becomes evidence', () => {
-  // cm:guard this is the planted violation: leave the migration out and the row keeps a sha Forge
-  // never verified, which the new writer reads as evidence and will never replace. That is F1 of the
-  // review consult on this change, and it is the whole reason the migration exists.
   it('clears a commit no merge of Forge own backs', async () => {
     const id = await seedStampedIssue({ commit: FULL, at: STAMPED_AT });
     await runMigration();
     expect((await read(id)).sha).toBeNull();
   });
 
-  // cm:guard `merged_at` is untouched on EVERY row, and this is the assertion that says so rather
-  // than a comment claiming it. Clearing it would re-block every dependent of every marked issue in
-  // the fleet, which is a bigger outage than the one this change closes.
   it('leaves the timestamp exactly where it was', async () => {
     const id = await seedStampedIssue({ commit: FULL, at: STAMPED_AT });
     await runMigration();
@@ -126,9 +120,6 @@ describe('migration 0284 — merged_commit_sha becomes evidence', () => {
     expect((await read(id)).sha).toBe(FULL);
   });
 
-  // cm:guard the prefix match, and it is not a convenience: `mergedCommitShaSchema` accepts 7 to 64
-  // hex characters, so a caller naming `e45b4ec` for a merge GitHub reports as the full 40 named the
-  // same commit. An equality test would clear it and lose an agreement Forge can see.
   it('keeps a short commit that is a prefix of the merge Forge observed', async () => {
     const id = await seedStampedIssue({ commit: 'e45b4ec', at: STAMPED_AT });
     await seedMergedProjection(id, FULL);
@@ -159,8 +150,6 @@ describe('migration 0284 — merged_commit_sha becomes evidence', () => {
     expect(row.mergedAt?.toISOString()).toBe(STAMPED_AT);
   });
 
-  // cm:guard running it twice must be a no-op, because a migration that is not idempotent is one
-  // nobody can re-apply to a database that half-took it.
   it('is idempotent', async () => {
     const kept = await seedStampedIssue({ commit: FULL, at: STAMPED_AT });
     await seedMergedProjection(kept, FULL);

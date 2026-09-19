@@ -14,7 +14,6 @@ describe("DotStrip", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  // cm:guard one dot per record and never a bucketed histogram: the 103-day outlier is the reason to look, and a count-per-bin loses it (ISS-988 criterion 31)
   it("draws exactly one dot per item", () => {
     const { container } = render(<DotStrip items={items([1, 2, 3, 400])} />);
     expect(container.querySelectorAll("span[aria-hidden]").length).toBe(4);
@@ -39,7 +38,6 @@ describe("DotStrip", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard a dot the response cannot name is not focusable and carries no affordance (ISS-988 criteria 43-44)
   it("draws a dot with no destination as no door", () => {
     const { container } = render(<DotStrip items={items([5])} />);
     expect(container.querySelector("button")).toBeNull();

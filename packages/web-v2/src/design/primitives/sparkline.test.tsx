@@ -17,7 +17,6 @@ describe("Sparkline", () => {
     expect(render(<Sparkline points={[3]} />).container.querySelector("svg")).toBeNull();
   });
 
-  // cm:guard a flat series makes min === max, so dividing by the span yields NaN for every coordinate: an invisible path, no error anywhere, and a metric that has not moved reads on screen as one with no data at all
   it("draws a flat series down the middle instead of NaN", () => {
     for (const flat of [[0, 0, 0, 0], [7, 7, 7]]) {
       const d = path(flat);

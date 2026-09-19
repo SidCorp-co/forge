@@ -13,7 +13,12 @@
 // shallow PATCH merge.
 
 import { useEffect, useState } from "react";
-import { Banner, Button, Toggle } from "@/design";
+import {
+  Banner,
+  Button,
+  CardTitle,
+  Toggle,
+} from "@/design";
 import { formatPipelineConfigError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import type { PipelineConfig } from "../types";
@@ -51,15 +56,15 @@ export function IntakeGateSection({
 
 	return (
 		<div className="mt-6 border-t border-line pt-5">
-			<h3 className="fg-label text-fg">Intake gate</h3>
+			<CardTitle className="fg-label text-fg">Intake gate</CardTitle>
 			<p className="fg-body-sm mb-3 text-muted">
 				When on, <strong>every</strong> new issue — from public webhooks, the
 				API, or members — parks as a <strong>draft</strong> with the{" "}
-				<code className="font-mono text-[12px]">intake</code> label instead of
+				<code className="font-mono text-12">intake</code> label instead of
 				entering the pipeline. Approve by moving it{" "}
-				<code className="font-mono text-[12px]">draft → open</code>; reject by
+				<code className="font-mono text-12">draft → open</code>; reject by
 				closing it. Review queue: the issues list filtered to draft +{" "}
-				<code className="font-mono text-[12px]">intake</code>.
+				<code className="font-mono text-12">intake</code>.
 			</p>
 
 			<div className="flex flex-col gap-3">

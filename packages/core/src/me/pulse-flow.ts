@@ -5,7 +5,6 @@ import { walkFlow, weekStartsEnding } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
 import type { PulseFlowWeek } from './pulse-types.js';
 
-// cm:guard reads `dropped` beside `closed` as terminal, and BOTH spellings of the release rung are irrelevant here: an issue is finished when it enters `closed` or `dropped`, and `awaiting_release` is still work in flight. A `released` payload from before migration 0228 is a move INTO the release rung, not out of the backlog.
 const TERMINAL = ['closed', 'dropped'] as const;
 
 const toMap = (rows: Array<{ week: string; n: number }>) =>
@@ -41,8 +40,6 @@ export async function readPulseFlow(projectIds: string[], now: Date): Promise<Pu
       WHERE i.project_id IN (${scope}) AND a.created_at >= ${windowStart}::date AND ${outOfTerminal}
       GROUP BY 1
     `) as unknown as Promise<Array<{ week: string; n: number }>>,
-    // cm:guard the two pre-window `activity_log` counts are ONE pass filtered two ways, not two scans of the same rows: both read the same predicate over the same join and differ only in which side of the transition they look at. The issue count stays its own subquery because it counts a different table (ISS-1022).
-    // cm:guard the window is NOT narrowed and must not be: this is the cumulative backlog the walk starts from, so a time bound would not trim rows, it would report a different number. No index serves this read and none is expected to — it reads everything older than the window, so a sequential scan is the right plan, and the fold above is the only thing that halves it (ISS-1022).
     db.execute(sql`
       SELECT
         (SELECT count(*)::int FROM issues i

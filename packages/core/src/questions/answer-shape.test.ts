@@ -88,7 +88,6 @@ describe('reading a step', () => {
     expect(isChoiceStep(freeText)).toBe(false);
   });
 
-  // cm:guard the untagged row is the pre-ISS-996 form and must keep reading as a choice: a stored round that reads as free-text offers a person an answer box where its options were, and the parked run is handed prose where it expects an option id.
   it('reads a round stored before the tag existed as a choice', () => {
     const stored = {
       round: 1,
@@ -109,7 +108,6 @@ describe('reading a step', () => {
 });
 
 describe('who may answer in words', () => {
-  // cm:guard every role answers, viewer included, and only a caller with NO role is refused. An option carries its own authority because choosing one exercises it; supplying an answer the run asked for exercises nothing, and gating it would make the person who holds a role relay what the person who does not already typed.
   it('admits every role on the project and refuses only a stranger', () => {
     expect(mayAnswerFreeText('admin')).toBe(true);
     expect(mayAnswerFreeText('member')).toBe(true);
@@ -168,7 +166,6 @@ describe('neither shape absorbs the other', () => {
     ).toBe('QUESTION_ANSWER_WRONG_SHAPE');
   });
 
-  // cm:guard an empty text answer is a SHAPE fault and never a recorded answer: a round marked answered carrying nothing tells the parked run its question was settled and hands it the empty string as the settlement.
   it('refuses an empty text answer rather than recording one', async () => {
     row = openRow([freeText]);
     expect(
@@ -184,7 +181,6 @@ describe('neither shape absorbs the other', () => {
     ).toBe('QUESTION_ANSWER_WRONG_SHAPE');
   });
 
-  // cm:guard a caller with NO role on the project is still refused, and that is the whole of the rule now: it is the same check that stops a stranger READING the question, not a second one about answering.
   it('refuses a caller holding no role at all', async () => {
     row = openRow([freeText]);
     expect(

@@ -24,7 +24,6 @@ import {
 
 const JWT_SECRET = 'test-secret-at-least-32-chars-long-abcdef-123456';
 
-// cm:guard ONE harness for the whole file. `db/client.ts` binds to DATABASE_URL at import time, so a second setupTestDatabase() puts the fixtures on one database and everything the code under test writes on another.
 let harness: TestDatabase;
 let write: typeof import('../../src/questions/write.js');
 let read: typeof import('../../src/questions/read.js');
@@ -68,7 +67,6 @@ beforeAll(async () => {
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
-  // cm:edge lockstep -> packages/core/src/index.ts — the mount is `/api/questions`, and this file builds its own app rather than importing the real one, so the two can disagree about where the router sits. Every URL below is absolute; mount it anywhere else and they answer from the wrong route with the right status (ISS-993 moved it here from `/api`).
   app.route('/api/questions', questionRoutes);
   app.onError(errorHandler);
 }, 60_000);
@@ -83,7 +81,6 @@ beforeEach(async () => {
   const member = await createTestUser(harness.db);
   const stranger = await createTestUser(harness.db);
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
-  // cm:guard the admin's project role is DERIVED from org ownership (`seedOrg` writes the `owner` row and `orgDerivedProjectRole` promotes it), and the stranger belongs to neither — which is the only way to reach `effectiveProjectRole`'s `{ role: null }` arm, the one this file exists to close.
   const project = await createTestProject(harness.db, admin.id);
   await createTestProjectMember(harness.db, {
     projectId: project.id,
@@ -167,7 +164,6 @@ describe('one winner, and the row is untouched by every loser', () => {
     expect(row?.steps.at(-1)?.answeredBy).toBe(memberId);
   });
 
-  // cm:guard the plant the issue names: an answer landing on a row that already carries one used to overwrite it, because the UPDATE's only predicate was the id. The assertion is the ORIGINAL answerer, which a second write would replace with the second one.
   it('refuses a second answer and leaves the first one standing', async () => {
     const q = await aQuestion();
     await answer({ questionId: q.id, by: memberId });
@@ -182,7 +178,6 @@ describe('one winner, and the row is untouched by every loser', () => {
     expect(snapshot(after)).toBe(before);
   });
 
-  // cm:guard the plant that says a void row may not be resurrected: the pre-ISS-980 write set `status: 'answered'` unconditionally, so a question somebody had deliberately withdrawn came back as a live answer and the box acted on it.
   it('refuses an answer to a voided question rather than resurrecting the row', async () => {
     const q = await aQuestion();
     await write.voidQuestion({ questionId: q.id, reason: 'the branch is gone' });
@@ -208,7 +203,6 @@ describe('one winner, and the row is untouched by every loser', () => {
     expect(snapshot(await rowOf(q.id))).toBe(before);
   });
 
-  // cm:guard the round is the whole of the stale-screen protection, and the plant is a follow-up landing between the read and the write: the answer names round 1, the question is on round 2, and applying it to the latest step would settle a question the person never read.
   it('refuses an answer bound to a round that has been superseded', async () => {
     const q = await aQuestion();
     await answer({ questionId: q.id });
@@ -253,7 +247,6 @@ describe('one winner, and the row is untouched by every loser', () => {
     expect(snapshot(await rowOf(q.id))).toBe(before);
   });
 
-  // cm:guard the LOCK-WAIT case, which is the one the deadline check exists for and the one no in-process test can reach: another transaction holds the row past the deadline, and the answer that queued while the deadline was still in the future must be refused by the clock it woke up to (ISS-980 criterion 30).
   it('refuses an answer whose wait for the row lock outlasted the deadline', async () => {
     const q = await aQuestion({ parkDeadlineAt: new Date(Date.now() + 700) });
 
@@ -262,7 +255,6 @@ describe('one winner, and the row is untouched by every loser', () => {
     const held = new Promise<void>((res) => {
       release = res;
     });
-    // cm:guard the answer may not queue until the other transaction actually HOLDS the row: start it and race, and the answer takes the lock first, finds the deadline still in the future and commits — the test then passes for the opposite reason to the one it is about.
     const lockHeld = new Promise<void>((res) => {
       holding = res;
     });
@@ -277,7 +269,6 @@ describe('one winner, and the row is untouched by every loser', () => {
     });
     await lockHeld;
 
-    // cm:guard the rejection handler is attached in the SAME tick the call is made: an `await expect(...).rejects` one statement later leaves a window in which node reports an unhandled rejection and vitest fails the file on an error the test is asserting.
     const queued = answer({ questionId: q.id }).then(
       () => null,
       (e: Error) => e,
@@ -294,8 +285,6 @@ describe('one winner, and the row is untouched by every loser', () => {
     expect((await rowOf(q.id))?.status).toBe('open');
   });
 
-  // cm:guard exactly one SUCCESS and exactly one refusal, not merely one `chosenOptionId`: two answers that both succeed leave one id too, because the second overwrites the first (ISS-980 criterion 33).
-  // cm:guard the two attempts choose DIFFERENT options as different people, so the row can be matched against the attempt that was told it won — identical attempts leave a row that agrees with the winner and with the loser alike, and criterion 34's "it is the winner's" goes unproved.
   it('lets exactly one of two concurrent answers through, and keeps that one', async () => {
     const q = await aQuestion();
     const attempts = [
@@ -321,7 +310,6 @@ describe('one winner, and the row is untouched by every loser', () => {
 });
 
 describe('who may read a question, and who may only look', () => {
-  // cm:guard `effectiveProjectRole` answers `{ role: null }` — not `null` — for a signed-in caller outside both the project and its org, so the pre-ISS-980 `if (!access)` handed a stranger the whole row and `mayChoose` then let them take every `authority: 'writer'` option on it.
   it('shows a signed-in stranger nothing at all', async () => {
     const q = await aQuestion();
     expect(await read.readQuestionFor(q.id, strangerId)).toBeNull();
@@ -351,7 +339,6 @@ describe('who may read a question, and who may only look', () => {
     expect(await read.readQuestionsForIssue(bare, memberId)).toEqual([]);
   });
 
-  // cm:guard the crossed row is planted with raw SQL on purpose: `askQuestion` now refuses it, and a fixture built through the writer would assert nothing about the READ. Rows like this exist in any database written before that refusal landed (ISS-989).
   it('hides a question row naming a different project than its issue', async () => {
     const q = await aQuestion();
     const elsewhere = await createTestProject(harness.db, adminId);
@@ -376,7 +363,6 @@ describe('who may read a question, and who may only look', () => {
     expect(JSON.stringify(seen)).not.toContain('the other project decision');
   });
 
-  // cm:guard the pair of the case above: the narrowing must cost the ordinary row nothing, or it would hide every question rather than the crossed one.
   it('still lists a question whose project matches its issue', async () => {
     const q = await aQuestion();
     expect((await read.readQuestionsForIssue(issueId, memberId))?.map((x) => x.id)).toEqual([q.id]);
@@ -425,7 +411,6 @@ describe('the routes a browser reaches this by', () => {
     expect(res.status).toBe(400);
   });
 
-  // cm:guard the round is REQUIRED on the wire, and this is the assertion that keeps it there: defaulting it to the current round restores the stale-screen answer the whole of criterion 28 exists to refuse.
   it('answers 400 to an answer that names no round', async () => {
     const q = await aQuestion();
     const res = await app.request(`/api/questions/${q.id}/answer`, {
@@ -438,7 +423,6 @@ describe('the routes a browser reaches this by', () => {
     expect((await rowOf(q.id))?.status).toBe('open');
   });
 
-  // cm:guard the shape, not merely the status: web-v2's `formatApiError` reads `code` then `message`, and a hand-rolled `{ error }` body reaches the person as "Request failed (409)" with the reason discarded (ISS-980 criterion 40).
   it('refuses a stale round as a coded conflict the browser can read', async () => {
     const q = await aQuestion();
     await answer({ questionId: q.id });

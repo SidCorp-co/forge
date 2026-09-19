@@ -59,10 +59,6 @@ const { CoolifyCommandError } = await import('./commands.js');
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 
-// cm:guard the fixture declares `role`/`stages`, which is what `controls.ts` actually reads.
-// It carried `environment` until ISS-1046 renamed the field out from under it, and because the
-// confirmation gate is mocked unconditionally, both protected-action tests went on passing while
-// handing that gate `undefined` — a green that was evidence for nothing.
 function integration(over: { stages?: string[]; targets?: unknown[] } = {}) {
   return {
     id: 'binding-1',

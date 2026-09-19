@@ -28,7 +28,6 @@ memoryMineRoutes.get(
     const { projectId } = c.req.valid('query');
     const userId = c.get('userId');
     const rows = await listMine(userId, { projectId });
-    // cm:guard authorship alone lists a row, and the PROJECT fence still applies over it: a token bound to one project may hold the very account that wrote notes in three, and `effectiveProjectRole` is the one reader of the token's fence — a row whose project it refuses is left out rather than shown under a credential that may not see that project (ISS-1034 criterion 28; check-pat-surface).
     const readable = new Map<string, boolean>();
     const items = [];
     for (const row of rows) {
@@ -43,7 +42,6 @@ memoryMineRoutes.get(
   },
 );
 
-// cm:guard 404 and not 204 when the row is not the caller's, unlike the sibling `DELETE /:id`: that route hides whether an id exists in a project the caller cannot see, while this one answers a person about THEIR notes, and a silent 204 over somebody else's row would tell them it was gone when it stands (ISS-1034 criterion 30).
 memoryMineRoutes.delete(
   '/mine/:id',
   zValidator('param', idParamSchema, (r) => {

@@ -1,9 +1,3 @@
-// web-v2 feature module: pipeline (kanban + run detail + ops monitor). Types
-// are re-typed to match the EXACT JSON the core routes return (dates are ISO
-// strings over the wire, not `Date`). Pipeline-run SHAPES are still local
-// (they live inline in `packages/core/src/pipeline/runs-rollup.ts`); the enum
-// values derive from `@forge/contracts`, which is parity-tested against
-// `db/schema.ts` (`core/pipeline/registry.test.ts`).
 
 import type { PipelineHealth } from "@/features/issues/types";
 import {
@@ -18,9 +12,6 @@ export type PipelineRunStatus = (typeof PIPELINE_RUN_STATUSES)[number];
 export const PIPELINE_RUN_KINDS = REGISTRY_PIPELINE_RUN_KINDS;
 export type PipelineRunKind = (typeof PIPELINE_RUN_KINDS)[number];
 
-/** UI-facing job types: the registry list minus the legacy `staging` type
- *  (kept in core only so historical `jobs.type='staging'` rows deserialize).
- *  `satisfies` pins every entry to a real registry value. */
 export const PIPELINE_JOB_TYPES = [
   "triage",
   "clarify",
@@ -32,7 +23,6 @@ export const PIPELINE_JOB_TYPES = [
   "fix",
   "custom",
   "pm",
-  // cm:guard `smoke` is the one job type that runs with NO issue, as a one-shot `system` run, so anything keying a job to an issue id must tolerate its absence (ISS-455)
   "smoke",
   "release_batch",
 ] as const satisfies readonly (typeof REGISTRY_JOB_TYPES)[number][];
@@ -41,8 +31,6 @@ export type PipelineJobType = (typeof PIPELINE_JOB_TYPES)[number];
 /** Per-step status precedence computed by the read-side rollup. */
 export type PipelineStepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
 
-/** Aggregate cost rollup for a run (run-level only — steps carry no per-step
- *  cost on the summary). */
 export interface PipelineRunCostSummary {
   estimatedCost: number;
   inputTokens: number;
@@ -118,10 +106,7 @@ export interface PipelineRunSummary {
    *  nothing working on it; status alone cannot tell that apart. */
   liveJobs: number;
   /** ISS-998 — newest heartbeat of a non-terminal session on this run, or null. */
-  // cm:guard the OTHER half of `liveJobs`, and it rides on the same row on purpose: `agent_sessions` hangs off the run rather than off a job, so a master-lane run reads `liveJobs: 0` while fully live. Fetched separately it could not be read consistently at all — `agent_sessions` is paged, and an offset walk over a set that moves loses a row it never names (ISS-998).
-  // cm:edge contract -> packages/core/src/pipeline/runs-rollup.ts — `loadLastSessionBeatByRunIds` is what fills this; it is `null` both for a run with no session and for a caller that did not batch the load, and neither is a claim that the run is dead.
   lastSessionBeatAt: string | null;
-  /** ISS-411 — per-attempt device/retry timeline. */
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
   retrySummary: PipelineRunRetrySummary | null;
@@ -134,11 +119,6 @@ export type PipelineRunListItem = Omit<
   "steps" | "attempts" | "retrySummary"
 >;
 
-/**
- * Minimal issue row this feature consumes for the kanban cards, from
- * `GET /api/projects/:id/issues/search?withAgentSessions=true`. Only the fields
- * the board renders are typed (the search serializer returns more).
- */
 export interface PipelineIssueRow {
   id: string;
   projectId: string;
@@ -149,18 +129,10 @@ export interface PipelineIssueRow {
   assigneeId: string | null;
   /** Derived by the search hydrator with `?withAgentSessions=true`. */
   agentStatus?: "running" | "queued" | "completed" | "failed" | null;
-  /** ISS-903 — present with `?withPipelineHealth=1`. A queued job has no
-   *  session row, so `agentStatus` alone cannot tell a card that is about to
-   *  dispatch from one a gate has held for days. */
   pipelineHealth?: PipelineHealth;
   metadata?: ({ branchConfig?: { branch?: string } | null } & Record<string, unknown>) | null;
 }
 
-/**
- * One row of `GET /api/pipeline/step-durations` — sourced from the
- * `pipeline_run_step_durations` view. `issueId` is null for pm/interactive/
- * system runs. Capped server-side at 1000 rows.
- */
 export interface StepDurationRow {
   runId: string;
   issueId: string | null;
@@ -214,14 +186,4 @@ export interface AnalyticsOpts {
   step?: PipelineJobType;
 }
 
-/** The statuses the board's own query will not return: a draft has not started and a closed issue
- *  is filed away, and the issues table hides both by default too.
- *
- *  Exported because `boardColumns` in `./derive` derives the board's columns FORWARD from the
- *  statuses this query CAN return. A board that listed its columns by hand instead is what ISS-999
- *  deleted; one that subtracted these statuses' labels from the full tuple would be wrong a
- *  different way, because a label is shared by several statuses and `closed` shares none of its
- *  own — but `draft` does not gate `open`, and the moment one excluded status shares a label with
- *  an included one, subtraction drops a column that holds live rows. */
-// cm:guard this constant and the `statusNot` params are ONE fact. Adding a `statusNot` to the query without adding it here leaves the board with a column nothing can ever fill, and removing one here without removing the param hides live issues with no column to show them in.
 export const BOARD_EXCLUDED_STATUSES = ["draft", "closed"] as const;

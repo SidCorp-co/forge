@@ -1,8 +1,3 @@
-// The two blocks ISS-1048 adds to the stage-facts surface, split out of `resolve.test.ts` when
-// covering them took that file over the 500-line budget for the first time. Both are CONDITIONAL —
-// they render only when the knowledge store could not be read, or when the project owes entries it
-// has not written — so each needs a fixture the rest of that file has no use for.
-
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../db/client.js', () => ({ db: {} }));
@@ -33,10 +28,6 @@ function makeInputs(overrides?: Partial<Inputs>): Inputs {
 }
 
 describe('renderStageFactsText — an unreadable knowledge store says so (ISS-1048)', () => {
-  // cm:guard the store is the ONLY source of the guide index now, so a failed read used to be
-  // indistinguishable from a project that has written no guides. An agent reading an empty index
-  // concludes the guides do not exist and invents the answer; this block is what stops that, and
-  // it is the reason `loadProjectFactInputs` has no fallback to the retired jsonb map.
   it('renders a could-not-be-read block instead of an empty index', () => {
     const text = renderStageFactsText(
       makeInputs({ factsUnavailable: true, projectFactKeys: [], alwaysInjectFacts: [] }),
@@ -75,8 +66,6 @@ describe('renderStageFactsText — undeclared project knowledge (ISS-1048)', () 
     expect(text).toContain('owed because this project declares a repository');
   });
 
-  // cm:guard the block is a report, not a gate. Rendering "nothing is owed" on every prompt of
-  // every project is a line that never varies, and a line that never varies is read past.
   it('renders no block at all when nothing is owed', () => {
     const text = renderStageFactsText(makeInputs(), 'p-1', 'drive');
     expect(text).not.toContain('Undeclared project knowledge');

@@ -87,7 +87,6 @@ export async function insertReport(values: NewFeedbackReport): Promise<string | 
   return row?.id ?? null;
 }
 
-// cm:guard the scope predicate is the caller's and it is NOT optional: it is what stops a member of project A stamping a report in project B by guessing its id. `stampReviewed` applies it as a WHERE, never as a post-filter — an update that matched nothing must return zero rows, not throw after the write.
 export async function stampReviewed(scope: Array<SQL | undefined>, patch: Record<string, unknown>) {
   return db
     .update(feedbackReports)

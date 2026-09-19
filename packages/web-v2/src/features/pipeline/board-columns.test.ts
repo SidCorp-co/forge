@@ -54,7 +54,6 @@ describe("boardColumns", () => {
   });
 
   it("omits the labels only an excluded status reaches, and no others", () => {
-    // cm:why `draft` and `closed` are the two the query filters out, and each is the only status wearing its label, so exactly those two columns are absent
     expect(boardColumns()).not.toContain("draft");
     expect(boardColumns()).not.toContain("done");
     for (const label of AUTONOMOUS_LABELS) {
@@ -63,7 +62,6 @@ describe("boardColumns", () => {
     }
   });
 
-  // cm:guard the only case separating the forward derivation from subtract-the-excluded-labels — with the real set the two agree exactly, so every other case here passes under both and measures nothing (ISS-999)
   it("keeps a label whose other statuses are still returnable, where subtraction would drop it", () => {
     expect(toAutonomousLabel("waiting")).toBe(toAutonomousLabel("needs_info"));
     expect(boardColumns(["waiting"])).toContain("needs_human");
@@ -94,7 +92,6 @@ describe("groupIssuesByLabel", () => {
   });
 
   it("gives `releasing` and `dropped` the column their own status chip names", () => {
-    // cm:why both fell into `triage` before — neither was a key of the board's 15-entry map (ISS-999)
     const groups = groupIssuesByLabel([issue("r", "releasing"), issue("d", "dropped")]);
     const columnOf = (id: string) => groups.find((g) => g.issues.some((i) => i.id === id))?.label;
     expect(columnOf("r")).toBe(toAutonomousLabel("releasing"));
@@ -124,13 +121,11 @@ describe("groupIssuesByLabel", () => {
   });
 
   it("gives a status outside the column set a column instead of dropping the row", () => {
-    // cm:guard losing the row silently is the failure this branch refuses; reachable only if the query's `statusNot` params and BOARD_EXCLUDED_STATUSES drift apart
     const groups = groupIssuesByLabel([issue("x", "draft")]);
     expect(groups.find((g) => g.issues.some((i) => i.id === "x"))?.label).toBe("draft");
   });
 });
 
-// cm:guard a column's dot and the chips on the cards inside it are two renderings of ONE fact and must agree. ISS-999's review found `reopen` amber in the column head and blue on the card, and `closed` green in one place and grey in the other, because LABEL_VIEW carried a hand-written tone beside statusToChip; the colour is derived from LABEL_TO_KERNEL now and these assertions are what hold it there.
 describe("a column is coloured by the statuses it holds", () => {
   /** The kernel statuses a label buckets, among the ones the board's query can return. */
   const bucket = (label: AutonomousLabel): string[] =>
@@ -138,7 +133,6 @@ describe("a column is coloured by the statuses it holds", () => {
 
   it("gives a label with ONE status exactly that status's chip colour", () => {
     const single = boardColumns().filter((l) => bucket(l).length === 1);
-    // cm:guard reopened, paused, done and dropped are all single-status labels, so this is not a vacuous set
     expect(single.length).toBeGreaterThanOrEqual(4);
     for (const label of single) {
       const status = bucket(label)[0] as IssueStatus;

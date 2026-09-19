@@ -1,19 +1,3 @@
-/**
- * Claude stream-json → canonical `agent_sessions.messages`.
- *
- * The `forge-runner` CLI holds only a device token and cannot call the
- * user-JWT-gated `PATCH /api/agent-sessions/:id`, but it streams every raw
- * stream-json line to core as a `stdout` job_event — so core derives the
- * transcript itself (ISS-283).
- *
- * Id generation is a per-derive factory (`createIdFactory`) rather than a
- * module-level counter: ids only need to be unique within one session's message
- * array, and a shared mutable would make a multi-session server
- * non-deterministic. The factory is carried on `DeriveState` rather than held in
- * `buildSessionFromEvents`, so a pass resumed from a checkpoint continues the
- * ids the earlier pass issued instead of reissuing them from `msg-1`.
- */
-
 // Optional fields carry explicit `| undefined` because core compiles with
 // `exactOptionalPropertyTypes: true` (the desktop source does not) and the
 // parser assigns `undefined` to several of these by design.
@@ -63,18 +47,7 @@ export interface AgentMessage {
   /** `tool_result.is_error`, on the tool_result message itself; mergeMessages
    *  copies it onto the matching toolCall. */
   isError?: boolean | undefined;
-  /** Set by `buildSessionFromEvents` on a tool_result message before merging;
-   *  mergeMessages moves it onto the toolCall. */
   durationMs?: number | undefined;
-  /** Pauses in this message that carry no readable text — only the fact that
-   *  the model paused. Written by the Claude Code derive below and by nothing
-   *  else: measured on forge-beta 2026-08-23, all 12,899 thinking blocks in 3
-   *  days carried an EMPTY `thinking` string (signature only), so it counts them
-   *  and emits no block. The assistant providers do not write this field: a
-   *  pause of theirs is a `thinking` block in `blocks`, with the reasoning text
-   *  where there was any and no text where the provider encrypted it. That is
-   *  because a count has no column on the durable row and a block does
-   *  (ISS-1079). */
   thinkingCount?: number | undefined;
   /** Present on the `result` message only. */
   totals?: RunTotals | undefined;
@@ -150,10 +123,6 @@ function parseAssistantMessage(
   let thinkingCount = 0;
 
   for (const c of content) {
-    // cm:guard `redacted_thinking` counts too, and did not until ISS-1079: it fell through every
-    // branch here and was counted as nothing, so a turn the model spent entirely on encrypted
-    // reasoning read as a turn it spent on nothing. Both shapes are a pause with no readable text,
-    // which is exactly what this counter means.
     if (c.type === 'thinking' || c.type === 'redacted_thinking') {
       thinkingCount += 1;
     } else if (c.type === 'text') {
@@ -224,18 +193,6 @@ function processToolCall(
   toolCalls.push(tc);
 }
 
-/**
- * Parse a single stream-json line from Claude CLI into one or more
- * AgentMessages. Tool use/result are attached to the preceding assistant
- * message as toolCalls. Also builds interleaved ContentBlock[] for CLI-style
- * rendering. `makeId` supplies session-scoped ids (see createIdFactory).
- *
- * `timestamp` is the stamp applied to every emitted message. Callers that
- * re-derive a transcript (buildSessionFromEvents) MUST pass the originating
- * job_event's `ts` so output is deterministic across re-derives — otherwise a
- * default `Date.now()` would drift settled messages to re-parse time on every
- * flush (breaks idempotency + desktop parity).
- */
 export function parseStreamMessages(
   raw: unknown,
   makeId: () => string,
@@ -295,7 +252,6 @@ function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
-// cm:guard read `total_cost_usd` FIRST — `cost_usd` is the pre-2025 key and was the only one this read, so every session since the rename ended on the string 'Agent finished.' with cost, duration, turn count and permission denials all discarded. Keep the fallback so old transcripts re-derive unchanged.
 function parseResultMessage(
   data: Record<string, unknown>,
   timestamp: number,
@@ -319,22 +275,6 @@ function parseResultMessage(
   };
 }
 
-/**
- * The blocks of a continued assistant turn: what was there, plus what the new
- * line added.
- *
- * cm:guard `todos` and `thinking` members are CARRIED, and until ISS-1030 they
- * were not: the filter here admitted `text` and unseen `tool` blocks and dropped
- * everything else, so a turn whose TodoWrite landed on any assistant line but
- * the first stored no todo list at all — and the same for a pause. A block type
- * added to `ContentBlock` answers to this function as well as to the parser, and
- * silently: an unlisted member is not a type error, it is a block that vanishes
- * on the next continuation.
- * cm:guard a `todos` block REPLACES the one already there rather than appending
- * beside it, which is the same rule `processTodoBlock` applies inside one line:
- * a TodoWrite call states the whole list, so two of them are two versions of one
- * list and not two lists.
- */
 function mergeBlocks(
   oldBlocks: ContentBlock[],
   newBlocks: ContentBlock[],
@@ -402,8 +342,6 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
     }
   }
 }
-
-// cm:why a tool's duration is nowhere in the stream — the only record is the gap between the two job_events carrying its tool_use and its tool_result, which is why `startedAt` is derived in the fold below and not in the parser.
 
 /** A persisted job_event row, narrowed to the fields the derive reads. */
 export interface JobEventLike {

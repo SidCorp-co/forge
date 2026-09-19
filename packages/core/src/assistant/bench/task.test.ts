@@ -265,9 +265,6 @@ describe('what the loader refuses', () => {
     ).toHaveLength(1);
   });
 
-  // cm:why the loader and not a lint of the shipped set: the rubric reaches the judge on every turn
-  // of the task, so a task-wide requirement is a wrong grade on the early turns whoever wrote it
-  // (ISS-1066, codex F2)
   it('a multi-turn rubric that does not say which turn a requirement belongs to', () => {
     const twoTurns = { ...base, turns: [...base.turns, ...base.turns] };
     expect(() =>
@@ -377,10 +374,6 @@ describe('fill', () => {
   });
 });
 
-// cm:why the six by name: before ISS-1066 the judge had nothing of the project for these, so
-// "served" was a reading of tone. `memory-followup` is the seventh because it is the task the
-// 17:42Z evidence was written about — 763 open issues answered against a project holding 682, and
-// the judge said yes twice.
 describe('the rubrics that send the judge to the brief (ISS-1066)', () => {
   const REWORDED = [
     'project-issue-counts',
@@ -397,10 +390,6 @@ describe('the rubrics that send the judge to the brief (ISS-1066)', () => {
     expect(found?.judgeRubric, id).toMatch(/brief/);
   });
 
-  // cm:why a task-wide rubric on a multi-turn task is a requirement the person never asked for:
-  // `run.ts#judgeTurns` hands the rubric to EVERY judged turn, so "served means the reply gives the
-  // deploy window" failed the turn that had only been asked to remember it, and the disagreement
-  // read as the assistant's (codex F2)
   it.each(loadTasks().filter((t) => t.turns.length > 1 && t.judgeRubric !== undefined))(
     '$id scopes its rubric to the turn it is about',
     (task) => {

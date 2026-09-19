@@ -1,13 +1,3 @@
-// Server-designated Claude Code plugins (ISS-739 follow-up).
-//
-// A plugin is installed at DEVICE scope — one install serves every job the daemon dispatches
-// Designation, however, is per PROJECT, so a
-// device resolves the UNION of the designations of every project it is bound to. Per-project
-// enable/disable is not expressible here: that lever is `enabledPlugins` in the repo's own
-// .claude/settings.json, which Claude Code honours at project scope.
-//
-// Stored at `projects.agent_config.plugins` — an existing jsonb column, so no migration.
-
 import { z } from 'zod';
 
 export const pluginDesignationSchema = z

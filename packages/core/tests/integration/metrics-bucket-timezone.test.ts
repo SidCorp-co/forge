@@ -3,23 +3,10 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { utcDateTrunc, utcDayText } from '../../src/lib/time-buckets.js';
 import { setupTestDatabase, type TestDatabase } from '../helpers/index.js';
 
-/**
- * ISS-942 — the bucket a row lands in must not depend on the database session's
- * `TimeZone`. `bucketTimestamps` (metrics) and `bucketBoundaries` (admin) floor
- * to UTC in JS and join their SQL rows by exact ISO string, so a truncation that
- * floors in the session zone matches no bucket at all and the series gap-fills
- * to zero — a live under-count that reads exactly like "no data".
- *
- * `SET LOCAL` inside a transaction is what makes this provable: it pins one
- * pooled connection for the duration, so the zone under test is the zone the
- * expression is evaluated in.
- */
-
 let harness: TestDatabase;
 
 const INSTANT = '2026-09-06T20:51:00.000Z';
 
-// cm:why +05:30 is here because a half-hour offset breaks hour buckets too, and -07:00 because it puts this instant on the previous calendar day; UTC is the one zone that passes even unpinned, so a set without the others proves nothing
 const ZONES = ['UTC', 'Asia/Kolkata', 'America/Los_Angeles', 'Asia/Ho_Chi_Minh'];
 
 beforeAll(async () => {

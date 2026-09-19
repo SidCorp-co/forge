@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSentryMcpEntry } from './resolver.js';
 
-// ISS-1071 removed `applySentryMcpServers` and `resolveSentryMcpEntry` from this file — the
-// sentinel they gated on is gone, and walking a project's granted bindings is now
-// `integrations/mcp-resolver.ts`'s job for every direct-mcp provider at once; its coverage lives
-// in `mcp-resolver.test.ts`. What stays here is the one thing only this file still owns: the
-// shape of a Sentry stdio entry.
-
 describe('buildSentryMcpEntry', () => {
   it('renders the stdio @sentry/mcp-server entry with token + host env', () => {
     const entry = buildSentryMcpEntry(

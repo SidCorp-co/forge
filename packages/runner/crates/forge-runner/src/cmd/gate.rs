@@ -23,8 +23,6 @@ use forge_runner_core::daemon::degraded::{mark, Kind};
 use forge_runner_core::daemon::dispatch_gate::Dispatch;
 use forge_runner_core::daemon::{control, session_tokens};
 
-/// How long the daemon gets to answer before the dispatch goes through.
-// cm:guard a SHORT bound, because this sits in front of every dispatch a master makes and the agent is blocked on it. A gate that hangs is a master that hangs, which is worse than the undeclared run it was trying to prevent.
 const ANSWER_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(ClapArgs)]
@@ -34,8 +32,6 @@ pub struct Args {
     pub event: String,
 }
 
-/// Drain the hook payload and answer the agent, whatever else happens.
-// cm:guard stdin is drained BEFORE anything can return, for the reason `hook.rs` carries: Claude Code writes the payload to this process's stdin, and a hook that exits without reading it hands the agent a broken pipe mid-write.
 fn drain() -> Vec<u8> {
     use std::io::Read;
     let mut sink = Vec::new();
@@ -43,8 +39,6 @@ fn drain() -> Vec<u8> {
     sink
 }
 
-/// What a `PreToolUse` payload turned out to be.
-// cm:guard `Malformed` is its OWN answer and not folded into `NotADispatch`. Both allow the tool call, but one of them is this box failing to read what the harness sent — an uncertain allowance, which criterion 17 says must leave a mark — and the other is an ordinary `Read` that must stay silent or the marks become noise (ISS-1094, review F2).
 pub enum Payload {
     /// An ordinary tool call. Almost all of them; this hook runs in front of every tool.
     NotADispatch,
@@ -54,16 +48,6 @@ pub enum Payload {
     Dispatch(Dispatch),
 }
 
-/// The dispatch this payload describes, where it describes one.
-// cm:guard the reading is `tool_input.subagent_type` and NOT `tool_name`. Measured against claude 2.1.276 the dispatch tool is called `Agent`, and it has been called other things; the input names the role whatever the tool is called, so keying on the name would be a fixture that ages into a gate that never fires.
-// cm:guard the whole of this runs BEFORE any socket is touched. `PreToolUse` fires on every tool call on the box, and a round trip per call would put the daemon's latency in front of every read a master makes.
-// cm:guard `NotADispatch` is reserved for the shape this box UNDERSTOOD and found ordinary: an
-// object whose `tool_input` is an object carrying no `subagent_type`. Every other shape — a payload
-// that is not an object, a `tool_input` that is not one, a `subagent_type` that is not a string —
-// is a payload this box could not read, and it is marked. Folding those into `NotADispatch` is how
-// a harness that renames or re-types the field turns the gate off across the fleet with the
-// degraded count sitting at zero, which is the same silence F2 was opened on one layer further in
-// (ISS-1094, review F2 recheck).
 pub fn dispatch_in(payload: &[u8]) -> Payload {
     let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) else {
         return Payload::Malformed;
@@ -94,8 +78,6 @@ pub fn dispatch_in(payload: &[u8]) -> Payload {
     })
 }
 
-/// What Claude Code reads back.
-// cm:guard the deny shape is the one measured against claude 2.1.276 by running a hook that returned it and reading the refusal back out of the model's own answer, verbatim. A shape guessed from documentation is a gate that prints a refusal nothing enforces.
 fn deny(reason: &str) -> String {
     serde_json::json!({
         "hookSpecificOutput": {
@@ -116,21 +98,6 @@ fn config_dir() -> Option<PathBuf> {
         .and_then(|p| p.parent().map(Path::to_path_buf))
 }
 
-/// Ask the daemon, and say what to print.
-///
-/// The directory is a parameter and not resolved inside, which is the seam the
-/// failure-path tests need: the socket is derived from it too, so a test
-/// pointing at a temporary directory cannot reach the daemon actually running
-/// on the machine and report its answer as the code's.
-///
-/// The token is a parameter for the same reason, and it was AMBIENT until
-/// ISS-1094's re-judge. `FORGE_CONTROL_TOKEN` is set in any pane the daemon
-/// spawned and unset on CI, so every test here asserted one thing on a
-/// developer's box — where the token is present and the socket is reached — and
-/// a different thing on CI, where this function returned at the token check
-/// before the socket existed. Both were green. A test whose meaning depends on
-/// an environment variable nobody passed it is not asserting what it says.
-// cm:guard the socket is `dir/control.sock` rather than `control::socket_path()`, which is the same path by the same derivation — that function's own guard says the config dir is what separates two daemons on one box. Calling it here would resolve the REAL one under a test that was handed a temporary directory.
 async fn answer(dir: Option<&Path>, token: Option<&str>, d: &Dispatch) -> String {
     let open_because = |why: &str| -> String {
         if let Some(dir) = dir {
@@ -156,11 +123,6 @@ async fn answer(dir: Option<&Path>, token: Option<&str>, d: &Dispatch) -> String
         Err(_) => open_because("the daemon did not answer within the bound"),
         Ok(Err(e)) => open_because(&format!("the daemon could not be reached: {e}")),
         Ok(Ok(reply)) if reply.ok => ALLOW.to_string(),
-        // cm:guard the ONLY refusal that denies is the declaration's own. This socket answers
-        // `ok:false` for an unknown token, an op it cannot decode, a session it cannot name — every
-        // one of them an uncertain state, and denying on them turns a daemon this pane could not
-        // authenticate to into a master that cannot dispatch anything. Certainty about the
-        // declaration is what earns a denial; nothing else does (ISS-1094, review F5).
         Ok(Ok(reply)) => match reply.reason.as_deref() {
             Some(r) if r == forge_runner_core::daemon::dispatch_gate::REFUSAL => deny(r),
             Some(other) => {
@@ -171,8 +133,6 @@ async fn answer(dir: Option<&Path>, token: Option<&str>, d: &Dispatch) -> String
     }
 }
 
-/// Answer one `PreToolUse`. Never fails, by construction.
-// cm:guard returns `()` and holds no `?`, `unwrap` or `expect`, exactly as `hook::run` does, and the source test below is what keeps it that way. A panic here is a non-zero exit in the agent's critical path.
 pub async fn run(args: Args) {
     let payload = drain();
     if args.event != "PreToolUse" {
@@ -217,12 +177,6 @@ mod tests {
     const SUN_LEN: usize = 104;
 
     impl Scratch {
-        // cm:guard the base is `/tmp` and NOT `std::env::temp_dir()`, because a socket binds under
-        // this directory. On macOS that helper answers `/var/folders/<hash>/<hash>/T/`, and the
-        // old form here came to 100 bytes against a limit of 104 — it was passing the macos leg by
-        // four characters, and the next test name one word longer would have failed at `bind` with
-        // `InvalidInput` before any assertion ran. The sibling door test crossed that line for
-        // real on 2026-09-18 (ISS-1094).
         fn new(name: &str) -> Self {
             let mut h: u64 = 0xcbf2_9ce4_8422_2325;
             for b in name
@@ -287,10 +241,6 @@ mod tests {
         );
     }
 
-    /// The real payload, observed from claude 2.1.276 on 2026-09-18 by
-    /// registering this hook and running one session that dispatched a
-    /// subagent. Trimmed to the fields this verb reads.
-    // cm:guard OBSERVED and not composed, the same rule `hook.rs`'s fixtures carry and for the same reason: two commits once shipped a wrong model of a payload read off the consuming side.
     const DISPATCH: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","cwd":"/tmp/x","permission_mode":"bypassPermissions","hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"description":"Run echo command","prompt":"Run exactly this shell command","subagent_type":"general-purpose","run_in_background":false},"tool_use_id":"toolu_01WFynvjwEmYFcgyKTMn4J91"}"#;
     const INSIDE_A_CHILD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","agent_id":"acf9b1721de184fa7","agent_type":"general-purpose","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"},"tool_use_id":"toolu_02"}"#;
     const AN_ORDINARY_TOOL_CALL: &str = r#"{"session_id":"d5953edb","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/x"},"tool_use_id":"toolu_03"}"#;
@@ -336,8 +286,6 @@ mod tests {
         assert!(v.get("agent_id").is_some());
     }
 
-    /// Criterion 11.
-    // cm:guard the two are told APART here, which is the whole of review F2: both allow the tool call, and only one of them is this box failing to read what it was sent.
     #[test]
     fn a_payload_that_will_not_parse_is_malformed_and_not_merely_not_a_dispatch() {
         assert!(matches!(
@@ -425,15 +373,6 @@ mod tests {
         );
     }
 
-    /// Criteria 14, 15, 17. A socket that exists and answers nothing useful is
-    /// the shape a wedged or half-started daemon presents, and it must cost the
-    /// master the bound and nothing more.
-    // cm:guard gated `unix` because it BINDS a unix socket, and for no wider reason. What Windows
-    // actually does is not skipped with it: `request_dispatch_gate` has a `#[cfg(not(unix))]` arm
-    // returning `Err(no_socket())`, so on Windows every dispatch takes the no-socket path — which
-    // `no_control_socket_opens_the_gate_and_leaves_a_mark` asserts, ungated, on every platform.
-    // A `cfg` that hid the gate's behaviour rather than one socket call would leave this issue's
-    // whole deliverable untested on two of three legs while CI reported pass (ISS-1094).
     #[cfg(unix)]
     #[tokio::test]
     async fn a_daemon_that_never_answers_opens_the_gate_within_the_bound() {
@@ -470,12 +409,6 @@ mod tests {
         let d = as_dispatch(DISPATCH);
         assert_eq!(answer(None, Some(TOKEN), &d).await, ALLOW);
     }
-    /// Criterion 12, at last exercised. `FORGE_CONTROL_TOKEN` is set in every
-    /// pane the daemon spawned and unset on CI, so before this test the no-token
-    /// arm was reached by accident on one and by nothing on the other.
-    // cm:guard the token is passed as `None` rather than removed from the environment. A test that
-    // mutates a process-global variable to make its point is a test the next parallel test reads,
-    // and the failure that produces is a different test going red for no reason anyone can see.
     #[tokio::test]
     async fn a_pane_with_no_control_token_opens_the_gate_and_leaves_a_mark() {
         let dir = Scratch::new("gateverb-3");
@@ -485,12 +418,6 @@ mod tests {
             ALLOW,
             "a pane that cannot authenticate to its own daemon still hands out work"
         );
-        // cm:guard the REASON is asserted and not merely the count. This scratch has no
-        // `control.sock`, so deleting the token arm drops through to the socket-missing arm, which
-        // returns the same `ALLOW` and writes the same single mark: a count-only assertion holds
-        // "some arm above here allowed" rather than this criterion, and stays green with the arm
-        // it names deleted. Measured: `let token = token.unwrap_or("")` kept all 41 tests green
-        // (ISS-1094, retrospective review of #518).
         let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
         assert_eq!(degraded.count, 1, "the box says the gate was not operating");
         assert!(
@@ -505,12 +432,6 @@ mod tests {
         );
     }
 
-    /// Criterion 14. The daemon answered, and its answer was a refusal of the
-    /// QUESTION rather than of the dispatch.
-    // cm:guard the reason here is deliberately NOT `REFUSAL`. An unknown token, an op the daemon
-    // cannot decode, a session it cannot name: each answers `ok:false`, each is an uncertain state,
-    // and denying on any of them turns a daemon this pane could not authenticate to into a master
-    // that cannot dispatch anything. Only the declaration's own refusal denies (ISS-1094).
     #[cfg(unix)]
     #[tokio::test]
     async fn a_daemon_that_refuses_the_question_itself_opens_the_gate_and_leaves_a_mark() {
@@ -540,12 +461,6 @@ mod tests {
             ALLOW,
             "only the declaration's own refusal denies; every other ok:false is uncertainty"
         );
-        // cm:guard the reason is asserted, because the count cannot tell this arm from the one
-        // above it. A stub that writes an empty line instead of its body takes the
-        // `Ok(Err(..))` parse-failure arm, allows, marks once, and this test passed in 0.00s
-        // against it: the gate frame and the daemon's `Request` enum could drift until every
-        // dispatch failed to parse and nothing here would go red (ISS-1094, retrospective review
-        // of #518).
         let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
         assert_eq!(
             degraded.count, 1,

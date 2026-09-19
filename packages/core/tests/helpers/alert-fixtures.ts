@@ -89,7 +89,6 @@ export function alertFixtures(harness: TestDatabase): AlertFixtures {
       return id;
     },
 
-    // cm:guard stamp `device_id` from the runner, as `claimRunnerSlot` does. Occupancy is counted per DEVICE, so a job carrying only `runner_id` fills no slot — A3 then sees a free runner, reports `ok`, and the starvation spec passes while asserting nothing.
     async insertJob(args) {
       const id = randomUUID();
       const dispatchedAt =
@@ -110,10 +109,8 @@ export function alertFixtures(harness: TestDatabase): AlertFixtures {
       return id;
     },
 
-    // cm:why lastSeenAt defaults to a fresh heartbeat, like a real 'online' runner; the four nullable overrides exist so a spec can drive one A3 contributor at a time (stale, rate-limited, auth-dead, unprovisioned)
     async insertRunner(args) {
       const id = randomUUID();
-      // cm:guard a runner needs a REAL device row since `runners.device_id` went NOT NULL (2026-09-04). This fixture used to insert a `host='remote'` runner carrying no device at all; that shape now fails the insert outright instead of producing the row these A3 alert specs read back.
       const ownerRows = (await db.execute(
         sql`SELECT created_by AS id FROM projects WHERE id = ${args.projectId}`,
       )) as unknown as Array<{ id: string }>;

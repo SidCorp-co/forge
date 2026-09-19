@@ -1,16 +1,3 @@
-// Where a question was asked, read at the moment it is asked.
-//
-// A question raised by a session that is answering a conversation window
-// belongs to that window's room and to the person whose message raised it, and
-// nothing later can re-derive either: a room is rebound, a session's metadata is
-// rewritten, and a destination worked out at delivery time answers to the
-// project rather than to whoever asked (ISS-1091).
-//
-// The asking session carries its window in `metadata.conversationAgent`. What
-// that marker does NOT carry is the inbound message's own id or a stable
-// identity for the speaker, so both are read from `conversation_messages` for
-// the marker's window.
-
 import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import {
   CONVERSATION_AGENT_MARKER,
@@ -27,9 +14,6 @@ type QuestionExecutor = IssueDependencyExecutor;
 /**
  * The origin of an ask, or null where this question belongs to no conversation.
  */
-// cm:guard THREE answers and not two. `null` is "no conversation asked this" and is the ONLY value that reaches `roomForProject`; a marker that is present and unreadable answers `unresolved` with its reason instead, because `readConversationAgentMeta` returns null for an absent marker and for a malformed one alike, and collapsing the two posts a conversation's question into a room nobody in that conversation is in — the exact failure this module exists to end (ISS-1091 criteria 10, 11).
-// cm:guard the LAST inbound message of the window wins where several people spoke in it: that is the message the asking turn was answering when it had to stop and ask, so it is the one the round is anchored on and the person it names. Taking the first would thread the question under somebody who had already been answered.
-// cm:guard read through the CALLER's executor, so a park that mints its question inside the transition's transaction resolves the origin in that same transaction: an origin written by a second connection is one a rollback of the park leaves behind, pointing at a window whose question does not exist.
 export async function resolveAskOrigin(
   executor: QuestionExecutor,
   agentSessionId: string | undefined,

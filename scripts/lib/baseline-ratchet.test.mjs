@@ -23,7 +23,6 @@ describe('improves: down', () => {
     expect(faults).toEqual(['frozen total for . rose 10 -> 13']);
   });
 
-  // cm:guard a rename must pass or the rule gets switched off — the baseline is path-keyed, so moving a file re-freezes the same debt under a new key and a "no new keys" rule would fire on every move
   it('lets a rename through: same debt, new path, flat total', () => {
     const faults = compareBaseline(
       'down',
@@ -33,7 +32,6 @@ describe('improves: down', () => {
     expect(faults).toEqual([]);
   });
 
-  // cm:guard trading debt is the price of tolerating renames: net cannot rise, so this is a bounded hole, not an open one
   it('allows a swap that leaves the total flat', () => {
     const faults = compareBaseline('down', at({ 'a.ts': { r: 10 } }), at({ 'b.ts': { r: 10 } }));
     expect(faults).toEqual([]);
@@ -43,7 +41,6 @@ describe('improves: down', () => {
     expect(compareBaseline('down', at({ 'a.ts': 5 }), at({ 'a.ts': 6 }))).toContain('a.ts: 5 -> 6');
   });
 
-  // cm:guard these six are the widening rule, and the ones that refuse are what keep it honest. A total over every key made registering a new checker scope impossible — .forge/lint-baseline.json went 216 -> 493 when packages/core joined check-lint-budget, which `down` rejected — so the manifest's promise that declaring a new rule is never punished was false for any checker sharing a baseline file.
   it('accepts a first-time-covered area arriving with its debt frozen', () => {
     const faults = compareBaseline(
       'down',
@@ -71,7 +68,6 @@ describe('improves: down', () => {
     expect(faults).toContain('packages/web-v2/src/a.tsx::r: 5 -> 6');
   });
 
-  // cm:guard debt may not move BETWEEN two covered areas either. One sum over the covered areas together accepted this — 50 web-v2 fixes paying for 50 new core diagnostics, net flat — and so did the single global sum that preceded it, which is why the totals are per area rather than one number.
   it('refuses debt laundered from one covered area into another', () => {
     const faults = compareBaseline(
       'down',
@@ -85,7 +81,6 @@ describe('improves: down', () => {
     expect(faults).toEqual(['frozen total for packages/core rose 10 -> 60']);
   });
 
-  // cm:guard a move ACROSS two covered areas is not a rename for this purpose, and the fault is intended rather than collateral: 10 diagnostics arriving in a package are 10 more diagnostics in that package, whatever left somewhere else. The global sum this replaced accepted it, so the message must stay specific enough that a contributor reads "pay the moved file down" and not "the ratchet is broken".
   it('refuses a debt-carrying file moved from one covered area into another', () => {
     const faults = compareBaseline(
       'down',
@@ -95,7 +90,6 @@ describe('improves: down', () => {
     expect(faults).toEqual(['frozen total for packages/core rose 5 -> 15']);
   });
 
-  // cm:guard this DECLARES a hole rather than closing one, and it is the price of letting a scope widen at all: from the baseline alone, a file moved into a first-time-seen area and a genuinely new scope arriving are the same edit. The pre-ISS-833 global sum caught this case and no longer does. Both sit behind a reviewed --update-baseline; delete this test and the next reader will believe the rule is tighter than it is.
   it('lets a move into a first-time-seen area escape its old total — declared, not closed', () => {
     const faults = compareBaseline(
       'down',
@@ -157,7 +151,6 @@ describe('improves: tighten', () => {
     expect(faults).toEqual(['c: locked -> draft']);
   });
 
-  // cm:guard deleting a contract and drafting it have the SAME effect on the graph, so a deletion must fail too — otherwise the cheapest way past this rule is `git rm` on the line that constrained you
   it('treats a deleted contract as loosening', () => {
     const faults = compareBaseline('tighten', at([{ id: 'c', status: 'locked' }]), at([]));
     expect(faults).toEqual(['c: locked -> removed']);
@@ -173,7 +166,6 @@ describe('improves: tighten', () => {
   });
 });
 
-// cm:guard an unknown direction must FAIL, not pass. A typo in the manifest would otherwise mean no comparison runs and the axis reports clean, which is the fail-open shape this file exists to close.
 it('refuses a direction it does not implement', () => {
   expect(compareBaseline('sideways', {}, {})).toEqual(['unknown direction sideways']);
 });

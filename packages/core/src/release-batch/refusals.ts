@@ -30,16 +30,6 @@ export const conflict = (code: string, message: string) =>
 export const serviceUnavailable = (code: string, message: string) =>
   new HTTPException(503, { message, cause: { code } });
 
-/**
- * The two refusals a project's own release DECLARATION makes, mapped to named 409s.
- *
- * Both used to be unhandled, so a project that declares `releaseModel` and no live deploy
- * binding — or two live bindings naming different release runners — answered `500 Internal
- * Server Error` on both the create and the roster. That is the same silent shape the
- * declaration exists to remove, one HTTP layer up: an operator reading a 500 has no way to
- * tell a misdeclared project from a broken server. The message is the error's own, written
- * once beside the rule, and carries the remedy.
- */
 export function declarationRefusal(err: unknown): HTTPException | null {
   if (err instanceof ReleaseTargetUndeclaredError) {
     return conflict('RELEASE_TARGET_UNDECLARED', err.message);
@@ -52,14 +42,6 @@ export function declarationRefusal(err: unknown): HTTPException | null {
   }
   return null;
 }
-// cm:guard the message must name the CONFIG KEY and the shape, because this refusal is the first
-// thing a project with a fresh gate meets and an operator cannot guess `verify.probes` from
-// "no probes declared".
-// cm:guard BOTH ways out, and the project one FIRST. ISS-1069 measured what naming only the binding
-// costs: `sidpeak` read this message, went to declare `verify`, and needed a hostname Forge held no
-// field for — its two recorded URLs both served staging and its live address existed only in the
-// Coolify UI. Filling one project field now answers this for every binding it has, so an operator
-// who is told only about `verify` is being sent the long way round.
 export function undeclaredProbes(): HTTPException {
   return conflict(
     'RELEASE_PROBES_UNDECLARED',
@@ -88,9 +70,6 @@ export function refuseMachineKeys(body: Record<string, unknown>): void {
   if (sent.length === 0) return;
   throw new HTTPException(400, {
     message: `\`${sent.join('`, `')}\` ${sent.length === 1 ? 'is' : 'are'} core's reading and not yours to send. Core takes them from this project's declared probes at the moment you record your account, and stores them beside it. Send \`account\`, and \`providerRef\` for the provider's own handle on what you did.`,
-    // cm:why the keys go under `details` and not beside the code — `middleware/error.ts`
-    // `extractCause` copies `code`, `details` and `wwwAuthenticate` and drops every other key, so a
-    // sibling field reaches the caller as nothing at all.
     cause: { code: 'RELEASE_VERDICT_NOT_YOURS', details: { keys: sent } },
   });
 }

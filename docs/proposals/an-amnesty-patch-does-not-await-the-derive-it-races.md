@@ -30,7 +30,7 @@ CAS does not discard the derive: it rebuilds it whole from the carrier events, a
 that is now the reported transcript, and stores that. The reported rows are replaced by derived
 ones computed *after* seeing them.
 
-That is the outcome `patch-transcript.ts`'s own `cm:guard` says must never happen: *"deriving over
+That is the outcome `patch-transcript.ts`'s own invariant says must never happen: *"deriving over
 it would replace what it reported with the prompts and none of the answers."* The guard is kept
 against widening the gate, and lost to an ordering nobody gated. Nothing in the amnesty path tells
 the derive that this session's transcript is no longer derivable.

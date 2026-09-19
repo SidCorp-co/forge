@@ -1,8 +1,3 @@
-// Line-level diff for the skill-update review screen.
-//
-// A reviewer is deciding whether a body is safe to publish to every runner on
-// the project, so the screen has to show what actually changed — a character
-// count would let a rewrite pass as an edit.
 
 import type { DiffLine } from "./types";
 

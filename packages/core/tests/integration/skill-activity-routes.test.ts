@@ -9,7 +9,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:why exercises the real route + admin gate — chain-integrity had zero callers outside a unit test on the bare function (ISS-798 review minor).
 describe('GET /api/skill-activity/chain-integrity', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;

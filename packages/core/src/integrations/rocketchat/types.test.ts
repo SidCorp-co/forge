@@ -1,12 +1,3 @@
-/**
- * ISS-977 — the binding config declares what the connection manager reads.
- *
- * It declared `rid: string` while `connection-manager.ts` read `config.rids` as
- * a string array through a local cast, so the compiler never saw the two
- * disagree. These assertions are type-level: what they defend is that the
- * declaration stays the shape the reader uses, and `tsc` is what goes red.
- */
-
 import { describe, expect, it } from 'vitest';
 import type { RocketChatBindingConfig } from './types.js';
 

@@ -206,7 +206,6 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
     expect(classifySessionOutcome("failed", "residency_expired").bucket).toBe("swept");
   });
 
-  // cm:guard iterate FAILURE_CAUSES, never a list written out here — the list this replaces was hand-copied and drifted in both directions at once: it named `no_worker_online`, which core had retired, and omitted `no_client_ack`, which core writes on every ack-hop reap, so the one cause with no label was the one the test could not see. It also asserted only the label, which is why six causes reached this point with no action.
   it("ISS-877: every cause core can write has a label and an action", () => {
     for (const cause of FAILURE_CAUSES) {
       expect(failureReasonLabel(cause), cause).toBeTruthy();
@@ -214,7 +213,6 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
     }
   });
 
-  // cm:why this cannot catch a WRONG value in FAILURE_CAUSE_PRESENTATION — that map is the definition, so both sides move together. What it catches is a hardcoded special case creeping back into classifySessionOutcome, which is how the two surfaces diverged in the first place: verified by pinning one cause in the function and watching this go red naming it.
   it("ISS-877: every cause reads the same way here as it does to the failure metric", () => {
     for (const cause of FAILURE_CAUSES) {
       const bucket = classifySessionOutcome("failed", cause).bucket;
@@ -309,7 +307,6 @@ describe("sessionStep — the step a session recorded, or none (ISS-999)", () =>
 	const meta = (over: Record<string, unknown>) =>
 		over as unknown as Parameters<typeof sessionStep>[0];
 
-	// cm:guard the case its predecessor got wrong: `deriveStage` matched the 13 staged names as SUBSTRINGS and answered `code` for everything else, so every autonomous session read "running · code"
 	it("names `drive` as `drive`, not as one of the seven staged names", () => {
 		expect(sessionStep(meta({ type: "pipeline", step: "drive" }))).toBe("drive");
 	});
@@ -323,20 +320,17 @@ describe("sessionStep — the step a session recorded, or none (ISS-999)", () =>
 		expect(sessionStep(meta({ stage: "review" }))).toBe("review");
 	});
 
-	// cm:guard `step ?? stage` let a BLANK step win over a real stage, because "" is not nullish
 	it("passes a blank `step` over in favour of a recorded `stage`", () => {
 		expect(sessionStep(meta({ step: " ", stage: "review" }))).toBe("review");
 		expect(sessionStep(meta({ step: "", stage: "review" }))).toBe("review");
 	});
 
-	// cm:guard this is untyped jsonb the server writes: `.toString()` on an object rendered a step named "[object Object]"
 	it("names no step for a value that is not a string", () => {
 		expect(sessionStep(meta({ step: { name: "drive" } }))).toBeNull();
 		expect(sessionStep(meta({ step: 7, stage: "plan" }))).toBe("plan");
 		expect(sessionStep(meta({ step: null, stage: null }))).toBeNull();
 	});
 
-	// cm:guard `type` is what KIND of session this is; the old chain read it as a step whenever both step and stage were absent, so an interactive chat read "running · chat"
 	it("names no step for a session that recorded none, and never reads `type` as one", () => {
 		expect(sessionStep(meta({ type: "pipeline" }))).toBeNull();
 		expect(sessionStep(meta({ step: "  " }))).toBeNull();

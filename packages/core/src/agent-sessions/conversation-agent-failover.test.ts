@@ -45,9 +45,6 @@ vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (...args: unknown[]) => findAvailableDeviceForProject(...args),
 }));
 
-// cm:why the transport REGISTRY is mocked rather than a transport's client: the lane reaches a venue
-// through `conversationTransport(adapter).deliver` and knows nothing else about it, so this is the
-// whole of what the ack has to be asserted against.
 const deliver = vi.fn(async () => ({ messageId: 'm1' }));
 vi.mock('../conversations/ports.js', async (orig) => ({
   ...(await orig<typeof import('../conversations/ports.js')>()),

@@ -38,14 +38,12 @@ describe('issue-link-shape', () => {
     expect(check(`(see /projects/acme/issues/${UUID}).`)).toEqual([]);
   });
 
-  // cm:guard the API's own paths, the repository's own files and other hosts' trackers are not navigation targets: a role-holder asking how the API works is answered, not refused.
   it('passes an API path (criterion 32) and a repository path (criterion 33)', () => {
     expect(check(`POST /api/issues/${UUID}/comments adds a comment.`)).toEqual([]);
     expect(check('The route lives in packages/core/src/issues/routes.ts.')).toEqual([]);
     expect(check('Upstream tracks it at https://github.com/acme/repo/issues/24.')).toEqual([]);
   });
 
-  // cm:guard the API's project-scoped routes carry `/projects/<id>/issues/` inside a longer path; a rule that starts matching mid-path refuses an explanation of the real endpoint (codex F1 at effaee99).
   it('passes the project-scoped API path, root-relative, absolute and in inline code (criterion 43)', () => {
     expect(check(`GET /api/projects/${UUID}/issues/search finds issues by text.`)).toEqual([]);
     expect(

@@ -1,4 +1,3 @@
-// cm:edge contract -> packages/core/src/integrations/routes.ts — every path below is spelled out as a string here and mounted there; nothing type-checks the pair, so a route renamed on one side 404s from the other with no compile error
 import { apiClient } from "@/lib/api/client";
 import type {
   BindExistingConnectionRequest,
@@ -52,9 +51,6 @@ export const integrationsApi = {
     }),
 
 
-  /** `POST .../integrations` — create with a discriminated provider body. The
-   *  server probes the new integration immediately (ISS-429) and returns the
-   *  result as `health` (null when the probe crashed at transport level). */
   create: (projectId: string, body: CreateIntegrationInput) =>
     apiClient<{
       integration: IntegrationSummary;
@@ -92,9 +88,6 @@ export const integrationsApi = {
       { method: "POST" },
     ),
 
-  /** `POST .../integrations/github/connect` — begin the GitHub App manifest
-   *  flow. Read-only on the server: it signs a state and builds the manifest,
-   *  and the credential exists only once GitHub redirects to the callback. */
   githubConnect: (
     projectId: string,
     params: { org?: string; environment?: string; orgId?: string },
@@ -110,18 +103,11 @@ export const integrationsApi = {
     );
   },
 
-  /** `GET .../integrations/github/repositories?connectionId=` — what the App's
-   *  installations actually granted. The picker source; a project may only bind
-   *  a repository that appears here. */
   githubRepositories: (projectId: string, connectionId: string) =>
     apiClient<GitHubRepositoriesResponse>(
       `/projects/${projectId}/integrations/github/repositories?connectionId=${encodeURIComponent(connectionId)}`,
     ),
 
-  /** `POST .../integrations/coolify/applications` — every Coolify application
-   *  the credential can see, the source of the deploy-target picker. Takes a
-   *  stored `integrationId` OR the base URL + token still in the create form,
-   *  so the picker works before the connection exists. ISS-925. */
   coolifyApplications: (
     projectId: string,
     body: { integrationId: string } | { baseUrl: string; apiToken: string },
@@ -153,10 +139,6 @@ export const integrationsApi = {
     ),
 };
 
-// Connections are the credential, owned by the authenticated principal (NOT a
-// project) — these routes carry NO `:projectId` and the list is scoped server-
-// side by the auth `userId`. Secrets are write-only inputs; responses only ever
-// carry `hasSecrets`. `apiClient` injects the bearer token (never raw fetch).
 export const integrationConnectionsApi = {
   /** `GET /api/integration-connections` — connections owned by the caller. */
   list: () => apiClient<ConnectionListResponse>(`/integration-connections`),
@@ -168,7 +150,6 @@ export const integrationConnectionsApi = {
       body: JSON.stringify(body),
     }),
 
-  /** `PATCH /api/integration-connections/:id` — update displayName/config/secrets/active. */
   update: (id: string, body: ConnectionUpdateInput) =>
     apiClient<ConnectionResponse>(`/integration-connections/${id}`, {
       method: "PATCH",
@@ -181,10 +162,6 @@ export const integrationConnectionsApi = {
       method: "DELETE",
     }),
 
-  /** `POST /api/integration-connections/:id/test` — connection-scoped
-   *  healthcheck (ISS-435). The server probes through a representative active
-   *  binding and persists the result onto the connection; 404 `NO_BINDING`
-   *  when the connection isn't bound to any project yet. */
   test: (id: string) =>
     apiClient<IntegrationTestResult>(`/integration-connections/${id}/test`, {
       method: "POST",
@@ -197,11 +174,6 @@ export const integrationConnectionsApi = {
   bindings: (id: string) =>
     apiClient<ConnectionBindingsResponse>(`/integration-connections/${id}/bindings`),
 
-  /** `POST /api/integration-connections/:id/bindings` — bind an EXISTING
-   *  connection to a project+env (no secrets in the request — the connection
-   *  already holds the credential). Returns 201 with `{ integration,
-   *  integrationSecret }`; the freshly minted inbound HMAC `integrationSecret`
-   *  is shown exactly once (matches the rotate-secret pattern). */
   bindExisting: (id: string, body: BindExistingConnectionRequest) =>
     apiClient<{
       integration: IntegrationSummary;

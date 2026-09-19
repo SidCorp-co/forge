@@ -195,7 +195,6 @@ function sideLines(
   k: number,
   notApplicable: string | null = null,
 ): string[] {
-  // cm:guard a task this project cannot be asked reads as its reason, never as `0/0 trials passed (thin: 0 < 3)` — those are two different facts and one of them is about the assistant
   if (notApplicable) return [`  ${label}: not applicable — ${notApplicable}`];
   if (!side) return [`  ${label}: no trials`];
   const thin = side.thin ? ` (thin: ${side.n} < ${k})` : '';

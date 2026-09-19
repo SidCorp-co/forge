@@ -37,7 +37,6 @@ describe("StreamBand", () => {
     expect(screen.getByText("Backlog")).toBeTruthy();
   });
 
-  // cm:guard both series share ONE scale: a week that created 40 and closed 4 must draw a bar ten times the other's, and per-half scaling draws them equal — the inverse of what the figure says (ISS-988 criterion 36)
   it("scales both directions against the same maximum", () => {
     const { container } = draw();
     const rects = [...container.querySelectorAll("rect")];
@@ -46,7 +45,6 @@ describe("StreamBand", () => {
     expect(created / finished).toBeCloseTo(10, 1);
   });
 
-  // cm:guard a flow week is a date-windowed aggregate no client-reachable route can list, so it carries no door (ISS-988 criteria 42-44)
   it("offers no door", () => {
     const { container } = draw();
     expect(container.querySelector("button")).toBeNull();

@@ -192,9 +192,6 @@ describe('GET /:id/phases', () => {
     ]);
   });
 
-  // cm:guard the OUTCOME and the artifact have to survive the route. A listing that answered phase
-  // names and timestamps would tell a reader a run had a `code` phase twice and nothing about why
-  // the first one ended, which is the only part worth reading.
   it('carries each phase’s outcome and its artifact through', async () => {
     listPhases.mockResolvedValue(rows);
 
@@ -210,9 +207,6 @@ describe('GET /:id/phases', () => {
     expect(body.phases[1]).toMatchObject({ outcome: null, endedAt: null });
   });
 
-  // cm:guard a viewer, the same role `resume-point` takes. Gating a read of what a run did above
-  // the role that can already read the run's status leaves the people who look at a stuck release
-  // unable to see what it had done.
   it('answers a viewer', async () => {
     loadProjectAccess.mockResolvedValue({ role: 'viewer' });
 

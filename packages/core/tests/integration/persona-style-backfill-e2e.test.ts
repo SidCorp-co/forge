@@ -78,7 +78,6 @@ describe('migration 0246 moves the reply language onto the projects that were ge
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
-    // cm:guard the settings schema is imported at the END of this file and `projects/routes.ts` pulls in `db/client.js`, so the three env keys must be set BEFORE that import or the case fails to run rather than to assert (ISS-1007).
     process.env.DATABASE_URL = harness.url;
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
@@ -135,7 +134,6 @@ describe('migration 0246 moves the reply language onto the projects that were ge
       connectionActive: true,
     });
 
-    // cm:guard a project is judged by whether ANY binding routes it, not by whether every one does: reading it the other way would skip a project whose bot answers in a room every day because a second, roomless binding sits beside the live one. The two are seeded under DIFFERENT LABELS because `integration_bindings_service_uq` permits a project only one active rocketchat SERVICE binding per label, so same-label is a shape the fleet cannot hold. Before ISS-1046 the same rule was keyed on `environment` and the two were seeded `staging` and `prod`; rocketchat is never a deploy target, so the label is what tells two of them apart now (ISS-1007).
     const mixed = await make('mixed', {});
     await bindRocketChat(harness, {
       projectId: mixed,
@@ -156,7 +154,6 @@ describe('migration 0246 moves the reply language onto the projects that were ge
 
     await make('noBinding', {});
 
-    // cm:guard the binding's `provider` is denormalized from its connection and NOTHING in the schema makes the two agree — `integration_bindings` has no such constraint — so a rocketchat-labelled binding on a connection of another provider is a representable row, and one `buildRoutes` never reaches because it is built per rocketchat connection (ISS-1007, codex F1).
     await bindRocketChat(harness, {
       projectId: await make('foreignConnection', {}),
       ownerId: user.id,
@@ -193,7 +190,6 @@ describe('migration 0246 moves the reply language onto the projects that were ge
     expect(await styleOf(harness, id.already as string)).toBe(`${SENTENCE}\nUse a formal tone.`);
   });
 
-  // cm:guard the three unreachable shapes are asserted SEPARATELY rather than as one "not routed" case, because each is a different clause of the predicate and one of them passing while another silently matched would read as a green over a migration that touched a project no room reaches (ISS-1007).
   it('leaves a binding that routes no room alone', async () => {
     expect(await styleOf(harness, id.noRooms as string)).toBeUndefined();
   });
@@ -229,7 +225,6 @@ describe('migration 0246 moves the reply language onto the projects that were ge
     expect(after).toEqual(before);
   });
 
-  // cm:guard the lengthened value is put back through the settings schema rather than merely measured, because the failure this covers is a person opening Bot personality on a migrated project and being refused on save — the length alone says nothing about which validator sees it (ISS-1007).
   it('leaves a lengthened style the project update endpoint still accepts', async () => {
     const style = await styleOf(harness, id.atTheCap as string);
     expect(style?.length).toBeGreaterThan(4000);

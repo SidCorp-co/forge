@@ -1,15 +1,5 @@
 "use client";
 
-// web-v2 feature module: pipeline — React Query hooks.
-//
-// Query-key contract (ISS-295): keys MUST match the prefixes the WS
-// event-router invalidates (`lib/ws/event-router.ts`) or live updates silently
-// no-op. The `pipeline_run.status_changed` case invalidates:
-//   ['pipeline-runs','list']   → useProjectRuns
-//   ['pipeline-run', runId]    → useRun
-//   ['projects','health']      → useProjectHealth (features/projects)
-// Cross-project events only arrive on subscribed rooms, so callers must
-// `useRoom(projectRoom(id))` for every project whose data they show.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -26,9 +16,6 @@ export function useProjectRuns(projectId: string | undefined) {
   });
 }
 
-/** Issues for the kanban cards. Keyed `['issues','search',projectId,'pipeline']`
- *  — matches the `['issues','search']` prefix the router invalidates on issue
- *  events, so the board refreshes when an issue changes status. */
 export function useProjectIssues(projectId: string | undefined) {
   return useQuery({
     queryKey: ["issues", "search", projectId, "pipeline"],

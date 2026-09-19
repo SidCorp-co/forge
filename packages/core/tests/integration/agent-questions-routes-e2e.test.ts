@@ -244,7 +244,6 @@ async function masterSession(deviceId: string): Promise<string> {
   return m.sessionId;
 }
 
-// cm:why criterion 43 says the master's ONLY new work is reading its own question row — no FIFO, no background task, no new tier — so what this proves is that nothing new was built: a master addresses its own question through the SAME waiter row a run does, because `question_waiters.run_id` is plain text with no reference to a run and a master's own session id is a legal value in it. A second addressing mode on the device route would be the new tier this criterion forbids.
 describe('a master reading its own question', () => {
   it('registers itself as its own waiter and reads the answer back through that row', async () => {
     const device = await createTestDevice(harness.db, ctx.adminId);
@@ -272,7 +271,6 @@ describe('a master reading its own question', () => {
     ).toBe(writerOption.id);
   });
 
-  // cm:guard the falsifying half: the waiter row is what makes the read device-scoped, so another box presenting the same session id as a run must find nothing. Without this the block above would pass just as well if `waiterFor` ignored the device entirely.
   it('is not readable by another box presenting the same id', async () => {
     const device = await createTestDevice(harness.db, ctx.adminId);
     const other = await createTestDevice(harness.db, ctx.adminId);

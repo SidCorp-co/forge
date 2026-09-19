@@ -1,21 +1,3 @@
-/**
- * ISS-1021 criterion 28 — `runMemoryDecay` reports its archived and purged counts without
- * returning the affected ids.
- *
- * `src/memory/decay.test.ts` already names this file, and until now it did not exist: the comment
- * there promised a real-Postgres proof for the one thing its own stub says it cannot give, and a
- * reader following the pointer found nothing. Written rather than the pointer deleted, because the
- * claim it makes is the load-bearing half of the criterion.
- *
- * What the stub proves: the subject reads `.count` and never calls `.returning()` — re-adding one
- * throws against a chain that does not offer it. What only a database can prove: that `.count` IS
- * the number of rows the statement moved. A mock handed `{ count: 2 }` returns 2 whatever the
- * statement did, so a subject that had switched to some other property, or a driver whose command
- * tag meant something else, would read identically there and wrongly here.
- *
- * So both numbers are checked against the rows themselves, counted independently before and after.
- */
-
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {

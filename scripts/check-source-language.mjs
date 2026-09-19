@@ -1,38 +1,11 @@
 #!/usr/bin/env node
 
-// English-only source policy guard (ISS-65).
-//
-// Scans .ts/.tsx/.md files under packages/{web,dev,core}/src/ for
-// non-ASCII Latin diacritics. Flags any non-allowlisted match with
-// file:line:snippet output and exits 1.
-//
-// Allowlist (per-line, evaluated in order):
-//   1. Brand-name literals (Pokémon, café, etc.). If every diacritic on
-//      the line is part of an allowlisted brand, the line is skipped.
-//      Example: const tagline = 'Built with café energy';
-//   2. Language picker entries — line containing both
-//      `value: '<lang-code>'` and `label:` legitimately needs the native
-//      script as the label value.
-//      Example: { value: 'vi', label: 'Tiếng Việt' }
-//   3. `i18n-allow: <reason>` directive on the same line. Same-line scope
-//      only. Reason text after the colon is required.
-//      Example: throw new Error('Tài liệu'); // i18n-allow: backend error code mirrors API contract
-//
-// Modes:
-//   --staged (default): scans STAGED content of files in `git diff --cached`.
-//                       Used by .githooks/pre-commit.
-//   --all:              walks packages/{web,dev,core}/src/ trees on the
-//                       working tree. Used by CI lang-check job.
-//
-// Exit codes: 0 clean, 1 violations found, 2 invalid invocation.
-
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-// cm:why resolved from this file rather than from `git rev-parse` or cwd — the checker must work in a source tarball with no .git and when invoked from any directory. Run from elsewhere, the old git-or-cwd root walked nothing and reported "0 violations across 0 files".
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Latin-1 Supplement letters (À–ÿ) excluding the math/punctuation glyphs
@@ -41,7 +14,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const NON_ENGLISH = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/u;
 const NON_ENGLISH_GLOBAL = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/gu;
 
-// cm:guard an unreadable config must abort, never fall back to DEFAULTS. Silently reverting to this repo's own layout is how a consuming repo gets a green run over a scope that does not exist there.
 const DEFAULTS = {
   scanRoots: ['packages/web-v2/src', 'packages/core/src'],
   scanExts: ['.ts', '.tsx', '.md'],
@@ -200,7 +172,6 @@ function scanContent(file, content, violations) {
 
 function report(violations, mode, fileCount) {
   const useColor = process.stdout.isTTY === true;
-  // cm:guard `all` walking zero files means scanRoots resolved nowhere, not that the tree is clean. Before this, invoking the script from another directory printed "0 violations across 0 files" and exited 0 — the fail-open shape the other checkers exit 2 on.
   if (mode === 'all' && fileCount === 0) {
     console.error(
       `check-source-language: no files under ${SCAN_ROOTS.join(', ')} — check ` +

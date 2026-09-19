@@ -25,7 +25,7 @@ Three agent-facing projections carry an issue title:
 | `mcp/tools/forge-issues.ts:serialize` — MCP `get` / write-returns / `forge_step_start` | `markUntrusted`, title and description |
 | `mcp/tools/forge-issues.ts:serializeListRow` — MCP `list` | **`sanitizeUntrusted` only** |
 
-The third is deliberate and its `cm:why` says so: a full DATA banner is ~120 characters, and the
+The third is deliberate and its rationale says so: a full DATA banner is ~120 characters, and the
 lean list projection exists precisely to keep a browse over many issues inside the MCP token cap
 (ISS-428, ISS-532). At a 50-row list that is ~6,000 characters of banner.
 

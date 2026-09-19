@@ -1,14 +1,5 @@
 "use client";
 
-// The `/`-autocomplete panel for the chat composer (ISS-718). It lists the
-// project's install-only skills and reports which one was chosen; inserting the
-// text into the message is the composer's job, and running it needs no new
-// contract at all — a resumed turn forwards the message to the CLI verbatim, so
-// `/skill-name` reaches Claude exactly as if it had been typed by hand.
-//
-// Never rendered as an inert control: the composer hides its trigger entirely
-// when the project has no invokable skills, so "nothing here" is a state this
-// panel only reaches on a race, not by design.
 
 import { useEffect } from "react";
 import { Icon, Skeleton, Spinner } from "@/design";
@@ -99,8 +90,6 @@ export function SlashSkillsMenu({
     placement: "above",
   });
 
-  // cm:guard feature-test scrollIntoView instead of calling it blind — keeping the cursor in view is a nicety, and an environment without the method (jsdom) must still get a working menu rather than a crash inside an effect
-  // cm:guard index the row off `highlight` rather than querying a `[data-active]` attribute, so the dependency is genuinely read in the effect — otherwise a lint fix drops it from the deps and the panel silently stops following the cursor
   useEffect(() => {
     if (!open) return;
     const rows = panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]');
@@ -129,17 +118,15 @@ export function SlashSkillsMenu({
           onLeave(true);
         }
       }}
-      // cm:guard focus leaving the panel closes it, with ONE exception: the textarea, which is where a Retry press hands focus back. Exempting the whole anchor row instead would exempt the send button — the next tab stop — and leave the panel mounted over the conversation, which is the stranded tab stop this closes. Exempting nothing would hide the retry's outcome the moment the user can act on it.
       onBlur={(e) => {
         const rt = e.relatedTarget as Node | null;
         if (panelRef.current?.contains(rt)) return;
         if (rt && rt === homeRef.current) return;
         onLeave();
       }}
-      // cm:guard preventDefault on the PANEL's mousedown, not just on each row — mousedown's default action moves focus, which blurs the textarea, which closes the menu, which detaches the target before its `click` is dispatched. That is what made the error state's Retry unpressable, and it is why a press on the header or an empty line dismissed the panel. Safari clears focus to the body here, so `relatedTarget` alone cannot cover it.
       onMouseDown={(e) => e.preventDefault()}
     >
-      <div className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-subtle">
+      <div className="px-2 pb-1 pt-1 text-11 font-medium uppercase tracking-wide text-subtle">
         Skills
       </div>
 
@@ -156,17 +143,16 @@ export function SlashSkillsMenu({
 
       {!loading && !!error && (
         <div className="px-2 py-2">
-          <p className="text-[12px] text-fg">Couldn&apos;t load skills.</p>
-          <p className="text-[11px] text-subtle">{formatApiError(error)}</p>
+          <p className="text-12 text-fg">Couldn&apos;t load skills.</p>
+          <p className="text-11 text-subtle">{formatApiError(error)}</p>
           <button
             type="button"
             disabled={fetching}
-            // cm:guard hand focus back BEFORE retrying — a successful retry unmounts this button, and React fires no blur for a node removed while focused, so focus would be stranded on <body> with the panel still up and its keys (which live on the textarea) unreachable
             onClick={() => {
               onReturnFocus();
               retry();
             }}
-            className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[12px] text-fg transition-colors hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-12 text-fg transition-colors hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           >
             {fetching && <Spinner size={11} />}
             {fetching ? "Retrying…" : "Retry"}
@@ -175,13 +161,13 @@ export function SlashSkillsMenu({
       )}
 
       {!loading && !error && items.length === 0 && (
-        <p className="px-2 py-2 text-[12px] text-subtle">
+        <p className="px-2 py-2 text-12 text-subtle">
           No skills are invokable here yet — add one in Skills.
         </p>
       )}
 
       {!loading && !error && items.length > 0 && matches.length === 0 && (
-        <p className="px-2 py-2 text-[12px] text-subtle">
+        <p className="px-2 py-2 text-12 text-subtle">
           No skill matches &ldquo;{query}&rdquo;. Keep typing to send it as text.
         </p>
       )}
@@ -194,9 +180,7 @@ export function SlashSkillsMenu({
             type="button"
             role="option"
             aria-selected={i === highlight}
-            // cm:why the textarea keeps focus while the menu drives off its keydown, so hover — not focus — is what moves the cursor here
             onMouseEnter={() => onHighlight(i)}
-            // cm:guard pick on mousedown, not click — the panel-level preventDefault above keeps focus in the textarea, but picking here (before any competing close can run) is what guarantees the token the insert edits still exists
             onMouseDown={() => onPick(skill)}
             className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
               i === highlight ? "bg-hover" : ""
@@ -204,8 +188,8 @@ export function SlashSkillsMenu({
           >
             <Icon name="agent" size={13} className="mt-0.5 flex-none text-subtle" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] text-fg">/{skill.name}</span>
-              <span className="line-clamp-2 block text-[11px] text-subtle">
+              <span className="block truncate text-13 text-fg">/{skill.name}</span>
+              <span className="line-clamp-2 block text-11 text-subtle">
                 {skill.description}
               </span>
             </span>

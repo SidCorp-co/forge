@@ -33,7 +33,6 @@ const notFound = (message: string) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-// cm:why one column list, three readers. It was written out three times and `actor_agency` would have had to be added to each — the ISS-927 read path is exactly the kind of column a copy quietly misses, and a feed that reads `human` because one query forgot to select the field is indistinguishable from a feed that is right.
 const ACTIVITY_ROW_COLUMNS = {
   id: activityLog.id,
   issueId: activityLog.issueId,
@@ -58,13 +57,10 @@ type ActivityRow = {
 
 type ActivityRowWithActor = ActivityRow & { actor: ResolvedActor | null };
 
-// cm:guard `isAgent` is decided PER ROW, not per actor, and that is why it is applied here rather than inside `resolveActors`. That resolver's map is keyed on `(type, id)` and one person's rows legitimately differ: the same user id is a human at the keyboard on one row and a job or session token on the next. Folding agency into the map would let the last row of a batch decide the marker for all of them.
 function isAgentForRow(row: ActivityRow, resolved: ResolvedActor): boolean {
-  // cm:guard the `||` is what protects history, and removing it silently rewrites the past. Every row written before migration 0193 carries this column's `'human'` DEFAULT — runner writes included — so reading the column ALONE would drop the agent marker across all of it. The type test is the pre-column answer and stays as the floor; the column can only ever add agents, never remove one. This is the narrowing that lets the read path ship without reversing the owner's 2026-09-02 deferral, which existed for exactly this risk.
   return row.actorAgency === 'agent' || resolved.isAgent;
 }
 
-// cm:guard the raw `actorType`/`actorId` stay on the row alongside `actor`, and an unresolvable pair leaves `actor` null rather than a placeholder — the FE renders the raw type in that case, so inventing an `Unknown` actor here would hide a broken reference behind something that looks resolved.
 async function attachActors(rows: ActivityRow[]): Promise<ActivityRowWithActor[]> {
   const refs: ActorRef[] = [];
   for (const r of rows) {
@@ -260,5 +256,4 @@ projectActivityRoutes.get(
   },
 );
 
-// cm:why exported for the test and nothing else. `attachActors` is where the ISS-927 agent marker is decided, and reaching it through a route would need a DB, a project, a member and a JWT to assert a pure mapping — a cost that buys nothing, since the route's own auth and query are covered elsewhere.
 export const __testing = { attachActors };

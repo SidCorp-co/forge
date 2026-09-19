@@ -25,7 +25,6 @@ const paramSchema = z.object({ id: z.uuid(), kind: z.enum(moduleDiagramKinds) })
 export const moduleDiagramRoutes = new Hono<{ Variables: AuthVars }>();
 moduleDiagramRoutes.use('*', requireAuth(), assertEmailVerified());
 
-// cm:guard a refusal is a 409 carrying `cause.code`, never a 200 with an empty diagram — the issue's rule is that a generator which cannot render what it was asked for says so by name, and an empty mindmap is indistinguishable from a project nobody has classified.
 moduleDiagramRoutes.get(
   '/:id/module-diagrams/:kind',
   zValidator('param', paramSchema, (r) => {

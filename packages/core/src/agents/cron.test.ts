@@ -8,9 +8,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// Recursively scan a drizzle SQL value (or any nested object) for an exact
-// string match. Used to assert that the WHERE clause references particular
-// column names without being coupled to drizzle's internal SQL shape.
 function findString(node: unknown, target: string, depth = 0): boolean {
   if (depth > 12 || node == null) return false;
   if (typeof node === 'string') return node === target;

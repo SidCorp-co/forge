@@ -131,7 +131,6 @@ describe('GET /api/improvement-messages', () => {
     authVerified();
     registryList.mockReturnValue([MOCK_MESSAGE]);
     projectAccess.mockResolvedValue({ role: 'admin' });
-    // Second selectLimit call is for the enabledRows query.
     selectLimit.mockResolvedValueOnce([]);
 
     const app = buildApp();

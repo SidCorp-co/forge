@@ -8,7 +8,6 @@ vi.mock('../store.js', () => ({
   buildContextFromBinding: vi.fn(),
 }));
 
-// cm:why the db client and env are stubbed because the adapter's import chain reaches both, not because this suite uses them — the healthcheck path under test touches neither.
 vi.mock('../../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
 const recordDeliveryMock = vi.fn();
@@ -96,7 +95,6 @@ describe('coolifyAdapter.healthcheck — 401 and 403 are different verdicts (ISS
     expect(res.status).toBe('needs_scope');
     expect(res.message).toContain('api.ability:read');
     expect(res.message).toContain('GET /api/v1/resources');
-    // cm:guard this negative assertion IS the issue — a 403 message that tells the operator to re-enter or replace the credential sends them to redo work that reproduces the state exactly (ISS-924)
     expect(res.message).not.toMatch(/re-enter|replace it/);
     expect(res.diagnostics).toMatchObject({
       httpStatus: 403,
@@ -166,7 +164,6 @@ describe('coolifyAdapter.dispatchOutbound — health follows real deploy outcome
     });
 
     expect(res.externalId).toBe('dep-1');
-    // cm:guard a succeeding deploy is itself proof the API is reachable and the token accepted, so it must clear health back to ok — without this the card stays on a months-old `error` from one failed healthcheck while every deploy succeeds (ISS-429)
     expect(updateConnectionMock).toHaveBeenCalledWith(
       CONN_ID,
       expect.objectContaining({ lastHealthStatus: 'ok' }),

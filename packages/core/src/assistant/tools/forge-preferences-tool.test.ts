@@ -38,7 +38,6 @@ describe('forge_preferences writes for the linked speaker and nobody else', () =
     expect(out).toEqual({ answerStyle: 'concise', assistantInstructions: null });
   });
 
-  // cm:guard the principal is `agent-1` and the speaker is null, and the assertion is that NOTHING was written: a tool that fell back to the principal here would restyle the org agent's own account on a stranger's say-so (ISS-1034 criterion 22).
   it('refuses a turn whose newest message is from nobody Forge knows, and writes nothing', async () => {
     await expect(
       call(ctx({ conversationId: 'c1', speakerUserId: null, handleUserId: 'handle-1' }), {
@@ -55,7 +54,6 @@ describe('forge_preferences writes for the linked speaker and nobody else', () =
     expect(writeAssistantPreferences).not.toHaveBeenCalled();
   });
 
-  // cm:guard asserted on the advertised schema AND on a live call: a `userId` the schema does not declare is a whole-call refusal, so the model has no argument through which to name whose preferences change (ISS-1034 criterion 23).
   it('declares no argument naming a user, and refuses one', async () => {
     const schema = forgePreferencesTool(ctx(undefined)).inputSchema as {
       properties: Record<string, unknown>;

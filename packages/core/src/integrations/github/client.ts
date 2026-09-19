@@ -37,7 +37,6 @@ const PUBLISH_TIMEOUT_MS = 8000;
  * installation does not exist, and a 404 on `create` means the App no longer
  * reaches the repository. Reporting either as the other invents a history.
  */
-// cm:guard `merge` is an op of its own and not a `create`. A timeout on a create means Forge does not know whether a check run was written, which is recoverable by publishing again; a timeout on a merge means Forge does not know whether a pull request LANDED, and the two are not the same thing to tell an operator (ISS-1073).
 export type GitHubPublishOp = 'mint' | 'lookup' | 'create' | 'update' | 'merge';
 
 /**
@@ -70,19 +69,6 @@ export class GitHubReadError extends Error {
   }
 }
 
-/**
- * A failed step of a publish, carrying everything a sentence about it is built
- * from. ISS-1072.
- *
- * It is a separate class from `GitHubReadError` on purpose, and the reason is
- * the same one that made `client.get` wrong for the publish lookup:
- * `GitHubReadError` carries a status and nothing else, and `get` converts a
- * `GitHubAuthError` into one, so by the time a caller sees it, whether the
- * failure was at the mint or on the repository is gone — and that is the very
- * distinction criterion 24 exists to keep. `timedOut` is here rather than
- * inferred from a message because "the write did not happen" and "the write may
- * have happened and I did not hear" are different things to tell an operator.
- */
 export class GitHubPublishError extends Error {
   readonly op: GitHubPublishOp;
   readonly status: number | null;
@@ -130,7 +116,6 @@ export interface GitHubRepoClient {
 }
 
 /** The binding a project's github reads go through, or a named refusal. */
-// cm:guard oldest ACTIVE binding wins and the order is not cosmetic: `providerCanDeploy('github')` is false so every github binding is `role: 'service'`, and `integration_bindings_service_uq` allows one per (project, provider, label) — a second label is representable, and an unordered pick would make the projection read a different repository between two deliveries of one event.
 async function findGitHubBinding(projectId: string) {
   const [row] = await db
     .select({
@@ -201,7 +186,6 @@ export function buildRepoClient(args: {
     repo,
     fullName,
     async get<T>(path: string): Promise<T> {
-      // cm:guard the token is minted per CALL and never held on the client — `app-auth.ts` caches it until five minutes before it lapses, so this costs nothing per call and a client held across an hour-long job does not go stale in the caller's hand.
       let token: string;
       try {
         token = await mint();
@@ -226,7 +210,6 @@ export function buildRepoClient(args: {
       return (await res.json()) as T;
     },
 
-    // cm:guard the lookup goes through HERE and never through `get` above, though both are a GET. `get` collapses a `GitHubAuthError` into a `GitHubReadError` and keeps only the status, which throws away the two things a publish refusal is built from: whether the failure was at the mint or on the repository, and the rate-limit headers that tell an exhausted quota from an ungranted permission. Routing the lookup through `get` to save nine lines is how criterion 24 stops holding.
     async publish<T>(args: {
       op: GitHubPublishOp;
       method: 'GET' | 'POST' | 'PATCH' | 'PUT';
@@ -238,7 +221,6 @@ export function buildRepoClient(args: {
         token = await mint();
       } catch (err) {
         if (err instanceof GitHubAuthError) {
-          // cm:guard the mint keeps `app-auth.ts`'s OWN wording. Its 404 sentence is about an installation that does not exist; rewording it here as a repository the App was removed from is the invented history criterion 24 forbids, and an operator sent to the wrong page by it loses the afternoon.
           throw new GitHubPublishError({
             op: 'mint',
             status: err.status,
@@ -283,11 +265,6 @@ export function buildRepoClient(args: {
           message: `${args.method} ${args.path} on ${fullName} returned HTTP ${res.status}`,
         });
       }
-      // cm:guard reading the BODY is inside the wrapper too, because it is a second place the
-      // timeout fires: GitHub can answer 200 and then stall the stream until the abort, and a raw
-      // `AbortError` escaping here reaches a caller that has no idea which operation it came from
-      // — `contract-check.ts` labels anything unrecognised `create`, so a stalled LOOKUP would be
-      // reported as a write of unknown outcome that never happened.
       try {
         return (await res.json()) as T;
       } catch (err) {
@@ -318,17 +295,6 @@ async function bodyText(res: Response): Promise<string | null> {
   }
 }
 
-/**
- * The App-authenticated reader for this project's repository, or a refusal
- * naming which of the five things is missing.
- *
- * Each refusal sends the operator somewhere different, which is the whole
- * reason they are five and not one: a missing installation is an authorization
- * to grant, a missing credential is a connection to re-make, and a missing
- * binding is a repository nobody has chosen yet. Collapsing them tells an
- * operator to reconnect when reconnecting reproduces the state exactly — the
- * mislabel ISS-924 filed against the coolify adapter.
- */
 export async function githubRepoClient(projectId: string): Promise<GitHubRepoClient> {
   const binding = await findGitHubBinding(projectId);
   if (!binding) {

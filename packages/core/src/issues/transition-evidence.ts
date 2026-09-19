@@ -1,23 +1,3 @@
-/**
- * Content guards on THE state-machine writer (`transitionIssueStatus`).
- *
- * Each rule says WHO it applies to, and there are two answers.
- *
- * `no_work_evidence` is agent-only: a human hand-advance is a recorded human
- * decision, not the fabrication class that rule guards against. Until ISS-959
- * that carve-out sat on the whole checker rather than on the rule, and the
- * file's own header said the rules "run for an agent caller only" — which made
- * a status set from the tracker's own screens unearnable and unrefusable, one
- * half of the surface with no rule reaching it at all.
- *
- * `entry_criteria` is the other answer: what the PROJECT declared, checked for
- * every actor. A project that declares nothing is unchanged.
- *
- * `options.skip===true` still exempts the whole checker — that is the
- * orchestrator's curated soft-skip/failover chain, which legitimately lands on
- * gated statuses without the evidence a normal write would require.
- */
-
 import { type Db, db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
@@ -56,13 +36,6 @@ type EvidenceRule = {
 export const isBlankPlan = (plan: string | null | undefined): boolean =>
   !plan || plan.trim().length === 0;
 
-/**
- * Statuses that assert "code exists". `closed`/`awaiting_release` are deliberately
- * excluded — a coordination epic legitimately reaches them with no
- * branch of its own (its children carry the code), and `markMergedOnClose`'s
- * unconditional stamp on `closed` is out of scope for this rule (ISS-786
- * epic explicitly forbids re-litigating it).
- */
 const NO_WORK_EVIDENCE_STATUSES: ReadonlySet<string> = new Set(['developed', 'testing']);
 
 /**
@@ -70,7 +43,6 @@ const NO_WORK_EVIDENCE_STATUSES: ReadonlySet<string> = new Set(['developed', 'te
  * reachable with zero recorded evidence that code exists (ISS-105 / ISS-75-78
  * shape: a status advance with no branch, commit or handoff behind it).
  */
-// cm:guard stays agent-only, and the carve-out is the rule rather than an accident of where the check sat: an operator advancing by hand makes the shipped claim deliberately and owns it, the same reading `release-gate-hold.ts` and `release-record-required.ts` state for their own rules. A project that wants this held against people too declares `work_evidence` in `statusEntryCriteria`, which is the door built for that decision.
 const noWorkEvidenceRule: EvidenceRule = {
   agentOnly: true,
   check: async (ctx) => {
@@ -116,7 +88,6 @@ const entryCriteriaRule: EvidenceRule = {
 
 const RULES: readonly EvidenceRule[] = [noWorkEvidenceRule, entryCriteriaRule];
 
-// cm:guard fails OPEN on any internal error — a broken content guard must never freeze the writer
 export async function checkTransitionEvidence(
   ctx: TransitionEvidenceContext,
 ): Promise<TransitionEvidenceViolation | null> {

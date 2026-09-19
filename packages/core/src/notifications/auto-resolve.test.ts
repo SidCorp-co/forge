@@ -38,15 +38,12 @@ describe('resolveNotifications', () => {
 
     expect(count).toBe(2);
     const text = sqlTextOf();
-    // cm:guard ISS-1063 — this statement must NOT touch `read`: the column is not on this table any more, and the whole issue is that resolving a record and a person reading it are different facts. A future edit that re-adds a read write here fails on this line.
     expect(text).not.toMatch(/read/);
     expect(text).toMatch(/SET resolved_at = now\(\)/);
     expect(text).toMatch(/resolved_at IS NULL/);
-    // cm:guard the lock is the whole fix — without FOR UPDATE two clearers of the same key can both claim the row and both announce it cleared. `paused:<runId>` (ISS-879) is the first key with two clearers.
     expect(text).toMatch(/FOR UPDATE/);
   });
 
-  // cm:guard the condition's own state moves with the stamp — a `firing` row left firing while `resolved_at` is set is the state lying in the one place ISS-1063 made the open count read from
   it('moves a condition to `resolved` and leaves other kinds their state', async () => {
     dbExecute.mockResolvedValueOnce([{ id: 'n1', state: 'resolved' }]);
     expect(await resolveNotifications('issue:abc:status')).toBe(1);

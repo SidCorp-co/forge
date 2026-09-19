@@ -9,7 +9,6 @@ import { SentryInit } from "@/providers/sentry-init";
 import { RouteProgress } from "@/design/patterns/route-progress";
 import "./globals.css";
 
-// cm:guard both families are VENDORED (fonts/*.woff2, provenance in fonts/README.md) and must stay that way — `next/font/google` fetches the binaries at build time, and one Coolify app builds core and web-v2 together, so a font host that does not answer fails the BACKEND deploy too (2026-08-13: deploy zs4ocksc8sokkcw0g0g0w4s0 exit 1, a core-only fix merged-but-not-live ~90 min). fonts.test.ts fails if the import comes back.
 const hanken = localFont({
   src: "./fonts/hanken-grotesk-latin-variable.woff2",
   variable: "--font-hanken",
@@ -43,7 +42,6 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    // cm:guard the two `.variable` classes belong on <html>, NEVER <body> — tokens.css declares `--font-sans: var(--font-hanken), …` at :root, and a var() is substituted with the custom-property value in scope at the DECLARING element (:root === <html>), so vars defined only on a descendant resolve to empty and every screen silently falls back to system sans (ISS-306's decisive root cause; the compiled CSS looks correct either way, so only getComputedStyle on a live page catches it).
     <html
       lang="en"
       data-theme="light"

@@ -35,9 +35,6 @@ export async function openIssueRun(args: {
   const existing = await selectOpenIssueRun(args.issueId);
   if (existing) return existing;
 
-  // Race-safe insert. `pipeline_runs_issue_open_uq` is partial
-  // (kind='issue' AND status IN running|paused), so a duplicate INSERT from
-  // two concurrent callers becomes a DO NOTHING and the loser re-selects.
   const inserted = await db
     .insert(pipelineRuns)
     .values({
@@ -95,8 +92,6 @@ export interface OneShotRunSpec {
 /**
  * The row half of opening a one-shot run, on whatever executor is handed in.
  */
-// cm:guard the INSERT only, and it emits nothing. A caller that needs the row created under a lock it is already holding — `openRunSession`, claiming a box run id — must be able to put the insert inside its transaction, and a hook fired from inside an open transaction announces a run id no subscriber can yet read (ISS-678; `outbox-worker.test.ts` asserts no transaction is ever open while a hook is in flight). Such a caller pairs this with `announceOneShotRun` after its commit.
-// cm:edge lockstep -> packages/core/src/devices/run-session.ts — the only caller that splits the pair; every other one goes through `openOneShotRun` below, which composes them.
 export async function insertOneShotRun(
   executor: Tx,
   args: OneShotRunSpec,
@@ -128,16 +123,6 @@ export async function announceOneShotRun(runId: string, args: OneShotRunSpec): P
   });
 }
 
-/**
- * One-shot run for paths that aren't tied to an issue:
- *   - `pm`           — the PM coordinator job (project-scoped).
- *   - `interactive`  — a user-driven chat session.
- *   - `system`       — project-scoped jobs without an issueId (schedule
- *                      runs, skill pushes, MCP/CLI custom jobs).
- *
- * Each call creates a fresh row; no upsert is needed because there's no
- * per-issue uniqueness to enforce.
- */
 export async function openOneShotRun(args: OneShotRunSpec): Promise<{ id: string }> {
   const row = await insertOneShotRun(db, args);
   await announceOneShotRun(row.id, args);
@@ -176,7 +161,6 @@ export type CloseResult = 'settled' | 'deferred';
  * Only `completed` is gated: a run already heading for `failed` or `cancelled`
  * is not making a claim about a deploy.
  */
-// cm:edge contract -> packages/core/src/integrations/coolify/confirm.ts — the poller is the other half: it settles the holds this reads, and calls back into `closeRun` when the last one resolves. Neither side works alone.
 async function gatedOutcome(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
@@ -184,7 +168,6 @@ async function gatedOutcome(
   if (outcome !== 'completed') return outcome;
   if (Object.keys(await readDeployHolds(runId)).length === 0) return 'completed';
 
-  // cm:guard mark the deferral BEFORE resolving the verdict, never after — a confirmation settling the last hold in between would find no marker, neither side would close the run, and it would sit `running` until a sweeper found it 60 minutes later. Marking first is harmless when it turns out unnecessary: a stale marker only ever causes a `closeRun` on an already-terminal run, which no-ops.
   await markCloseDeferred(runId);
   const gate = resolveDeployGate(await readDeployHolds(runId));
   if (gate.verdict === 'clear') return 'completed';
@@ -269,7 +252,6 @@ export async function setCurrentStepForOpenIssueRun(issueId: string, step: strin
  * scheduled (the retry shares the same run); see `jobs/lifecycle-routes.ts`
  * for the retry-aware call sites.
  */
-// cm:guard NOT gated on deploy confirmations, and that is a statement about the run KINDS this one accepts: a hold is only ever written for the `issue` run a deploy was dispatched against, so a gate here could never fire and would only suggest one exists for pm/interactive/system runs.
 export async function closeRunIfOneShot(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
@@ -306,19 +288,6 @@ export interface CancelConcludedResult {
   was: PipelineRunStatus | null;
 }
 
-/**
- * Take an ALREADY-TERMINAL one-shot run to `cancelled`, keeping what it said
- * before.
- *
- * `closeRunIfOneShot` matches `running|paused` only, so an abort arriving on a
- * run something already concluded wrote nothing and said nothing: the row went
- * on reading `completed` about a batch somebody had called off, and the caller
- * was handed a success. That is a run row lying about its own outcome, which is
- * the one thing a run row exists not to do.
- */
-// cm:guard `status IN ('completed','failed')` and NEVER `cancelled` in the predicate: re-cancelling a cancelled run would rewrite `finished_at` and file a second audit row for a flip that already happened, and the caller cannot tell the two apart from the outside.
-// cm:guard the previous outcome goes into `metadata.cancelledFrom` and is the whole point of the call. A flip that only writes `cancelled` erases the fact that this run had ALREADY reported success — which is what an operator reading the abort needs to know, because whatever that success closed is still closed.
-// cm:edge lockstep -> packages/core/src/pipeline/runs-cascade.ts — the cascade runs here as it does in every other close, so a job still alive under a run being called off is cancelled by the same writer. A flip without it is the orphan half of the ISS-923 invariant.
 export async function cancelConcludedRun(runId: string): Promise<CancelConcludedResult> {
   const [before] = await db
     .select({ status: pipelineRuns.status })
@@ -369,7 +338,6 @@ export async function closeOpenRunForIssue(
   issueId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<CloseResult> {
-  // cm:guard the gate is per-RUN, so the open run is named before it can be asked — an issue-keyed gate would have to guess which run a deploy hold belongs to.
   const open = await selectOpenIssueRun(issueId);
   if (!open) return 'settled';
   const resolved = await gatedOutcome(open.id, outcome);
@@ -485,7 +453,6 @@ export type PipelineRunQuery = {
   limit: number;
 };
 
-// cm:guard the projection OMITS the `metadata` jsonb, and must keep omitting it (ISS-428): it is unbounded, and a list of fifty runs carrying fifty of them overflows the MCP response cap. `readPipelineRun` is where a caller that needs it goes.
 export async function listPipelineRuns(q: PipelineRunQuery) {
   const conds: SQL[] = [eq(pipelineRuns.projectId, q.projectId)];
   if (q.issueId) conds.push(eq(pipelineRuns.issueId, q.issueId));
@@ -503,8 +470,6 @@ export async function listPipelineRuns(q: PipelineRunQuery) {
       finishedAt: pipelineRuns.finishedAt,
       createdAt: pipelineRuns.createdAt,
       updatedAt: pipelineRuns.updatedAt,
-      // cm:why ISS-789 — `status` alone cannot say whether anything is still working on a run; a correlated count keeps that answer in the same round-trip as the row it describes
-      // cm:guard write the identifiers LITERALLY here — do NOT interpolate `${jobs.pipelineRunId}` / `${pipelineRuns.id}`. Drizzle renders a column reference inside a raw sql template UNQUALIFIED (`"id"`, not `"pipeline_runs"."id"`), so inside this subquery the bare `"id"` binds to jobs.id and the correlation becomes `jobs.pipeline_run_id = jobs.id` — always false, count always 0. It compiles, typechecks, and is wrong; it shipped in 65bb8a0b and only real data caught it.
       liveJobs: sql<number>`(
         SELECT count(*)::int FROM jobs lj
         WHERE lj.pipeline_run_id = pipeline_runs.id

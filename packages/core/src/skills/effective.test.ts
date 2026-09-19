@@ -161,7 +161,6 @@ describe('computeDeviceSkillStatus', () => {
   it('classifies synced / outdated / missing (no observation fields)', () => {
     const syncedAt = new Date('2026-05-30T00:00:00.000Z');
     const status = computeDeviceSkillStatus(eff, [
-      // cm:why observedSha null means unknown, not synced — a pre-0.7.0 runner matches installed_hash but cannot confirm the right body actually runs
       {
         skillId: 's-1',
         installedHash: 'h1',
@@ -301,7 +300,6 @@ describe('pivotProjectSkillSyncStatus', () => {
 
   it('pivots into a skill-major shape with per-device synced/outdated/missing', () => {
     const installedByDevice = new Map([
-      // cm:why d-1 mixes both outcomes: s-1 synced (observedSha matches) and s-2 outdated (hash mismatch)
       [
         'd-1',
         [

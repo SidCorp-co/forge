@@ -14,7 +14,6 @@ import { setSkillPinned } from './pin-service.js';
 
 const paramSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
 
-// cm:guard `reason` is required to PIN and meaningless to UNPIN, and the service enforces that with a thrown `BAD_REQUEST:` string rather than a status — so validate it HERE too. Without this refinement the caller's 400 arrives as a 500 from a raw Error, and the one thing a pin must always carry is why someone declared the divergence permanent.
 const bodySchema = z
   .object({ pinned: z.boolean(), reason: z.string().trim().min(1).max(2000).optional() })
   .strict()
@@ -50,7 +49,6 @@ skillPinRoutes.put(
         skill: await setSkillPinned({ projectId, skillId, pinned, reason, actorUserId: userId }),
       });
     } catch (err) {
-      // cm:guard a skill id that belongs to ANOTHER project reaches `setSkillPinned` and matches no row, because the UPDATE is keyed on (id, projectId) — it throws `NOT_FOUND:` and that must surface as a 404, not a 500. The path id is what the PAT fence bites on, so answering 404 is also what stops this route being used to probe which skill ids exist elsewhere.
       if (err instanceof Error && err.message.startsWith('NOT_FOUND:')) {
         throw new HTTPException(404, { message: 'skill not found', cause: { code: 'NOT_FOUND' } });
       }

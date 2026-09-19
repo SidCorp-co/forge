@@ -56,10 +56,6 @@ vi.mock('../../db/client.js', () => {
   const selectFrom = (table: unknown) => ({
     where: () => ({
       limit: async () => {
-        // cm:guard branch on the TABLE by IDENTITY and never on the chain shape: the stored pull
-        // request and the pipeline run are read through the same `.where().limit()`, so one shared
-        // queue would hand the run check the pull request's row and answer "same project" for every
-        // input — which is exactly the criterion 31 refusal going quiet.
         if (table === pipelineRuns) return runRow ? [runRow] : [];
         return selectLimit();
       },
@@ -131,10 +127,6 @@ vi.mock('./client.js', async (importOriginal) => {
       fullName: 'SidCorp-co/forge',
       get: async () => ({}),
       publish: async (args: { op: string; method: string; path: string; body?: unknown }) => {
-        // cm:guard this recorder cannot say ANYTHING about the credential: it stands in for
-        // `buildRepoClient`, so the identity it would carry is the thing that was stubbed out.
-        // Criteria 27/28 are settled in `tests/integration/github-merge-kernel-e2e.test.ts`, where
-        // the JWT is signed for real and the installation token is minted over HTTP.
         sent.push(args);
         if (args.method === 'PUT') {
           merged = true;
@@ -154,9 +146,6 @@ vi.mock('./client.js', async (importOriginal) => {
           );
         }
         if (answers.pull) return answers.pull;
-        // cm:guard the stub REMEMBERS that it merged, because the subject reads the pull request
-        // back after the `PUT` to take GitHub's own `merged_at`. A stub answering `merged: false`
-        // forever would make that read-back look like a bug in the subject.
         if (merged) {
           if (answers.pullAfterMerge !== undefined) return answers.pullAfterMerge;
           return mergedPull();
@@ -205,10 +194,6 @@ describe('the merge itself', () => {
     expect(puts()[0]?.path).toBe('/repos/SidCorp-co/forge/pulls/481/merge');
   });
 
-  // cm:guard the assertion is on the WHOLE body and not on the absence of one name. Outcome 5 is
-  // that `enforce_admins` becomes turnable on, and what earns that is that there is no field here at
-  // all that could bypass a protection — `expect.not.toHaveProperty('enforce_admins')` would pass on
-  // a body carrying `bypass_rules` instead.
   it('sends the head sha and the merge method and nothing else', async () => {
     await ask();
     expect(puts()[0]?.body).toEqual({ sha: HEAD, merge_method: 'merge' });
@@ -250,10 +235,6 @@ describe('the merge itself', () => {
     expect(puts()[0]?.body).toEqual({ sha: HEAD, merge_method: 'squash' });
   });
 
-  // cm:guard the planted violation for the time. Replace the read-back with `new Date()` — the
-  // obvious filler, since the `PUT` answers no timestamp — and this goes red: the row would then
-  // carry this box's clock, and the evidence predicate would stop the `pull_request.closed` delivery
-  // from ever correcting it.
   it("records GitHub's own merge time and not this box's clock", async () => {
     const outcome = await ask();
     expect(outcome?.kind === 'merged' && outcome.mergedAt.toISOString()).toBe(GITHUB_MERGED_AT);
@@ -275,10 +256,6 @@ describe('the merge itself', () => {
 });
 
 describe('a merge nobody is named for', () => {
-  // cm:guard this is the planted violation for criterion 30 and it asserts on the REQUESTS as well
-  // as the throw: an implementation that refused after reading the pull request would pass a test
-  // that only checked the exception, while having already spent a call on a repository for a request
-  // that was never going to be made.
   it('is refused before anything is read', async () => {
     await expect(ask({ requestedBy: '   ' })).rejects.toBeInstanceOf(MergeInputError);
     expect(sent).toHaveLength(0);
@@ -299,9 +276,6 @@ describe('a merge nobody is named for', () => {
 });
 
 describe('a pre-flight refusal reaches GitHub with no merge request', () => {
-  // cm:guard every row asserts `puts()` is EMPTY, which is criterion 24 and is the property that
-  // separates a decision from a wish. A refusal returned after the PUT would leave the pull request
-  // merged and the caller told it was not.
   const refusals: Array<{ what: string; answers: Record<string, unknown>; reason: string }> = [
     {
       what: 'a conflict',
@@ -353,11 +327,6 @@ describe('a pre-flight refusal reaches GitHub with no merge request', () => {
     );
   });
 
-  // cm:guard the already-merged reading is decided from the pull request ALONE, before the
-  // protection and check reads, and this is what says so: both of those fail, and the evidence is
-  // still recorded. Put them back in front of it and an issue holding every piece of evidence it
-  // needs goes unstamped because a check-runs request for a pull request nobody is going to merge
-  // hit a rate limit.
   it('records an already-merged pull request even when the checks cannot be read', async () => {
     const { GitHubPublishError } = await import('./client.js');
     answers = {
@@ -392,9 +361,6 @@ describe('a pre-flight refusal reaches GitHub with no merge request', () => {
 });
 
 describe('a merge GitHub itself refuses', () => {
-  // cm:guard one attempt and one only. The queue this verb can be reached through retries five
-  // times with exponential backoff, so a retry loop HERE would be a merge attempted repeatedly
-  // against a repository whose state is moving — which is the shape ISS-1073's third rule forbids.
   it.each([
     [405, /not mergeable at the moment/],
     [409, /head branch was modified/],
@@ -427,9 +393,6 @@ describe('a merge GitHub itself refuses', () => {
 describe('a merge that has already happened', () => {
   const merged = { pull: mergedPull() };
 
-  // cm:guard this arm IS the recovery path, and its test is the one that proves a lost response or a
-  // failed transaction cannot become a second merge. Take it away and the only way back from either
-  // is a person merging by hand.
   it('records the evidence and sends no merge request', async () => {
     answers = merged;
     const outcome = await ask();
@@ -461,10 +424,6 @@ describe('a merge that has already happened', () => {
 });
 
 describe('when the stamp fails after GitHub merged', () => {
-  // cm:guard the planted violation for criteria 6 and 7. A transaction that swallowed its failure
-  // would answer `merged` with nothing recorded, which is the silent substitution CLAUDE.md prices;
-  // one that reported a plain database error would leave whoever reads it unable to tell what is on
-  // the base branch. The commit has to be IN the sentence.
   it('raises naming the commit that landed, and records nothing', async () => {
     transactionThrows = true;
     await expect(ask()).rejects.toThrow(new RegExp(`MERGED at ${LANDED}, and recording it failed`));

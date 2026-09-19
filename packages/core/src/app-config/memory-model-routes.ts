@@ -53,7 +53,6 @@ memoryModelRoutes.get('/:projectId/memory-model/reindex', validParam, async (c) 
   return c.json({ model: cfg?.model ?? 'flat', reindex: await readReindex(projectId) });
 });
 
-// cm:guard 409 while a reindex is queued or running, and the state row is written BEFORE the job is sent — the job's first act is to read that state, so a job with no state exits, and two flips cannot both believe they own the run
 memoryModelRoutes.post(
   '/:projectId/memory-model',
   validParam,
@@ -74,7 +73,6 @@ memoryModelRoutes.post(
           cause: { code: 'REINDEX_LIVE' },
         });
       }
-      // cm:guard the queued state is sized by countPending, not the estimate — a resume after cancel/failure must show the rows already chunked as done, and the estimate counts every row as pending
       const counts = await countPending(projectId);
       const reindex = {
         state: 'queued' as const,

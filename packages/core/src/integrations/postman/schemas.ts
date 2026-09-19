@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
-// cm:guard keep this base free of `.default()` — zod's `.partial()` still EMITS a field's default when the key is absent, so a default here turns a PATCH that names one field into one that silently resets region, mode and workspaceName. Defaults belong on the create schema alone (ISS-336).
 export const postmanConfigBase = z.object({
   workspaceId: z.string().min(1).max(200).optional(),
   workspaceName: z.string().min(1).max(200),

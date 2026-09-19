@@ -198,7 +198,7 @@ Four contracts:
 3. **Report everything** — no early exit. One fix cycle instead of six.
 4. **Bounded width** — the checks run at a concurrency of 6 rather than all 20 at once, overridable
    with `VERIFY_CONCURRENCY`. Why 6 and not more was measured, and the measurement lives at the
-   thing it decided: the `cm:why` on `verify.mjs:runAll`.
+   thing it decided: the rationale on `verify.mjs:runAll`.
 
    This contract read **"Advisory — `cm impact` on every file changed against `origin/main` …
    the pull-side stand-in for the PreToolUse hook"** until 2026-09-17. `verify.mjs` has never run

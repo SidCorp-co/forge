@@ -20,7 +20,6 @@ let listByDevice: ActivityViewsModule['listByDevice'];
 const deviceEvents = (projectId: string, deviceId: string) =>
   listByDevice({ projectId, deviceId, limit: 1000 });
 
-// cm:why real Postgres, not a mocked `tx` (see src/skills/activity.test.ts) — only a real rollback proves §9.11's same-transaction invariant actually holds.
 describe('skill-activity log integration (ISS-797)', () => {
   let harness: TestDatabase;
   let schema: typeof import('../../src/db/schema.js');
@@ -217,7 +216,6 @@ describe('skill-activity log integration (ISS-797)', () => {
         trigger: 'poll',
         projectId: project.id,
         skillId: skill.id,
-        // cm:why deliberately wrong: chain expects hash-v2 here, proving findBrokenActivityChains detects the gap.
         beforeHash: 'hash-v3',
         afterHash: 'hash-v4',
       },
@@ -260,21 +258,17 @@ describe('skill-activity log integration (ISS-797)', () => {
   });
 
   it('applyReconcileRun emits skill.body.changed with afterHash = hashSkillBody(body, files) — real hash path (ISS-798 BLOCKER C)', async () => {
-    // cm:why exercises the REAL reconcile->publish path with a skill that has files. Prior fix hand-seeded skill.body.changed with an arbitrary hash, masking the formula mismatch.
     const { hashSkillBody } = await import('../../src/skills/hash.js');
 
     const { user, project, skill } = await seedProjectSkill('old-hash');
     const files = [{ path: 'GUIDE.md', content: '# Guide\nReference content.' }];
-    // cm:why give the skill reference files — that is the pattern that caused BLOCKER C
     await harness.db.update(schema.skills).set({ files }).where(eq(schema.skills.id, skill.id));
 
     const candidateBody = 'updated skill body v2';
     const expectedHash = hashSkillBody(candidateBody, files);
-    // cm:why a files-less hash would differ, so this asserts the test would catch the wrong formula
     const filesLessHash = hashSkillBody(candidateBody, null);
     expect(expectedHash).not.toBe(filesLessHash);
 
-    // cm:why the run must already be `decided` for apply to be reachable
     const [run] = await harness.db
       .insert(schema.reconcileRuns)
       .values({
@@ -285,7 +279,6 @@ describe('skill-activity log integration (ISS-797)', () => {
         gate: 'human',
         candidateBody,
         lastGoodHash: 'old-hash',
-        // cm:why bundle has a DB default of {}, so omit it to let the default apply
       })
       .returning();
     if (!run) throw new Error('reconcileRuns insert returned no row');
@@ -297,7 +290,6 @@ describe('skill-activity log integration (ISS-797)', () => {
     expect(changed).toBeDefined();
     expect(changed?.afterHash).toBe(expectedHash);
 
-    // cm:why apply must update contentHash on the skills row too, not just the body
     const [updatedSkill] = await harness.db
       .select({ contentHash: schema.skills.contentHash })
       .from(schema.skills)

@@ -1,20 +1,3 @@
-// The autonomous lane's half of the two mandatory preamble blocks. Its staged
-// twin lives in `./registry.ts` as PIPELINE_RULES_TEXT + TOOL_REFERENCE_TEXT;
-// `./mandatory-blocks.ts` picks between them on the job's step.
-//
-// This is a different document, not a filtered one. A staged rule earns a
-// place here only when the driver would ACT differently having read it — the
-// ladder, `waiting`/`reopen`/`on_hold`, five-rounds-then-park and
-// `forge_step_start`'s `code`/`fix` stage semantics all fail that test in this
-// lane, so they are dropped rather than translated. Note what that reasoning is
-// NOT: the driver has a working Forge MCP client and always did. The staged text
-// is wrong here on any transport, and the CLI is what the driver skill names.
-//
-// Keep this file free of DB/env imports for the same reason `registry.ts` is:
-// the fact catalogue must render without a live database.
-
-// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the other side is `plugin/skills/issue-flow/SKILL.md` in github.com/SidCorp-co/forge-plugin. the skill and this preamble are read in ONE context window and must name ONE transport and one status vocabulary. They disagreed until 2026-09-02: the skill named `forge-runner api` and nothing else, the preamble named `forge_step_start`, `forge_issues.update` and a nine-rung ladder, and the agent believed the preamble — 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` device calls, every one on a project in autonomous mode. Which one moves is a CHOICE and the skill won it: the job PAT is minted per job, scoped to one project and revoked when the job goes terminal, where the device token the MCP path uses is long-lived and fleet-wide. Do not restate this as "the driver cannot call MCP" — it can, and the integrations block deliberately still tells it to.
-// cm:guard do NOT restate the driver's five statuses here. The skill (`issue-flow`, in the forge-plugin repo) holds the declaration the agent reads and `AUTONOMOUS_DRIVER_STATUSES` holds the one core enforces; a third list in the preamble is one more copy to drift inside the same context window, and no gate reads it.
 export const DRIVE_RULES_TEXT = `## Driver Rules
 - **You are the whole pipeline for this issue.** Nothing dispatches after you, so no status you write triggers anything and there is no next stage to hand to. Reach for the status your skill's table names, never the one that looks like it comes next.
 - **Single-shot turn — never background-and-exit.** Your session is ONE headless turn; when you stop, the whole process group is killed. Any \`run_in_background\` task dies with it and you never see its result. To wait on an async result (deploy / build / migration), poll in the FOREGROUND so the turn blocks until you have the answer. Backgrounding is fine ONLY for a helper you consume within the SAME turn (e.g. a dev server you query before finishing).
@@ -45,7 +28,6 @@ Only when you hit a reusable lesson — a project convention, a non-obvious gotc
 - Never repeat file contents after reading — just edit.
 - Comments go to \`forge-runner api issues/<id>/comments -X POST\`, not to chat output.`;
 
-// cm:guard every path here is one the job PAT can actually reach: the fence in `middleware/pat-rest-surface.ts` is an ALLOWLIST, so a route whose prefix is absent answers 403 PAT_NOT_PERMITTED and the driver reads it as a Forge outage. Check the prefix before adding a line — `/api/me`, `/api/orgs`, `/api/admin` and `/api/pat` are fenced on purpose and no driver instruction may name them.
 export const DRIVE_TOOL_REFERENCE_TEXT = `## Reaching Forge
 Reach Forge through \`forge-runner api <path>\`, which supplies the \`/api/\` prefix and the \`$FORGE_PAT\` the runner already exported. A path with no handler answers 404 — it never falls back. Use this and not a \`forge_*\` tool: the two reach the same data, and one transport named in one place is what keeps this document and your skill from contradicting each other mid-session.
 

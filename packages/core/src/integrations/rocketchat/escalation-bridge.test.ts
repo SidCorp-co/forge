@@ -9,7 +9,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 
-// cm:guard this stub must stay, and must stay above the subject's import — `config/env.js` validates EAGERLY and throws at import time without DATABASE_URL / JWT_SECRET / DEVICE_TOKEN_PEPPER, which `escalation-bridge.js` pulls in transitively through escalation.js's chat-turn/lifecycle graph, so removing it turns the whole file into a collection error rather than a failing test (same pattern as agent-sessions/chat-turn.test.ts)
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
@@ -29,7 +28,6 @@ vi.mock('../../db/client.js', () => ({
 
 const findConnectionById = vi.fn();
 const decryptConnectionSecrets = vi.fn();
-// cm:why the room-is-still-ours lookup is stubbed true here: this file's fake db answers only the subject's own queries, and that check has its own cases in room-delivery.test.ts and its refusal case in escalation-bridge-transcript.test.ts.
 vi.mock('./room-delivery.js', async (o) => ({
   ...(await o<typeof import('./room-delivery.js')>()),
   roomStillBoundTo: async () => true,
@@ -233,9 +231,6 @@ describe('deliverEscalationReplyOnce', () => {
         tmid: undefined,
       },
       'Bao says: here is the synthesized answer.',
-      // cm:guard the proof NAMES the string being posted, which is the assertion ISS-978 F5 found
-      // missing everywhere: `{ ok: true, problems: [] }` was satisfied by any literal and said nothing
-      // about which text had been screened.
       { text: 'Bao says: here is the synthesized answer.', door: 'escalation-synthesis' },
     );
     expect(sendFixedReply.mock.calls[0]?.[1]).not.toContain('raw PM answer');
@@ -300,7 +295,6 @@ describe('deliverEscalationReplyOnce', () => {
 });
 
 describe('the repair budget the escalation-synthesis door declares', () => {
-  // cm:guard until ISS-997 this door read the verdict and fell straight to the fallback, costing the room the whole answer on a first miss. It repairs because it CAN — the synthesis is its own model turn — and the budget is the `escalation-synthesis` row, so a change to it is a change to that table.
   it('repairs a synthesis that failed the screen, and shows the room the repair', async () => {
     updateReturning.mockResolvedValue([{ id: 'session-1' }]);
     findConnectionById.mockResolvedValue({ config: { serverUrl: 'https://chat.example.co' } });

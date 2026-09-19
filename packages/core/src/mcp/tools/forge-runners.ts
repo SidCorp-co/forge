@@ -161,9 +161,6 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       return { runner: publicRunnerRow(row) };
     }
 
-    // cm:guard `retire` and `restore` stay a pair at the same reach — a status a surface can create and not leave is what left forge-vm withdrawn with no route back, and the only fix on offer was a re-registration the unique index refuses (ISS-990).
-    // cm:edge contract -> packages/core/src/runners/select.ts — `online` and not `offline`, because dispatch filters on `status = 'online'`: `offline` would leave a restored box admitted by pool-admission and invisible to the picker until its next heartbeat. `stale-detector.ts` demotes a stale `online` row within the minute, so this cannot become a lasting lie.
-    // cm:edge lockstep -> packages/core/src/runners/runner-events.ts — the AUDITED writer, so the Activity panel answering "why is this box back" holds the transition. `retire` beside it still takes the bare one and leaves no row; closing that is docs/proposals/mcp-runner-status-writes-are-unaudited.md.
     if (input.action === 'restore') {
       if (!input.runnerId) {
         throw new Error('BAD_REQUEST: runnerId is required for action=restore');

@@ -154,7 +154,6 @@ describe('the observed self-join (ISS-951)', () => {
     expect(edges[0]?.issueCount).toBe(1);
   });
 
-  // cm:guard `issue_labels` cannot see `labels.kind`, so this is the only place the plain-label case is refused — a green here without this fixture would be a green over an edge set that silently includes every plain label a project uses. Both uuid orderings are fixtured deliberately: with only one, the join's `>` canonicalisation decides which SIDE the plain label lands on and half the mutations of this rule pass.
   it('never pairs a module with a plain label on the same issue, on either side of the join', async () => {
     const module = await insertModule('alpha', { id: uuidAt(2) });
     const lower = await insertPlainLabel('bug', uuidAt(1));
@@ -206,7 +205,6 @@ describe('the observed self-join (ISS-951)', () => {
     expect(edges[0]?.recentIssueSeqs).toEqual(seqs.slice(-5).reverse());
   });
 
-  // cm:guard the hazard is a FOREIGN label on a LOCAL issue, which `issue_labels` permits (its FKs constrain neither side's project) — a fixture whose two projects share no issue cannot fail the project scope at all, and again both uuid orderings are needed to reach both sides of the join
   it('never joins another project module through a shared issue, on either side of the join', async () => {
     const otherProject = await createTestProject(harness.db, user.id);
     const mine = await insertModule('alpha', { id: uuidAt(2) });
@@ -288,7 +286,6 @@ describe('GET /api/projects/:id/modules/drift (ISS-951)', () => {
     expect(body.undeclared).toHaveLength(1);
   });
 
-  // cm:guard the status code is part of the contract ISS-951 states: drift is information, so a project sitting on undeclared couplings is still a 200 — an endpoint that signalled through the status code would be read by a gate, and a gate is answered by declaring edges nobody means
   it('stays 200 with findings, and honours the threshold from the query', async () => {
     const a = await insertModule('alpha');
     const b = await insertModule('beta');

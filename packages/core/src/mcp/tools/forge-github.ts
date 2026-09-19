@@ -146,7 +146,6 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     'writer, and every action but list also needs the binding granted to agents.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
-    // cm:guard the kernel verbs are recognised BEFORE the schema parses, and that order is the whole point. `z.enum` refuses `merge` too — with a list of seven strings and no reason, which reads as a tool missing a verb rather than as the boundary ISS-1062 drew. The refusal IS the deliverable (ISS-1074 outcome 4), so the name is matched in order to be answered by name.
     const named = (args as { action?: unknown } | null)?.action;
     if (typeof named === 'string' && isKernelVerb(named)) {
       throw new Error(`BAD_REQUEST: ${kernelVerbRefusal(named)}`);
@@ -155,7 +154,6 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     try {
       return await dispatchAction(input, ctx);
     } catch (err) {
-      // cm:edge contract -> packages/core/src/integrations/github/agent-client.ts — those modules throw a bare sentence so a REST surface could turn it into a 400 body; the MCP contract is a `CODE: message` string, so the prefix is added HERE and must not be baked into the shared message.
       if (err instanceof GitHubAgentRefusal || err instanceof GitHubClientError) {
         throw new Error(`BAD_REQUEST: ${err.message}`);
       }
@@ -172,7 +170,6 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
   const { principal } = ctx;
 
-  // cm:guard `list` is exempt from the grant and from nothing else. It reports what exists rather than acting on it, and an agent that cannot see its own project's binding cannot be told why the action before this one was refused — which is the affordance the coolify tool's own `list` exemption exists for (ISS-1071).
   if (input.action === 'list') {
     await assertPrincipalIsMember(principal, projectId);
     return githubAgentBindings(projectId);
@@ -255,11 +252,6 @@ async function submitAndNote(
       },
     };
   }
-  // cm:guard the catch is what makes the docstring above true, and without it the tool did the
-  // opposite of what it says: a tracker write that threw rejected the whole call, and an agent
-  // reading a rejection resubmits — a SECOND review on GitHub, under a second id, which the marker
-  // cannot reconcile with the first. The verdict is already on the pull request by the time this
-  // runs, so the answer says so and names what did not happen beside it.
   try {
     const noted = await noteReviewOnIssue({
       projectId,

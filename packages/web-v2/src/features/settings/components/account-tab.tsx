@@ -9,6 +9,7 @@ import {
   CardContent,
   Field,
   MonoTag,
+  SectionTitle,
   Select,
   Skeleton,
   type SelectOption,
@@ -51,7 +52,7 @@ export function AccountTab() {
     <div className="space-y-6">
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-4">Profile</h2>
+          <SectionTitle className="fg-h3 mb-4">Profile</SectionTitle>
           <dl className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <dt className="fg-label">Email</dt>
@@ -67,7 +68,7 @@ export function AccountTab() {
 
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-4">Preferences</h2>
+          <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
           {prefsQ.isLoading ? (
             <div className="space-y-4">
               <Skeleton className="h-10 w-full rounded-md" />

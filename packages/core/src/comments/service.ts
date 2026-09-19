@@ -1,13 +1,3 @@
-/**
- * Comment reads and writes both transports share.
- *
- * The queries live here rather than beside a route or a tool because each
- * side had grown its own: the step-start tool primes an agent with a comment
- * thread, the comments tool lists the same thread, and REST serves the UI.
- * The projections are one now; the authorisation stays with each caller,
- * which is where the credential is known.
- */
-
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
@@ -32,7 +22,6 @@ export type CommentThreadRow = {
 };
 
 /** The columns every comment surface projects — REST tree, MCP list and both writes. */
-// cm:guard REST and MCP answer comments off THIS ONE object. `comments/routes.ts` kept a byte-identical private copy until ISS-956; two projections that must agree and nothing making them is how one surface silently gains or loses a field.
 export const commentThreadColumns = {
   id: comments.id,
   issueId: comments.issueId,
@@ -60,7 +49,6 @@ export async function listIssueComments(issueId: string) {
  * Comment depth the DB trigger allows. A root plus this many rounds of
  * `parent_id IN (…)` reaches every descendant of the roots on a page.
  */
-// cm:edge lockstep -> packages/core/drizzle/migrations — the depth-3 check trigger is what makes a fixed number of rounds complete rather than a guess. Raising the trigger's depth without raising this leaves the deepest replies off every page, silently, because `buildCommentTree` drops a reply whose parent it was not given.
 const COMMENT_MAX_DEPTH = 3;
 
 export type CommentPage = {
@@ -78,22 +66,8 @@ export type CommentPage = {
  * `created_at` as the DB's own microsecond text, which is what a cursor
  * carries. Selected only on the root query, never projected to a caller.
  */
-// cm:edge contract -> packages/core/src/comments/cursor.ts — this rendering IS the token's timestamp half, so the format here and `decodeCommentCursor`'s acceptance must agree; `to_char` with `US` is exact for a timestamptz, and the token is compared back as `::timestamptz` rather than parsed in JS so no precision is lost on the way in either.
 const cursorKeyExpr = sql<string>`to_char(${comments.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
-/**
- * One page of an issue's thread: the next `limit` ROOT comments after
- * `after`, each with its whole subtree.
- *
- * ISS-956. The cursor walks roots rather than comments because
- * `buildCommentTree` drops a reply whose parent is absent from the row set it
- * is given — a deliberate guard, so that a partial fetch cannot promote a
- * reply to a top-level comment. Paging over roots is the one row set for
- * which that builder is correct on a partial fetch, and it is also what makes
- * a page self-contained for a flat reader: every `parentId` on the page names
- * a row that is on it.
- */
-// cm:guard the keyset is `(createdAt, id)` and the tie-breaking `id` comparison is the whole of the second half — dropping to `createdAt > x` alone loses every root sharing a timestamp with the previous page's last. Agent-written threads produce those ties routinely (ISS-956 measured two at 2026-09-06T18:58).
 export async function listIssueCommentPage(
   issueId: string,
   opts: { after?: CommentCursor | undefined; limit: number },
@@ -124,7 +98,6 @@ export async function listIssueCommentPage(
       ? encodeCommentCursor({ createdAtKey: last.cursorKey, id: last.id })
       : null;
 
-  // cm:guard `cursorKey` is stripped HERE and reaches no caller. `buildCommentTree` spreads each row into its node, so a key left on a root is an undeclared field on every REST comment; the MCP tool reads the keys it needs out of `cursorKeyById` instead.
   const cursorKeyById = new Map(keyed.map((r) => [r.id, r.cursorKey]));
   const roots = keyed.map(({ cursorKey: _key, ...row }) => row);
 
@@ -205,7 +178,6 @@ export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
  * (`STAGE_NAMES` in `pipeline-config-schema.ts` — "a key here must be a status
  * this lane actually reaches").
  */
-// cm:guard reads through the CALLER's handle, never the pool: `insertComment` runs this before its own insert, so a caller inside a transaction that left this on `db` would hold one pooled connection and block waiting for a second. The pool is ten wide and every inbound room reply is one such transaction, so ten concurrent replies deadlock until they time out (ISS-981).
 async function loadStageContext(
   issueId: string,
   tx: Tx = db,
@@ -218,12 +190,9 @@ async function loadStageContext(
   return row ? { stage: row.stage, projectId: row.projectId } : null;
 }
 
-// cm:guard the `tx` handle exists for ONE reason: a caller that must commit this comment together with another row passes its transaction, and `rocketchat/comment-inbound.ts` is that caller — a room reply whose comment committed without its idempotency row is written a second time on the next redelivery, which is two resume intents at `answer-resume.ts` and the agent run twice (ISS-981). It defaults to the pool, so every other door is unchanged.
-// cm:guard ISS-898 — the caller-supplied body is validated HERE, not at each transport, because REST and MCP create both reach this one function and a gate on one of them is a gate on neither. ISS-969 collapsed REST's own `db.insert(comments)` copy into this call for that same reason, so there is now exactly one insert site for a body somebody sent us. The ~11 kernel-authored `db.insert(comments)` sites (apply-transition, budget-check, merge-marker, stage-stall-guard, pm/routes, release-batch) deliberately do NOT come through here: they take the `markdown` column default, which is right for text core formats itself, and they store no stage because no stage asked them for a record. `agent-sessions/steer-session.ts` is the one kernel caller that DOES come through here, and correctly: a steer is a person's typed body written at a stage, and it passes `authorDeviceId: null`, so the mandate exempts it while the stage is still recorded.
 export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const context = await loadStageContext(input.issueId, tx);
-  // cm:guard the message screen reads what the words CLAIM, which is a different question from the markup `prepareBody` above answers, and it runs on the RAW body an agent sent rather than on the prepared one — the gate refuses, it never hands back edited text, so there is no prepared form of a refused comment to screen (ISS-997).
   if (input.authorAgency === 'agent' && context) {
     await screenAgentComment(context.projectId, input.body, tx);
   }
@@ -261,7 +230,6 @@ export async function updateCommentBody(
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!existing) return null;
-  // cm:guard an edit meets the same cell its creation did, read off the stored `authorAgency` rather than off whoever is editing: a comment an agent wrote is an agent's claim however it is later corrected, and reading the editor instead would let one edit walk a claim past the gate that refused it.
   if (existing.authorAgency === 'agent') {
     const context = await loadStageContext(existing.issueId);
     if (context) await screenAgentComment(context.projectId, input.body, db);

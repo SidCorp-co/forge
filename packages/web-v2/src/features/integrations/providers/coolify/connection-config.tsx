@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Field, Input } from "@/design";
+import {
+  Button,
+  CardTitle,
+  Field,
+  Input,
+} from "@/design";
 import { useUpdateConnection } from "../../hooks";
 import type { ConnectionSection } from "../registry";
 
@@ -14,7 +19,7 @@ export const CoolifyConnectionConfig: ConnectionSection = ({ connection, canMana
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="fg-h4">Configuration</h3>
+      <CardTitle>Configuration</CardTitle>
       <Field label="Base URL">
         <Input
           value={baseUrl}

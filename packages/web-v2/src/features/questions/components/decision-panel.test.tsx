@@ -15,7 +15,6 @@ expect.extend(matchers);
 
 const list = vi.fn();
 const mutate = vi.fn();
-// cm:guard `useAnsweringQuestions` is the REAL one and only the two fetch hooks are replaced: the per-question pending rule is the thing under test on this panel, and a stub of it would leave both callers free to regress the same way at once (ISS-998).
 vi.mock("../hooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks")>()),
   useIssueQuestions: () => list(),
@@ -134,7 +133,6 @@ describe("the open round a person is being asked about", () => {
     expect(screen.getAllByText("Recommended")).toHaveLength(1);
   });
 
-  // cm:guard the three attributes are asserted as the WORDS a reader acts on, not as the stored values: `bindsTo: 'session'` on screen tells a person nothing about what they are agreeing to (ISS-980 criteria 3, 4, 5).
   it("says what each of an option's three attributes means for the reader", () => {
     loaded([aQuestion()]);
     renderPanel();
@@ -197,7 +195,6 @@ describe("a lock is the server's verdict and the screen renders it", () => {
     expect(screen.getByText('Needs the "admin" authority')).toBeInTheDocument();
   });
 
-  // cm:guard the SAME role, the same options, only `locked` moved — which is what proves the screen renders the server's verdict rather than re-deriving one of its own (ISS-980 criterion 8).
   it("follows the flag and nothing else", () => {
     loaded([aQuestion({ options: [{ ...SAFE, locked: true }, { ...DEPLOY, locked: false }] })]);
     renderPanel();
@@ -267,7 +264,6 @@ describe("nothing, loading and broken are three different screens", () => {
     expect(screen.queryByRole("button", { name: /^Choose / })).toBeNull();
   });
 
-  // cm:guard a failed read rendered as the empty state makes a decision somebody owes VANISH from the screen, indistinguishable from an issue that never had one — and the reader is never told to try again (ISS-980 criterion 17).
   it("renders a recoverable error when the read fails", () => {
     const refetch = vi.fn();
     list.mockReturnValue({
@@ -286,7 +282,6 @@ describe("nothing, loading and broken are three different screens", () => {
   });
 });
 
-// cm:guard the round that is answered in WORDS is a different control, not an option list with zero rows: an empty `options` array renders identically for a free-text round and for a choice round whose options failed to write, so every assertion here reads the panel's own answer form (ISS-996).
 describe("a round answered in words", () => {
   it("offers a written answer instead of options, and says what is needed", () => {
     loaded([aTextQuestion()]);
@@ -325,7 +320,6 @@ describe("a round answered in words", () => {
     expect(screen.getByText(/write what the run asked for/i)).toBeInTheDocument();
   });
 
-  // cm:guard the SERVER's `locked` and no role read of our own — the client has no access to the org-derived half of the rule (ISS-964 criterion 15).
   it("shows no answer box to a reader the server says may not answer", () => {
     loaded([aTextQuestion({ locked: true })]);
     renderPanel();
@@ -371,7 +365,6 @@ describe("a round answered in words", () => {
     expect(screen.getAllByRole("button", { name: /^Choose / }).length).toBeGreaterThan(0);
   });
 
-  // cm:guard an EARLIER round renders by its own shape: a decision that asked for a choice and followed up in words carries both, and reading the row's current shape would list options a text round never had (ISS-996).
   it("renders an earlier choice round beside a current written one", () => {
     loaded([
       aTextQuestion({
@@ -389,7 +382,6 @@ describe("a round answered in words", () => {
 });
 
 
-// cm:guard the CTA that scrolls here is the reason this render exists: four issues sat at `needs_info` with zero question rows on 2026-09-13 (ISS-978, ISS-987, ISS-990, ISS-962), all parked before ISS-996, and a panel that rendered null under them left "Provide info" scrolling to an element that was not on the page — a silent no-op the reader cannot tell from a broken click.
 describe("an issue parked for information that carries no question", () => {
   it("says there is nothing to answer instead of rendering nothing", () => {
     loaded([]);
@@ -406,7 +398,6 @@ describe("an issue parked for information that carries no question", () => {
     expect(container.querySelector("#issue-decisions")).not.toBeNull();
   });
 
-  // cm:guard the anchor must exist while the read is STILL IN FLIGHT: an id that appears only once a fetch resolves makes the banner's CTA do nothing for exactly as long as the panel is loading, which is when a reader is most likely to click it.
   it("carries the anchor while the read is still in flight", () => {
     list.mockReturnValue({
       data: undefined,
@@ -442,7 +433,6 @@ describe("an issue parked for information that carries no question", () => {
     expect(screen.queryByText(/nothing to answer here/i)).toBeNull();
   });
 
-  // cm:guard an issue that is NOT parked keeps rendering nothing: the notice is scoped to the park, and a panel that showed it on every issue with no decision would put a card about parks on every issue in the project.
   it("renders nothing at all on an issue that is not parked for information", () => {
     loaded([]);
     const { container } = renderPanel();

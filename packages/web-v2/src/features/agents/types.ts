@@ -1,7 +1,5 @@
-// cm:edge contract -> packages/core/src/devices/run-ledger.ts — `ProjectRunSessionRow` is the other half of every field below, and the box that feeds it is `transport/session_ledger.rs`; a field renamed on either side arrives here as `undefined` with no type error, because JSON.
 
 /** The two axes, typed separately because that is the whole point of them. */
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/ledger.rs — `Incarnation::wire` and `Work::wire` produce these strings; a value added there arrives here as an unknown and must widen this union rather than being folded into a neighbour.
 export type Incarnation = "live" | "starting" | "exited";
 export type Work = "runnable" | "blocked" | "done";
 export type BlockerKind = "machine" | "master_or_peer" | "human" | "nobody";

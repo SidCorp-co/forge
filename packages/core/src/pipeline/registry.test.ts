@@ -38,7 +38,6 @@ const STAGED_JOB_TYPES: readonly JobType[] = [
 ];
 
 describe('contracts ↔ core enum parity', () => {
-  // cm:guard the settings screen offers exactly this tuple as checkboxes. Drift it and an operator picks a status `poolBacklogSchema` then rejects, and the refusal names zod rather than the mistake.
   it('REGISTRY_BACKLOG_ADMISSIBLE_STATUSES mirrors core BACKLOG_ADMISSIBLE_STATUSES', () => {
     expect([...REGISTRY_BACKLOG_ADMISSIBLE_STATUSES]).toEqual([...BACKLOG_ADMISSIBLE_STATUSES]);
   });
@@ -87,7 +86,6 @@ describe('getPipelineRegistry()', () => {
     expect(parsed.version).toBe(7);
   });
 
-  // cm:guard the picker offers a rung exactly the row it reads here, so a status absent from this map is a status whose menu is EMPTY in the UI — the shape `dropped` has on purpose and no other rung may acquire by omission (ISS-982)
   it('serves an exits row for every issue status and no other key', () => {
     const { statusExits } = getPipelineRegistry();
     expect(Object.keys(statusExits).sort()).toEqual([...issueStatuses].sort());
@@ -113,7 +111,6 @@ describe('getPipelineRegistry()', () => {
     expect(json.statusExits.closed).not.toEqual(transitions.closed);
   });
 
-  // cm:guard both directions of the version-7 rollout, which is what lets the two halves deploy in either order (ISS-982): a client on the old schema must accept the new payload, and this schema must accept a response from a core that predates `statusExits`.
   it('parses a response from a core that sends no statusExits', () => {
     const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
     json.version = 6;
@@ -163,9 +160,7 @@ describe('GET /api/pipeline/registry', () => {
 });
 
 describe('RUNNER_CAPABILITIES', () => {
-  // cm:guard this is the ONLY check on the array contents — `RUNNER_CAPABILITIES` is a Record keyed by runner type, so TypeScript verifies the two KEYS and never the lists inside them. `drive` was absent for the whole of phase 3 and every dispatch failed `runner_unsupported_type`, permanently, with no runner ever selected.
   it('every job type is claimable by some runner, or explicitly unenqueueable', () => {
-    // cm:why `pm` bypasses the gate entirely (own queue) and `custom` is operator-defined with no canonical runner — every other non-staged type reaches `runnerSupportsJobType` and must be claimable
     const EXEMPT: readonly JobType[] = ['pm', 'custom'];
     const claimable = new Set(Object.values(RUNNER_CAPABILITIES).flat());
     const orphans = jobTypes.filter(
@@ -174,13 +169,11 @@ describe('RUNNER_CAPABILITIES', () => {
     expect(orphans).toEqual([]);
   });
 
-  // cm:guard the staged types stay OUT, and this is what says so. They survive in `jobTypes` because ~30k historical `jobs` rows hold them and a read of one must stay representable (ISS-895); absence here is the whole mechanism that makes them unenqueueable — a runner handed one fails it `runner_unsupported_type`, which is the loud refusal. Adding one back silently re-opens a lane whose skills, step table and dispatch gate no longer exist.
   it('no staged job type is claimable by any runner', () => {
     const claimable = new Set(Object.values(RUNNER_CAPABILITIES).flat());
     expect(STAGED_JOB_TYPES.filter((t) => claimable.has(t))).toEqual([]);
   });
 
-  // cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — AUTONOMOUS_JOB_TYPE; spelled literally because importing that module pulls in db/client.js, which validates env at import and would make this hermetic suite need a database
   it('the autonomous driver runs on claude-code', () => {
     expect(RUNNER_CAPABILITIES['claude-code']).toContain('drive');
   });

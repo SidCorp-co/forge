@@ -137,7 +137,6 @@ describe('finalizeScheduleSessionFailure', () => {
     expect(redispatchScheduleSessionOnFailoverMock).not.toHaveBeenCalled();
   });
 
-  // cm:why every other test here authors its transcript as `assistant`, which is why the prompt-as-error defect shipped: the classifier only ever saw runner text in tests. A schedule transcript really opens with the schedule's own prompt as a `user` message.
   it('does NOT classify the schedule prompt — a user message saying "usage limit" must not trigger a failover', async () => {
     const set: Record<string, unknown> = {};
     const result = await finalizeScheduleSessionFailure({

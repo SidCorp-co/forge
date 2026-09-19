@@ -1,11 +1,5 @@
 'use client';
 
-// Deep-link helpers shared by the pin system, recents, and "Copy link".
-//
-// `next/link` / `router.push` auto-prefix the basePath, so INTERNAL hrefs
-// stored in pins/recents must stay basePath-relative. A shareable absolute URL,
-// however, must include the basePath to land back in the app. web-v2 serves at
-// root since ISS-397, so the basePath is "" unless re-prefixed via env.
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 
 /** Absolute, shareable URL for a basePath-relative `pathname + ?query`. */

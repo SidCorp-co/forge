@@ -1,8 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-// cm:why registering the real declarations pulls in every adapter, and coolify's reaches
-// db/client.js (and, since ISS-922, queue/boss.js via its confirm enqueue) which parses the
-// runtime env at import time — same reason `capabilities.test.ts` stubs both.
 vi.mock('../db/client.js', () => ({ db: {} }));
 vi.mock('../config/env.js', () => ({
   env: {

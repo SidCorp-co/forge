@@ -1,9 +1,3 @@
-// Criterion 27 — what a project with a connected Google integration gains in
-// the pipeline preamble. The subject is `renderIntegrations`, which lives under
-// `prompt/facts/`; this test imports it and asserts on the Google row, so the
-// assertion sits with the provider it is about and the prompt module is read
-// rather than edited.
-
 import { describe, expect, it, vi } from 'vitest';
 import { getGuide } from '../../guides/registry.js';
 // ISS-1071 — the hint and the guide slug are fields on google's own declaration now, not rows in a
@@ -22,10 +16,6 @@ vi.mock('../../knowledge/service.js', () => ({
 
 const { renderIntegrations } = await import('../../prompt/facts/resolve.js');
 
-// `renderIntegrations` reads each provider's hint, guide slug and extra line off its DECLARATION
-// (ISS-1071), so the registry has to hold one. Reading it empty throws rather than rendering the
-// generic line for every provider, which is the answer that would have made these assertions pass
-// while saying nothing true.
 const { registerAllIntegrations } = await import('../../integrations/register-all.js');
 registerAllIntegrations();
 

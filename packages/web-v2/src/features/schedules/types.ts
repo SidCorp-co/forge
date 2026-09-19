@@ -1,7 +1,3 @@
-// web-v2 feature module: schedules. Shapes verified against
-// `packages/core/src/schedules/routes.ts` for ISS-299. The `/api/schedules`
-// routes are user-token (JWT/cookie) auth — the browser `forge_auth` cookie is
-// sent automatically, so no special handling vs other web-v2 features.
 import type { StatusKey } from "@/design/status";
 
 export type ScheduleLastStatus = "success" | "failed" | "running" | null;
@@ -70,9 +66,6 @@ export interface StewardRunReport {
   idempotencySkips: string[];
 }
 
-/** One past run of a schedule (an agent session under a system pipeline run).
- *  Shape verified against `GET /api/schedules/:id/runs` in
- *  `packages/core/src/schedules/routes.ts`. */
 export interface ScheduleRun {
   sessionId: string;
   pipelineRunId: string | null;

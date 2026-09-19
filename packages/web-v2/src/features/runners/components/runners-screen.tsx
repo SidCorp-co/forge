@@ -16,6 +16,7 @@ import {
   Input,
   MonoTag,
   PageContainer,
+  PageTitle,
   Skeleton,
   Table,
   TBody,
@@ -80,7 +81,7 @@ function PairPanel() {
           <div className="flex flex-col gap-1.5">
             <span className="fg-label">Recommended — run on the runner machine</span>
             <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-              <code className="font-mono text-[13px] text-fg">forge-runner login</code>
+              <code className="font-mono text-13 text-fg">forge-runner login</code>
               <CopyButton value="forge-runner login" />
             </div>
             <p className="fg-body-sm text-subtle">
@@ -121,7 +122,7 @@ function PairPanel() {
                   <span className="fg-body-sm text-muted">Approve at</span>
                   <a
                     href={code.verify_url}
-                    className="truncate font-mono text-[12.5px] text-accent hover:underline"
+                    className="truncate font-mono text-12-5 text-accent hover:underline"
                   >
                     {verifyUrl || code.verify_url}
                   </a>
@@ -164,7 +165,7 @@ export function RunnersScreen() {
     <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="fg-h2">Runners &amp; devices</h1>
+          <PageTitle className="fg-h2">Runners &amp; devices</PageTitle>
           <p className="fg-body-sm text-muted">
             Paired devices that can run pipeline jobs. Status updates live.
           </p>
@@ -227,7 +228,7 @@ export function RunnersScreen() {
                               v{d.agentVersion}
                               {d.agentOutdated && (
                                 <span
-                                  className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+                                  className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
                                   title={
                                     d.latestAgentVersion
                                       ? `Update pending — latest is v${d.latestAgentVersion}`
@@ -244,7 +245,7 @@ export function RunnersScreen() {
                       <TD>
                         {disabled ? (
                           <span
-                            className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[12px] font-medium text-muted bg-sunken"
+                            className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-12 font-medium text-muted bg-sunken"
                             title="Turned off — ignored by every project until turned back on"
                           >
                             <Icon name="pause" size={12} />
@@ -259,12 +260,12 @@ export function RunnersScreen() {
                       </TD>
                       <TD>
                         {d.gitCredentialRef ? (
-                          <span className="inline-flex items-center gap-1.5 text-[13px] text-fg">
+                          <span className="inline-flex items-center gap-1.5 text-13 text-fg">
                             <Icon name="check" size={14} className="text-[color:var(--green-600)]" />
                             provisioned
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 text-[13px] text-subtle">
+                          <span className="inline-flex items-center gap-1.5 text-13 text-subtle">
                             <Icon name="dot" size={14} />
                             none
                           </span>

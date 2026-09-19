@@ -36,7 +36,6 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
   const toggle = <T,>(list: T[], value: T, same: (a: T, b: T) => boolean): T[] =>
     list.some((x) => same(x, value)) ? list.filter((x) => !same(x, value)) : [...list, value];
 
-  // cm:guard the base project is counted as ONE agent whether or not it was picked from the list, because the room always opens with its own handle: a projection that counted only the ticked boxes would call a two-project room one-to-one and promise a privacy the room will not have (ISS-1011).
   const base = projects.find((p) => p.id === projectId);
   const chosen: ConversationProject[] = handles.flatMap((h) => {
     const found = (candidates.data?.handles ?? []).find((c: HandleCandidate) =>
@@ -44,7 +43,6 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     );
     return found ? [found.project] : [];
   });
-  // cm:guard the two counts are taken on DIFFERENT keys, and the difference is the whole point: a second agent of a project the room is already about brings no new project but is a second handle, so it widens who can read the room without widening what the room can see. Counting projects for the scope claim and handles for the shape claim is what lets both sentences be true of the same room (ISS-1011).
   const brought = chosen.filter((p) => p.id !== projectId);
   const scopeProjects: ConversationProject[] = [
     ...(base ? [{ id: base.id, name: base.name, slug: base.slug }] : []),
@@ -171,7 +169,6 @@ function Extras({
       </div>
     );
   }
-  // cm:guard the agents and the people render as two lists, here as everywhere else in this feature: choosing an agent changes what the room can see and choosing a colleague changes who reads it, and one list of both would make the larger act look like the smaller (ISS-1011 criterion 14).
   const data = query.data;
   if (!data || (data.people.length === 0 && data.handles.length === 0)) {
     return (

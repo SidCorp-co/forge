@@ -86,7 +86,6 @@ describe('emitPipelineWedge dedup: one record per unresolved entity', () => {
     expect(await countWedges()).toBe(1);
   });
 
-  // cm:guard marking a wedge READ must not re-arm the emitter — this is the exact loop that produced 721 rows on forge-beta (2026-08-14). If this assertion ever reads 2, the dedupe has drifted back onto the read state, which since ISS-1063 is not even on this table.
   it('stays suppressed after the operator reads it', async () => {
     await emit();
     await harness.db.execute(sql`UPDATE notification_deliveries SET read_at = now()`);
@@ -94,7 +93,6 @@ describe('emitPipelineWedge dedup: one record per unresolved entity', () => {
     expect(await countWedges()).toBe(1);
   });
 
-  // cm:guard ISS-1063 deleted the 24-hour re-notify FLOOR, and this case is what holds the decision: a wedge stays ONE record for as long as it is unresolved, however old it gets. The floor existed because a read row left the unread count and so had to come back; a firing condition never leaves the open count, so a second record for a condition that never stopped being true would be the 2161-rows-for-2037-conditions shape this issue removed. What re-derives it is `reevaluate-conditions.ts`, not the clock.
   it('writes no second record however old the first one is', async () => {
     await emit();
     await harness.db.execute(

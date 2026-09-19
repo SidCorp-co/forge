@@ -27,14 +27,7 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Declare the issues about to be handed to a subagent. Starts nothing.
-    // cm:guard NOT called `open`: the pool verb this socket used to carry was `run_open`, it took a job from a queue and started a process, and it is still banned by name in `control.rs`. This one writes a row and starts nothing (ISS-1050).
     Declare(DeclareArgs),
-    /// Say what happens to a run this pane inherited when it was resumed.
-    // cm:guard the way OUT of criterion 29's gate, and it must exist wherever that gate does. The
-    // gate refuses a declaration while an inherited run is unanswered; with no verb to answer with,
-    // a resumed pane could never declare again for the life of the boot. `run_choice` and its frame
-    // were written in the original change and reachable from nothing (ISS-1050 criterion 29).
     Choice(ChoiceArgs),
     /// Say a declared run is finished, or never started.
     Close(CloseArgs),
@@ -85,7 +78,6 @@ fn socket() -> anyhow::Result<std::path::PathBuf> {
     Ok(path)
 }
 
-// cm:guard the refusal text the daemon sent is printed WHOLE and the exit is non-zero. Each refusal names what the master has to do next — which issue collided, which tree is held, which declared row to close, which project this pane actually serves — and a wrapper that reduced them to "failed" would take that away at the one moment it is worth having.
 pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
     let sock = socket()?;
     let token = session_tokens::token_from_env().map_err(|e| {
@@ -118,13 +110,6 @@ pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The run id a successful declaration must carry.
-// cm:guard an `ok` reply with no id is a FAILURE with a non-zero exit, not a line of prose on
-// stdout. This verb's whole output is the run id: a master reads it and passes it to `run close`,
-// and a sentence printed in its place exits 0, is captured as the id, and the close then names a
-// run that does not exist — while the declared row stays open holding the tree and the issues. It
-// printed "the daemon recorded the run but named no id" until ISS-1050 finding F13, which is the
-// silent substitution this file's own header says this verb does not make.
 fn declared_id(job_id: Option<String>) -> anyhow::Result<String> {
     job_id.ok_or_else(|| {
         anyhow::anyhow!(

@@ -115,7 +115,6 @@ async function cycleDays(token: string, slug: string): Promise<number | undefine
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 
 describe('the cycle figure, branch by branch', () => {
-  // cm:guard an issue started weeks before it closed is the commonest shape there is: restrict the work-start side to the seven-day completion window and this case falls back to `issues.createdAt` and reports a number wrong in the same direction every time (ISS-1018).
   it('measures from a work-start that predates the seven-day completion window', async () => {
     const { user, project, token } = await seedOwner();
     const issueId = await insertIssue({ projectId: project.id, createdById: user.id });
@@ -138,7 +137,6 @@ describe('the cycle figure, branch by branch', () => {
     expect(await cycleDays(token, project.slug)).toBeCloseTo(28, 1);
   });
 
-  // cm:guard the COALESCE onto issues.created_at is the ONLY fallback and exists for rows predating the transitions being recorded — a LEFT JOIN turned INNER would drop this issue from the average entirely rather than report it wrong.
   it('falls back to the issue creation time when there is no work-start transition at all', async () => {
     const { user, project, token } = await seedOwner();
     const issueId = await insertIssue({ projectId: project.id, createdById: user.id });
@@ -156,7 +154,6 @@ describe('the cycle figure, branch by branch', () => {
     expect(await cycleDays(token, project.slug)).toBeCloseTo(6, 1);
   });
 
-  // cm:guard the FIRST work-start and not the last: `DISTINCT ON (issue_id) ... ORDER BY issue_id, created_at ASC` is what makes it the first, and flipping that ORDER BY to DESC is the silent way to halve every cycle figure on the dashboard.
   it('measures from the FIRST work-start when an issue re-entered in_progress', async () => {
     const { user, project, token } = await seedOwner();
     const issueId = await insertIssue({ projectId: project.id, createdById: user.id });
@@ -181,7 +178,6 @@ describe('the cycle figure, branch by branch', () => {
     expect(await cycleDays(token, project.slug)).toBeCloseTo(18, 1);
   });
 
-  // cm:guard `approved` counts as a work-start alongside `in_progress`: an issue whose pipeline moved it straight from approved to closed HAS a work-start, and dropping the second spelling sends it down the createdAt fallback instead.
   it('treats a transition into approved as a work-start', async () => {
     const { user, project, token } = await seedOwner();
     const issueId = await insertIssue({ projectId: project.id, createdById: user.id });
@@ -203,7 +199,6 @@ describe('the cycle figure, branch by branch', () => {
     expect(await cycleDays(token, project.slug)).toBeCloseTo(6, 1);
   });
 
-  // cm:guard all THREE completion spellings, each on its own issue with its own span, so the average lands on 10 only if every one was counted — `closed` being the one a criterion naming only `released` and `awaiting_release` would let an implementation drop.
   it('counts closed, released and awaiting_release alike as completions', async () => {
     const { user, project, token } = await seedOwner();
     const spans: Array<[string, number, number]> = [
@@ -235,11 +230,9 @@ describe('the cycle figure, branch by branch', () => {
       });
     }
 
-    // cm:why (12 + 10 + 8) / 3, so 10 is reachable only with all three spellings present.
     expect(await cycleDays(token, project.slug)).toBeCloseTo(10, 1);
   });
 
-  // cm:guard the average is over COMPLETION EVENTS and not over issues, which is what the correlated subquery did: a rewrite collapsing completions to one row per issue reports 6 or 10 here instead of 8.
   it('counts two completions on one issue twice, each measured from the same work-start', async () => {
     const { user, project, token } = await seedOwner();
     const issueId = await insertIssue({ projectId: project.id, createdById: user.id });
@@ -260,13 +253,11 @@ describe('the cycle figure, branch by branch', () => {
       });
     }
 
-    // cm:why (6 + 10) / 2 = 8 for two events; collapsing to one would read 6 or 10.
     expect(await cycleDays(token, project.slug)).toBeCloseTo(8, 1);
   });
 });
 
 describe('what the rollup costs and what it no longer serves', () => {
-  // cm:guard the pool is `max: 10` in db/client.ts and one request now fans out ten reads, so this is the case that says the bound is real against a real driver rather than a mock — unbounded, ten overlapping requests ask for a hundred connections.
   it('answers 200 to ten concurrent requests against one pool', async () => {
     const { user, project, token } = await seedOwner();
     for (let i = 1; i <= 5; i += 1) {
@@ -298,7 +289,6 @@ describe('what the rollup costs and what it no longer serves', () => {
     }
   });
 
-  // cm:guard the response shape against a real serialization rather than a mock: `agentConfig` is free-form jsonb this repo keeps off every MCP read, and it used to ride out on every row of this list as `projectMeta` (ISS-1018).
   it('serves no projectMeta even when the project carries an agentConfig', async () => {
     const { project, token } = await seedOwner();
     await harness.db.execute(

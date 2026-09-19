@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('../../issues/issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -37,7 +36,6 @@ vi.mock('../../db/client.js', () => ({
 
 const { pmSnapshotHandler, pmSnapshotInputSchema } = await import('./forge-pm-snapshot.js');
 
-// cm:why these cases used to run through the deprecated `forge_pm.<action>` shim factory, which was deleted once nothing named it; the handler and its schema are what `forge_project_pm` actually dispatches into, so the coverage moves down one layer instead of leaving with the shim — for runner_load, dispatch and write_decision this file is still the only place that behaviour is tested
 const forgePmSnapshotTool = (c: typeof ctx) => ({
   handler: async (args: unknown) =>
     pmSnapshotHandler(c.principal, pmSnapshotInputSchema.parse(args)),
@@ -107,7 +105,6 @@ describe('forge_pm.snapshot', () => {
         finishedAt: new Date('2026-05-01T00:00:00Z'),
       },
     ];
-    // cm:guard the queue is POSITIONAL — each entry answers the next query `readPmSnapshot` runs, in its order. Reorder these bindings without reordering the service and every assertion still runs, against the wrong rows.
     queue.push(
       memberCheck,
       countsByStatus,

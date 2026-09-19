@@ -5,9 +5,6 @@ export interface KanbanBoardProps {
   children: ReactNode;
 }
 
-/** Horizontal kanban strip. The 7 stage columns never squash — on narrow
-    viewports the board becomes a horizontal snap-scroll strip (`snap-x`) so the
-    page itself never scrolls sideways. Columns stretch to fill the board height. */
 export function KanbanBoard({ children }: KanbanBoardProps) {
   return (
     <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">

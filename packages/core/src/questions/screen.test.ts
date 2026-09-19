@@ -62,7 +62,6 @@ describe('a round is screened where the agent is still on the line', () => {
     await expect(ask('Which database?', '@here the staging one')).rejects.toThrow(QuestionRefused);
   });
 
-  // cm:guard the whole point of the refusal shape. An agent is the author here and it will rewrite and retry, so a refusal that does not name the rule, the shape and an example buys a second round of the same mistake (ISS-997).
   it('names the rule, the shape and an example in what it throws', async () => {
     const err = await ask('Pick one:\n1. keep it').catch((e: Error) => e);
     expect(err).toBeInstanceOf(QuestionRefused);

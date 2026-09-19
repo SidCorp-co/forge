@@ -1,15 +1,3 @@
-// ISS-764 — REST surface for batch release.
-//
-// POST /:projectId/release-batches — create + claim a new batch (returns {runId,jobId,issueIds})
-// GET  /:projectId/release-batches/active — returns the active batch for the project, or null
-// GET  /:projectId/release-batches/:runId — batch context: roster, branches, deployPlanned
-// POST /:projectId/release-batches/:runId/finish — close every claimed issue
-// POST /:projectId/release-batches/:runId/abort — release the claims, cancel the run, close no issue
-// POST /:projectId/release-batches/:runId/method — announce the method this run loaded
-// GET  /:projectId/release-batches/:runId/state — roster + ledger + a live probe reading + bounds
-// POST /:projectId/release-batches/:runId/attempts — record the INTENT of one act
-// POST /:projectId/release-batches/:runId/attempts/:key/account — the agent's account of that act
-
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -198,8 +186,6 @@ const runParamSchema = z.object({ projectId: z.uuid(), runId: z.uuid() });
 const finishBodySchema = z.object({ commit: z.string().trim().max(200).optional() }).strict();
 const abortBodySchema = z.object({ reason: z.string().trim().max(2000).optional() }).strict();
 
-// cm:guard resolve the run FIRST and refuse when `context.projectId` differs from the id in the path — the path id is what the PAT fence bites on, so accepting a runId that belongs to another project is exactly how a token scoped to project A finishes project B's release. The MCP tool this replaces read the project OFF the run and could not have this bug; a project-scoped URL can, and only this comparison stops it.
-// cm:guard ownership only — no release plan, no branches. `abort` and `finish` must answer for a run whose project has since lost its branch declaration (or anything else the plan needs): abort is the agent's escape hatch, and an escape hatch that 500s leaves the run `running` with its claims held. Measured 2026-09-03: the three lifecycle routes all threw RELEASE_BRANCHES_UNDECLARED from here.
 async function loadRunForProject(runId: string, projectId: string, userId: string) {
   const run = await findReleaseBatchRun(runId);
   if (!run || run.projectId !== projectId) throw notFound('release batch not found');
@@ -244,7 +230,6 @@ releaseBatchRoutes.post(
         await finishReleaseBatch(runId, { type: 'user', id: userId }, c.req.valid('json')),
       );
     } catch (err) {
-      // cm:guard a refused verification is a 409 the caller ACTS on (abort with this reason), not a 500 — `reason` and `live` must survive into the body or the agent cannot tell "the deploy did not land" from "the server broke".
       if (err instanceof ReleaseNotVerifiedError) {
         throw new HTTPException(409, {
           message: err.reason,
@@ -280,14 +265,10 @@ releaseBatchRoutes.post(
     await loadRunForProject(runId, projectId, userId);
 
     const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId);
-    // cm:guard `releasedIds` is kept under its old name because the release agent's protocol reads it; the rest is added beside it. What the abort did to the RUN has to reach the caller, or an abort on a run something already concluded goes on looking exactly like one that called off a live release.
     return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
   },
 );
 
-// cm:guard `health`, `identity`, `verdict`, `verdictReason` and `readings` are refused BY NAME
-// rather than dropped by `.strict()`. A caller that sends one has misread what this route is for,
-// and the whole table exists because "the release happened" used to be a sentence an agent wrote —
 const attemptBodySchema = z
   .object({
     stage: z.enum(RELEASE_ATTEMPT_STAGES),
@@ -347,9 +328,6 @@ releaseBatchRoutes.post(
   },
 );
 
-// cm:guard the INTENT goes down before the act, which is why this route exists at all rather than
-// one route posted afterwards. A ledger written after the fact records only what finished, so a
-// release killed mid-deploy leaves nothing — and that is the release worth reading about.
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts',
   zValidator('param', runParamSchema, (r) => {
@@ -379,9 +357,6 @@ releaseBatchRoutes.post(
   },
 );
 
-// cm:guard the account is accepted on a HOLDING run, unlike the attempt above. An agent already
-// mid-act must still be able to say what happened, or a holding run's last act is the one nothing
-// is recorded about — which is the act worth reading.
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts/:key/account',
   zValidator('param', attemptKeyParamSchema, (r) => {
@@ -408,12 +383,6 @@ releaseBatchRoutes.post(
       providerRef: (body.providerRef as string | undefined) ?? null,
       logTail: (body.logTail as string | undefined) ?? null,
     });
-    // cm:guard core's reading is taken HERE, at the moment the account lands, and from the project's
-    // own probes. It is what makes the two halves an account and its backing rather than one claim
-    // written twice: they are about the same act, taken at the same moment, by two parties.
-    // cm:why the FIRST channel's probes: an attempt is one reading at one moment, and the run carries
-    // one `commitBefore` to compare it against. A set whose members verify separately is its own issue
-    // — ISS-1046 widened what core RETURNS, not what an attempt records.
     const channels = await resolveReleaseChannels(projectId);
     const verify = channels[0]?.verify ?? null;
     const live = verify ? await readLiveState(verify) : null;

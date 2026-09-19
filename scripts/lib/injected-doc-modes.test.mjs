@@ -153,7 +153,6 @@ describe('stepClaimsInSentence', () => {
     expect(claims('Those are written by the clarify and plan steps')).toEqual(['clarify and plan']);
   });
 
-  // cm:guard the two silent cases below are LIVE lines on this tree whose correct fix is no change — the only way to satisfy a rule that flagged them is to add a mode name that makes the doc state something false, and a gate with that property gets waived rather than obeyed. Widening `namesStepAsActor` is what breaks them: measured 2026-08-31, a bare active verb anywhere in the sentence catches `after your write`, and a possessive catches `the release stage's gate`.
   it('stays silent on a step named possessively, which claims nothing about the reader', () => {
     expect(claims("a deploy outside the release stage's human-confirm gate is a red flag")).toEqual(
       [],
@@ -201,7 +200,6 @@ describe('checkSurface counts each rule separately', () => {
     expect(r.stepClaimsChecked).toBe(1);
   });
 
-  // cm:guard the two counts must stay INDEPENDENT. A single shared "found nothing" total lets a botched R2 regex ride R1's non-zero count into a green build, which is how a rule that matches nothing becomes indistinguishable from a rule that is satisfied.
   it('reports zero step claims while still finding transitions', () => {
     const r = checkSurface(
       { file: 'f.ts', bodies: [{ startLine: 1, text: 'moving `waiting` → `approved`' }] },

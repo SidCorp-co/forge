@@ -1,7 +1,3 @@
-// Two questions the batch used to answer for everybody the same way: what does
-// this project's release actually consist of, and which box is allowed to run
-// it. Both are per project, and both used to be hardcoded.
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Since ISS-1048 the release procedure is a knowledge entry rather than an `agentConfig` key, so
@@ -91,11 +87,6 @@ describe('resolveReleaseChannels', () => {
     expect(channels[0]?.instructions).toBe('ship the frontend WITH varnish');
   });
 
-  // cm:guard the SET, not its first member. This is the defect the whole change is named for: the
-  // previous shape took `bindings[0]` off a query ordered `created_at ASC`, so on getcontent the
-  // release agent was handed the Rocket.Chat room because it was created before the storefront, and
-  // on the archived dodgeprint-api it was handed a Sentry project. A uniqueness constraint would not
-  // have fixed that — the fault was core choosing at all.
   it('returns every live deploy binding with its own instructions, in order', async () => {
     listBindings.mockResolvedValue([
       binding({ provider: 'coolify', instructions: 'deploy the app' }),
@@ -108,7 +99,6 @@ describe('resolveReleaseChannels', () => {
     expect(channels.map((c) => c.instructions)).toEqual(['deploy the app', 'publish the theme']);
   });
 
-  // cm:guard `integration_bindings.label` is the ISS-558 multi-store slug and sits inside a unique index; reading the pool out of it would make "which box releases" and "which store is this" the same field, and a second store would silently repoint the release
   it('never reads the pool out of the multi-store label column', async () => {
     listBindings.mockResolvedValue([binding({ label: 'aurelle' })]);
 
@@ -161,10 +151,6 @@ describe('resolveReleaseChannels — the probe a live address earns', () => {
     expect(channel?.verifySource).toBe('environments-live');
   });
 
-  // cm:guard `parseVerifyConfig` answers null to an ABSENT key, to `{}`, to `{"probes":[]}` and to
-  // probes with no url ALIKE, so falling back on its answer alone would replace a broken
-  // declaration with a working one. These three cases are the whole difference between supplying
-  // an absence and overriding a choice, and each is a separate stored value an operator can type.
   it.each([
     ['an empty verify object', { verify: {} }],
     ['a verify with an empty probe list', { verify: { probes: [] } }],
@@ -200,9 +186,6 @@ describe('resolveReleaseChannels — the probe a live address earns', () => {
     expect(channel?.verifySource).toBe('none');
   });
 
-  // cm:guard `commitPath` reaches `readProbe` ABSENT and never as null, because an absent path is
-  // read as "the whole body, trimmed" — the same reading a hand-declared probe with no commitPath
-  // gets. The two declarations have to mean the same thing.
   it('omits commitPath entirely where the project declares none', async () => {
     listBindings.mockResolvedValue([binding({})]);
     selectLimit.mockResolvedValue([
@@ -233,9 +216,6 @@ describe('resolveReleaseChannels — the probe a live address earns', () => {
 });
 
 describe('releaseRunnerLabelOf', () => {
-  // cm:guard the ONE axis on which the set still collapses to a single answer, because it names a
-  // MACHINE. Returning the set here and letting a caller take `[0]` would put back the silent pick
-  // `resolveReleaseChannels` exists to remove, one layer up.
   it('refuses by name when two live bindings declare different labels', () => {
     const channels = [
       { releaseRunnerLabel: 'release' },
@@ -253,9 +233,6 @@ describe('releaseRunnerLabelOf', () => {
     expect(() => releaseRunnerLabelOf(PROJECT_ID, channels)).toThrow(/release[\s\S]*epod-prod/);
   });
 
-  // cm:guard an UNLABELLED binding beside a labelled one is not a disagreement: home-kieutrung
-  // carries a coolify binding and an epodsystem one at live, and only one of them has any reason to
-  // name the box. Refusing this pair would make a two-endpoint project undeclarable.
   it('accepts one label beside any number of unlabelled bindings', () => {
     const channels = [
       { releaseRunnerLabel: null },
@@ -303,9 +280,6 @@ describe('resolveReleasePlan', () => {
     expect((await resolveReleasePlan(PROJECT_ID)).procedure).toBeNull();
   });
 
-  // cm:guard an archived entry is one its owner took down. Reading its body back would hand the
-  // release agent a procedure the settings screen says is gone — the same fence `master-policy`
-  // needs, and the reason both reads check `archivedAt` rather than trusting the row's existence.
   it('ignores an archived procedure rather than following text its owner retired', async () => {
     knowledgeEntry.mockResolvedValue({ body: 'the old way', archivedAt: new Date() });
 
@@ -320,7 +294,6 @@ describe('resolveReleaseDeviceIds', () => {
     expect(await resolveReleaseDeviceIds(PROJECT_ID, 'epod-prod')).toEqual(['dev-a', 'dev-b']);
   });
 
-  // cm:guard an empty pool must reach the caller as an empty list, never as null: the service reads null as "no pool declared" and falls back to the whole fleet, which is the one thing a declared pool exists to prevent
   it('returns an empty list when no runner carries the label', async () => {
     expect(await resolveReleaseDeviceIds(PROJECT_ID, 'nobody-has-this')).toEqual([]);
   });

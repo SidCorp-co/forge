@@ -180,7 +180,6 @@ type SessionRead = {
   updated_at: string;
 };
 
-// cm:why every timestamp comes back as `text`: `db.execute` on a raw template hands the driver's own representation through, which is a string here and a Date elsewhere — reading it as one or the other is how an assertion starts depending on the driver rather than on the row.
 async function session(id: string): Promise<SessionRead> {
   const rows = await harness.db.execute<SessionRead>(sql`
     SELECT status,
@@ -243,7 +242,6 @@ describe('ISS-1014 · the gate reads only the columns it uses', () => {
     const { jobId } = await seed('running');
 
     await withWideColumnsHidden(async () => {
-      // cm:guard the PLANTED failure: without this line going red, the green below says nothing.
       await expect(queries.readJob(jobId)).rejects.toThrow(/user_prompt_snapshot|does not exist/);
       const gate = await queries.readJobGate(jobId);
       expect(gate).toMatchObject({ id: jobId, projectId, deviceId, status: 'running' });
@@ -280,7 +278,6 @@ describe('ISS-1014 · the gate reads only the columns it uses', () => {
 });
 
 describe('ISS-1014 · the lifecycle gates read through the same door', () => {
-  // cm:why only these two of the six: `/complete`, `/fail`, `/cancel` and `/resume` go on to read a WHOLE job row from `applyKernelTransition` and from `cancelJob`, which is outside this issue and fails under the rename for that reason rather than for the gate's. What they share with these two is `loadJob`, the one door, and that door is the subject of the first test in this file.
   it('acks and kill-acks with the wide columns renamed away', async () => {
     const { jobId } = await seed('running', { ackedAt: null });
 
@@ -323,8 +320,6 @@ describe('ISS-1014 · one batch, one heartbeat statement', () => {
     expect(statusPublishes).toHaveLength(2);
   });
 
-  // cm:guard the exactly-once property the collapsed statement could most easily have lost, and the reason the locking CTE is a CTE and not a plain `UPDATE ... FROM agent_sessions prev` self-join. The old CAS on `status='queued'` was exclusive; a widened predicate is not, so without the lock BOTH batches read their own pre-write snapshot as `queued` and both announce a flip that happened once.
-  // cm:guard the test's own `FOR UPDATE` is what makes this deterministic rather than a race it might win: it holds both requests at the heartbeat until they are demonstrably both in flight, so the interleaving under test always happens. Take the lock away and the two POSTs simply run one after the other and the case proves nothing. Measured on ISS-1014: with the lock and without the CTE's `FOR UPDATE` this goes red at 4 status publishes; with both it is 2.
   it('broadcasts the queued flip once when two first batches contend for it', async () => {
     const { jobId, sessionId } = await seed('queued');
     publish.mockClear();
@@ -370,7 +365,6 @@ describe('ISS-1014 · one batch, one heartbeat statement', () => {
     expect(await statements('agent_sessions')).toBe(1);
     const after = await session(sessionId);
     expect(after.status).toBe('running');
-    // cm:why the CASE stamps `started_at` only on the flip, so an already-running row keeps its own.
     expect(at(after.started_at)).toBe(startedAt);
     expect(after.last_heartbeat_at).not.toBeNull();
     expect(
@@ -409,7 +403,6 @@ describe('ISS-1014 · one batch, one heartbeat statement', () => {
     const after = await session(sessionId);
     expect(after.runtime_state).toBe('awaiting_input');
     expect(after.last_heartbeat_at).toBeNull();
-    // cm:why 1 is the runtime-state write alone — the heartbeat statement is not issued for a park.
     expect(await statements('agent_sessions')).toBe(1);
   });
 
@@ -426,10 +419,6 @@ describe('ISS-1014 · one batch, one heartbeat statement', () => {
   });
 });
 
-// cm:guard `starting` must survive the trip from `daemon/pool_jobs.rs#progress`: drop it from
-// `sessionRuntimeStates` and `runtimeStateOf` answers undefined, so an opening pane reads NULL.
-// cm:guard an omitted `runtimeState` must leave the column as it was — that lane sends the key
-// only where this box can prove the state, and a NULL over a known one is worse than no report.
 describe('ISS-1096 · the pool lane reports a state it can prove, or none', () => {
   it('leaves runtime_state reading starting for a batch that carries it', async () => {
     const { jobId, sessionId } = await seed('running');
@@ -441,8 +430,6 @@ describe('ISS-1096 · the pool lane reports a state it can prove, or none', () =
     expect(after.runtime_state).toBe('starting');
   });
 
-  // cm:guard the statement COUNT discriminates, not the value: writing the same word back passes
-  // the value check and is still the unconditional heartbeat this change exists to remove.
   it('leaves runtime_state exactly as it found it for a batch that carries none', async () => {
     const { jobId, sessionId } = await seed('running');
     expect((await post(jobId, [starting])).status).toBe(200);

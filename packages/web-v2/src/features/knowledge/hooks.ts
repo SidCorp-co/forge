@@ -16,7 +16,6 @@ export function useKnowledgeEntries(projectId: string | undefined, kind?: string
   });
 }
 
-// cm:why no `staleTime` and no cache warming — the diagram is computed on the read from live rows, and a client that served a remembered one would reintroduce exactly the staleness ISS-950 removed.
 export function useModuleDiagram(projectId: string | undefined, kind: ModuleDiagramKind) {
   return useQuery({
     queryKey: ["knowledge", projectId, "module-diagram", kind],

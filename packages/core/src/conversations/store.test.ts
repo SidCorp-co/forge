@@ -11,7 +11,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why `store.ts` opens the pool at import and this reader needs no connection
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 const { asBlocks, asImages, toCanonicalEntry } = await import('./store.js');
@@ -79,20 +78,12 @@ describe('asBlocks', () => {
     for (const v of [null, undefined, {}, 'text', 3, true, []]) expect(asBlocks(v)).toBeNull();
   });
 
-  // cm:guard this whitelist is the ONLY thing standing between a stored block and a reader, and it
-  // is not a compile-time list: it takes `unknown` and filters, so widening `ContentBlock` does not
-  // widen it. A member added to the shape and not here is dropped on the way out of the database
-  // with nothing on either side saying so — which is what happened to `thinking` for the length of
-  // one plan consult (ISS-1079, plan consult F1).
   it('reads a thinking block back with its text and its duration', () => {
     expect(asBlocks([{ type: 'thinking', thinking: 'let me check', durationMs: 400 }])).toEqual([
       { type: 'thinking', thinking: 'let me check', durationMs: 400 },
     ]);
   });
 
-  // cm:guard a thinking block with NO text is the encrypted pause, and it must come back as one
-  // rather than be filtered out for holding nothing: `out.length > 0` is the only emptiness test
-  // here, and a block is not empty because it carries no text (ISS-1079, whole-set read F1).
   it('reads back an encrypted pause, which is a thinking block with no text', () => {
     expect(asBlocks([{ type: 'thinking' }, { type: 'text', text: 'ok' }])).toEqual([
       { type: 'thinking' },
@@ -110,8 +101,6 @@ describe('asBlocks', () => {
     expect(asBlocks(stored)?.map((b) => b.type)).toEqual(['thinking', 'text', 'tool', 'text']);
   });
 
-  // cm:guard an illegible column degrades to the LEGACY reading, not to an empty turn: null is what
-  // `toCanonicalEntry` answers from `content`, and `[]` would render a real answer as nothing.
   it('drops entries it cannot read and answers null when none survive', () => {
     expect(asBlocks([{ type: 'nonsense' }, 7, null])).toBeNull();
     expect(asBlocks([{ type: 'nonsense' }, { type: 'text', text: 'kept' }])).toEqual([
@@ -133,9 +122,6 @@ describe('toCanonicalEntry', () => {
     expect(toCanonicalEntry(row({ role: 'system' })).type).toBe('system');
   });
 
-  // cm:guard this is the whole of the back-compatibility promise: every row written before
-  // ISS-1029 carries its answer in `content` and no blocks, and it has to read back as something
-  // the one formatter renders rather than as a turn nobody answered.
   it('reads a legacy row with no blocks as a single text block', () => {
     expect(toCanonicalEntry(row()).blocks).toEqual([{ type: 'text', text: 'You have two.' }]);
   });

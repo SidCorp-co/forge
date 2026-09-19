@@ -7,13 +7,6 @@ import { describe, expect, it } from 'vitest';
 import { notificationTypes } from '../db/schema.js';
 import { INHIBIT_RULES, INITIAL_STATE, NOTIFICATION_KIND_TABLE, STATES_BY_KIND } from './kinds.js';
 
-/**
- * Three copies of one taxonomy: the shared contract, core's runtime mirror, and the
- * column's own enum. The mirror exists because `@forge/contracts` is not in core's
- * production runtime image (ISS-510). This file is what stops the three drifting — a
- * value changed in one alone fails here naming the pair that disagree, which is what the
- * `cm:edge lockstep` on both files promises.
- */
 describe('the taxonomy is one taxonomy in three places (ISS-1063)', () => {
   it('the contract and the column declare the same types', () => {
     expect([...notificationTypes].sort()).toEqual([...NOTIFICATION_TYPES].sort());

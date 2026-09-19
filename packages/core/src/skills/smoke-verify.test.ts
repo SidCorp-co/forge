@@ -195,7 +195,6 @@ describe('planSmokeCanaries', () => {
     ...over,
   });
 
-  // cm:guard `not_registered` left with the staged lane (ISS-895): tier-1 now walks the project's own registration rows, so a stage with no row produces no ENTRY at all rather than a FAIL entry. The unresolvable case that survives is a row whose skill has no project-scoped copy — `no_project_skill` — and it must still be skipped rather than dispatched.
   it('dispatches resolvable stages, skips unresolvable + already-active ones', () => {
     const plan = planSmokeCanaries({
       tier1: [

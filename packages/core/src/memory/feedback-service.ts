@@ -4,29 +4,6 @@ import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-/**
- * Recall-feedback loop (ISS-603). Agents are instructed to verify memory
- * hits against live code before acting; this service is where that verdict
- * lands instead of being discarded:
- *
- *  - `confirmed` → stamp `last_verified_at`. Decay treats it as activity, so
- *    a recently-confirmed row is never archived as "unused". ISS-708: also
- *    clears `metadata.staleSince`/`supersededBy` when present — an agent
- *    just re-verified the row against live code, so the release-reconcile
- *    staleness badge no longer applies.
- *  - `outdated`  → archive immediately and append the evidence to
- *    `metadata.feedback` (capped). Archive is soft — a fresh write to the
- *    same natural key revives the row (indexer resets `archived_at`); hard
- *    purge happens after the existing 90-day grace in the decay job.
- *
- * Scope: agent-curated sources only (`note`, `knowledge`) — lifecycle
- * mirrors (issue/decision/policy) track their source records, so feedback
- * about those belongs on the record itself.
- *
- * Does NOT check authorization — callers must verify project membership
- * before invoking.
- */
-
 export const FEEDBACK_SOURCES = ['note', 'knowledge'] as const;
 
 /** Last N feedback entries kept on `metadata.feedback`. */

@@ -71,11 +71,8 @@ const listQuerySchema = z
     projectId: z.uuid().optional(),
     deviceId: z.uuid().optional(),
     status: z.enum(agentSessionStatuses).optional(),
-    // cm:edge naming -> packages/web-v2/src/features/pipeline — a jsonb filter on `metadata.type`, whose values are bare strings nothing type-checks across the two packages: the /pipeline page sends `?metadataType=pipeline` to narrow the cross-project list to pipeline-control sessions, and a rename on either side silently returns everything instead of failing.
     metadataType: z.string().min(1).max(100).optional(),
-    // cm:edge naming -> packages/web-v2/src/features/issues — same shape one level down: a jsonb filter on `metadata.issueId`, which the issue-detail "Agent Sessions" tab sends to scope the list to one issue.
     issueId: z.uuid().optional(),
-    // cm:guard the default exclusion must be `IS DISTINCT FROM 'true'`, never `<> 'true'`: pipeline and pm rows have no `archived` key at all, so a plain inequality is NULL for them and drops every one of them out of the active history (ISS-465).
     archived: z.enum(['true', 'false']).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(200).default(50),
@@ -103,14 +100,7 @@ const patchSchema = z
     usage: z.unknown().optional(),
     metadata: z.unknown().optional(),
     diff: z.unknown().optional(),
-    // cm:hack ISS-1030 until: no device below the runner release carrying the
-    // raw-line route has reported in 30 days — then this field goes with
-    // `messages`. A daemon on that release counts its own tool calls because its
-    // transcript could not; one on this release has a transcript that can.
     toolCallCount: z.number().int().min(0).optional(),
-    // cm:guard the runner reports an error STRING and core writes the transcript
-    // entry. The runner used to append a `system` entry to a `messages` array it
-    // sent itself, which is the second producer ISS-1030 removed.
     turnError: z.string().max(4000).optional(),
     runtimeState: z.enum(sessionRuntimeStates).nullable().optional(),
   })
@@ -124,16 +114,13 @@ const relayBodySchema = z
   })
   .strict();
 
-// cm:why derived from the schema constant, never restated. This used to be a hand-written copy of the same four statuses carrying a `cm:edge` asking the next editor to remember both; a drifted copy would leave the two bridges silent for a whole class of finished sessions. A note asking someone to remember is not a mechanism; sharing the array is.
 const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set(
   terminalAgentSessionStatuses,
 );
 
 export const agentSessionRoutes = new Hono<{ Variables: AuthVars }>();
-// cm:guard the ONE wildcard for this whole surface, and it stays the only one — every router mounted below inherits it, and a second `use('*')` here would flatten into the same linear chain and run ahead of this for some routes (the ISS-706 shape). Dual-auth because the runner streams chat replies back through `PATCH /:id` with a device token; every other route authorizes via `loadProjectAccess(_, userId)`, which fails closed for a device principal because `userId` is left unset.
 agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 
-// cm:guard mounted BEFORE the `:id` handlers and the order is load-bearing: Hono matches in registration order, so a static path registered after `:id` is swallowed by it.
 agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
 agentSessionRoutes.route('/', agentSessionEventsRoutes);
@@ -196,17 +183,6 @@ agentSessionRoutes.post(
   },
 );
 
-// GET /api/agent-sessions/:id/cost
-// Per-session cost + token rollup from usage_records (ISS-378 AC#6). The session
-// row itself carries no dollar cost/model, so the detail rail showed "—"; this
-// aggregates usage_records WHERE session_id = this session id and groups by model
-// for the per-model breakdown. usage_records.session_id is an agent_sessions.id
-// in a TEXT column, constrained since ISS-1015 to null or a canonical lowercase
-// uuid, so the match is plain text equality against usage_records_session_id_idx
-// and `canonicalSessionId` lowercases the path parameter — without it an
-// uppercase spelling would match nothing and read as a session that cost zero.
-// Mounted before `:id` GET; the extra path segment means no validator collision
-// with the single-segment `/:id`.
 agentSessionRoutes.get(
   '/:id/cost',
   zValidator('param', idParamSchema, (r) => {
@@ -406,7 +382,6 @@ agentSessionRoutes.get(
     // id), so filtering directly by the page's ids is correct and does not fan
     // out the way a join through jobs would.
     const costById = new Map<string, number>();
-    // Last-message preview (ISS-698): one bounded DISTINCT ON query over this
     // page's ids, mirroring the cost rollup above — no per-row N+1. Excludes
     // `tool` turns (no text to preview); a session with no user/assistant text
     // turn yet (e.g. only a materialized-jsonb legacy row) resolves to null.
@@ -599,7 +574,6 @@ agentSessionRoutes.patch(
     if (patch.title !== undefined) updates.title = patch.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;
-    // cm:guard DEVICE principal only, for the same reason `toolCallCount` is. `awaiting_input` exempts a session from the heartbeat hop, so a project member who could set it could declare a BOUNDED wait outside the quiet clock and leave an un-reapable `running` row on one of the box's few duplex slots — bounded by residency and by nothing a person here can shorten. A human park is not that shape: it is written by the box with a permit and `reapUnansweredParks` bounds it.
     if (patch.runtimeState !== undefined && c.get('principal') === 'device') {
       updates.runtimeState = patch.runtimeState;
     }
@@ -607,14 +581,8 @@ agentSessionRoutes.patch(
     if (patch.usage !== undefined) updates.usage = patch.usage;
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
     if (patch.diff !== undefined) updates.diff = patch.diff;
-    // cm:guard the transcript this PATCH persists is the CONVERTED one, never
-    // the array as it arrived: `applyTranscriptPatch` has already rewritten a
-    // daemon-on-the-previous-release's legacy entries into the canonical shape,
-    // and writing `patch.messages` here would put back exactly the entries no
-    // reader left in the product can read.
     if (patchedMessages !== undefined) updates.messages = patchedMessages;
 
-    // cm:guard any worker-side write is a heartbeat signal and CASes queued→running, but a park is NOT activity. `awaiting_input` deliberately does not bump `lastHeartbeatAt` — a session waiting on a human is not progressing, and stamping it healthy is the exact shape `VISION: state-never-lies` forbids. The heartbeat hop exempts the park by READING the state (`jobs/loop-monitor.ts`), never by being told the session is alive.
     const isWorkerActivity =
       (patch.runtimeState !== undefined && patch.runtimeState !== 'awaiting_input') ||
       patch.messages !== undefined ||
@@ -651,15 +619,6 @@ agentSessionRoutes.patch(
       updates.failureDetail = null;
     }
 
-    // ISS-733 fix — a chat-runs-skill cold start (turn 1 = `/${skillName}`,
-    // see chat-turn.ts `pendingSkillName`) can complete normally even when the
-    // sync-then-dispatch race hit: the skill file lands on the runner's disk
-    // AFTER `agent:start` fires, so the CLI treats `/<skillName>` as unknown
-    // text and reports success with zero real turns. Detect that signature on
-    // THIS terminal report and correct it to a real, actionable failure — the
-    // reviewed AC forbids a silent plain-reply "completed". The marker is
-    // one-shot: cleared here regardless of outcome so a later follow-up turn
-    // is never re-checked.
     const existingMetaForSkillCheck = (existing.metadata as Record<string, unknown> | null) ?? null;
     const pendingSkillName =
       typeof existingMetaForSkillCheck?.pendingSkillName === 'string'
@@ -701,13 +660,6 @@ agentSessionRoutes.patch(
       updates.metadata = restMeta;
     }
 
-    // cm:guard the TRANSCRIPT answers where there is one, and the runner's own
-    // count only where there is not. A daemon on this release stopped counting —
-    // `count_tool_uses` existed in `chat.rs` solely because the transcript could
-    // not answer, and it is deleted — so a session whose lines core folded reads
-    // its own record. One on the previous release still reports, under the same
-    // amnesty as `messages`.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/agent_sessions.rs — SessionPatch no longer carries `tool_call_count`; the field on `patchSchema` is what a daemon below that release still sends.
     const reportedToolCalls = derivedTranscript
       ? countTranscriptToolCalls(existing.messages)
       : patch.toolCallCount;
@@ -735,7 +687,6 @@ agentSessionRoutes.patch(
       );
     }
 
-    // cm:edge naming -> packages/core/src/agent-sessions/lifecycle-routes.ts — chat/schedule sessions finalize HERE (the runner's patch_failed -> patch_session), not /desktop/status; both call the SAME finalizeScheduleSessionFailure
     const classification =
       patch.status === 'failed' && !isUserCancelled && existing.failureReason !== 'user_cancelled'
         ? await finalizeScheduleSessionFailure({
@@ -750,10 +701,6 @@ agentSessionRoutes.patch(
           })
         : null;
 
-    // cm:guard a session that settles `completed` MUST carry no failureReason. The I1 trigger (migrations 0113/0118) stamps `orphan_under_terminal_run` on a session that was still ACTIVE when its run went terminal; the runner's own terminal patch then lands here, and without this clear the row reads completed-and-failed (ISS-759 recurred on session 228cdf03 two days after the job-lane fix shipped, because the chat lane finalizes HERE).
-    // cm:guard read the RESOLVED status and clear only AFTER the three blocks above — gating on `patch.status` instead would wipe the `skill_not_synced` reason, the `audit_ran_blind` reason and the classifier's reason, all three of which rewrite a reported `completed` into `failed` before this point.
-    // cm:edge lockstep -> packages/core/src/jobs/agent-session-link.ts — the job-report writer of the same contract
-    // cm:edge lockstep -> packages/core/src/pipeline/runs-cascade.ts — its completedSuccess branch is the third writer of the same contract
     if (
       (updates.status ?? existing.status) === 'completed' &&
       existing.failureReason &&
@@ -769,7 +716,6 @@ agentSessionRoutes.patch(
     // handled by broadcastTurnAppended so we don't spam clients while the
     // runner streams.
     const messagesPatched = patch.messages !== undefined;
-    // cm:why PRICED: this handler used to skip the transaction whenever the messages array was not being mirrored, to spare the runner's status/heartbeat PATCHes a round-trip. It no longer does, and the cost is one `SELECT set_config` per PATCH. Bought because `updates.status` — not `patch.status`, since the queued→running promotion above writes a status the request never named — decides whether `trg_agent_sessions_unaudited_transition` fires, and a marker gated on a runtime condition is a marker `kernel-marker-guard.test.ts` cannot see: its enclosure test is lexical. Exempting this one file instead would exempt exactly the writer whose invisibility to `transition-guard.test.ts` left the whole session class uncounted until ISS-943.
     const { updated, sync } = await withKernelMarker(db, async (tx) => {
       const [row] = await tx
         .update(agentSessions)
@@ -777,7 +723,6 @@ agentSessionRoutes.patch(
         .where(eq(agentSessions.id, id))
         .returning();
       if (!row) throw notFound('agent session not found');
-      // cm:edge lockstep -> packages/core/src/agent-sessions/session-events.ts — the carrier's record of a transcript written past it
       if (transcript.snapshot && patchedMessages) {
         await recordReportedTranscript(tx, id, patchedMessages, patchNow);
       }
@@ -811,12 +756,10 @@ agentSessionRoutes.patch(
       await classification.recoverAfterWrite(updated.metadata ?? existing.metadata);
     }
 
-    // cm:guard gate on the PERSISTED updated.status, not patch.status — the ISS-733 rewrite above can flip a reported 'completed' into 'failed' before the write
     if (updated.status === 'completed' || updated.status === 'failed') {
       await writeBackScheduleLastStatus(updated.metadata, id, updated.status);
     }
 
-    // cm:why stamp the RUNNER row (not just the session) so device-pool's health gate has fresh data for a runner that only ever serves chat turns; best-effort, never blocks the PATCH
     await syncRunnerHealthFromChatTerminal({
       sessionId: id,
       projectId: updated.projectId,
@@ -828,7 +771,6 @@ agentSessionRoutes.patch(
       messages: patchedMessages ?? existing.messages,
     });
 
-    // cm:guard the bridges read the REPORTED `patch.status` while everything above reads the PERSISTED `updated.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.
     if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
       await onTerminalPatch(updated);
     }

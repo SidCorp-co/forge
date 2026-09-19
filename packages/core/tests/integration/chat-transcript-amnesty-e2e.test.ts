@@ -212,10 +212,6 @@ describe('a daemon on the previous release keeps working, and what it sends is c
     expect(res.status).toBe(200);
 
     const messages = await transcriptOf(id);
-    // cm:guard read back through the ONE-shape readers, which is the whole point
-    // of converting on the way in rather than recording what the daemon sent: the
-    // backfill has run and both readers lost their `role` branch, so an entry
-    // stored as it arrived would be one no reader left in the product can read.
     const { messageRoleToTurnRole } = await import('../../src/agent-sessions/turns-helpers.js');
     expect(messages.map((m) => messageRoleToTurnRole(m))).toEqual(['user', 'assistant']);
     expect(messages[1]).toMatchObject({
@@ -241,9 +237,6 @@ describe('a daemon on the previous release keeps working, and what it sends is c
     expect(await transcriptOf(id)).toEqual(before);
   });
 
-  // cm:guard the amnesty and the new path must not both write. A daemon on the
-  // previous release owns its transcript; deriving over it would replace what it
-  // reported with the prompts and none of the answers.
   it('leaves an old daemon’s reported transcript alone rather than deriving over it', async () => {
     const s = await chatSession();
     const id = idOf(s);
@@ -266,11 +259,6 @@ describe('a daemon on the previous release keeps working, and what it sends is c
 });
 
 describe('a box upgraded mid-conversation keeps the turns the old daemon answered', () => {
-  // cm:guard this is the rolling upgrade, and it is the shape the whole amnesty
-  // is for: core ships first, the boxes follow. A turn answered by the previous
-  // release never reaches the carrier, so the first derive after the upgrade
-  // rebuilds the session from a carrier holding the prompts and this turn's
-  // lines — and writes that over a conversation that had the answers in it.
   it('keeps an old daemon’s answer when the next turn is derived from the carrier', async () => {
     const s = await chatSession();
     const id = idOf(s);
@@ -314,10 +302,6 @@ describe('a box upgraded mid-conversation keeps the turns the old daemon answere
 });
 
 describe('a turn edited by hand is not put back by the next derive', () => {
-  // cm:guard an edit rewrites `messages` past the carrier, and a chat session's
-  // transcript is REBUILT by folding that carrier — so an edit the carrier never
-  // saw is one the next turn's derive hands straight back, with the person
-  // looking at the words they replaced.
   it('keeps the edited text through the turn that follows it', async () => {
     const s = await chatSession();
     const id = idOf(s);
@@ -377,11 +361,6 @@ describe('a turn edited by hand is not put back by the next derive', () => {
 });
 
 describe('core’s own rows and the runner’s numbering meet in one place', () => {
-  // cm:guard the seq the runner was handed can stop being free: core takes the
-  // next one whenever it records a wholesale write (an edit, a regeneration, an
-  // old daemon's array). `ON CONFLICT DO NOTHING` would call the runner's line a
-  // duplicate and answer 200, and that line — a part of the person's
-  // conversation — would be gone with nothing said.
   it('refuses a line whose seq core already holds, rather than calling it a duplicate', async () => {
     const s = await chatSession();
     const id = idOf(s);
@@ -412,11 +391,6 @@ describe('core’s own rows and the runner’s numbering meet in one place', () 
     expect(kinds.map((k) => k.kind)).toEqual(['seed', 'snapshot']);
   });
 
-  // cm:guard the check and the insert take ONE turn, not two. A check outside the
-  // transaction only narrows the window: core takes the next free `seq` whenever
-  // it records a wholesale write, and one committing between the check and the
-  // insert is swallowed in exactly the same silence. The interleaving is made
-  // deterministic here by holding the advisory lock both writers take.
   it('waits for a snapshot committing under it rather than swallowing the line', async () => {
     const s = await chatSession();
     const id = idOf(s);

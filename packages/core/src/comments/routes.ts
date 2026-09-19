@@ -51,7 +51,6 @@ const threadQuerySchema = paginationSchema.extend({ cursor: z.string().min(1).op
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:guard the attachment endpoints answer `{message, code}` and the comment CRUD validators above answer `{message:'Invalid input', cause:{code:'BAD_REQUEST', details}}` — collapsing the two rewrites a response shape clients already parse
 const attachmentBadRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
 
@@ -121,14 +120,12 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         }
       }
 
-      // cm:guard ISS-969 — this route had its own `db.insert(comments)` copy of the write, and a body gate has to stand at every door a caller reaches. Going through `insertComment` is what makes the stage policy and the `stage` column one rule with one implementation instead of two that agree until somebody edits one. The pg error mapping below stays HERE, where the route's own 400/404 vocabulary is.
       let written: Awaited<ReturnType<typeof insertComment>> | undefined;
       try {
         written = await insertComment({
           issueId,
           authorId: userId,
           authorDeviceId: null,
-          // cm:guard what the credential ESTABLISHED, and `restEstablishedAgency` rather than `restActor` for the one reason this pair exists: this value is a stored CLAIM about who wrote the comment, not a gate's verdict. A person's own token establishes neither a person nor an agent, so it stores NULL and claims nothing; `restActor(c).agency` would resolve that to `agent` and put a claim in the column the credential never made. `'human'` — what this line said until ISS-1003 — was the wrong claim in the common case, since most agents write over a person's token (ISS-1003 criteria 19, 24).
           authorAgency: restEstablishedAgency(c),
           body,
           format,
@@ -138,14 +135,12 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
         if (refusal) throw refusal;
         const pgCode = pgErrorCode(err);
-        // cm:why `23514` is the depth trigger (parent chain deeper than 3) and `23503` an FK violation, and both arrive as opaque pg codes that no type states — mapping them here is what turns a 500 into a message the caller can act on
         if (pgCode === '23514') {
           throw new HTTPException(400, {
             message: 'comment depth exceeds 3',
             cause: { code: 'DEPTH_EXCEEDED' },
           });
         }
-        // cm:guard ONE of the three FKs this INSERT touches is remapped and the other two must keep bubbling. `parent_id` is remapped because we SELECTed the parent and something deleted it in the window before the INSERT — the caller's request was well-formed and lost a race, so 404 is the truth. An `issue_id` or `author_id` violation is not that: remapping those would tell a caller its parent is missing when the issue it is commenting on was deleted underneath it, and the constraint name is checked rather than the code alone for exactly that reason.
         if (pgCode === '23503' && parentId) {
           const constraint = pgConstraintName(err);
           if (constraint === 'comments_parent_id_fk') {
@@ -165,13 +160,11 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         parentId: inserted.parentId,
       });
 
-      // cm:guard mentions are parsed and persisted OUTSIDE the insert transaction, and a failure here is logged rather than thrown: the comment is already the caller's, and rolling it back because a notification row could not be written would lose the text to save the ping. The hook fan-out below is fire-and-forget for the same reason.
       const insertedId = inserted.id;
       try {
         const handles = parseMentions(inserted.body);
         if (handles.length > 0) {
           const resolved = await resolveMentions(handles, issue.projectId);
-          // cm:why a self-mention is dropped HERE rather than in the resolver: the resolver answers which handles exist, and whether an author may notify themselves is a policy of this door. An unknown handle is already gone by the time this runs.
           const targets = resolved.filter((r) => r.userId !== userId);
           if (targets.length > 0) {
             await db
@@ -191,7 +184,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         logger.error({ err, commentId: insertedId }, 'comment mention fan-out failed');
       }
 
-      // cm:guard ISS-898 — surface `written.warnings` here, the same as the PATCH half below and both MCP actions: a strip the gate performed and the transport swallowed is a body the caller believes they wrote. AC 6/7 measure this response, not the stored row.
       return c.json(
         written.warnings.length > 0 ? { ...inserted, warnings: written.warnings } : inserted,
         201,
@@ -204,7 +196,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
-    // cm:guard `offset` stays VALIDATED AND IGNORED — keyset paging has no offset to honour, and pre-existing flat-list clients still send the `limit`/`offset` pair, so dropping it from the schema 400s every one of them. `limit` bounds one page's ROOT comments (ISS-956).
     zValidator('query', threadQuerySchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
@@ -266,16 +257,12 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         }
       }
 
-      // cm:guard one query for the whole page, taken here rather than inside the tree builder: the
-      // lens is the PROJECT's, so a card drawn per comment reads the same answer, and resolving it
-      // per row would cost a round trip per comment for one value (ISS-1089).
       const tree = buildCommentTree(
         rows,
         attachmentsByCommentId,
         await projectLens(issue.projectId),
       );
 
-      // cm:guard the display identity only — `authorDeviceId` says WHICH BOX a credential was issued to since ISS-932 wave 4, not that an agent wrote the comment. Whether a person or an agent wrote it is `authorAgency` (ISS-969); routing this branch off agency instead would name a device that did not exist, and reading agency off this branch would call a person on a paired box an agent.
       const refs: ActorRef[] = rows.map((r) =>
         r.authorDeviceId
           ? { type: 'device', id: r.authorDeviceId }
@@ -283,7 +270,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       );
       attachAuthors(tree, await resolveActors(refs));
 
-      // cm:guard `total` counts every comment on the issue FLAT while `items` carries this page's roots, so the two are not comparable and `hasMore` must not be derived from them — `cursorList` derives it from `nextCursor` alone. Before ISS-956 this route answered `wholeList` under a fixed 1000-row cap, where `hasMore: true` told a client there was more and gave it no way to ask.
       return c.json(cursorList(c, tree, Number(total), { limit, nextCursor: page.nextCursor }));
     },
   );
@@ -315,7 +301,6 @@ function attachmentErrorToHttp(err: AttachmentError): HTTPException {
 
 const commentIdParamSchema = z.object({ commentId: z.uuid() });
 
-// cm:guard NO `commentRoutes.use('*', ...)` wildcard on this instance, ever: Hono flattens `use('*')` from BOTH routers mounted at `/api/comments` into one chain, so a strict JWT-only wildcard here shadows a sibling router's more permissive per-route auth before it runs (ISS-706). Every route below carries its own auth middleware instead.
 export const commentRoutes = new Hono<{ Variables: AuthVars }>();
 
 commentRoutes.get(

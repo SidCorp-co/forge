@@ -184,7 +184,7 @@ from live data on every turn. Any issue moving status anywhere in the project ch
 
 **That costs the system breakpoint and not the tools one.** The tool catalog renders before the
 volatile text, so a tools-only prefix still matches byte for byte; what is lost is persona plus
-`agentConfig` plus the counters. The `cm:guard` on `toRequestBody` used to claim both were stable
+`agentConfig` plus the counters. The invariant on `toRequestBody` used to claim both were stable
 across turns; it now says which is which.
 
 Moving `progressFacts` into a second unmarked block — the treatment `jsonInstruction` already has —

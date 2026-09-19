@@ -417,7 +417,6 @@ describe('attachment name identity — other scopes, listing and recovery', () =
     expect(await countAttachments(issueId, nfc)).toBe(1);
   });
 
-  // cm:guard the DOWNLOAD is the half a 201 does not prove — a header value is a ByteString, so widening the name rule to accept `\p{L}` put every non-Latin attachment behind a 500 that only shows on read (ISS-963)
   it('serves back a name it cannot spell in ASCII, instead of failing on the header', async () => {
     const { issueId, token } = await seed();
     const created = await upload(`/api/issues/${issueId}/attachments`, token, '报告.md');
@@ -444,7 +443,6 @@ describe('attachment name identity — other scopes, listing and recovery', () =
     expect((await upload(`/api/issues/${issueId}/attachments`, token, 'कुताब.md')).status).toBe(201);
   });
 
-  // cm:guard over budget is REFUSED, never trimmed — trimming maps every name sharing its first 180 bytes onto one row, which is the collapse this whole suite exists to catch, and the untrimmed name reaches the storage driver as an unmapped `ENAMETOOLONG` 500 (ISS-963)
   it('refuses a name too long to store, before any bytes land', async () => {
     const { issueId, token } = await seed();
     const overlong = `${'文'.repeat(80)}.md`;

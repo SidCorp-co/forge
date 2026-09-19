@@ -149,12 +149,10 @@ describe('master pool', () => {
     const rel = entry?.relations[0];
     expect(rel?.kind).toBe('blocks');
     expect(rel?.dependsOnKey).toBe('ISS-9001');
-    // cm:guard this pair is why the pool returns raw fields: `dropped` with a null merged_at and `reopen` WITH one both collapse to `satisfied:false`, and a master treats them differently. An assertion that only checked falsiness would still pass against the boolean this design deletes.
     expect(rel?.blockerStatus).toBe('dropped');
     expect(rel?.blockerMergedAt).toBeNull();
   });
 
-  // cm:guard L1 is the ONLY correctness gate the master cannot be trusted with, so it needs a test that fails when the NOT EXISTS is dropped. `jobs_active_unique` is on (issue_id, type), so the two jobs here are deliberately DIFFERENT types — a same-type pair is refused by the index and would pass this test with the gate deleted.
   it('refuses a second step for an issue that already has one in flight', async () => {
     const { owner, project, device, run, issue } = await seed();
     const second = randomUUID();
@@ -200,7 +198,6 @@ describe('master pool', () => {
     expect(loser).toMatchObject({ ok: false, reason: 'already_held' });
   });
 
-  // cm:guard the pool must hide a job for BOTH reasons it can be unavailable, and they are now different rows: a claimed job is hidden because it is no longer `queued`, a mid-claim one because somebody holds it. Testing only the first would pass against a pool that ignores `held_by` entirely, and two masters would then prepare the same job.
   it('hides a claimed job, and hides a mid-claim hold too', async () => {
     const { device, job } = await seed();
     const claimed = await take(job, device.id, randomUUID());
@@ -218,7 +215,6 @@ describe('master pool', () => {
     ).toBeUndefined();
   });
 
-  // cm:guard the only jobs a dead master still holds are ones it never got started — a claim that reached its stamp released the hold in the same statement. Seeding by hand is what keeps this covering the window that remains rather than one that no longer exists.
   it('releases everything a dead master was still holding', async () => {
     const { device, job } = await seed();
     const session = randomUUID();
@@ -242,7 +238,6 @@ describe('master pool', () => {
   });
 });
 
-// cm:guard the reaper cases live in their own block so the shared setup is not counted against either one twice — they also assert the OPPOSITE property from the pool cases above: that a hold is taken BACK, which is the half that has no caller to notice when it breaks.
 describe('master pool — reaping, load and preparation', () => {
   it('reaps a hold whose master went terminal, and leaves a live one alone', async () => {
     const { owner, project, device, run, job } = await seed();
@@ -301,7 +296,6 @@ describe('master pool — reaping, load and preparation', () => {
     ).toBeDefined();
   });
 
-  // cm:guard a fault flag must reach the master RAW. `fresh_capable_runners` used to exclude an `auth` runner from dispatch by name, and nothing excludes it now — so if this stops being reported, a master hands work to a box whose Claude session is dead and learns only from the failure.
   it('reports a runner fault verbatim rather than hiding the box', async () => {
     const { project, device } = await seed();
     await harness.db.execute(sql`
@@ -318,7 +312,6 @@ describe('master pool — reaping, load and preparation', () => {
     expect(fleet.find((e) => e.deviceId === device.id)?.runnerFaults[0]?.limitReason).toBe('auth');
   });
 
-  // cm:guard a retry clone carries NO `agent_session_id`, so it is the ONE claim that always walks the create path in `ensureAgentSessionForJob` — and that function answers null on any failure, which `prepareClaimedJob` turns into a throw that releases the hold. A throw there is not a refusal: the job goes straight back to the pool for the next master to claim and throw on again, forever, with no attempt counter in the way. This test is what says that path completes.
   it('prepares a retry clone, which arrives with no session of its own', async () => {
     const { owner, project, device, run, job, issue } = await seed();
     const retry = randomUUID();
@@ -339,7 +332,6 @@ describe('master pool — reaping, load and preparation', () => {
     if (!result.ok) return;
     expect(result.prepared.agentSessionId).toBeTruthy();
     expect(result.prepared.attempts).toBe(1);
-    // cm:guard identity comes from the PREPARATION, not from the pool entry the master was holding — the runner has nothing else to name the job by.
     expect(result.prepared.jobId).toBe(retry);
     expect(result.prepared.projectId).toBe(project.id);
     expect(result.prepared.issueId).toBe(issue);
@@ -351,7 +343,6 @@ describe('master pool — reaping, load and preparation', () => {
     expect(row?.agent_session_id).toBe(result.prepared.agentSessionId);
   });
 
-  // cm:guard the four columns the RUNNER's own routes gate on. `lifecycle-routes.ts`, `events-routes.ts` and `turn-verdict-routes.ts` each 403 unless `jobs.device_id` matches the calling device, and ack additionally requires `status IN ('dispatched','running')` — so a claim that stamps neither starts a process core refuses to talk to. Measured live on 2026-09-05: two jobs ran on the correct repos and every ack and event came back 403 Forbidden.
   it('stamps the job onto the box, in the four columns the runner is gated by', async () => {
     const { device, job, project } = await seed();
 
@@ -371,8 +362,6 @@ describe('master pool — reaping, load and preparation', () => {
     expect(row?.runner_id).toBe(runner?.id);
   });
 
-  // cm:guard THE regression, and the second half is the whole assertion. A claim that leaves the hold set is a claim the reaper can undo underneath a live agent: measured on epodsystem 2026-09-05, jobs f7f4bce4 and 8b8b7be4 were re-queued with device_id NULL while their agents ran on, and every event they posted came back 403 at 2/s with nothing able to stop them. It needs no dead master — the session-less arm judges by `held_at` age alone, and `runner.start` is documented to block for minutes.
-  // cm:guard this test is the only thing between a version skew and unreviewed work on `main`. A box below the floor resolves no worktree branch, takes the `owns_root` path, runs the agent IN THE REPO ROOT on the base branch, and reports success — silent in the worst direction. Raising the floor without keeping a case at the old version turns the refusal back into that.
   it('refuses a claim from a runner too old to name its agent, by name and without a hold', async () => {
     const { device, job } = await seed();
     await harness.db.execute(
@@ -408,7 +397,6 @@ describe('master pool — reaping, load and preparation', () => {
     expect(row?.held_by).toBeNull();
   });
 
-  // cm:guard the hold ends WITH the stamp, in one statement, so nothing is left for a release to find. A release that still had a claimed job to act on would be a release able to re-queue a running one.
   it('leaves a claimed job with no hold for any release path to take', async () => {
     const { device, job } = await seed();
     const session = randomUUID();
@@ -424,11 +412,9 @@ describe('master pool — reaping, load and preparation', () => {
     `)) as unknown as Array<Record<string, unknown>>;
     expect(row?.status).toBe('dispatched');
     expect(row?.device_id).toBe(device.id);
-    // cm:guard a claim is NOT an attempt — a master choosing an order must not spend an issue's retry budget.
     expect(Number(row?.attempts)).toBe(1);
   });
 
-  // cm:guard the hold still has to be reapable in the window it exists in: between the claim's own UPDATE and the stamp, `prepareClaimedJob` runs and can throw or hang. Seed that shape by hand — a completed claim can no longer produce it, which is the point.
   it('reaps a mid-claim hold whose master never had a session row at all', async () => {
     const { device, job } = await seed();
     const ghost = randomUUID();
@@ -451,7 +437,6 @@ describe('master pool — reaping, load and preparation', () => {
     ).toBeDefined();
   });
 
-  // cm:guard the `held_at` bound is what makes judging a session-less holder safe. Without it a master mid-preparation has its job taken the instant it takes it, because a holder with no session row always looks dead.
   it('leaves a fresh session-less hold alone', async () => {
     const { job } = await seed();
     await harness.db.execute(sql`
@@ -494,8 +479,6 @@ describe('master pool — reaping, load and preparation', () => {
 });
 
 describe('pool admission', () => {
-  // cm:guard the fixture is IDENTICAL to the offered-job case above and only the runner's status
-  //   moves, so a green here cannot come from a seed that had no claimable work in the first place
   async function withRunnerStatus(status: string) {
     const s = await seed();
     await harness.db.execute(sql`
@@ -520,7 +503,6 @@ describe('pool admission', () => {
       ).toEqual([]);
     });
 
-    // cm:guard the refusal must be NAMED, not an empty pool — a master handed nothing and a master told why are the same transcript to an operator whose box has gone quiet, and only one of them can be acted on
     it(`refuses a ${status} runner's claim by name`, async () => {
       const { device, job } = await withRunnerStatus(status);
       const res = await mods.prepareJobForMaster({
@@ -533,7 +515,6 @@ describe('pool admission', () => {
     });
   }
 
-  // cm:guard this is the case the pool filter alone cannot cover: a master holds its page of pool rows across the round trip, so an operator draining mid-flight is only caught because the claim asks again
   it('refuses a claim for a runner drained AFTER the pool was read', async () => {
     const { device, job } = await withRunnerStatus('online');
     const items = await mods.readPool({ deviceId: device.id, limit: 20 });
@@ -568,7 +549,6 @@ describe('pool admission', () => {
     ).toBe('device_disabled');
   });
 
-  // cm:guard without this the switch has a ~30-second life and every other assertion in this block is theatre: the operator drains, the next beat writes `online`, and the pool readmits the box
   it('a heartbeat does not undo a drain', async () => {
     const { device } = await withRunnerStatus('draining');
     const { mirrorHeartbeatToRunners } = await import(

@@ -93,7 +93,6 @@ export const forgeGoogleSheetsTool: ContextScopedMcpToolFactory = (ctx) => ({
     try {
       return await dispatchAction(input, ctx);
     } catch (err) {
-      // cm:edge contract -> packages/core/src/integrations/google/commands.ts — that module throws `GoogleCommandError` with a bare sentence so a REST surface can turn it into a 400 body; the MCP contract is a `CODE: message` string, so the prefix is added HERE and must not be baked into the shared message.
       if (err instanceof GoogleCommandError) throw new Error(`BAD_REQUEST: ${err.message}`);
       throw err;
     }

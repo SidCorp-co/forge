@@ -1,18 +1,3 @@
-/**
- * ISS-439 — materialize a usage_records row from a CLI-runner job's stored
- * `job_events` at job terminal.
- *
- * Called fire-and-forget alongside `deriveSessionFinal` on every terminal path
- * (lifecycle /complete + /fail, the late-completion reclaim, and the
- * handoff-as-completion override). Best-effort: a parse/DB hiccup must never
- * block or fail job finalization. Idempotent: the insert targets the partial
- * unique index on `usage_records.job_id`, so retries / sweeper-reaped terminals
- * / a re-run of the backfill can never double-insert.
- *
- * Desktop-app jobs stream no `stdout` job_events, so there is nothing to
- * extract and no row is created — the desktop JSONL ingest path cannot be
- * double-counted. Failed jobs still materialize: the tokens were burned.
- */
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobEvents, usageRecords } from '../db/schema.js';

@@ -19,7 +19,6 @@ describe('which verbs a room reaches', () => {
     expect(admitVerb(['new', '-', '--title', 'T', '--category', 'bug'])).toBeNull();
   });
 
-  // cm:guard `doctor --token`, `coolify deploy`, `cloudflare purge`, `claim`, `advance` are what a prompt-injected room would reach through an open CLI; the refusal names the open set so a model that asked for one of these is told what it may do instead (ISS-1009).
   it('refuses the machine, flow and deploy verbs by name, naming what is open', () => {
     for (const v of [
       'doctor',
@@ -41,7 +40,6 @@ describe('which verbs a room reaches', () => {
     }
   });
 
-  // cm:guard the withheld list and the admitted list are ONE list read two ways: were they two, `forge -h` would show the model a verb the door then refuses, or hide one it would have run (ISS-1009).
   it('withholds from the help exactly what it refuses at run', () => {
     const withheld = new Set(chatWithheld());
     for (const v of CHAT_JOB_VERBS) expect(withheld.has(v), v).toBe(false);
@@ -71,7 +69,6 @@ describe('where the body goes', () => {
     ]);
   });
 
-  // cm:guard measured 2026-09-15: an empty string was once treated as a body, and the path it earned was spliced into `guide writing-an-issue` — every call of that turn failed on an argument the model never sent (ISS-1009).
   it('treats an empty body as no body and leaves the argv alone', () => {
     expect(placeBody(['guide', 'writing-an-issue'], '', '/tmp/b.md')).toEqual([
       'guide',
@@ -98,8 +95,6 @@ describe('where the body goes', () => {
 });
 
 describe('a stopped run', () => {
-  // cm:guard measured 2026-09-15: a 60s kill returned exit 1 with both streams empty, and the model told the reporter the tracker "rejected the submission without returning an error message" — a timeout the model cannot read is a refusal it invents (ISS-1009).
-  // cm:guard consult F1 (2026-09-15): the kill can land after the commit, so the message may say the outcome is unknown and may not say nothing was filed (ISS-1009).
   it('says it was stopped and that the outcome is unknown, never that nothing was filed', () => {
     const said = stoppedMessage(180);
     expect(said).toContain('stopped after 180s');

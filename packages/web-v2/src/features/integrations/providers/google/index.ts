@@ -5,8 +5,6 @@ export const google: ProviderModule = {
   provider: "google",
   label: "Google Sheets",
   icon: "rows",
-  // cm:edge contract -> packages/core/src/integrations/rotation.ts — the whole service-account file
-  // is the rotating unit; the PEM inside it is not, and this name is what says so on the web side.
   secretField: "serviceAccountJson",
   secretPlaceholder: "the service-account JSON file, whole",
   drillable: true,

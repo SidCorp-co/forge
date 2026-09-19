@@ -29,9 +29,6 @@ const unsupported = (op: string): never => {
 };
 
 const rocketChatAdapterMethods: IntegrationAdapterMethods<RocketChatConfig, RocketChatSecrets> = {
-  // cm:edge lockstep -> packages/core/src/integrations/route-helpers.ts — every connection write
-  // calls this through `notifyConnectionChanged`; it was an `if (provider !== 'rocketchat') return`
-  // in that generic helper until ISS-1071.
   onConnectionChanged: (connectionId) => {
     void import('./connection-manager.js')
       .then((m) => m.requestRocketChatReload(connectionId))
@@ -108,7 +105,6 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
     patchSecrets: rocketchatSecretsSchema.partial(),
     primaryCredentialField: 'authToken',
     previousCredentialField: 'previousAuthToken',
-    // cm:why the bot's `userId` travels with the token but is independently writable: it is the account the PAT belongs to, and correcting it is not a credential rotation. Every other provider's secret fields arrive together or not at all.
     independentSecretFields: ['userId'],
     bindingConfigKeys: ROCKETCHAT_BINDING_CONFIG_KEYS,
   },

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { markUntrusted, sanitizeUntrusted } from './sanitize.js';
 
-// Build crafted inputs from code points so the test source carries no literal
-// invisible/control characters.
 const cp = (...codes: number[]) => String.fromCodePoint(...codes);
 
 const ZERO_WIDTH = cp(0x200b, 0x200c, 0x200d, 0xfeff, 0x2060); // ZWSP ZWNJ ZWJ BOM WJ
@@ -28,8 +26,6 @@ describe('sanitizeUntrusted — control-character neutralization', () => {
     );
     // The `--!>` alternate closer is also neutralized.
     expect(sanitizeUntrusted('x<!--y--!>z')).toBe('xyz');
-    // A bare `-->` arrow (not part of a real comment span) is legitimate
-    // content (mermaid / arrow notation) and must survive untouched.
     expect(sanitizeUntrusted('a-->b')).toBe('a-->b');
     expect(sanitizeUntrusted('A --> B --> C')).toBe('A --> B --> C');
     // An unpaired opener hides nothing and is left as-is.
@@ -59,8 +55,6 @@ describe('sanitizeUntrusted — no over-sanitization', () => {
   ];
   for (const sample of legit) {
     it(`passes through unchanged: ${sample.slice(0, 24)}…`, () => {
-      // NOTE: the ZWJ family-emoji sequence legitimately uses U+200D, which the
-      // sanitizer strips by design; assert only the non-ZWJ samples are intact.
       if (!sample.includes('👨')) expect(sanitizeUntrusted(sample)).toBe(sample);
     });
   }

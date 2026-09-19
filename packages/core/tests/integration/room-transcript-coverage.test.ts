@@ -52,9 +52,6 @@ afterAll(async () => {
 /**
  * A drizzle query builder that will not reach the database until `gate` has settled.
  */
-// cm:guard the whole fluent chain is wrapped and not just its `then`, because `select()` returns
-// a builder and the statement is sent when the LAST link is awaited: gating the first link would
-// let the query through the moment anything called `.from()` on it.
 function gated<T>(builder: T, gate: Promise<unknown>): T {
   return new Proxy(builder as object, {
     get(target, prop, receiver) {
@@ -253,8 +250,6 @@ describe('one snapshot, one index', () => {
       indexedThroughSeq: index.INDEX_PASS_MESSAGE_LIMIT + 99,
       messagesBeyondIndex: 0,
     });
-    // The figure above says the whole room is indexed; the passage below is what makes that
-    // figure true of the index this read was actually served.
     expect(out.matches).toHaveLength(1);
     expect(out.matches[0]?.text).toContain('quetzal');
     // And the rebuild really did land under it: the committed index is the shorter one.

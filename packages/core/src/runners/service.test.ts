@@ -1,5 +1,3 @@
-// cm:guard the collision must be recognised by CONSTRAINT NAME — a bare "it was a 23505" would answer any future unique index on `runners` with a binding message that names the wrong column, which is the mislabelling `projects/service.ts` already learned to refuse.
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
@@ -92,7 +90,6 @@ describe('insertRunner when the device already binds this project', () => {
     expect(err.message).toMatch(/unassign/i);
   });
 
-  // cm:guard a vanished collider means the binding is free — refusing here with a runner nobody can read would send the caller after a row that no longer exists, and the id in that message would be invented (ISS-990).
   it('retries the insert when the colliding row has since gone, rather than naming a runner nobody can read', async () => {
     mockCollided(null);
     insertImpl.mockImplementationOnce(() => ({

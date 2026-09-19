@@ -40,9 +40,6 @@ describe("what a reader meets", () => {
     );
   });
 
-  // cm:guard the case ISS-1089's own review raised: every record written today carries no `lead`,
-  // so the dominant input must have a defined outcome. No lead line, and NO field's text promoted
-  // into its place — the substitution the parse refuses to make one layer down.
   it("draws no lead line, and no substitute, where the record carries none", () => {
     render(<RecordCard record={record({ lead: null, absent: ["lead", "beside"] })} />);
     const header = screen.getByTestId("forge-record-card").querySelector("header");
@@ -57,9 +54,6 @@ describe("what a reader meets", () => {
     expect(screen.getByText("finding")).toBeInTheDocument();
   });
 
-  // cm:guard the duplicate-key console error is the assertion, not decoration: both rows draw
-  // either way, so an implementation keying on `field.key` passes every visible check here and
-  // fails only this one — which is the whole reason it is easy to ship and easy to miss.
   it("draws a key repeated in one fence as two rows, each with a key of its own", () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     render(
@@ -87,8 +81,6 @@ describe("what a reader meets", () => {
 describe("a field past its budget", () => {
   const over = record({ fields: [field("why", long, 57)] });
 
-  // cm:guard the whole value is in the DOM under BOTH readings, and this case is the one that stops
-  // a later "just clamp it" turning the fold into a truncation nobody notices.
   it("is never truncated, under either reading", () => {
     const { unmount } = render(<RecordCard record={over} lens="product" />);
     expect(screen.getByText(long)).toBeInTheDocument();
@@ -117,11 +109,6 @@ describe("a field past its budget", () => {
     expect(document.querySelector("details")?.open).toBe(false);
   });
 
-  // cm:guard the two cases below are about the LABEL and not the fold: native `<details>` toggles
-  // without React, so a summary derived from the lens alone survives every assertion above and
-  // names the opposite of what pressing it does (codex F4).
-  // jsdom does not implement the native summary click, so the disclosure is driven the way the
-  // browser drives it — the element's own `open`, then the `toggle` event that follows it.
   const toggle = (to: boolean) => {
     const details = document.querySelector("details") as HTMLDetailsElement;
     details.open = to;
@@ -175,8 +162,6 @@ describe("the prose the writer wrote around the fence", () => {
     expect(drawn.indexOf("holds")).toBeLessThan(drawn.indexOf("And a sentence"));
   });
 
-  // cm:guard the fence's own bytes must not reach the reader twice — once as the card and once as
-  // the code block markdown would make of them. That double is the defect, wearing a card.
   it("draws the fence once, as the card, and never also as a code block", () => {
     render(
       <BodyView
@@ -189,9 +174,6 @@ describe("the prose the writer wrote around the fence", () => {
     expect(screen.getAllByText("holds")).toHaveLength(1);
   });
 
-  // cm:guard a reference link written on one side of the fence and defined on the other resolved
-  // before this change, because one `<Markdown>` held the whole body. Splitting the document splits
-  // its reference table with it, and this case is what says the definitions travel (codex F3).
   it("resolves a reference link defined on the other side of the record", () => {
     const withRef = [
       "See the [evidence][proof] before the record.",
@@ -216,10 +198,6 @@ describe("the prose the writer wrote around the fence", () => {
     expect(document.body.textContent).not.toContain("[evidence][proof]");
   });
 
-  // cm:guard CommonMark resolves a label to its FIRST definition. A body defining `[proof]` above
-  // the record and again below it links to the first under one parse, and a split that appended the
-  // shared table to a half still carrying its own local second definition would link to the second
-  // (codex F3, still open at its first recheck — this is the case that closed it).
   it("resolves a duplicated label to the document's first definition, as one parse does", () => {
     const dup = [
       "[proof]: https://example.com/first",
@@ -246,9 +224,6 @@ describe("the prose the writer wrote around the fence", () => {
     expect(document.querySelector("a")?.getAttribute("href")).toBe("https://example.com/first");
   });
 
-  // cm:guard a definition-shaped line inside a fenced code example is the example's own text. The
-  // first fix for F3 ran a regex over the half and deleted it out of the code block the writer was
-  // using to teach the syntax (codex F5).
   it("leaves a definition-shaped line inside a code example on the screen", () => {
     const teaching = [
       "Write the definition like this:",

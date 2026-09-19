@@ -24,7 +24,6 @@ describe("the four states", () => {
     expect(runState({ incarnation: "exited", work: "runnable" })).toBe("exited-runnable");
   });
 
-  // cm:guard the state today's UI could not express, and the reason it must be its own row: an answered park is owed a revival nobody has performed, so folding it into either neighbour hides work that is stuck rather than waiting (ISS-964 criteria 38, 51).
   it("distinguishes an answered park from one still waiting", () => {
     const parked = runState({ incarnation: "exited", work: "blocked" });
     const answered = runState({ incarnation: "exited", work: "runnable" });
@@ -38,7 +37,6 @@ describe("the four states", () => {
     expect(runState({ incarnation: "starting", work: "runnable" })).toBe("live-runnable");
   });
 
-  // cm:guard a combination this build does not name renders as `unknown` and NOT as closed or working: criterion 35 permits no reclamation on an unknown, and a screen that guessed would invite exactly that.
   it("refuses to guess at a combination it does not know", () => {
     expect(runState({ incarnation: "teleported", work: "runnable" })).toBe("unknown");
     expect(stateLabel("unknown").detail).toMatch(/nothing may be reclaimed/);
@@ -90,7 +88,6 @@ describe("the three close-loop marks", () => {
     expect(m.leasesReturned).toEqual({ returned: 1, total: 2 });
   });
 
-  // cm:guard a run carrying NO issues reports `null` rather than 0/0, because "every lease is back" is not a claim to make about a run that never held one.
   it("claims nothing about the leases of a run that holds no issues", () => {
     expect(closeMarks(row({ issues: [] })).leasesReturned).toBeNull();
   });
@@ -114,7 +111,6 @@ const NOW = Date.parse("2026-09-13T12:00:00.000Z");
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
 describe("the heartbeat core holds for a run", () => {
-  // cm:guard the assertions sit either side of each boundary rather than well clear of it: a test taking a 4-hour-old beat and a 1-second-old one passes against a build with no thresholds at all.
   it("grades a beat either side of the stalled threshold", () => {
     expect(pulse({ lastActivityAt: ago(STALLED_THRESHOLD_MS) }, NOW).state).toBe("beating");
     expect(pulse({ lastActivityAt: ago(STALLED_THRESHOLD_MS + 1) }, NOW).state).toBe("silent");
@@ -125,7 +121,6 @@ describe("the heartbeat core holds for a run", () => {
     expect(pulse({ lastActivityAt: ago(HEARTBEAT_REAP_MS + 1) }, NOW).state).toBe("past-threshold");
   });
 
-  // cm:guard a run core has never heard from must NOT read as silent: a revival between its CAS and its process registering has no session yet, and calling that stuck marks every start (ISS-998).
   it("keeps a run it has never heard from apart from one that has gone quiet", () => {
     expect(pulse({ lastActivityAt: null }, NOW).state).toBe("unheard");
     expect(pulse({ lastActivityAt: "not a date" }, NOW).state).toBe("unheard");
@@ -142,7 +137,6 @@ describe("the heartbeat core holds for a run", () => {
     expect(pulseText(pulse({ lastActivityAt: ago(4 * 3_600_000) }, NOW))).toContain("4h");
   });
 
-  // cm:guard the wording is the FALSIFIABLE half of criterion 3: past the threshold the client knows only that the bound elapsed. `PIPELINE_HEARTBEAT_TIMEOUT_MS` can move the server's bound and a scheduler that has not run leaves nothing recovered, so any past tense here is a claim about a server action no browser can observe.
   it("claims an elapsed threshold and never a recovery that happened", () => {
     const text = pulseText(pulse({ lastActivityAt: ago(HEARTBEAT_REAP_MS + 1) }, NOW)) ?? "";
     expect(text).toMatch(/threshold/i);
@@ -153,7 +147,6 @@ describe("the heartbeat core holds for a run", () => {
 describe("the silence line", () => {
   const row = (incarnation: string, lastActivityAt: string | null) => ({ incarnation, lastActivityAt });
 
-  // cm:guard the falsifying PAIR: a build that dropped the incarnation test entirely passes the first assertion, and one that dropped the line altogether passes the second.
   it("grades a box that claims a process and stays silent about one that does not", () => {
     expect(silenceText(row("live", ago(4 * 3_600_000)), NOW)).toMatch(/no report/);
     expect(silenceText(row("starting", ago(4 * 3_600_000)), NOW)).toMatch(/no report/);
@@ -203,7 +196,6 @@ describe("the two readings disagreeing", () => {
 });
 
 describe("why a session ended", () => {
-  // cm:guard routed through the Sessions tab's own label table, so one cause never reads two ways across the two tabs of one screen, and an unknown reason resolves rather than leaking the wire word.
   it("says the cause in words rather than the stored reason", () => {
     const text = endReasonText({
       sessionFailureReason: "agent_exited_without_result",
@@ -217,7 +209,6 @@ describe("why a session ended", () => {
     expect(endReasonText({ sessionFailureReason: null, sessionStatus: "failed" })).toBeNull();
   });
 
-  // cm:guard the FALSIFYING pair: `failureReason` is written on a session that is still running for the skip causes, so a version reading the reason alone renders "why this ended" over a run that is mid-turn. Both halves are needed — one reading nothing at all passes the first assertion.
   it("names no ending for a run whose session core still calls running", () => {
     expect(
       endReasonText({ sessionFailureReason: "runner_full", sessionStatus: "running" }),
@@ -227,7 +218,6 @@ describe("why a session ended", () => {
     ).not.toBeNull();
   });
 
-  // cm:guard the reason core holds on a session it has NOT ended is still SHOWN, in wording that does not call it an ending: `runner_full` on a running session is the answer to "why has this not moved", and suppressing it to keep the wording tidy is the silence this screen was filed against (ISS-998).
   it("shows a reason core holds on a running session, worded as a note", () => {
     const text = pendingReasonText({
       sessionFailureReason: "runner_full",

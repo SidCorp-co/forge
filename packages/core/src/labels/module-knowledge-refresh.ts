@@ -47,8 +47,6 @@ export function moduleNodeBodyHash(body: string): string {
   return createHash('sha256').update(body, 'utf8').digest('hex');
 }
 
-// cm:guard the hash comparison IS the idempotency and IS the self-clearing, in one branch — the same issue landing twice reads the same body and returns `prev` untouched, and an author who redraws the flow changes the body so the next landing re-arms against it. Replace it with an unconditional re-stamp and the record starts moving on every replay; drop the re-arm and a redrawn flow stays marked behind forever.
-// cm:why nothing ever clears this record and nothing needs to: a reader treats it as live ONLY while the node's CURRENT body still hashes to `bodyHash`, so a redrawn flow reads as current without a second writer having to notice. A `staleUntilCleared` boolean would need that writer, and there is none.
 /**
  * The record this landing leaves on the primary's node.
  *
@@ -158,8 +156,6 @@ async function refreshPrimaryNode(
   return { nodeId, appended, flow };
 }
 
-// cm:guard NEVER insert a `knowledge_entries` row from here — a module with no binding is the legal state "no node written yet" (`labels_knowledge_entry_chk`, ISS-947), and creating one under a guessed name is the failure `labels.slug` exists to remove, so the loop declines and says so in the issue's activity feed, which is where an operator reads it.
-// cm:guard never throws and never rethrows: a refresh that fails must not fail the issue's own pipeline, and the caller (`pipeline/issue-context-store.ts`) has already committed the handoff by the time this runs. Reported through the log AND the activity feed, never swallowed.
 /**
  * Refresh the knowledge of the modules this issue is attributed to.
  *

@@ -1,31 +1,9 @@
-/**
- * The one place a project's granted integrations become MCP server entries for a runner.
- *
- * It replaced three near-identical `apply*McpServers` functions and the private resolver array that
- * listed them. Each of those read a sentinel key out of `pipelineConfig.mcpServers`, stripped it,
- * and injected only when it found its own name set to literal `true` — so "may this agent use this
- * integration" was answered in a map on another settings tab that no connect surface could write.
- * The question is now a column on the binding and this walks the registry to ask it.
- *
- * Credentials are decrypted here and rendered ONLY into the returned map, which the dispatch path
- * hands to the runner as a temp `--mcp-config`. Nothing here is persisted, logged or returned by an
- * API.
- */
-
 import { logger } from '../logger.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { decryptConnectionSecrets, effectiveConfig } from './store.js';
 import type { IntegrationDeclaration } from './types.js';
 
-/**
- * Every MCP entry this project's granted bindings render, keyed by server name.
- *
- * A binding whose credential cannot be decrypted is SKIPPED with a warning and the rest still
- * resolve — one unreadable key must not cost a dispatch every other server it was owed. A provider
- * that does not declare `multiBinding` takes its oldest granted binding and no other, which is the
- * pick `listAgentGrantedBindings` orders for.
- */
 export async function resolveGrantedMcpEntries(
   projectId: string,
 ): Promise<Record<string, Record<string, unknown>>> {
@@ -45,9 +23,6 @@ export async function resolveGrantedMcpEntries(
       }
       pairs = rows;
     } catch (err) {
-      // cm:guard injection is best-effort against the DATABASE and never against the grant: a lookup
-      // that fails injects nothing, which is the closed answer, so a hiccup cannot widen what an
-      // agent reaches. It must also never crash a dispatch.
       logger.warn(
         { err, projectId, provider: decl.provider },
         'mcp-resolver: granted-binding lookup failed, skipping inject',
@@ -100,7 +75,6 @@ export async function applyGrantedMcpServers(
   return { ...(current ?? {}), ...entries };
 }
 
-/** The server names a project's granted bindings WOULD render, without decrypting anything. */
 export function declaredServerNames(
   decl: IntegrationDeclaration,
   labels: readonly string[],

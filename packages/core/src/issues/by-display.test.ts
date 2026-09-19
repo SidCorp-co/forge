@@ -8,7 +8,6 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-// cm:why the creator hydrator awaits select().from(users).where(...) with no .limit(), so this chain must double as a thenable
 const selectWhere = vi.fn(() => ({
   limit: selectLimit,
   then: (resolve: (v: unknown[]) => void) => resolve([]),

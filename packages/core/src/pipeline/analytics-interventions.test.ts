@@ -58,7 +58,6 @@ afterEach(() => {
 });
 
 describe('GET /api/pipeline/interventions', () => {
-  // cm:guard the view emits `manual_` as a PREFIX with the row's own action appended, not the fixed `manual_cancel` it began as. This suite exists because the rollup read it as a fixed value until ISS-884 and charted every resume, answer and inject as a run flip — the mislabelling migration 0181 was written to end, reintroduced one layer above it.
   it('buckets every source the view actually emits, and never lands one in the wrong bucket', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);

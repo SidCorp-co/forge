@@ -45,7 +45,6 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV = 'test';
-  // cm:guard the read ceiling is pinned to 600 — the single shared bucket ISS-961 replaced — and may be LOWERED but never raised. Draining it is how the write-after-drain test tells two buckets from one, so a ceiling above 600 lets that test pass against a single bucket, and a drain longer than `windowMs` refills the bucket mid-test: at the stock 2400 the drain measured 62.5s against a 60s window on CI and asserted 200 where it wanted 429.
   process.env.RATE_LIMIT_PAT_READ_MAX = '600';
   delete process.env.RATE_LIMIT_PAT_WRITE_MAX;
   delete process.env.RATE_LIMIT_PAT_READ_WINDOW_MS;
@@ -108,7 +107,6 @@ describe('a wave of sessions on one token', () => {
     expect(all.every((s) => s === 200)).toBe(true);
   }, 60_000);
 
-  // cm:guard the falsifying half of the file. Everything else here passes for the single shared bucket ISS-961 replaced; only a write served AFTER the read budget is spent tells two buckets from one, and it is what the report asked for in the words "a wave's reads never delay its writes".
   it('still serves a write after the reads have spent their whole budget', async () => {
     resetPatBuckets();
     const { RULES } = await import('../../src/config/rate-limits.js');
@@ -172,18 +170,6 @@ describe('a wave of sessions on one token', () => {
     expect(reset).toBeGreaterThanOrEqual(Math.floor(Date.now() / 1000));
   });
 
-  /**
-   * The one that found the real magnitude of the reported defect.
-   *
-   * Every router self-gates with `use('*', requireAuth(), …)` so it cannot be
-   * mounted unguarded, and Hono runs the middleware of every router whose
-   * prefix matches. On `GET /api/projects/:id/issues` that is nine of them, and
-   * each used to verify the token and charge the bucket again — so the real
-   * ceiling was the stated one divided by nine, and 600 refused a token after
-   * 66 requests while reporting 600.
-   */
-  // cm:guard this asserts an EXACT decrement, not "at most a few". A tolerance is what let nine charges look like one for as long as nobody read `X-RateLimit-Remaining`, and the number is the property: one request, one charge.
-  // cm:guard exact decrements demand a bucket no other test can charge, so this mints its OWN PAT — buckets are keyed by PAT, and the module token's buckets still carry in-flight charges from the wave tests above that resetPatBuckets() cannot cancel, which read back here as phantom decrements (off-by-two under the full suite, green in isolation).
   it('charges the bucket exactly once per request, however many routers gate the path', async () => {
     const { mintPat } = await import('../../src/auth/pat.js');
     const solo = (await mintPat({ userId, name: 'exact-charge-probe' })).plaintext;

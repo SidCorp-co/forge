@@ -130,7 +130,6 @@ describe('attachAuthors', () => {
     expect(tree[0]?.author?.displayName).toBe('runner-1');
   });
 
-  // cm:guard a comment on a person's credential is THAT PERSON's, even when an agent typed it — this is the priced consequence of dropping `comments.is_ai` (2026-09-04) and it must fail loudly if someone reintroduces a per-row agent flag rather than giving agents an identity of their own.
   it('marks a write on a human credential as that human, whoever held the token', () => {
     const tree = buildCommentTree([{ ...row('a', null), authorDeviceId: null }]);
     attachAuthors(tree, resolvedMap());
@@ -177,9 +176,6 @@ describe('the record a comment carries, on the node the browser reads', () => {
     expect(buildCommentTree([row('a', null, 'Merged and deployed.')])[0]?.record).toBeNull();
   });
 
-  // cm:guard the lens is the CALLER's answer for the whole page, and this case says the builder
-  // does not go and find one of its own: a tree built with no lens must read `product`, the same
-  // reading `projectLens` fails to, rather than the looser one.
   it('reads as product where the caller named no lens', () => {
     expect(buildCommentTree([withRecord('a')])[0]?.record?.lens).toBe('product');
   });

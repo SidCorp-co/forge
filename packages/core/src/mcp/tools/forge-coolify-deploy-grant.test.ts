@@ -1,17 +1,3 @@
-/**
- * ISS-1071 — the agent boundary for Coolify: which verbs the grant gates, and which it does not.
- *
- * Coolify is core-mediated. Core holds the API token and performs the deploy, so the SAME binding
- * backs both an agent asking for a deploy and the release pipeline running one for a human. The
- * grant answers only the first question, which is why it is checked here, in the agent's tool, and
- * NOT inside `activeCoolifyIntegrations` — that resolver is shared with `integrations/coolify/
- * routes.ts`, the REST surface a human's own Deploy button goes through, and a gate there would let
- * an ungranted binding block a release nobody asked an agent about.
- *
- * A file of its own rather than a describe in `forge-coolify-deploy.test.ts` because `vi.mock` is
- * per-module and cannot move to a `.fixture.ts`: the two files share a shape, not a harness.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
@@ -162,18 +148,6 @@ describe('forge_coolify_deploy — the agent-access gate', () => {
   });
 });
 
-// Criteria 29 and 30 — the human's Deploy button and core's own release dispatch must still reach a
-// binding an agent may not use. Both go through `activeCoolifyIntegrations`, and until now the only
-// thing saying so was the ABSENCE of a gate in it, which is what a later refactor deletes by
-// accident: moving the check "down into the resolver where it belongs" is the obvious tidy-up, and
-// it would make an ungranted binding block a release nobody asked an agent about.
-// cm:guard this resolver is shared with `integrations/coolify/routes.ts` (REST) and
-// `pipeline/release-coolify.ts`. It must NOT filter on `agentAccess`; the grant is checked in
-// `forge-coolify-deploy.ts`, which is the only door an agent comes through.
-/**
- * Walks a drizzle SQL expression for a reference to one physical column. Used to assert on the
- * query the subject builds rather than on the rows the stub returns.
- */
 function mentionsColumn(node: unknown, column: string): boolean {
   if (node === null || typeof node !== 'object') return false;
   const n = node as { name?: unknown; queryChunks?: unknown };

@@ -44,7 +44,6 @@ const STORED_PIPELINE = {
     in_progress: { enabled: true, skillName: 'forge-code' },
     needs_info: { disallowedTools: ['Workflow'] },
     awaiting_release: { enabled: true, skillName: 'forge-release' },
-    // cm:guard a stage ISS-897 deleted, and the reason the migration rebuilds the whole `states` map rather than deleting four named paths: a document holding one of the old stage names would otherwise keep its `skillName`, which `GET /api/projects/:id` and `forge_config` action=get both still show raw.
     confirmed: { skillName: 'forge-review', model: 'sonnet' },
   },
 };
@@ -80,7 +79,6 @@ describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)
     projectId = project.id;
     const untouched = await createTestProject(harness.db, user.id, { agentConfig: {} });
     untouchedId = untouched.id;
-    // cm:guard a `states` that is not an object is what aborts a migration rather than skipping a row: `jsonb_each` RAISES on an array, a string or a JSON null, and one raise inside the DO block rolls the whole deploy back. Nothing on the fleet stores this today, which is exactly why only a planted row can prove the guard.
     const malformed = await createTestProject(harness.db, user.id, {
       agentConfig: { pipelineConfig: { states: ['open'], enabled: true } },
     });
@@ -98,7 +96,6 @@ describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)
     await harness?.cleanup?.();
   });
 
-  // cm:guard the assertion is on the STORED document, not on a parse of it. The schema has dropped both keys since this change landed, so a test that read them back through `pipelineConfigSchema` would pass against an un-migrated database and prove nothing.
   it('removes stateContext from the stored agentConfig', () => {
     expect(afterAc).not.toHaveProperty('stateContext');
   });
@@ -133,11 +130,9 @@ describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)
     expect(Object.keys(afterAc).sort()).toEqual(['personaStyle', 'pipelineConfig', 'plugins']);
   });
 
-  // cm:why the whole guard, not the token `CASE`: an assertion that only looks for the keyword stays green against `CASE WHEN true THEN ... END`, which walks a malformed `states` again and aborts the deploy — so it names the type test, the branch it guards and the empty-object fallback.
   const GUARDED_TRAVERSAL =
     /^\s*CASE\s+WHEN\s+jsonb_typeof\(\s*[\w.]+\s*->\s*'pipelineConfig'\s*->\s*'states'\s*\)\s*=\s*'object'\s+THEN\s+[\w.]+\s*->\s*'pipelineConfig'\s*->\s*'states'\s+ELSE\s+'\{\}'::jsonb\s+END\s*\)\s*AS e\(stage, cfg\)/;
 
-  // cm:guard the row fixture below CANNOT tell the guarded traversal from the unguarded one — Postgres happens to evaluate the `jsonb_typeof` conjunct first here, so the unguarded form passes too. `AND` promises no order, so what is actually being defended is a plan this server did not choose, and only reading the statement can assert it. Both assertions stand: one says the migration survives such a row, the other says it is not surviving by luck.
   it('hands no unguarded jsonb_each a states value it has not proved is an object', () => {
     const sqlText = readFileSync(migrationPath, 'utf8');
     const traversals = sqlText.split('jsonb_each(').slice(1);
@@ -161,7 +156,6 @@ describe('migration 0237 removes stateContext and the stage skillName (ISS-1000)
     expect(rows[0]?.agent_config).toEqual({});
   });
 
-  // cm:guard the READ stays permissive and that asymmetry is deliberate: a canonical schema that REFUSED a stored `skillName` would make every project still holding one parse to `cfg = null`, `isAutonomous` false, and dispatch nothing in silence — the shape ISS-994's own guard measured on 2026-09-10. This is the assertion that goes red if the refusal is moved onto the canonical schema.
   it('parses a document that still stores both keys, dropping skillName rather than refusing', () => {
     const { confirmed: _deletedStage, ...states } = STORED_PIPELINE.states;
     const parsed = pipelineConfigSchema.parse({ ...STORED_PIPELINE, states });

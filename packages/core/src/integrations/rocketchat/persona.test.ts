@@ -20,7 +20,6 @@ describe('what a cut window tells the room turn', () => {
     expect(persona('overflow')).toContain(MID_CONVERSATION_INSTRUCTION);
   });
 
-  // cm:guard literal text and not the constant, so removing a clause from `MID_CONVERSATION_INSTRUCTION` goes red here rather than passing because both sides read the same string (whole-set review F3, criterion 30).
   it.each(['deadline', 'overflow'] as const)(
     'tells a %s turn each of the four behaviours in words',
     (reason) => {
@@ -39,7 +38,6 @@ describe('what a cut window tells the room turn', () => {
     expect(persona('quiet')).not.toMatch(/Mid-conversation turn/);
   });
 
-  // cm:guard an absent reason is a row claimed before the column existed, and it reads exactly as `quiet` here as it does in the router's detail: two readings of one null would be the two that disagree.
   it('reads a missing reason as quiet', () => {
     expect(midConversationLine(null)).toBeNull();
     expect(midConversationLine(undefined)).toBeNull();

@@ -13,13 +13,14 @@ import {
   Input,
   MonoTag,
   PageContainer,
+  PageTitle,
   Pagination,
   ScreenTabs,
   Select,
   Skeleton,
-  useDebounced,
   type SelectOption,
   type TabItem,
+  useDebounced,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { MEMORY_PAGE_SIZE } from "../api";
@@ -97,7 +98,7 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
   return (
     <PageContainer className="min-h-dvh">
       <header className="mb-6">
-        <h1 className="fg-h2">Memory</h1>
+        <PageTitle className="fg-h2">Memory</PageTitle>
         <p className="fg-body-sm mt-1">
           System breadcrumbs the pipeline writes as it works — searchable across this project.
         </p>

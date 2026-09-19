@@ -54,13 +54,11 @@ describe('A4 spend spike + A5 automation failures (ISS-652)', () => {
     `);
   }
 
-  // cm:guard ISS-654 — `computeAlerts` must read `admin_thresholds` on EVERY call. This pair is the only evidence that it does: the same rows classify differently once the row is written, which a process-lifetime read of the config cannot produce.
   it('A4 follows the configured spend_spike_multiple, not a constant', async () => {
     const project = await newProject();
     await fx.insertUsage({ projectId: project.id, cost: 24, recordedAgoHours: 0.5 });
     await fx.insertUsage({ projectId: project.id, cost: 8, recordedAgoHours: 1.5 });
 
-    // cm:guard one token per test — `adminToken()` INSERTs the admin user, so a second call inside one test collides on the unique email and the failure reads as an alert-engine bug
     const token = await ctx.adminToken();
 
     expect(findAlert((await getAlerts(ctx, token)).body, 'A4')?.status).toBe('warn');
@@ -70,10 +68,8 @@ describe('A4 spend spike + A5 automation failures (ISS-652)', () => {
     expect(findAlert((await getAlerts(ctx, token)).body, 'A4')?.status).toBe('ok');
   });
 
-  // cm:guard the ceiling arm reads a trailing 24h, never the ratio arm's 1-hour window — comparing an hour of spend to a day's allowance never fires.
   it('A4 fires crit on the daily ceiling even when the ratio arm reads ok', async () => {
     const project = await newProject();
-    // cm:why flat across both ratio windows on purpose — ratio 1.0 reads `ok`, so anything this test sees fire came from the ceiling arm and nowhere else
     await fx.insertUsage({ projectId: project.id, cost: 60, recordedAgoHours: 0.5 });
     await fx.insertUsage({ projectId: project.id, cost: 60, recordedAgoHours: 1.5 });
     await fx.insertUsage({ projectId: project.id, cost: 60, recordedAgoHours: 10 });
@@ -130,7 +126,6 @@ describe('A4 spend spike + A5 automation failures (ISS-652)', () => {
     expect(a4?.count).toBeGreaterThanOrEqual(1);
   });
 
-  // cm:guard a global-only fire (no single project individually crosses the ratio — e.g. project_id-less system usage) must still report count >= 1, never 0, or a consumer filtering on `count > 0` silently drops a live spend spike
   it('A4 count stays >= 1 on a global-only fire with no per-project contributor', async () => {
     await fx.insertUsage({ projectId: null, cost: 20, recordedAgoHours: 0.5 });
 
@@ -141,7 +136,6 @@ describe('A4 spend spike + A5 automation failures (ISS-652)', () => {
     expect(a4?.count).toBeGreaterThanOrEqual(1);
   });
 
-  // cm:guard inbound webhook deliveries (which Coolify records `ok` even when the deploy it reports failed) must not dilute a real OUTBOUND delivery fail-rate — the two directions answer different questions and averaging them hides the one Forge controls
   it('A5 fires on an outbound fail-rate even when inbound deliveries are all ok', async () => {
     const project = await newProject();
     const bindingId = await fx.insertBinding(project.id);
@@ -189,7 +183,6 @@ describe('A4 spend spike + A5 automation failures (ISS-652)', () => {
     expect(a5?.status).toBe('warn');
     expect(a5?.count).toBe(1);
 
-    // cm:why a recovery counts as a success and ends the streak — the streak is read back from the most recent FINISHED session, so a later good run clears it without any resolve step
     await fx.insertPromptSession({
       projectId: project.id,
       scheduleId,
@@ -200,7 +193,6 @@ describe('A4 spend spike + A5 automation failures (ISS-652)', () => {
     expect(findAlert(cleared, 'A5')?.status).toBe('ok');
   });
 
-  // cm:guard this case is the only thing standing between a perf pass and a silent A5 regression — it spreads the streak across 40 days so a time bound on the schedule_events scan drops the two older failures and leaves streak=1 with no alert, while last_run_at still admits the schedule; every other schedule event in this suite is 0-3 minutes old and would survive any bound anyone is likely to add
   it('A5 catches a streak spanning weeks, so a time bound on the event scan cannot pass', async () => {
     const project = await newProject();
     const scheduleId = await fx.insertPromptSchedule(project.id);

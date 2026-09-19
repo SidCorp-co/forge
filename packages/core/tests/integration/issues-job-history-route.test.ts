@@ -31,11 +31,6 @@ interface SeedJobOpts {
   promptInputTokenEst?: number | null;
 }
 
-// cm:guard the job gets a REAL `agent_session_id` and the usage row below is keyed on THAT, never
-// on the job id: `usage_records.session_id` is an `agent_sessions.id`. Until ISS-1015 this fixture
-// wrote `session_id = jobId`, which made the route's `session_id::uuid = jobs.id` join green here
-// and zero on every live job — 0 of beta's 24,085 usage rows match any job id. A fixture keyed the
-// wrong way does not merely miss the defect, it asserts it.
 async function seedJob(
   db: TestDb,
   opts: SeedJobOpts & { runId: string },
@@ -200,8 +195,6 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       promptInputTokenEst: 220,
     });
     await seedUsage(harness.db, project.id, newer.sessionId, 300, 0.005);
-    // cm:guard the negative control for the join this route used to spell: a row keyed on the JOB
-    // id must contribute NOTHING. Drop it and the assertions below pass against either column.
     await seedUsage(harness.db, project.id, newer.jobId, 999, 9.99);
 
     // Queued (never dispatched) plan job — must still surface, tokens=0.

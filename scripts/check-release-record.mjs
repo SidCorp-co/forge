@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-// The release record cannot lose entries without someone saying so.
-//
-// On 2026-08-28 commit 3df9a8e9 removed 1,034 lines from `CHANGELOG.md` inside
-// a commit about dangling docs pointers whose message never named the file.
-// Every gate this repo had ran on it and passed: each axis of the day owned a
-// property of the CODE and none owned the record. The in-app What's New feed
-// went blank for every signed-in user and nothing said so.
-//
-// Two rules — `structure` (the record keeps the `## [Unreleased]` heading its
-// five readers parse for) and `no-silent-loss` (every entry present at the base
-// revision is still present at HEAD). Entries compare as a SET of
-// whitespace-normalised texts, so a reflow is not a deletion and a release cut
-// promoting `[Unreleased]` to `[X.Y.Z]` moves them all without tripping it.
-//
-// Removing an entry is legal and declared: one `{entry, reason}` in
-// `.forge/changelog-amnesty.json`, so the trade-off lands in the diff where a
-// reader can price it.
-//
-// Exit codes: 0 clean, 1 violations found, 2 could not run.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';

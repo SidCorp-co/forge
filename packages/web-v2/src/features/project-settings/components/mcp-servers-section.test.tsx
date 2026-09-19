@@ -45,8 +45,6 @@ const GENUINE_SPEC = '{ "type": "stdio", "command": "npx", "args": ["@scope/mcp"
 beforeEach(() => updateMutate.mockReset());
 
 describe("what this screen says it does", () => {
-  // cm:guard the assertion is on the FALSE half alone. "Per-stage overrides … layer on top" is
-  // true and stays; what went is the claim that connected integrations do, which they never did.
   it("no longer claims connected integrations layer on top of this map", () => {
     renderSection();
     const blurb = screen.getByText(/Servers seeded into every agent/i).textContent ?? "";
@@ -69,8 +67,6 @@ describe("what this screen says it does", () => {
 });
 
 describe("addCustom", () => {
-  // cm:guard the refusal must name the provider and the place the grant lives. Refused for its
-  // shape instead, the message told the operator the spec was the problem, and `{}` cleared it.
   it("refuses an integration provider name BY that name, not by JSON shape", () => {
     renderSection();
     addCustomServer("epodsystem", GENUINE_SPEC);

@@ -21,7 +21,7 @@ dispatchable, `selectRunnerForJob` returns `null`, `handleDispatch` logs and ret
 the row sits `queued` with `gateReason: null` — dispatchable by every gate it reports on, reachable by
 nothing. Nothing in any UI can name a reason, because there is no reason to name.
 
-The `cm:guard` on `fresh_capable_runners` already states the rule this violates: *every clause
+The invariant on `fresh_capable_runners` already states the rule this violates: *every clause
 `runners/select.ts` filters on MUST appear here too, or the pair deadlocks silently.* It was measured
 on 2026-08-14 at 11 jobs across 5 projects sitting 6–22 days.
 

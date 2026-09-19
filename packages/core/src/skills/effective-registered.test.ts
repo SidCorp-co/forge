@@ -1,16 +1,3 @@
-/**
- * ISS-1025 — `resolveRegisteredEffectiveSkills` asks the database for the
- * skills it will return, and no others.
- *
- * This is a BODY projection (`skill_md`, `prompt`, the base64 `files`) and
- * every row it loads is sha256'd by `computeEffectiveSkill`, so the filter has
- * to be the WHERE rather than a `.filter()` over loaded rows: `POST
- * /api/skills/sync-status` used to transfer and hash every skill a project
- * owns to keep the few that are registered. What the query ASKS for is the
- * claim here — a returned set proves nothing, since an in-memory filter
- * produces the identical one.
- */
-
 import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -70,7 +57,6 @@ beforeEach(() => {
 });
 
 describe('resolveRegisteredEffectiveSkills asks only for what it returns', () => {
-  // cm:guard the queue order IS part of the fixture: the resolver reads registrations, then the registered ids' names, then the bodies — reorder those three queries and these result sets feed the wrong call, silently
   it('names the registered skills and install_only in the WHERE, so an unregistered body is never read', async () => {
     results.push([{ skillId: 'reg-1' }], [{ name: 'forge-code' }], [bodyRow()]);
 
@@ -81,7 +67,6 @@ describe('resolveRegisteredEffectiveSkills asks only for what it returns', () =>
     expect(sql).toMatch(/"name" in/);
     expect(sql).toMatch(/"install_only"/);
     expect(params).toContain('forge-code');
-    // cm:guard the project's other skills are excluded by the DATABASE and not afterwards, which is the only difference a returned set cannot show
     expect(params).not.toContain('forge-unregistered');
   });
 

@@ -1,24 +1,3 @@
-/**
- * ISS-785 — SSOT for the kill-before-reap gate.
- *
- * The loop-monitor's job-axis hops (ack / session-lost / result) used to flip
- * a non-progressing job straight to `failed` and schedule a retry from a pure
- * DB heuristic, with nothing ever telling the runner to stop. A false-positive
- * left the "dead" agent running — including git writes — in parallel with its
- * retry (ISS-37: a live agent reverted an already-merged commit while its
- * retry investigated). `job.cancel` (NOT `agent:abort` — that frame is
- * chat-only, keyed by `agent_sessions.id`; the runner keys pipeline jobs by
- * `jobId`) is the only frame that actually kills the process.
- *
- * `requestJobKill` opens a kill EPISODE (stamp + publish);
- * `resolveKillConfirmation` decides whether it is now safe to treat the job
- * as genuinely dead, and therefore retryable.
- */
-
-// cm:guard a reap MUST NOT flip a job to failed before requestJobKill + a confirmed resolveKillConfirmation — an unconfirmed kill that still retries spawns a second agent on the same worktree (ISS-785)
-// cm:guard kill_requested_at/kill_confirmed_at/kill_outcome are EPISODE-scoped: never read them without isKillEpisodeLive — a job that outlives one episode (slow preflight acks after its ack-hop kill request) would otherwise hand a later, unrelated reap a confirmation no runner gave for it, and that reap retries without ever sending job.cancel — two agents on one worktree
-// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — job.cancel is the ONLY frame that kills a pipeline job process (session key = jobId); agent:abort is chat-only
-
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
@@ -28,12 +7,6 @@ import { roomManager } from '../ws/server.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
-/**
- * The minimal shape the gate needs — deliberately NOT the full `JobRow` so
- * loop-monitor's raw-SQL candidate rows (id + a handful of columns) can be
- * passed straight through without an extra round-trip to fetch the whole
- * row. A full `JobRow` structurally satisfies this too.
- */
 export interface KillableJobRef {
   id: string;
   deviceId: string | null;
@@ -74,19 +47,6 @@ export function isKillEpisodeLive(job: KillableJobRef, now: number = Date.now())
 
 export type RequestKillResult = 'requested' | 'no_device';
 
-/**
- * Open (or re-open) a kill episode: stamp `killRequestedAt` and publish
- * `job.cancel` to the owning device room. Within a live episode the stamp is
- * a no-op and only the publish repeats; once the episode has aged out the
- * stamp is refreshed and the stale `killConfirmedAt`/`killOutcome` cleared,
- * so a later reap can never inherit an answer given for an earlier one.
- * Returns `'no_device'` when the job has no `deviceId` — there is no channel
- * to kill over.
- * `resolveKillConfirmation` still falls back to the owning RUNNER's heartbeat
- * going stale in that case, but a live, un-cancelable no-device job parks at
- * `waiting` until that heartbeat lapses — there is no faster confirmation
- * path today.
- */
 export async function requestJobKill(
   job: KillableJobRef,
   reason: string,
@@ -110,21 +70,10 @@ export interface KillConfirmation {
   outcome: JobRow['killOutcome'];
 }
 
-/**
- * Resolve whether a job's kill request is now confirmed. Any one of:
- *   - the runner already answered THIS episode (`killConfirmedAt`/
- *     `killOutcome` set by `POST /jobs/:id/kill-ack` or a terminal lifecycle
- *     report, at or after the episode's own `killRequestedAt`);
- *   - the owning runner's heartbeat is stale past `dispatchLivenessMs()` —
- *     the box is unreachable, so absence of an ack stands in for one.
- * Otherwise unconfirmed: the runner is online and heartbeating but silent
- * about the kill — the one state a reap must never treat as safe to retry.
- */
 export async function resolveKillConfirmation(
   job: KillableJobRef,
   now: number = Date.now(),
 ): Promise<KillConfirmation> {
-  // cm:guard an answer only counts for the episode that asked — requestJobKill clears it when re-opening, and this second check keeps a caller that skipped that path from reading a dead answer as live
   if (
     job.killConfirmedAt &&
     job.killRequestedAt &&

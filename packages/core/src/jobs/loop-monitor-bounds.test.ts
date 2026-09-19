@@ -1,24 +1,3 @@
-/**
- * ISS-1021 criteria 7, 8, 9 and 10 — the job-axis bound, and the page it reports.
- *
- * Its own file rather than a block in `loop-monitor.test.ts`, which is already over its frozen
- * size budget: growing a file the budget has frozen is not a way to add coverage. The mock
- * preamble is duplicated deliberately for that reason — `loop-monitor.ts` validates its
- * environment at import time through `queue/boss.ts` and `jobs/kill-gate.ts`, so a suite that
- * touches it carries these seven mocks or does not load.
- *
- * Nothing covered any of the four before. Measured while re-judging the criteria on 2026-09-18:
- * the hop suites in `loop-monitor.test.ts` assert on the rendered SQL but only on the eligibility
- * predicate, and no test in the repo imports `hop-bounds.ts` or names `JOB_AXIS_SCAN_LIMIT`, so
- * the `ORDER BY ... LIMIT` could be deleted from all three hops and the warn from `reportHopPage`
- * and the whole suite stayed green.
- *
- * The bound is asserted at the TAIL of each statement, never as a bare `LIMIT 200` anywhere in it.
- * Applied before the whole predicate a bound takes 200 rows that are not candidates and reaps
- * none, which is the failure `progress-signal.ts`' own cm:guard is written about — and a pattern
- * matching the literal wherever it sat could not tell the two apart.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
@@ -29,7 +8,7 @@ const selectLimit = vi.fn(async () => [] as Array<{ issueId: string | null }>);
 
 vi.mock('../db/client.js', () => {
   const dbStub: Record<string, unknown> = {
-    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub), // cm:why applyKernelTransition reaches its write through `exec.transaction`
+    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({
       set: (patch: Record<string, unknown>) => {
@@ -54,7 +33,6 @@ vi.mock('./finalize-failure.js', () => ({
 }));
 
 const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
-// cm:guard mocked for its IMPORT CHAIN, not its behaviour: `answer-resume` reaches `issues/apply-transition.js`, which loads `config/env` at module scope and throws here for want of a DATABASE_URL. Its own rules are asserted in `answer-fallback-e2e.test.ts` against real Postgres, which is the only lane that can fail on them.
 vi.mock('../pipeline/answer-resume.js', () => ({ resumeLapsedAnswers: vi.fn(async () => 0) }));
 
 vi.mock('../pipeline/wedge.js', () => ({
@@ -70,7 +48,6 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// cm:why kill-gate primitives are unit-tested on their own (kill-gate.test.ts) — mocked here so loop-monitor tests stay focused on hop wiring without pulling in the real ws/server graph (env validation)
 const requestJobKillMock = vi.fn(async (..._args: unknown[]) => 'requested' as const);
 let resolveKillConfirmationResult: { confirmed: boolean; outcome: string | null } = {
   confirmed: false,

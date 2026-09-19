@@ -1,15 +1,3 @@
-/**
- * ISS-943 — the ordinary code paths that write a kernel status record NOTHING.
- *
- * ISS-943 corrected two of ISS-884's assertions here, and the correction is the
- * point rather than a detail. They proved `queued`→`dispatched` and
- * `running`→`paused` were uncounted — by performing them as raw SQL. Once the
- * detector counts any status change, raw SQL IS the intervention, so imitating
- * ordinary traffic with it asserted the opposite of what it claimed. Each one
- * now drives the real exported function.
- *
- * Positive twin: `unaudited-transition-detector.test.ts`.
- */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -47,7 +35,6 @@ describe('unaudited transitions: ordinary code paths (ISS-943)', () => {
     expect(Number((audit as unknown as Array<{ n: number }>)[0]?.n)).toBe(1);
   });
 
-  // cm:guard drive the real `startJobForMaster`, never a raw-SQL imitation of it. This assertion was such an imitation until ISS-943, and once the detector counts any status change a raw-SQL imitation of ordinary traffic IS the intervention — so the imitation asserted the opposite of what it claimed.
   it('records nothing for the ordinary queued to dispatched stamp', async () => {
     const device = await createTestDevice(fx.harness.db, fx.ids.ownerId);
     const runnerId = randomUUID();
@@ -96,20 +83,6 @@ describe('unaudited transitions: ordinary code paths (ISS-943)', () => {
     expect(await fx.detected()).toHaveLength(0);
   });
 
-  /**
-   * The overcount ISS-884 shipped, asserted as a regression.
-   *
-   * `trg_jobs_unaudited_transition` is `AFTER UPDATE OF status`; the I1
-   * backstop is a `BEFORE` trigger that rewrites `NEW.status` to `cancelled`
-   * when an active child is written under a terminal run. So an ordinary
-   * resume of a held job whose run has closed used to be charged to
-   * `direct_sql`: the requeue wrote `queued`, which stamped no marker because
-   * only terminal writers stamped one, and I1 turned it terminal.
-   *
-   * On `origin/main` @ 2a4e95ac this fixture records one row. It must record
-   * none, and the I1 audit row must still be there — the backstop is not being
-   * disabled, only distinguished from a hand.
-   */
   it('records nothing when the I1 backstop rewrites an ordinary requeue terminal', async () => {
     const jobId = await fx.insertJob('held');
     await fx.harness.db.execute(

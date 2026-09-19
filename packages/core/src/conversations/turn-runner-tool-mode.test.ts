@@ -163,7 +163,6 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     expect(offered).toEqual([]);
   });
 
-  // cm:guard the retry is judged by what it CAPTURED and never by what it wrote: the first capture is spent, so a retry that answers with prose alone hands the screen nothing, and the turn ends in a named silence instead of the prose (criterion 20; whole-set review F1).
   it('never delivers a corrective retry’s prose when it did not call room_send (criterion 20)', async () => {
     screenReplyAtDoor.mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] });
     let attempt = 0;
@@ -213,7 +212,6 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     );
   });
 
-  // cm:guard the watcher hook is withheld in tool mode because the events carry the model's prose, which that mode never posts (criterion 20; whole-set review F3).
   it('streams none of the model’s prose to a watcher in tool mode', async () => {
     const onTurnEvent = vi.fn();
     modelTurn(send('posted by the tool'));
@@ -248,7 +246,6 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     expect(out).toEqual({ kind: 'declined', reason: 'tool-not-called' });
   });
 
-  // cm:guard the model turn persists nothing in tool mode and the runner files the one row: without it every turn that answered through room_send would also carry an `empty-reply` silence row (criterion 19; whole-set review, round 4 F1).
   it('persists nothing from the model turn in tool mode, and files a failed turn once', async () => {
     modelTurn(send('posted by the tool'));
     await runConversationTurn(

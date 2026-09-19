@@ -1,13 +1,5 @@
 'use client';
 
-// Generic localStorage-backed state for web-v2 shell preferences.
-//
-// SSR-safe: returns `initial` on the server and the first client render, then
-// hydrates from localStorage in an effect after mount (mirrors the original
-// `features/projects/pins.ts` pattern). Cross-tab sync via the `storage` event.
-//
-// All keys are namespaced `web-v2:<feature>` so a future per-user server sync
-// can POST one flat map per feature without colliding with other apps' keys.
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const WEB_V2_NS = 'web-v2:';
@@ -23,17 +15,6 @@ function read<T>(key: string, initial: T): T {
   }
 }
 
-/**
- * `usePersistedState('web-v2:density', 'comfortable')` → `[value, setValue]`.
- * `setValue` accepts a value or an updater, like `useState`. Writes are
- * best-effort (quota / disabled storage is swallowed). Other tabs stay in sync.
- *
- * `opts.syncTabs` (default `true`) controls whether writes made in OTHER tabs
- * are adopted into this tab via the `storage` event. Set it `false` for
- * per-tab UI state that should survive a reload of *this* tab but NOT follow
- * other open tabs — e.g. an on-demand drawer/dock open flag, where adopting a
- * sibling tab's "open" would pop the panel up in every tab at once.
- */
 export function usePersistedState<T>(
   key: string,
   initial: T,
@@ -111,18 +92,6 @@ function readPerTab<T>(key: string, initial: T): T {
   return seeded;
 }
 
-/**
- * `usePerTabState('web-v2:last-project', null)` → `[value, setValue]`.
- *
- * Like `usePersistedState`, but the per-tab `sessionStorage` is this tab's
- * source of truth — writes made in OTHER tabs are never adopted, live or on
- * reload. A brand-new tab (no session value yet) seeds once from the shared
- * `localStorage` value so it starts on the most-recently-used selection, and
- * every `set` mirrors into `localStorage` so that seed stays current for
- * future new tabs. Use this instead of `usePersistedState` for state that
- * must stay independent per tab — e.g. the last-visited project — where
- * cross-tab sync would leak one tab's navigation into another's.
- */
 export function usePerTabState<T>(
   key: string,
   initial: T,

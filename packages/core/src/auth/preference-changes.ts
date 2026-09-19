@@ -38,7 +38,6 @@ export interface AssistantPreferencePatch {
  * The one form `assistantInstructions` is compared and stored in: outer
  * whitespace trimmed, blank text null, internal whitespace kept.
  */
-// cm:guard ONE canonical form on both sides of the comparison and in what is stored: the HTTP schema trims, the reader treats blank as absent, and a trail that compared raw text would record "" against null as a change that changed nothing (ISS-1041 criteria 16-22, codex F4).
 export function canonicalInstructions(v: string | null): string | null {
   const t = v?.trim() ?? '';
   return t.length ? t : null;
@@ -64,7 +63,6 @@ export interface PreferenceChange {
 
 type Tx = Pick<typeof defaultDb, 'select' | 'insert' | 'update'>;
 
-// cm:guard every writer takes THIS lock before it reads the current value, and the restore takes it before its "still holds" check: two writes that both read the old value would each record it as their predecessor, and a restore racing a newer edit would pass its check and then erase that edit — the exact overwrite the trail exists to make visible. A transaction-scoped advisory lock keyed on the user works before a `user_preferences` row exists and is re-entrant for the restore's nested write (codex F2).
 async function lockPreferences(
   tx: Pick<typeof defaultDb, 'execute'>,
   userId: string,
@@ -100,7 +98,6 @@ export async function readAssistantPreferences(
  * Write the fields the patch carries, and one `preference_changes` row per
  * field carried — a write is a write, whether or not the value moved.
  */
-// cm:guard one row per field IN THE PATCH, not per field whose value changed: the trail answers "who last set this and to what" and a write that re-asserted the same value is still that actor's act; filtering it out would make an admin's confirmation of a setting invisible next to the assistant's earlier change (ISS-1034 criterion 58).
 export async function writeAssistantPreferences(args: {
   userId: string;
   patch: AssistantPreferencePatch;
@@ -112,14 +109,12 @@ export async function writeAssistantPreferences(args: {
   return dbi.transaction(async (tx) => {
     await lockPreferences(tx as unknown as typeof defaultDb, args.userId);
     const before = await readAssistantPreferences(args.userId, tx as unknown as Tx);
-    // cm:guard the trail records CHANGES, not writes: a field is kept only where its canonical value differs from the stored row, so a value the assistant re-sends unchanged beside the one it means to set leaves no row whose previous equals its new (ISS-1041 criteria 17-22).
     const patch: AssistantPreferencePatch = {
       ...(args.patch.answerStyle !== undefined ? { answerStyle: args.patch.answerStyle } : {}),
       ...(args.patch.assistantInstructions !== undefined
         ? { assistantInstructions: canonicalInstructions(args.patch.assistantInstructions) }
         : {}),
     };
-    // cm:why the STORED side is canonicalised too: a row an older writer left holding "" or padded text must read equal to its canonical form, or the first canonical write after this lands is a row that changed nothing (codex F1).
     const stored: Record<keyof AssistantPreferencePatch, string | null> = {
       answerStyle: before.answerStyle,
       assistantInstructions: canonicalInstructions(before.assistantInstructions),
@@ -149,7 +144,6 @@ export async function writeAssistantPreferences(args: {
       });
     if (!row) throw new Error('user_preferences: upsert returned no row');
 
-    // cm:guard the row is stamped at the INSERT with `clock_timestamp()`, never with the transaction's `now()`: the lock above serialises writers that already opened their transactions, and `now()` is transaction start, so two racing writes would commit in one order and read back in the other — a trail whose `previousValue` chain and whose order disagree, and a restore that misses the later change it must name (ISS-1034 criteria 58, 61). What this does NOT buy is a total order: a same-microsecond tie or a clock stepped backwards can still misorder the list and misname the later change — and nothing more, because what refuses a restore is the field's CURRENT value below, never this stamp; a durable sequence under the lock is the fix if that cosmetic hole is ever seen.
     await tx.insert(preferenceChanges).values(
       fields.map((k) => ({
         userId: args.userId,
@@ -197,7 +191,6 @@ export class PreferenceRestoreConflict extends Error {
  * still holds what that change set. `null` when the change is not this
  * person's.
  */
-// cm:guard the "still holds" check is the whole of what makes a restore safe: a person undoing the assistant's change from this morning must not silently erase the edit they made themselves at noon. The refusal names the later change so the person can restore THAT one instead (ISS-1034 criterion 61).
 export async function restorePreferenceChange(args: {
   userId: string;
   changeId: string;
@@ -219,7 +212,6 @@ export async function restorePreferenceChange(args: {
 
     const current = await readAssistantPreferences(args.userId, t);
     const key = change.field === 'answer_style' ? 'answerStyle' : 'assistantInstructions';
-    // cm:why the "still holds" check reads instructions through the canonical form on BOTH sides: a change an older writer recorded as "" and a row now holding null are the same value, and refusing that restore would block a valid undo chain (codex F1 of the merged-head read).
     const same =
       key === 'assistantInstructions'
         ? canonicalInstructions(current[key]) === canonicalInstructions(change.newValue)

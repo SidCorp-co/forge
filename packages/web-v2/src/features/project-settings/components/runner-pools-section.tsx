@@ -16,7 +16,14 @@
 // through untouched.
 
 import { useEffect, useMemo, useState } from "react";
-import { Banner, Button, HealthDot, Icon, Skeleton } from "@/design";
+import {
+  Banner,
+  Button,
+  CardTitle,
+  HealthDot,
+  Icon,
+  Skeleton,
+} from "@/design";
 import { formatPipelineConfigError } from "@/lib/api/error";
 import { useProjectRunners } from "@/features/runners/hooks";
 import type { ProjectRunner } from "@/features/runners/types";
@@ -85,7 +92,6 @@ export function RunnerPoolsSection({
 
   const dirty = snapshot(pools) !== snapshot(seeded);
 
-  // cm:why the server rejects a pool naming a device with no runner on this project (STAGE_POOL_UNKNOWN_RUNNER), so a retired box turns every later save into a 400 — name the stale ids instead of letting the operator guess which chip is poison
   const known = useMemo(() => new Set(runners.map((r) => r.deviceId)), [runners]);
   const staleIds = useMemo(() => {
     const out = new Set<string>();
@@ -126,7 +132,7 @@ export function RunnerPoolsSection({
 
   return (
     <div className="mt-6 border-t border-line pt-5">
-      <h3 className="fg-label text-fg">Runner pools</h3>
+      <CardTitle className="fg-label text-fg">Runner pools</CardTitle>
       <p className="fg-body-sm mb-3 text-muted">
         Pin a stage to specific machines — to compare models side by side, or to keep one box for one
         kind of work. A stage with nothing ticked runs on <strong>any runner</strong>. Inside a pool

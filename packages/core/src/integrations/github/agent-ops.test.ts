@@ -96,7 +96,6 @@ describe('the Actions job a check run names', () => {
     expect(actionsJobId(ACTIONS_URL)).toBe(12345);
   });
 
-  // cm:guard null is the answer for anything else, and a fallback to the check-run id would fetch some other job's log — the silent substitution ISS-1074 criterion 8 exists to refuse.
   it('answers null for a URL that names no job, rather than guessing one', () => {
     expect(actionsJobId('https://circleci.example/build/77')).toBeNull();
     expect(actionsJobId('https://github.com/o/r/actions/runs/900')).toBeNull();
@@ -299,10 +298,6 @@ describe('nothing on this face merges', () => {
 
   it('says where the merge lives rather than that the verb is unknown, quoting the name given', () => {
     const said = kernelVerbRefusal('merge');
-    // cm:guard the sentence names the verb that EXISTS rather than the issue that was going to
-    // build it. Until ISS-1073 landed it said "is ISS-1073's", which pointed a caller at a tracker
-    // row; now there is a served verb to point at, and a refusal that cites an issue key instead of
-    // the thing a caller can call is a refusal that stops being true the day the work lands.
     expect(said).toContain('pull_request.merge');
     expect(said).not.toContain('ISS-1073');
     expect(said).toContain('DISPATCH face');

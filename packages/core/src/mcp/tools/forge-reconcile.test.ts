@@ -70,7 +70,6 @@ describe('forge_reconcile · acknowledge (ISS-810)', () => {
     expect(acknowledgeReconcileRun).not.toHaveBeenCalled();
   });
 
-  // cm:guard this is the IDOR case — runId is caller-supplied, so a run belonging to another project must NOT be mutated even when the caller is an admin of the project they named
   it('refuses a run that belongs to a different project', async () => {
     getReconcileRun.mockResolvedValueOnce({ id: RUN_ID, projectId: OTHER_PROJECT_ID });
     await expect(ack()).rejects.toThrow(/NOT_FOUND/);

@@ -36,16 +36,7 @@ const MAX_BATCH = 100;
 
 const eventInputSchema = z
   .object({
-    // cm:guard `seq` comes from the WRITER and the server never assigns one. The
-    // runner's `transport/events.rs` re-sends an identical batch on every 5xx and
-    // every transport error with nothing on the request to tell a retry from a
-    // fresh post, so a batch that committed and lost its response is posted
-    // again. A server-assigned `seq` would store every line of it a second time;
-    // with the identity here it is a no-op against the unique index.
     seq: z.number().int().min(1),
-    // cm:guard the device may write `stdout` and nothing else. `seed` rows are
-    // core's own — `chat-turn.ts` writes the user turn the wire cannot carry —
-    // and a device that could write one could put words in the person's mouth.
     kind: z.literal('stdout'),
     data: z.record(z.string(), z.unknown()),
     ts: z.iso.datetime().optional(),
@@ -120,10 +111,6 @@ agentSessionEventsRoutes.post(
     const { id: sessionId } = c.req.valid('param');
     const { events } = c.req.valid('json');
 
-    // cm:guard the device principal is required HERE rather than left to the
-    // router's dual-auth wildcard: a user JWT reaching this route would let a
-    // browser write a session's raw transcript, which is the one thing the whole
-    // derive exists to make underivable by hand.
     if (!c.get('deviceId'))
       throw forbidden('only the device running this session may post its lines');
 
@@ -133,11 +120,6 @@ agentSessionEventsRoutes.post(
       throw conflict('agent session is in a terminal state', 'SESSION_TERMINATED');
     }
 
-    // cm:guard the WHOLE batch is refused and NOTHING is stored, which is what
-    // makes a truncated transcript say it is truncated. Storing the good lines
-    // and dropping the bad one would leave a hole in the seq run, and the fold
-    // holds at a hole for ever — so the transcript would stop at that line
-    // looking exactly like a turn that stopped talking.
     const refusal = refusalFor(events);
     if (refusal) {
       throw new HTTPException(400, {
@@ -146,18 +128,6 @@ agentSessionEventsRoutes.post(
       });
     }
 
-    // cm:guard the claim check and the insert are ONE transaction under the same
-    // advisory lock `session-events.ts:nextSeq` takes, and nothing less closes
-    // this. A `seq` this batch claims may already be held by a row core wrote —
-    // a `seed` or a `snapshot` — and `ON CONFLICT DO NOTHING` cannot tell that
-    // apart from the retry it exists for, so the line would be swallowed as a
-    // duplicate and answered 200 with a part of the person's conversation gone.
-    // Checking outside the transaction only narrows the window: core takes the
-    // next free `seq` whenever it records a wholesale write (an edit, a
-    // regeneration, an old daemon's array), and one committing between the check
-    // and the insert lands in exactly the same silence. Holding the lock makes
-    // the two writers take their turns.
-    // cm:edge lockstep -> packages/core/src/agent-sessions/session-events.ts — the other holder of this lock
     const inserted = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`);
       const claimed = await tx
@@ -179,9 +149,6 @@ agentSessionEventsRoutes.post(
           'SEQ_TAKEN_BY_CORE',
         );
       }
-      // cm:guard `ON CONFLICT DO NOTHING` on `(agent_session_id, seq)` remains the
-      // delivery contract for the runner's OWN retries: every line of a batch is
-      // stored or none is, and a batch posted twice stores each line once.
       return tx
         .insert(agentSessionEvents)
         .values(
@@ -199,9 +166,6 @@ agentSessionEventsRoutes.post(
         .returning({ seq: agentSessionEvents.seq });
     });
 
-    // cm:why voided exactly as the jobs route voids its own: the derive is
-    // throttled and best-effort, and a throw here would fail line INGEST to
-    // protect a transcript the next batch would rebuild anyway.
     void maybeDeriveIncrementalFor({ kind: 'chat' }, sessionId, events.length);
 
     return c.json(

@@ -49,7 +49,6 @@ export interface ReleaseRoster {
  * The soonest enabled `release_batch` schedule for this project. Null means
  * nobody scheduled a cut, which the UI must say in those words.
  */
-// cm:guard NEVER fall back to "some default cadence" here. A countdown to a cut nothing will perform is worse than no countdown: it tells a person their issue ships tonight, and it does not.
 async function nextScheduledCutAt(projectId: string): Promise<string | null> {
   const rows = await db
     .select({ cron: schedules.cron })
@@ -99,7 +98,6 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), eq(issues.status, gateStatus)))
-    // cm:guard NULLS LAST, not NULLS FIRST: a row with no merge stamp predates the gate, and floating it to the top would present the least-known issue as the most overdue
     .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`);
 
   const now = Date.now();
@@ -230,7 +228,6 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
   if (meta.source !== 'release-batch') return null;
 
-  // cm:guard the fallback is the CURRENT gate status. It read `'tested'` until ISS-897 — a rung of the deleted staged ladder that no issue is at any more and no project declares — so a run whose metadata predates `gateStatus` would have been reconstructed against a status the batch could never match.
   const gateStatus = (meta.gateStatus as IssueStatus | undefined) ?? RELEASE_GATE_STATUS;
   const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
   const promotePlanned = (meta.promotePlanned as boolean | undefined) ?? false;

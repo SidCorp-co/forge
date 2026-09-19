@@ -217,7 +217,6 @@ describe('a body claiming its own parts in prose', () => {
     expect(gaps[0]?.clear).toContain('relate ISS-1, ISS-2');
   });
 
-  // cm:guard the default is asserted BY VALUE and not just as "some text": a door that supplies nothing must read bit-identically to every call made before ISS-1006, and an assertion that only checks the sentence is non-empty would pass on any replacement
   it("clears through the CLI door's own way out when no door names one", () => {
     const gaps = gapsFor(`${whole('feature')}\nIts parts are ISS-1 and ISS-2.\n`, 'feature');
     expect(gaps[0]?.clear).toBe(CLI_PARTS_CLEAR(['ISS-1', 'ISS-2']));
@@ -235,7 +234,6 @@ describe('a body claiming its own parts in prose', () => {
     expect(read.gaps[0]?.clear).toBe('ask a human for ISS-1 and ISS-2');
   });
 
-  // cm:guard a door supplies a WAY OUT and never a rule — the gap it is attached to, and every other gap the body earns, are the reader's and do not move with it
   it('moves the way out and no rule with it', () => {
     const body = `${whole('feature')}\nIts parts are ISS-1 and ISS-2.\n`;
     const mine = readFiling(

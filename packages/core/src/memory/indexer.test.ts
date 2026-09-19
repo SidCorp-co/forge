@@ -26,7 +26,6 @@ vi.mock('./search.js', () => ({
   searchMemories: (input: unknown) => searchMemoriesMock(input),
 }));
 
-// cm:why the memory model is STATED rather than read: without this stub the flag read shares the `select` chain with the skip's row pre-read and the near-duplicate probe's exact-key read, so a case would be answering about whichever of the three consumed the queue first.
 const flagsMock = vi.fn();
 vi.mock('./retrieval-flags.js', () => ({
   loadRetrievalFlags: (projectId: string) => flagsMock(projectId),
@@ -67,7 +66,6 @@ vi.mock('../db/client.js', () => ({
         where: () => ({ limit: () => selectLimitMock() }),
       }),
     }),
-    // cm:guard ISS-876: the indexer must never UPDATE a row other than the one its natural key upserts — this stub exists purely so a reintroduced absorb is caught by `expect(updateSetMock).not.toHaveBeenCalled()` instead of passing silently
     update: () => ({
       set: (s: unknown) => {
         updateSetMock(s);
@@ -183,8 +181,6 @@ describe('indexMemory', () => {
     expect(result.degraded).toBe(true);
     const stored = valuesMock.mock.calls[0]?.[0] as { embedding: number[] | null };
     expect(stored.embedding).toBeNull();
-    // cm:why embeddedAt must NOT advance on the conflict path for a degraded write: no vector was
-    // written, so a fresh stamp would date a row the backfill has yet to embed.
     expect('embeddedAt' in conflictSet(0)).toBe(false);
   });
 
@@ -209,7 +205,6 @@ describe('indexMemory near-duplicate probe', () => {
     expect(searchMemoriesMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard ISS-876: the probe may only REPORT — the write must land on the ref the caller named and no other row may be touched; the absorb this replaced overwrote 4 of 6 dated summary rows on forge-dev and returned an archived snapshot ref that forge_memory.get could not read
   it('writes the ref the caller named and leaves the near-identical row untouched', async () => {
     searchMemoriesMock.mockResolvedValueOnce([
       { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
@@ -236,7 +231,6 @@ describe('indexMemory near-duplicate probe', () => {
   });
 
   it('skips the probe when the exact natural key already exists (that write refines its own row)', async () => {
-    // cm:why two queued answers, in order: the skip's pre-read (different text, so the embed still happens), then the probe's own exact-key read.
     selectLimitMock
       .mockResolvedValueOnce(stored('something else'))
       .mockResolvedValueOnce([{ id: 'm-1' }]);
@@ -278,7 +272,6 @@ describe('indexMemoryBestEffort', () => {
   });
 });
 
-// cm:guard each case here names what the vector is DERIVED from, never the field that happens to be handy: a skip that is wrong about that leaves a stale vector and nothing anywhere goes red about it (ISS-1024).
 describe('indexMemory does not re-embed text that did not change', () => {
   const input = {
     projectId: PROJECT_ID,
@@ -319,8 +312,6 @@ describe('indexMemory does not re-embed text that did not change', () => {
     expect('embeddedAt' in conflictSet(0)).toBe(false);
   });
 
-  // cm:guard the swap, not the skip, is what keeps a lost race from lying: the upsert answers
-  // `hasEmbedding: false` because its CASE refused to carry a vector for text that had moved.
   it('re-embeds the text that landed when the swap refuses the skip', async () => {
     selectLimitMock
       .mockResolvedValueOnce(stored(input.text))
@@ -374,7 +365,6 @@ describe('indexMemory leaves a chunk set alone only where it is the set this wri
     expect(chunkAndPublishMock).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard the comparison is made against the row the upsert RETURNED, never the caller's input or the pre-read: the upsert holds the parent's lock, so a set another writer replaced under this one is seen replaced here and nowhere else.
   it('compares against the text and metadata the upsert returned', async () => {
     returningMock.mockResolvedValueOnce([
       landed({ textContent: 'what actually landed', metadata: { priority: 'high' } }),
@@ -394,7 +384,6 @@ describe('indexMemory leaves a chunk set alone only where it is the set this wri
     expect(chunkAndPublishMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard a write whose whole-document embed was SKIPPED meets no outage of its own, so a chunk publish that met one has to be carried out to the caller or the answer says the write landed normally while the row sits invalidated to flat-only retrieval
   it('reports degraded when the chunk publish alone met an outage, the flat embed having been skipped', async () => {
     selectLimitMock.mockResolvedValueOnce(stored(input.text));
     chunkSetMatchesMock.mockResolvedValueOnce(false);
@@ -418,7 +407,6 @@ describe('indexMemory leaves a chunk set alone only where it is the set this wri
   });
 });
 
-// cm:guard the skip's swap and the outage's preserve are ONE clause, and this is what says so: the integration suite proves that clause's two branches against real Postgres through the outage path, and this equality is what carries the proof across to the skip. Emit a different clause for the skip and that proof silently stops covering it.
 describe('the skip sends the same preserve clause the outage path does', () => {
   const dialect = new PgDialect();
   const clauseOf = (n: number) => dialect.sqlToQuery(conflictSet(n).embedding as SQL).sql;

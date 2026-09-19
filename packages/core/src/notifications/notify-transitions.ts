@@ -12,20 +12,6 @@ import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stran
 import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
 
-/**
- * The curated set of `to`-statuses that surface an in-app notification for the
- * issue's assignee/owner. These are the moments a human cares about:
- * - `tested`  — parked at the manual release gate, needs a human to advance.
- * - `reopen`  — a regression / failed pipeline/deploy landed the issue back.
- * - `waiting` — parked for a human (a decision, a resource only a person has).
- * - `needs_info` — the autonomous driver asked a question only a human can answer.
- * - `closed`  — the work shipped.
- *
- * `tested`/`reopen` also cover "pipeline failed" and "deploy result": those
- * outcomes manifest as one of these issue transitions, so the single
- * `transition` hook is the canonical surface (no Coolify-specific signal, no
- * `runId` — the schema's entityRef is `issueId`).
- */
 const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   'tested',
   'reopen',
@@ -33,24 +19,6 @@ const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   'needs_info',
   'closed',
 ]);
-
-/*
- * ISS-1063 — `PROBLEM_STATUSES`, `HEALTHY_STATUSES`, `statusResolutionKey`,
- * `questionResolutionKey` and `resolutionKeyForStatus` were DELETED here, not disabled.
- *
- * `issue_status_changed` is a `signal`: an issue moved, and an event cannot stop having
- * happened. It carried a condition's dedup key and a pair of clearers anyway, which is why
- * 1771 of its 5444 rows on the replica wore one and 3333 of the owner's 5663 open rows were
- * this type — a "condition" whose nature is never to resolve. The record layer now forbids
- * it structurally (a CHECK constraint refuses `resolution_key` on a signal row), so keeping
- * these helpers would mean computing a key the writer must then drop, which is the silent
- * substitution this issue is about.
- *
- * What replaced the behaviour they bought: the `needs_info` park reaches a human through
- * `GET /me/attention`'s `awaitingInput` bucket, which derives from LIVE issue state and so
- * self-clears when the question is answered. That bucket, not a read flag on a row, is the
- * durable surface — and it was already the one the product pointed people at.
- */
 
 /** Per-`to`-status severity for the `issue_status_changed` notification. */
 function severityForStatus(to: IssueStatus): NotificationSeverity {
@@ -77,13 +45,6 @@ function transitionDedupeKey(outboxId: string): string {
   return `transition:${outboxId}`;
 }
 
-/**
- * True when an `issue_status_changed` notification already carries this
- * dedupe key, i.e. this delivery is a redelivery already recorded.
- * Best-effort, matching `subscribers.ts`'s `alreadyRecordedTransition`: a
- * lookup failure is logged and treated as "not a duplicate" so a transient
- * DB hiccup never suppresses the notification this subscriber exists to send.
- */
 async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
   try {
     const [existing] = await db
@@ -132,19 +93,16 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
  */
 export function registerTransitionNotifications(bus: HooksBus): void {
   bus.on('transition', async (p) => {
-    // cm:why ISS-762 — the stranded alarm asks a human to unpark; ANY move off `waiting` is that human answering, including a move to another unhealthy status. Gating this on HEALTHY_STATUSES would leave the alarm lit after the decision was made.
     if (p.to !== 'waiting') {
       await resolveNotifications(strandedResolutionKey(p.issueId));
     }
 
-    // cm:why ISS-940 — the owed-close alarm asks for a terminal placement and nothing else clears it; `unmark` clears the mark instead and leaves the alarm lit until the next sweep re-reads the predicate and auto-resolve is not the path for that
     if (isTerminalPlacement(p.to)) {
       await resolveNotifications(owedCloseResolutionKey(p.issueId));
     }
 
     if (!NOTIFY_ON_STATUS.has(p.to)) return;
 
-    // cm:why ISS-849 — a redelivery of the same outbox row must not write a second notification; outboxId absent (any non-outbox emitter) skips this guard and leaves behavior unchanged
     const dedupeKey = p.outboxId ? transitionDedupeKey(p.outboxId) : null;
     if (dedupeKey && (await alreadyNotifiedTransition(dedupeKey))) return;
 
@@ -177,7 +135,6 @@ export function registerTransitionNotifications(bus: HooksBus): void {
         body: bodyForStatus(p.to, p.reason),
         issueId: p.issueId,
         severity: severityForStatus(p.to),
-        // cm:guard a signal carries NO resolution key, and `deliver.ts` refuses one by name rather than dropping it. Do not reintroduce a key here to make some reader clear a status ping: a status ping is not a condition, and the thing that clears is the issue's own state.
         resolutionKey: null,
         dedupeKey,
       });

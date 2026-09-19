@@ -44,7 +44,6 @@ const inputSchema = z
     runId: z.string().uuid().optional(),
     /** Required for action=record_verdict. */
     verdict: z.enum(['no-op', 'apply', 'apply-with-adaptation', 'escalate']).optional(),
-    /** Required for action=record_verdict when verdict=apply/apply-with-adaptation. */
     candidateBody: z.string().optional(),
     /** Required for action=record_verdict: explicit rationale (story→how; charter→how; invariants→still satisfied). */
     rationale: z.string().max(5000).optional(),
@@ -129,7 +128,6 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
         );
       }
 
-      // cm:guard re-read the run and re-check run.projectId === projectId before mutating — runId alone is caller-supplied, so skipping this is an IDOR
       const verdictRun = await getReconcileRun(input.runId);
       if (!verdictRun || verdictRun.projectId !== projectId)
         throw new Error('NOT_FOUND: reconcile run not found');
@@ -146,14 +144,12 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'record_vote') {
-      // cm:why verifier agents are ordinary project members, so this path asserts membership rather than admin
       await assertPrincipalIsMember(ctx.principal, projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=record_vote');
       if (!input.jobId) throw new Error('BAD_REQUEST: jobId is required for action=record_vote');
       if (!input.vote) throw new Error('BAD_REQUEST: vote is required for action=record_vote');
       if (!input.reason) throw new Error('BAD_REQUEST: reason is required for action=record_vote');
 
-      // cm:guard re-read the run and re-check run.projectId === projectId before mutating — runId alone is caller-supplied, so skipping this is an IDOR
       const voteRun = await getReconcileRun(input.runId);
       if (!voteRun || voteRun.projectId !== projectId)
         throw new Error('NOT_FOUND: reconcile run not found');
@@ -171,7 +167,6 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
       await assertPrincipalIsAdmin(ctx.principal, projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=apply');
 
-      // cm:guard re-read the run and re-check run.projectId === projectId before mutating — runId alone is caller-supplied, so skipping this is an IDOR
       const applyRun = await getReconcileRun(input.runId);
       if (!applyRun || applyRun.projectId !== projectId)
         throw new Error('NOT_FOUND: reconcile run not found');
@@ -192,7 +187,6 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.rejectReason)
         throw new Error('BAD_REQUEST: rejectReason is required for action=reject');
 
-      // cm:guard re-read the run and re-check run.projectId === projectId before mutating — runId alone is caller-supplied, so skipping this is an IDOR
       const rejectRun = await getReconcileRun(input.runId);
       if (!rejectRun || rejectRun.projectId !== projectId)
         throw new Error('NOT_FOUND: reconcile run not found');
@@ -211,7 +205,6 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
       await assertPrincipalIsAdmin(ctx.principal, projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=acknowledge');
 
-      // cm:guard re-read the run and re-check run.projectId === projectId before mutating — runId alone is caller-supplied, so skipping this is an IDOR
       const ackRun = await getReconcileRun(input.runId);
       if (!ackRun || ackRun.projectId !== projectId)
         throw new Error('NOT_FOUND: reconcile run not found');

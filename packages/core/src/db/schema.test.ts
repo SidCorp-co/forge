@@ -175,7 +175,6 @@ describe('db/schema — devices', () => {
     expect(fk.onDelete).toBe('restrict');
   });
 
-  // cm:guard the inverse of what stood here until ISS-932: `devices` must carry NO credential column. It is a registry of boxes now, and a box authenticates with a `personal_access_tokens` row pointing back at it, so a `token_hash`/`token_prefix` reappearing here is a second credential species and the `device.ownerId` fiction with it.
   it('holds no credential columns — a box authenticates with a PAT, not a device secret', () => {
     const names = Object.values(devices).map((c) => (c as { name?: string }).name);
     expect(names).not.toContain('token_hash');
@@ -221,7 +220,6 @@ describe('db/schema — pairing_codes', () => {
 
 describe('db/schema — jobs', () => {
   it('exports the status, type, and model tier enum values', () => {
-    // cm:guard `held` sits between `running` and the terminal three ON PURPOSE (RFC 0002) — every predicate that splits this enum reads it positionally in review, so a `held` appended after `cancelled` would look terminal to the next reader even though nothing in code treats order as semantic
     expect(jobStatuses).toEqual([
       'queued',
       'dispatched',
@@ -431,7 +429,6 @@ describe('db/schema — comments', () => {
     );
     expect(byCol.get('issue_id')?.onDelete).toBe('cascade');
     expect(byCol.get('author_id')?.onDelete).toBe('restrict');
-    // cm:guard `set null` and never `restrict`: this column is the marker for who was at the keyboard, so a device deleted out from under an old comment must de-mark it rather than refuse the delete and hold the registry row hostage (ISS-519).
     expect(byCol.get('author_device_id')?.onDelete).toBe('set null');
     expect(byCol.get('parent_id')?.onDelete).toBe('cascade');
   });

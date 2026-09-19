@@ -1,13 +1,3 @@
-/**
- * ISS-1063 — closing a `pm_escalation` task when its question is answered.
- *
- * This lives in `notifications/` rather than in `pm/routes.ts` for the reason the whole
- * issue is about: what a notification's state means is this module's to decide, and a
- * second module reaching into the table with its own idea of "handled" is how `read` came
- * to mean four different things. `pm/routes.ts` says the question was answered; this says
- * what that does to the record.
- */
-
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {

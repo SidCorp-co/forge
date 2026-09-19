@@ -94,7 +94,6 @@ describe('a finished job does not hide the issue it ran on (real Postgres)', () 
     return rows.map((r) => r.issueKey ?? '');
   }
 
-  // cm:guard the falsifying case, and the only one that separates "no job row exists" from "no job row is live". Every other test here passes against the unfiltered `NOT EXISTS` too.
   it('offers an issue whose only job was cancelled', async () => {
     const key = await issueWithJob('cancelled');
     expect(await offered()).toEqual([key]);
@@ -115,13 +114,11 @@ describe('a finished job does not hide the issue it ran on (real Postgres)', () 
     expect(await offered()).toEqual([]);
   });
 
-  // cm:guard `held` is NOT terminal — it is the deliberate fourth shape of a job a session still owns (ISS-923), so it must keep withholding the issue even though no job is executing.
   it('withholds an issue whose job is held', async () => {
     await issueWithJob('held', { runStatus: 'running' });
     expect(await offered()).toEqual([]);
   });
 
-  // cm:guard a terminal job under a run that is still open stays withheld by the RUN clause. Relaxing the job clause must not reach past it, or an issue with live work is offered twice.
   it('withholds an issue whose job is done but whose run is still running', async () => {
     await issueWithJob('done', { runStatus: 'running' });
     expect(await offered()).toEqual([]);

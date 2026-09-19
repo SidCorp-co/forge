@@ -3,8 +3,6 @@
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
-// cm:guard the endpoint is NOT a config key here and must not become one — it is platform config read from `EPODSYSTEM_ENDPOINT`, so a field for it would let one project point the integration at another host (ISS-387)
-// cm:guard every field is optional on input BECAUSE the healthcheck fills the store identity (slug, name, theme ids) — requiring any of them would make the operator transcribe what Forge is about to discover, and staging binds the draft theme against prod's main
 export const epodsystemConfigBase = z.object({
   storeSlug: z.string().min(1).max(200).optional(),
   storeName: z.string().min(1).max(200).optional(),

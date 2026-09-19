@@ -160,7 +160,6 @@ describe('text checks', () => {
   });
 
   it('language is a diacritic heuristic: vi needs three marked words, en fails at two', () => {
-    // cm:ignore CM001 — Vietnamese fixtures for the diacritic heuristic under test
     const vi = 'Dự án hiện có 3 issue đang mở.'; // i18n-allow: test fixture
     expect(modesOf({ kind: 'language', diacritics: 'vi' }, facts({ delivered: vi }))).toEqual([]);
     expect(
@@ -184,7 +183,6 @@ describe('text checks', () => {
   });
 
   it('vietnameseWords ignores code spans, URLs and double-quoted spans', () => {
-    // cm:ignore CM001 — Vietnamese fixtures for the diacritic heuristic under test
     expect(vietnameseWords('see `Dự án mở` at https://x/đề "hiện có" plain')).toBe(0); // i18n-allow: test fixture
     expect(vietnameseWords('Dự án hiện có ba')).toBe(4); // i18n-allow: test fixture
   });

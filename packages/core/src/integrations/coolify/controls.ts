@@ -220,7 +220,6 @@ export async function listCoolifyRollbackImages(input: {
  * The issue's business rule, enforced here because Coolify does not enforce it:
  * a rollback target Coolify no longer lists is refused BY NAME.
  */
-// cm:guard an empty `images` refuses too, and refusing it is the point: `rollback_images` catches its own failure and answers `{current:null, images:[]}` with a 200, so "Coolify listed nothing" and "Coolify could not reach the server" are the same bytes. Treating empty as "nothing to check against" would let every rollback through on exactly the reads that prove least.
 export function assertRollbackTagListed(
   images: { tag: string }[],
   commit: string,
@@ -242,7 +241,6 @@ export function assertRollbackTagListed(
  * way a deploy is: an outbound delivery, then a `coolify.confirm` job on the
  * `deployment_uuid` Coolify hands back.
  */
-// cm:edge lockstep -> packages/core/src/integrations/coolify/confirm.ts — the rollback's own build is a deployment like any other, so it is confirmed by THAT poller and by nothing new; a second writer of a deployment's outcome is what `runs-cascade` forbids.
 export async function runCoolifyRollback(input: {
   projectId: string;
   integrationId?: string | undefined;
@@ -274,7 +272,6 @@ export async function runCoolifyRollback(input: {
         commit: input.commit,
       });
       if (!res.deployment_uuid) {
-        // cm:guard a 200 with no `deployment_uuid` is Coolify's `status:'skipped'` branch — the rollback was NOT queued, and reporting the 200 as success is a rollback an operator believes happened.
         throw new Error(
           `coolify rollback: accepted but queued nothing (${res.message ?? 'no message'}) — nothing was rolled back`,
         );

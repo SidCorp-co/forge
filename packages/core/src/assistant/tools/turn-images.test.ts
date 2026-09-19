@@ -66,7 +66,6 @@ describe('a report that landed earns the pictures', () => {
     });
   });
 
-  // cm:guard the fold path is where the neighbour's key comes back in `new`'s stdout — a wrapper that only knew the fresh path would attach nothing on exactly the turn `forge new` chose to fold, which is the turn ISS-1009 is about.
   it('follows a fold onto the neighbour the CLI named', async () => {
     const set = inner(
       cliResult({ exitCode: 0, stdout: 'Folded onto ISS-1446 as a comment; ISS-1446 is filed.' }),

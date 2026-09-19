@@ -30,7 +30,6 @@ export interface ConversationRow {
   /**
    * What this room is talking to, or null while nobody has settled it.
    */
-  // cm:guard null is NOT `assistant` on the row and the two are read apart by `effectiveConversationMode`: null is the one state in which the composer still offers the pick, and an answer computed from it is `assistant` because that is what every room opened before ISS-1039 was. Collapsing them at the column would take the choice away from every room the moment it opened.
   mode: ConversationMode | null;
   title: string | null;
   /** Set = archived: out of the default list, every message still readable by id. */
@@ -56,9 +55,6 @@ export interface ConversationListFilter {
   archived?: boolean;
 }
 
-// cm:guard a room is on exactly ONE side of this and never on both, which is what makes the toggle
-// in the panel a way BACK rather than a second copy: a list that filtered on nothing would put an
-// archived room straight back into the default list, and archiving would mean nothing (ISS-1028).
 const archiveSide = (archived: boolean | undefined) =>
   archived ? isNotNull(conversations.archivedAt) : isNull(conversations.archivedAt);
 
@@ -116,8 +112,6 @@ export async function listConversationsInProject(
   return bounded.limit(opts.limit).offset(opts.offset ?? 0);
 }
 
-// cm:guard the SAME `archiveSide` the list uses, and not a second predicate that says the same
-// thing: a count that disagreed with its list would page a screen past rooms it never showed.
 export async function countConversationsInProject(
   projectId: string,
   opts: ConversationListFilter = {},
@@ -158,17 +152,9 @@ export async function renameConversation(
   return row ?? null;
 }
 
-// cm:guard archiving STAMPS and never deletes, and unarchiving clears the stamp rather than writing
-// a second row: the transcript is what a room is, and a "clean up my list" gesture that destroyed
-// one would be the loss this issue was filed about, under a friendlier verb (ISS-1028).
-// cm:guard `updatedAt` is left ALONE, unlike the rename above: the list is ordered by it, and
-// archiving a room is not something being said in it — bumping it would float a room to the top of
-// the archived list for having been put there, and drop it to the bottom of the live list on the
-// way back.
 /**
  * Set or clear the room's own thresholds; the caller validated the shape.
  */
-// cm:guard the WHOLE value is written and never patched key by key: a room's override is one small object an admin reads back as a unit, and a per-key merge here would leave a key nobody can unset short of sending the others again. Null clears it (ISS-1087 criteria 1, 2).
 export async function setConversationPresence(
   conversationId: string,
   presence: RoomPresence | null,
@@ -209,7 +195,6 @@ export async function deleteConversation(
 /**
  * What this room answers in, for a caller deciding rather than offering.
  */
-// cm:guard a null reads `assistant` and never "unknown": every room opened before ISS-1039 ran its turns in core under the fenced project toolset, so that IS what they are, and a caller made to handle a third value would invent a default of its own somewhere this one cannot see (ISS-1039).
 export function effectiveConversationMode(row: Pick<ConversationRow, 'mode'>): ConversationMode {
   return row.mode ?? 'assistant';
 }
@@ -217,8 +202,6 @@ export function effectiveConversationMode(row: Pick<ConversationRow, 'mode'>): C
 /**
  * Settle a room's mode, once, and say whether this caller is the one who did.
  */
-// cm:guard the `mode IS NULL` fence is the ADMISSION and not a tidy-up: two first sends racing in one empty room both pass the route's "this room is empty" read, and this update is where exactly one of them wins. The loser is told which mode the winner settled and its message is never collected, which is the only arrangement where a client that believes it opened an Agent room and a room that did not cannot both exist (ISS-1039, plan consult F2).
-// cm:guard it takes the caller's executor and no default: its whole value is running inside the transaction that commits the first message and its window, so a settle that lost can abort the collection with it. A version of this with its own connection would commit the mode beside a message that never landed.
 export async function settleConversationMode(
   tx: Executor,
   conversationId: string,

@@ -1,14 +1,3 @@
-/**
- * The shapes a Sentry connection and binding are allowed to hold (ISS-524 / ISS-526, moved here by
- * ISS-1071).
- *
- * Config is the non-secret target set (Sentry host plus a labelled `targets[]` list of org/project
- * bindings); the `sntryu_` auth token is the only secret. `sentryConfigBase` carries NO defaults so
- * `.partial()` is a true partial for PATCH. The host is required on create — it is the MCP server's
- * `SENTRY_HOST`. The legacy top-level slugs stay optional for back-compat reads; new writes use
- * `targets[]`.
- */
-
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 

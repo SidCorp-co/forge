@@ -28,7 +28,6 @@ vi.mock('../../db/client.js', () => ({
 
 const { pmGraphHandler, pmGraphInputSchema } = await import('./forge-pm-graph.js');
 
-// cm:why these cases used to run through the deprecated `forge_pm.<action>` shim factory, which was deleted once nothing named it; the handler and its schema are what `forge_project_pm` actually dispatches into, so the coverage moves down one layer instead of leaving with the shim — for runner_load, dispatch and write_decision this file is still the only place that behaviour is tested
 const forgePmGraphTool = (c: typeof ctx) => ({
   handler: async (args: unknown) => pmGraphHandler(c.principal, pmGraphInputSchema.parse(args)),
 });
@@ -84,7 +83,6 @@ describe('forge_pm.graph', () => {
     expect(result.remainingNodes).toBe(0);
   });
 
-  // cm:guard `truncated` and `remainingNodes` are a CONTRACT, not a hint: the project-wide branch caps at 200 nodes, and a caller that reads a capped graph as complete draws a dependency conclusion from a subset it cannot tell is a subset (ISS-145)
   it('returns truncated:true + remainingNodes when project exceeds the 200-node cap', async () => {
     const tool = forgePmGraphTool(ctx);
     const stubNodes = Array.from({ length: 200 }, (_, i) => ({
@@ -115,7 +113,6 @@ describe('forge_pm.graph', () => {
     const depth1ReverseCycle = [{ from: CHILD_ID, to: ROOT_ID, kind: 'blocks' }];
     const depth2ForwardAlreadySeen = [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }];
     const depth2Reverse: unknown[] = [];
-    // cm:guard the BFS asks forward-then-reverse at EACH depth, and this queue answers in that order — the cycle case only proves dedupe because `depth2ForwardAlreadySeen` repeats an edge the walk has already taken; reorder these and the test still passes while testing nothing
     queue.push(
       memberCheck,
       depth1Forward,
@@ -146,7 +143,6 @@ describe('forge_pm.graph', () => {
     ).rejects.toThrow();
   });
 
-  // cm:guard depth=5 must PARSE — the cap was raised from 4 in ISS-145, and a schema that still rejects 5 fails as a validation error the caller reads as their own mistake
   it('accepts depth=5 at the input boundary', async () => {
     const tool = forgePmGraphTool(ctx);
     queue.push(

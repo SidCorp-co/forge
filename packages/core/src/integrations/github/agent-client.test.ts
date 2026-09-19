@@ -293,7 +293,6 @@ describe('what the request path does with GitHub s answer', () => {
     expect(head.body).not.toContain('FAILED');
   });
 
-  // cm:guard the raw body is NOT what a caller is handed. GitHub's error body is a third party's response and has carried internal hostnames; `message` is the field it documents as the human-readable refusal, and everything else is dropped.
   it('carries GitHub s own message and nothing else off a refusal', async () => {
     globalThis.fetch = vi.fn(
       async () =>

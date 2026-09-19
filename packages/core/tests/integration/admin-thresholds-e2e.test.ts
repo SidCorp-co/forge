@@ -37,7 +37,6 @@ describe('admin thresholds routes (ISS-654)', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    // cm:guard `env.ts` freezes `env` at first import, so ADMIN_EMAILS must be set BEFORE the dynamic import below or requireAdmin sees an empty allow-list and every case 403s
     process.env.ADMIN_EMAILS = ADMIN_EMAIL;
 
     const { adminThresholdRoutes } = await import('../../src/admin/thresholds-routes.js');
@@ -87,7 +86,6 @@ describe('admin thresholds routes (ISS-654)', () => {
     const res = await get(await tokenFor(ADMIN_EMAIL));
 
     expect(res.status).toBe(200);
-    // cm:guard literals, never ADMIN_THRESHOLD_DEFAULTS — an assertion against the implementation's own constant cannot go red on a wrong default
     expect(await res.json()).toEqual({
       stuckJobSeconds: 600,
       runnerStarvedSeconds: 300,
@@ -102,10 +100,6 @@ describe('admin thresholds routes (ISS-654)', () => {
     });
   });
 
-  // cm:guard ISS-1085 slice 3 — this is the ONLY place the two Sentry columns are exercised against
-  // a real Postgres. Every other assertion about them runs at a mocked `db`, so a migration that
-  // never applied, a CHECK with the bounds the wrong way round, or a column drizzle's model
-  // believes in and the table does not, would be invisible everywhere but here.
   it('round-trips the Sentry admission thresholds, and a refused PUT leaves the stored ones alone', async () => {
     const token = await tokenFor(ADMIN_EMAIL);
 
@@ -128,11 +122,6 @@ describe('admin thresholds routes (ISS-654)', () => {
     expect(after.sentryMinEventCount).toBe(25);
   });
 
-  // cm:guard the CHECK constraints themselves, reached BELOW the zod schema. The route cannot send
-  // an out-of-bounds value, so the only way to prove the constraints SHIPPED — rather than being
-  // emitted as `>= $1` with a bind placeholder, which is what a bare `${}` in a drizzle `sql`
-  // template produces — is to read the database's own catalogue. A migration that never applied
-  // and a constraint that applied wrong are invisible to every other assertion in this change.
   it('has the CHECK constraints migration 0268 declared, with literal bounds', async () => {
     const rows = await harness.db.execute<{ conname: string; def: string }>(sql`
       SELECT conname, pg_get_constraintdef(oid) AS def
@@ -164,7 +153,6 @@ describe('admin thresholds routes (ISS-654)', () => {
     expect(body.stuckJobSeconds).toBe(900);
   });
 
-  // cm:guard the second PUT must not reset the first one's keys — merging over the table defaults instead of over the effective row is the bug this catches.
   it('a second partial PUT keeps the keys the first one set', async () => {
     const token = await tokenFor(ADMIN_EMAIL);
 

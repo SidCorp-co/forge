@@ -19,7 +19,6 @@ function num(x: number | string | null | undefined): number {
   return typeof x === 'number' ? x : Number(x ?? 0);
 }
 
-// cm:guard the two statuses that mean the session itself ended badly. `completed` and `completed_via_recovery` are deliberately absent even when they carry a `failure_reason` — a recovered session succeeded, and counting its old reason would report a rescue as a death.
 const FAILED_SESSION_STATUSES: ReadonlySet<string> = new Set(['failed', 'cancelled_stale']);
 
 export interface ResumeContinuityRow {
@@ -47,8 +46,6 @@ export interface SessionFailureRow {
  * ISS-887 — of the attempts that HAD a prior transcript to continue, how many continued it and,
  * for the rest, which of the seven `ResumeDropReason` paths took it away.
  */
-// cm:guard `offered` is the denominator and it is defined by `priorClaudeSessionId IS NOT NULL`, never by counting rows. That predicate is what keeps attempt 1 out: an attempt with no prior session to continue is the normal shape of a first try, and folding those into the denominator would make the rate shrink as the project does MORE fresh work.
-// cm:guard this must NOT inherit the failure histogram's status filter. A resume is dropped on healthy dispatches too — restricting it to `failed`/`cancelled_stale` rows would measure the drop rate of attempts that later died, report it as the drop rate, and leave both numbers wrong.
 export async function loadResumeContinuity(
   projectId: string,
   days: number,

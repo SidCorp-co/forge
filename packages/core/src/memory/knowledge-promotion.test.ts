@@ -1,5 +1,3 @@
-// cm:guard the db stub is ORDER-SENSITIVE: each db.select() consumes the next queued result, and `proposeKnowledgePromotions` now does three in a row — config, project creator, candidates. Adding a query without queueing a row for it steals the next one silently rather than failing where the gap is.
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../logger.js', () => ({
@@ -91,7 +89,6 @@ beforeEach(() => {
 });
 
 describe('promotion defaults', () => {
-  // cm:guard these are the fallbacks a project that sets `enabled` alone inherits, so changing one changes the rate on every opted-in project that never named a number
   it('PROMOTION_RETRIEVAL_MIN is 3', () => {
     expect(PROMOTION_RETRIEVAL_MIN).toBe(3);
   });
@@ -132,7 +129,6 @@ describe('resolveKnowledgePromotion', () => {
     });
   });
 
-  // cm:guard `enabled` is the ONLY truthiness accepted — a string or a 1 from a hand-rolled PATCH must read as off, because the on state costs runner capacity and a typo must never buy it
   it.each([
     ['a string', 'true'],
     ['a number', 1],
@@ -170,7 +166,6 @@ describe('proposeKnowledgePromotions', () => {
     selectResults.push(opts.candidates ?? [CANDIDATE]);
   }
 
-  // cm:guard the candidates are PRIMED here on purpose — a gate test whose query returns nothing passes whether or not the gate exists, which is the vacuous green this pair was written to rule out
   it('proposes nothing when the project never opted in, even with candidates waiting', async () => {
     queuePromotion({ config: null });
 
@@ -191,7 +186,6 @@ describe('proposeKnowledgePromotions', () => {
     expect(stampedJson(0)).toEqual({ promotionProposedAt: expect.any(String) });
   });
 
-  // cm:guard `open` auto-triages into a pipeline run — that is the point (a `draft` had no owner and 63 of 71 were swept unworked), and it is why the opt-in above must hold
   it('files the proposal at open, not draft', async () => {
     queuePromotion({});
 
@@ -271,7 +265,6 @@ describe('proposeKnowledgePromotions', () => {
 
     await proposeKnowledgePromotions(PROJECT_ID);
 
-    // cm:guard no issue row means no stamp — stamping anyway would burn the memory's one proposal on a proposal that never reached anybody
     expect(updateSetMock).not.toHaveBeenCalled();
   });
 
@@ -280,13 +273,11 @@ describe('proposeKnowledgePromotions', () => {
 
     await proposeKnowledgePromotions(PROJECT_ID);
 
-    // cm:guard the only write this may make to the memory store is the idempotency stamp, which is now an UPDATE addressed by the candidate's own id — a write carrying a body or a new slug would mean it minted a curated entry itself, the one thing the proposal step exists not to do
     for (const call of updateSetMock.mock.calls) {
       expect(Object.keys(call[0] as object).sort()).toEqual(['metadata', 'updatedAt']);
     }
   });
 
-  // cm:guard the stamp merges with `||` at write time rather than replaying the object read a moment earlier: replaying it wipes whatever another writer added in between, which is exactly the wholesale-clobber shape. The test reads the SQL's own parameters, so a rewrite back to a read-modify-write fails here rather than in a support ticket six weeks later.
   it('merges the stamp into whatever metadata the row holds, rather than replaying what it read', async () => {
     queuePromotion({});
 

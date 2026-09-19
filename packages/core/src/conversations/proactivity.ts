@@ -1,20 +1,3 @@
-/**
- * Whether an agent should speak into a room nobody summoned it to.
- *
- * Three guards, catching three different things: a room where consecutive
- * windows route to nobody backs off, agent messages bouncing quickly with
- * nothing new in them are cut, and a room no person has spoken in for a day
- * stops being spoken to.
- *
- * Every one of them is DERIVED, at the moment it is asked, from the message log
- * and the window decisions. None of them is stored, and none of them is reset:
- * all three are anchored at the newest message by a person, so "a person spoke,
- * so proactivity resumes" is a consequence of that message existing rather than
- * a write somebody has to remember to make. A stored counter makes it a write
- * that can be missed, and a missed one leaves a room muted with no readable
- * cause (ISS-1004 rule 3).
- */
-
 import { and, eq, inArray } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { users } from '../db/schema.js';
@@ -33,7 +16,6 @@ export const BACKOFF_AFTER = 3;
 /**
  * How close two agent messages have to be for the second to count as a bounce.
  */
-// cm:guard the loop breaker has a TIME horizon and not only an identifier test, because the thing it is about is agents bouncing QUICKLY: an agent answering an hour later with nothing new in it is a slow exchange, and cutting that would make the guard a general ban on agents agreeing with each other (ISS-1004, review F4).
 export const LOOP_BOUNCE_MS = 5 * 60 * 1000;
 
 /** How many identifier-free agent messages in a row are a loop rather than a pause. */
@@ -66,7 +48,6 @@ export interface ProactivityThresholds {
   loopLimit: number;
 }
 
-// cm:guard the defaults ARE the constants above, by reference and not by copy: `presence.test.ts` asserts `PRESENCE_DEFAULTS` equal them so a room with no self decides exactly as before ISS-1034, and a second literal here would be the copy that drifts (ISS-1034 criterion 32).
 export const DEFAULT_THRESHOLDS: ProactivityThresholds = {
   dormantMs: DORMANT_MS,
   backoffAfter: BACKOFF_AFTER,
@@ -77,7 +58,6 @@ export const DEFAULT_THRESHOLDS: ProactivityThresholds = {
 /**
  * Which of the messages in hand were written by an agent.
  */
-// cm:guard agency is read off `users.kind` and NOT off "is this a handle of this room": an agent from ANOTHER project speaking here is exactly the cross-repo exchange the loop breaker must judge, and it holds no handle row in this conversation. An assistant row is this room's own handle and is an agent whatever its author column says.
 async function agentAuthors(
   messages: readonly StoredConversationMessage[],
   tx: Executor,
@@ -99,7 +79,6 @@ function isAgentMessage(m: StoredConversationMessage, agents: ReadonlySet<string
 /**
  * The three guards, asked together.
  */
-// cm:guard every one of them measures from `anchor` — the newest message by somebody who is not an agent — so a person speaking lifts all three at once and writes nothing but their own message. Anchoring them anywhere else is how a room stays muted after the thing that muted it has gone (ISS-1004 rule 3).
 export async function decideProactivity(
   input: ProactivityInput,
   tx: Executor = defaultDb,
@@ -109,7 +88,6 @@ export async function decideProactivity(
   const messages = await readMessages(input.conversationId, GUARD_WINDOW, tx);
   const agents = await agentAuthors(messages, tx);
 
-  // cm:guard a room with NO person message inside the guard window is treated as dormant from its oldest message rather than as fresh: a room whose only speakers are agents for longer than a day is the runaway this guard exists to stop, and reading "no anchor" as "no limit" inverts it.
   const persons = messages.filter((m) => !isAgentMessage(m, agents));
   const anchor = persons[persons.length - 1] ?? null;
   const anchorAt = anchor?.createdAt ?? messages[0]?.createdAt ?? now;
@@ -129,11 +107,6 @@ export async function decideProactivity(
   return backoff(input.conversationId, anchorAt, t, tx);
 }
 
-/**
- * Agent messages bouncing quickly with nothing new in them.
- */
-// cm:guard the run is counted from the NEWEST message backwards and stops at the first person message or the first message that introduced something: a count over the whole history would cut a room that once had a quiet patch, for ever.
-// cm:why the `seen` set is built from the messages BEFORE the run being judged, so a name the run itself keeps repeating is not new the second time it says it.
 function agentLoop(
   messages: readonly StoredConversationMessage[],
   agents: ReadonlySet<string>,
@@ -145,7 +118,6 @@ function agentLoop(
     : [...messages];
   if (after.length < t.loopLimit) return null;
 
-  // cm:guard the classification is CHRONOLOGICAL and each message's identifiers join `seen` as it passes, so only the FIRST mention of a name introduces it: judged backwards against a set frozen before the run, agents repeating `ISS-42` at each other would each be introducing it again and the breaker would never fire, which is the escape hatch the whole guard exists to close (ISS-1004, review pass 1 F5).
   const seen = new Set<string>();
   const carriedNothing: boolean[] = [];
   for (const m of messages) {
@@ -160,7 +132,6 @@ function agentLoop(
     const m = after[i];
     if (!m) break;
     if (!isAgentMessage(m, agents)) break;
-    // cm:guard the gap is between this message and the one AFTER it, and the newest message is compared with NOTHING: measuring the newest against `now` would make a qualifying burst stop being one the moment a restart delayed its window, so the same three messages would be cut or not cut depending on how busy the drain loop was (ISS-1004, review pass 2 F6).
     if (previousAt !== null && previousAt - m.createdAt.getTime() > t.loopBounceMs) break;
     if (!carriedNothing[i]) break;
     previousAt = m.createdAt.getTime();
@@ -179,8 +150,6 @@ function agentLoop(
 /**
  * Consecutive settled windows that found nothing to say.
  */
-// cm:guard read from the WINDOW DECISIONS, which are already written for a person to read, and only those settled since the anchor: a decision taken before the last person spoke is about a room that no longer exists (ISS-1004 rule 3).
-// cm:guard `undetermined` is skipped rather than counted: its outcome is not yet known, and counting it toward a back-off is a caller acting on it as a failure, which rule 4 forbids outright.
 async function backoff(
   conversationId: string,
   since: Date,
@@ -191,7 +160,6 @@ async function backoff(
   let run = 0;
   for (const d of decisions) {
     if (d.decision === 'undetermined') continue;
-    // cm:guard a window already closed BY this guard keeps the run going instead of ending it: the back-off lifts when a person speaks and at no other moment, and reading its own decision as a terminator made it lift itself on the very next window — three quiet windows, one paced window, then speech again, for ever (ISS-1004 rule 3, review pass 1 F7).
     if (d.decision === 'guard-backoff') {
       run += 1;
       continue;

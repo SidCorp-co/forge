@@ -101,9 +101,6 @@ describe('projectBrief (ISS-1066)', () => {
     expect(projectBrief(source({ intakeGate: true }))).toContain('parked at `draft`');
   });
 
-  // cm:why the description alone: dropping sections from the END would let one long author field
-  // take the counts and the pipeline with it, which is the half the motivating false count is
-  // checked against (codex F4 on the ISS-1066 plan)
   it('keeps the counts, the pipeline and the filing rules whole under a description that blows the cap', () => {
     const text = projectBrief(
       source({
@@ -184,7 +181,6 @@ describe('readProjectBrief (ISS-1066)', () => {
     await expect(readProjectBrief(client, FAKE_PROJECT, () => new Date())).rejects.toThrow(
       /knowledge/,
     );
-    // cm:guard the refusal is BEFORE the first turn: a run that reached a room and then failed would have spent the assistant's time and left a room to clean up
     expect(deployment.state.requests.filter((r) => r.method === 'POST')).toHaveLength(0);
   });
 
@@ -238,7 +234,6 @@ describe('readProjectBrief (ISS-1066)', () => {
     const text = projectBrief(src);
     expect(text).toContain('Thursdays at 14:00 UTC.');
     expect(text).toContain('A control plane.');
-    // cm:guard an on-demand entry's body is NOT pulled: the brief would spend a call per entry on a project holding dozens, and those are the ones the product itself does not inject
     expect(text).not.toContain('Never pulled.');
   });
 
@@ -252,8 +247,6 @@ describe('readProjectBrief (ISS-1066)', () => {
   });
 });
 
-// cm:why this is its own case: "the grounding block is never truncated" is only true while the
-// block is BOUNDED, and two of its strings are author text a tracker does not bound for us.
 describe('the grounding block stays bounded (ISS-1066)', () => {
   it('keeps the counts and the pipeline when the project name and the waiting title are enormous', () => {
     const text = projectBrief(
@@ -281,9 +274,6 @@ describe('the grounding block stays bounded (ISS-1066)', () => {
   });
 });
 
-// cm:why the index is read twice: the route caps its response, so a large project's unfiltered index
-// arrives as a prefix. Filtering that prefix for the always-injected entries finds none of the ones
-// past it, and the brief reads as complete while carrying none of the project's load-bearing prose.
 describe('a knowledge index the deployment capped (ISS-1066, codex F1)', () => {
   const entries = [
     { slug: 'a', title: 'A', kind: 'reference', injection: 'on_demand', body: 'filler a' },
@@ -339,9 +329,6 @@ describe('a knowledge index the deployment capped (ISS-1066, codex F1)', () => {
     expect(projectBrief(src)).toContain('1 further entry is not listed');
   });
 
-  // cm:why recovering the row is only half of it: the knowledge section gets a share of the author
-  // budget and is cut at its END, so a capped prefix of title-only entries long enough to fill that
-  // share would slice away the very body the filtered read paid a request for (codex F1, round 2)
   it('renders the recovered body ahead of the title-only entries the prefix listed', () => {
     const titleOnly = Array.from({ length: 60 }, (_, i) => ({
       slug: `d${i}`,

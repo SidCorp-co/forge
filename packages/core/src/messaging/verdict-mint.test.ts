@@ -18,10 +18,6 @@ const SRC_ROOT = fileURLToPath(new URL('../', import.meta.url));
 /**
  * Every file this repo has agreed may mint an `ok` verdict, and why.
  */
-// cm:guard the third entry is a `cm:hack` and not a screen: `screened-reply.ts` casts to signal
-// "not a failure, stop repairing" because `RepairRound.screen` can only answer with a verdict. It is
-// bounded — the empty text it stands for reaches `codeAuthored` before it can reach `screened()`, so
-// it mints no proof and posts nothing — and it ends when that callback grows a third outcome.
 const MAY_MINT = new Map<string, string>([
   ['messaging/screen.ts', 'THE screen: the cell rules run here, and `admitted` is the mint itself'],
   [
@@ -30,7 +26,7 @@ const MAY_MINT = new Map<string, string>([
   ],
   [
     'conversations/screened-reply.ts',
-    'cm:hack ISS-978: a control-flow signal for an empty first reply, which can mint no proof',
+    'ISS-978: a control-flow signal for an empty first reply, which can mint no proof',
   ],
   [
     'messaging/screen-passes.fixture.ts',
@@ -38,9 +34,6 @@ const MAY_MINT = new Map<string, string>([
   ],
 ]);
 
-// cm:guard BOTH shapes count as minting: `admitted(...)` is the real mint, and a cast is what a
-// file does when it wants an `ok` verdict without going through one. A scan that watched only the cast
-// would let a sixth reply path call `admitted` and declare its own text passed.
 const MINT_RE = /as\s+(?:unknown\s+as\s+)?MessageVerdict|\badmitted\(/;
 
 function stripComments(src: string): string {
@@ -74,16 +67,10 @@ describe('only a screen mints a passing verdict (ISS-978 F5)', () => {
     ).toEqual([]);
   });
 
-  // cm:guard the list is asserted in BOTH directions: an entry for a file that no longer casts is a
-  // permission nobody is using, and the next reader takes it as evidence the cast is still needed.
   it('every file on the list is still minting, so the list does not outlive its reasons', () => {
     expect([...MAY_MINT.keys()].filter((rel) => !minting.includes(rel))).toEqual([]);
   });
 
-  // cm:guard the fixture admits EVERYTHING, so it is a screen that passes anything that reaches it.
-  // Listing it above as a permitted mint says nothing about who may call it — and it lives under
-  // `src/`, so it compiles into `dist` and a production file could import it and be screened by
-  // nothing at all. This is the assertion that keeps it to tests.
   it('no production file imports the fixture screen that admits everything', () => {
     const importers = listSourceFiles(SRC_ROOT).filter(
       (rel) =>

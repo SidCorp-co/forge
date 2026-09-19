@@ -9,7 +9,6 @@ vi.mock('../config/env.js', () => ({
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-// cm:why the dependents stub is awaitable at the `where` step rather than at a `limit`: `triggerTerminalDispatch` resolves its join there, so a `limit`-shaped stub would answer a promise nothing awaits
 const dependentsAwait = vi.fn(
   async () =>
     [] as Array<
@@ -24,10 +23,6 @@ const selectFrom = vi.fn(() => ({
   innerJoin: dependentsInnerJoin,
 }));
 
-// cm:guard the default is an EMPTY ARRAY and never `undefined`. Drizzle's `.returning()` resolves to
-// a row array whatever the WHERE matched, and a double answering `undefined` is a double the real
-// thing cannot produce — `merge-record.ts` destructures the first row, so a test that got away with
-// it was passing against a runtime that could not represent the shape it was asserting about.
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn((_values: Record<string, unknown>) => ({ where: updateWhere }));
@@ -45,7 +40,6 @@ vi.mock('../db/client.js', () => {
     db: {
       select: vi.fn(() => ({ from: selectFrom })),
       update: dbUpdate,
-      // cm:why the reopen-reason comment (RFC 0002 INV-8) is a real insert on the reopen path, and postReopenReasonComment deliberately does not swallow its error — an unmocked insert therefore turns every reopen test into a 500
       insert: vi.fn(() => ({ values: async () => undefined })),
       transaction: vi.fn(async (cb: (tx: typeof txStub) => unknown) => cb(txStub)),
     },
@@ -57,7 +51,6 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: (...args: unknown[]) => publish(...args) },
 }));
 
-// cm:guard stub ONLY the db-touching org resolver — `assertProjectRole` and `projectRoleAtLeast` stay real, or the authz assertions here pass against a stub instead of the rule they name.
 const projectAccess = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
@@ -80,7 +73,6 @@ function buildApp() {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
-  // cm:guard keep a default for reads no test queues: an exhausted `mockResolvedValueOnce` returns `undefined`, which throws inside the caller's destructuring and reaches the test as a 500 — so a new read added to the route under test fails every case here with the wrong reason
   selectLimit.mockResolvedValue([]);
   updateReturning.mockReset();
   publish.mockReset();
@@ -120,7 +112,6 @@ function queueAuthAndIssue(row: {
   role?: 'admin' | 'member' | 'viewer';
   issSeq?: number;
 }) {
-  // cm:guard the two selectLimit queues are ORDER-COUPLED to the route: assertEmailVerified reads first, the issue row second. Measured 2026-08-27 by swapping them: 6 of 27 tests fail and NOT ONE of them 404s — the route reads the issue row as the verification check, so projectId/status come back undefined and you get 500s, a 422, and assertions on undefined ids. Nothing points at the order.
   selectLimit.mockResolvedValueOnce([
     { emailVerifiedAt: row.verified === false ? null : new Date() },
   ]);
@@ -185,8 +176,6 @@ describe('POST /api/issues/:id/transition', () => {
     expect(body.code).toBe('NO_OP');
   });
 
-  // cm:guard the three cap tests deleted from this spot asserted a 422 at reopenCount>=5 and an admin-only override. RFC 0002 removed the cap outright — reopenCount still increments (ISS-535 model escalation reads it), it just gates nothing. A returning 422 here means someone re-added the ceiling.
-  // cm:guard all three stopping statuses, not just reopen — `waiting` and `needs_info` mean "a human is needed", and one that does not say WHAT is needed is a question nobody can answer; on forge-beta 2026-08-14 all 43 issues at `waiting` were exactly that
   it.each([
     ['reopen', 'closed'],
     ['waiting', 'in_progress'],
@@ -201,7 +190,6 @@ describe('POST /api/issues/:id/transition', () => {
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  // cm:guard the kind is REQUIRED but must never be DEFAULTED — this test fails both ways: drop the requirement and it 200s, add a default and it 200s. Guessing the kind is what rendered the wrong button on ISS-163.
   it('422 WAITING_KIND_REQUIRED when a `waiting` park states a reason but no kind', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'in_progress', reopenCount: 0 });
@@ -368,7 +356,6 @@ describe('POST /api/issues/:id/transition — dropping a blocker', () => {
 
     const res = await req({ toStatus: 'dropped' }, token);
     expect(res.status).toBe(200);
-    // cm:guard exactly ONE read. A second would run after the expiry, and every dependent query filters `valid_until > now()`, so it would return nothing and this cascade would be silent — the whole reason the list is carried instead of re-derived.
     expect(dependentsAwait).toHaveBeenCalledTimes(1);
 
     const expiry = updateSet.mock.calls.find(
@@ -421,7 +408,6 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
   it('blames the status race, not a phantom run, when the conditional UPDATE loses', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
-    // cm:why an empty `agentConfig` here is the ISS-959 criteria read declaring NOTHING — a row with criteria on it would refuse this transition for a reason this suite is not about
     selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
@@ -450,7 +436,6 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  // cm:guard assert the never-ran predicate is IN the UPDATE's WHERE, not merely that the pre-check ran — the pre-check and the UPDATE are separate reads, so with the WHERE arm gone every draft test still passes while a freshly-`open` issue that acquires its run between them is demoted to a status claiming nothing started. This is hand-written raw SQL no type-checker covers.
   it('carries the never-ran predicate INTO the UPDATE, not just the pre-check', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
@@ -462,7 +447,6 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
 
     expect((await req({ toStatus: 'draft' }, token)).status).toBe(200);
     const where = sqlText((updateWhere.mock.calls[0] as unknown[])?.[0]);
-    // cm:guard match the CORRELATION columns too, not just `not exists` — writing `pr.id` in place of `pr.issue_id` keeps every coarse substring, stays green, and makes both subqueries permanently non-empty so the gate blocks nothing. sqlText erases operands, so a column is only visible as the raw template text it is.
     expect(where).toContain('not exists (select 1 from pipeline_runs pr where pr.issue_id = )');
     expect(where).toContain('not exists (select 1 from jobs j where j.issue_id = )');
   });
@@ -478,7 +462,6 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
     expect(sqlText((updateWhere.mock.calls[0] as unknown[])?.[0])).not.toContain('not exists');
   });
 
-  // cm:guard assert the message blames the SOURCE — the branch is only reachable with fromStatus `draft`, and the old wording named the TARGET (`'needs_info' is not a valid runtime status target`), which is false for every status it could name and reads as "that status was removed"
   it('blames the draft source, not the target, when a draft may not go there', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'draft' });

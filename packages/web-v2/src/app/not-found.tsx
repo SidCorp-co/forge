@@ -18,7 +18,7 @@ export default function NotFound() {
       </div>
       <Link
         href="/"
-        className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-[13.5px] font-semibold text-[color:var(--fg-on-accent)] transition-colors hover:bg-[color:var(--accent-hover)]"
+        className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-13-5 font-semibold text-[color:var(--fg-on-accent)] transition-colors hover:bg-[color:var(--accent-hover)]"
       >
         Back to home
       </Link>

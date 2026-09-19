@@ -17,8 +17,6 @@ import { returnIssuesForRun } from './run-issue-return.js';
 import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_TYPE } from './run-session.js';
 
 /** How long a run session may go silent before its issues are given back. */
-// cm:guard ten minutes is TWO of the daemon's slowest beat, not of its fastest: the sweep that beats normally runs every 30s but stretches to `LIMITED_POLL_INTERVAL` (5 min) on a rate-limited box, so a three-minute bound like the master's would reap a healthy run the moment the box got throttled. A run also holds a worktree and a branch, so taking it back early costs an operator a diff rather than a claim.
-// cm:edge ordering -> packages/runner/crates/forge-runner-core/src/daemon/master.rs — `LIMITED_POLL_INTERVAL` is the number this is two of; raising it there without raising this reaps live runs.
 export const RUN_SESSION_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface ReapedRunSession {
@@ -30,8 +28,6 @@ export interface ReapedRunSession {
 /**
  * Release run sessions whose box has gone silent, naming the issues freed.
  */
-// cm:guard the trigger is the heartbeat GOING SILENT, never the box reporting its own death. A sweep keyed on a socket drop or a close call recovers nothing at all from the failure it exists for — a box that lost power sends neither (ISS-933 criterion 25a).
-// cm:guard the cutoff is computed by POSTGRES, for the two reasons `master-reaper.ts` gives: a `Date` bound through this driver throws at bind time, and a clock skew between app host and database would otherwise decide which boxes count as gone.
 export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
   const staleSeconds = Math.floor(RUN_SESSION_TIMEOUT_MS / 1000);
   const rows = (await db.execute(sql`
@@ -50,7 +46,6 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     const sessionId = String(row.id);
     const runId = String(row.pipeline_run_id);
     const issueKeys = (row.issue_keys ?? []) as string[];
-    // cm:edge lockstep -> packages/core/src/lifecycle/transition.ts — the session flip routes through the chokepoint so it leaves a `kernel_transitions` row, and `transition-guard.test.ts` fails a literal terminal status written here directly.
     const flipped = await applyKernelTransition(db, {
       entity: 'session',
       to: 'failed',
@@ -65,9 +60,7 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
       actor: { type: 'system' },
       source: 'run-session-reaper',
     });
-    // cm:guard the run closes only where the SESSION flip won. Two sweeps racing would otherwise both close the run and both log a release of the same group, and a release logged twice cannot be read as a fleet health signal.
     if (flipped.length === 0) continue;
-    // cm:guard the issues are RETURNED here and not merely named. Until 2026-09-12 this loop read `issueKeys`, logged them and pushed them to its caller, which is why the module header promised to give issues back while the code gave back only the lease — and the lease lapses on its own, from the session going terminal one line above. The status did not: ISS-457 stood at `in_progress` for 18 hours behind a dead run, with ISS-410 queued behind it.
     const returned = await returnIssuesForRun(runId, {
       reason: 'the box running this issue stopped answering',
     });

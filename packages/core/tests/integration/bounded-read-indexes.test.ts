@@ -1,18 +1,3 @@
-/**
- * ISS-1022 — the six indexes 0250 adds, each shown used by the query it serves.
- *
- * An index that exists proves nothing: the question is whether the planner
- * picks it, and that answer is a function of the fixture, not of the query.
- * Measured on this branch while writing it, the same pairing question answered
- * three different ways under three fixtures — a 12,000-row even-mix seed, a
- * 128,000-row seed at correlation -0.54, and a 128,000-row seed at the live
- * deployment's 0.969. So the seed below fixes all three variables the planner
- * reads: row count at the deployment's order of magnitude, the deployment's
- * own action distribution, and ascending insert order so correlation matches
- * it. `ANALYZE` runs before any plan is read. Relax any of the three and these
- * assertions stop measuring the deployment they claim to be about.
- */
-
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cycleTimeTransitionsSql } from '../../src/pipeline/cycle-time-sql.js';
@@ -29,7 +14,6 @@ import {
  * per-mille cut points. Held as a literal table rather than described in prose
  * so the acceptance fixture is one thing and not a judgement call.
  */
-// cm:guard the proportions are the point, not the row count alone: an `action` predicate this unselective (`issue.statusChanged` is 28.8% of the table) is what decides that a composite leading on `action` buys nothing. Flatten this to an even split and the fixture answers a question the deployment is not asking.
 const ACTION_MIX: Array<[string, number]> = [
   ['comment.created', 345],
   ['issue.statusChanged', 633],
@@ -144,8 +128,6 @@ describe('ISS-1022 · the 0250 indexes are the ones the planner picks', () => {
     expect(share).toBeGreaterThan(0.278);
     expect(share).toBeLessThan(0.298);
 
-    // cm:guard the mix must hold INSIDE the 30-day window as well as over the whole table, because that window is what decides the plan in the case below: the seed assigns `action` from `g % 1000` while `created_at` is monotone in `g`, so the distribution is uniform through time by construction. Cluster the actions instead and the overall proportions can be met by a fixture whose window is nothing like the deployment's.
-    // cm:guard the tolerance is 1.5 points and not tighter because the window holds 8,640 rows, which is 8.64 repetitions of the 1,000-row mix cycle: the partial cycle at the end moves the share by up to about a point on its own, and tightening this asserts the seed's arithmetic rather than its uniformity.
     const [recent] = await harness.db.execute<{ n: string; status_changed: string }>(sql`
       SELECT count(*)::text AS n,
              count(*) FILTER (WHERE action = 'issue.statusChanged')::text AS status_changed
@@ -154,7 +136,6 @@ describe('ISS-1022 · the 0250 indexes are the ones the planner picks', () => {
     const recentShare = Number(recent?.status_changed) / Number(recent?.n);
     expect(Math.abs(recentShare - share)).toBeLessThan(0.015);
 
-    // cm:guard the fixture must also match production's PHYSICAL order, not only its row count and its action mix: `created_at` correlation was 0.969 on beta, and at that correlation a plain index scan over a recent window is nearly sequential. A fixture inserted in some other order flips which index the planner picks and every assertion below stops measuring the deployment it claims to be about. The sign is load-bearing, so this reads `correlation` and NOT `abs(correlation)`: a fixture built descending measures -0.95, passes any test written on the absolute value, and reverses the pairing verdict this file exists to record.
     const [stats] = await harness.db.execute<{ correlation: string }>(sql`
       SELECT correlation::text AS correlation FROM pg_stats
       WHERE tablename = 'activity_log' AND attname = 'created_at'
@@ -162,8 +143,6 @@ describe('ISS-1022 · the 0250 indexes are the ones the planner picks', () => {
     expect(Number(stats?.correlation)).toBeGreaterThan(0.9);
   });
 
-  // cm:guard the subject is `cycleTimeTransitionsSql` itself and NOT a hand-written likeness of it: the plan depends on the whole shape — the join, both `LAG` windows and the payload extraction — so a copy that drifts from the route turns this case into a test of the copy while still reading green.
-  // cm:guard this case BUILDS the index the filing asked for and then drops it, and that is the whole point of it: a test that only shows `activity_log_created_at_idx` beating a sequential scan cannot go red when the six-versus-seven judgement is wrong, because the planner was never offered the alternative. With both candidates present and the table re-analyzed, the planner still takes the single-column index for the one read this change makes both action-filtered and time-bounded — which is the exact shape `(action, created_at)` was filed for.
   it('takes activity_log_created_at_idx for the cycle-time window even when the composite exists', async () => {
     const cycleTime = cycleTimeTransitionsSql([projectId], 30);
     const alone = await plan(cycleTime);
@@ -184,7 +163,6 @@ describe('ISS-1022 · the 0250 indexes are the ones the planner picks', () => {
     }
   });
 
-  // cm:guard `readPulseFlow`'s pre-window baseline reads everything OLDER than the window, which is most of the table, so a sequential scan is the right plan and no index is expected to serve it — this case asserts the fold instead: one scan of `activity_log` where there used to be two. An index appearing here would mean the fixture, not the deployment, had changed.
   it("reads activity_log once for readPulseFlow's pre-window baseline", async () => {
     const text = await plan(sql`
       SELECT count(*) FILTER (WHERE a.payload ->> 'to' IN ('closed', 'dropped'))::int AS closed,
@@ -238,10 +216,6 @@ describe('ISS-1022 · the 0250 indexes are the ones the planner picks', () => {
     expect(text).toContain('comments_issue_created_idx');
   });
 
-  // cm:why ISS-1063 moved this probe off `notifications_user_created_idx`: the bell's page is
-  // one row per DELIVERY, and the record table no longer carries a `user_id` to index. The
-  // bound the case exists to hold — that the first page of a person's bell is an index read
-  // and not a scan of everything anyone was ever told — is the same bound on the new table.
   it('serves the unfiltered notification list from notification_deliveries_user_created_idx', async () => {
     const text = await plan(sql`
       SELECT id, title FROM notification_deliveries WHERE user_id = ${userId}

@@ -1,11 +1,3 @@
-/**
- * ISS-1085 slice 4 — what one Sentry webhook delivery is answered with, and what it is refused for.
- *
- * `intake-issue.js` is mocked here on purpose: what this file asserts is everything BETWEEN the
- * wire and the intake call — the envelope, the target selection, the delivery row and the refusal —
- * plus that the intake reached is that shared function and not a second copy. What the intake
- * itself decides is asserted against the real thing in `intake-issue.test.ts`.
- */
 import { createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -78,7 +70,6 @@ function recordedDelivery(): Record<string, unknown> {
   return call[0] as Record<string, unknown>;
 }
 
-/** What the intake was handed, or a throw naming the invariant the caller assumed. */
 function intakeCall(): unknown[] {
   const call = intakeSentryIssueMock.mock.calls[0];
   if (!call) throw new Error('the intake was never reached');
@@ -164,7 +155,6 @@ describe('the delivery row every verified delivery leaves', () => {
     expect(recordedDelivery()).toMatchObject({ eventName: 'issue.unresolved' });
   });
 
-  // cm:guard the delivery row carries NO requestId even though Sentry sends `Request-ID`: `recordDelivery` inserts it against a unique index with no `onConflict`, so keying the row on it would make Sentry's own re-delivery die on that index and answer 500 — a retry turned permanent by the column meant to trace it (docs/proposals/a-request-keyed-outbound-delivery-cannot-be-retried.md).
   it('carries no requestId, so a re-delivery cannot die on the unique index', async () => {
     await handleSentryWebhook(ctx(), delivery(body()));
     expect(recordedDelivery().requestId).toBeUndefined();
@@ -209,7 +199,6 @@ describe('the events this handler serves, and the ones it names and drops', () =
     expect(intakeSentryIssueMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard `resolved` and `archived` must stay refused: mirroring Sentry's resolution back onto a Forge issue would close work nobody did, and closing stamps `merged_at`, which releases every `blocks` dependent as if it had shipped.
   it.each(['resolved', 'archived'])('refuses the %s action and writes nothing', async (action) => {
     const r = await handleSentryWebhook(ctx(), delivery(body({ action })));
     expect(r.actions).toBe(0);
@@ -247,7 +236,6 @@ describe('target selection: a unique match or a named refusal, never a pick', ()
     expect(r.refusal).toContain('forge-web');
   });
 
-  // cm:guard two targets in DIFFERENT organizations may declare the same project slug, and a Sentry payload carries a project and no organization — so this case is not a misconfiguration to tolerate, it is the one where a pick writes to another stack's project with a 200.
   it('refuses a project matching more than one declared target', () => {
     const ambiguous = {
       host: 'logs.canawan.com',
@@ -287,7 +275,6 @@ describe('target selection: a unique match or a named refusal, never a pick', ()
     expect((r as { refusal: string }).refusal).toContain('projectSlug');
   });
 
-  // cm:guard the review's F2. Judging the scoped matches first and returning early gave scoped targets a precedence nobody granted them: a delivery naming `web` chose the scoped target while an org-wide target in ANOTHER organization covered it just as well, so the pick was between two organizations and was made silently.
   it('refuses where a scoped target and an org-wide target could both hold it', () => {
     const mixed = {
       host: 'h',
@@ -317,7 +304,6 @@ describe('target selection: a unique match or a named refusal, never a pick', ()
 });
 
 describe('what reaches the shared intake', () => {
-  // cm:guard this asserts the SHARED function is what the webhook calls. If a second copy of the lookup-then-judge-and-file decision were written here, this mock would stop being called and nothing else in the suite would notice.
   it('hands the issue to intakeSentryIssue and to nothing else', async () => {
     await handleSentryWebhook(ctx(), delivery(body()));
     expect(intakeSentryIssueMock).toHaveBeenCalledTimes(1);
@@ -343,7 +329,6 @@ describe('what reaches the shared intake', () => {
     expect(intakeCall()[0]).toMatchObject({ count: 41, userCount: 9 });
   });
 
-  // cm:guard the free-text fields are stripped BEFORE the intake sees them, by the same parser the pull's listing reads a REST issue with. A webhook body is the likeliest place for an attacker-supplied error message to arrive, so a second parser here that forgot `sanitizeUntrusted` would be the chokepoint with a door beside it.
   it('strips smuggling out of the title, the culprit and the message', async () => {
     const raw = body(
       {},
@@ -386,7 +371,6 @@ describe('what reaches the shared intake', () => {
     },
   );
 
-  // cm:guard the review's F1. Every path after the insert closes the row. A throw that left it `pending` would read to the connection drawer as a call still in flight, for a delivery that was answered and finished.
   it('closes the delivery row as failed when the intake throws, then rethrows', async () => {
     intakeSentryIssueMock.mockRejectedValue(new Error('STALE_TRANSITION'));
     await expect(handleSentryWebhook(ctx(), delivery(body()))).rejects.toThrow('STALE_TRANSITION');
@@ -409,7 +393,6 @@ describe('what reaches the shared intake', () => {
     expect(statuses).not.toContain('pending');
   });
 
-  // cm:guard a target declaring no organizationSlug is a configuration a redelivery cannot fix, so it is a named refusal and a 200 rather than a throw. Left to propagate it would be a 500, and Sentry would retry the same delivery against the same broken declaration until it gave up.
   it('refuses by name a selected target that declares no organizationSlug', async () => {
     const noOrg = { host: 'h', targets: [{ label: 'all' }] };
     const r = await handleSentryWebhook(ctx(noOrg), delivery(body()));

@@ -32,7 +32,6 @@ import {
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
 
-// cm:guard `bindsTo: 'session'`, because `checkOptions` refuses a `this_call` option carrying no fingerprint BEFORE anything else — an invalid option would make every case below pass on the wrong refusal.
 const OPTION = {
   id: '22222222-2222-4222-8222-222222222222',
   label: 'Take the safe path',
@@ -126,7 +125,6 @@ function answer(id: string, token: string) {
 }
 
 describe('a question blocked on another agent', () => {
-  // cm:guard this is the hole the whole attribution split was for: the answer is admitted because the credential NAMES an agent, and `agentUserId` is set only where the token's owner is an agent account. Widen the admission to `agency === 'agent'` and the person's token below is admitted with it, because that is exactly where the wrong answer lived.
   it('is answered by an agent holding its own Agent Access Token', async () => {
     const id = await ask('master_or_peer');
     const res = await answer(id, agentToken);
@@ -145,7 +143,6 @@ describe('a question blocked on another agent', () => {
 
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('QUESTION_NEEDS_AGENT_CREDENTIAL');
-    // cm:guard the refusal must say what WOULD work and where to get it, because the caller that meets it is a run mid-park with no way to discover the answer from a bare 403. The route it names is the one ISS-1003 added for exactly this population.
     expect(body.message).toContain('Agent Access Token');
     expect(body.message).toContain('/api/orgs/:orgId/agents/:agentUserId/tokens');
 
@@ -163,7 +160,6 @@ describe('a question blocked on another agent', () => {
 });
 
 describe('a question blocked on a person', () => {
-  // cm:guard the blocker kind is checked as well as the credential, and it is not decoration: a question parked on a HUMAN was escalated precisely because a machine should not decide it, so an agent credential is refused here and told to sign in. Drop the blockerKind test and an agent answers every park in the tracker.
   it('refuses an agent holding its own token, and sends it to a person', async () => {
     const id = await ask('human');
     const res = await answer(id, agentToken);

@@ -1,18 +1,3 @@
-/**
- * The agent face's door onto a project's repository — ISS-1074, ISS-1062's layer 5.
- *
- * `client.ts` is the KERNEL's reader: it takes the oldest active binding, asks no grant, and reads
- * JSON, because the projection is Forge's own model of the repository and is built whether or not
- * any agent may touch it. This is the other door. It asks the binding's `agent_access` before it
- * acts, and it writes.
- *
- * Discovery and authorization are two steps here and not one, which is the shape
- * `google/commands.ts` already has. A granted-only lookup would make an ungranted binding
- * indistinguishable from no binding at all — and the whole of ISS-1074's outcome 3 is that the two
- * are told apart: one sends an operator to a switch, the other to the Integrations page to bind a
- * repository at all.
- */
-
 import { scrubLogText } from '@forge/observability';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { getIntegration } from '../registry.js';
@@ -86,15 +71,6 @@ export interface GitHubAgentClient {
   fullName: string;
   /** A JSON request as the installation: the reads and every write the agent face makes. */
   json<T>(args: { method: 'GET' | 'POST' | 'PATCH'; path: string; body?: unknown }): Promise<T>;
-  /**
-   * A request whose answer is TEXT rather than JSON — a diff, a job log — redacted, then capped at
-   * `maxBytes`.
-   *
-   * `bytes` is the length of the whole redacted answer, not of what came back, so a caller reading
-   * `truncated` learns how much it is missing rather than only that something is. `keep` says which
-   * end survives the cap: `head` (the default) for a diff, `tail` for a log whose failure is at its
-   * end.
-   */
   text(args: {
     path: string;
     accept: string;
@@ -118,7 +94,6 @@ async function githubPairs(projectId: string): Promise<BindingWithConnection[]> 
   return rows.sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime());
 }
 
-/** What `list` answers: every GitHub binding this project holds, with the grant beside it. */
 export async function githubAgentBindings(projectId: string): Promise<GitHubAgentBindingReport[]> {
   const decl = getIntegration('github');
   return githubPairs(projectId).then((pairs) =>
@@ -168,7 +143,6 @@ export async function resolveGrantedGitHubBinding(
       dead?.binding.id ?? null,
     );
   }
-  // cm:guard the grant is asked HERE and never inside `githubPairs` above: `list` reports what exists and must answer the same whichever way the grant reads, because an agent that cannot see its own project's binding cannot be told which binding a refusal is about (ISS-1074 criterion 13).
   if (!grantHolds(getIntegration('github'), first.binding)) {
     throw new GitHubAgentRefusal(
       'not_granted',
@@ -179,14 +153,6 @@ export async function resolveGrantedGitHubBinding(
   return first;
 }
 
-/**
- * GitHub's own sentence for a refusal — `message` out of its error body and nothing else.
- *
- * Never the raw body. `coolify/log-fetch.ts` carries the same guard and the same reason: a third
- * party's response body has carried tokens and internal hostnames, and an agent that is handed one
- * puts it in a comment. `message` is the field GitHub documents as the human-readable refusal, and
- * a body that is not JSON contributes nothing rather than being passed through as text.
- */
 async function githubMessage(res: Response): Promise<string | null> {
   try {
     const parsed = (await res.json()) as { message?: unknown };
@@ -229,15 +195,6 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
     }
   };
 
-  /**
-   * Redact, with the credential this client uses added to the generic shapes.
-   *
-   * `using` is the token a caller already has in hand. Minting a second one instead would redact a
-   * credential the text cannot contain: `installationToken` returns a FRESH token per call, so the
-   * one a request was made with and the one a later mint answers are different strings, and the
-   * scrubber would be handed the wrong one.
-   */
-  // cm:guard a mint failure must not lose the generic scrub: the token is ONE of the shapes, and returning unscrubbed text because the extra one could not be resolved is the worst of both outcomes.
   const scrubText = async (text: string, using?: string): Promise<string> => {
     if (using) return scrubLogText(text, [using]);
     let extra: string[] = [];
@@ -281,9 +238,6 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
       return (await res.json()) as T;
     },
 
-    // cm:guard the redaction runs on EVERYTHING GitHub sent, before either the cap or a caller's own tail. Scrubbing what survives a slice would leave half a credential behind whenever one straddles the cut, and would have to be re-reasoned about every time a caller's trimming rule changed. `bytes` is the whole answer's length after redaction, which is the text this returns a piece of.
-    // cm:guard the cap SLICES and reports the whole length, it does not ask GitHub for less. There is no range GitHub honours for a diff, so a caller told `bytes: 4_000_000, truncated: true` knows to ask for the files instead — where a returned length were reported, a truncated diff and a small one would read identically and an agent would reason about a change it has a twentieth of (ISS-1074 criterion 5).
-    // cm:guard `keep` is the answer to which END survives the cap, and it has no default that suits both callers: a diff is read from the top, and a job log's failure is its last lines. Keeping the head of a log over the cap returns the tail of its BEGINNING — output from before the failure, under a `truncated` flag that says something was dropped but not that the end was.
     async text(args: {
       path: string;
       accept: string;

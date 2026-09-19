@@ -299,7 +299,6 @@ function briefReaders(json: JsonFn) {
       );
       return res.body ?? '';
     },
-    /** The newest issues, by the list route's own default sort of `createdAt:desc` (issues/sort.ts). */
     async newestIssues(projectId: string, limit: number): Promise<IssueLine[]> {
       const env = await json<ListEnvelope<{ displayId: string; title: string; status: string }>>(
         'GET',
@@ -330,7 +329,6 @@ export function createClient(opts: ClientOptions) {
     init: RequestInit,
   ): Promise<{ status: number; text: string }> {
     try {
-      // cm:guard a fresh timeout signal per attempt: one made in `call` is already aborted by the time a timed-out first attempt is retried, and the retry would die at once without reaching the server (codex F1 on the ISS-1065 diff)
       const timed: RequestInit = opts.timeoutMs
         ? { ...init, signal: AbortSignal.timeout(opts.timeoutMs) }
         : init;
@@ -354,7 +352,6 @@ export function createClient(opts: ClientOptions) {
     try {
       return await attempt(method, path, init);
     } catch (first) {
-      // cm:guard only a read is re-sent: a POST that threw may have reached the room before the connection dropped, and a second send would be answered twice and graded as one turn (ISS-1065 D1); a non-2xx never reaches here, it is a response
       if (!(first instanceof FetchFailure) || (method !== 'GET' && method !== 'DELETE'))
         throw first;
       retries += 1;
@@ -461,7 +458,6 @@ export function createClient(opts: ClientOptions) {
         if (q.source) qs.set('source', q.source);
         const env = await json<ListEnvelope<T>>('GET', `/api/chat-logs?${qs}`);
         rows.push(...env.items);
-        // cm:why the envelope's own offset, not page × the size asked for: the route caps pageSize, and a page smaller than asked would otherwise end the read early
         if (env.offset + env.returned >= env.total) return rows;
         if (env.returned === 0)
           throw new DeploymentRefusal(

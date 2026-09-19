@@ -9,7 +9,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button, Card, CardContent, Checkbox, Icon, StatusChip } from "@/design";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardTitle,
+  Checkbox,
+  Icon,
+  StatusChip,
+} from "@/design";
 import { useBatchRelease } from "@/features/issues/hooks";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { formatUsd } from "@/features/pipeline/derive";
@@ -85,7 +93,7 @@ export function AwaitingReleaseCard({
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
         <div className="flex items-center gap-2">
           <Icon name="check" size={16} className="text-subtle" />
-          <h3 className="fg-h3">Awaiting release</h3>
+          <CardTitle>Awaiting release</CardTitle>
         </div>
         {runs.length > 0 && <span className="fg-caption font-mono text-subtle">{runs.length}</span>}
       </div>

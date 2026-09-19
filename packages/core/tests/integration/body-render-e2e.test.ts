@@ -1,17 +1,3 @@
-/**
- * The read half of ISS-967, over HTTP against real Postgres.
- *
- * The unit suite proves `bodyNodes` on strings. What only the mounted routes
- * can answer: that a component body written through one door comes BACK as a
- * tree on the two surfaces web actually reads — `GET /api/issues/:id` and the
- * comment thread — and that the composer's two routes answer without a row.
- * Wire those up wrong and every unit test still passes while the screen shows
- * literal markup, which is the defect this issue exists to fix. The `forge-*`
- * vocabulary these cases were written against was removed on 2026-09-14; what
- * they hold — an html body reaches the client as a TREE and a markdown one does
- * not — is unchanged, and is now asserted on plain allowlisted markup.
- */
-
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -170,7 +156,6 @@ describe('ISS-967 component bodies reach a client as a tree', () => {
     expect(rendered.nodes[0]).toMatchObject({ name: 'blockquote' });
   });
 
-  // cm:guard the preview refuses exactly what a save refuses, and the message is the deliverable: it is where an author learns what to change, and a generic 400 here turns a one-line correction into a source read.
   it('refuses component markup in the preview with the same named 400 the save gives', async () => {
     const { jwt } = await seed();
     const res = await app.request('/api/body/preview', {

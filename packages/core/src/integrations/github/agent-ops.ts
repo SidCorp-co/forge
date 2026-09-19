@@ -1,16 +1,3 @@
-/**
- * The six things an agent does to a pull request through Forge — ISS-1074, ISS-1062's layer 5.
- *
- * Every one of them is BEHAVIOUR THAT NEEDS JUDGEMENT: which diff matters, what a failing job's log
- * says, what to write in a review, who should look at it. That is the line ISS-1062 draws, and it is
- * the reason these are here and not on `dispatchOutbound`: state the kernel owns — the merge, the
- * check run it publishes, the release — goes through the dispatch face, where no agent has to be
- * running for it to happen or to be recorded.
- *
- * Nothing here touches the database. The tracker record a review earns is `review-note.ts`'s, and it
- * is written by the same function whichever side submitted the review.
- */
-
 import type { GitHubAgentClient } from './agent-client.js';
 import { GitHubAgentCallError } from './agent-client.js';
 
@@ -29,7 +16,6 @@ const DEFAULT_LOG_LINES = 100;
  * a caller as a tool that is missing a verb rather than as a boundary it just met. The refusal IS
  * the deliverable here, so the name is recognised in order to be answered.
  */
-// cm:guard this set exists to be REFUSED, never to grow a branch that does the nearest thing. A merge is a kernel transition on the dispatch face: the same operation merges the pull request and stamps `merged_at`, which is the one-writer-per-truth invariant `issues/merge-record.ts` now holds and `scripts/check-merged-at-writers.mjs` gates. Adding any of these here would put a second writer of `merged_at` behind a tool an agent calls, which is exactly the defect ISS-1073 closed.
 const KERNEL_VERBS = new Set([
   'merge',
   'merge-pull-request',
@@ -125,7 +111,6 @@ export interface CheckRunLog {
  * for an Actions job today, and a tool that relies on that is relying on an identity GitHub has
  * never documented; `details_url` is `…/actions/runs/<runId>/job/<jobId>` and says which job it is.
  */
-// cm:guard null is an ANSWER here and never a fallback to the check-run id. A guessed job id fetches some other job's log, which is the silent substitution CLAUDE.md refuses — an agent reading the wrong job's failure loses far more than the one who is told Forge cannot fetch this one.
 export function actionsJobId(detailsUrl: string | null | undefined): number | null {
   const hit = /\/actions\/runs\/\d+\/job\/(\d+)/.exec(detailsUrl ?? '');
   const id = hit?.[1];
@@ -195,7 +180,6 @@ export async function readCheckRunLog(
     throw err;
   }
 
-  // cm:guard `keep: 'tail'` above and this tail are the same requirement at two scales, and the cap's end is the one that was wrong: a 40 MiB log capped from the TOP gives this function the first 2 MiB, and the last hundred lines of that are output from long before the failure the caller asked to see. The redaction is `client.text`'s and has already run on the whole answer, so nothing survives here that the tail merely failed to drop.
   const tailed = tailLines(raw.body, args.lines ?? DEFAULT_LOG_LINES);
   return {
     ...base,

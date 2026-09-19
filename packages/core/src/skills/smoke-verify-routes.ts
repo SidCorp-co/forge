@@ -11,23 +11,6 @@ import {
   NoRunnerOnlineError,
 } from './smoke-verify.js';
 
-/**
- * ISS-455 — `GET/POST /api/projects/:projectId/skills/smoke-verify`.
- *
- * Own small route module (mounted in `src/index.ts` next to the other skill
- * routers) so the projects router — whose bootstrap handler is under active
- * change — stays untouched.
- *
- * - GET: the aggregated report (tier-1 computed fresh + latest tier-2 canary
- *   outcomes). Read access = project membership, mirroring
- *   `GET /skill-registrations`.
- * - POST `{ tier?: 1 }` (default): re-run the synchronous tier-1 static checks
- *   and return the fresh report. Membership suffices — zero agent cost.
- * - POST `{ tier: 2, stages? }`: additionally dispatch one `smoke` canary job
- *   per registered stage. Admin-only (it spends agent budget). 409 with
- *   `NO_RUNNER_ONLINE` when no runner is selectable, instead of parking jobs.
- */
-
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
 const postBodySchema = z

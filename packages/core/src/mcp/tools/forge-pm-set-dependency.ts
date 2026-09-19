@@ -1,21 +1,3 @@
-/**
- * `forge_pm.set_dependency` (Epic 3, ISS-19) — record a dependency edge
- * between two issues in the same project. Idempotent on the unique edge
- * `(project_id, from_issue_id, to_issue_id, kind)` from Epic 1; a duplicate
- * returns `created: false` and applies whichever of `validUntil` / `reason`
- * the caller supplied, reporting that as `updated`. Setting `validUntil` into
- * the past is how an edge is RETRACTED — the only agent-reachable way, since
- * the DELETE route is JWT-only REST.
- *
- * Epic 4 (ISS-20) wires the `dependencyChanged` hook emit on first insert so
- * PM spawn triggers react to graph mutations.
- *
- * ISS-145: the handler body is `pmSetDependencyHandler`, called both by the
- * `forge_project_pm` dispatcher and by the shim factory below, which stays
- * registered because forge-plan, forge-triage and forge-build call
- * `forge_pm.set_dependency` by name.
- */
-
 import { z } from 'zod';
 import { issueDependencyKinds } from '../../db/schema.js';
 import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
@@ -41,13 +23,11 @@ export const pmSetDependencyInputSchema = z
   })
   .strict();
 
-// cm:guard the `actor` is the PRINCIPAL's, derived here and never defaulted. Until ISS-931 this took a `Device` and fell back to `{type:'device', id: device.id}`, which for a PAT was the synthetic stub's id — so a PERSON's edge was recorded as a device while the same request's status transition read as that person through `principalActor`. One request, two attributions, and the disagreement was invisible in the row.
 export async function pmSetDependencyHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pmSetDependencyInputSchema>,
   opts?: { deferHealthPublish?: boolean },
 ) {
-  // cm:guard gate on plain project membership, NOT the PM capability flag (ISS-131, was `assertPmActor`) — plan-pipeline agents must declare blocks edges while writing a plan and run on `claude-code` runners that carry no PM flag; the cycle guard and the unique-index idempotency already cover the abuse surface. This line is also why the action is NOT in the device-only set: ISS-150 gated the whole `forge_pm.*` family, ISS-868 pruned three of the survivors, and this one was left behind refusing 651 lifetime calls for a capability its own gate never asks for (ISS-931).
   await assertPrincipalIsMember(principal, input.projectId);
 
   try {
@@ -61,7 +41,6 @@ export async function pmSetDependencyHandler(
   }
 }
 
-// cm:edge lockstep -> packages/core/src/issues/dependency-service.ts — every IssueDependencyErrorCode needs a case here; the agent-facing contract is the `CODE: message` prefix, which forge-pm-set-dependency.test.ts asserts by string
 function toMcpDependencyError(err: unknown): unknown {
   if (!(err instanceof IssueDependencyError)) return err;
   switch (err.code) {

@@ -10,16 +10,6 @@ export interface ResolvedMention {
   handle: string;
 }
 
-/**
- * Resolve `@handle` strings to user IDs by matching the email local-part of
- * users who are explicit members of the given project. Unknown handles are
- * silently dropped — POST /comments uses this so a typo never blocks a post.
- *
- * Membership cardinality is bounded (project members), so we pull the
- * candidate set into JS and match on the local-part there. That avoids
- * a portability fight with `LOWER(SPLIT_PART(email, '@', 1))` across
- * Drizzle's SQL builder.
- */
 export async function resolveMentions(
   handles: string[],
   projectId: string,

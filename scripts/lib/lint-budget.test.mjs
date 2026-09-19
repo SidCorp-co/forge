@@ -18,7 +18,6 @@ const drain = ({ measured = {}, baseline = {}, changed = [], renamed = new Map()
   drainFaults({ measured, baseline, changed: new Set(changed), renamed, matchers });
 
 describe('drain', () => {
-  // cm:guard EQUAL must fail. Non-increase is what every other baseline in this repo already enforces and it is why the codemap baseline sat at 3% drained for months — shipping it under the name "drain" is the substitution a plan review bounced this issue for once.
   it('refuses a touched debt-carrying file whose count did not move', () => {
     const faults = drain({
       measured: { 'packages/core/src/a.ts': { r: 3 } },
@@ -68,7 +67,6 @@ describe('drain', () => {
     expect(drain({ changed: ['packages/core/src/new.ts'] })).toEqual([]);
   });
 
-  // cm:guard test-file debt is frozen, never drained. `rows[0]!` in a test is idiomatic and a wrong one is a test failure, not a production crash — the issue's own carve-out, and the reason `exclude` exists rather than a comment saying to be careful.
   it('never asks a test file to pay', () => {
     const faults = drain({
       measured: { 'packages/core/src/a.test.ts': { r: 9 } },
@@ -109,7 +107,6 @@ describe('drain', () => {
     expect(faults[0].reasons[0]).toContain('a move may not add debt');
   });
 
-  // cm:guard a registry typo must reach the caller as an error, never as null. Null demotes that scope to freeze-only, so the run stays green while half the contract stopped applying — a checker doing less than it claims, which is the one outcome this whole issue is about.
   it('refuses a drain block with no include pattern', () => {
     expect(() => drainMatcher({ cwd: 'p', drain: {} })).toThrow('declares no include pattern');
   });
@@ -129,7 +126,6 @@ describe('drain', () => {
 });
 
 describe('original', () => {
-  // cm:guard the denominator may only ever be ADDED to. Recomputing it makes every percentage relative to the last re-freeze, so the number can never fall and "trending to 0" stays exactly as unfalsifiable as it was before anyone printed it.
   it('keeps an existing original when the current count is lower', () => {
     expect(mergeOriginal({ a: 226 }, new Map([['a', 215]]))).toEqual({ a: 226 });
   });
@@ -160,7 +156,6 @@ describe('emptiedScopes', () => {
     ]);
   });
 
-  // cm:guard this is the case round 2 broke and round 5 must not break again: a scope legitimately drained to zero has a baseline of zero too, because recording the drain is what --update-baseline is for. Faulting on it would make the gate's own success condition a red build.
   it('asks nothing of a scope already frozen at zero', () => {
     expect(emptiedScopes(at({ 'packages/web-v2': 0 }), at({ 'packages/web-v2': 0 }))).toEqual([]);
   });
@@ -177,12 +172,10 @@ describe('emptiedScopes', () => {
     expect(emptiedScopes(at({ 'packages/new': 0 }), at({}))).toEqual([]);
   });
 
-  // cm:guard this DECLARES a hole rather than closing one. Measured 2026-08-27: an `overrides` block scoped to `src/features/issues/**` leaves web-v2 at 186 of 210 over a full 459 scanned files, so nothing here fires and the next --update-baseline drops 9 files and 24 frozen diagnostics at exit 0, which `improves: down` accepts because it only faults on a rise. Delete this test and the next reader will believe a partly-unlinted scope is caught, which is the overclaim ISS-833 exists to remove rather than to add.
   it('does NOT catch a scope emptied in part — declared, not closed', () => {
     expect(emptiedScopes(at({ 'packages/web-v2': 186 }), at({ 'packages/web-v2': 210 }))).toEqual(
       [],
     );
-    // cm:guard the BOUNDARY case, and it is the one that shows how wide the declared gap is: a single surviving diagnostic hides the loss of the other 209. The assertion above it duplicates its sibling three lines up, so without this line the test names the gap without being able to discriminate against a fix for it — and a future "fire when the drop is large" heuristic would pass both.
     expect(emptiedScopes(at({ 'packages/web-v2': 1 }), at({ 'packages/web-v2': 210 }))).toEqual([]);
   });
 });

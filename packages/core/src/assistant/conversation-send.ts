@@ -58,8 +58,6 @@ export interface WebConversationRoom {
 /**
  * What the Forge UI contributes to a turn: who the assistant is, and what it may read.
  */
-// cm:guard the toolset is NOT read-only, and this annotation said it was until ISS-1005 measured it: `CHAT_TOOL_ALLOWLIST` permits `forge_issues` create and update and `forge_comments` create. What fences it is `guardIssueWrites` — a created issue is forced to `draft` so it cannot auto-triage and spawn a run, `data.relations` is refused outright, and an update may only reach draft/waiting/needs_info/on_hold/closed. That fence is per-key and OPEN by default, which is how `data.relations` reached chat unclassified in ISS-868 and let a room retract a live `blocks` edge, so a key added to the allowlist is unfenced until somebody classifies it. Widening it here widens it for every room this adapter serves.
-// cm:guard the door is `web-chat-reply` and NOT `chat-sync`: this reply's reader holds a role on the project by the route's own checks, and `chat-sync`'s `public:report` cell is written for a reader who holds none — its `no-developer-detail` rule refuses a file path, a fenced block and a raw status word, which are three of the things a person opens the Forge UI to ask for. The reason lives on the door's row in `messaging/doors.ts` (ISS-1005).
 export function webConversationTurn(args: {
   project: { id: string; slug: string; name: string; repoPath: string | null };
   handleName: string;
@@ -75,18 +73,12 @@ export function webConversationTurn(args: {
     /**
      * What was said in this room BEFORE this window, for a turn answered out of reach.
      */
-    // cm:guard a thunk and not a value, because only the `agent` branch spends it: the in-core turn
-    // gets the room's history from its own window, and building this eagerly would put an extra read
-    // on every Assistant send for a string that branch never looks at.
     conversationContext: () => Promise<string | null>;
     reserve: () => Promise<boolean>;
   };
   /**
    * The watcher this turn publishes to while it runs.
    */
-  // cm:guard handed in rather than started here, because its entry id has to outlive this call: the
-  // same id is what the progress frames carry and what the delivered row is written under, and one
-  // minted inside a function called per turn could not be the row's (ISS-1078).
   progress: ConversationProgress;
 }): WindowTurnInputs {
   return {
@@ -94,10 +86,6 @@ export function webConversationTurn(args: {
     handleName: args.handleName,
     log: { adapter: 'web', projectId: args.project.id, mode: args.window.mode },
 
-    // cm:guard all three are attached whatever the mode, and the watcher is what decides they do
-    // nothing: the runner-hosted lane never drives `runTurnEvents`, so `onTurnEvent` is simply never
-    // called there, and `onSettled` refuses to mark a replacement it has no draft for. Branching on
-    // the mode here would be a second place the fork is written.
     onTurnEvent: args.progress.onTurnEvent,
     onSettled: args.progress.onSettled,
     replyEntry: (deliveredText) => ({
@@ -105,23 +93,11 @@ export function webConversationTurn(args: {
       blocks: args.progress.blocksForRecord(deliveredText),
     }),
 
-    // cm:guard THE fork, and the only one: `assistant` returns null and the in-core turn below runs
-    // exactly as it did, while `agent` hands the whole turn to the runner-hosted lane and answers
-    // nothing here. A second send route, a second collector or a second delivery for Agent mode is
-    // the two-live-paths defect the conversation store was extracted to end (ISS-1039).
-    // cm:guard the reservation is taken BEFORE the dispatch: the reply arrives out of this turn's
-    // reach, so a window re-claimed after a crash has to read that stamp and dispatch nothing
-    // (ISS-1004 rule 2).
     divertBeforeTurn: async ({ setPhase }) => {
       if (args.window.mode !== 'agent') return null;
       setPhase('agent-turn');
       if (!(await args.window.reserve()))
         return { send: false, reason: 'superseded-before-agent-turn' };
-      // cm:guard imported HERE and not at the top of the file, for the reason `door-persona.ts`
-      // states about itself: `web-door.test.ts` and `conversation-send.test.ts` compose a persona
-      // with `db/client.js` mocked and no environment, and the runner-hosted lane's own import tree
-      // reaches `config/env.ts`. A static import would make both files fail to COLLECT rather than
-      // fail an assertion — a whole file's coverage gone for a symbol two branches never reach.
       const { startConversationAgentTurn } = await import(
         '../agent-sessions/conversation-agent.js'
       );
@@ -134,27 +110,14 @@ export function webConversationTurn(args: {
         handleName: args.handleName,
         question: args.window.question,
         askedByLabel: args.askedBy,
-        // cm:guard the room's own earlier turns go WITH the dispatch, because this lane runs a fresh
-        // session per turn and the door above invites a follow-up: a person answering "the second
-        // one" reaches a session that never saw the first. The inline turn gets this for free from
-        // the window's own messages; a diverted one has to be handed it (commit consult F4).
         conversationContext: await args.window.conversationContext(),
         persona: webAgentConversationPersona(args.project.name, args.project.slug, args.askedBy),
         door: 'web-agent-completion',
         replies: WEB_AGENT_REPLIES,
-        // cm:guard no interim ack: the thread already prints `dispatched` and `running` beside the
-        // question, so a sentence promising an answer would be the same fact twice, in a room where
-        // the second copy would be indistinguishable from the answer itself.
         ackAfterMs: null,
       });
-      // cm:guard send NOTHING when the dispatch started: the reply lands through the completion
-      // bridge, and a line here would put a promise in front of an answer.
       if (started.started) return { send: false, reason: 'agent-turn-dispatched' };
       if (started.reason === 'deduped')
-        // cm:guard `screenReplaced: false` on both: this fork runs BEFORE the turn, so the watcher has
-        // been handed no events and holds no draft — there is nothing for these two lines to correct,
-        // and marking them a correction would tell a person a draft was withdrawn that never existed
-        // (ISS-1078).
         return {
           send: true,
           message: codeAuthored(WEB_AGENT_REPLIES.dedup),
@@ -166,9 +129,6 @@ export function webConversationTurn(args: {
           message: codeAuthored(WEB_AGENT_REPLIES.noDevice),
           screenReplaced: false,
         };
-      // cm:guard 'dispatch-failed' sends nothing either — the session was created and then marked
-      // failed, so the completion bridge delivers the one honest sentence; replying here as well
-      // would put two failures in the thread for one turn.
       return { send: false, reason: 'agent-turn-dispatch-failed' };
     },
 
@@ -189,10 +149,6 @@ export function webConversationTurn(args: {
 /**
  * What the thread is shown when an Agent turn has no answer to give it.
  */
-// cm:guard each one names what to do next and not only what went wrong: a person who asked for a box
-// and got a bare failure has been told less than nothing, since the one thing they can act on — open
-// another conversation, wait for the turn already running — is the half a failure sentence usually
-// leaves out (ISS-1039).
 export const WEB_AGENT_REPLIES = {
   dedup:
     'This conversation already has an Agent turn running. Wait for it to answer, or open another conversation to ask something else in parallel.',
@@ -217,11 +173,6 @@ export interface WebSendResult {
 /**
  * The first send lost the race to settle this room's mode.
  */
-// cm:guard a class rather than a flag, because the caller's answer to it is a REFUSAL and not a
-// branch: two people opening the same empty room at the same moment both pass the route's
-// "this room holds no message" read, and exactly one of their picks becomes the room's. The loser
-// is told which mode won and its message is never collected — a client that believes it opened an
-// Agent room and a room that did not is the defect this whole rule exists to prevent (ISS-1039).
 export class ConversationModeSettledError extends Error {
   readonly code = 'CONVERSATION_MODE_SETTLED' as const;
   constructor(readonly settled: ConversationMode) {
@@ -235,7 +186,6 @@ export class ConversationModeSettledError extends Error {
 /**
  * Take one typed message and answer it.
  */
-// cm:guard the window is claimed with a settle of ZERO and scoped to THIS room's venue id, never by adapter alone: the settle exists so two messages typed seconds apart in a chat room become one turn, and a person pressing enter in the Forge UI has already told us the message is finished. Claiming by adapter alone would take other rooms' windows into a request that is about one of them.
 export async function sendWebConversationMessage(args: {
   room: WebConversationRoom;
   projectId: string;
@@ -247,12 +197,6 @@ export async function sendWebConversationMessage(args: {
   /**
    * Whether the caller named a mode at all, as opposed to the route deriving one.
    */
-  // cm:guard kept APART from `mode`, because the two answer different questions and only this one
-  // decides a refusal: the route's "is this room empty" read and the collector's commit are not one
-  // act, so a send that named a mode can still arrive second — and a second send that named one is
-  // refused whether or not it happens to name the mode that won. A client that believes it chose a
-  // lane over a room that had already chosen is the defect the whole rule exists to prevent
-  // (ISS-1039, plan consult F2).
   namedMode: boolean;
   /** The sender's own id for this message, echoed on the accepted event (ISS-1078). */
   clientToken?: string | undefined;
@@ -269,16 +213,8 @@ export async function sendWebConversationMessage(args: {
     speakerKey: args.userId,
     speakerLabel: args.userLabel,
     manySpeakersPrincipalUserId: args.userId,
-    // cm:guard the mode is settled INSIDE the transaction that commits the message and its window,
-    // and it throws rather than returning false: mode-and-no-message and message-and-no-mode are
-    // both states a recovery cannot read, and the only way to have neither is for the two to be one
-    // commit. The `seq === 0` test is what makes it the FIRST message and not every message
-    // (ISS-1039, plan consult F2).
     withinCollection: async (tx, { conversationId, seq }) => {
       if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
-      // cm:guard reached two ways and refused the same way in both: this send lost the race to
-      // settle, or it landed behind a message that had already settled one. Neither is a send whose
-      // mode was honoured, and both are refused naming what the room actually answers in.
       if (seq !== 0 && !args.namedMode) return;
       const row = await getConversation(conversationId, tx);
       throw new ConversationModeSettledError(effectiveConversationMode(row ?? { mode: null }));
@@ -290,20 +226,12 @@ export async function sendWebConversationMessage(args: {
     );
   }
 
-  // cm:guard published BEFORE the turn is routed and never after, which is the whole of what it
-  // buys: the row is committed by the collector above and the route below does not return until the
-  // answer exists, so this is the only moment anything can tell the person who pressed enter that
-  // their message is filed. Failures are logged and swallowed, as the settle below is: a message that
-  // is durable is durable whether or not a socket heard about it (ISS-1078).
   await publishToConversationReaders(collected.conversationId, {
     event: WEB_CONVERSATION_ACCEPTED_EVENT,
     data: {
       conversationId: collected.conversationId,
       messageId: collected.messageId,
       seq: collected.seq,
-      // cm:guard echoed back rather than re-derived, so the tab that sent this can match the row to
-      // the outbox entry it is holding without guessing from the text or the sequence — two tabs may
-      // each have a message in flight in the same room.
       clientToken: args.clientToken ?? null,
     },
   }).catch((err: unknown) =>
@@ -319,9 +247,6 @@ export async function sendWebConversationMessage(args: {
     windowId: collected.windowId,
     seq: collected.seq,
     decision,
-    // cm:guard read back off the row rather than echoed from the argument: on every send but the
-    // first the argument was ignored, and answering with it would tell the caller the room took a
-    // mode it did not take.
     mode: effectiveConversationMode(
       (await getConversation(collected.conversationId)) ?? { mode: null },
     ),
@@ -332,7 +257,6 @@ export async function sendWebConversationMessage(args: {
  * Everything routing one web window needs, read once: the project it is about
  * and the handle that answers in it.
  */
-// cm:guard the handle is RESOLVED rather than named from the slug: `handleNameForProject` composes a name and this returns the row, so the same call gives the fallbacks their voice and gives a group-shaped room a principal to run as. A web room is `direct` today and takes its principal from the speaker, which is why the handle is the honest value for the other branch rather than a placeholder nothing reads.
 async function webWindowSubject(
   window: ConversationWindowRow,
   claim: WindowClaim,
@@ -360,9 +284,6 @@ async function webWindowSubject(
 /**
  * How many earlier messages a diverted turn is handed.
  */
-// cm:guard bounded, and bounded HERE rather than in the prompt builder: the session has the history
-// tools for anything deeper, and an unbounded transcript in a prompt is a room's whole life paid for
-// on every turn (ISS-609's rule, this lane's version of it).
 const AGENT_CONTEXT_MESSAGES = 20;
 
 async function agentConversationContext(window: ConversationWindowRow): Promise<string | null> {
@@ -383,9 +304,6 @@ export async function routeWebWindow(
   const subject = await webWindowSubject(window, claim);
   if (!subject) return null;
 
-  // cm:guard ONE watcher per window, started here rather than inside `inputs`: `routeWindow` calls
-  // that builder once, but the entry id it mints has to be the id the delivered row is written under,
-  // so it is minted at the top of the routing and read twice — by the frames and by the recorder.
   const progress = startConversationProgress({
     conversationId: window.conversationId,
     entryId: randomUUID(),
@@ -394,11 +312,6 @@ export async function routeWebWindow(
   const outcome = await routeWindow({
     window,
     manySpeakersPrincipalUserId: subject.handle.userId,
-    // cm:guard a window reclaimed after this core died mid-handoff carries a reservation and no
-    // delivered row, which `route-window.ts` alone reads as a delivery whose outcome was lost —
-    // and the thread prints that reading as "a reply was sent and never confirmed" under a turn
-    // still being written on a box (ISS-1039).
-    // cm:guard the same lazy reach the divert makes, and for the same reason (see above).
     handoffFor: async (windowId) =>
       (await import('../agent-sessions/conversation-agent.js')).conversationAgentTurnForWindow(
         windowId,
@@ -421,13 +334,8 @@ export async function routeWebWindow(
         progress,
       }),
   });
-  // cm:guard the watcher is CLOSED and drained before the settle is published, because the settle is
-  // a different call that never joined its chain: a frame still queued here would land after it, and
-  // a client that clears its in-flight entry on the settle would have that frame resurrect a turn it
-  // had already finished drawing (consult F1).
   await progress.close();
 
-  // cm:guard published AFTER `routeWindow` has recorded the reply and closed the window, which is the whole point of it being a second event: the delivery event goes out before the row commits, so a tab that refetched on that alone could read the room back without the answer in it. Every decision publishes, not only `answered`, because a silence is equally something a second tab is sitting and waiting for (ISS-1004 step 5, review F2).
   await publishToConversationReaders(window.conversationId, {
     event: WEB_CONVERSATION_SETTLED_EVENT,
     data: {
@@ -451,7 +359,6 @@ export async function routeWebWindow(
 /**
  * Claim and route whatever this venue owes, and say what was decided.
  */
-// cm:guard a window this core claimed and cannot place is RELEASED and not closed, the same rule the first adapter's drain follows: the project it was opened under can be gone by the time this runs, and closing it would record a decision nobody took (ISS-1004 rule 4).
 async function routeOneWebWindow(
   venueExternalId: string,
   claimant: string,

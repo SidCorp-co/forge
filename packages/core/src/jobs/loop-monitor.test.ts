@@ -26,7 +26,7 @@ const selectLimit = vi.fn(async () => [] as Array<{ issueId: string | null }>);
 
 vi.mock('../db/client.js', () => {
   const dbStub: Record<string, unknown> = {
-    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub), // cm:why applyKernelTransition reaches its write through `exec.transaction`
+    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({
       set: (patch: Record<string, unknown>) => {
@@ -51,7 +51,6 @@ vi.mock('./finalize-failure.js', () => ({
 }));
 
 const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
-// cm:guard mocked for its IMPORT CHAIN, not its behaviour: `answer-resume` reaches `issues/apply-transition.js`, which loads `config/env` at module scope and throws here for want of a DATABASE_URL. Its own rules are asserted in `answer-fallback-e2e.test.ts` against real Postgres, which is the only lane that can fail on them.
 vi.mock('../pipeline/answer-resume.js', () => ({ resumeLapsedAnswers: vi.fn(async () => 0) }));
 
 vi.mock('../pipeline/wedge.js', () => ({
@@ -67,7 +66,6 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// cm:why kill-gate primitives are unit-tested on their own (kill-gate.test.ts) — mocked here so loop-monitor tests stay focused on hop wiring without pulling in the real ws/server graph (env validation)
 const requestJobKillMock = vi.fn(async (..._args: unknown[]) => 'requested' as const);
 let resolveKillConfirmationResult: { confirmed: boolean; outcome: string | null } = {
   confirmed: false,
@@ -237,7 +235,6 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
 
     await reapZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 
-    // cm:guard ISS-1101 split the queue hop in two, so the COUNT is four and the ORDER below is part of the assertion — a pass added without its own predicate asserted here reaps rows nobody proved were reapable. WHICH rows each queue arm takes, and the reason each writes, are asserted where they can fail (`tests/integration/session-queue-hop-e2e.test.ts`): `sqlText` renders a column reference as nothing at all, so an arm reading the wrong column passes this lane unchanged.
     expect(sweepWhereArgs.length).toBe(4);
     const [pass1, pass2, pass3, pass4] = sweepWhereArgs.map(sqlText);
 
@@ -301,9 +298,6 @@ describe('reapSessionLostJobs — heartbeat hop, job axis (was ISS-280), now kil
     const text = sqlText(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
     expect(text).toMatch(/s\.status\s+IN\s*\(\s*'failed'\s*,\s*'cancelled_stale'\s*\)/);
-    // cm:guard ISS-1013 — BOTH halves, because either alone passes a query that no longer
-    // guards anything: the lateral without the guard reads `job_events` and ignores it, and
-    // `lr.job_id IS NULL` without the lateral is an unbound alias the type checker cannot see.
     expect(text).toMatch(
       /LEFT\s+JOIN\s+LATERAL[\s\S]*job_events\s+e\s+WHERE\s+e\.job_id\s*=\s*j\.id\s+AND\s+e\.kind\s*=\s*'result'[\s\S]*\)\s*lr\s+ON\s+true/,
     );
@@ -395,7 +389,6 @@ describe('reapSessionLostJobs — heartbeat hop, job axis (was ISS-280), now kil
     dbExecute.mockResolvedValueOnce([
       candidateRow({
         id: 'survivor-1',
-        // cm:why an ack-hop episode the job then survived — the runner answered not_found about a process that had not started yet
         kill_requested_at: new Date(Date.now() - 60 * 60_000),
         kill_confirmed_at: new Date(Date.now() - 60 * 60_000 + 1_000),
         kill_outcome: 'not_found',
@@ -446,7 +439,6 @@ describe('reapSessionLostJobs — heartbeat hop, job axis (was ISS-280), now kil
 
     const result = await reapSessionLostJobs(new Date('2026-05-30T00:00:00Z'));
 
-    // cm:guard both rows won their CAS, and the count must stay 2 — the first finalize threw and was swallowed, so a hop that let one failure end the pass would silently reap half a batch and report the half it managed.
     expect(result).toEqual({ reaped: 2, killRequested: 0, awaitingKill: 0 });
     expect(finalizeFailedJobMock).toHaveBeenCalledTimes(2);
   });
@@ -512,7 +504,6 @@ describe('reapResultMisses — result hop (was ISS-258 runStaleSweep), now kill-
 });
 
 describe('runLoopMonitor — one tick, hops in dependency order', () => {
-  // cm:guard `toEqual` on the WHOLE object, so a new hop that runs but is not reported fails here. A hop whose count never reaches the caller is a sweep nobody can see working, which is how the inverse-cascade half went unnoticed for 98 runs (ISS-923).
   it('aggregates all hop results', async () => {
     const result = await runLoopMonitor(new Date('2026-06-12T00:00:00Z'));
     expect(result).toEqual({
@@ -531,7 +522,6 @@ describe('runLoopMonitor — one tick, hops in dependency order', () => {
     });
   });
 
-  // cm:guard no hop may ever widen to `held` (RFC 0002) — a held job has no agent process, no session and no heartbeat by construction, so every age- or silence-based reaper here would confirm it dead on the first pass and turn "waiting on a mechanical condition" into a failed job with a retry burnt; the whole point of the status is that it is allowed to sit still for hours
   it('no hop in a full tick reads or writes `held`', async () => {
     await runLoopMonitor(new Date('2026-06-12T00:00:00Z'));
     const texts = dbExecute.mock.calls.map((c) => sqlText(c[0]));

@@ -1,14 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-/**
- * ISS-1021 — the per-pass memo, counted rather than read.
- *
- * `surfaceOnce` used to resolve the project's admin set itself, once per ROW: measured on beta
- * 2026-09-17, 14 strands across 6 projects and 60 owed closes across 15 asked 222 queries a minute
- * for 21 distinct answers. The fix is one batched call hoisted out of the loop, and the only thing
- * that can go red for it is a CALL COUNT — the returned notifications are identical either way, so
- * every other assertion in this module passes with the per-row lookup back in place.
- */
 const adminsFor = vi.fn(async (projectIds: readonly string[]) => {
   const out = new Map<string, string[]>();
   for (const id of projectIds) out.set(id, [`admin-of-${id}`]);
@@ -92,11 +83,6 @@ describe('detectStrandedIssues resolves each project once per pass (ISS-1021)', 
   });
 });
 
-// ISS-1021 criteria 2, 3 and 6, for the half of this module nothing reached. Measured while
-// re-judging on 2026-09-18: every assertion above is about `detectStrandedIssues`, and
-// `detectOwedCloses` — which carries the same memo, the same bound and the same truncation warn —
-// had no unit coverage at all, while `tests/integration/owed-close-e2e.test.ts` seeds one row per
-// case and so reaches none of the three. The page-filled warn had no assertion on either detector.
 describe('detectOwedCloses carries the same memo and bound (ISS-1021)', () => {
   beforeEach(() => {
     adminsFor.mockClear();

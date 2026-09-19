@@ -10,10 +10,6 @@ import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 
-// ISS-158 — Fresh re-auth primitive. Sibling children (PAT creation, device
-// revoke, password change) call POST /api/auth/reauth before submitting
-// destructive or sensitive requests so the server-side requireFreshAuth()
-// gate sees a recent stamp on the users row.
 export const reauthRoutes = new Hono<{ Variables: AuthVars }>();
 
 const reauthSchema = z.object({

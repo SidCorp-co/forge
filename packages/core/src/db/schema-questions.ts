@@ -29,7 +29,6 @@ import type { ConversationAdapter } from './schema-conversations.js';
 export const questionStatuses = ['open', 'answered', 'void', 'expired', 'needs_info'] as const;
 export type QuestionStatus = (typeof questionStatuses)[number];
 
-// cm:guard `nobody` is absent on purpose and must stay absent: a blocker with no possible resolver is a failure with a name and writes NO question, so a row carrying it could only ever be one nobody can answer (ISS-964 criterion 3).
 export const questionBlockerKinds = ['machine', 'master_or_peer', 'human'] as const;
 export type QuestionBlockerKind = (typeof questionBlockerKinds)[number];
 
@@ -46,13 +45,9 @@ export type QuestionOption = {
   fingerprint?: string;
 };
 
-// cm:guard a step declares its answer shape and a reader NEVER infers one from which fields happen to be present: a step carrying both an option list and a needed-text line is two questions in one row, and whichever field the reader looks at first decides what the person is asked. The write path refuses that row by name (`questions/write.ts`).
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — the box reads the answer back off the wire and branches on this same tag; a shape added here that the runner does not know reaches it as an answer it cannot act on, and the park never ends.
 export const answerShapes = ['choice', 'free_text'] as const;
 export type AnswerShape = (typeof answerShapes)[number];
 
-// cm:guard `sensitive` is a fact about ONE round's material and not about the decision, which is why it sits here and not on the row: a question can ask a public thing and then need a credential, and a flag on the question would either have to be raised retroactively — after the public round was already posted — or force the whole decision private on the strength of its last step (ISS-1091 outcome 2).
-// cm:guard absence means NOT sensitive, and that is the only reading it may have: every row written before ISS-1091 asked in the open, so an absent flag is a round that went to a room and not a round nobody classified.
 type StepCommon = {
   round: number;
   prompt: string;
@@ -69,7 +64,6 @@ export type ChoiceStep = StepCommon & {
   chosenOptionId?: string;
 };
 
-// cm:guard `needed` is REQUIRED and is not the prompt said twice: the prompt is the question, this is what would settle it — the credential, the missing paragraph, which of the two readings was meant. A free-text round without it asks a person to guess what counts as an answer, which is the failure the option list never had (ISS-996).
 export type FreeTextStep = StepCommon & {
   answerShape: 'free_text';
   needed: string;
@@ -78,8 +72,6 @@ export type FreeTextStep = StepCommon & {
 
 export type QuestionStep = ChoiceStep | FreeTextStep;
 
-// cm:guard absence of the tag means `choice` and has exactly one legal source: a row written before ISS-996, when a choice was the only shape there was. It is NOT a default for a caller that forgot the field — `questions/write.ts` refuses that at the door — and the migration that stamps the tag onto stored rows is what drains this arm. Same shape as a body whose `format` is absent resolving to `markdown`, and for the same reason: an old row must keep the one meaning it ever had.
-// cm:guard the ONE reader of a chosen option, and it answers `null` for a free-text round rather than `undefined`: a caller that reaches for the field directly gets a type error on the union, which is what stops a text round being read as an unanswered choice one (ISS-996).
 export function chosenOptionIdOf(step: QuestionStep | undefined): string | null {
   if (!step || !isChoiceStep(step)) return null;
   return step.chosenOptionId ?? null;
@@ -94,8 +86,6 @@ export function isChoiceStep(step: QuestionStep): step is ChoiceStep {
 /**
  * Where a question was asked, recorded when it was asked.
  */
-// cm:guard THREE states and not two, and the third is the whole of ISS-1091 outcome 4: a null column is a question that belongs to no conversation and still goes to the project's bound room, while an `unresolved` row is a question that DOES belong to one whose venue could not be read. Collapsing the second into the first routes it to a room nobody in that conversation is in, which is the failure this column exists to end — so the reason is stored rather than the absence.
-// cm:guard resolved from the ASKING session and stored here, never re-derived at delivery: a room can be rebound and a session's metadata rewritten between the ask and the post, and a destination inferred later is a destination that answers to the project rather than to whoever asked.
 export type QuestionOrigin =
   | {
       kind: 'conversation';
@@ -116,7 +106,6 @@ export type QuestionOrigin =
 export const agentQuestions = pgTable(
   'agent_questions',
   {
-    // cm:guard on the BOX's door (`POST /api/devices/me/questions`) the id is minted by the runner and sent, never allocated here: the box writes its own half of the park in a local transaction before core has seen anything, and a server-allocated id would make the two halves unjoinable across the window where the box has parked and core has not heard (ISS-964 criterion 10). `POST /api/questions` allocates, because a caller holding a token has written no local half to join to (ISS-993).
     id: uuid('id').primaryKey(),
     projectId: uuid('project_id')
       .notNull()
@@ -129,9 +118,7 @@ export const agentQuestions = pgTable(
     blockerKind: text('blocker_kind', { enum: questionBlockerKinds }).notNull(),
     steps: jsonb('steps').$type<QuestionStep[]>().notNull(),
     maxRounds: integer('max_rounds').notNull().default(3),
-    // cm:guard the premise is stored so drift can be DETECTED rather than assumed away. A question answered against a premise that has since moved is worse than an unanswered one: it is a decision taken about a world that no longer exists (ISS-964 criterion 22).
     assumed: jsonb('assumed').$type<Record<string, unknown>>(),
-    // cm:guard NULL is "no conversation asked this" and is the only value that reaches `roomForProject`; every other reading of a missing destination is an `unresolved` row carrying its reason (ISS-1091 criteria 10, 11).
     origin: jsonb('origin').$type<QuestionOrigin>(),
     voidReason: text('void_reason'),
     claimsHeld: integer('claims_held').notNull().default(0),
@@ -146,9 +133,7 @@ export const agentQuestions = pgTable(
   (t) => [
     index('agent_questions_project_status_idx').on(t.projectId, t.status),
     index('agent_questions_session_idx').on(t.agentSessionId),
-    // cm:guard ISS-1022 — `readQuestionsForIssue` is the door every issue screen opens and it filters on `issue_id` first; neither index above leads with it, so the lookup was a sequential scan of the whole table.
     index('agent_questions_issue_idx').on(t.issueId),
-    // cm:guard the CHECK is what makes a half-written origin unrepresentable rather than merely unlikely: a `conversation` origin with no venue would resolve to no room and — before this column had a third state — be indistinguishable from a question nobody asked in a conversation. A shape the destination resolver cannot read must not be storable (ISS-1091 criterion 10).
     check(
       'agent_questions_origin_shape_chk',
       sql`${t.origin} is null or (
@@ -165,7 +150,6 @@ export const agentQuestions = pgTable(
   ],
 );
 
-// cm:guard the waiter is a ROW per run, never a count on the question. One answer revives all N of them and each needs its own revival to succeed or fail, so a counter would leave a run that failed to revive indistinguishable from one that never waited (ISS-964 criterion 18).
 export const questionWaiters = pgTable(
   'question_waiters',
   {

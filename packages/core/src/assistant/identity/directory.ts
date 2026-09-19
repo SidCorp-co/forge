@@ -37,7 +37,6 @@ export type SpeakerLookup =
  * server's lowercased host and port, plus the base path it is served under,
  * with the scheme and any trailing slash dropped.
  */
-// cm:guard host, port AND base path — dropping the path collapses two installations sharing a host (`/team-a`, `/team-b`) onto one namespace, which hands one installation's confirmed row the other's speaker of the same id; a trailing slash is stripped so one installation spelled two ways stays ONE namespace
 export function namespaceFromServerUrl(serverUrl: string): string | null {
   try {
     const url = new URL(serverUrl);
@@ -73,7 +72,6 @@ export async function lookupSpeakerProfile(args: {
   if (!isConversationAdapter(source)) {
     return { found: false, refusal: sourceUnknownRefusal(source) };
   }
-  // cm:guard refuse each unimplemented channel BY NAME rather than falling through to one handler that guesses. `telegram` and `widget` are vocabulary with no code behind them (ISS-977 out of scope), and `web` speakers are sessions that already carry a userId — treating any of the three as Rocket.Chat would read a credential that has nothing to say about them.
   if (source === 'web') {
     return unsupported(
       source,

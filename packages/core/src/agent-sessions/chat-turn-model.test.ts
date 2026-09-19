@@ -26,9 +26,7 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
-    // cm:why `withKernelMarker` (db/kernel-marker.ts) opens a transaction and stamps `forge.kernel_txn` through `tx.execute` before the write, so a db double that omits `execute` fails every wrapped path with `exec.transaction is not a function` or a missing method rather than with what the test is about.
     execute: vi.fn(async () => []),
-    // cm:why `insert` for the same reason: since ISS-1030 the turn writes its user entry into `agent_session_events` inside that transaction.
     insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
   };
@@ -181,7 +179,6 @@ describe('dispatchChatTurn — model transport', () => {
       message: 'again',
     });
     expect(frame('agent:send').model).toBe('sonnet');
-    // cm:why inheriting must not rewrite the marker — only an explicit pick does
     expect(writtenMetadata().model).toBe('sonnet');
   });
 

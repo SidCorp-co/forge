@@ -216,7 +216,6 @@ describe('buildSessionFromEvents', () => {
   });
 
   it('is idempotent across real-time re-derives when events carry ts', () => {
-    // cm:why threading each event's own ts is what makes a re-derive deterministic WITHOUT freezing the clock: a settled message keeps its event's timestamp, so `entriesEqual` stays true and `syncTurnsWithMessages` breaks on the first equal entry instead of rewriting every turn row on every flush.
     const events = [
       { kind: 'stdout', data: { line: initLine }, ts: '2026-05-30T10:00:00.000Z' },
       { kind: 'stdout', data: { line: assistantLine }, ts: '2026-05-30T10:00:05.000Z' },
@@ -232,7 +231,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// cm:why measured on forge-beta over 3 days to 2026-08-23: 1,051 error results, 12,899 thinking blocks and 33,671 tool results all reached the DB and were then dropped by the derive — these four fields are why the transcript read as a flat list of prose.
 describe('fields the transcript used to drop', () => {
   it('keeps is_error from a tool_result and lands it on the matching toolCall', () => {
     const { messages } = buildSessionFromEvents([
@@ -341,10 +339,6 @@ describe('fields the transcript used to drop', () => {
     expect(r.messages[0]?.blocks?.every((b) => b.type !== 'text' || b.text === 'done')).toBe(true);
   });
 
-  // cm:guard an encrypted thinking block fell through every branch of this loop until ISS-1079 and
-  // was counted as nothing, so a turn spent entirely on encrypted reasoning read as a turn spent on
-  // nothing at all. Both shapes mean the same thing to this counter: the model paused and left
-  // nothing readable.
   it('counts an encrypted thinking block as a pause', () => {
     const r = parseStreamMessages(
       {

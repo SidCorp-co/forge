@@ -1,11 +1,3 @@
-// Shared liveness window for the dispatcher + runner selector.
-//
-// ISS-198 tightened the default from 90s to 30s. Stale-detector now flips
-// runners to `offline` every minute, and Gate L5 in the dispatcher uses
-// this same window — anything past 30s is treated as a stale runner that
-// cannot receive new dispatches. Desktop pings every ~25s, so 30s leaves
-// only one missed ping of slack.
-
 const DEFAULT_MS = 30_000;
 const MIN_MS = 10_000;
 

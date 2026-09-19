@@ -1,21 +1,3 @@
-/**
- * Dispatcher-time helper to resolve per-state overrides for a job.
- *
- * Looks up `projects.agentConfig.pipelineConfig.states[<stageStatus>]`,
- * where `stageStatus` was stamped onto `job.payload` by the orchestrator at
- * enqueue time. Returns a normalized `StageOverrides` shape with all fields
- * optional — defaults mirror the previous hardcoded behavior.
- *
- * The dispatcher reads these to:
- *   1. Choose the right system prompt (append/replace + extras).
- *   2. Pick per-state model / allowedTools / mcpServers / timeoutSeconds.
- *   3. Forward to the runner via `job.assigned` WS payload.
- *
- * Per-state user prompt policy (`userPromptPolicy`) is consumed at enqueue
- * time by the orchestrator, so the resulting `promptString` already
- * reflects it — the dispatcher does not need to re-apply it.
- */
-
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -43,13 +25,6 @@ export interface StageOverrides {
    * straight to `onlineCapableDeviceIds` as `allowDeviceIds`.
    */
   deviceIds: string[] | null;
-  /**
-   * ISS-623 W2 — truthy `mcpServers` keys declared on THIS stage (pre-merge,
-   * pre-expansion), so the dispatcher can diff them against the final
-   * resolved server set and surface any name that silently failed to
-   * resolve. Does not include the project-default declared names — the
-   * dispatcher combines both (see `resolveProjectDefaultMcpServers`).
-   */
   declaredNames: string[] | null;
 }
 
@@ -66,37 +41,14 @@ const EMPTY: StageOverrides = {
   declaredNames: null,
 };
 
-/**
- * ISS-637 — the human-applied label that arms the skill-maintenance carve-out
- * in {@link applySkillMaintenanceCarveout}. Deliberately NOT the LLM-set
- * `issues.category` (owner rejected that gate as too easy to mis-classify) —
- * a human must attach this label for the carve-out to fire.
- */
 export const SKILL_MAINTENANCE_LABEL = 'skill-maintenance';
 
-/**
- * ISS-637 — non-destructive skill-write tools eligible for the carve-out.
- * `create`/`delete`/`adopt`/`register` stay denied everywhere (larger,
- * higher-blast-radius operations route through the owner lane / Skill Studio
- * instead).
- */
 export const SKILL_MAINTENANCE_TOOLS = [
   'mcp__forge__forge_skills_update',
   'mcp__forge__forge_skills_push',
   'mcp__forge__forge_skills_sync_status',
 ] as const;
 
-/**
- * ISS-637 — for an issue carrying the human-applied `skill-maintenance` label,
- * at the `code`/`fix` persist stages only, remove the non-destructive
- * skill-write tools from the resolved denylist so the agent can actually
- * persist a DB-canonical skill body (the git ladder can't carry it —
- * `.claude/skills/*` is a git-ignored sync mirror that reverts on the next
- * sync). Mutates `overrides.disallowedTools` in place — the caller must pass
- * a shallow copy (e.g. `runnerStageOverrides`), never the shared `EMPTY`
- * singleton or a stage's live `disallowedTools` array. Returns the count of
- * tools actually removed, for dispatch telemetry.
- */
 export function applySkillMaintenanceCarveout(
   overrides: StageOverrides,
   opts: { hasSkillMaintenanceLabel: boolean; jobType: string },
@@ -111,35 +63,6 @@ export function applySkillMaintenanceCarveout(
   return before - overrides.disallowedTools.length;
 }
 
-/**
- * ISS-535 — explicit per-stage model-routing policy (single source of truth).
- *
- * Keyed by issue STATUS (the `stageStatus` stamped on the job payload — the
- * same key `resolveStageOverrides` looks up). Applies to EVERY project
- * automatically whenever the per-project `pipelineConfig.states[status].model`
- * is null, and is overridable per-project by setting that `.model`.
- *
- * Values are TIER ALIASES (`haiku`/`sonnet`/`opus`), passed verbatim to
- * `claude --model` (claude_code.rs forwards the string as-is). Aliases resolve
- * to the current model in each family, so the policy stays stable across model
- * bumps — unlike dated full IDs (`claude-opus-4-8`, …), which rot. The aliases
- * match the `modelTiers` enum, so they are already valid `--model` values.
- *
- * Policy: a stage's tier is FIXED by its status and never varies at runtime.
- * Statuses absent from this table fall through to the dispatcher's
- * `job.modelTier ?? 'default'`.
- *
- * The opus rungs went with the statuses that hosted them (ISS-897): the split
- * they encoded — sonnet to classify, opus to touch the repo — was a property of
- * a nine-step ladder, and one session now does both halves. `open` has read
- * sonnet since the autonomous lane shipped, so nothing dispatches differently
- * for the trim; whether an hour-long repo-writing session belongs on that tier
- * is a cost decision (ISS-766 measured $698 of a $1,207 week on opus rework)
- * and it is the owner's, not this table's. A project that wants opus sets
- * `states.open.model`, which still wins over everything here.
- */
-// cm:guard a stage's tier is FIXED — nothing may vary it at dispatch time. Reopen-driven escalation (ISS-535 escalateModel) was deleted by owner decision: with every repo-touching stage at opus the ladder had no rung left to climb, and ISS-766 measured the opus-on-rework loop at $698 of a $1,207 week. Re-adding a runtime bump re-opens that.
-// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — keyed by the same four names `STAGE_NAMES` declares; the staged rungs were dropped by ISS-897 because nothing stamps them on a payload any more, and a default for a status no job carries is a tier no dispatch can reach.
 export const DEFAULT_STAGE_MODELS: Record<string, string> = {
   open: 'sonnet',
   in_progress: 'sonnet',
@@ -182,7 +105,6 @@ async function loadStageMap(projectId: string): Promise<Record<string, StageConf
     if (!states || typeof states !== 'object') return null;
     return states as Record<string, StageConfig>;
   } catch (err) {
-    // cm:guard a DB hiccup here must NOT crash a dispatch — log the degradation and proceed with defaults, because per-state overrides are a refinement and losing them costs a less-tuned run while throwing costs the run entirely.
     logger.warn(
       { err, projectId },
       'stage-overrides: failed to load pipelineConfig.states, dispatching with defaults',
@@ -203,16 +125,6 @@ export interface ProjectDefaultMcpServers {
   declaredNames: string[];
 }
 
-/**
- * Load the project-default MCP servers from
- * `pipelineConfig.mcpServers` and expand the catalog shorthand into full
- * specs. This is the BASE of the dispatch mcpServers merge: per-state
- * `mcpServers` and the integration servers (postman/epodsystem) layer on top.
- *
- * Best-effort like {@link resolveStageOverrides}: a DB hiccup or absent config
- * returns an empty map (no project defaults this dispatch). Always returns a
- * fresh object — never a shared reference into the cached drizzle row.
- */
 export async function resolveProjectDefaultMcpServers(
   projectId: string,
 ): Promise<ProjectDefaultMcpServers> {
@@ -278,7 +190,6 @@ export async function resolveStageOverrides(
     timeoutSeconds: stage.timeoutSeconds ?? null,
     mcpServers: stage.mcpServers ? { ...(stage.mcpServers as Record<string, unknown>) } : null,
     budget: stage.budget ? { ...stage.budget } : null,
-    // cm:why an empty array normalizes to null so `[]` cannot read as "no device is eligible" and silently wedge every job on the stage
     deviceIds: stage.deviceIds && stage.deviceIds.length > 0 ? [...stage.deviceIds] : null,
     declaredNames: stage.mcpServers
       ? [...collectDeclaredMcpNames({ mcpServers: stage.mcpServers as Record<string, unknown> })]

@@ -12,29 +12,12 @@ use serde_json::{json, Map, Value};
 use crate::daemon::agent_activity::Event;
 use crate::error::{Error, Result};
 
-/// The settings file this writes, relative to the pane's working directory.
-// cm:guard `.local` is load-bearing: `.claude/settings.json` is a file repositories COMMIT, and writing generated content there would put this daemon's exe path into somebody's diff on every box. The local twin is gitignored wholesale, which is also why nothing here needs to be pretty.
 const SETTINGS: &str = ".claude/settings.local.json";
 
-/// How a managed command is recognised on a later pass.
-// cm:guard identity is the VERB, never the exe path: the path changes under an update and a marker keyed on it would leave the old entry behind, so every restart would add one more copy of every hook and a pane would report each boundary as many times as this daemon had ever been installed.
-// cm:guard BOTH of this daemon's verbs are listed, and the flag alone is never the marker. Keyed on `hook --event` a stale `gate` entry survives every pane spawn and the hooks multiply; keyed on `--event` alone, an operator's own `audit-hook --event PreToolUse` is classified as ours and silently deleted on the next spawn — a pane spawn that removes somebody's automation, which is the failure the merge exists to prevent (ISS-1094, review F6).
-// cm:guard each marker carries its LEADING SPACE, which is the boundary between the exe path and
-// the verb. Without it `audit-hook --event PreToolUse` — an operator's own command — contains
-// `hook --event` and is deleted as ours on the next pane spawn. Measured by the test below, which
-// went red against the first version of this fix.
 const MANAGED_MARKERS: [&str; 2] = [" hook --event ", " gate --event "];
 
-/// Whether the shell reading these commands quotes the POSIX way.
-// cm:guard a VALUE and not a `#[cfg]` arm inside `shell_quoted`, which is the lesson ISS-1096 already paid for once: every test on this box runs where `cfg(unix)` is true, so an arm behind `cfg(windows)` fires nowhere anybody can run it and its green is worth nothing. As a parameter both arms are reachable from a linux test, and both are asserted below.
-// cm:guard this is NOT `HOOKS_CAN_REPORT`, and the two must not be folded together however alike they read. That one says whether a frame can reach this daemon and gates the pool lane; this one says how a shell reads a string, and the MASTER lane installs hooks on every platform — `master.rs:install_hooks_logged` has no platform gate at all, so a windows master would get POSIX quoting if this were keyed on the other fact.
 pub const POSIX_SHELL: bool = cfg!(unix);
 
-/// One argument of a shell command line, carrying any character a path may hold.
-// cm:guard the command is a SHELL string, so an unquoted `/opt/Forge Runner/forge-runner` invokes `/opt/Forge`. `install` never runs what it writes and still answers Ok, so `pool_jobs::open_channel` reads a channel that can never report and fails the job at the window (ISS-1096 F1).
-// cm:guard POSIX: single quotes, every inner `'` closed, escaped and reopened. Double quotes would expand `$`, `` ` `` and `\` inside a path holding them.
-// cm:guard cmd.exe: double quotes, nothing escaped inside — `"` is not legal in a windows path, so an escaping branch here is one no test could reach.
-// cm:guard what the windows arm's tests assert is the STRING and never its execution: nothing on this fleet runs a hook through cmd.exe, so `%VAR%` in a path — legal on NTFS — is still expanded and unproven here. Unchanged by this fix rather than introduced by it; the unquoted form had it too. A declared hole, not a covered one.
 fn shell_quoted(path: &str, posix: bool) -> String {
     if posix {
         format!("'{}'", path.replace('\'', r"'\''"))
@@ -47,9 +30,6 @@ fn command_for(exe: &str, event: Event, posix: bool) -> String {
     format!("{} hook --event {}", shell_quoted(exe, posix), event.wire())
 }
 
-/// The `PreToolUse` entry: the one hook on a pane that ANSWERS rather than reports.
-// cm:guard this is the door the declaration is enforced at, and registering it here rather than anywhere else is the whole of why it holds: `install` is called before every pane this daemon spawns, so a master gets the gate without anybody configuring a box. A gate wired up somewhere a person has to opt into is the advice this issue is replacing, wearing a config key.
-// cm:edge lockstep -> packages/runner/crates/forge-runner/src/cmd/gate.rs — the verb this names and the event it is registered for are one decision; the end-to-end test runs THIS string as a process and feeds it a real payload, so a wrong verb or a wrong event here fails there rather than in silence.
 pub const GATE_EVENT: &str = "PreToolUse";
 
 fn gate_command_for(exe: &str, posix: bool) -> String {
@@ -70,9 +50,6 @@ fn is_managed(entry: &Value) -> bool {
         })
 }
 
-/// The settings text a pane should start with, given whatever is there now.
-// cm:guard MERGES and never replaces: a user's own hooks in this file are theirs, and an install that wrote a fresh document would delete them silently on every pane spawn. Only entries this daemon recognises as its own are removed, and only to be replaced.
-// cm:guard unparseable existing content is REFUSED by name rather than overwritten. A corrupt or hand-edited file is somebody's work in an unknown state; the honest outcome is a pane that starts unhooked and says so, not a file this daemon quietly truncated.
 pub fn merged(existing: Option<&str>, exe: &str) -> Result<String> {
     merged_for(existing, exe, POSIX_SHELL)
 }
@@ -117,7 +94,6 @@ pub fn merged_for(existing: Option<&str>, exe: &str, posix: bool) -> Result<Stri
         .into_iter()
         .filter(|e| !is_managed(e))
         .collect();
-    // cm:guard the matcher is `*` and not the dispatch tool's name. Measured on claude 2.1.276 that tool is `Agent`; it has been called other things, and a matcher naming it would turn the gate off on the version that renames it, silently. The verb itself answers in microseconds for every tool call that is not a dispatch.
     gate.push(json!({
         "matcher": "*",
         "hooks": [{ "type": "command", "command": gate_command_for(exe, posix) }]
@@ -135,7 +111,6 @@ pub fn settings_path(cwd: &Path) -> PathBuf {
 
 /// Install the hooks into `cwd`, returning the file written.
 pub fn install(cwd: &Path, exe: &Path) -> Result<PathBuf> {
-    // cm:guard REFUSE the one class quoting cannot carry, rather than install a command naming a different file. `to_string_lossy` replaces each invalid UTF-8 byte with U+FFFD and no quoting recovers it, so a runner under a non-UTF-8 path would be registered under a name nothing can exec — and `open_channel`'s reader treats a successful install as a channel that can report. The caller already has the arm for this: an `Err` here starts the pane unhooked and says so, which is the honest reading (ISS-1096, review F1).
     let Some(exe) = exe.to_str() else {
         return Err(Error::Other(format!(
             "the runner's own path is not valid UTF-8 ({}), so a hook command naming it would name a different file",
@@ -183,9 +158,6 @@ mod tests {
         );
     }
 
-    /// Criterion 20. The gate reaches a pane because the same installer that
-    /// registers the activity hooks registers it, with nobody configuring a box.
-    // cm:guard this is the DOOR, not the arm. Deleting `gate` from `merged` leaves every test of `dispatch_gate::decide` green while no dispatch on the fleet ever reaches it — which is the shape of a criterion that stayed green after the event it was about was removed from the list entirely (ISS-1075).
     #[test]
     fn the_declaration_gate_is_registered_on_every_pane_this_daemon_opens() {
         let hooks = hooks_of(&merged_for(None, "/bin/fr", true).unwrap());
@@ -201,8 +173,6 @@ mod tests {
         assert_eq!(cmd, "'/bin/fr' gate --event PreToolUse");
     }
 
-    /// Criterion 23. The event argument is part of the door, not decoration.
-    // cm:guard asserts the WHOLE string rather than that it contains `gate`. `gate --event SubagentStart` registers a hook that fires after the dispatch it was meant to refuse, and every structural test that only looked for the verb would still be green.
     #[test]
     fn the_gate_is_registered_for_the_event_that_runs_before_the_dispatch() {
         assert_eq!(
@@ -212,9 +182,6 @@ mod tests {
         assert_ne!(GATE_EVENT, Event::SubagentStarted.wire());
     }
 
-    /// A runner whose own path holds a space is still the thing the hook runs.
-    // cm:guard this RUNS the string through a shell rather than reading it, which is the only thing that would have caught F1: every structural assertion in this file passed against the unquoted version, because the defect is not in the text, it is in what a shell does with the text. `install` writes the file and never invokes what it wrote, so nothing downstream of it can tell a command that works from one that cannot.
-    // cm:guard `#[cfg(unix)]` is scoping and not an amnesty: there is no hook channel on windows to test. `control::serve` is `#[cfg(not(unix))] -> Err`, `HOOKS_CAN_REPORT` is `cfg!(unix)`, and `pool_jobs::open_channel` reads that value and starts such a pane unhooked, so no frame is ever expected there.
     #[cfg(unix)]
     #[test]
     fn a_runner_under_a_path_with_a_space_is_what_the_hook_actually_invokes() {
@@ -258,9 +225,6 @@ mod tests {
         );
     }
 
-    /// Quoting must not cost this daemon the ability to recognise its own entries.
-    // cm:guard a STRING contract nothing type-checks, and quoting moved the character before the
-    // verb. Asserted for BOTH shells and every event: lose the match and each spawn adds a copy.
     #[test]
     fn a_quoted_command_is_still_recognised_as_this_daemons_own() {
         let exe = "/opt/Forge Runner/forge-runner";
@@ -303,8 +267,6 @@ mod tests {
         );
     }
 
-    /// The one class quoting cannot carry is refused by name, not installed lossily.
-    // cm:guard a path is BYTES on unix and `to_string_lossy` replaces each invalid one with U+FFFD, so the command would name a file that does not exist while `install` answered Ok — the same silence F1 is, one layer down and beyond the reach of any quoting. `open_channel` already has the arm for an `Err` here; it needed no new one, and adding one there would have been a branch no plant could reach.
     #[cfg(unix)]
     #[test]
     fn a_runner_under_a_path_that_is_not_utf8_is_refused_by_name() {
@@ -325,9 +287,6 @@ mod tests {
         );
     }
 
-    /// The windows arm, asserted from linux because the value makes it reachable.
-    // cm:guard cmd.exe does not read `'` as quoting, so the POSIX form everywhere would REGRESS the
-    // windows master lane — `install_hooks_logged` has no platform gate and installs there too.
     #[test]
     fn a_windows_shell_gets_the_quoting_a_windows_shell_understands() {
         let cmd = command_for(
@@ -341,9 +300,6 @@ mod tests {
         );
     }
 
-    /// And the two arms must not agree by accident.
-    // cm:guard this is what says the parameter is load bearing rather than decorative — the same
-    // assertion `pool_jobs` makes about `hooks_can_report`, and for the same reason.
     #[test]
     fn the_shell_is_what_decides_the_quoting_and_nothing_else_differs() {
         let exe = "/opt/Forge Runner/forge-runner";
@@ -354,9 +310,6 @@ mod tests {
         );
     }
 
-    /// The wrapper every caller uses must hand `merged_for` this platform's shell.
-    // cm:guard the ONE test here that reads the ambient value; every other test NAMES its shell. They used to read it, which made four assert the POSIX string under `cfg!(unix) == false`: green on linux, red on the windows leg, and the green said nothing about the arm it seemed to cover (ISS-1096 F1, caught by #524's windows leg).
-    // cm:guard what this can and cannot catch, said plainly because it derives its expectation from the same constant the code reads: it catches `merged` delegating with a literal instead of `POSIX_SHELL`, and it is NOT evidence about either arm's content. That belongs to the tests that name an arm and assert a hand-written literal, which is the only shape here that can disagree with its subject.
     #[test]
     fn the_ambient_wrapper_hands_on_this_platforms_shell() {
         let exe = "/opt/Forge Runner/forge-runner";
@@ -418,7 +371,6 @@ mod tests {
         assert_eq!(ours, 1, "{entries:?}");
     }
 
-    // cm:guard the failure this prevents is silent and cumulative: a marker keyed on the exe path would not match after an update, so every daemon restart would append one more copy of every hook and each boundary would be reported many times over.
     #[test]
     fn installing_twice_does_not_leave_two_copies() {
         let once = merged_for(None, "/bin/fr", true).unwrap();
@@ -427,7 +379,6 @@ mod tests {
         assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
     }
 
-    // cm:guard the same, across the case the marker exists FOR: an update moves the exe, and an entry from the old path must be replaced rather than joined.
     #[test]
     fn an_entry_from_a_previous_exe_path_is_replaced_not_joined() {
         let old = merged_for(None, "/old/path/forge-runner", true).unwrap();
@@ -438,8 +389,6 @@ mod tests {
         assert!(cmd.starts_with("'/new/path/"), "{cmd}");
     }
 
-    /// Review F6. An operator's own command that happens to take `--event`.
-    // cm:guard the damage this prevents is silent and total: a pane spawn deletes somebody's automation and the only symptom is their hook stopping. The marker exists to recognise THIS daemon's entries, and a flag is not a signature.
     #[test]
     fn an_operators_own_event_taking_hook_is_not_mistaken_for_ours() {
         let theirs = serde_json::to_string(&json!({
@@ -471,7 +420,6 @@ mod tests {
         assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
     }
 
-    // cm:guard a user's own hooks are theirs. Without this, every pane spawn silently deletes whatever somebody configured on that checkout, and the only symptom is their hook stopping.
     #[test]
     fn a_users_own_hooks_survive_the_install() {
         let mine = serde_json::to_string(&json!({
@@ -503,7 +451,6 @@ mod tests {
         );
     }
 
-    // cm:guard refusing beats truncating: the file may be somebody's work in a state this code cannot read, and a pane that starts unhooked is recoverable where a deleted config is not.
     #[test]
     fn a_file_this_cannot_parse_is_refused_by_name_rather_than_overwritten() {
         let e = merged_for(Some("{ not json"), "/bin/fr", true).unwrap_err();

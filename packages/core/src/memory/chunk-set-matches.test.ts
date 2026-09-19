@@ -85,8 +85,6 @@ describe('chunkSetMatches', () => {
     expect(await chunkSetMatches(tx, parent, PREFIX, PASSAGES)).toBe(false);
   });
 
-  // cm:guard `chunked_at IS NULL` is a set that was invalidated and never republished — the search
-  // arm joins on it, so those rows are already unreachable and the write owes a rebuild
   it('refuses a parent whose chunked_at is null, whatever the rows say', async () => {
     expect(await chunkSetMatches(tx, { ...parent, chunkedAt: null }, PREFIX, PASSAGES)).toBe(false);
   });

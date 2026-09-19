@@ -1,12 +1,3 @@
-/**
- * Direct WS publisher for `session.recoveryChanged` (ISS-197).
- *
- * Mirrors `publishPipelineHealthChanged` in `issues/pipeline-health.ts`:
- * loads the freshly-written recoveryStats and emits a derived snapshot to
- * the project room. The lazy import of `ws/server.js` keeps unit tests of
- * the retry engine from pulling pg-boss + WS server transitively.
- */
-
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';

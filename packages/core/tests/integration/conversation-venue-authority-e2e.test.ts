@@ -19,7 +19,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard ONE harness for the whole file: `db/client.ts` binds to DATABASE_URL at import time, so a second setupTestDatabase() puts the fixtures on one database and the code under test on another.
 let harness: TestDatabase;
 let participants: typeof import('../../src/conversations/participants.js');
 let store: typeof import('../../src/conversations/store.js');
@@ -69,7 +68,6 @@ async function openRoom(projectId: string, externalId = `chat.example.co ${rando
   });
 }
 
-// cm:guard the venue door takes the SAME authority the conversation-id door takes: while it did not, knowing a room's transport id was a way around the check the other door makes on the very same rows (ISS-1001).
 describe('a turn opening or resuming a venue', () => {
   it('refuses a named user who holds no member role on the project it names', async () => {
     const stranger = await createTestUser(harness.db);
@@ -83,7 +81,6 @@ describe('a turn opening or resuming a venue', () => {
         readerUserId: stranger.id,
       }),
     ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_OUT_OF_SCOPE' } });
-    // cm:guard and the refusal leaves NO room behind: a refused turn that has already opened the venue hands the next caller a conversation that a refusal created.
     expect(await store.findConversation('rocketchat', externalId)).toBeNull();
   });
 
@@ -118,7 +115,6 @@ describe('a turn opening or resuming a venue', () => {
     expect(turn.conversationId).toBeTruthy();
   });
 
-  // cm:guard a room the turn resumes is checked against every project it turns out to be about, not only the one this turn named: the pre-check knows one project and the room may have widened.
   it('refuses a member of the naming project who is a stranger to the room second project', async () => {
     const room = await openRoom(projectA);
     const second = await harness.db.transaction(async (tx) =>
@@ -147,7 +143,6 @@ describe('a turn opening or resuming a venue', () => {
     ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_OUT_OF_SCOPE' } });
   });
 
-  // cm:guard a turn naming no authority is refused as THAT, on this door as on the other one: an adapter whose speaker has no Forge account still runs under the authority the adapter resolved, so an absent one is a caller that forgot (ISS-1001).
   it('refuses a turn that names no authority at all, by name, and opens no room', async () => {
     const externalId = `chat.example.co ${randomUUID()}`;
     await expect(

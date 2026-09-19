@@ -7,6 +7,7 @@ import { Kbd } from "@/design/primitives/kbd";
 import { SegmentedControl } from "@/design/primitives/segmented-control";
 import { Tooltip } from "@/design/primitives/tooltip";
 import { cn } from "@/lib/utils/cn";
+import { PageTitle } from "@/design";
 
 export type TopBarDensity = "comfortable" | "compact";
 
@@ -77,7 +78,7 @@ export function TopBar({
           <Breadcrumb items={breadcrumb} onNavigate={onBreadcrumbNavigate} />
         </div>
       ) : (
-        title && <h1 className="fg-h3 mr-2 truncate">{title}</h1>
+        title && <PageTitle className="fg-h3 mr-2 truncate">{title}</PageTitle>
       )}
 
       <div className="ml-auto flex items-center gap-2">
@@ -111,7 +112,7 @@ export function TopBar({
           <Icon name="bell" size={18} />
           {notificationCount > 0 && (
             <span
-              className="absolute right-1.5 top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 text-[10px] font-bold text-white"
+              className="absolute right-1.5 top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 text-10 font-bold text-white"
               style={{ background: "var(--flame-500)" }}
             >
               {notificationCount}

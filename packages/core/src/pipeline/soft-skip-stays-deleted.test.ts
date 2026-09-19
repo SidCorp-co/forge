@@ -1,14 +1,3 @@
-/**
- * ISS-994 — the staged lane's soft-skip resolver was deleted by ISS-897, and
- * for four months its five identifiers went on being named in prose as though
- * something still walked them: `apply-transition.ts` described the resolver
- * passing `skip` while walking `STAGE_FORWARD`, and `resolve.ts` warned a
- * reader off a map that does not exist.
- *
- * A behaviour test cannot see that. Only a source scan can say that the one
- * place naming them is the guard that records their deletion.
- */
-
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -22,9 +11,6 @@ const DELETED = [
   'resolveSkipTarget',
   'validateStatesConfig',
 ] as const;
-
-/** The guard that records the deletion, and the only file allowed to name them. */
-const THE_GUARD = 'pipeline/state-machine.ts';
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -52,9 +38,9 @@ describe('the soft-skip resolver stays deleted (ISS-994)', () => {
   });
 
   for (const identifier of DELETED) {
-    it(`names \`${identifier}\` in the deletion guard and nowhere else`, () => {
+    it(`names \`${identifier}\` nowhere in the tree`, () => {
       const naming = files.filter((f) => f.text.includes(identifier)).map((f) => f.path);
-      expect(naming).toEqual([THE_GUARD]);
+      expect(naming).toEqual([]);
     });
   }
 });

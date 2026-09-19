@@ -1,9 +1,3 @@
-// ISS-1071 — the web provider registry.
-//
-// The cases below are the questions the seven collapsed maps used to answer separately, plus the
-// two each of them got wrong by omission: `SECRET_FIELD` had no GitHub or Google row and fell
-// through to `apiKey`, and `connectionTarget`'s key list had nothing that exists on a Sentry or
-// Google config, so those cards showed no identity line at all.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -31,8 +25,6 @@ describe("the registry as a vocabulary", () => {
     }
   });
 
-  // cm:guard a placeholder without a field, or a field without a placeholder, is how the replace-key
-  // box ends up sending a value to a key the provider's schema has no room for.
   it("pairs a secret field with a placeholder, or declares neither", () => {
     for (const m of PROVIDER_MODULES) {
       expect(m.secretField === null).toBe(m.secretPlaceholder === null);
@@ -48,9 +40,6 @@ describe("the registry as a vocabulary", () => {
     expect(providerForMcpServerName("chrome-devtools-mcp")).toBeUndefined();
   });
 
-  // cm:guard this is the suffix rule, stated once. A multi-binding provider's per-label entries must
-  // resolve back to it, and a single-binding provider's name must NOT swallow a custom server that
-  // merely starts with it.
   it("resolves a labelled entry of a multi-binding provider and refuses the same shape elsewhere", () => {
     const multi = PROVIDER_MODULES.find((m) => m.multiBinding && m.mcpServerName);
     expect(multi).toBeDefined();
@@ -93,8 +82,6 @@ describe("lookups a screen makes", () => {
     ).toBe("SidCorp-co/forge");
   });
 
-  // cm:guard neither key was in the union the generic reader walked, so both cards showed nothing —
-  // a Sentry `host` is a bare hostname rather than a URL, and a Google config carries no host at all.
   it("reads the two identities the generic key list could not", () => {
     expect(connectionTargetFor("sentry", { host: "logs.canawan.com" })).toBe("logs.canawan.com");
     expect(connectionTargetFor("google", { clientEmail: "forge@p.iam.gserviceaccount.com" })).toBe(
@@ -108,8 +95,6 @@ describe("lookups a screen makes", () => {
     expect(connectionTargetFor("github", { owner: "SidCorp-co" })).toBeNull();
   });
 
-  // cm:guard the fall-through this replaced sent a GitHub key to `apiKey`, so the drawer offered a
-  // Save that could only ever be refused by the provider's own schema.
   it("declares no typed credential for a provider whose credential is minted elsewhere", () => {
     expect(providerModule("github")?.secretField).toBeNull();
     expect(providerModule("google")?.secretField).toBe("serviceAccountJson");

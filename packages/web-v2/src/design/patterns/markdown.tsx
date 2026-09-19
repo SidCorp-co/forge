@@ -1,12 +1,5 @@
 "use client";
 
-// Thin Markdown renderer for web-v2 — a semantic-token-styled port of v1's
-// `packages/web/src/components/ui/markdown.tsx`, kept dependency-light
-// (react-markdown + remark-gfm only; no syntax-highlight bundle). Every link
-// and image goes through `body-link.tsx`, which asks `classifyBodyHref` which
-// origin the href belongs to: an app route stays on the web host in the same
-// tab, an `/api/...` file resolves against the core as it always did, and an
-// href naming neither is refused in words rather than pointed at one of them.
 
 import { useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
@@ -17,7 +10,6 @@ import { BodyImage, BodyLink } from "./body-link";
 import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS as T, LINK_CLASS } from "./body-tags";
 import { MermaidDiagram } from "./mermaid";
 
-// cm:guard `urlTransform` is the IDENTITY on purpose, so `classifyBodyHref` is the only thing that decides what an href may be. react-markdown's own `defaultUrlTransform` allows `https?|ircs?|mailto|xmpp` and empties everything else, which is a second sanitizer with a different list: it drops `tel:` that `body-view.tsx` renders fine, so the two renderers disagreed on the same body. Removing this prop restores that disagreement; the unsafe schemes it used to blank are refused by name in `body-href.ts` instead.
 const sameUrl = (url: string) => url;
 
 /** A relative link to another doc page (not scheme:/protocol-relative/absolute/
@@ -66,7 +58,6 @@ const imgRenderer: Components["img"] = ({ src, alt }) => (
   <BodyImage src={typeof src === "string" ? src : undefined} alt={alt} />
 );
 
-// cm:guard keep the mermaid interception HERE, in the factory both variants share — never by forking a second renderer. The fork this replaced (KnowledgeMarkdown) drifted: it gained mermaid but never gained `table`/`th`/`td`, so knowledge entries rendered diagrams and issue descriptions rendered tables, and neither did both.
 function makeCodeRenderer(blockClass: string, inlineClass: string): Components["code"] {
   return ({ className, children, ...props }: ComponentProps<"code"> & { inline?: boolean }) => {
     if (className === "language-mermaid") {
@@ -130,14 +121,14 @@ const proseComponents: Components = {
     </blockquote>
   ),
   code: makeCodeRenderer(
-    "block overflow-x-auto rounded-lg border border-line bg-sunken p-4 font-mono text-[13px] leading-relaxed text-fg",
-    "rounded bg-sunken px-1.5 py-0.5 font-mono text-[13px] text-fg",
+    "block overflow-x-auto rounded-lg border border-line bg-sunken p-4 font-mono text-13 leading-relaxed text-fg",
+    "rounded bg-sunken px-1.5 py-0.5 font-mono text-13 text-fg",
   ),
   pre: ({ children }) => <pre className="my-4 overflow-x-auto">{children}</pre>,
   img: imgRenderer,
   table: ({ children }) => (
     <div className="my-4 overflow-x-auto rounded-lg border border-line">
-      <table className="w-full border-collapse text-left text-[13px]">{children}</table>
+      <table className="w-full border-collapse text-left text-13">{children}</table>
     </div>
   ),
   th: ({ children }) => (

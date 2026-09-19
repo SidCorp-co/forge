@@ -27,6 +27,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useAttention } from "../hooks";
 import type { AttentionItem, AttentionKind } from "../types";
+import { PageTitle, SectionTitle } from "@/design/primitives/heading";
 
 /** Per-kind presentation. ISS-509: color resolves through the semantic tone
  *  layer (one source of truth) so a `failed` job (failure/red) and an offline
@@ -69,7 +70,7 @@ function KindTag({ kind }: { kind: AttentionKind }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 font-semibold"
-      style={{ color: m.fg, background: m.bg, fontSize: 11.5 }}
+      style={{ color: m.fg, background: m.bg, fontSize: "var(--text-11-5)" }}
     >
       <Icon name={m.icon} size={13} style={{ color: m.fg }} />
       {m.label}
@@ -77,7 +78,6 @@ function KindTag({ kind }: { kind: AttentionKind }) {
   );
 }
 
-// cm:why `questionId` earns a tag of its own because an agent's decision and a `waiting` somebody entered by hand arrive in this one bucket looking identical — the first is settled in a click on the issue screen and the second is not settled at all (ISS-980).
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   return (
     <button
@@ -102,7 +102,7 @@ function CountBadge({ children }: { children: ReactNode }) {
   return (
     <span
       className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-      style={{ fontSize: 11, lineHeight: "16px", color: "var(--fg-muted)", background: "var(--paper-100)" }}
+      style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--fg-muted)", background: "var(--paper-100)" }}
     >
       {children}
     </span>
@@ -128,16 +128,13 @@ function Group({
   collapsible?: boolean;
 }) {
   const matched = total ?? items.length;
-  // cm:why collapsing is opt-in per bucket, never derived from length alone: the buckets core caps at 5 could not trip it, but skill updates (cap 20) and offline runners (client-derived, unbounded) could — and an operator with 6 dead runners would open this screen to an infra alert collapsed to nothing by default.
   const collapsible = mayCollapse && items.length > COLLAPSE_ABOVE;
-  // cm:guard `toggled` only ever applies WHILE the group is collapsible, and it starts null so the default follows the CURRENT length. Both halves are load-bearing: seed it from the first render and a group that grows past the threshold stays expanded, and let a stale `false` outlive `collapsible` and a group that shrinks back under it renders its header over zero rows with no button left to reopen them.
   const [toggled, setToggled] = useState<boolean | null>(null);
   if (items.length === 0) return null;
   const expanded = collapsible ? (toggled ?? false) : true;
-  // cm:why the h2 wraps the button rather than sitting inside it: a heading nested in a button is not announced as a heading, so collapsible groups would silently drop out of screen-reader heading navigation while the non-collapsible ones stayed in it.
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="fg-label text-fg">
+      <SectionTitle className="fg-label text-fg">
         {collapsible ? (
           <button
             type="button"
@@ -160,7 +157,7 @@ function Group({
             <CountBadge>{matched}</CountBadge>
           </span>
         )}
-      </h2>
+      </SectionTitle>
       {expanded && (
         <div className="flex flex-col gap-1.5">
           {items.map((it, i) => (
@@ -194,7 +191,6 @@ export function AttentionScreen() {
     unseenDrafts: view.unseenDrafts.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
-  // cm:why the org filter can drop rows core counted, so the unclipped total is scaled down to what survived it rather than shown raw — a "20 of 22" over 3 visible rows reads as a bug, and re-deriving it from the list alone would hide a real backlog instead.
   const unseenDraftsTotal =
     scoped.unseenDrafts.length === view.unseenDrafts.length
       ? view.unseenDraftsTotal
@@ -233,7 +229,7 @@ export function AttentionScreen() {
       ))}
 
       <header className="mb-5">
-        <h1 className="fg-h2">Attention</h1>
+        <PageTitle className="fg-h2">Attention</PageTitle>
         <p className="fg-body-sm mt-1 text-muted">
           Cross-project items waiting on you — reviews, blocked work, mentions, failures, unseen
           drafts, and offline runners.

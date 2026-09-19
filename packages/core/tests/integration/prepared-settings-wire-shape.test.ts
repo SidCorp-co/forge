@@ -51,7 +51,6 @@ describe('ISS-941 — the settings object on a prepared job', () => {
     const project = await createTestProject(harness.db, owner.id, {
       agentConfig: { pipelineConfig },
     });
-    // cm:guard the floor at `runners/device-cap.ts` refuses a claim outright below `AGENT_NAMING_MIN_RUNNER`, so a device with no `agent_version` prepares nothing and every assertion below would read an absent key as a passing deletion.
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
     await harness.db.execute(
       sql`UPDATE devices SET agent_version = '0.12.1', last_seen_at = now() WHERE id = ${device.id}`,
@@ -73,7 +72,6 @@ describe('ISS-941 — the settings object on a prepared job', () => {
       )
     `);
     const runId = randomUUID();
-    // cm:guard `pipeline_runs_issue_kind_chk` requires an issue on a run of kind `issue`.
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
       VALUES (${runId}, ${project.id}, ${issueId}, 'issue', 'running')
@@ -95,7 +93,6 @@ describe('ISS-941 — the settings object on a prepared job', () => {
   });
 
   it('does not carry sessionMode even for a project whose stored config still names it', async () => {
-    // cm:why the phase 6 migration strips the key, but a row written before it ran or by a client that never validated is the case where a surviving read would put it back on the wire.
     const prepared = await prepareWith({ enabled: true, sessionMode: 'print' });
     expect(prepared).not.toHaveProperty('sessionMode');
   });

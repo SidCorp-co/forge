@@ -15,7 +15,6 @@ import { countInFlightByRunner } from '../jobs/in-flight.js';
 import { isBossStarted } from '../queue/boss.js';
 import { isWsListening } from '../ws/server.js';
 
-// cm:why `held` counts as active (RFC 0002) — it is a live job that runs once its mechanical condition clears, so an operator asking "what is in flight" must see it; the stuck-job scan keys on dispatchedAt age instead and so can never flag one
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running', 'held'] as const;
 
 export type LivenessSnapshot = {
@@ -26,7 +25,6 @@ export type LivenessSnapshot = {
 };
 
 /** Can the process reach its database, its queue, and its websocket listener? */
-// cm:guard every probe here SWALLOWS its own failure and reports false. A health endpoint that throws is indistinguishable from a process that is down, and the whole point of the payload is to say WHICH leg is broken.
 export async function readLiveness(): Promise<LivenessSnapshot> {
   let dbOk = false;
   try {
@@ -133,7 +131,6 @@ export async function readOpsHealth(visibleProjectIds: string[], staleJobThresho
 
   let stuckJobs: OpsStuckJob[] = [];
   if (dbOk && hasScope) {
-    // cm:guard build a parenthesised parameter list and use `IN (...)`. Drizzle expands an interpolated JS array as a ROW CONSTRUCTOR ($1,$2,...), so `= ANY(${ids}::uuid[])` is a malformed array literal and throws at query time — the same idiom projects/health-routes.ts and runners/select.ts carry, for the same reason.
     const projectIdList = sql.join(
       visibleProjectIds.map((id) => sql`${id}`),
       sql`, `,

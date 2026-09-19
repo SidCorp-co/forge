@@ -31,7 +31,6 @@ const inputSchema = z.object({
   note: z.string().max(4000).optional(),
 });
 
-// cm:guard the run must belong to the project the principal was authorised against — assertPrincipalIsWriter checks the PROJECT, so without this a writer on any project could append phases to any run in the fleet
 async function assertRunInProject(runId: string, projectId: string): Promise<void> {
   const owner = await findRunProjectId(runId);
   if (!owner) throw new Error('NOT_FOUND: pipeline run not found');

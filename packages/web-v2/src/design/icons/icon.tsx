@@ -9,7 +9,6 @@ import {
   Bold, Code, Heading, Italic, ListOrdered, Quote, SquareCode,
 } from "lucide-react";
 
-// cm:ignore CM013 — lucide-react 1.x brand-glyph migration only: `Github` was removed upstream, so the `github` entry maps to `GitBranch`; the registry's orientation prose is unchanged and there is nothing to reword.
 /* Semantic icon names (carried over from the prototype's Icon.jsx) mapped to
    the production Lucide set. Screens stay readable — `<Icon name="pipeline" />`
    — and the icon set is swappable in one place. */

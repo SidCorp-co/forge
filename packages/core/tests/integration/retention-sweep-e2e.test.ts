@@ -112,7 +112,6 @@ describe('retention sweep: the exemptions (ISS-1027)', () => {
     expect(swept.heldBack).toBe(1);
   });
 
-  // cm:guard the carry-in is the newest event BEFORE the cutoff, not the newest overall, and this is the case that tells the two rules apart: the 10-day event is inside the window and is nobody's carry-in, so a sweep that keeps only the newest OVERALL row deletes the 100-day one `runner_uptime` needs and the chart's leading edge reads wrong rather than empty.
   it('keeps the newest event BEFORE the window, not merely the newest overall', async () => {
     const runner = await fx.insertRunner();
     await fx.insertRunnerEvent(runner, 200);
@@ -151,7 +150,6 @@ describe('retention sweep: the exemptions (ISS-1027)', () => {
     expect(swept.heldBack).toBe(1);
   });
 
-  // cm:guard `kernel_transitions.entity` has no CHECK and no foreign key — the drizzle `{ enum }` is erased at runtime — so a writer this sweep has not been taught about really can put a name here. The `ELSE false` arm is what stops age alone deleting it, and this is the case that would go green if someone widened that arm to `true`.
   it('keeps a transition whose entity this sweep cannot resolve', async () => {
     const unknown = await fx.insertKernelTransition('widget', await fx.insertJob({}), 200);
 
@@ -161,7 +159,6 @@ describe('retention sweep: the exemptions (ISS-1027)', () => {
     expect(swept.deleted).toBe(0);
   });
 
-  // cm:guard `heldBack` counts what a RULE exempts, never what a tick failed to drain, and this is the only case that tells the two apart: at the cap an eligible row is still standing, so a post-sweep count of everything past the window answers 2 here. That number moves when the backlog moves and when the rule holds more, which is exactly the reading an operator uses it for — `deleted: 0, heldBack: n` is either a wedged rule or a sweep out of budget, and `capped` is what says which.
   it('counts only the exempt rows when the batch cap leaves eligible ones behind', async () => {
     const live = await fx.insertJob({ status: 'running', type: 'code' });
     const dead = await fx.insertJob({ status: 'done', type: 'review' });

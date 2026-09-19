@@ -41,7 +41,7 @@
       "postedAt": "2026-09-17T08:29:33.307Z",
       "kind": "decision",
       "field": "decision",
-      "lead": "The turn's stages are read off the turn state the transport already carries, and no block type is invented to represent one | conversation-thread.tsx's cm:guard says an entry carrying nothing renders nothing because a placeholder would claim a turn the record does not, and that guard is right.",
+      "lead": "The turn's stages are read off the turn state the transport already carries, and no block type is invented to represent one | conversation-thread.tsx's invariant says an entry carrying nothing renders nothing because a placeholder would claim a turn the record does not, and that guard is right.",
       "product": [],
       "technical": []
     },
@@ -571,7 +571,7 @@
       "postedAt": "2026-09-17T10:39:38.431Z",
       "kind": "confirmation",
       "field": "where",
-      "lead": "packages/core/src/db/schema.ts:2750 (agentAccess column, ISS-1071 cm:guard); packages/core/src/integrations/agent-access.ts; packages/core/src/integrations/agent-access-store.ts; packages/core/src/integrations/agent-declaration.ts; packages/core/src/integrations/github/ (22 files incl.",
+      "lead": "packages/core/src/db/schema.ts:2750 (agentAccess column, ISS-1071 invariant); packages/core/src/integrations/agent-access.ts; packages/core/src/integrations/agent-access-store.ts; packages/core/src/integrations/agent-declaration.ts; packages/core/src/integrations/github/ (22 files incl.",
       "product": ["no-developer-detail"],
       "technical": []
     },
@@ -601,7 +601,7 @@
       "postedAt": "2026-09-16T20:42:17.803Z",
       "kind": "confirmation",
       "field": "detail",
-      "lead": "Out of reach of this issue and reported rather than fixed here: agent-sessions/routes.ts:779 holds 'if (TERMINAL_SESSION_STATUSES.has(updated.status)) {}' — an empty branch under a 6-line cm:guard about bridges that no longer live in it.",
+      "lead": "Out of reach of this issue and reported rather than fixed here: agent-sessions/routes.ts:779 holds 'if (TERMINAL_SESSION_STATUSES.has(updated.status)) {}' — an empty branch under a 6-line invariant about bridges that no longer live in it.",
       "product": ["no-developer-detail"],
       "technical": []
     },

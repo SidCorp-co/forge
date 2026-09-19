@@ -79,7 +79,6 @@ describe('the assembled preamble forks on the lane', () => {
     return ((await res.json()) as { systemPrompt: string }).systemPrompt;
   }
 
-  // cm:guard `waiting` is the assertion this file exists for. `autonomous-park.ts` rewrites it to `needs_info` for a device actor, so naming it in a driver's preamble does not merely mislead — it fires the rewrite on every session that obeys the prompt, and the issue lands on a status the agent did not choose.
   it('names only parks the driver can actually write', async () => {
     const drive = await preambleFor('drive');
 
@@ -97,7 +96,6 @@ describe('the assembled preamble forks on the lane', () => {
     expect(drive).toContain('forge-runner api');
   });
 
-  // cm:guard the driver's MCP client WORKS — 376 `forge_phase` device calls in the 3 days to 2026-09-02, all on autonomous projects — so this asserts ONE NAME, not an unreachable tool. The integrations block is the deliberate exception and is why this counts a set rather than asserting zero: `forge_storefront_target` has no REST route at all, and forking that block would break epodsystem work on a drive job.
   it('leaves exactly the integration tools that have no CLI form', async () => {
     const drive = await preambleFor('drive');
     const named = new Set([...drive.matchAll(/forge_[a-z_.]+/g)].map((m) => m[0]));
@@ -114,12 +112,10 @@ describe('the assembled preamble forks on the lane', () => {
     }
   });
 
-  // cm:guard the other arm is half the evidence: every assertion above passes on a preamble that renders empty or on a fork that swallowed both lanes, and only this one tells those apart from a correct split. It drove `code` until ISS-1047 — a job type `RUNNER_CAPABILITIES` refuses, so the control was a dispatch that cannot happen and would have kept passing while proving nothing. `release_batch` takes the same arm and IS claimable.
   it('leaves the other arm carrying its ladder, its parks and its tools', async () => {
     const code = await preambleFor('release_batch');
 
     expect(code).toContain('## Pipeline Rules');
-    // cm:guard read the chain off `CANONICAL_LADDER`, never as a literal — a literal here passed while the array and the prose disagreed, which is the drift the array's own guard names. It is EIGHT rungs since ISS-976, each one a place a different party owes the next move; the shorter chains it has worn are why the assertion exists (153 hops over 4 projects in 3 hours on the retired ladder, 45 issues stranded, 2026-09-10).
     expect(code).toContain(CANONICAL_LADDER.join(' → '));
     expect(code).toContain('`waiting`');
     expect(code).toContain('forge_step_start');

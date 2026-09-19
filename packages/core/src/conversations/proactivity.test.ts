@@ -86,7 +86,6 @@ describe('a room nobody has spoken in', () => {
     await expect(decide()).resolves.toEqual({ speak: true });
   });
 
-  // cm:guard a room whose only speakers are agents is measured from its OLDEST message rather than treated as fresh: reading "no person ever spoke" as "no limit" inverts the guard.
   it('counts a room with no person in it at all', async () => {
     log(say('agent', 'ISS-1', DORMANT_MS + 60_000));
     await expect(decide()).resolves.toMatchObject({ decision: 'guard-dormant' });
@@ -104,7 +103,6 @@ describe('agents bouncing', () => {
     await expect(decide()).resolves.toMatchObject({ speak: false, decision: 'guard-agent-loop' });
   });
 
-  // cm:guard this is the case a message COUNTER would have killed, and the reason the breaker cuts on identifiers instead: two agents settling a cross-repo change trade many messages and every one of them carries something (ISS-1004).
   it('is not cut while every message names something new', async () => {
     log(
       say('person', 'settle it', 60_000),
@@ -115,7 +113,6 @@ describe('agents bouncing', () => {
     await expect(decide()).resolves.toEqual({ speak: true });
   });
 
-  // cm:guard the identifier language reaching this guard is load-bearing, and this is the case that says so out loud: a shape identifiersIn stops naming turns a working exchange into a bounce, and the guard fires EARLY and silently. Planted against the landed head, where the doubled underscore named nothing and this run was cut (ISS-1004, triage of aa6980c3).
   it('is not cut while every message names a new doubled-underscore token', async () => {
     log(
       say('person', 'settle it', 60_000),
@@ -126,7 +123,6 @@ describe('agents bouncing', () => {
     await expect(decide()).resolves.toEqual({ speak: true });
   });
 
-  // cm:guard the time horizon, which the issue's own words carry: the guard is about agents bouncing QUICKLY, and an agent answering long afterwards with nothing new is a slow exchange (review F4).
   it('is not cut when the messages are further apart than the bounce interval', async () => {
     log(
       say('person', 'settle ISS-1004 between you', LOOP_BOUNCE_MS * 9),
@@ -137,7 +133,6 @@ describe('agents bouncing', () => {
     await expect(decide()).resolves.toEqual({ speak: true });
   });
 
-  // cm:guard the hole a set frozen before the run left open: repeating a name the run itself introduced must not count as introducing it, or two agents saying `ISS-42` at each other are never cut (review pass 1 F5).
   it('is cut when the agents keep repeating an identifier one of them introduced', async () => {
     log(
       say('person', 'settle it', 60_000),
@@ -149,7 +144,6 @@ describe('agents bouncing', () => {
     await expect(decide()).resolves.toMatchObject({ speak: false, decision: 'guard-agent-loop' });
   });
 
-  // cm:guard the burst is judged on the gaps BETWEEN its messages and never against the clock reading it: a window routed late by a restart must reach the same verdict as one routed on time (review pass 2 F6).
   it('is cut for a burst that happened long before the window was routed', async () => {
     const old = LOOP_BOUNCE_MS * 20;
     log(
@@ -192,7 +186,6 @@ describe('a room where nothing has been worth saying', () => {
     await expect(decide()).resolves.toEqual({ speak: true });
   });
 
-  // cm:guard the guard's own decision CONTINUES the run rather than ending it: read as a terminator, the back-off lifted itself on the very next window and paced nothing (rule 3, review pass 1 F7).
   it('stays backed off while no person has spoken since it fired', async () => {
     log(say('person', 'chatter', 60_000));
     decisions.push(
@@ -202,7 +195,6 @@ describe('a room where nothing has been worth saying', () => {
     await expect(decide()).resolves.toMatchObject({ speak: false, decision: 'guard-backoff' });
   });
 
-  // cm:guard `undetermined` is skipped and NOT counted toward the back-off: its outcome is not known, and counting it is a caller acting on it as a failure, which rule 4 forbids outright (ISS-1004).
   it('does not count an undetermined window against the room', async () => {
     log(say('person', 'chatter', 60_000));
     decisions.push(
@@ -214,7 +206,6 @@ describe('a room where nothing has been worth saying', () => {
 });
 
 describe('nothing is stored', () => {
-  // cm:guard the property rule 3 names, asserted the only way it can be: the module writes nothing at all. A stored counter would make "a person spoke, so proactivity resumes" a write that can be missed, which leaves a room muted with no readable cause.
   it('takes no write to lift a guard', async () => {
     log(say('person', 'anyone about?', DORMANT_MS + 60_000));
     await expect(decide()).resolves.toMatchObject({ decision: 'guard-dormant' });
@@ -224,7 +215,6 @@ describe('nothing is stored', () => {
   });
 });
 
-// cm:guard the SAME fixture as the default case with the limit at one: what changes between the two is the threshold and nothing else, so a red here is the input being ignored and not the log being read differently (ISS-1034 criterion 33).
 describe('a room whose handle asked to back off sooner', () => {
   const quiet = (n: number) => ({ decision: 'nothing-to-say', closedAt: ago(n * 1000) });
   const thresholds = {

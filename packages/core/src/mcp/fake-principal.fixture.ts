@@ -1,17 +1,6 @@
-/**
- * The principal and context every MCP tool suite needs to call a handler.
- *
- * Thirty suites each carried their own byte-identical `Device` literal, so a
- * new `devices` column meant thirty edits and pushed two files past their
- * frozen size budget. ISS-931 took the device off `/mcp` entirely, so the same
- * fixture now hands out the one principal species there is. Excluded from the
- * build by `tsconfig.build.json`.
- */
-
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import type { McpContext } from './tools/lib.js';
 
-// cm:guard return a FRESH object per call. A shared instance is a mutable principal handed to every test in the file, so one handler that writes to it silently changes the identity the next case authenticates with.
 export function makeFakePrincipal(
   tokenId: string,
   userId: string,
@@ -19,7 +8,6 @@ export function makeFakePrincipal(
 ): McpPrincipal {
   return {
     kind: 'pat',
-    // cm:guard `null` — unestablished — is the fixture default because that is what a person's token really carries since ISS-1003, and a suite that means an AGENT must say so by handing it one. It is NOT the lenient direction: `issues/actor-agency.ts:actorAgency` maps unestablished to `agent`, so a suite that forgets meets the ISS-786/812 evidence gates rather than slipping past them, which is the way round a default has to fail.
     agency: null,
     agentUserId: null,
     userId,

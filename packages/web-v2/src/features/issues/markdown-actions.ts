@@ -21,7 +21,6 @@ export interface Edit {
   selectTo: number;
 }
 
-// cm:guard a marker already around the selection is REMOVED rather than doubled: pressing bold twice must leave the text as it started, and a second pair turns `**x**` into `****x****`, which renders as literal asterisks.
 export function toggleWrap(span: Span, marker: string): Edit {
   const { doc, from, to } = span;
   const selected = doc.slice(from, to);
@@ -51,7 +50,6 @@ function lineBounds(doc: string, from: number, to: number): { start: number; end
   return { start, end: nl === -1 ? doc.length : nl };
 }
 
-// cm:guard the prefix is toggled per SELECTION, not per line: a selection where every line already carries it is un-prefixed, and one where any line lacks it is prefixed throughout. Toggling line by line leaves a half-quoted block that reads as two blocks.
 export function togglePrefix(span: Span, prefix: string): Edit {
   const { doc } = span;
   const { start, end } = lineBounds(doc, span.from, span.to);
@@ -64,7 +62,6 @@ export function togglePrefix(span: Span, prefix: string): Edit {
   return { from: start, to: end, insert, selectFrom: start, selectTo: start + insert.length };
 }
 
-// cm:guard numbering is rewritten from 1 across the whole selection rather than incremented from whatever was there: markdown renumbers a list by its first item anyway, and preserving stale numbers makes the source disagree with what renders.
 export function toggleOrderedList(span: Span): Edit {
   const { doc } = span;
   const { start, end } = lineBounds(doc, span.from, span.to);
@@ -86,7 +83,6 @@ export function makeLink(span: Span): Edit {
   return { from, to, insert, selectFrom: caret, selectTo: caret };
 }
 
-// cm:guard a fence opens on its own line and the blank line before it is written when one is missing: ```` ``` ```` directly after prose is not a fence to any markdown parser, it is three backticks in a paragraph.
 export function makeFence(span: Span, info: string): Edit {
   const { doc, from, to } = span;
   const selected = doc.slice(from, to);
@@ -96,7 +92,6 @@ export function makeFence(span: Span, info: string): Edit {
   return { from, to, insert, selectFrom: caret, selectTo: caret + selected.length };
 }
 
-// cm:guard the heading cycles 1 -> 2 -> 3 -> none and never appends: `#` on a line that already carries one produces `##` by concatenation, so a reader pressing it twice silently demotes instead of toggling.
 export function cycleHeading(span: Span): Edit {
   const { doc } = span;
   const { start, end } = lineBounds(doc, span.from, span.to);

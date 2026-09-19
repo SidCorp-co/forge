@@ -22,7 +22,6 @@ function client(get: GitHubRepoClient['get']): GitHubRepoClient {
     repo: 'forge',
     fullName: 'SidCorp-co/forge',
     get,
-    // cm:guard the refresh path reads and never publishes, so this fixture refuses rather than stubbing: a refresh that reached the publish helper would be a write made by a read path, and a silent stub here would let it.
     publish: async () => {
       throw new Error('projection refresh must not publish');
     },
@@ -49,7 +48,6 @@ describe('the two reads an event invalidated', () => {
     });
   });
 
-  // cm:guard the compare is against the base REF, not the stored base sha — "behind" means how far this head trails the base branch AS IT IS NOW, and a base push is exactly the event that moves it without touching any pull request's payload.
   it('compares against the base branch as it is now, not against the stored base sha', async () => {
     const seen: string[] = [];
     const get = vi.fn(async (path: string) => {
@@ -61,7 +59,6 @@ describe('the two reads an event invalidated', () => {
     expect(seen[1]).toBe(`/repos/SidCorp-co/forge/compare/main...${HEAD}`);
   });
 
-  // cm:guard `unknown` is STORED, never retried for. GitHub computes mergeability lazily and asking again on a timer is the poll this design refuses; the next delivery about this pull request asks again anyway.
   it('stores an unknown mergeability as the answer rather than retrying for one', async () => {
     const get = vi.fn(async (path: string) =>
       path.includes('/compare/')
@@ -99,7 +96,6 @@ describe('the two reads an event invalidated', () => {
     expect(out.ok === false && out.reason).toMatch(/not installed/);
   });
 
-  // cm:guard `toMatchObject` with a bare RegExp value does NOT assert on a string property — it was written that way here first, and a planted `reason: 'something went wrong'` left it green. Read the field and match it, which is the only shape of this assertion that can fail.
   it('reports a network failure by its own text, so a timeout does not fail the delivery', async () => {
     const get = (async () => {
       throw new Error('The operation was aborted due to timeout');
@@ -109,7 +105,6 @@ describe('the two reads an event invalidated', () => {
     expect(out.ok === false && out.reason).toMatch(/aborted due to timeout/);
   });
 
-  // cm:guard the read is refused when GitHub answers about a head we did not ask about. The row still names the old head, so the DATABASE fence cannot catch this one — a `synchronize` that has not been delivered yet is enough to make GitHub's `mergeable` describe H2 while the compare below explicitly describes H1.
   it('refuses the pair when GitHub answers for a head this read was not about', async () => {
     const get = vi.fn(async () => ({
       head: { sha: 'z'.repeat(40) },
@@ -151,7 +146,6 @@ describe('the two reads an event invalidated', () => {
     ).resolves.toMatchObject({ ok: true, behindBy: 2, mergeableState: 'clean' });
   });
 
-  // cm:guard the two reads are not one snapshot. A push landing between them pairs a mergeability computed against one base revision with counts computed against another, and neither the database fence nor the head check can see it — the row's head and base are both still right.
   it('refuses the pair when the base moved between the two reads', async () => {
     const get = (async (path: string) =>
       path.includes('/compare/')
@@ -194,7 +188,6 @@ describe('the two reads an event invalidated', () => {
 });
 
 describe('the cap a base push stops at', () => {
-  // cm:guard the sentence goes ON THE ROW, because a truncation an operator has to infer from a stale number is the silent substitution this projection exists to remove.
   it('names the cap and says what the number beside it is', () => {
     expect(CAP_REACHED_REASON).toMatch(/more than 25 open pull requests/);
     expect(CAP_REACHED_REASON).toMatch(/from before the push/);

@@ -139,7 +139,6 @@ describe('sendFixedReply', () => {
     );
   });
 
-  // cm:guard TWO assertions on one call, and both are load-bearing (ISS-978 F5). The
   // `@ts-expect-error` is the compile-time half: `ReplySendProof`'s model arm is nominal, so a
   // hand-built literal must not typecheck — and if the brand is ever removed the literal compiles, the
   // directive becomes unused, and `tsc` fails with TS2578. That is the only thing that can turn this
@@ -157,10 +156,6 @@ describe('sendFixedReply', () => {
     expect(transport.client.sendMessage).not.toHaveBeenCalled();
   });
 
-  // cm:guard the discriminating half: a proof is a claim about ONE string, so a real proof paired with
-  // a different message has to be refused as loudly as a forged one. Before ISS-978 nothing compared
-  // the two at all — the delivery lane screened a round's option labels and posted the rendered round,
-  // and this door accepted it because the verdict merely accompanied the text.
   it('refuses a real proof minted for a different string, naming both', async () => {
     const transport = ddpTransport();
     const admitted = mint('the answer the screen read');

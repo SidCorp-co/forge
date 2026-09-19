@@ -348,11 +348,6 @@ describe('POST /api/integration-connections/:id/bindings — who may, and what t
     expect(createBinding).not.toHaveBeenCalled();
   });
 
-  // cm:guard the capability check is the SERVER's, not only the screen's. The web form hides
-  // "Deploy target" for a provider with no deploy adapter, but a hidden control is not a rule:
-  // this door takes a JSON body from anything holding a token, and a `deploy` binding on a
-  // provider Forge cannot deploy to is a release target that fails at deploy time with the merge
-  // already pushed.
   it('400 — refuses `role: deploy` on a provider with no deploy adapter, by name', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();

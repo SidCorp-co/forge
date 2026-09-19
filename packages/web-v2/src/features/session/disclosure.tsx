@@ -1,26 +1,5 @@
 "use client";
 
-// What a thread knows about its reader, held ABOVE the turns (ISS-1083): which disclosures they
-// have opened, which turns they have been inside, and whether they are at the bottom.
-//
-// cm:guard this cannot live in the leaf that draws the chevron, and the reason is a component
-// SWAP rather than a re-render: when a turn settles on the chat surface, `threadEntries` stops
-// emitting its `progress` entry and emits a `said` row instead, so React unmounts `LiveTurn` and
-// mounts `Said` in its place. A tool result a reader had opened while the answer was arriving was
-// discarded at that moment — criterion 24 — and no key inside the turn survives it, because the
-// component at that position changes type. A scope mounted once per thread does survive it.
-//
-// cm:guard the key is `${turnId}:${kind}:${n}` and the turn id is the ENTRY id, which is the one
-// thing that is the same on both sides of that swap: `ConversationProgressEntry.entry` carries "the
-// id the settled row will carry", and `parseMessages` passes `entry.id` straight through as the
-// item's own id. Keyed by anything else — a position in the thread, a React index — a reader's open
-// card would jump to a different turn the moment a row landed above it. Why the suffix is not a
-// block index either: `disclosureKeys` below.
-//
-// cm:guard `touched` is never cleared, and that IS criterion 25: a turn a reader has been inside
-// keeps its machinery for as long as the thread is open. Folding a turn the moment they close the
-// one card they opened would take away what they were in the middle of reading, and their own click
-// would be what did it.
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -29,17 +8,6 @@ import type { RenderBlock } from "./types";
 /**
  * Each block's disclosure identity in its turn, or nothing where a block has no disclosure.
  */
-// cm:guard NOT the block's index, and this is the finding that named why (implementation consult
-// F1): `assistantBlocks` is not append-only. `dedupeTodos` drops every task list but the last, so a
-// second one arriving shifts every block after the first one down — and `withPauseCount` PREPENDS a
-// pause block, which shifts all of them. Keyed by index, a reader's open tool result closed itself
-// and the card below it inherited the open key, on a turn where nothing about either card had
-// changed.
-//
-// cm:why counting within a KIND is what survives both: a tool call carries its own id on every
-// producer, and where one is missing its ordinal among tools is unmoved by a task list or a pause
-// arriving. A pause is counted only where it has text to open onto, because a pause with none has
-// no disclosure to identify — which is exactly the shape `withPauseCount` prepends.
 export function disclosureKeys(
   turnId: string,
   blocks: readonly RenderBlock[],
@@ -67,11 +35,6 @@ export interface ThreadDisclosures {
   /**
    * Is the reader at the bottom of the thread right now?
    */
-  // cm:guard this is here rather than drilled through four components because it is the same kind of
-  // fact as the two above it — what the thread knows about its reader — and it has exactly one
-  // consumer: a turn deciding whether it may fold. The implementation consult named why it must be
-  // consulted at all (F2): folding happens at TURN granularity, but a reader can be inside the turn
-  // that folds, below its cards, and then the height that vanishes is above them.
   atBottom: boolean;
 }
 
@@ -121,14 +84,6 @@ export function useThreadDisclosures(): ThreadDisclosures | null {
   return useContext(Ctx);
 }
 
-/**
- * One disclosure's open state — the thread's where there is a scope, its own where there is not.
- */
-// cm:guard the local fallback is deliberate and is not a second live path: it is what a leaf does
-// when it is drawn OUTSIDE a thread, which is every test that mounts one card on its own and the
-// kit gallery. Refusing to render without a scope would make the component unmountable in exactly
-// the places it is easiest to read, and the fallback cannot disagree with the scope because a leaf
-// only ever has one of the two.
 export function useDisclosure(key?: string): readonly [boolean, () => void] {
   const thread = useThreadDisclosures();
   const [local, setLocal] = useState(false);

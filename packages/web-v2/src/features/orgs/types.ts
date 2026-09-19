@@ -2,11 +2,6 @@
 
 export type OrgRole = "owner" | "admin" | "member";
 
-/**
- * Soft "working lens(es)" an owner/admin assigns to a member (role-aware chat) —
- * orthogonal to the permission role. Shapes only how the interactive agent
- * answers (altitude/voice), never permissions. Mirrors core `memberLenses`.
- */
 export type MemberLens = "technical" | "product";
 
 /** UI labels + order for the lens assignment control. */
@@ -44,8 +39,6 @@ export interface OrgProjectRow {
   createdAt: string;
 }
 
-/** One row of `GET /api/orgs/:orgId/invitations` (org admin). `owner` is never
- *  invitable by email, so the role is admin|member only. */
 export interface OrgInvitationRow {
   email: string;
   role: "admin" | "member";
@@ -65,8 +58,6 @@ export interface AddOrgMemberInput {
   role: OrgRole;
 }
 
-/** `POST /api/orgs/:orgId/members` — 201 returns the inserted member row;
- *  202 means the email has no account yet and an invitation was sent. */
 export type AddOrgMemberResult =
   | OrgMemberRow
   | { invited: true; expiresAt: string };

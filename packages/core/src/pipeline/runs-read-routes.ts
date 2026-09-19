@@ -1,19 +1,3 @@
-/**
- * ISS-103 — read-side REST surface for pipeline_runs.
- *
- * Two GET handlers exposed to the web UI so the issue detail panel and
- * project pipeline runs page can render step timelines + cost rollups
- * without going through the MCP-only `forge_pipeline_runs.*` tools.
- *
- * - `GET /api/pipeline-runs/:id` — full summary (steps + cost).
- * - `GET /api/projects/:id/pipeline-runs` — list with status/issueId
- *   filters, paginated via `X-Total-Count` header (matches the existing
- *   `/projects/:id/jobs` convention).
- *
- * POST handlers (pause/resume/cancel) live in `runs-routes.ts` from ISS-102
- * and are unaffected.
- */
-
 import { zValidator } from '@hono/zod-validator';
 import { and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';

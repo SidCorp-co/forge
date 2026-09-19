@@ -18,7 +18,6 @@ function capture() {
   return { qc, keys, has: (k: unknown[]) => keys.includes(JSON.stringify(k)) };
 }
 
-// cm:guard `routeEvent` no longer invalidates synchronously — every key it decides on goes into a 250 ms window (ISS-1019) — so a case asserting without flushing reads an empty list and passes against a router that decided nothing at all.
 const send = (event: string, data: Record<string, unknown> = {}) => {
   const c = capture();
   routeEvent({ event, data, timestamp: "2026-09-12T12:00:00.000Z" }, c.qc);
@@ -30,7 +29,6 @@ afterEach(() => {
   flushInvalidations();
 });
 
-// cm:guard the dashboard is keyed `['pulse']`, and this file's own guard says a key outside the invalidated prefixes stops refreshing with nothing red to say so — these cases ARE that red. Each event below moves a figure the surface draws, so dropping one leaves the dashboard confidently stale (ISS-988).
 describe("the workspace pulse is refreshed by every event that moves one of its figures", () => {
   const movers: Array<[string, Record<string, unknown>, string]> = [
     ["issue.created", {}, "the open bucket and the weekly created series"],
@@ -48,7 +46,6 @@ describe("the workspace pulse is refreshed by every event that moves one of its 
     });
   }
 
-  // cm:guard a reconnect drops every event in the gap, so the replay is the only thing that repairs a dashboard left open across one (ISS-988)
   it("a reconnect replay refreshes it too", async () => {
     const c = capture();
     const { replayOnReconnect } = await import("./event-router");
@@ -67,7 +64,6 @@ describe("routeEvent", () => {
   });
 });
 
-// cm:guard the issues list renders its dependency badges from the search response since ISS-1017, so `['issue', id, 'dependencies']` no longer reaches it — these cases are the only thing that goes red if the list prefix is dropped from that branch and the chips start outliving the edge that was retracted.
 describe("a dependency change reaches the issues list, not only the two issues it names", () => {
   const c = send("dependencyChanged", {
     projectId: "p1",
@@ -87,7 +83,6 @@ describe("a dependency change reaches the issues list, not only the two issues i
   });
 });
 
-// cm:guard the prefix list is now ONE array read by both replays, so this is what says a prefix cannot be dropped from the reconnect path while it stays in the first-open one — the two used to be the same function and drift here is silent.
 describe("a reconnect still repairs every prefix it repaired before", () => {
   it("invalidates every prefix a dropped connection has to repair", async () => {
     const c = capture();
@@ -118,15 +113,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
   });
 });
 
-// cm:guard ISS-1078 criterion 17, and the frames' own ordering. This file's head rule is that every
-// key it decides on sits under an invalidated prefix; the progress key is the one exception, written
-// and never invalidated, because a frame arrives many times a second and carries the whole entry — so
-// an invalidation per frame would refetch the entire conversation per token. These cases are what
-// holds that exception to what it claims.
 describe("a turn's progress frames are written, never fetched (ISS-1078)", () => {
-  // cm:guard a cache double rather than `capture()` above, because the whole behaviour under test is
-  // a WRITE: the mock up there has no `setQueryData` at all, and the router would throw before
-  // deciding anything.
   function cache() {
     const keys: string[] = [];
     const store = new Map<string, unknown>();
@@ -158,8 +145,6 @@ describe("a turn's progress frames are written, never fetched (ISS-1078)", () =>
     const c = cache();
     c.frame("conversation.progress", { conversationId: "c1", rev: 1, entry: entry("two iss") });
     expect(c.at(["conversations", "c1", "progress"])).toMatchObject({ rev: 1 });
-    // cm:guard asserted against the WHOLE list and not against one key: an invalidation of
-    // `["conversations"]` or of the list would refetch this room just as surely as its own key.
     expect(c.keys).toEqual([]);
   });
 
@@ -170,8 +155,6 @@ describe("a turn's progress frames are written, never fetched (ISS-1078)", () =>
     expect(c.at(["conversations", "c1", "progress"])).toMatchObject({ rev: 7 });
   });
 
-  // cm:guard a new entry id is a NEW turn and its revisions start again from 1, so a guard that
-  // compared revisions alone would silently drop the whole of the next turn.
   it("accepts a lower revision when it belongs to the next turn", () => {
     const c = cache();
     c.frame("conversation.progress", { conversationId: "c1", rev: 7, entry: entry("two issues left") });
@@ -179,9 +162,6 @@ describe("a turn's progress frames are written, never fetched (ISS-1078)", () =>
     expect(c.at(["conversations", "c1", "progress"])).toMatchObject({ rev: 1 });
   });
 
-  // cm:guard the marker's lifetime is the reason this key exists: the correction frame and the settle
-  // land within milliseconds of each other, and the settle clears the progress key — so a withdrawal
-  // recorded only on the progress entry is on screen for about 13 ms. Measured in Chrome, 2026-09-17.
   it("records a withdrawn draft under a key the settle does not clear", () => {
     const c = cache();
     c.frame("conversation.progress", {
@@ -198,8 +178,6 @@ describe("a turn's progress frames are written, never fetched (ISS-1078)", () =>
     });
   });
 
-  // cm:guard keyed by the ENTRY the replacement belongs to, so a room that corrects twice marks each
-  // turn with its own draft rather than the newest one above all of them.
   it("keeps one withdrawal per turn", () => {
     const c = cache();
     c.frame("conversation.progress", {
@@ -241,7 +219,6 @@ describe("a turn's progress frames are written, never fetched (ISS-1078)", () =>
   });
 });
 
-// cm:guard ISS-1078 criteria 1 and 2 — the frame that tells one tab its own message is now a row.
 describe("an accepted message is filed under the token its tab minted (ISS-1078)", () => {
   function cache() {
     const store = new Map<string, unknown>();
@@ -271,8 +248,6 @@ describe("an accepted message is filed under the token its tab minted (ISS-1078)
     expect(c.at(["conversations", "c1", "accepted"])).toEqual({ "tok-a": { messageId: "m0", seq: 0 } });
   });
 
-  // cm:guard two tabs, each holding its own outbox row: a map keyed by anything but the token would
-  // have one tab clear its row on the other's acceptance and drop somebody else's message off screen.
   it("keeps one tab's acceptance from answering another's", () => {
     const c = cache();
     c.frame({ conversationId: "c1", messageId: "m0", seq: 0, clientToken: "tok-a" });
@@ -283,8 +258,6 @@ describe("an accepted message is filed under the token its tab minted (ISS-1078)
     });
   });
 
-  // cm:guard somebody ELSE's message arriving is still news to this room, and it belongs to no outbox
-  // row here — so the room is refreshed and no token is written.
   it("refreshes the room for a message this tab did not send", () => {
     const c = cache();
     c.frame({ conversationId: "c1", messageId: "m0", seq: 0 });

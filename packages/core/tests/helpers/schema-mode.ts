@@ -7,15 +7,6 @@ export interface SchemaHandle {
   drop: () => Promise<void>;
 }
 
-/**
- * Create a disposable Postgres schema inside TEST_DATABASE_URL and return a
- * connection URL whose `search_path` is pinned to that schema. Used when
- * TEST_DB_MODE=schema (local dev — reuses a long-lived Postgres, no container
- * boot per run).
- *
- * Each call produces a unique schema name derived from the Vitest worker id
- * plus a random suffix, so parallel test files cannot collide.
- */
 export async function createTestSchema(baseUrl: string, workerId: string): Promise<SchemaHandle> {
   const suffix = randomBytes(4).toString('hex');
   const schemaName = `test_w${workerId}_${suffix}`;

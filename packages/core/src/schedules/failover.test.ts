@@ -28,10 +28,6 @@ vi.mock('../db/client.js', () => ({
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
-    // cm:why the tx double owes `insert` as well as `execute`: since ISS-1030 the
-    // turn writes its user entry into `agent_session_events` inside the same
-    // transaction, and a double without it fails every dispatch on a missing
-    // method rather than on what the test is about.
     transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
       cb({
         update: txUpdate,
@@ -128,7 +124,6 @@ beforeEach(() => {
 const DEAD_DEVICE = 'dev-dead';
 const NEW_DEVICE = 'dev-2';
 
-// cm:guard state `claudeSessionId` on every fixture. The drizzle mock discards the select's column list, so an ABSENT field reads `undefined` — which the ISS-875 side-effect guard treats as "never attached" and waves through. Every failover test here would then pass by accident, proving nothing about a session that did attach.
 function failedScheduleSession(over: Record<string, unknown> = {}) {
   return {
     id: 'failed-sess',
@@ -242,14 +237,12 @@ describe('redispatchScheduleSessionOnFailover', () => {
   });
 });
 
-// cm:why ISS-875 fixtures reproduce Dream session 1584cfcf exactly — attached, 15 tool calls, created ISS-872, then died on a usage limit — because the classifier path reaches this function with no predicate of its own, and only the absence of a free device stopped it re-running a session that had already committed work.
 describe('a session that may have committed work is never re-dispatched', () => {
   const attachedAndWorked = {
     claudeSessionId: 'claude-1584cfcf',
     metadata: { source: 'schedule.run', scheduleId: SCHEDULE_ID, toolCallCount: 15 },
   };
 
-  // cm:guard seed the WHOLE happy path (project row + device + insert + turn) behind each refusal. Without it, deleting the guard makes the mock run dry and the test fails on `not iterable` — red for the wrong reason, and it would stay red for any unrelated seeding change. Seeded, a lost guard means a genuine `redispatched`, which is exactly the duplicate-work defect ISS-875 is about.
   function seedAnUnguardedRunWouldSucceed() {
     selectLimit.mockResolvedValueOnce([{ id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' }]);
     seedRedispatchHappy();
@@ -317,7 +310,6 @@ describe('a session that may have committed work is never re-dispatched', () => 
   });
 });
 
-// cm:why finalizeScheduleSessionFailure writes the classifier's PREDICTED disposition before this function runs, and the real outcome used to be logged and dropped — so these cases assert on the persisted row, not the return value, which is where the `VISION: state-never-lies` breach was.
 describe('the disposition actually applied is written back over the prediction', () => {
   function persistedDetail(): string | undefined {
     const call = updateSet.mock.calls.find(

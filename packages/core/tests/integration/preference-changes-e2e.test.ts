@@ -46,7 +46,6 @@ beforeEach(async () => {
 const person = () => ({ kind: 'person' as const, userId: alice });
 
 describe('preference writes on one person', () => {
-  // cm:guard six writers on four connections, all racing, and the assertion is the CHAIN: each row's previous value is the newValue of the row before it in changedAt order. Without the per-user lock two writers read the same old value and one records a predecessor that never held (codex F2).
   it('leave a trail whose every row follows from the one before it', async () => {
     const styles = ['concise', 'detailed', 'bullets', 'default', 'concise', 'bullets'] as const;
     const dbs = [independent(), independent(), independent(), independent()];
@@ -63,7 +62,6 @@ describe('preference writes on one person', () => {
     const trail = (await prefs.listPreferenceChanges(alice))
       .filter((c) => c.field === 'answer_style')
       .sort((a, b) => a.changedAt.getTime() - b.changedAt.getTime() || a.id.localeCompare(b.id));
-    // cm:guard the writers race, so a writer whose value is already stored when its turn comes writes no row (ISS-1041): the trail is as long as the number of writes that changed something, never longer than the writers, and never carries a row whose value did not change.
     expect(trail.length).toBeGreaterThanOrEqual(1);
     expect(trail.length).toBeLessThanOrEqual(styles.length);
     expect(trail[0]?.previousValue).toBe('default');
@@ -100,7 +98,6 @@ describe('preference writes on one person', () => {
 });
 
 describe('a write that changes nothing (ISS-1041)', () => {
-  // cm:guard the trail records CHANGES, not writes, against the real table: a value re-sent unchanged beside the one the assistant means to set leaves no row whose previous equals its new (criteria 17, 19, 20).
   it('writes no trail row for a patch equal to what is stored, and one row for one field of two', async () => {
     await prefs.writeAssistantPreferences({
       userId: alice,

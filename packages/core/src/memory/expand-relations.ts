@@ -39,8 +39,6 @@ function isExpandable(kind: string): kind is MemoryVia['relation'] {
   return (EXPAND_RELATION_KINDS as ReadonlyArray<string>).includes(kind);
 }
 
-// cm:guard both directions are walked (`blocks` and `blockedBy`) and expired edges are dropped — the blocked issue is as relevant to a reader as its blocker, and an edge past `validUntil` was retracted on purpose (forge_issues.update with validUntil in the past is the documented retraction), so surfacing it would resurrect a relation someone removed
-// cm:guard the digest this reads carries ids, kind and expiry ONLY — no title, no description, no `reason` — because these rows are inlined into an agent's context without the untrusted-data framing the issue's own fields get; it is the same `digest()` the single-issue read builds, batched, so the omission cannot drift between the two callers (ISS-1024)
 function neighboursOf(
   relations: { blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] },
   from: string,
@@ -53,7 +51,6 @@ function neighboursOf(
     }));
 }
 
-// cm:guard the cap is applied AFTER hydration, never here — a neighbour with no memory row (never indexed, archived, degraded) must not consume one of the `topK` slots, or edge order alone decides whether a real neighbour is ever queried (codex review of ISS-905, 2026-09-04)
 function pickNeighbours(perSeed: Neighbour[][], present: Set<string>): Neighbour[] {
   const chosen: Neighbour[] = [];
   for (const list of perSeed) {

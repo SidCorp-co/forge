@@ -62,7 +62,6 @@ describe("the answer-style control (criterion 52)", () => {
     expect(screen.getByRole("button", { name: /save answer preferences/i })).toBeDisabled();
   });
 
-  // cm:guard emptied instructions are sent as NULL and not as "": the server keeps `assistant_instructions` nullable and renders nothing for null, while an empty string would still render a heading over nothing (ISS-1034).
   it("saves the style and sends emptied instructions as null", () => {
     renderCard();
     fireEvent.click(screen.getByLabelText("Reply style"));

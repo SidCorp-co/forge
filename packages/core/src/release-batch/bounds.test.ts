@@ -58,18 +58,12 @@ describe('the total bound', () => {
     expect(bound(rows, 'total')?.crossed).toBe(false);
   });
 
-  // cm:guard criterion 22, and it is the only case where `>` and `>=` differ. A run held at
-  // precisely its threshold has not yet exceeded anything, and an operator asked to defend a page
-  // at the exact boundary has nothing to say.
   it('is not crossed at exactly the threshold', () => {
     const rows = [attempt({ stage: 'promote', startedAt: at(BOUND_DEFAULTS.total) })];
 
     expect(bound(rows, 'total')?.crossed).toBe(false);
   });
 
-  // cm:guard it must NEVER reset inside a run. Measuring from the newest promotion would make a
-  // release that re-promotes every twenty minutes immortal, which is the exact shape this bound is
-  // for.
   it('measures from the FIRST promotion, not the newest', () => {
     const rows = [
       attempt({ stage: 'promote', startedAt: at(BOUND_DEFAULTS.total + 60_000) }),
@@ -79,9 +73,6 @@ describe('the total bound', () => {
     expect(bound(rows, 'total')?.crossed).toBe(true);
   });
 
-  // cm:guard a run with no promotion has crossed NOTHING, whatever its age: nothing has reached
-  // production for the duration bounds to measure from, and reporting one as holding sends a
-  // person to a release that has not begun.
   it('is not crossed by a run that has recorded no promotion at all', () => {
     const rows = [attempt({ stage: 'deploy', startedAt: at(BOUND_DEFAULTS.total * 10) })];
 
@@ -99,9 +90,6 @@ describe('the stall bound', () => {
     expect(bound(rows, 'stall')?.crossed).toBe(true);
   });
 
-  // cm:guard an ACCOUNT resets it, which is what separates "gone quiet" from "slow". The write is
-  // the attempt row being touched at all; a stall measured off settled attempts alone pages over a
-  // deploy that is merely taking its time.
   it('is reset by any newer write, including an unsettled one', () => {
     const rows = [
       attempt({ stage: 'promote', startedAt: at(BOUND_DEFAULTS.stall + 60_000) }),
@@ -152,9 +140,6 @@ describe('the regression bound', () => {
     expect(bound(rows, 'regression')?.crossed).toBe(false);
   });
 
-  // cm:guard an attempt whose act never reported has NO health reading, and reading its NULL as
-  // `down` would report a regression over an agent that was killed mid-deploy — a run somebody
-  // should resume, reported as one that broke production.
   it('ignores an attempt that never settled, rather than reading its absent health as down', () => {
     const rows = [
       attempt({ stage: 'promote', startedAt: at(600_000), settledAt: at(590_000), health: 'up' }),
@@ -164,8 +149,6 @@ describe('the regression bound', () => {
     expect(bound(rows, 'regression')?.crossed).toBe(false);
   });
 
-  // cm:guard it does NOT need a promotion, unlike the duration bounds: a health reading that went
-  // up and then down is a fact about production whether or not this run is what put it there.
   it('is crossed on a run with no promotion at all', () => {
     const rows = [
       attempt({ startedAt: at(600_000), settledAt: at(590_000), health: 'up' }),
@@ -206,9 +189,6 @@ describe('what a crossed bound makes of the run', () => {
     expect(read(rows)).toMatchObject({ holding: false, crossedNames: [] });
   });
 
-  // cm:guard every bound is reported whether or not it is crossed. A state route that listed only
-  // the crossed ones tells the next agent nothing about how close the others are, which is the
-  // reading that decides whether to carry on or hand over.
   it('reports all three bounds, crossed or not', () => {
     expect(read([]).bounds.map((b) => b.name)).toEqual(['total', 'stall', 'regression']);
   });

@@ -44,11 +44,9 @@ import {
 import { findBindingOwningInstallation } from './install-resolve.js';
 import { listInstallationRepositories } from './repositories.js';
 
-// cm:guard these are TWO apps because they mount at different prefixes: the project-scoped one under `/api/projects`, the callbacks under `/api`. Folding the callbacks into the first would put them at `/api/projects/integrations/...`, where `integrations` is read as a `:projectId` by every sibling route.
 export const githubConnectRoutes = new Hono<{ Variables: AuthVars }>();
 githubConnectRoutes.use('*', requireAuth(), assertEmailVerified());
 
-// cm:guard scope this guard to its OWN path, never `'*'` — mounted at the broad `/api` prefix, a `use('*')` becomes `/api/*` on the parent and runs for every route registered after it, including the deliberately unauthenticated `/api/webhooks/in/:slug`. Measured 2026-09-06: with `'*'` here, every GitHub webhook delivery answered 401 UNAUTHENTICATED while the integration still displayed as configured.
 export const githubCallbackRoutes = new Hono<{ Variables: AuthVars }>();
 githubCallbackRoutes.use('/integrations/github/*', requireAuth(), assertEmailVerified());
 
@@ -64,14 +62,12 @@ function webBaseUrl(): string {
   return base;
 }
 
-// cm:guard resolve this from CONFIG, never from the request's Host header — `redirect_url` is where GitHub delivers the conversion code that yields the App's PRIVATE KEY, so a forged Host would hand it to the forger. The request's own origin is read below only to REFUSE on a mismatch, which a forged header can at worst turn into a denial.
 function apiBaseUrl(): string {
   const base = env.PUBLIC_API_BASE_URL ?? env.OAUTH_REDIRECT_BASE ?? process.env.APP_BASE_URL;
   if (!base) throw new HTTPException(500, { message: 'APP_BASE_URL is not configured' });
   return base.replace(/\/+$/, '');
 }
 
-// cm:guard a manifest whose callback names an origin this core is not reachable on strands the operator AFTER GitHub has created the App — the state is spent, the App exists, and only a hand-edit recovers it. So refuse while nothing has been created, naming both origins. Measured 2026-09-06: APP_BASE_URL was the web host, and all three core URLs 404'd.
 function assertApiOriginReachable(c: Context, api: string): void {
   const url = new URL(c.req.url);
   const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
@@ -103,7 +99,6 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   const org = url.searchParams.get('org');
   const orgId = url.searchParams.get('orgId') ?? undefined;
 
-  // cm:edge contract -> packages/core/src/integrations/connection-routes.ts — the same org-admin gate the generic connection create applies; an App shared by every project in an org may not be created by a member who could not create the connection directly.
   if (orgId) {
     const orgRole = await loadOrgRole(orgId, userId);
     if (!orgRole) throw notFound('org');
@@ -129,7 +124,6 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   });
 });
 
-// cm:guard list from the INSTALLATIONS, never from an account's repositories — an App reaches only what its operator granted it, so an account-wide list would offer repositories the binding then fails on, and the failure would arrive at the first webhook rather than at the picker.
 githubConnectRoutes.get('/:projectId/integrations/github/repositories', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
@@ -160,7 +154,6 @@ githubCallbackRoutes.get('/integrations/github/manifest-callback', async (c) => 
   const state = verifyConnectState(stateSecret(), rawState);
   if (!state) throw badRequest({ state: 'invalid or expired' });
 
-  // cm:guard the session must be the user the state was signed for — the state proves Forge issued it, NOT that this browser is the one that asked. Skipping this lets a signed state be replayed in somebody else's session, binding an attacker's App to their project.
   const userId = c.get('userId');
   if (state.userId !== userId) throw badRequest({ state: 'issued for another user' });
 
@@ -169,7 +162,6 @@ githubCallbackRoutes.get('/integrations/github/manifest-callback', async (c) => 
 
   const app = await convertManifestCode({ code });
 
-  // cm:guard one App serves EVERY project bound to it — `owner`/`repo` are binding-tier keys (integrations/provider-schemas.ts), so the repository a project uses lives on its binding and never on the App. Minting an App per project puts the scope in the wrong place and costs a private key, a webhook secret and an approval screen each time.
   const connection = await createConnection({
     ownerType: state.orgId ? 'org' : 'user',
     ownerId: state.orgId ?? userId,
@@ -183,16 +175,10 @@ githubCallbackRoutes.get('/integrations/github/manifest-callback', async (c) => 
     },
   });
 
-  // cm:guard the binding's `integrationSecret` is the APP's webhook secret, never a freshly minted one — GitHub signs with what it generated, so a minted secret would fail every signature check while the UI showed the integration as configured.
   await createBinding({
     connectionId: connection.id,
     projectId: state.projectId,
     provider: 'github',
-    // cm:guard `service` and never a stage: `providerCanDeploy('github')` is false, so a github
-    // binding cannot be `role: 'deploy'` at all. This used to read an `environment` query parameter
-    // and coerce anything that was not the literal `staging` to `prod` — a coercion that made the
-    // caller's answer unrecoverable and which had nothing to decide, since GitHub is a repo host on
-    // every project and is somewhere Forge deploys to on none.
     role: 'service',
     config: {},
     integrationSecret: app.webhookSecret,
@@ -212,7 +198,6 @@ githubCallbackRoutes.get('/integrations/github/installed', async (c) => {
   const rawState = c.req.query('state');
   const userId = c.get('userId');
 
-  // cm:guard GitHub omits `state` when the operator installs the App from its own page rather than from the link Forge handed them, so this must resolve the binding from the App itself. Refusing without state would strand the flow at its last step with the App already created.
   const state = rawState ? verifyConnectState(stateSecret(), rawState) : null;
   if (!Number.isFinite(installationId) || installationId <= 0) {
     throw badRequest({ installation_id: 'required' });

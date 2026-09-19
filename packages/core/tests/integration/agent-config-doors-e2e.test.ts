@@ -1,15 +1,3 @@
-/**
- * ISS-1070 — one door per value, over the real HTTP surface and a real Postgres.
- *
- * A unit test says what one statement carries. Only a live route and a live column say whether a
- * second writer's key survived it, whether a request that failed on a sibling field left the
- * configuration alone, and whether the assistant still finds the prompt a project stored.
- *
- * The lost-update case carries its own negative control — the read-modify-write these doors used to
- * do, written out and run — because without it the case would pass against a route that still
- * clobbers and merely happened not to interleave.
- */
-
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -132,7 +120,6 @@ describe('the named doors write one key each', () => {
     expect(stored.personaStyle).toBe('be terse');
   });
 
-  // cm:guard the key the assistant reads, end to end: the strict schema declares `systemPrompt` because `buildSystemPrompt` reads it, and no project on the fleet stores one — so a schema built from the live column instead of from the reader would have refused it and this case is what says it did not.
   it('serves a stored systemPrompt to the assistant prompt builder', async () => {
     await call('PATCH', `/api/projects/${projectId}`, { systemPrompt: 'answer in Vietnamese' });
     const [row] = await harness.db
@@ -168,7 +155,6 @@ describe('the raw agentConfig record is refused by name', () => {
     expect(await storedConfig()).toEqual(before);
   });
 
-  // cm:guard the key-less bodies, sent BESIDE a field that would otherwise succeed: without the field-level refusal the walk speaks for no key, `updateProjectSchema` strips `agentConfig`, and the operator gets a 200 with the name changed and the record dropped — which is the silent discard, reached by the one shape that names nothing.
   it.each([
     ['an empty record', {}],
     ['a list', []],
@@ -196,12 +182,10 @@ describe('the raw agentConfig record is refused by name', () => {
 });
 
 describe('a wholesale write cannot lose a sibling key', () => {
-  // cm:guard the negative control comes FIRST and is the reason the case below is evidence: it performs the read-modify-write these doors used to do and watches the sibling key vanish. With it removed, the case below passes against a route that still clobbers.
   it('loses the sibling key when the write is the read-modify-write this replaced', async () => {
     const stale = await storedConfig();
     await mods.patchAgentConfigKeys(projectId, { systemPrompt: 'set by the other request' });
 
-    // cm:why exactly what `writeAgentConfig` did — the whole document, built from a read taken earlier
     await harness.db
       .update(mods.projects)
       .set({ agentConfig: { ...stale, plugins: [] } })
@@ -214,7 +198,6 @@ describe('a wholesale write cannot lose a sibling key', () => {
     const stale = await storedConfig();
     await mods.patchAgentConfigKeys(projectId, { systemPrompt: 'set by the other request' });
 
-    // cm:why the same window and the same completion, except the writer carries its key and not the read
     void stale;
     await mods.patchAgentConfigKeys(projectId, { plugins: [] });
 

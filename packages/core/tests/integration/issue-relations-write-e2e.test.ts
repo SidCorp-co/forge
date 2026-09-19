@@ -63,7 +63,6 @@ describe('ISS-868 issue relations writer', () => {
     return id;
   }
 
-  // cm:guard a PAT reaches the write behind a SYNTHETIC device whose id is an api_tokens row, so the writer's actor MUST be the user — a device-shaped actor writes an activity_log actor_id matching no `devices` row
   function makePatWriter(): Parameters<WriteModule['applyIssueRelations']>[0] {
     return { actor: { type: 'user', id: ownerId, agency: 'human' }, createdById: ownerId };
   }
@@ -93,7 +92,6 @@ describe('ISS-868 issue relations writer', () => {
     expect(retracted).toMatchObject({ edgeId: created?.edgeId, created: false, updated: true });
 
     const [expired] = (await loadIssueRelations(dependent, projectId)).blockedBy;
-    // cm:guard a retraction EXPIRES the edge, it does not delete it — the row is the record that the dependency once held, and `validUntil` in the past is how a reader tells "retracted" from "never declared".
     expect(expired?.expired).toBe(true);
     expect(expired?.edgeId).toBe(live?.edgeId);
 

@@ -1,11 +1,3 @@
-/**
- * ISS-1085 slice 3 — the `sentry_pull` kind at the schedule create door.
- *
- * Its own file because `schedules/routes.test.ts` is already over the 500-line budget and a file
- * over budget may not get worse. The scaffolding below is that file's, copied rather than imported:
- * a shared harness between two route suites is a second thing to keep in step, and these cases
- * exercise one arm of one schema.
- */
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -118,9 +110,6 @@ describe('POST /api/schedules — kind=sentry_pull', () => {
     expect(insertReturning).toHaveBeenCalled();
   });
 
-  // cm:guard each of the three is asserted separately rather than as one loop, because the
-  // superRefine arm that covers them is shared with `release_batch` and a single case passing says
-  // nothing about the other two.
   it('400 when a prompt is supplied — it pulls what the binding declares, not what a prompt says', async () => {
     admin();
     const res = await create({ kind: 'sentry_pull', prompt: 'find the errors' });

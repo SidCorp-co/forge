@@ -18,9 +18,6 @@ export interface KanbanCardProps {
   /** When true, render a small amber "hold" glyph — the issue is on manual
    *  hold so the dispatcher won't pick up new jobs (ISS-386). */
   held?: boolean;
-  /** ISS-903 — why the issue's queued step has not dispatched, in chip-length
-   *  words. Rendered as a hover title on the card so the reason is reachable
-   *  without opening the drawer; the `status` chip is what carries the state. */
   waitingReason?: string;
   assignee?: { initials: string; hue?: AvatarHue };
   onClick?: () => void;
@@ -51,7 +48,7 @@ export function KanbanCard({
           {held && (
             <span
               className="inline-flex items-center rounded-pill px-1.5 font-semibold"
-              style={{ fontSize: 11, lineHeight: "16px", color: "var(--amberw-600)", background: "var(--amberw-50)" }}
+              style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--amberw-600)", background: "var(--amberw-50)" }}
               title="On manual hold — dispatcher won't pick up new jobs"
             >
               ⏸ Hold

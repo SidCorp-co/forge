@@ -10,6 +10,7 @@ import {
   ErrorState,
   Input,
   PageContainer,
+  PageTitle,
   ProjectCardSkeleton,
   SegmentedControl,
   Stat,
@@ -94,7 +95,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
     <PageContainer className="min-h-dvh">
       <header className="mb-6 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="fg-h2">Skills</h1>
+          <PageTitle className="fg-h2">Skills</PageTitle>
           <p className="fg-body-sm mt-1">
             Project skills (usable) and org templates you can adopt, plus the pipeline stages they
             run on.

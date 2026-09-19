@@ -1,33 +1,3 @@
-/**
- * ISS-516 — pipeline_run_step_durations must never produce negative durations,
- * WITHOUT dropping the cost of failed/cancelled jobs.
- *
- * Regression for the defect closed-unimplemented twice (ISS-270, ISS-482):
- * the view computed `duration_seconds` for EVERY job span — including cancelled
- * / failed / zero-ack-reaped jobs whose `finished_at` is stamped by the cleanup
- * path BEFORE the span start — so `duration_seconds` went negative and
- * forge_metrics_project_step_durations returned impossible negative p50/avg.
- *
- * Migration 0128 guards ONLY `duration_seconds` (a CASE that is non-NULL only
- * when `jobs.status = 'done'` AND `finished_at >= COALESCE(agent_sessions
- * .started_at, jobs.dispatched_at)`), leaving the row set — and therefore
- * `cost_usd` — exactly as the 0057 view (all finished jobs). This preserves the
- * budget gate / cost dashboards, which must count tokens burned by failed/
- * cancelled jobs too.
- *
- * This test drives the REAL view (built by the full journaled migration chain,
- * incl. 0128) against real Postgres and asserts:
- *   - the view keeps a row per finished job (done + cancelled + failed),
- *   - non-`done` / inverted rows carry `duration_seconds IS NULL` (not a
- *     negative, not a fake 0),
- *   - every non-NULL `duration_seconds >= 0`,
- *   - `SUM(cost_usd)` still includes failed/cancelled job spend (budget-gate
- *     guard),
- *   - the metrics aggregation (percentile_disc(0.5/0.95) + avg over
- *     duration_seconds, count(duration_seconds) AS n) yields p50/p95/avg all
- *     `>= 0` and a sample size that excludes the non-done rows.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';

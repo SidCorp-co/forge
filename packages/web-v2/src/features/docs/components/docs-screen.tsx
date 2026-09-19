@@ -16,6 +16,7 @@ import {
   Input,
   Markdown,
   PageContainer,
+  PageTitle,
 } from "@/design";
 import { HELP_DOCS, type HelpDoc } from "../help-content.generated";
 import type { TocEntry } from "../types";
@@ -118,15 +119,15 @@ export function DocsScreen() {
 
   function docButtonClass(active: boolean) {
     return active
-      ? "flex w-full items-center gap-1.5 rounded-md bg-hover px-2 py-1 text-left text-[13px] font-semibold text-fg"
-      : "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-muted hover:bg-hover hover:text-fg";
+      ? "flex w-full items-center gap-1.5 rounded-md bg-hover px-2 py-1 text-left text-13 font-semibold text-fg"
+      : "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-13 text-muted hover:bg-hover hover:text-fg";
   }
 
   return (
     <PageContainer className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="fg-h2">Docs</h1>
+          <PageTitle className="fg-h2">Docs</PageTitle>
           <p className="fg-body-sm text-muted">Guides for using Forge.</p>
         </div>
         <HelpButton
@@ -237,7 +238,7 @@ export function DocsScreen() {
                     key={`${t.slug}-${t.level}`}
                     type="button"
                     onClick={() => scrollToHeading(t.slug)}
-                    className="truncate rounded-md px-2 py-1 text-left text-[12.5px] text-muted hover:bg-hover hover:text-fg"
+                    className="truncate rounded-md px-2 py-1 text-left text-12-5 text-muted hover:bg-hover hover:text-fg"
                     style={{ paddingLeft: 8 + (t.level - 1) * 10 }}
                   >
                     {t.text}

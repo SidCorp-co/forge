@@ -74,18 +74,10 @@ const truthOf = (row: RunnerReleaseRow, tagState = row.tagState) =>
     publicationDetail: row.publicationDetail,
   });
 
-// cm:guard every outcome reads the row back rather than returning the opening snapshot with the fields this call believes it wrote spread over it. The write may have been refused — `advance` and `settleFailed` are both conditional — and a synthesized answer then reports a step, a status and a readings list the stored row does not carry, so the POST and an immediate GET of the same release disagree.
 async function asPersisted(id: string, fallback: RunnerReleaseRow): Promise<RunnerReleaseRow> {
   return (await findById(id)) ?? fallback;
 }
 
-/**
- * The row went terminal under a sequence that was still running.
- *
- * Only the deadline pass and a delivery can do that, and both settle with a
- * sentence of their own, so what a caller is owed here is the STORED outcome
- * rather than one this call invents over a row it no longer owns.
- */
 /**
  * The outcome of a stop that WON its settle: this call's own message, beside
  * the row as it now stands.
@@ -107,7 +99,6 @@ async function stoppedOutcome(
   if (Number(now.attempt) === Number(row.attempt)) {
     return { started: false, kind: 'stopped', message, release: now };
   }
-  // cm:guard the message keeps this call's own outcome — it is what this call did and the caller asked about it — and gains the sentence that stops it being read as a description of the row beside it. Returning the newer row silently under the older prose is the two-live-paths defect in one HTTP response.
   return {
     started: false,
     kind: 'stopped',
@@ -139,13 +130,11 @@ async function cutTheTag(
   row: RunnerReleaseRow,
   commitSha: string,
 ): Promise<StartRunnerReleaseOutcome> {
-  // cm:guard the intent is written BEFORE the request and `tag_state` goes to `unknown` here, not after. Between this statement and the next answer, a killed process is the one case ISS-1075 point 3 is about: the row then says the tag may exist, which is what stops a retry cutting over it and what the deadline pass reports.
   const armed = await advance(row.id, row.attempt, {
     step: 'cut_tag',
     status: 'cutting',
     tagState: 'unknown',
   });
-  // cm:guard the ANSWER to that write decides whether the request goes out at all. `advance` is conditional on the row being non-terminal, so a `false` here means the deadline pass or a delivery settled this release a moment ago — and creating the tag anyway puts a ref on GitHub that no row will ever be able to record, because every later write is conditional too. The irreversible act may not outrun the record of the intent.
   if (!armed) return lostTheRow(row);
   try {
     const created = await createTagRef(
@@ -154,7 +143,6 @@ async function cutTheTag(
       commitSha,
       tagMessageForVersion(row.version),
     );
-    // cm:guard the tag Forge just cut points at the commit Forge cut it at, so the observed target is written here from the same act — not inferred later from `commit_sha`, which is the requested one and equal only by coincidence of this path.
     await advance(row.id, row.attempt, {
       step: 'await_build',
       status: 'building',
@@ -171,16 +159,13 @@ async function cutTheTag(
   } catch (err) {
     if (!(err instanceof RunnerReleaseRepoError)) throw err;
     const { refusal } = err;
-    // cm:guard three outcomes and never two, and the middle one is decided by WHICH status GitHub answered rather than by whether it answered at all. `present` is a 422 whose body says the ref is already there, a tag Forge did not make. `absent` is a refusal GitHub answered in the 4xx range, which is the range that rejects a request rather than failing to finish one. Everything else is `unknown`: a 5xx may have committed the ref before it fell over, and a 2xx whose body could not be read carries a status but describes a write that SUCCEEDED. Folding either into `absent` is what lets the next attempt cut over a tag that already exists.
     const rejected = refusal.status !== null && refusal.status >= 400 && refusal.status < 500;
     const tagState = saysRefExists(refusal)
       ? ('present' as const)
       : err.beforeWrite || rejected
         ? ('absent' as const)
         : ('unknown' as const);
-    // cm:guard `present` here came from GitHub saying the ref is already there, which says nothing about WHAT it points at — Forge never read it, so `tag_commit_sha` stays NULL and the sentence says the tag exists without saying where. The commit this attempt resolved is a different fact and stays on `commit_sha`.
     const failure = `${refusal.message} ${truthOf({ ...row, commitSha, tagState }, tagState)}`;
-    // cm:guard the settle's ANSWER decides what the caller is told. GitHub can take the ref and lose the response, and the build's own delivery then settles this release — published, with a reading — while this handler is still holding a timeout. Returning its own prose over that is a caller told the tag "may or may not exist" about a release Forge has already recorded as published.
     if (!(await settleFailed(row.id, row.attempt, { step: 'cut_tag', failure, tagState }))) {
       return lostTheRow(row);
     }
@@ -199,7 +184,6 @@ async function runPreflight(
   row: RunnerReleaseRow,
   args: StartRunnerReleaseArgs,
 ): Promise<{ commitSha: string } | StartRunnerReleaseOutcome> {
-  // cm:guard `tagRead` is what separates a tag GitHub answered about from one nobody asked about, and every stop below reads it. Passing `absent` from a preflight that failed at `resolve_commit` records a repository Forge never inspected as one it found the tag missing from — and the operator acts on that sentence. The two are one fact about FORGE (it wrote nothing) and two different facts about the REPOSITORY, which is why `tag_state` carries `unread` beside `absent`.
   let tagRead = false;
   const stop = async (
     step: RunnerReleaseStep,
@@ -216,7 +200,6 @@ async function runPreflight(
   let step: RunnerReleaseStep = 'resolve_commit';
   let commitSha: string | null = null;
   try {
-    // cm:guard every `advance` on this path is answered, because it is conditional on the row being non-terminal: the deadline pass can settle this release between two steps, and a sequence that carries on past that point writes its readings into a row somebody else already ended — and then cuts a tag for it.
     if (!(await advance(row.id, row.attempt, { step }))) return lostTheRow(row);
     const ref = args.commit ?? (await readDefaultBranch(client));
     commitSha = await readCommitSha(client, ref);
@@ -228,13 +211,11 @@ async function runPreflight(
     const existing = await readTagRef(client, row.tag);
     tagRead = true;
     if (existing) {
-      // cm:guard the sentence names the commit the tag WAS FOUND at and, separately, the commit this release resolved — they are two different facts and only one of them was read off the repository. Describing the existing tag with the requested commit is a row contradicting its own lead sentence, and it is the reading an operator acts on when deciding whether the tag that is there is the one they wanted.
       const observed = { ...row, commitSha, tagCommitSha: existing.sha };
       const failure =
         `\`${row.tag}\` already exists on ${client.fullName}, pointing at ${existing.sha}, ` +
         `and this release resolved ${commitSha}. ` +
         `${truthOf(observed, 'present')}`;
-      // cm:guard the observed target is STORED and not only printed. Every later reader — the next start's refusal, the deadline pass, the API — rebuilds this sentence from the row, and a row that keeps only the requested commit rebuilds it saying the tag is at a commit nobody saw it at.
       const settled = await settleFailed(row.id, row.attempt, {
         step,
         failure,
@@ -280,7 +261,6 @@ async function runPreflight(
     return { commitSha };
   } catch (err) {
     if (!(err instanceof RunnerReleaseRepoError)) throw err;
-    // cm:guard every act in this block is a READ, so nothing on the repository was touched — which is what makes the same version re-runnable afterwards. What it does NOT establish is whether the tag is there: a read that failed answered nothing, and `stop` records `unread` for exactly that case.
     return stop(step, err.refusal.message, commitSha);
   }
 }
@@ -322,7 +302,6 @@ export async function startRunnerRelease(
   });
   if (!open.opened) {
     const held = open.held;
-    // cm:guard a held row is two different situations wearing one refusal, and the advice for them is opposite. A SETTLED row is an attempt that ended, and the way on is the next version. An UNSETTLED one is a release running right now — telling its caller it "stopped" and to cut another version is how a second release gets started beside the first, which is the outcome this refusal exists to prevent.
     const message =
       held.settledAt === null
         ? `\`${held.tag}\` is already running: it was opened on ${held.startedAt.toISOString()} ` +

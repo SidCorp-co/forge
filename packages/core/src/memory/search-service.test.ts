@@ -324,7 +324,6 @@ describe('relation expansion', () => {
 });
 
 describe('stale demotion', () => {
-  // cm:why measured on the live forge-dev store 2026-09-12 — a hybrid search returned 8 hits, 4 carrying `staleSince`, and the row the reranker put FIRST had been superseded three months earlier; a staleness badge that cannot touch the order is one nobody reads
   const staleHit = (id: string) => ({ ...hit(id), stale: true, supersededBy: 'ISS-942' });
 
   it('moves a stale hit below every fresh one and reports how many moved', async () => {
@@ -374,7 +373,6 @@ describe('embedMs — where a slow search went (ISS-1041)', () => {
     expect(out.embedMs as number).toBeGreaterThanOrEqual(4);
   });
 
-  // cm:guard the cache sits behind embedQuery() alone; a retrieval switched back to embed() would pay the proxy on every repeated question (criterion 44).
   it('embeds the query through embedQuery, never embed (criterion 44)', async () => {
     embedMock.mockClear();
     vi.mocked(embeddings.embed).mockClear();
@@ -399,7 +397,6 @@ describe('embedMs — where a slow search went (ISS-1041)', () => {
     expect(out).not.toHaveProperty('embedMs');
   });
 
-  // cm:guard the figure survives the degradation catch: the failed attempt IS the delay this field exposes.
   it('is kept on a hybrid search whose embedding failed and degraded to keyword (criterion 9)', async () => {
     embedMock.mockImplementationOnce(async () => {
       await new Promise((r) => setTimeout(r, 5));

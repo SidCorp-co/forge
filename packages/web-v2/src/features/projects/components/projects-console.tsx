@@ -1,4 +1,5 @@
 'use client';
+import { PageTitle } from "@/design";
 
 // The /projects workspace console. Orchestrates stats band, toolbar,
 // attention banner, pinned + all-projects sections, the new-project tile, and
@@ -43,7 +44,7 @@ function SectionLabel({
     <div className="mx-0.5 mb-3 mt-1 flex items-center gap-2">
       <Icon name={icon} size={15} className={iconClassName ?? 'text-subtle'} />
       <Kicker>{children}</Kicker>
-      {count != null && <span className="font-mono text-[11px] text-subtle">{count}</span>}
+      {count != null && <span className="font-mono text-11 text-subtle">{count}</span>}
     </div>
   );
 }
@@ -136,11 +137,9 @@ export function ProjectsConsole() {
         />
       ) : (
         <>
-          {/* Org scope label (ISS-470) — names the active org so the hard scope
-              is obvious; this console lists only that org's projects. */}
           <div className="mx-0.5 mb-4 flex items-center gap-2">
             <Icon name="users" size={16} className="text-subtle" />
-            <h1 className="fg-h3">{scopeLabel ?? 'Projects'}</h1>
+            <PageTitle className="fg-h3">{scopeLabel ?? 'Projects'}</PageTitle>
             <span className="fg-body-sm text-subtle">· projects</span>
           </div>
           <StatsBand totals={totals} />
@@ -173,7 +172,7 @@ export function ProjectsConsole() {
           {rest.length > 0 ? (
             renderGroup(rest)
           ) : (
-            <div className="px-10 py-10 text-center text-[13.5px] text-subtle">
+            <div className="px-10 py-10 text-center text-13-5 text-subtle">
               {searching
                 ? 'No projects match your filters.'
                 : `No projects in ${scopeLabel ?? 'this organization'} yet.`}

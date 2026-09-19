@@ -100,7 +100,6 @@ async function comment(body: string) {
 }
 
 describe('a park that asked a question', () => {
-  // cm:guard THE behaviour change. A comment beside an open question settles nothing the question asked, and resuming on it hands the agent prose where it is waiting for an answer of a stated shape.
   it('is not resumed by a comment', async () => {
     await aParkQuestion();
     await comment('ok thanks');
@@ -119,7 +118,6 @@ describe('a park that asked a question', () => {
     expect(await statusOf()).toBe('open');
   });
 
-  // cm:guard a park that did not say what would settle it still mints a question, and this is what "one lane" costs: the comment lane is gone, so a park with nothing to answer would be a park nobody can resume. The round says the run did not say — true, and answerable.
   it('mints an answerable question even when the park stated no need', async () => {
     const { mintParkQuestion, NEED_NOT_STATED } = await import('../../src/issues/park-question.js');
     await db.transaction(async (tx) => {
@@ -140,13 +138,11 @@ describe('a park that asked a question', () => {
     expect(step?.needed).toBe(NEED_NOT_STATED);
   });
 
-  // cm:guard a comment NEVER resumes, whatever the park looks like. One lane in and one lane out was the owner's call on 2026-09-13; a park that predates the cut is moved on by hand rather than by a second path kept alive for it.
   it('is not resumed by a comment even when the park carries no question at all', async () => {
     await comment('here is the thing you asked for');
     expect(await statusOf()).toBe('needs_info');
   });
 
-  // cm:guard a question the RUNNER minted registers a waiter, and the box reads the answer back itself. Core dispatching here as well would put a second agent on the worktree the first is still holding.
   it('dispatches nothing when a box is registered to read the answer back', async () => {
     const q = await aParkQuestion();
     await harness.db.execute(sql`

@@ -76,7 +76,6 @@ describe("MemoryTab · flat", () => {
 		expect(setMutate.mock.calls[0]?.[0]).toBe("chunked");
 	});
 
-	// cm:guard the 409 is a sentence and a refetch, never a retry: the mutate mock reports the conflict and the test counts exactly one call
 	it("a 409 renders 'A reindex is already running.' and sends no second POST", () => {
 		setMutate.mockImplementation((_m, opts) =>
 			opts?.onError?.(new ApiError(409, "a reindex is already queued or running", "REINDEX_LIVE")),

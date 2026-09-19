@@ -33,7 +33,6 @@ import {
   type VisibleOption,
 } from "../types";
 
-// cm:guard the three attributes are rendered as what they MEAN for the reader, never as their stored values: `bindsTo: 'session'` tells a person nothing, and a decision whose reach the reader cannot state is one they cannot make (ISS-980 criteria 3, 4, 5).
 const AUTHORITY_MEANS: Record<OptionAuthority, string> = {
   writer: "Any project member can choose this",
   admin: "Only a project admin can choose this",
@@ -75,7 +74,6 @@ function OptionRow({
   first: boolean;
   onChoose: (optionId: string) => void;
 }) {
-  // cm:guard every button on this panel submits immediately, so each one's ACCESSIBLE name has to say which decision it makes: navigating by button, a bare "Choose" repeated per option is a list of identical irreversible controls (ISS-980).
   const describedBy = `decision-option-${option.id}`;
   return (
     <div className="rounded-md border border-line bg-surface px-3 py-2.5">
@@ -83,7 +81,6 @@ function OptionRow({
         <span className="fg-body-sm min-w-0 flex-1 text-fg">{option.label}</span>
         {recommended && <Badge tone="accent">Recommended</Badge>}
         {answerable && (
-          // cm:guard `disabled` comes from the SERVER's `locked` and from nothing else — no role read, no second rule. A locked option stays on screen and refuses, because hiding it leaves a queue of decisions only one person can even see (ISS-964 criterion 15).
           <Button
             variant={recommended ? "primary" : "secondary"}
             size="sm"
@@ -108,7 +105,6 @@ function OptionRow({
   );
 }
 
-// cm:guard an earlier round renders by its OWN shape and never by the question's current one: a decision that asked for a choice and then followed up in words carries both, and reading the row's shape here would list options a text round never had (ISS-996).
 function RoundHistory({ step }: { step: QuestionStep }) {
   return (
     <div className="rounded-md border border-line px-3 py-2">
@@ -144,9 +140,6 @@ function RoundHistory({ step }: { step: QuestionStep }) {
   );
 }
 
-// cm:guard the empty answer is refused HERE and the button stays enabled to do it: a disabled submit under an empty box tells a person nothing about why, and core would refuse the blank body anyway (ISS-996).
-// cm:guard the draft is NOT cleared on submit and this component is keyed on the round instead: `onAnswer` reports nothing back, a refused or dropped send leaves the card standing, and clearing on the press throws away an answer somebody wrote with no way to get it back. A round that actually advances remounts the box empty (ISS-998).
-// cm:guard `data-first-option` rides on the TEXTAREA and not on the submit: it is the element the project queue moves focus to when this card takes an answered one's place, and focusing the button instead skips the box the answer has to be written in — the next keypress is then the empty-answer refusal rather than the start of the decision (ISS-996, ISS-998).
 function FreeTextAnswer({
   needed,
   locked,
@@ -198,7 +191,6 @@ function FreeTextAnswer({
   );
 }
 
-// cm:guard the answer form is gated on `human` as well as on `open`: a `machine` or `master_or_peer` blocker resolves without a person, and putting a button under one asks somebody to settle a decision that was never theirs (ISS-980 criterion 15).
 export function isAnswerable(question: AgentQuestion): boolean {
   return question.status === "open" && question.blockerKind === "human";
 }
@@ -245,8 +237,6 @@ export interface QuestionCardProps {
 /**
  * One decision, with its earlier rounds above it and its current round below.
  */
-// cm:guard `round` is taken from the step this card is RENDERING and is never accepted from the caller: core refuses an answer bound to any other round, and that refusal is the whole of the stale-screen protection. A parent that pre-bound the round would apply a choice made about round 1 to a round 3 nobody read (ISS-980 criterion 39).
-// cm:guard the card is mounted from TWO places since ISS-998 — the issue panel and the project queue — and both rules above live here rather than in either caller, so neither can regress alone.
 export function QuestionCard({
   question,
   onAnswer,
@@ -258,11 +248,8 @@ export function QuestionCard({
   const answerable = isAnswerable(question);
   const outcome = outcomeOf(question);
   const earlier = earlierRoundsOf(question);
-  // cm:guard the project queue sends only the live round, so the rounds before it are COUNTED here and not rendered: saying nothing would read as a decision asked once, and inventing rows for them would put words on screen nobody wrote (ISS-1022). The issue panel sends the history and renders it below.
   const hidden = earlier.length === 0 ? roundCountOf(question) - 1 : 0;
-  // cm:guard the marked option is the first ANSWERABLE one, never index zero: it is the target the project queue moves focus to after an answer, and a locked button takes focus nowhere. Where every option is locked there is no button to mark and the title below is the only destination (ISS-998).
   const firstEnabledId = answerable ? (question.options.find((o) => !o.locked)?.id ?? null) : null;
-  // cm:guard the title below carries `data-question-title` and `tabIndex={-1}` so a card reached by a link, or one whose every option is server-locked, has a focus destination that is not the document body; -1 keeps it out of the tab order, where a heading stop would be a dead press on every screen (ISS-998).
 
   return (
     <Card
@@ -290,7 +277,6 @@ export function QuestionCard({
           </div>
         )}
         {hidden > 0 && (
-          // cm:guard the way to the history is named only where there IS one: a question carrying `issueId: null` is what a master asks, it is the shape this queue exists for, and telling its reader to open the issue sends them to a screen that does not exist (ISS-1022).
           <p className="fg-caption text-subtle">
             {hidden === 1 ? "1 earlier round" : `${hidden} earlier rounds`}
             {question.issueId

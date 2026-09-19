@@ -1,18 +1,3 @@
-/**
- * ISS-40 PR-E — issue dependency HTTP routes integration tests.
- *
- * Drives the Hono routes from `src/issues/dependency-routes.ts` against a
- * real Postgres + JWT auth, including:
- *   - 201 create / 200 idempotent on duplicate
- *   - 400 self-edge
- *   - 409 cycle (DFS through real DB)
- *   - GET returns outgoing + incoming directions
- *   - DELETE removes the row
- *   - Project membership enforcement
- *   - Cross-project edges rejected via this user-facing route (allowed via
- *     `forge_pm.set_dependency` MCP path — covered separately).
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';

@@ -1,18 +1,6 @@
-/**
- * ISS-1001 — what the ROOM keeps after an escalated answer: the answer the room
- * saw joins that room's conversation carrying the receipt the send returned,
- * and nothing joins it when the send failed or the room has no conversation.
- *
- * A sibling file rather than more cases in `escalation-bridge.test.ts`: that
- * file is at the 500-line budget, and its two describes are already the two
- * subjects the `cm:why` above its second one names.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 
-// cm:guard this stub stays, and stays ABOVE the subject's import: `config/env.js` validates eagerly
-// at import time, so without it the whole file is a collection error rather than a failing test
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
@@ -33,7 +21,6 @@ let roomBound = true;
 /** Answers of the successive `roomStillBoundTo` reads, when a case needs them to differ. */
 let roomBoundSequence: boolean[] | null = null;
 const roomStillBoundToCalls = vi.fn();
-// cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
   roomStillBoundTo: async () => {
@@ -142,8 +129,6 @@ describe(`the room transcript after an escalated answer`, () => {
       }),
     );
 
-  // cm:guard the room SAW this answer, so the room's transcript holds it — with the receipt the send
-  // returned, which is the same rule the fast reply path obeys and the escalated one used to skip.
   it('records the answer in the room conversation with the receipt the send returned', async () => {
     findConversation.mockResolvedValue({ id: 'conv-9' });
 
@@ -160,7 +145,6 @@ describe(`the room transcript after an escalated answer`, () => {
     );
   });
 
-  // cm:guard an escalated answer is the same assistant through a slower path: a row by nobody cannot say which handle answered in a room holding two, which is the whole point of attributing the fast path's rows (ISS-1001).
   it('records it BY the project handle, resolved for the session project', async () => {
     findConversation.mockResolvedValue({ id: 'conv-9' });
 
@@ -172,8 +156,6 @@ describe(`the room transcript after an escalated answer`, () => {
     );
   });
 
-  // cm:guard the synthesis TURN'S OWN input is an instruction the room never saw, so it must not be
-  // run against the room's conversation — only its answer goes in.
   it('runs the synthesis turn against no conversation of its own', async () => {
     findConversation.mockResolvedValue({ id: 'conv-9' });
     await escalated();
@@ -188,8 +170,6 @@ describe(`the room transcript after an escalated answer`, () => {
     expect(appendMessage).not.toHaveBeenCalled();
   });
 
-  // cm:guard an escalation is minutes or hours long: a room rebound in the meantime is not this
-  // project's to answer into, and the claim is taken first so the sweeper stops retrying it.
   it('posts nothing when the room was rebound while the escalation ran', async () => {
     findConversation.mockResolvedValue({ id: 'conv-9' });
     roomBound = false;
@@ -200,12 +180,9 @@ describe(`the room transcript after an escalated answer`, () => {
     }
     expect(sendFixedReply).not.toHaveBeenCalled();
     expect(appendMessage).not.toHaveBeenCalled();
-    // cm:guard an unbound room is TERMINAL, so the claim is spent on purpose and the sweeper stops
-    // retrying a delivery that can never succeed — the opposite of a lookup that merely failed.
     expect(updateReturning).toHaveBeenCalled();
   });
 
-  // cm:guard the first read happens before the claim and the synthesis, and the synthesis is a whole model turn — so the binding is read AGAIN immediately before the post, without which this case posts the old project's answer into a room that moved during it (ISS-1001).
   it('posts nothing when the room was rebound during the synthesis turn', async () => {
     findConversation.mockResolvedValue({ id: 'conv-9' });
     roomBoundSequence = [true, false];

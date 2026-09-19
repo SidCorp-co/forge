@@ -1,18 +1,3 @@
-/**
- * The generic create, bind and PATCH shapes — provider-agnostic, and the only file that turns a
- * caller's `provider` string into the schemas that validate its body.
- *
- * ISS-1071 reversed what this file's header used to say. It said adding a provider meant editing
- * here: "a branch in the two create discriminated unions … The dispatch stays in THIS file either
- * way, so one place still answers 'which providers exist'." Neither union exists any more, and the
- * answer moved to the declaration each provider carries in its own directory. This file asks the
- * registry a question; it holds no provider's name and no provider's shape.
- *
- * A provider name no declaration holds is refused BY NAME, listing the declared set, rather than
- * falling through to a default schema — the old dispatch ended every lookup with a bare `return
- * coolifyConfigSchema.partial()`, so a typo'd provider was validated against Coolify's shape.
- */
-
 import { z } from 'zod';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { bindingShapeFields, checkBindingShape } from './binding-shape.js';
@@ -89,10 +74,6 @@ export function splitProviderConfig(
  * resolves at request time. The transform then REPLACES them with the parsed values, so defaults
  * (postman's `region`, coolify's generated target ids) still reach the handler.
  */
-// cm:guard `label` is accepted only where the provider declares `multiBinding` — the column exists on
-// every binding but a second row of a single-binding provider collides on `integration_bindings_service_uq`,
-// and a label silently kept on a provider that cannot use it reads to an operator as a named binding
-// they can add more of.
 export const createSchema = z
   .object({
     provider: z.string().min(1).max(60),
@@ -126,14 +107,10 @@ export const createSchema = z
     return { ...value, provider: decl.provider, config, secrets };
   });
 
-// cm:guard this shape is loose ON PURPOSE — a PATCH carries no provider, so `config`/`secrets` are
-// re-validated against the EXISTING binding's provider inside the handler; tightening it here would
-// validate against a provider nobody named
 export const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   secrets: z.record(z.string(), z.unknown()).optional(),
   active: z.boolean().optional(),
-  // cm:why deliberately NOT a provider-config key — this is Forge-side prompt text, so routing it through the provider's own config schema would force every provider to carry a field none of them consume
   instructions: z.string().max(4000).nullable().optional(),
   agentAccess: agentAccessField,
 });
@@ -163,13 +140,6 @@ export const connectionUpdateSchema = z.object({
   active: z.boolean().optional(),
 });
 
-/**
- * The partial config schema a binding PATCH validates against, read off the provider's declaration.
- *
- * Throws rather than falling back, and the sentence names the provider. The function this replaced
- * ended in `return coolifyConfigSchema.partial()`, so every unknown provider — including a typo —
- * was validated against Coolify's shape and told nothing.
- */
 export function configSchemaForProvider(provider: string): z.ZodTypeAny {
   const decl = getIntegration(provider);
   if (!decl) throw badRequest(undeclaredProviderMessage(provider));
@@ -177,24 +147,12 @@ export function configSchemaForProvider(provider: string): z.ZodTypeAny {
 }
 
 /** The config schema for an OWNER-SCOPED connection PATCH, where a binding-tier key does not belong. */
-// cm:guard only `google` narrows this today, and that is a statement about scope rather than about the other providers: `coolify` carries `targets` and every provider carries the three release-channel keys through this same door, so a connection PATCH can put a binding-tier key on a shared credential for all of them. That is a pre-existing hole ISS-1036 found and did not widen; narrowing the rest changes what six live providers accept and is somebody's own change to make. What ISS-1071 changed is only WHERE the narrowing is declared — on google's declaration rather than in a branch here.
 export function connectionConfigSchemaForProvider(provider: string): z.ZodTypeAny {
   const decl = getIntegration(provider);
   if (!decl) throw badRequest(undeclaredProviderMessage(provider));
   return decl.schemas.connectionConfig;
 }
 
-/**
- * Shared secrets-rotation step of the two PATCH paths (binding PATCH in `routes.ts`, connection
- * PATCH in `connection-routes.ts`): declared-schema parse → secret-input detection → vault decrypt
- * of the current blob → dual-token merge (ISS-405). A provider declaring no primary credential
- * field is a no-op. Returns the merged secrets to persist, or `undefined` when nothing should be
- * written (no secret input, or the merge produced nothing).
- *
- * `vaultGuardTiming` preserves each caller's historical order of operations: the connection PATCH
- * asserts the vault BEFORE parsing; the binding PATCH asserts it only once a real credential field
- * is present, so a config-only secrets object never 503s on a vault-less deploy.
- */
 export async function applySecretsPatch(opts: {
   provider: string;
   rawSecrets: Record<string, unknown>;

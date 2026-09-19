@@ -69,7 +69,6 @@ export async function listIssueRows(
   ] as const) {
     if (values === undefined) continue;
     const resolvedIds = await resolve(projectId, values);
-    // cm:guard an empty resolution means NO issues, never "skip this filter" — dropping it returns every row in the project and the caller reads that as "nothing matched"
     if (resolvedIds.length === 0) return [];
     conds.push(
       exists(
@@ -99,7 +98,6 @@ export async function listIssueRows(
     updatedAt: issues.updatedAt,
   };
 
-  // cm:why ISS-960 — `matchedFields` is computed by Postgres and only when a search was asked for: the projection above exists so `plan` and `acceptanceCriteria` are never detoasted into the app (ISS-562), and reading them back to name the match would undo exactly that
   const selected = filters?.search
     ? db.select({ ...projection, matchedFields: matchedSearchFieldsSql(filters.search) })
     : db.select(projection);

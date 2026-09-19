@@ -41,7 +41,6 @@ export interface RocketChatIncomingMessage {
   replyToId?: string | undefined;
 }
 
-// cm:guard the QUOTE wins over the thread parent: a message inside a thread that quotes a specific message is answering that one, and the thread root is where it was said. Rocket.Chat carries a quote only as a `?msg=<id>` link, in `attachments[].message_link` and again in the text, so both are read (ISS-1087 criteria 9-11).
 const QUOTE_LINK_RE = /\?msg=([A-Za-z0-9]+)/;
 export function replyTargetOf(m: {
   msg?: unknown;
@@ -101,7 +100,6 @@ export function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatInco
   return {
     id: m._id,
     rid,
-    // cm:why attachment text is included: a reply-quote's quoted content, and a webhook bot's entire body, live in `attachments` rather than in `msg`, so reading `msg` alone loses the whole message for a webhook post.
     text: extractMessageText(m as Parameters<typeof extractMessageText>[0], serverUrl),
     userId: u._id,
     username: u.username,
@@ -265,7 +263,6 @@ export class RocketChatDdpClient {
       case 'nosub':
         if (frame.id !== this.subId) return;
         if (this.state === 'live') {
-          // cm:guard a `nosub` after the subscription went live must CLOSE the socket, never be a no-op: the socket stays open and server pings keep flowing, so the watchdog never fires while no room message arrives again — the bot goes silently deaf ("replies once then goes quiet").
           this.opts.onError?.(
             new Error(`DDP subscription lost (nosub): ${JSON.stringify(frame.error)}`),
           );
@@ -331,7 +328,6 @@ export class RocketChatDdpClient {
   }
 
   /** Post a message to a room (optionally inside a thread). Resolves on RC ack with the message id. */
-  // cm:guard the resolved id is the `_id` sent in `params`, and RC's ack is what makes it a receipt rather than a guess: a caller that stores it as a thread id before the ack would register a thread the server never accepted (ISS-978 criterion 7).
   sendMessage(rid: string, text: string, tmid?: string): Promise<string> {
     const id = this.nextId();
     const messageId = randomUUID().replace(/-/g, '');
@@ -362,7 +358,6 @@ export class RocketChatDdpClient {
   /**
    * Tell the room the bot is typing, or that it stopped.
    */
-  // cm:guard the ONE write `stream-notify-room` accepts from a client is `<rid>/user-activity`, and the server checks `shownName` against the name it shows for this account — the username, or the display name under `UI_Use_Real_Name` — so a mismatch is an error frame and the caller's to retry under the other name. `['user-typing']` starts and `[]` stops; the client forgets an activity it has not heard about for 15 seconds, so a caller that wants it kept renews (ISS-1088 criterion 24).
   notifyUserActivity(rid: string, shownName: string, on: boolean): Promise<void> {
     return this.call('stream-notify-room', [
       `${rid}/user-activity`,

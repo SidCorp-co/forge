@@ -48,12 +48,6 @@ describe('the kind, which the tag line names and the fence does not', () => {
     expect(parseForgeRecord(record('finding: holds'))?.contract).toBe(1);
   });
 
-  // cm:guard a fence with no tag is still a record and still screened. Dropping it would let a
-  // hand-written block past the budget by leaving off one line, which is the shape of a gate that
-  // teaches the way around itself.
-  // cm:guard the tag must come from the line that ENDS this block and never from a search of the
-  // body: a `detail:` field quoting a tag back is a thing a writer records, and a search would take
-  // the quotation over the record's own label and draw a confirmation as a verdict (codex F2).
   it('takes the tag that ends the block, not one quoted inside a field', () => {
     const body = [
       '## Confirmation',
@@ -105,9 +99,6 @@ describe('the grammar, which is the writer’s and not this file’s', () => {
     ]);
   });
 
-  // cm:guard the continuation's two spaces are STRIPPED, and this is the case that says so: a
-  // second line reading `second: not a key` is a value, and leaving the indent on it puts two
-  // spaces into the middle of what a reader is shown for no reason it could work out.
   it('strips the two spaces off a continuation that itself reads like a key', () => {
     const parsed = parseForgeRecord(record('why: first line\n  second: not a key'));
     expect(parsed?.fields).toEqual([
@@ -178,9 +169,6 @@ describe('the budget, counted in code points', () => {
     expect(overBudget('x'.repeat(FORGE_RECORD_FIELD_BUDGET + 1))).toBe(1);
   });
 
-  // cm:guard code points and not UTF-16 units: `String.length` counts an emoji as two, so a field
-  // of 399 emoji would be refused as 398 over while a reader counts 399 characters — a refusal
-  // whose number the writer cannot reproduce is a refusal it cannot answer.
   it('counts an astral character once, as a reader counts it', () => {
     expect(overBudget('🙂'.repeat(FORGE_RECORD_FIELD_BUDGET))).toBe(0);
   });
@@ -199,9 +187,6 @@ describe('where the block sits, so a reader can draw the prose around it', () =>
     expect(body.slice(parsed?.at ?? 0).startsWith(`${fence}forge-record`)).toBe(true);
   });
 
-  // cm:guard the tag line is INSIDE the block's extent. Leaving it out draws a card for the record
-  // and a stray "forge-record: confirmation · contract 1" beside it as prose, which is the fence
-  // reaching the reader undifferentiated all over again.
   it('ends the block past the tag line, so nothing of the record is left drawn as prose', () => {
     const parsed = parseForgeRecord(body);
     expect(body.slice(parsed?.to ?? 0).trim()).toBe('');

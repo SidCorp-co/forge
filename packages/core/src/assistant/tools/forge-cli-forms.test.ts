@@ -20,9 +20,6 @@ const usageOf = (verb: string): string =>
     .split('\n')
     .find((l) => l.startsWith('Usage:')) ?? '';
 
-// cm:guard the verbs are asserted PRESENT as well as each carried form being held to its Usage
-// line: the whole-form test only validates the forms that exist, so a set that quietly lost `new`
-// would stay green while the model went back to paying `forge new -h` (ISS-1057, codex F1).
 describe('the verbs the carried forms cover (ISS-1057 criterion 13)', () => {
   it('carries a form for issue, new, comment and guide', () => {
     const verbs = new Set(READ_FORMS.map((f) => f.argv[0]));
@@ -39,7 +36,6 @@ describe('the carried read forms against the bundled CLI (criterion 14)', () => 
     });
   }
 
-  // cm:guard the test can go red on the three kinds of drift a flag-presence check misses: a flag gone, a flag whose operand arity changed, a positional the verb no longer takes.
   it('refuses a form whose flag, operand or positional the Usage line no longer names', () => {
     const noSearch = parseUsage('Usage: forge issue [<uuid|ISS-45>] [--status s] [--limit n]');
     expect(formProblems({ argv: ['issue', '--search', '<q>'], says: '' }, noSearch)).toEqual([
@@ -55,7 +51,6 @@ describe('the carried read forms against the bundled CLI (criterion 14)', () => 
     ]);
   });
 
-  // cm:guard a REQUIRED positional or a literal subcommand the Usage line grows is drift the carried form must fail on, not an upper bound it slips under (codex F2).
   it('refuses a form that misses a required positional or a literal subcommand', () => {
     const show = parseUsage('Usage: forge issue show <uuid> [--full]');
     expect(formProblems({ argv: ['issue', 'ISS-<n>'], says: '' }, show)).toEqual([

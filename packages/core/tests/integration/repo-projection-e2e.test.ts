@@ -16,7 +16,6 @@
 import { describe, expect, it } from 'vitest';
 import { BASE, H1, H2, projectionGround } from './repo-projection-ground.js';
 
-// cm:guard the describes are siblings rather than nested: the size budget measures the longest function, and one `describe` wrapping them all was 250 lines against a budget of 150. The hooks `projectionGround()` registers are file-scoped here, which truncates per test exactly as nesting them did.
 const g = projectionGround();
 
 describe('a pull_request delivery', () => {
@@ -76,7 +75,6 @@ describe('a pull_request delivery', () => {
     expect(r?.merge_commit_sha).toBeNull();
   });
 
-  // cm:guard the ONE case the `setWhere` exists for. Delete that clause and this goes red naming the head it rewound to, which is what a retried or delayed `synchronize` does in the field.
   it('leaves every scalar alone when an older payload arrives after a newer one', async () => {
     await g.mods.applyPullRequestEvent(
       g.ctx(),
@@ -95,7 +93,6 @@ describe('a pull_request delivery', () => {
     expect(r?.title).toBe('a change under review');
   });
 
-  // cm:guard the `CASE WHEN head_sha = excluded.head_sha` arms. Without them a behind-by computed for H1 survives beside H2 and reads as current, which is the number this whole projection exists to stop being wrong.
   it('clears what described the previous head in the statement that moves the head', async () => {
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
     await g.mods.storeRefresh(
@@ -286,7 +283,6 @@ describe('a pull_request_review delivery', () => {
     });
   });
 
-  // cm:guard the dismissal and the submission it dismissed arrive unordered and GitHub does not move `submitted_at` on a dismissal, so the flag is the only thing that can carry the answer.
   it('keeps a dismissal when the submission it dismissed is redelivered after it', async () => {
     await open();
     await g.mods.applyReviewEvent(g.ctx(), reviewEvent({ action: 'dismissed' }));

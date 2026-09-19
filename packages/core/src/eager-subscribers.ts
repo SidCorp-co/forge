@@ -1,10 +1,3 @@
-// The subscribers registered at import time, in the order they were written.
-//
-// They were fourteen calls and their imports inside `index.ts`, which sits over the
-// 500-line file budget — so every new subscriber grew the composition root until the
-// budget refused the next one. Moved verbatim: the ORDER is part of the behaviour for
-// anything reacting to the same topic.
-
 import { registerContractCheckSubscribers } from './integrations/github/contract-check-subscribers.js';
 import { registerMemoryReconcileTrigger } from './memory/consolidation.js';
 import { registerMemoryExtraction } from './memory/extraction.js';
@@ -20,7 +13,6 @@ import { registerReleaseBatchClaimSubscriber } from './release-batch/claim-subsc
 import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
 import { registerMasterWakeSubscribers } from './ws/master-wake.js';
 
-// cm:guard registration order is the order below, unchanged from index.ts. HooksBus runs subscribers in registration order, so reordering these silently reorders side effects on a shared topic.
 export function registerEagerSubscribers(bus: HooksBus): void {
   registerActivitySubscribers(bus);
   registerPipelineSentryBreadcrumbs(bus);
@@ -34,6 +26,5 @@ export function registerEagerSubscribers(bus: HooksBus): void {
   registerPmSubscribers(bus);
   registerReleaseBatchClaimSubscriber(bus);
   registerMasterWakeSubscribers(bus);
-  // cm:guard LAST, and the position is the behaviour: this one reaches GitHub over the network and every subscriber above it is a local write. Registered earlier, a slow or hung publish would delay the activity log, the WebSocket broadcast and the pipeline orchestrator's own delivery, because HooksBus runs subscribers in order and awaits each.
   registerContractCheckSubscribers(bus);
 }

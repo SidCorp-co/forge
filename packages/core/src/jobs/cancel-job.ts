@@ -12,14 +12,12 @@ import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
 
 /** Job statuses from which a single-job cancel is permitted. */
-// cm:guard cancellable, NOT slot-occupying — `held` belongs here (a human may always stop a step that will never run) but is deliberately excluded from the runner-cap CTEs in queued-gates.ts. Reusing this set for load accounting would count held jobs against the cap and re-create the wedge RFC 0002 removed.
 export const CANCELLABLE_STATUSES = new Set(['queued', 'dispatched', 'running', 'held']);
 
 /**
  * Statuses with no device attached yet, so a cancel flips them straight to
  * `cancelled` instead of asking a runner to stop.
  */
-// cm:guard `held` has no device by construction — `holdJobForReason` inserts the successor row without one, so it can never take the device-push branch. If a future hold path ever dispatches before holding, this set is the thing that must change with it.
 const NO_DEVICE_STATUSES = new Set(['queued', 'held']);
 
 /**
@@ -39,7 +37,6 @@ export class JobCancelError extends Error {
 export interface CancelJobOptions {
   /** User id of the acting principal — recorded in the audit event. */
   actorUserId: string;
-  // cm:guard REQUIRED, not defaulted: `actorUserId` alone cannot answer whether a person or an agent asked for this cancel, and `kernel_transitions.actor_agency` defaults to `'human'`. A cancel arriving on a `job:`/`session:` token is an agent cancelling an agent's work, and a default would record it as an operator's decision — which is exactly the row a later reader would trust.
   actorAgency: ActorAgency;
   /** Human/automation-supplied reason — recorded in the audit event. */
   reason: string;
@@ -53,30 +50,6 @@ export interface CancelJobResult {
   cancellationRequested: boolean;
 }
 
-/**
- * Authoritative single-job cancel shared by REST `POST /jobs/:id/cancel` and
- * the `forge_jobs.cancel` MCP tool — the audited manual escape hatch (ISS-442
- * C0). Intentionally does NOT inspect the parent pipeline_run status: a
- * queued/dispatched job orphaned under an ALREADY-terminal run must cancel
- * cleanly (replacing the raw-SQL surgery that was the only previous cure).
- *
- * Behaviour mirrors the former inline REST handler:
- * - `queued` / `held` → CAS to `cancelled` (guarded on the observed status),
- *   then sync the agent session, broadcast `job.cancelled`, re-tick dispatch,
- *   and refresh pipeline health.
- * - `dispatched`/`running` → set `cancellationRequested`, push `job.cancel` to
- *   the owning device, and broadcast `job.cancelRequested`; the runner's
- *   `/complete` finalises the terminal flip.
- *
- * Every successful cancel writes ONE `job_events` row (`kind='intervention'`)
- * carrying actor + reason so the interventions metric (C6) can count audited
- * manual interventions per issue. The status mutation and the audit row commit
- * in a single transaction.
- *
- * @throws {JobCancelError} `NOT_FOUND` if the job does not exist;
- *   `NOT_CANCELLABLE` if it is not in a cancellable status (or the CAS lost a race).
- */
-// cm:why `held` is cancellable here so clearing one dead step no longer requires cancelling its whole run — that was the only route before (the cascade covers `held`), and it parked the issue at `on_hold` as a side effect, which is a far bigger hammer than the operator asked for
 export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<CancelJobResult> {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new JobCancelError('NOT_FOUND', 'job not found');
@@ -109,7 +82,6 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
 
     await syncAgentSessionLifecycle(updated, 'cancelled');
 
-    // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — mirrors the finalize-failure.ts:248 hook so a cancelled reconcile/verify_skill job never leaves reconcile_runs stuck at pending (ISS-808)
     await failReconcileRunForFailedJob(updated).catch((err) =>
       logger.warn(
         { err, jobId: updated.id, type: updated.type },

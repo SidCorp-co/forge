@@ -30,7 +30,6 @@ const deleteInputSchema = z.object({
 const searchInputSchema = z.object({
   projectId: z.uuid(),
   query: z.string().trim().min(1).max(4000),
-  // cm:edge contract -> packages/core/src/memory/search-routes.ts — the two surfaces declare this schema separately and nothing type-checks one against the other, so `topK` and `strategy` must be changed in both AND forwarded in both: that route declared `strategy` and then did not pass it to `runMemorySearch` for as long as it existed, so a REST caller asking for `hybrid` was answered `semantic` and told so in the response (fixed 2026-09-06, ISS-894). `semantic` is the default on both because its scores are cosine similarity and the prompt-facts thresholds (knowledge dedup > 0.8) are calibrated on that scale.
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
   strategy: z.enum(memorySearchStrategies).default('semantic'),
@@ -52,7 +51,6 @@ export const forgeMemorySearchTool: ContextScopedMcpToolFactory = ({ principal }
     try {
       return await runMemorySearch({ ...input, surface: 'agent' });
     } catch (err) {
-      // cm:edge contract -> packages/core/src/memory/search-routes.ts — an MCP result has no status code, so this `UNAVAILABLE:` prefix is the whole signal a caller matches on; it is this file's stand-in for the 503 `EMBEDDING_UNAVAILABLE` that route throws, and rewording it breaks every caller that tells an outage from a bad query.
       if (err instanceof EmbeddingUnavailableError) {
         throw new Error(`UNAVAILABLE: ${err.message}`);
       }
@@ -97,11 +95,6 @@ export const forgeMemoryDeleteTool: ContextScopedMcpToolFactory = ({ principal }
   },
 });
 
-/**
- * `forge_memory.write` — upsert a memory row with embedding. Used by agents
- * to record step handoffs, decisions, notes, etc. Wraps the same service
- * function as `POST /api/memory` so REST + MCP behave identically.
- */
 /**
  * `forge_memory.feedback` — recall-feedback loop (ISS-603). The write-back
  * half of "verify hits against live code before trusting": a confirmed

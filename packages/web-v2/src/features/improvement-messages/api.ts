@@ -1,9 +1,3 @@
-// web-v2 feature module: improvement-messages — REST surface (ISS-549).
-// Catalog: GET /api/improvement-messages
-// Enable: POST /api/schedules (templateKey + mode + cron)
-// Toggle/edit: PUT /api/schedules/:id
-// Run now: POST /api/schedules/:id/run
-// Run log: GET /api/schedules/:id/runs
 import { apiClient } from "@/lib/api/client";
 import type { ImprovementMessageEntry } from "./types";
 import type { ScheduleRow, ScheduleRun } from "@/features/schedules/types";

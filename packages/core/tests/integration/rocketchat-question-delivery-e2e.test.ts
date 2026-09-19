@@ -23,7 +23,6 @@ process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwd
 const posts: Array<{ rid: string; tmid: string | undefined; text: string }> = [];
 let nextMessageId: string | null = 'msg-1';
 let postThrows: Error | null = null;
-// cm:guard read DURING the post, which is the only moment that can tell a round marked complete before it succeeded from one marked after: every state after the call returns is identical either way, and a process that dies here is what the rule is about (ISS-978 criterion 6).
 let atPostTime: (() => Promise<void>) | null = null;
 
 vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) => {
@@ -33,11 +32,6 @@ vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) 
     ...actual,
     sendFixedReply: vi.fn(
       async (transport: { rid: string; tmid?: string }, text: string, proof: unknown) => {
-        // cm:guard the mock re-asserts the proof contract the real door enforces, so a caller that stopped screening its text fails here instead of passing because the door was replaced.
-        // cm:guard and it asserts the ISS-978 F5 half too: a proof is a claim about ONE string, so the
-        // mock compares it against the text it is being handed. Until F5 this read `proof.ok`, which
-        // any literal satisfied and which said nothing about which text had been screened — so a lane
-        // that screened the option labels and posted the rendered round passed this mock cleanly.
         if (proof !== actual.FIXED_REPLY_CONSTANT && (proof as { text?: string })?.text !== text) {
           throw new Error('text reached the outbound door under a proof that does not name it');
         }
@@ -79,7 +73,6 @@ const RISKY = {
 const OPTIONS = [SAFE, RISKY];
 
 /** The one owed round, or a failure naming what was found instead. */
-// cm:guard reads the round through a check rather than a non-null assertion: `a!` under `biome check --write` becomes `a?`, which turns "this test is about the owed round" into a silent pass over an empty list.
 function onlyOwed(rounds: Awaited<ReturnType<typeof delivery.owedRounds>>) {
   const round = rounds[0];
   if (!round) throw new Error(`expected exactly one owed round, found ${rounds.length}`);
@@ -168,7 +161,6 @@ describe('the obligation is derived, not written by the kernel', () => {
   it('owes a round for an open human question the moment it is asked, with no hook fired', async () => {
     await bindRoom();
     const q = await ask();
-    // cm:guard nothing has emitted anything — `askQuestion` is the only call made — so an obligation visible here is one derived from the question row itself (ISS-978 criterion 5).
     const owed = await delivery.owedRounds();
     expect(owed.map((o) => o.questionId)).toEqual([q.id]);
     expect(owed[0]?.round).toBe(1);
@@ -245,8 +237,6 @@ describe('delivering a round', () => {
     };
     await delivery.drainQuestionDeliveries();
     expect(seenDuringPost).toHaveLength(1);
-    // cm:guard `undefined` is the pass: there must be NO row yet. A row reading `delivered` here is a round a crash would leave marked complete and never posted, which is the whole of the rule (ISS-978 criterion 6).
-    // cm:guard `claimed` is the pass and `delivered` is the failure: the row must already exist so a second core instance cannot post the same round, and it must not yet claim success (ISS-978 criteria 5, 6).
     expect(seenDuringPost[0]).toBe('claimed');
     expect((await deliveries(q.id))[0]?.status).toBe('delivered');
   });
@@ -273,7 +263,6 @@ describe('delivering a round', () => {
     expect(row?.lastError).toContain('rocket.chat is down');
 
     postThrows = null;
-    // cm:guard the later drain is given a clock PAST the backoff this attempt wrote, because the retry is what the row's `next_attempt_at` schedules — a drain at the same instant proves only that the row exists.
     const later = new Date(Date.now() + 10 * 60_000);
     await delivery.drainQuestionDeliveries(later);
     [row] = await deliveries(q.id);
@@ -300,7 +289,6 @@ describe('delivering a round', () => {
     const rows = await deliveries(q.id);
     expect(rows.map((r) => r.round).sort()).toEqual([1, 2]);
     expect(rows.every((r) => r.status === 'delivered')).toBe(true);
-    // cm:guard ONE thread row for the whole question, still naming round one's message: a second row would be a second thread, and "is this reply an answer or a comment?" stops being decidable from the message alone (ISS-978 criterion 9).
     const threads = await db
       .select()
       .from(rcSchema.rocketchatThreads)
@@ -314,7 +302,6 @@ describe('two core instances draining at once', () => {
   it('posts the round once — the instance that did not claim it finds it held', async () => {
     await bindRoom();
     await ask();
-    // cm:guard both instances derive the SAME owed round BEFORE either claims, which is the only arrangement that reaches the claim: derived in sequence, the second finds nothing owed and the conflict predicate is never exercised (ISS-978 criterion 5).
     const owed = onlyOwed(await delivery.owedRounds());
     const first = await delivery.deliverOwedRound(owed);
     const second = await delivery.deliverOwedRound(owed);
@@ -348,10 +335,8 @@ describe('a project with no bound room', () => {
     );
     expect(notes).toHaveLength(1);
     expect(notes[0]?.user_id).toBe(ownerId);
-    // cm:guard the body must name THE REASON and no longer a fixed sentence about binding a room: since ISS-1091 there are five ways a round is undeliverable, and an operator told to bind a room when the real fault is that the bot was removed from the room the question was asked in is sent to fix something that is not broken.
     expect(String(notes[0]?.body)).toContain('no Rocket.Chat room is bound to this project');
     expect(String(notes[0]?.body)).toContain('Nothing was posted anywhere');
-    // cm:guard the wording may name no run: since ISS-993 a question is asked on a token too, with nothing parked behind it, and telling the org's creator a run is waiting sends them looking for one that does not exist.
     expect(`${notes[0]?.title} ${notes[0]?.body}`).not.toContain('parked');
   });
 
@@ -364,7 +349,6 @@ describe('a project with no bound room', () => {
     const notes = await harness.db.execute(
       sql`SELECT id FROM notifications WHERE project_id = ${projectId}`,
     );
-    // cm:guard `createNotification` inserts unconditionally — `resolutionKey` is what clears a row later, not a dedup key — so five drains against a roomless project would otherwise be five rows in somebody's list (ISS-978 criterion 24).
     expect(notes).toHaveLength(1);
   });
 
@@ -405,7 +389,6 @@ describe('a project with no bound room', () => {
   it('keeps owing the round however long the room takes to arrive', async () => {
     const q = await ask();
     await delivery.drainQuestionDeliveries();
-    // cm:guard far past the attempts cap a real failure would hit: what an undeliverable round waits on is a person binding a room, and a capped retry would make a room bound an hour late deliver nothing (ISS-978 criterion 25).
     let clock = Date.now();
     for (let i = 0; i < 12; i++) {
       clock += 60 * 60_000;
@@ -431,7 +414,6 @@ describe('a project with no bound room', () => {
     expect(posts).toHaveLength(1);
     expect(posts[0]?.rid).toBe('room-late');
     const rows = await deliveries(q.id);
-    // cm:guard ONE row, still round one: a second round would mean the run was made to ask again, which is exactly what binding a room must not cost (ISS-978 criterion 25).
     expect(rows).toHaveLength(1);
     expect(rows[0]?.round).toBe(1);
     expect(rows[0]?.status).toBe('delivered');

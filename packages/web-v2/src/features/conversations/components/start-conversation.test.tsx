@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
 
-// cm:why jsdom implements no scrolling, and the combobox scrolls its active option into view as it opens — without this stub the picker throws before anything here is asserted
 Element.prototype.scrollIntoView = vi.fn();
 
 const open = vi.fn();
@@ -64,7 +63,6 @@ function mount() {
   );
 }
 
-// cm:why the project picker is the design system's combobox rather than a native select, so it is driven the way a person drives it — open the listbox, click the option
 const pickAlpha = () => {
   fireEvent.click(screen.getByRole("combobox"));
   fireEvent.click(screen.getByRole("option", { name: "Alpha" }));
@@ -91,7 +89,6 @@ describe("starting a room", () => {
     expect(shown.textContent).toMatch(/nobody chooses it/i);
   });
 
-  // cm:guard the base project counts as an agent the person never ticked: the room opens with its own handle, so one ticked agent from a second project makes TWO, and a confirmation counting only the boxes would call it private and name one project.
   it("counts the room's own agent, so a second project reads as two projects and a shared room", async () => {
     mount();
     pickAlpha();
@@ -103,7 +100,6 @@ describe("starting a room", () => {
     expect(shown.textContent).toMatch(/not only the people listed here/i);
   });
 
-  // cm:guard core excludes the handle the room opens with BY IDENTITY, so anything still offered for that project is a different agent — a second handle in the room, and therefore a shared room, while the scope stays the one project. The two claims are counted on different keys for exactly this case.
   it("counts a second agent of the room's own project as a second handle, not a second project", async () => {
     candidatesForProject.mockResolvedValue({
       people: [],
@@ -136,7 +132,6 @@ describe("starting a room", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  // cm:guard an agent whose project has never been talked to is offered with a null id, and the room must open asking for the project alone — core mints the handle inside the same transaction that opens the room.
   it("asks for an unminted project's agent without an agent id", async () => {
     mount();
     pickAlpha();

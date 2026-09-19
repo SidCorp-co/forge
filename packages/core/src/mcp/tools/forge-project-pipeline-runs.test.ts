@@ -30,7 +30,6 @@ const selectWhere = vi.fn(() => ({
   orderBy: selectOrderBy,
   groupBy: selectGroupBy,
 }));
-// cm:edge contract -> packages/core/src/lib/authz.ts — `effectiveProjectRole` chains TWO leftJoins before `where().limit(1)`, and this mock must offer the same depth: drop one and the builder returns undefined mid-chain, which reads as an authz failure rather than a broken stub
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
@@ -131,7 +130,6 @@ describe('forge_project_pipeline_runs (action=list)', () => {
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/BAD_REQUEST/);
   });
 
-  // cm:guard `list` selects SCALAR columns only — adding `metadata` (jsonb, unbounded) puts a whole run's payload on every row, and a full page then blows the MCP response token cap, which fails as a truncated answer rather than an error (ISS-428)
   it('projects scalar columns only and omits the metadata jsonb', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
@@ -173,7 +171,6 @@ describe('forge_project_pipeline_runs (action=get)', () => {
     await expect(tool.handler({ action: 'get' })).rejects.toThrow(/BAD_REQUEST/);
   });
 
-  // cm:guard this case deliberately BYPASSES the server-level allowlist gate by calling the factory directly, because the dispatcher must refuse a cross-project PAT on its own — the two gates are defence in depth, and a test that only ever goes through the outer one cannot tell you the inner one still exists
   it('returns NOT_FOUND for a PAT outside the project allowlist', async () => {
     const tool = forgeProjectPipelineRunsTool(makePatCtx(['99999999-9999-4999-8999-999999999999']));
     selectLimit.mockResolvedValueOnce([baseRun]);

@@ -111,7 +111,6 @@ describe('Coolify commands over REST', () => {
     expect([403, 404]).toContain(res.status);
   });
 
-  // cm:guard every case below must stop at a Forge-side refusal: a control that changes production may not be proved by firing it at a real Coolify, which is the harm ISS-925 exists to remove.
   it('reports nothing to cancel rather than failing, when no integration exists', async () => {
     const { project, token } = await seed();
     const res = await call(

@@ -151,7 +151,6 @@ describe('buildRocketChatHistoryToolset', () => {
 
   it('caps calls per turn with a JSON error', async () => {
     const set = buildRocketChatHistoryToolset(auth, 'RID1');
-    // cm:why the per-turn counter is what is under test, not the fetch: rc.invalid fails and yields empty message lists, and a failed call still counts against the cap
     await set.execute('rocketchat_history', '{}');
     await set.execute('rocketchat_history', '{}');
     await set.execute('rocketchat_history', '{}');
@@ -274,7 +273,6 @@ describe('buildRocketChatQuoteContextToolset (ISS-1087)', () => {
     });
   });
 
-  // cm:guard neighbours come from the THREAD when the anchor sits in one: the room stream around the same instant is other people's conversation (criterion 26).
   it('takes a thread anchor’s neighbours from the thread, not the room (criterion 26)', async () => {
     serve({ t4: raw('t4', 14, { tmid: 'T1' }), T1: raw('T1', 11) });
     const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't4');

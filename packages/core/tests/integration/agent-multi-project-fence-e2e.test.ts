@@ -163,10 +163,6 @@ describe('an agent account covering several projects', () => {
       expect(await mcpReaches(token, projectC)).toBe(false);
     });
 
-    // cm:guard enumeration is a separate plane from access and has to be asserted on its
-    // own: a fence applied at the read but not at the listing hands a leaked credential
-    // the NAME of every project its account can see, which is the half of a blast radius
-    // that is silent.
     it('cannot even list the undeclared project', async () => {
       const token = await memberOfThreeFencedToTwo();
       const seen = await enumerable(token);
@@ -224,11 +220,6 @@ describe('changing which projects an agent works on', () => {
     expect(await restReaches(plaintext, projectB)).toBe(true);
   });
 
-  // cm:guard the ROLE on a retained project, not just its presence. The rewrite this replaced
-  // set every row to `member`, so a PUT naming the identical set promoted a viewer and demoted
-  // an admin — a permission change nobody asked for, made by an operation whose whole subject is
-  // which projects an agent works on (ISS-1093, review finding F3). Asserting only the project
-  // ids stays green through it.
   it('leaves the role on a project the agent already works on exactly as it was', async () => {
     const { agent } = await accounts.createAgentAccount({
       orgId,
@@ -304,10 +295,6 @@ describe('minting a credential while the project set is being changed', () => {
    * the delay, the two never overlapped, and the test said so rather than passing
    * over a window it had not opened.
    */
-  // cm:guard `blockedOnTheAgentLock` is the load-bearing assertion, not the reach below it. Once
-  // the two are serialized BOTH orders are correct — mint first and the re-fence catches the new
-  // row, re-fence first and the mint reads the new set — so no assertion about ordering can tell
-  // the fix from the bug. What can is whether the mint waits for the lock at all (ISS-1093, F2).
   it('takes the agent fence lock before it decides what the box may reach', async () => {
     const { agent } = await accounts.createAgentAccount({
       orgId,
@@ -380,9 +367,6 @@ describe('the credential a box is issued when it pairs', () => {
     expect(await restReaches(token, projectC)).toBe(false);
   });
 
-  // cm:guard criterion 34 — a PERSON's box is unchanged and still reaches no project
-  // through this fence. Widening it here would hand every paired box its owner's whole
-  // account, which is the `device.ownerId` fiction ISS-932 deleted.
   it('still reaches no project at all when the box pairs as a person', async () => {
     const deviceId = randomUUID();
     await harness.db.execute(

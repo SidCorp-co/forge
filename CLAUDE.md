@@ -25,8 +25,8 @@ Claude Code plugin — the `forge` CLI, the session hooks, and `plugin/skills/is
 the skill `AUTONOMOUS_SKILL_NAME` names and every `drive` job runs. It reaches a runner through
 `pipelineConfig.plugins` → `GET /api/devices/me/plugins`, gated by that box's `[plugins] enabled`.
 Nothing in this repo can gate the pair: a change to the five driver statuses, the drive prompt, or
-the phase endpoints has a second half in that repo, and the `cm:guard`s that name it are the only
-record of the coupling. It is a Forge project too (`forge-plugin`, autonomous, pinned to a SHA).
+the phase endpoints has a second half in that repo, and nothing here records the coupling. It is a
+Forge project too (`forge-plugin`, autonomous, pinned to a SHA).
 
 ## Commands
 
@@ -78,7 +78,17 @@ disagrees with what the manifest claims.
 
 Thresholds live in one place per axis: `.arch.json` for architecture contracts, and
 `packages/core/biome.json` for the file/function line limits. **Do not add a rule to an axis another
-already owns** — no ESLint, no comment rules at all, no comments inside `biome.json`.
+already owns** — no comments inside `biome.json`, and nothing that re-measures file or function
+length, which biome owns at 500/150 with `check-size-budget` as its baseline.
+
+**Comment content is the one axis that was vacant, and now is not.** The codemap checker that used
+to own it was removed and its annotations deleted, which left prose in this repo measured by
+nothing. `eslint-plugin-code-quality` is vendored at `.forge/code-quality/` — the same shape as
+`.forge/archmap/`, so `pnpm install` needs no path outside the repo — and runs as
+`pnpm lint:code-quality` over `eslint.config.mjs`. It owns comment density, historical narration,
+duplicated comments and comment-run length, and nothing else here may. It is NOT in `ci-passed`
+yet: it still reports findings, and a gate added red blocks every merge for work nobody has
+scheduled.
 
 Which gate owns what, the conformance levels and their baseline directions, and what each rule was
 born from: **[`scripts/README.md`](scripts/README.md)**.
@@ -92,8 +102,8 @@ line, in this same breath because the two are one rule: no merging or reverting 
 doing another issue's work, no silently overriding a human's decision. Everything inside that line
 is yours whether or not it is in your AC; the first thing outside it is not, however cheap.
 
-**A trade-off is priced or it is not taken.** `--update-baseline`, a waiver, a skipped test, a
-`cm:hack` — each is an amnesty, and an amnesty with no stated price is how a gate stops meaning
+**A trade-off is priced or it is not taken.** `--update-baseline`, a waiver, a skipped test —
+each is an amnesty, and an amnesty with no stated price is how a gate stops meaning
 what its row says. Name what was traded, what it costs, and the condition that ends it. An
 undeclared trade-off is indistinguishable from an unnoticed one six weeks later.
 
@@ -139,8 +149,8 @@ Which of the three you may absorb follows `VISION: kernel-hard-policy-soft`. Ker
 session, run, state, transition, evidence, retry, escalation — has zero tolerance: a
 representable-looking wrong value there is how state starts lying. Policy input may normalize, but
 an unreported normalization is a guess, and a guess is the silent substitution again under a
-friendlier name. A wrong use already load-bearing in the field is a priced amnesty —
-`cm:hack ISS-<n> until:<condition>` — never a quiet accommodation.
+friendlier name. A wrong use already load-bearing in the field is a priced amnesty, named with the
+issue and the condition that ends it — never a quiet accommodation.
 
 ### There is no "already red"
 
@@ -174,8 +184,8 @@ your hands owned — it leaves owned by a row somebody can open, which is exactl
 `file-instead-of-fix` refuses everywhere else and requires here.
 
 The pair is not symmetric. Nothing in this repo can gate that one: a change to the five driver
-statuses, the drive prompt or the phase endpoints has a second half over there, and the
-`cm:guard`s naming it are the only record of the coupling.
+statuses, the drive prompt or the phase endpoints has a second half over there, and nothing here
+records the coupling.
 
 ### An issue that does leave names the mechanism, not the symptom
 
@@ -230,9 +240,9 @@ line number — a line number is stale the moment anything above it moves, and s
   box was doing (ISS-923).
   - *Forward — no child `jobs` row stays non-terminal under a terminal `pipeline_run`*: one orphan
     wedges a runner slot. Three defences in lockstep (close-cascade, loop monitor, pool exclusion),
-    plus `held` as a deliberate fourth shape that is NOT an orphan. The `cm:guard` and the
-    `cm:edge lockstep` set lives on `packages/core/src/pipeline/runs-cascade.ts`; the four hops and
-    their thresholds are modelled in `packages/core/src/jobs/loop-monitor.ts`.
+    plus `held` as a deliberate fourth shape that is NOT an orphan. The cascade lives in
+    `packages/core/src/pipeline/runs-cascade.ts`; the four hops and their thresholds are modelled in
+    `packages/core/src/jobs/loop-monitor.ts`.
   - *Inverse — no `pipeline_run` stays non-terminal once every child job is terminal*:
     `packages/core/src/pipeline/runs-concluded.ts`, driven from the sweeper tick, closing on the
     LAST job's outcome so a run whose last job failed never closes `completed`.

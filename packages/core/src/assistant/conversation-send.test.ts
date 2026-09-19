@@ -60,9 +60,6 @@ vi.mock('./tools/principal.js', () => ({ buildChatToolContext: (a: unknown) => a
 
 const { webConversationPersona } = await import('./door-persona.js');
 const { sendWebConversationMessage } = await import('./conversation-send.js');
-// cm:guard the drain is imported from its OWN module and exercised through the same harness: it
-// answers a stranded window by calling `routeWebWindow` in `conversation-send.ts`, so a second set of
-// mocks for it would be a second account of one path (ISS-1078, where the split happened).
 const { drainWebConversationWindows } = await import('./conversation-drain.js');
 
 const room = { id: 'conv-1', externalId: 'venue-1', shape: 'direct' as const };
@@ -117,7 +114,6 @@ const send = (over: { clientToken?: string } = {}) =>
   });
 
 describe('a send', () => {
-  // cm:guard the venue prefix is what keeps one person's request off another room's window; without it this call takes whatever the adapter owes and answers it under this request's timing.
   it('claims only this room’s window, and does not wait out the settle', async () => {
     await send();
     expect(claimDueWindows).toHaveBeenCalledTimes(1);
@@ -129,10 +125,6 @@ describe('a send', () => {
     });
   });
 
-  // cm:guard the settle event is published AFTER `routeWindow` returns, which is the whole reason it exists beside the delivery event: the delivery goes out before the reply row commits, so a second tab that refetched on that alone reads the room back without the answer in it (review F2).
-  // cm:guard what precedes the turn is the ACCEPTED frame and nothing else, asserted by name rather
-  // than by a count: this test's whole subject is the order of the two, and a version reading
-  // `published.length` would pass just as well if a settle had gone out early (ISS-1078).
   it('tells the room it has settled, after the window closed and whatever it decided', async () => {
     routeWindow.mockImplementation(async () => {
       expect(published.map((p) => p.event)).toEqual(['conversation.accepted']);
@@ -149,10 +141,6 @@ describe('a send', () => {
     });
   });
 
-  // cm:guard the accepted frame exists so the person who pressed enter stops reading "Sending…" for
-  // the length of a model turn, and it is published BEFORE the turn is routed — which is the only
-  // moment that is true of. It names the row the collector committed, so the tab that sent it can
-  // match its own outbox entry rather than guessing from the text (ISS-1078).
   it('tells the room a message was accepted, before the turn is routed', async () => {
     let atTurn: unknown = 'the turn never ran';
     routeWindow.mockImplementation(async () => {
@@ -240,7 +228,6 @@ describe('the recovery drain', () => {
 });
 
 describe('the persona', () => {
-  // cm:guard the Forge UI chat WAS a runner-hosted session with the repository checked out and is now a conversation turn with neither; a persona that did not say so would answer a question about a file as though it had looked (ISS-1004 step 5).
   it('says it has no checkout and no shell', () => {
     const persona = webConversationPersona('Alpha', 'alpha', 'Alice');
     expect(persona).toMatch(/no checkout of the repository and no shell/);

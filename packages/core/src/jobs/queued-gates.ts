@@ -1,24 +1,3 @@
-/**
- * Why a `queued` job is not being worked — the EXPLAINER, not a gate.
- *
- * Nothing here decides anything: routing is the master agent's, and the one
- * condition core still enforces lives in `devices/claim.ts`. What this owns is
- * the question `queued` cannot answer on its own — "about to run" and "will
- * never run" are byte-identical on the row — so every reason is recomputed
- * from scratch on read and nothing is persisted (ISS-162).
- *
- * ISS-228 — one {@link buildBarrierFragments} builder feeds both readers, so
- * extending one can no longer drift the other. The CASE arm order is the
- * precedence between them.
- *
- * Two invariants, both with a regression assertion in `queued-gates.test.ts`:
- * no temporal predicate beyond `valid_until`, the heartbeat, runner load and
- * `retry_after_at` (ISS-197) — a `gate_at + N seconds` debouncer trips it; and
- * no writes from either reader.
- *
- */
-// cm:guard `stale_trigger` and the sweep that ended the jobs it held must not come back. ISS-789 scoped both to the job types that HAVE a trigger status; ISS-895 left one type, `drive`, which never had one — and re-adding the arm would stamp the driver stale the moment its own agent moves the issue, with nothing re-enqueuing at any status but the entry one.
-
 import { eq, type SQL, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import type { JobType, RunnerType } from '../db/schema.js';
@@ -35,10 +14,8 @@ export type GateSkipReason =
   | 'pipeline_run_not_running'
   | 'retry_cooldown'
   | 'issue_busy'
-  // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `blocked_by`/`project_cap` outlived their arms in the `forge_jobs.list` tool description and in `alarmStalledQueuedJobs`'s own guard until ISS-765 read them back against this CASE.
   | 'runner_too_old'
   | 'runner_stale'
-  // cm:edge lockstep -> packages/core/src/devices/claim.ts — the same string `prepareJobForMaster` already answers for a refused claim, deliberately: an operator reading a gate map and an operator reading a master's transcript are given one name for one condition.
   | 'release_label_missing';
 
 /**
@@ -64,19 +41,6 @@ export function runnerSupportsJobType(runnerType: RunnerType, jobType: JobType):
   return caps ? caps.includes(jobType) : false;
 }
 
-/**
- * Count jobs currently in-flight (`dispatched|running`) on a runner. Exported
- * so the dispatcher's L4 check and tests can share the same query.
- *
- * ISS-258 — joins `pipeline_runs` and filters to non-terminal parents
- * (`running|paused`). An orphaned job whose parent run is already
- * `completed|failed|cancelled` no longer holds the runner's cap slot, so a
- * single missed cascade can't wedge the runner indefinitely (the Forge Dev
- * 2026-05-27 stall). The cascade in `runs.ts` is the primary defence; this
- * filter is the safety net for state drift.
- */
-// cm:guard every dispatch gate must require pr.status IN ('running','paused') or a terminal-parent orphan wedges the runner cap
-// cm:edge sideeffect -> packages/core/drizzle/migrations/0113_i1_orphan_trigger.sql — a DB trigger also cancels active jobs under terminal runs
 export async function countInFlightForRunner(runnerId: string): Promise<number> {
   return countInFlightForOneRunner(runnerId);
 }
@@ -89,50 +53,16 @@ export interface BarrierFragments {
    *  in its WHERE clause (`AND NOT (${predicate})`); the asserter wraps each
    *  in a CASE WHEN to report a granular skip reason. */
   predicates: {
-    /** L1 — non-terminal agent_session for this issue (excluding the
-     *  candidate's own linked session). Mirrors the ISS-226 inline check
-     *  the dispatcher used to perform separately. */
     issueBusySession: SQL;
-    /** L1 — sibling job (`dispatched|running`) already running for this
-     *  issue. Catches the same-issue race that L1 issueBusySession does
-     *  not, e.g. an in-flight job whose agent_session row hasn't landed
-     *  yet. */
     issueBusyJob: SQL;
   };
 }
 
-/**
- * SSOT — single builder for the dispatch-barrier CTEs + EXISTS-form
- * predicates used by both readers: {@link gateReasonsForQueuedJobs} and
- * {@link assertDispatchable}.
- *
- * All predicate SQL refers to the surrounding query's standard aliases:
- *   `j` — the jobs row
- *   `i` — the issues row (LEFT JOIN)
- *   `r` — the pipeline_runs row (JOIN)
- *
- * Both call sites are responsible for the matching FROM + JOIN block plus
- * the trivially-shared scalar checks (`j.status='queued'`, `r.status='running'`,
- * the `retry_after_at` cooldown, and the
- * runner-availability EXISTS checks). The parity test in
- * `queued-gates.test.ts` keeps the two sites in lockstep — extending one
- * without extending the other will flip a recorded scenario from
- * `ok:false` ⇔ "picker would not pick".
- */
-// cm:edge contract -> packages/core/src/admin/alert-queries.ts — A3 (alertRunnerStarved) replays BOTH halves of this builder per project: the predicates, so a job held by issue-busy / retry-cooldown / a stale trigger is not miscounted as runner starvation, AND `fresh_capable_runners`, whose clauses are the definition of a usable runner. A3 inverts only the runner EXISTS; a gate added here and not replayed there turns a correctly-held queue into a false alert, and a runner clause added here alone makes a genuinely starved queue report ok.
-// cm:guard ISS-1021 — the CTE takes a project SET and carries `project_id`, so one statement can
-// answer for many projects; `alarmStalledQueuedJobs` replayed this whole six-clause definition once
-// per project in a loop. The correlation onto `j.project_id` lives in `buildGateReasonCase` and
-// NOT in this CTE, because `freshRunnerAvailability` reads the CTE with no `j` in scope at all —
-// pushing it down here would make that reader fail to compile its own SQL.
 export function buildBarrierFragments(args: {
   projectIds: readonly string[];
   livenessSeconds: number;
 }): BarrierFragments {
   const { projectIds, livenessSeconds } = args;
-  // cm:guard an empty set is a literal `false`, never an empty `IN ()`, which is a syntax error.
-  // A caller asking about no projects gets "no usable runner anywhere", which is the truthful
-  // answer for a set with nothing in it.
   const projectScope =
     projectIds.length === 0
       ? sql`false`
@@ -141,16 +71,12 @@ export function buildBarrierFragments(args: {
           sql`, `,
         )})`;
 
-  // cm:guard this CTE answers "is a usable box ALIVE", never "does it have room". Core stopped deciding how many jobs a box may hold when the master began claiming from the pool (`devices/claim.ts`), and the real ceiling — `duplex_max_sessions`, RAM, the repo lock — lives on the runner where core cannot see it. So a capacity arm here could only report a hold nothing enforces, which is worse than reporting none: `runner_full` named exactly that from 2026-09-05 back.
   const ctes = sql`    fresh_capable_runners AS (
       SELECT r.id,
-             -- cm:guard carried so a multi-project reader can correlate a job to its own project's
              -- boxes. A reader that selects from this CTE without correlating gets every project's
              -- runners, which reads as "a usable box exists" for a project that has none.
              r.project_id,
-             -- cm:guard labels is carried as a COLUMN for the same reason claim_capable is, and it must NOT become a WHERE clause: this CTE is the definition of a usable runner for every reader, and narrowing it to the release label would make runner_stale fire for every non-release job on a project whose label matches nobody.
              r.labels,
-             -- cm:guard carried as a COLUMN and not a WHERE clause, so the reason arms can tell "no box at all" from "a box too old to claim". Every reader asking "is there a usable runner" MUST therefore say WHERE claim_capable; one that forgets counts a box the claim refuses outright ("runner_too_old") and re-opens the picker-offers/selector-rejects deadlock this CTE carries three other guards about.
              ${claimCapableSql('d')} AS claim_capable
       FROM runners r
       JOIN devices d ON d.id = r.device_id
@@ -158,13 +84,9 @@ export function buildBarrierFragments(args: {
         AND r.status = 'online'
         AND r.last_seen_at IS NOT NULL
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-        -- cm:guard every clause runners/select.ts filters on MUST appear here too, or the two disagree silently: this gate reports the job as dispatchable while the candidate query excludes the only box, so the job sits with NO reason for any UI to show. Measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state, back when a selector rejected what the picker offered.
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
-        -- cm:guard an auth limit has NO reset time by design ("rate_limited_until" stays NULL, nothing parseable to wait for), so the time predicate above passes it and an auth-dead runner reads as healthy. It must be excluded by NAME, and no widening of quarantine removes that need: "maybeQuarantineRunner" only counts failures "classifyBoxFault" recognises, and an expired OAuth session is neither a preflight check nor an unclaimed dispatch — the runner claims the job, starts the agent, and the agent dies on the credential. That is how device dev1-ai013 took 421 jobs in 5.5h with "quarantined_until" still NULL.
         AND r.limit_reason IS DISTINCT FROM 'auth'
-        -- cm:guard mirrors NOT_QUARANTINED in runners/select.ts — a quarantined runner was counted as available here, which is the deadlock above and is also what would have made the escalating backoff invisible: longer TTL, more days of a job queued with no reason
         AND (r.quarantined_until IS NULL OR r.quarantined_until <= now())
-        -- cm:guard mirrors WORKSPACE_READY in runners/select.ts — NULL is a legacy row that predates the column and stays eligible; only an explicit non-ready value blocks
         AND (r.provision_status IS NULL OR r.provision_status = 'ready')
         -- Device turn-off gate — MUST mirror runners/select.ts
         -- (NOT_DISABLED_DEVICE). Without it the picker/asserter counts a runner
@@ -186,8 +108,6 @@ export function buildBarrierFragments(args: {
         AND (s.metadata->>'issueId') = j.issue_id::text
         AND (j.agent_session_id IS NULL OR s.id <> j.agent_session_id)
     )`,
-    // cm:guard `held` belongs HERE and NOT in the pool's claimable set — the asymmetry is the whole design (RFC 0002): invisible to the pool it occupies no box and may wait indefinitely, present here it stops a second job being enqueued for the same issue while the first waits
-    // cm:edge lockstep -> packages/core/src/db/schema.ts — the `jobs_active_unique` partial index is the DB-level twin of this predicate; a status listed in one must be listed in the other or `enqueue` inserts the duplicate this gate refuses to dispatch
     issueBusyJob: sql`EXISTS (
       SELECT 1 FROM jobs other
       WHERE other.issue_id = j.issue_id
@@ -200,23 +120,10 @@ export function buildBarrierFragments(args: {
 }
 
 /**
- * Why one job is not claimable right now, or `ok` when nothing holds it.
- *
- * Precedence of WHEN clauses matches the picker's WHERE order so the
- * reported reason is the most specific one. The CASE returns NULL when the
- * job is dispatchable.
- *
- * EXISTS predicates come from {@link buildBarrierFragments} — same builder
- * the picker uses. New gates that touch EXISTS sub-queries must extend the
- * builder; the parity test in `queued-gates.test.ts` will fail if the two
- * sites disagree on any of 20 mixed scenarios.
- */
-/**
  * The gate-precedence CASE, shared by {@link assertDispatchable} and
  * {@link gateReasonsForQueuedJobs}. Expects `j`, `r` and
  * `fresh_capable_runners` in scope.
  */
-// cm:guard both readers MUST take the CASE from here — the arm order IS the answer (issue_busy before the two runner arms), so a second copy reports a different "most specific reason" for the same job and the two surfaces start contradicting each other.
 function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
   return sql`
       CASE
@@ -225,7 +132,6 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
         WHEN j.retry_after_at IS NOT NULL AND j.retry_after_at > now() THEN 'retry_cooldown'
         WHEN ${predicates.issueBusySession} THEN 'issue_busy'
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
-        -- cm:guard every one of the three runner arms correlates on j.project_id, and a new arm
         -- must too: uncorrelated, a project with no box of its own reads as served the moment ANY
         -- project in the set has one, which is the deadlock these arms exist to name, inverted.
         WHEN NOT EXISTS (
@@ -235,8 +141,6 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
           SELECT 1 FROM fresh_capable_runners WHERE project_id = j.project_id AND claim_capable
         )
           THEN 'runner_too_old'
-        -- cm:guard LAST, after both runner arms, and the order is the answer rather than a preference: a project with no live box at all is runner_stale, and only a project that HAS one is being told the label is what hides the job. Reversed, every release job on a dead fleet would report a label problem the operator does not have.
-        -- cm:edge lockstep -> packages/core/src/devices/pool.ts — RUNNER_MAY_TAKE_JOB is this same predicate as the pool filter. It hid a release_batch job from every box and had no arm here, so the job read as fully dispatchable and the wedge told the owner "every dispatch gate passes ... the picker is offering this job to a selector that keeps declining it" about a job the picker never offered anyone (ISS-1080).
         WHEN j.type = 'release_batch'
           AND NOT EXISTS (
             SELECT 1 FROM fresh_capable_runners
@@ -291,7 +195,6 @@ export interface RunnerAvailability {
  * Reads the picker's OWN `fresh_capable_runners` CTE, so no caller has to
  * restate the six-clause availability rule.
  */
-// cm:guard take this from `buildBarrierFragments`, never a hand-copied WHERE — the availability rule is six clauses deep (online, heartbeat window, rate_limited_until, disabled device, …) and a second copy silently disagrees with the gate, which is how pipelineHealth came to report NO reason at all for jobs the picker was refusing (11 jobs, queued 6-22 days, measured 2026-08-14).
 export async function freshRunnerAvailability(projectId: string): Promise<RunnerAvailability> {
   const { ctes } = buildBarrierFragments({
     projectIds: [projectId],
@@ -310,25 +213,12 @@ export async function freshRunnerAvailability(projectId: string): Promise<Runner
  *
  * Read-only, one query. Jobs absent from the map are dispatchable right now.
  */
-// cm:why `queued` alone cannot distinguish "about to run" from "will never run" — the gates are stateless by design (nothing is persisted on the row), so a job blocked forever is byte-identical to a healthy one. Measured 2026-08-14: 11 jobs had been queued 6-22 days across 5 projects and no surface anywhere could say why, which is why finding out took a hand-written script against production.
 export async function gateReasonsForQueuedJobs(
   projectId: string,
 ): Promise<Map<string, GateSkipReason>> {
   return gateReasonsForQueuedJobsIn([projectId]);
 }
 
-/**
- * The same map across many projects, in one query.
- *
- * ISS-1021 — `alarmStalledQueuedJobs` called the single-project form once per project it had
- * surfaced, and each call rebuilt and re-ran the six-clause `fresh_capable_runners` definition. The
- * answer is identical: the CTE now carries `project_id` and every runner arm correlates on
- * `j.project_id`, so a job is still judged only against its own project's boxes.
- */
-// cm:guard the single-project export is a WRAPPER and must stay one — two texts answering "why is
-// this job queued" is how the picker and the explainer drifted apart before (ISS-228), and the arm
-// order in `buildGateReasonCase` IS the answer, so a second copy reports a different most-specific
-// reason for the same row.
 export async function gateReasonsForQueuedJobsIn(
   projectIds: readonly string[],
 ): Promise<Map<string, GateSkipReason>> {

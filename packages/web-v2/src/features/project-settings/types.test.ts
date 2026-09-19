@@ -74,7 +74,6 @@ describe("summarizeStageConfig / denylistBaseline", () => {
     expect(drifted.extra).toEqual([]);
   });
 
-  // cm:guard ISS-1000 — this used to be a fixture of `approved` / `developed` / `testing` / `clarified` / `confirmed` rows, and it passed: the summary appended a row for ANY stored status. Core deleted those stages with ISS-897 and made `statesConfigSchema` a `strictObject` with ISS-994, so a document carrying one fails to parse and reaches no screen. The assertion below is what goes red if the fall-through comes back.
   it("renders no row for a status core would refuse to store", () => {
     const rows = summarizeStageConfig({
       states: { ...FORGE_DEV_SHAPED.states, clarified: { disallowedTools: DENYLIST_FULL } },
@@ -142,13 +141,11 @@ describe("withStagePatch", () => {
 });
 
 describe("API_ONLY_KEYS", () => {
-  // cm:guard a row here is a promise to an operator that the key exists and is set elsewhere. ISS-814 removed the `recovery*` row because nothing in core reads those keys, and the rows that pointed at ISS-814 because that issue closed without them — a row naming work that will not happen is the same defect as no row.
   it("promises no key to a closed issue and names no unread key", () => {
     for (const row of API_ONLY_KEYS) {
       expect(row.reason).not.toMatch(/ISS-814/);
       expect(row.key).not.toMatch(/recovery/i);
       expect(row.key).not.toMatch(/skipComplexities/);
-      // cm:guard ISS-1000 — a retired key may not be listed as "set through the API" either, because the API refuses it: the row would send an operator to a door that answers 400.
       expect(row.key).not.toMatch(/skillName/);
       expect(row.key).not.toMatch(/stateContext/);
       expect(row.reason).not.toMatch(/per-jobType/i);
@@ -168,7 +165,7 @@ describe("the two retired knobs", () => {
     expect(exported).toEqual([]);
   });
 
-  // cm:guard this one reads the SOURCE because the type system cannot represent the failure: `PipelineStateConfig` still ends in `[key: string]: unknown`, so a restored `skillName?: string` or `stateContext?: StateContextEntry` typechecks everywhere and a `@ts-expect-error` placed on it would be the thing that goes red, by being unused. A declared field is what invites the next editor control, which is the knob ISS-1000 removed. `ProjectAgentConfig` lost its own index signature in ISS-1070 and is held by the case below instead.
+  // this one reads the SOURCE because the type system cannot represent the failure: `PipelineStateConfig` still ends in `[key: string]: unknown`, so a restored `skillName?: string` or `stateContext?: StateContextEntry` typechecks everywhere and a `@ts-expect-error` placed on it would be the thing that goes red, by being unused. A declared field is what invites the next editor control, which is the knob ISS-1000 removed. `ProjectAgentConfig` lost its own index signature in ISS-1070 and is held by the case below instead.
   it("declares neither retired field, nor the type that described one", () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "types.ts"), "utf8");
     for (const gone of [/\bskillName\b/, /\bstateContext\b/, /\bStateContextEntry\b/, /\bSTATE_CONTEXT_JOB_TYPES\b/]) {
@@ -185,7 +182,7 @@ describe("the two retired knobs", () => {
     expect(payload).toBeDefined();
   });
 
-  // cm:guard the declared shape, asserted on the SOURCE for the same reason as the case above: an index signature makes every undeclared key typecheck, so a `@ts-expect-error` on one would go red by being unused rather than by the key being wrong. `ProjectAgentConfig` mirrors core's `agentConfigSchema`, which is strict, and a screen that could name a key core refuses is a screen that compiles a save answering 400.
+  // the declared shape, asserted on the SOURCE for the same reason as the case above: an index signature makes every undeclared key typecheck, so a `@ts-expect-error` on one would go red by being unused rather than by the key being wrong. `ProjectAgentConfig` mirrors core's `agentConfigSchema`, which is strict, and a screen that could name a key core refuses is a screen that compiles a save answering 400.
   it("declares ProjectAgentConfig as a closed key set", () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "types.ts"), "utf8");
     const block = /export interface ProjectAgentConfig \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? "";

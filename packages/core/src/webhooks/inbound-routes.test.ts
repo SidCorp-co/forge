@@ -17,16 +17,6 @@ vi.mock('../db/client.js', () => ({
 
 const handleInboundMock = vi.fn(async () => ({ deliveryId: 'del-1', actions: 1 }));
 const getAdapterMock = vi.fn(() => ({ provider: 'github', handleInbound: handleInboundMock }));
-// ISS-1071 — the router derives its header→provider map from the DECLARATIONS rather than holding a
-// literal array, so this mock has to answer `listIntegrations` too. Declaring github's webhook header
-// here is the point of the test: if the route stopped reading `capabilities.webhookHeader`, or a
-// provider declared one without `canReceiveWebhook`, the derived map would change and these
-// signature tests would go red rather than routing to nobody in silence.
-//
-// ISS-1085 slice 4 — `webhookSignatureHeader` is declared here for the same reason. Sentry appears
-// beside github so the route is exercised for TWO providers signing under two different headers,
-// which is the whole of what moving that knowledge out of this file bought; `noSignature` is a
-// provider that declared an inbound surface and forgot how it is signed.
 const declarations = [
   {
     provider: 'github',
@@ -204,8 +194,6 @@ describe('POST /api/webhooks/in/:slug', () => {
   });
 });
 
-// The signature header a provider-routed delivery is verified against is now the matched
-// provider's own declaration rather than a list this file holds (ISS-1085 slice 4).
 describe('POST /api/webhooks/in/:slug — the declared signature header', () => {
   it('routes a delivery carrying sentry-hook-resource to the Sentry adapter', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
@@ -246,7 +234,6 @@ describe('POST /api/webhooks/in/:slug — the declared signature header', () => 
     expect(((await r.json()) as { code?: string }).code).toBe('MISSING_SIGNATURE');
   });
 
-  // cm:guard the narrowing ISS-1085 slice 4 took, asserted in both directions. A provider-routed delivery is verified against the ONE header its declaration names, so a correct digest under another provider's header no longer opens the door: the header name is what identifies the sender, and a set-of-headers lookup made it decorative.
   it('401 when a Sentry delivery is signed under x-hub-signature-256 instead', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
     const body = '{"action":"created"}';
@@ -273,7 +260,6 @@ describe('POST /api/webhooks/in/:slug — the declared signature header', () => 
     expect(handleInboundMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard the GENERIC path keeps BOTH headers. It is not provider-routed, so there is no declaration to read one off, and narrowing it would break every project pointed at the generic door while its adapter is written.
   it.each(['x-hub-signature-256', 'x-forge-signature-256'])(
     'still accepts a provider-less delivery signed under %s',
     async (header) => {
@@ -287,7 +273,6 @@ describe('POST /api/webhooks/in/:slug — the declared signature header', () => 
     },
   );
 
-  // cm:guard a matched provider that declares NO signature header is refused BY NAME rather than dropped through to the generic path. Falling through would verify a provider's delivery against `projects.webhookSecret` and answer `actions: 0` — a 200 for a payload nobody handled.
   it('refuses by name a provider that declares a webhook and no signature header', async () => {
     declared = [
       {

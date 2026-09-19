@@ -73,7 +73,6 @@ function app() {
   });
   registerIssueCommentRoutes(a as never);
   a.route('/comments', commentRoutes as never);
-  // cm:guard the real `errorHandler`, not Hono's default — the cap lives in the HTTPException's `cause.details`, so a bare app renders only 'Invalid input' and the assertion that the refusal NAMES the cap cannot fail
   a.onError(errorHandler as never);
   return a;
 }
@@ -121,7 +120,6 @@ describe('comment body cap at the REST doors (ISS-958)', () => {
     }
   });
 
-  // cm:guard the cap is ONE literal in `src` — the defect ISS-958 found was the number written twice (the REST validator and the MCP tool), which is what lets the number a client reads off the tool schema drift from the number the doors enforce; a second occurrence here is that defect returning
   it('writes the cap literal exactly once outside the tests', () => {
     const root = resolve(import.meta.dirname, '..');
     const carriers: string[] = [];

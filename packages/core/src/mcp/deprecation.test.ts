@@ -10,7 +10,6 @@
 import { describe, expect, it } from 'vitest';
 import { deprecationFor, formatDeprecationHeader } from './deprecation.js';
 
-// cm:why each survives because a live skill calls it by name — forge-skill-audit for the first, forge-plan/forge-triage/forge-build for the second; that, not a deprecation window, is what keeps them registered in `server.ts`
 const STILL_REGISTERED = ['forge_pipeline_runs.get', 'forge_pm.set_dependency'];
 
 /** Deleted with their factories — a notice for any of these is unreachable. */
@@ -36,7 +35,6 @@ describe('deprecationFor', () => {
     }
   });
 
-  // cm:guard the registry may hold NOTHING but the names `server.ts` still registers. A notice outliving its factory cannot fire, so it is not a warning — it is a claim, in the one file a reader consults to learn which names are on the way out, that Forge still answers to a tool it deleted. Re-add any RETIRED entry to `NOTICES` and only this goes red.
   it('has forgotten every name whose factory was deleted', () => {
     const stillListed = RETIRED.filter((name) => deprecationFor(name) !== null);
     expect(stillListed).toEqual([]);

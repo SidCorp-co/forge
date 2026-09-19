@@ -59,13 +59,6 @@ struct StartFrame {
     session_id: String,
     #[serde(default)]
     prompt: Option<String>,
-    // cm:edge contract -> packages/core/src/agent-sessions/chat-turn.ts — core writes
-    // this turn's user entry into `agent_session_events` and hands back the `seq` it
-    // took; this turn's lines are numbered from there. Absent means a core that
-    // predates the raw-line route, and the turn is refused by name rather than
-    // numbered from a guess: numbering from 0 would make turn two's lines collide
-    // with turn one's, and `ON CONFLICT DO NOTHING` would drop the whole turn in
-    // silence.
     #[serde(default)]
     event_seq_base: Option<u64>,
     #[serde(default)]
@@ -302,7 +295,6 @@ pub async fn handle_send(
             project_slug: f.project_slug,
             // No system prompt on follow-ups — `--resume` keeps the original.
             system_prompt: None,
-            // cm:guard a follow-up DOES carry a model. Verified on claude 2.1.241: `--resume` with a changed `--model` runs the new model (haiku -> sonnet -> haiku, one session id, read back from `modelUsage`), and `--resume` with no `--model` inherits the session's last one. Hardcoding None here made the picker a lie for every turn after the first.
             model: f.model,
             resume_id: f.claude_session_id.filter(|s| !s.is_empty()),
             mcp_servers_override: f.mcp_servers_override,
@@ -342,9 +334,7 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         mcp_servers_override: turn.mcp_servers_override.clone(),
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.to_string()),
-        // cm:guard chat NEVER takes a session-cap permit, and ISS-920 giving that wait a 600s bound does not change it: core's `no_client_ack` sweeper kills an unacked chat turn at 90s, so a bounded queue still ends the turn before it spawns (session 1af837da, 2026-09-04: five user messages, no reply). Owner decision: chat has no limit.
         counts_against_session_cap: false,
-        // cm:guard chat takes the DEFAULT and no project value, because the field is `pipelineConfig.sessionResidencySeconds` and chat has no pipeline behind it. A chat session's residency is bounded by the same const it always was; giving it a pipeline project's number would make a project setting silently change how long an unrelated chat window stays warm.
         session_residency_seconds: None,
     }
 }
@@ -359,11 +349,6 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     }
 
     let session_id = turn.session_id.clone();
-    // cm:guard REFUSED BY NAME rather than numbered from a guess. A frame with no
-    // base is a core that predates the raw-line route; numbering this turn from 0
-    // would collide with the previous turn's lines, and core's
-    // `ON CONFLICT DO NOTHING` would then drop the whole turn without a word. Core
-    // ships before the daemons, so this is a misordered rollout and it says so.
     let Some(event_seq_base) = turn.event_seq_base else {
         let msg = "[EVENT_SEQ_BASE_MISSING] this turn carried no event sequence base, so its lines cannot be numbered — core is older than this runner release; upgrade core first".to_string();
         tracing::error!("[chat {session_id}] {msg}");
@@ -376,11 +361,9 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
         turn.resume_id.is_some()
     );
 
-    // cm:guard refresh HERE and not in handle_start / handle_send — both funnel through this function, and a per-caller refresh is exactly how the resume lane got forgotten. Session 228cdf03 idled 28h and answered from the checkout it was created with. Residency does NOT move it: `run_turn` is entered once per TURN, not once per spawn — the two only looked the same while a turn was a spawn.
     let git_state = refresh::refresh(Path::new(&turn.repo_path), None).await;
     tracing::info!("[chat {session_id}] {}", refresh::describe(&git_state));
 
-    // cm:guard a session that can be reused must NOT be reused across a model change — the picker is honoured by respawning with `--model`, exactly as it was before residency. Verified 2026-08-29 that an in-band `/model` also works, but it costs its own turn and its result would be read as the answer to the user's question; that lands with the phase 4 message vocabulary, not here.
     let resident = runner.resident(&session_id).await;
     let reuse = match &resident {
         Some(r) if r.model == turn.model => true,
@@ -392,7 +375,6 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
         None => false,
     };
 
-    // cm:guard ISS-873 invariant 7 — a RESIDENT session already holds the pre-refresh file contents, so a checkout that moved under it must be announced. Under one-shot this was free: the process was always newer than the refresh. A stale checkout makes file content and `git log` agree WITH EACH OTHER, which makes "I verified by reading the files, not just history" the one check that cannot catch it.
     let moved_under_us = reuse
         && resident
             .as_ref()
@@ -416,7 +398,6 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     let spec = chat_spec(&session_id, &prompt, &turn);
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
-    // cm:guard `send` failing must fall back to a spawn, never fail the turn. The resident session can go away between the `resident()` check and the write — the idle ceiling, an abort, a crash — and a user whose message is refused because a process died in that window has lost the turn for a reason that has nothing to do with them.
     let started = if reuse {
         match runner.send(&session_id, prompt.clone(), tx.clone()).await {
             Ok(()) => Ok(()),
@@ -490,16 +471,8 @@ async fn consume(
         tokio::select! {
             ev = rx.recv() => match ev {
                 Some(RunnerEvent::ClaudeSessionId(sid)) => { claude_sid = Some(sid); }
-                // cm:guard recorded, NOT flushed on its own — a state change is not new transcript, and posting on it would cost a request per turn end on top of the terminal patch that already carries it.
                 Some(RunnerEvent::StateChanged(state)) => { runtime_state = Some(state.to_string()); }
                 Some(RunnerEvent::Stdout(json)) => {
-                    // cm:guard EVERY line is numbered and delivered, and the old guard here said the
-                    // opposite for a measured reason: a whole-transcript PATCH per flush turned a
-                    // tool-heavy stretch into ~1200 writes each carrying the growing array, so a
-                    // silent stretch had to stay silent. The reason survives and the mechanism
-                    // inverts. What bounds the write count now is the BATCH — one request per flush
-                    // interval whatever it holds — so every line can matter without costing a write
-                    // each, which is the whole point: the silent stretches were the tool calls.
                     if is_partial_stream_event(&json) { continue; }
                     seq += 1;
                     pending.push(agent_sessions::LineEvent::stdout(seq, json));
@@ -518,15 +491,6 @@ async fn consume(
                         return;
                     }
                     Err(e) if agent_sessions::is_refused(&e) => {
-                        // cm:guard a refusal ENDS the turn and says which line it was. Core stores a
-                        // refused batch not at all, so carrying on would deliver the rest of this
-                        // turn on the far side of a hole in the seq run — and the fold holds at a
-                        // hole, so the transcript would stop there looking like a turn that simply
-                        // went quiet. A turn that says it stopped recording is recoverable.
-                        // cm:guard the sentence says what is true of the BATCH and not of
-                        // the turn: core stores a refused batch not at all, while chunks
-                        // delivered before it are already committed. `post_events` counts
-                        // them, and the count rides in `{e}`.
                         let msg = format!(
                             "[TRANSCRIPT_REFUSED] core refused a batch of this turn's transcript and stored none of that batch: {e}"
                         );
@@ -543,10 +507,6 @@ async fn consume(
         }
     }
 
-    // cm:guard the LAST batch is delivered BEFORE the terminal patch, and a turn
-    // that cannot deliver it does not reach `completed`. Patching the status first
-    // would let a turn finish clean while the tail of what it said was never
-    // stored — a transcript that ends early and claims it did not.
     if !pending.is_empty() {
         if let Err(e) = agent_sessions::post_events(client, session_id, &pending).await {
             let msg = format!(
@@ -595,30 +555,10 @@ async fn consume(
     // credential per session it has ever served.
 }
 
-/// The one stream-json frame core does not store, dropped before it is numbered.
-///
-/// cm:guard a DENYLIST of one proven-unread frame, never an allowlist — a frame
-/// kind the CLI adds tomorrow must keep being delivered, and an allowlist would
-/// drop it in silence.
-/// cm:guard it is dropped BEFORE `seq` is assigned, not after. Numbering it and
-/// then withholding it would leave a hole in the seq run, and core's fold holds
-/// at a hole for ever — so filtering after numbering would end the transcript at
-/// the first partial frame.
-/// cm:edge lockstep -> packages/core/src/jobs/events-routes.ts — `isPartialStreamEvent`
-/// drops the same frame on the pipeline path, for the same reason: the parser
-/// answers `{messages:[]}` for one and nothing in core or web reads one. Teaching
-/// any reader to consume a `stream_event` means deleting BOTH of these first,
-/// because the frames it would need were never stored on either path.
 fn is_partial_stream_event(line: &Value) -> bool {
     line.get("type").and_then(Value::as_str) == Some("stream_event")
 }
 
-/// Final PATCH for a failed turn: report the error so core records it on the
-/// transcript, and mark the session `failed` so the interactive run is closed.
-///
-/// cm:guard the runner reports a STRING and core writes the entry. This used to
-/// append a `system` message to a `messages` array it sent itself, which is
-/// exactly the second producer ISS-1030 removed.
 async fn patch_failed(
     client: &CoreClient,
     session_id: &str,
@@ -629,7 +569,6 @@ async fn patch_failed(
         status: Some("failed".into()),
         claude_session_id: claude_sid,
         turn_error: Some(error.to_string()),
-        // cm:guard a failed turn reports `closed`, never the park — a session that died is not waiting for anyone, and `awaiting_input` is the one value that exempts a row from the heartbeat hop.
         runtime_state: Some("closed".into()),
     };
     agent_sessions::patch_session(client, session_id, &patch).await
@@ -668,9 +607,6 @@ mod tests {
 
     #[test]
     fn a_line_is_delivered_whole_and_numbered_from_the_base() {
-        // cm:guard the payload is the CLI's own JSON, byte for byte. The moment
-        // this runner reshapes a line it is a second producer again, which is
-        // what stored zero tool frames for every chat session ever run.
         let line = json!({
             "type": "assistant",
             "message": {"content": [
@@ -700,9 +636,6 @@ mod tests {
 
     #[test]
     fn only_the_partial_stream_frame_is_withheld() {
-        // cm:guard the `false` rows are what make this an assertion rather than a
-        // tautology: a predicate that dropped anything it did not recognise would
-        // silently withhold every frame kind the CLI adds next.
         assert!(is_partial_stream_event(
             &json!({"type": "stream_event", "event": {}})
         ));
@@ -726,9 +659,6 @@ mod tests {
 
     #[test]
     fn a_refusal_is_told_apart_from_a_failure_to_deliver() {
-        // cm:guard the second assertion is the one that matters: a predicate
-        // answering true for every error would end a turn on a dropped packet,
-        // and a retry is the right answer to that one.
         assert!(agent_sessions::is_refused(&Error::Other(
             "TRANSCRIPT_REFUSED: 400 Bad Request: stream-json line at seq 7 has no `type`".into()
         )));
@@ -742,10 +672,6 @@ mod tests {
 
     #[test]
     fn a_frame_without_a_sequence_base_carries_none_rather_than_a_zero() {
-        // cm:guard `None`, never `Some(0)`. `run_turn` refuses a turn with no
-        // base by name; a default of 0 would number turn two's lines over turn
-        // one's, and core's `ON CONFLICT DO NOTHING` would drop the whole turn in
-        // silence — which is the one outcome this design exists to prevent.
         let without: SendFrame = serde_json::from_value(json!({
             "sessionId": "s1",
             "message": "hi"

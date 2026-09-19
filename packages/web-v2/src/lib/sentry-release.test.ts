@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const init = vi.fn();
 vi.mock("@sentry/react", () => ({ init }));
 
-// cm:why the browser bundle's release cannot be walked from a test: the value is inlined by Next at build time and the event is raised in a browser against a real DSN, so what a unit holds is the pair that must never regress.
 const initWith = async (commit: string | undefined): Promise<Record<string, unknown>> => {
   if (commit === undefined) delete process.env.NEXT_PUBLIC_SOURCE_COMMIT;
   else process.env.NEXT_PUBLIC_SOURCE_COMMIT = commit;

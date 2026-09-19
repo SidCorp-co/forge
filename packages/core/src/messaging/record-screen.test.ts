@@ -18,9 +18,6 @@ interface Answers {
 
 let answers: Answers = {};
 
-// cm:guard the two reads are told apart by `innerJoin`, which only the member query calls. Keying
-// on call order instead would pass while the code asked its questions the other way round, which is
-// the one thing these cases are about.
 const handle = {
   select: () => ({
     from: () => {
@@ -69,12 +66,6 @@ describe('which reading a project resolves to', () => {
     );
   });
 
-  // cm:guard the query asks about members who can READ this project, which is `lib/authz.ts`'s rule:
-  // a `project_members` row, or an org owner/admin. Plain org membership derives no project access
-  // there, and counting it here would let one technical person anywhere in a large organization
-  // unfold every card on a project whose own readers are all product (codex F1). The stub returns
-  // only the rows that query selects, so a reader who widened the predicate would still red the
-  // next case rather than this one.
   it('reads the lens off the members the reader query returned, and nobody else', async () => {
     expect(
       await lensed({ orgId: 'org-1', members: [{ lenses: ['product'], orgRole: 'member' }] }),
@@ -95,8 +86,6 @@ describe('which reading a project resolves to', () => {
     expect(await lensed({ orgId: null })).toBe(ROLE_PRODUCT);
   });
 
-  // cm:guard failing CLOSED, to the stricter cell, is the property this case holds: a read that
-  // threw must not become permission to write developer detail to people who cannot read it.
   it('reads as product where the read itself fails', async () => {
     expect(await lensed({ throws: true })).toBe(ROLE_PRODUCT);
   });
@@ -127,10 +116,6 @@ describe('the budget, at the door', () => {
     expect(both.map((r) => r.quote)).toEqual(['why', 'is']);
   });
 
-  // cm:guard the shape ISS-1089's own review named as the one a writer cannot answer — a
-  // machine-derived path list on a `merged` record — is refused on the same terms as prose, and
-  // this case is here so that behaviour is PROVED rather than assumed. The price and the constant
-  // that reverses it are on the issue; if this ever has to change, change it here first.
   it('refuses a machine-derived path list on the same terms as prose', () => {
     const paths = Array.from({ length: 40 }, (_, i) => `packages/core/src/module-${i}/file.ts`);
     const refusals = budgetRefusals(parsed(`moved: ${paths.join(', ')}`));

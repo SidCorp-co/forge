@@ -1,17 +1,3 @@
-/**
- * The one parse of the ```forge-record fence an agent writes on an issue.
- *
- * Both halves of ISS-1089 read this and nothing else: the comment-write door
- * screens the record field by field, and `comments/tree.ts` carries the same
- * parsed value onto the comment node so web-v2 can draw it. Two parsers that
- * can disagree is the defect that issue exists to replace.
- */
-
-// cm:guard the grammar is the WRITER's, mirrored from `plugin/src/flow/machine.mjs` in
-// github.com/SidCorp-co/forge-plugin (`OPEN`, `KEY`, `TAG`, `payloadIn`) rather than invented here.
-// The two repos ship on different clocks and nothing in this one gates that one, so a reader
-// changing any of the four constants below is changing this side of a pair whose other half is over
-// there — check `payloadIn` before you do, and CLAUDE.md's carve-out for how a defect in it leaves.
 const INFO = 'forge-record';
 const OPEN = new RegExp(`^(\`{3,})${INFO}\\s*$`, 'u');
 const KEY = /^([a-z][a-z0-9-]*): ?(.*)$/u;
@@ -21,20 +7,11 @@ const INDENTED = /^ {2}(.*)$/u;
 /**
  * What one field of a record may hold before it is refused.
  */
-// cm:guard the unit is the FIELD and there is deliberately no cap on the record as a whole: a
-// global cap makes a writer trim whichever field is cheapest to cut rather than the one that
-// outgrew its job (ISS-1089). The figure was measured before it was accepted — 37,305 real fields
-// across 1,884 fenced comments on this project's last 180 issues, of which 4.8% exceed it, and
-// every one of those is prose a writer can split rather than a machine-derived list it cannot.
 export const FORGE_RECORD_FIELD_BUDGET = 400;
 
 /**
  * The fields ISS-1089 asks a record to carry that contract 1 does not have.
  */
-// cm:guard these are REQUESTED in forge-plugin and absent here on purpose. The parse reports them
-// missing rather than inventing either from another field's text: a `lead` synthesised from the
-// first sentence of `detail` would be screened for voice as though the writer had written it, and
-// the writer would meet a refusal about a sentence it never composed.
 export const REQUESTED_FIELDS: readonly string[] = ['lead', 'beside'];
 
 export interface ForgeRecordField {
@@ -81,13 +58,6 @@ function offsets(lines: readonly string[]): number[] {
 /**
  * Where the block ends, and the tag that ends it.
  */
-// cm:guard the tag is read HERE, from the first non-blank line after the closing fence, and never
-// by searching the body: a field's own value may quote a tag — a continuation line reading
-// `forge-record: verdict · contract 9` inside a `detail:` is a thing a writer records — and a search
-// would take the quotation over the record's own label and draw a confirmation as a verdict.
-// cm:guard the tag is swallowed into the block's extent for the same reason. It is the record's own
-// kind label and the CLI writes it one blank line below the closing fence; leaving it outside means
-// a card drawn for the record and a stray `forge-record: verdict · contract 1` beside it as prose.
 function endOf(
   lines: readonly string[],
   starts: readonly number[],
@@ -110,10 +80,6 @@ function endOf(
 /**
  * The fenced block: its key/value pairs in the order written, and its extent.
  */
-// cm:guard an INDENTED line continues the value above rather than opening a key, and an
-// unrecognised line does the same — both are `payloadIn`'s behaviour and neither is a guess. A
-// value's own second line is written two spaces in by `linesFor` over there, so reading it as a key
-// would split one field into two the moment a writer used a newline.
 function blockIn(body: string): Block | null {
   const lines = body.split('\n');
   const starts = offsets(lines);
@@ -135,8 +101,6 @@ function blockIn(body: string): Block | null {
       last[1] += `\n${indented ? (indented[1] as string) : line}`;
     }
   }
-  // cm:guard an unterminated fence is still a record and still screened: the writer left the block
-  // open, and refusing to read it would let a record past the budget by dropping its closing line.
   return { entries, tag: null, at: starts[opens] ?? 0, to: body.length };
 }
 

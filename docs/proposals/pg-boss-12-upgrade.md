@@ -38,7 +38,7 @@ is a claim about one proposition*.
 ## What is on `main` now
 
 `pg-boss` is pinned to `^10.4.2` and `queue/boss.ts` is back to the default import (v11 and v12
-export `PgBoss` as a named export; v10 does not). The pin carries a `cm:guard` naming the version
+export `PgBoss` as a named export; v10 does not). The pin carries a invariant naming the version
 floor and pointing here. Nothing else from #317 was touched — the other 16 updates stand.
 
 **The price, stated:** the queue stays two majors behind, and every future Dependabot majors group
@@ -62,7 +62,7 @@ API restarts back to back**, and whether the same sequence is run against produc
 
 - **Staying on 10 costs currency.** The queue is two majors behind, and every Dependabot majors
   group will re-propose the bump and pass every gate, so somebody re-reads this page each time. The
-  `cm:guard` on `queue/boss.ts` is what makes that reading cheap; there is nothing that makes it
+  invariant on `queue/boss.ts` is what makes that reading cheap; there is nothing that makes it
   automatic.
 - **Taking the upgrade costs two restarts of a shared API, in sequence.** The first carries no
   feature at all — it exists to move `pgboss.version` from 24 to 25. On a box where agents are

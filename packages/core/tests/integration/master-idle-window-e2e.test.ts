@@ -1,12 +1,3 @@
-/**
- * ISS-933 criterion 21 — an idle master survives every sweep that can see it.
- *
- * Deleting the supervision cluster made 60 idle minutes a legal state for the
- * first time, so what used to be theoretical is now the steady state of a quiet
- * project. This asserts it against the reapers BY NAME rather than by argument:
- * each one is imported and run, and the master is read back afterwards.
- */
-
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -70,7 +61,6 @@ async function anIdleMaster(opts: { beating: boolean }) {
     name: 'forge-master-quiet',
   });
   const hourAgo = new Date(Date.now() - 60 * 60_000).toISOString();
-  // cm:why `beating: false` is a box slowed to `LIMITED_POLL_INTERVAL` between two re-registrations — the only thing that moves a resident master's heartbeat.
   await harness.db.execute(sql`
     UPDATE agent_sessions
     SET started_at = ${hourAgo}, created_at = ${hourAgo},
@@ -155,7 +145,6 @@ async function aSessionWaitingOnAPerson(
   return run.sessionId;
 }
 
-// cm:why the reaper list below is ISS-933 criterion 21's, measured in the block above and cited rather than re-derived — ISS-964 criterion 45 asks for the 60-minute window proved safe against those same sweeps for a master that is WAITING on a person rather than merely idle, which is the one state that block could not produce.
 describe('a master waiting on a person inside its 60-minute window', () => {
   it('is not reaped by the park deadline, because a master keeps its process', async () => {
     const { project, master } = await anIdleMaster({ beating: true });
@@ -180,7 +169,6 @@ describe('a master waiting on a person inside its 60-minute window', () => {
     ).toBe('running');
   });
 
-  // cm:guard the falsifying half, and it is what stops the exclusion above being a hole: a RUN session in the same state must still be reaped, or criterion 34's loud close becomes a park under no clock at all.
   it('still reaps a run session in exactly that state', async () => {
     const { project, device } = await anIdleMaster({ beating: true });
     const sessionId = await aSessionWaitingOnAPerson(project.id, device.id, 'run_session');
@@ -192,7 +180,6 @@ describe('a master waiting on a person inside its 60-minute window', () => {
     expect(await statusOf(sessionId)).toBe('failed');
   });
 
-  // cm:guard a session whose metadata carries no `type` at all must keep its clock. `NOT IN ('master')` is NULL for a NULL left side and PostgreSQL drops the row, which would exempt every untyped session silently — a park under no clock, which is the one outcome criteria 24 and 34 forbid together.
   it('keeps the clock on a session whose type is not recorded', async () => {
     const { project, device } = await anIdleMaster({ beating: true });
     await aSessionWaitingOnAPerson(project.id, device.id, null);

@@ -37,12 +37,6 @@ const runsQuerySchema = z
 
 const scheduleMode = z.enum(['propose', 'auto']);
 
-// ISS-618 — a schedule is either 'prompt' (an agent session) or one of the runner-less kinds, which
-// execute inside core with no LLM and no device: 'script' (a sandboxed Node.js script),
-// 'release_batch' (cut whatever is waiting at the gate) and 'sentry_pull' (ISS-1085 slice 3).
-// cm:edge lockstep -> packages/core/src/db/schema.ts — built from `scheduleKinds` rather than
-// re-typed, because this was a second hand-written copy of that tuple and a kind added to one of
-// them without the other is a create the column accepts and this route refuses, or the reverse.
 const apiScheduleKind = z.enum(scheduleKinds);
 
 const createSchema = z
@@ -86,9 +80,6 @@ const createSchema = z
         });
       }
     } else if (kind === 'release_batch' || kind === 'sentry_pull') {
-      // cm:guard neither of these carries ANY authored text — a release_batch cuts whatever is
-      // sitting at the gate and a sentry_pull reads whatever the binding's targets declare, so a
-      // prompt or a script here would be a second, silent definition of what the schedule does
       const what =
         kind === 'release_batch'
           ? 'it cuts whatever is waiting at the gate'
@@ -254,13 +245,6 @@ scheduleRoutes.post(
   },
 );
 
-// Test-only: runs the tick scanner once and dispatches due schedules.
-//
-// Concurrency model: each due row is claimed atomically by an UPDATE that
-// asserts the previously-observed nextRunAt. If a parallel ticker (pg-boss
-// redelivery, app restart overlap, second instance) claims it first, the
-// rowcount will be 0 and we skip without enqueueing — preventing duplicate
-// dispatches.
 export async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
   const due = await db
     .select()

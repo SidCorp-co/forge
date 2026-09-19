@@ -11,7 +11,6 @@ import { db } from '../db/client.js';
 import { issues, memories, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-// cm:guard these are DEFAULTS, not the thresholds in force — `pipelineConfig.knowledgePromotion` overrides `minRetrievals` and `candidatesPerRun` per project, and a reader that used the constant where the config belongs would report a rate the operator never chose.
 export const PROMOTION_RETRIEVAL_MIN = 3;
 export const PROMOTION_AGE_DAYS = 7;
 export const PROMOTION_CANDIDATES_PER_RUN = 3;
@@ -23,7 +22,6 @@ export interface KnowledgePromotionConfig {
   minRetrievals: number;
 }
 
-// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts#knowledgePromotion — that schema STRIPS unknown keys, so a field read here but not declared there arrives as undefined however the operator set it
 /** Read the project's promotion config. Absent → disabled; this feature is opt-in. */
 export async function resolveKnowledgePromotion(
   projectId: string,
@@ -48,8 +46,6 @@ export async function resolveKnowledgePromotion(
   };
 }
 
-// cm:guard this NEVER writes `knowledge_entries` and NEVER sets `injection='always'` — it proposes, and a human or the pipeline decides. Writing the curated store from a nightly job would put unreviewed text into every future agent's context with nothing in between, which is the failure the proposal step exists to prevent.
-// cm:guard proposals land at `open`, which auto-triages into a pipeline run — so this is capacity, not bookkeeping, and it is why `enabled` ships absent. It was `draft` until 2026-09-05: measured then, 71 proposals had produced 8 worked items and 63 that sat until someone swept them, because a draft has no owner and nothing ages it.
 /**
  * Propose durable memory lessons for promotion into curated `knowledge_entries`.
  *
@@ -145,7 +141,6 @@ export async function proposeKnowledgePromotions(projectId: string): Promise<voi
       continue;
     }
 
-    // cm:guard the stamp is a metadata-only write and must stay one: it ran through `indexMemory` until ISS-1024, which re-embedded the whole lesson (and, on a chunked project, re-embedded every passage of it) to set one key. `||` merges at write time rather than replaying the object read above, so a key another writer added since survives; and `promotionProposedAt` is read by no branch of memory/chunker.ts:contextPrefix, so no chunk set goes stale by it.
     await db
       .update(memories)
       .set({

@@ -1,20 +1,8 @@
-/**
- * web-v2 feature module: projects. Types come from `@forge/contracts` where a
- * shared shape exists; the hand-rolled server projections — list row, detail,
- * health — are re-typed here to match the exact `core` route responses, in
- * `packages/core/src/projects/routes.ts` and `health-routes.ts`. Verified
- * against those routes for ISS-288; do not guess field names.
- */
 import type { HealthKey } from '@/design';
 import type { Project, ProjectMember } from '@forge/contracts';
 
 export type { Project, ProjectMember } from '@forge/contracts';
 
-/**
- * Row shape returned by `GET /api/projects` (the project console list). This is
- * a server-side projection — NOT the full `Project` row — joining the caller's
- * membership `role` and exposing `apiKey` (ADR 0013).
- */
 export interface ProjectListItem {
   id: string;
   slug: string;
@@ -34,10 +22,6 @@ export interface ProjectListItem {
   createdAt: string;
 }
 
-/**
- * Response of `GET /api/projects/:id` — the full project row plus embedded
- * members + labels + devicePool arrays.
- */
 export interface ProjectDetail extends Project {
   members: Array<Pick<ProjectMember, 'userId' | 'role'>>;
   labels: Array<{ id: string; name: string; color: string | null }>;
@@ -51,11 +35,6 @@ export interface ProjectDetail extends Project {
   }>;
 }
 
-/**
- * One row of `GET /api/projects/health` (mirrors
- * `packages/core/src/projects/health-routes.ts` — extended additively in
- * ISS-290 with the per-project console rollups; do not guess field names).
- */
 export interface ProjectHealthRow {
   /** Project UUID — join key against `ProjectListItem.id`. */
   id: string;
@@ -83,12 +62,6 @@ export interface ProjectHealthRow {
   lastActivityAt: string | null;
 }
 
-/**
- * Body of `POST /api/projects` — mirrors `createProjectSchema` in
- * `packages/core/src/projects/routes.ts` (slug: 3–64 lowercase/digits/hyphens;
- * name: 1–200; description optional). Do not loosen these without updating the
- * server schema.
- */
 export interface CreateProjectInput {
   slug: string;
   name: string;
@@ -97,10 +70,6 @@ export interface CreateProjectInput {
   orgId?: string;
 }
 
-/**
- * `201` response of `POST /api/projects` — the inserted row projection (no
- * membership `role`, which the caller always owns on create).
- */
 export interface CreatedProject {
   id: string;
   slug: string;
@@ -111,12 +80,6 @@ export interface CreatedProject {
   createdAt: string;
 }
 
-/**
- * Response of `POST /api/projects/:id/onboard` (ISS-733) — the "Build
- * Project Brain" trigger. `sessionId` is the freshly-created chat session
- * running `forge-onboard` as turn 1; the caller navigates there to continue
- * the conversation.
- */
 export interface OnboardResult {
   sessionId: string;
 }

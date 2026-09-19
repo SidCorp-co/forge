@@ -66,7 +66,6 @@ vi.mock("@/features/runners/hooks", () => ({
   }),
 }));
 
-// cm:guard `awaiting_release` is here to prove point 1: the editor does NOT surface it as a row, so a save that rebuilt `states` from the rows it renders would silently drop it.
 const STORED: PipelineConfig = {
   enabled: true,
   states: {

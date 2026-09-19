@@ -1,10 +1,3 @@
-/**
- * ISS-1051 — a benchmark task is data: the turns to send in one room, the checks each reply and
- * its trail must pass, the fixtures the messages read, and the preference the task moves. The
- * check vocabulary is closed so that a test can load every task whole and refuse one it cannot
- * grade, and a grader that cannot fail has not been written.
- */
-
 import type { AnswerStyle } from '../../db/schema.js';
 
 export const CHECK_KINDS = [
@@ -189,10 +182,6 @@ export function validateTasks(list: readonly Task[]): Task[] {
       (/\n/.test(task.judgeRubric) || task.judgeRubric.length > 300)
     )
       throw new TaskLoadError(`task ${task.id} judgeRubric must be one line under 300 characters`);
-    // cm:guard `run.ts#judgeTurns` hands the rubric to EVERY judged turn of the task, so a
-    // task-wide requirement on a multi-turn task is one the person never asked for on the early
-    // turns: "served means the reply gives the deploy window" failed the turn that had only asked
-    // the assistant to remember it, and the disagreement read as the assistant's (ISS-1066).
     if (
       task.judgeRubric !== undefined &&
       task.turns.length > 1 &&

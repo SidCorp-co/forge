@@ -3,26 +3,6 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-/**
- * Guard: core must NEVER import a runtime VALUE from `@forge/contracts`.
- *
- * `@forge/contracts` is a type-only surface (its own package.json: "Type-only
- * surface — no runtime coupling") and is NOT present in core's production
- * runtime image. A `tsc` build resolves it via the pnpm workspace symlink, so a
- * value import compiles green — then crashes at boot in prod with
- * `ERR_MODULE_NOT_FOUND: Cannot find package '@forge/contracts'`, taking the
- * whole API down (this is exactly what ISS-510's `notifications/emit.ts` did).
- *
- * `import type { … }` is erased at compile time and is fine. Anything that
- * survives compilation — a default import, a namespace import, a side-effect
- * import, or a named import where any binding is not `type`-prefixed — is a
- * runtime import and is forbidden. Inline the value into core (or source it
- * from `db/schema`) instead.
- *
- * Scans non-test source only: `*.test.ts` never ships to `dist`, so test-time
- * value imports of contracts enums/tuples (parity tests) are harmless.
- */
-
 const SRC_ROOT = dirname(fileURLToPath(import.meta.url));
 
 function walk(dir: string): string[] {

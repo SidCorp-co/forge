@@ -2,13 +2,6 @@ import { generateKeyPairSync } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listBindingsForProjectMock = vi.fn();
-// A whole mock rather than a partial one: the real module imports `db/client`,
-// which parses the server env at import time, and nothing in these cases needs
-// a database. `effectiveConfig` is restated because it is pure and three cases
-// turn on the binding-over-connection overlay it performs.
-// cm:why registering the declarations (below) imports every adapter, and several of those reach the
-// db client and with it the whole env contract — so a file whose subject touches neither still needs
-// both stubs to hold a populated registry.
 vi.mock('../../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
@@ -375,9 +368,6 @@ describe('the ISS-405 rotation window governs the command path too (criterion 19
     expect(g.issuers).toEqual(['rotated@forge-sheets-1.iam.gserviceaccount.com', OLD_ACCOUNT]);
   });
 
-  // cm:guard the window closing is what ends the fallback. Carrying the retained
-  // key past `previousTokenExpiresAt` would make the 24-hour bound decorative and
-  // leave a revoked account able to read a project's sheet indefinitely (ISS-405).
   it('once the window has closed the retained key is not offered at all', async () => {
     const g = wireGoogleAccepting(OLD_ACCOUNT);
     listBindingsForProjectMock.mockResolvedValue([

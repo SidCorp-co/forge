@@ -36,7 +36,6 @@ vi.mock('./intervention-event.js', () => ({
   },
 }));
 
-// cm:guard these six stubs exist ONLY to keep hold.ts's import chain from validating DB env at load time (the same set hold.test.ts carries, and the same reason) — do not add behaviour to them, or this suite starts testing the stubs
 vi.mock('../pipeline/wedge.js', () => ({ resolvePipelineWedge: async () => 0 }));
 vi.mock('./enqueue.js', () => ({
   enqueueJob: async () => undefined,
@@ -50,7 +49,6 @@ vi.mock('./stage-overrides.js', () => ({
 }));
 
 const dispatchMock = vi.fn(async (..._args: unknown[]) => undefined);
-// cm:edge contract -> packages/core/src/jobs/hold.ts — `buildRequeueUpdate` is deliberately NOT stubbed: the whole point of the service is that it applies that exact patch, and a stub here would let a hand-rolled UPDATE pass this suite
 vi.mock('./hold.js', async () => {
   const real = await vi.importActual<typeof import('./hold.js')>('./hold.js');
   return { ...real, dispatchRequeuedJob: (...a: unknown[]) => dispatchMock(...a) };
@@ -109,7 +107,6 @@ describe('resumeHeldJob', () => {
     expect(dispatchMock).toHaveBeenCalledWith({ id: 'j1', type: 'code', issueId: 'i1' });
   });
 
-  // cm:guard the audit row is the ONLY record that a human overrode a condition no code would clear — a resume without it is indistinguishable from the job never having held, and the interventions-per-issue count undercounts by exactly the interventions that worked
   it('writes one audit row naming the actor, the reason and the action', async () => {
     selectRows.mockReturnValue([heldJob()]);
 
@@ -133,14 +130,12 @@ describe('resumeHeldJob', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard resuming a RUNNING job must fail, not no-op — the CAS below would miss and the caller would get a success for a job it never moved, which is the state-lies failure `VISION: state-never-lies` forbids
   it('refuses any status other than held, naming what it found', async () => {
     selectRows.mockReturnValue([heldJob({ status: 'running' })]);
     await expect(resumeHeldJob('j1', opts)).rejects.toThrow(/job is running, not held/);
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard a lost CAS must NOT enqueue — two operators pressing resume, or a resume racing releaseHeldJobs, would otherwise hand the dispatcher the same job twice and the second copy runs with no slot accounting
   it('a CAS that matched nothing enqueues nothing', async () => {
     selectRows.mockReturnValue([heldJob()]);
     returningRows.mockReturnValue([]);

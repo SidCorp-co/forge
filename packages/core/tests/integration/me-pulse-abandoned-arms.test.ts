@@ -83,8 +83,6 @@ describe('ISS-1022 · the abandoned read reaches a job through either arm', () =
       seq: seed.nextSeq(),
     });
     const run = await seed.openRun(project.id, 'issue', issue);
-    // cm:guard `issue_id` is NULL on the job itself, which is the `ON DELETE SET NULL` shape the
-    // run arm exists for: read `jobs.issue_id` alone and this job is invisible.
     const job = await seed.addJob({
       projectId: project.id,
       runId: run,
@@ -159,7 +157,6 @@ describe('ISS-1022 · the abandoned read reaches a job through either arm', () =
 });
 
 describe('ISS-1022 · the abandoned read keeps the idle clock and the liveness test it had', () => {
-  // cm:guard the idle clock is the JOBS' clock whenever a job exists, and `issues.updated_at` is the fallback and not a competitor: the `coalesce` takes the job timestamp even when `updated_at` is later, because an issue touched by an edit is not an issue being worked. A `greatest(...)` here would silently un-abandon every stale issue somebody renamed.
   it('takes the idle clock from the jobs even when issues.updated_at is later', async () => {
     const { user, project, token } = await seed.member();
     const issue = await seed.addIssue({
@@ -303,7 +300,6 @@ describe('ISS-1022 · the abandoned read is bounded without lying about the tota
     expect(body.work.releaseWaiting.shown).toHaveLength(PULSE_THRESHOLDS.identityCap);
   });
 
-  // cm:guard this reaches `readPulseWork` directly rather than through the route, and must: the route passes the wall clock, so the two clocks agree and the defect is invisible through it — with the SQL reading `now()` and `ageSeconds` reading the injected value, a row is selected as waiting and then reported with an age under the threshold that selected it.
   it('selects release-waiting rows against the caller clock, not the database clock', async () => {
     const { user, project } = await seed.member();
     await seed.addIssue({
@@ -314,7 +310,6 @@ describe('ISS-1022 · the abandoned read is bounded without lying about the tota
       updatedAgo: '10 days',
     });
 
-    // cm:guard the fixture is the assertion: the row is ten days old on the database's clock and one minute old on this one, and `releaseWaitingSeconds` is 86,400 — so against `now()` it is waiting and against the caller's clock it is not. Move either number inside the threshold and the case passes whichever clock the read uses.
     const now = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000 + 60_000);
     const { readPulseWork } = await import('../../src/me/pulse-work.js');
     const work = await readPulseWork([project.id], PULSE_THRESHOLDS, now);

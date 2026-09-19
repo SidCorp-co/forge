@@ -321,7 +321,6 @@ orgRoutes.get(
       .innerJoin(users, eq(users.id, orgInvitations.inviterId))
       .where(and(eq(orgInvitations.orgId, orgId), isNull(orgInvitations.acceptedAt)));
 
-    // cm:guard never project `token` — it is the invitation's PRIMARY KEY and its accept secret at once, so a row that leaks it hands whoever read the response the membership it grants.
     const now = Date.now();
     return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
   },
@@ -469,5 +468,4 @@ orgRoutes.delete(
   },
 );
 
-// cm:guard mounted UNDER `orgRoutes`, never as a sibling on the app, because the `requireAuth()` + `assertEmailVerified()` middleware above applies to `'*'` of THIS router only. Mounted beside it, the three agent routes would be reachable unauthenticated and the org-admin check would be the only gate left (ISS-932).
 orgRoutes.route('/', agentAccountRoutes);

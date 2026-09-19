@@ -37,8 +37,6 @@ const upsertKnowledgeEntryMock = vi.fn(async (..._args: unknown[]) => ({
   degraded: false,
   truncated: false,
 }));
-// cm:guard NO schema of this module is stubbed, only its functions — `slugSchema` and the schema
-// routes.ts omits the PUT body from decide the very answers the tests below assert (ISS-1095).
 vi.mock('./service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./service.js')>()),
   deleteKnowledgeEntry: vi.fn(),
@@ -192,8 +190,6 @@ describe('POST /api/projects/:id/knowledge/search', () => {
 });
 
 describe('PUT /api/projects/:id/knowledge/:slug validates the body against the real schema', () => {
-  // cm:guard `slugSchema` is the REAL one, so this is the rule and not the stand-in answering: the
-  // route matches `:slug{.+}`, so `convention/my-rule` reaches the handler and is refused by name.
   it('400 on a slash-bearing slug, which the param schema calls not kebab-case', async () => {
     authVerified();
     isMember();
@@ -257,8 +253,6 @@ describe('PUT /api/projects/:id/knowledge/:slug validates the body against the r
     });
   });
 
-  // cm:guard this is what `.omit({ projectId: true, slug: true })` in routes.ts buys: the handler
-  // spreads the body AFTER the path's ids, so a body carrying either would write another project's.
   it('writes under the path projectId and slug when the body carries different ones', async () => {
     authVerified();
     isMember();

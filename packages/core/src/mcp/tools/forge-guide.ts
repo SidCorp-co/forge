@@ -30,13 +30,11 @@ const inputSchema = z
   })
   .strict();
 
-// cm:edge contract -> packages/core/src/guides/registry.ts — the code tier owns Forge-capability slugs; this tool merges the per-org `integration-<provider>` tier on top, so a code guide must never claim that prefix
 async function resolveOrgId(ctx: McpContext, projectIdArg?: string): Promise<string | null> {
   try {
     const projectId = await resolveEffectiveProjectId(ctx, projectIdArg);
     return findProjectOrgId(projectId);
   } catch {
-    // cm:why no project context is legitimate (a user-level PAT with no header) — the caller simply sees the code tier, exactly like the public REST surface
     return null;
   }
 }

@@ -1,8 +1,3 @@
-// web-v2 feature module: workspace overview — PURE derivations over the pulse
-// response. Action-queue rows and their owners, the waffle cells, the age
-// strip, the flow series, the quality rates, and every figure's destination.
-//
-// cm:guard every function here stays PURE — no React, no clock of its own, no I/O — because each one is a rule this surface is judged on (which condition a row stands for, what order the queue reads in, where a figure's door leads) and one impure helper takes the whole module out of the reach of a test that renders nothing.
 
 import { TONE_META } from "@/design/status";
 import {
@@ -32,7 +27,6 @@ export type SilenceMark = "calm" | "warn" | "alarm";
 /**
  * Which of the response's two marks the silence has passed.
  */
-// cm:guard both marks come off `thresholds` and never off a constant here — the client marking at its own cutoff is how the dashboard starts disagreeing with the figures it draws (ISS-988 criterion 27).
 export function silenceMark(
   seconds: number | null,
   thresholds: PulseThresholds,
@@ -66,7 +60,6 @@ const BUCKET_TONE: Record<keyof PulseWorkBuckets, keyof typeof TONE_META> = {
 };
 
 /** The issues list URL that carries exactly the statuses a bucket counted. */
-// cm:edge contract -> packages/web-v2/src/features/issues/components/issues-list-view.tsx — that view reads `?status=` through `statusesFromParam`; a separator other than the comma it splits on silently narrows to the first status alone (ISS-988 criterion 47).
 export function bucketHref(slug: string, bucket: keyof PulseWorkBuckets): string {
   return `/projects/${slug}/issues?status=${PULSE_BUCKET_STATUSES[bucket].join(",")}`;
 }
@@ -86,7 +79,6 @@ export function waffleCells(buckets: PulseWorkBuckets): WaffleCell[] {
     label: PULSE_BUCKET_LABELS[key],
     count: buckets[key],
     color: TONE_META[BUCKET_TONE[key]].dot,
-    // cm:why a workspace-wide bucket spans every project, and no single issues-list URL can name that set — so its door is the per-project table below it, which breaks the same figure down into rows that each DO have an exact URL (ISS-988 criterion 39)
     destination: { kind: "anchor", anchorId: "pulse-per-project" } as const,
   }));
 }
@@ -103,7 +95,6 @@ export type ActionOwner = "person" | "machine";
 /**
  * The tie-break of last resort, so one response renders in one order.
  */
-// cm:guard this tuple IS criterion 34's fixed order and the array index is read as the rank — reordering it changes what the dashboard shows without changing a figure, so it moves only with that criterion (ISS-988).
 export const ACTION_ORDER: ActionKey[] = [
   "stuckRuns",
   "abandonedIssues",
@@ -181,8 +172,6 @@ const projectRecord = (p: PulseProjectIdentity, now: number): ActionRecord => ({
 /**
  * The ranked action queue: one row per condition that has records.
  */
-// cm:guard the ordering is oldest-first on the OLDEST record, then count, then `ACTION_ORDER` — three keys, because the first two tie whenever two conditions hold the same record ages, and an unstable sort there renders the same response in a different order on every refresh (ISS-988 criteria 33-34).
-// cm:guard a project that has NEVER run takes the largest age rather than a zero: it is the extreme of "how long since a run", and sorting it as if it ran a moment ago buries the worst row at the bottom (ISS-988 criterion 30).
 export function actionQueue(pulse: PulseResponse, nowMs: number): ActionRow[] {
   const { work } = pulse;
   const sources: Record<ActionKey, { count: number; records: ActionRecord[] }> = {
@@ -253,7 +242,6 @@ export interface ProjectSilenceRow {
 /**
  * Projects ordered by how long each has gone without an issue run.
  */
-// cm:guard a project that has never run sorts ABOVE every silent one and is flagged `neverRan` rather than given a silence figure — "no pipeline has ever run here" and "the last run was 9 days ago" are different facts, and rendering the first as the second is a longer silence the reader cannot act on (ISS-988 criterion 30).
 export function projectSilenceRows(pulse: PulseResponse, nowMs: number): ProjectSilenceRow[] {
   return pulse.work.perProject
     .map((p) => {
@@ -296,7 +284,6 @@ export interface QualityRates {
 /**
  * The output rates, each over the whole it is a share of.
  */
-// cm:guard every rate here is computed from summed COUNTS, never from an average of per-project rates — a mean of means weights a 3-issue project like a 300-issue one, which is exactly the figure this issue removed from the old KPI row (ISS-988 criterion 52).
 export function qualityRates(quality: PulseQuality): QualityRates {
   const { finished, rework, sessionFailures } = quality;
   const finishedTotal = finished.merged + finished.closedUnmerged + finished.dropped;

@@ -27,7 +27,6 @@ describe("heldByAgent", () => {
 		expect(heldByAgent("in_progress", "queued")).toBe(false);
 	});
 
-	// cm:guard a deferred retry's `agentStatus` IS `failed` — core's `deriveAgentStatus` falls through to the most recent terminal session when nothing is running or queued (the ISS-903 shape). This row going green is the lock refusing a person on an issue nothing is working.
 	it("holds nothing on a failed session, which is what a deferred retry reads as", () => {
 		expect(heldByAgent("in_progress", "failed")).toBe(false);
 	});
@@ -72,7 +71,6 @@ describe("heldInSelection", () => {
 });
 
 describe("agentHoldsSelection", () => {
-	// cm:guard "one of nine" and "nine of nine" are different re-selections for the person holding the mouse, so the count is in the sentence rather than implied by it
 	it("names the part of the selection that is held", () => {
 		expect(agentHoldsSelection(1, 9)).toContain("1 of the 9 selected issues");
 	});
@@ -88,7 +86,6 @@ describe("agentHoldsSelection", () => {
 });
 
 describe("the reasons", () => {
-	// cm:guard both say WHY rather than going quiet. A control that disappears or greys out with no sentence is indistinguishable from a broken one, which is the failure the lock exists to remove and not a second copy of it.
 	it("each say the edit would be overwritten", () => {
 		expect(AGENT_HOLDS_MOVE).toMatch(/would be overwritten/);
 		expect(AGENT_HOLDS_EDIT).toMatch(/would be overwritten/);

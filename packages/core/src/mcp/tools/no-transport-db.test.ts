@@ -1,14 +1,3 @@
-/**
- * ISS-889 — the structural half of "one data plane", one level up from
- * `issues/one-create-path.test.ts`. That test bans a transport from writing two
- * specific tables; this one bans an MCP tool from holding a database handle at
- * all, which is the condition the issue states as its acceptance criterion.
- *
- * A behaviour test can show REST and MCP agree on the rows they return today.
- * Only a source scan shows that the next action added to a tool cannot quietly
- * open its own query beside the service the other transport calls.
- */
-
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -34,7 +23,6 @@ function toolsImportingDb(): string[] {
 }
 
 describe('MCP tools reach the database through services (ISS-889)', () => {
-  // cm:guard this list was 28 tools when ISS-889 opened and is empty because every one of them moved its queries into a service under its own domain. It is NOT an allowlist with nothing in it yet — there is no admission process for adding a name back. A tool that needs data needs a service, and the service is where the REST side finds it too.
   it('no MCP tool holds a database handle', () => {
     expect(
       toolsImportingDb(),

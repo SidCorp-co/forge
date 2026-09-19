@@ -121,7 +121,6 @@ describe('a replaced memory body is recorded (ISS-790)', () => {
     return (await res.json()) as { items: RevisionRow[]; total: number };
   }
 
-  // cm:guard the exact-key re-write is the path BOTH agent preambles instruct ("reusing a `sourceRef` refines the existing note"), so this is the routine write, not an edge case — before ISS-790 the previous body left no trace anywhere in Forge
   it('keeps the body an exact-key re-write replaced, while recall returns the new one', async () => {
     const { projectId, token } = await seedMember();
     const first = '## Dream Run — 2026-09-04\n\nSix bullets, the 09-04 findings.';
@@ -147,7 +146,6 @@ describe('a replaced memory body is recorded (ISS-790)', () => {
     expect(items[0]?.source).toBe('note');
   });
 
-  // cm:guard the embedding backfill and `feedback verdict=confirmed` both UPDATE a memory row without touching its text; a revision minted there would make the history stop meaning "someone replaced this"
   it('records nothing when the text did not change', async () => {
     const { projectId, token } = await seedMember();
     const body = 'one wording, written twice';
@@ -173,7 +171,6 @@ describe('a replaced memory body is recorded (ISS-790)', () => {
     expect((await revisions(token, `projectId=${projectId}`)).total).toBe(0);
   });
 
-  // cm:guard the trigger's source list is `AGENT_AUTHORED_SOURCES` written in SQL — a lifecycle mirror's row tracks a record that keeps its own history, and recording those would mint a revision on every issue-description save, forever, in a table nobody reads
   it('leaves lifecycle mirrors out of the history', async () => {
     const { projectId, token } = await seedMember();
     await harness.db.execute(sql`
@@ -188,7 +185,6 @@ describe('a replaced memory body is recorded (ISS-790)', () => {
     expect((await revisions(token, `projectId=${projectId}`)).total).toBe(0);
   });
 
-  // cm:guard the trap the sibling list route shipped: `zValidator` STRIPS a filter the query schema never declared, so the response counts the whole store while reading as a match unless the caller checks `total`
   it('filters to the ref asked for, and counts only that ref', async () => {
     const { projectId, token } = await seedMember();
     await write(token, projectId, 'keep-me', 'first');

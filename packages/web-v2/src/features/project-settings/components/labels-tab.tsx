@@ -19,6 +19,7 @@ import {
   ErrorState,
   IconButton,
   Input,
+  SectionTitle,
   Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -53,7 +54,7 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-4">Labels</h2>
+        <SectionTitle className="fg-h3 mb-4">Labels</SectionTitle>
 
         {labelsQ.isLoading ? (
           <div className="space-y-2">

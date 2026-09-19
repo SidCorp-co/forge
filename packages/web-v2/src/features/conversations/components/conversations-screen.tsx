@@ -1,18 +1,13 @@
 "use client";
 
-// web-v2 workspace surface: Conversations (ISS-668, redesigned ISS-729, ported
-// to the conversation store at ISS-1004 step 5). Exactly ONE open conversation
-// at a time, full-width, with a collapsible left history sidebar.
-//
-// What changed at the port is what it reads: the sidebar and the centre pane are
-// `/api/conversations` rows now, not `agent_sessions` rows. The owner-privacy
-// filter this screen used to need — `metadataType:"agent"`, which is what
-// triggered the server's ISS-522 `eq(userId)` scoping — is gone, because the
-// conversation routes refuse a one-to-one room to anybody who is not in it
-// rather than relying on a query parameter being passed.
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ConfirmDialog, IconButton, SlideOver } from "@/design";
+import {
+  ConfirmDialog,
+  IconButton,
+  PageTitle,
+  SlideOver,
+} from "@/design";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -51,9 +46,6 @@ export function ConversationsScreen() {
   const projectsQ = useProjects();
   const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
   const projectIdList = useMemo(() => [...orgProjectIds].sort(), [orgProjectIds]);
-  // cm:guard which set is on screen is state of the SCREEN and not of the sidebar: the rail and the
-  // mobile drawer are two mounts of the same component, and a toggle each of them owned would leave
-  // the drawer showing the live rooms while the rail behind it showed the archived ones.
   const [showArchived, setShowArchived] = useState(false);
   const conversations = useConversationsAcrossProjects(projectIdList, showArchived);
 
@@ -83,19 +75,15 @@ export function ConversationsScreen() {
     setMobileHistoryOpen(false);
   }, []);
 
-  // cm:guard "New conversation" clears the selection and never auto-picks the last project: picking one for somebody sends their next message into a project they did not choose
   const startNew = useCallback(() => {
     setSelection(null);
     setMobileHistoryOpen(false);
   }, []);
 
-  // cm:guard a room archived or deleted while it is the OPEN one clears the selection, so the
-  // centre pane never holds a thread this screen's own sidebar no longer lists (ISS-1028).
   const dropIfOpen = useCallback((conversationId: string) => {
     setSelection((s) => (s?.conversationId === conversationId ? null : s));
   }, []);
 
-  // cm:guard the room is opened by the START step and arrives here already holding its members, so the selection carries a real conversation id rather than a draft: a room started with a colleague and a second agent has to exist before either can be put in it, and a draft that opens on the first send has nowhere to put them (ISS-1011 criterion 39).
   const openStarted = useCallback((conversationId: string, projectId: string) => {
     selectionKeyRef.current += 1;
     setSelection({ key: selectionKeyRef.current, projectId, conversationId });
@@ -132,7 +120,7 @@ export function ConversationsScreen() {
       ))}
 
       <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-4 py-3 md:hidden">
-        <h1 className="fg-h2">Conversations</h1>
+        <PageTitle className="fg-h2">Conversations</PageTitle>
         <IconButton
           icon="clock"
           aria-label="Conversation history"
@@ -182,8 +170,6 @@ export function ConversationsScreen() {
         loading={remove.isPending}
         onConfirm={() => {
           if (!confirming) return;
-          // cm:guard the selection is cleared on the SERVER's answer and not on the press, for the
-          // reason `conversation-list.tsx` states over the same two calls (review F2).
           const id = confirming.id;
           remove.mutate(id, { onSuccess: () => dropIfOpen(id) });
           setConfirming(null);

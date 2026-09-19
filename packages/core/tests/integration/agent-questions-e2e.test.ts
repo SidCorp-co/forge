@@ -77,7 +77,6 @@ type Over = Partial<Omit<Parameters<typeof mods.askQuestion>[0], 'answer'>> & {
 function aQuestion(over: Over = {}) {
   const { options: overOptions, recommendedOptionId, ...rest } = over;
   const options = overOptions ?? [anOption(), anOption({ id: crypto.randomUUID(), label: 'Stop' })];
-  // cm:guard `in` and not `??`: a caller passing `recommendedOptionId: undefined` is asserting the refusal, and a nullish default would silently hand it a valid one and assert nothing.
   const recommended = 'recommendedOptionId' in over ? recommendedOptionId : opt(options, 0);
   return {
     id: crypto.randomUUID(),
@@ -109,7 +108,6 @@ describe('a question has one shape', () => {
     ).rejects.toThrow(/recommended/i);
   });
 
-  // cm:guard `binds_to: this_call` IS the permission shape and there is no `kind` column saying so. An option that binds to ONE call must name which call, and the fingerprint is that name — a `kind` field would be a second answer to a question `binds_to` already answers (ISS-964 criteria 13 and 16).
   it('refuses an option bound to one call that does not name the call', async () => {
     const options = [anOption({ bindsTo: 'this_call' })];
     await expect(

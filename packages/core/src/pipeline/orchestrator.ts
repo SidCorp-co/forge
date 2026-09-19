@@ -1,17 +1,3 @@
-// Dispatch, for the one lane this pipeline has.
-//
-// This file used to hold both drivers: a staged walk that enqueued one job per
-// status behind eight `auto<Stage>` toggles, and the autonomous driver beside
-// it. ISS-897 removed the toggles from `pipelineConfigSchema`, and because the
-// read path parses through that schema, `isToggleEnabled` answered false for
-// every stage on every project — the staged branch stopped being reachable the
-// moment the key stopped being parseable. What is left is the walk from a
-// transition to `dispatchAutonomous`, and the manual Run button.
-//
-// Config parsing lives here rather than in `autonomous-dispatch.ts` because
-// the hook fires per transition and the config read is what a human-gated
-// status must not pay for.
-
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
@@ -40,10 +26,8 @@ async function loadPipelineConfig(
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) return { cfg: null, projectCreatedBy: null };
-  // cm:guard an archived project reads as `cfg: null`, the same path a missing or invalid config takes, so nothing NEW is dispatched while in-flight work finishes untouched (ISS-353).
   if (row.archivedAt != null) return { cfg: null, projectCreatedBy: row.createdBy ?? null };
   const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-  // cm:guard bad data must resolve to `cfg = null`, never to a partial config: `isAutonomous(null)` is false and the caller falls through to no-auto-pipeline, the safe direction. It is also the SILENT direction — a config that stops parsing stops the project dispatching with nothing reporting it, which is why a status rename must migrate its `states` keys in the same transaction (migration 0228).
   const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
   return {
     cfg: parsed.success ? parsed.data : null,
@@ -68,7 +52,7 @@ export async function triggerPipelineStepManual(args: {
   return dispatchDriveManual({ ...args, projectCreatedBy });
 }
 
-async function considerEnqueue(args: {
+export async function reEnqueueForIssue(args: {
   projectId: string;
   issueId: string;
   status: IssueStatus;
@@ -86,16 +70,6 @@ async function considerEnqueue(args: {
  * not have to fire a synthetic `transition` hook (which would mutate
  * activity_log / WS broadcasts in confusing ways).
  */
-export async function reEnqueueForIssue(args: {
-  projectId: string;
-  issueId: string;
-  status: IssueStatus;
-  actor: Actor;
-  reason: Record<string, unknown>;
-}): Promise<void> {
-  return considerEnqueue(args);
-}
-
 /**
  * Subscribe the pipeline orchestrator to `transition` and `issueCreated`
  * hooks. Issue creation lands the issue in `open` without emitting a
@@ -108,11 +82,8 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
     'transition',
     async (payload) => {
       try {
-        // cm:guard leaving a park dispatches like any other transition (RFC 0002 INV-6) — do NOT re-add an actor or reason gate here. The guard deleted from this spot refused every non-user exit from `waiting`/`on_hold`; on ISS-163 it refused four legitimate resume attempts in a row and produced no work at all. Entering a park is free from anywhere, so leaving one is too.
-        // cm:guard `needs_info -> open` MUST reach dispatch. It is how an answered question resumes, and the staged-era short-circuit that returned here left the issue `open` with no job — which the board renders as running, the one failure shape nobody thinks to check.
-        // cm:why the entry-status short-circuit runs BEFORE loadPipelineConfig so every other transition costs no DB hit; `dispatchAutonomous` reaches the same answer one query later
         if (payload.to !== AUTONOMOUS_ENTRY_STATUS) return;
-        await considerEnqueue({
+        await reEnqueueForIssue({
           projectId: payload.projectId,
           issueId: payload.issueId,
           status: payload.to,
@@ -124,7 +95,6 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
           { err, issueId: payload.issueId, to: payload.to },
           'orchestrator: transition handler failed',
         );
-        // cm:edge contract -> packages/core/src/pipeline/hooks.ts — rethrow so HooksBus records this subscriber in EmitResult.failures and the outbox stops stamping the row processed; the bus still runs the remaining subscribers and never throws at the emitter, so the isolation this local catch used to provide is unchanged
         throw err;
       }
     },
@@ -135,7 +105,7 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
     'issueCreated',
     async (payload) => {
       try {
-        await considerEnqueue({
+        await reEnqueueForIssue({
           projectId: payload.projectId,
           issueId: payload.issueId,
           status: payload.status,

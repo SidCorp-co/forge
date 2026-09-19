@@ -1,7 +1,14 @@
 "use client";
 
 import { Suspense, lazy, useMemo, useState } from "react";
-import { ErrorState, SegmentedControl, Skeleton, SlideOver, Tabs } from "@/design";
+import {
+  CardTitle,
+  ErrorState,
+  SegmentedControl,
+  Skeleton,
+  SlideOver,
+  Tabs,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
@@ -24,8 +31,6 @@ import { STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
  *  (the "Projects using this connection" payoff of the connection-sharing
  *  cutover). */
 
-// cm:guard built ONCE at module scope: `lazy()` returns a new component type on every call, and
-// one rebuilt inside a render remounts the section — losing whatever the operator had typed into it.
 const SECTIONS = new Map(
   PROVIDER_MODULES.flatMap((m) => (m.section ? [[m.provider, lazy(m.section)] as const] : [])),
 );
@@ -93,7 +98,7 @@ function BindingsSection({
   return (
     <section className="mt-4 flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <h3 className="fg-h4">Projects using this connection</h3>
+        <CardTitle>Projects using this connection</CardTitle>
         {isOrgOwned && (
           <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
             org-shared

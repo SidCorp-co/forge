@@ -129,7 +129,6 @@ describe('extractUsageFromEvents', () => {
     expect(extractUsageFromEvents(events)).toBeNull();
   });
 
-  // cm:guard the two directions are asserted TOGETHER on one fixture because that is the whole rule: summing the cost would bill 6.5 for a session that cost 5.5, and taking the last usage would bill turn 2's tokens for a job that ran two turns. A test that checked only one of them passes on code that has the pair the wrong way round.
   it('sums the per-turn halves of a duplex session and takes cost from the last', () => {
     const later = new Date('2026-06-10T13:00:00Z');
     const events = [
@@ -166,7 +165,6 @@ describe('extractUsageFromEvents', () => {
     expect(out?.recordedAt).toEqual(later);
   });
 
-  // cm:guard a print job must extract byte-identically before and after the sum — one result line makes summing and last-wins the same number, and this is the assertion that says so rather than leaving it to be inferred.
   it('is unchanged on a single-result print job', () => {
     const one = resultLine({
       cost: 2.0,

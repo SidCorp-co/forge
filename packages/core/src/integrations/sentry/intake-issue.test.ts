@@ -1,13 +1,3 @@
-/**
- * ISS-1085 slice 4 — the ONE decision both doors make about one Sentry issue.
- *
- * The db is mocked, so what these assert is the statements core issues and the values it puts in
- * them. Two things are asserted against the REAL thing rather than a mock on purpose: the admission
- * gate, because "the same gate the pull calls" is a claim about which function runs; and
- * `isReopenEntry`, because the counter this change relies on is incremented by the state machine
- * for one specific `(from, to)` pair, and a test that mocked the transition and then asserted the
- * increment itself would be asserting its own mock.
- */
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isReopenEntry } from '../../pipeline/state-machine.js';
@@ -74,7 +64,6 @@ vi.mock('../../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// cm:guard the admission gate is the REAL one behind a spy, never a stub. Stubbing it would make "the webhook is judged by the same gate the pull calls" a claim about this file's mock, and the assertion could not go red if a second gate were written.
 const judgeSpy = vi.fn();
 vi.mock('./admission.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./admission.js')>();
@@ -193,7 +182,6 @@ describe('an error that is not yet work', () => {
     expect(stmt).toContain('"FORGE-CORE-9K"');
   });
 
-  // cm:guard the insert names its columns, and priority, category and label are NOT among them. That absence is the structural half of the injection chokepoint: no amount of Sentry text can steer a field the statement never writes, which is provable about a shape and only arguable about a code path.
   it('writes no column Sentry text could steer', async () => {
     selectRows.push([]);
     await intakeSentryIssue(issue(), ctx);
@@ -220,7 +208,6 @@ describe('an error that is already work', () => {
     expect(executed).toHaveLength(0);
   });
 
-  // cm:guard the gate must NOT be consulted for an issue that already exists. Consulting it would let an operator raising a threshold today silently stop the count updates on the issues that threshold had already admitted — a change to intake policy reaching back over rows it was never about.
   it('is never re-judged, even after the thresholds are raised above its counts', async () => {
     selectRows.push([filed()], [filed()]);
     const out = await intakeSentryIssue(issue({ count: 41 }), {
@@ -259,7 +246,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(requestedTransition()[1]).toBe('reopen');
   });
 
-  // cm:guard the counter is the state machine's, incremented for exactly the `(closed, reopen)` pair this code requests. Asserting the increment against a mocked transition would be asserting the mock; asserting the PAIR against the real `isReopenEntry` is the half this module can honestly own.
   it('requests the one transition pair the state machine counts as a reopen', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     await intakeSentryIssue(issue(regressed), ctx);
@@ -278,7 +264,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(opts.transitionReason).toContain('regressed');
   });
 
-  // cm:guard the actor carries an EXPLICIT `agency: null`, which `actor-agency.ts` reads as unestablished and fails closed to `agent`. An ABSENT agency reads `human`, which would put a delivery from outside behind the gates written for a person at a keyboard.
   it('attributes the move to a credential owner with no person at the keyboard', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     await intakeSentryIssue(issue(regressed), ctx);
@@ -289,7 +274,6 @@ describe('an error that came back after somebody called it done', () => {
     });
   });
 
-  // cm:guard `dropped` is a PERSON deciding not to fix this, which recurrence does not contradict. Reopening it would be a monitoring signal overruling a human decision.
   it('leaves a dropped issue dropped, and says so by name', async () => {
     selectRows.push([filed({ status: 'dropped' })], [filed({ status: 'dropped' })]);
     const out = await intakeSentryIssue(issue(regressed), ctx);
@@ -314,7 +298,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(executed).toHaveLength(0);
   });
 
-  // cm:guard the observation is made durable BEFORE the transition is attempted. Ordered the other way, a transition that threw would throw away the sighting with it, and the next delivery would compare against a stale baseline and call a real increase no growth.
   it('refreshes the counts before it attempts the transition', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     await intakeSentryIssue(issue(regressed), ctx);
@@ -323,7 +306,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(transitionMock).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard the review's F3. Sentry RE-DELIVERS a hook that failed, carrying an identical body. Without a per-recurrence watermark, a regression that reopened an issue somebody then closed again would reopen it a second time off the replay — a counter incremented and a second reason posted for a recurrence that happened once.
   it('does not reopen twice for the same recurrence re-delivered', async () => {
     const seen = '2026-09-17T00:00:00Z';
     selectRows.push(
@@ -354,7 +336,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(transitionMock).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard the watermark must be the recurrence a REOPEN was done for, never the last time anything was seen. Keyed on `lastSeen` alone, an ordinary observation by the scheduled pull would advance it and the webhook delivering the genuine regression a moment later would find them equal and decline — a regression lost to the other door having looked first.
   it('reopens even where an ordinary observation already advanced lastSeen', async () => {
     const seen = '2026-09-18T00:00:00Z';
     selectRows.push(
@@ -374,7 +355,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(merged).toContain(seen);
   });
 
-  // cm:guard the stamp is written only AFTER the transition succeeds, and this is the assertion that goes red if the two are ever reordered. Stamped first, a transition that then threw would leave the recurrence marked as handled while the issue stayed closed, and every later delivery would decline it as already acted on — the regression lost in silence. Stamped after, a lost stamp costs a second reopen on the retry, which is noise somebody can see.
   it('stamps nothing when the reopen transition fails, and lets the failure out', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     transitionMock.mockRejectedValueOnce(new Error('the state machine refused this transition'));
@@ -384,7 +364,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(mergedMetadata()).not.toContain('reopenedAtLastSeen');
   });
 
-  // cm:guard the review's F2 second case. Equality let a SUPERSEDED recurrence through: T1 handled, T2 handled, the issue closed again, T1 re-delivered — T1 is not equal to the T2 watermark, so an equality test reopens completed work off a replay of something already overtaken.
   it('does not reopen for a recurrence older than the one already reopened for', async () => {
     selectRows.push(
       [filed({ status: 'closed' })],
@@ -404,7 +383,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(transitionMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard a recurrence Sentry did not timestamp cannot be told apart from one already acted on, so it is refused by name rather than reopened on a guess — the same rule the admission gate applies to an absent count. Without this an identical redelivery reopens on every attempt, forever.
   it('refuses by name a regression Sentry did not timestamp', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     const out = await intakeSentryIssue(issue({ ...regressed, lastSeen: null }), ctx);
@@ -413,7 +391,6 @@ describe('an error that came back after somebody called it done', () => {
     expect(transitionMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard the review's F1. The stamp must touch ONE key. Rebuilt from the pre-transition snapshot it replaced the whole sentry object, so a count another delivery committed in between was overwritten with the older one — and the next observation of the newer count then read as growth and posted a duplicate comment.
   it('stamps the watermark without rewriting the rest of the sentry record', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     await intakeSentryIssue(issue({ ...regressed, lastSeen: '2026-09-18T00:00:00Z' }), ctx);
@@ -435,7 +412,6 @@ describe('an error that came back after somebody called it done', () => {
 });
 
 describe('the thresholds both doors judge against', () => {
-  // cm:guard read through one function so the webhook and the pull cannot end up judging against different numbers. Thresholds are operator policy and change without a deploy (ISS-654), so a door holding its own constant would keep filing at the old bound with nothing saying the two disagreed.
   it('come from admin_thresholds rather than from a constant', async () => {
     readThresholdsMock.mockResolvedValue({ sentryMinEventCount: 25, sentryMinUserCount: 4 });
     await expect(readSentryThresholds()).resolves.toEqual({

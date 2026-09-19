@@ -92,7 +92,7 @@ function NavRow({
       }
       title={undefined}
       className={cn(
-        "flex w-full items-center rounded-md text-[13.5px] font-semibold transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        "flex w-full items-center rounded-md text-13-5 font-semibold transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
         // ≥44px touch target on small screens (drawer); compact on desktop rail.
         "max-md:min-h-[44px]",
         collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-2",
@@ -106,7 +106,7 @@ function NavRow({
           {count > 0 && (
             <span
               className="absolute -right-2 -top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 font-semibold"
-              style={{ fontSize: 9.5, lineHeight: "14px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+              style={{ fontSize: "var(--text-9-5)", lineHeight: "14px", color: "var(--flame-700)", background: "var(--flame-50)" }}
             >
               {badgeLabel}
             </span>
@@ -119,7 +119,7 @@ function NavRow({
           {count > 0 && (
             <span
               className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-              style={{ fontSize: 11, lineHeight: "16px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+              style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--flame-700)", background: "var(--flame-50)" }}
             >
               {badgeLabel}
             </span>
@@ -235,7 +235,7 @@ export function NavRail({
     >
       <span
         className="inline-flex size-7 flex-none items-center justify-center rounded-pill font-bold"
-        style={{ background: "var(--cobalt-100)", color: "var(--cobalt-700)", fontSize: 12 }}
+        style={{ background: "var(--cobalt-100)", color: "var(--cobalt-700)", fontSize: "var(--text-12)" }}
       >
         {user?.initials ?? "SK"}
       </span>
@@ -281,7 +281,7 @@ export function NavRail({
         />
         {!collapsed && (
           <>
-            <span className="fg-h3 flex-1" style={{ fontSize: 16 }}>
+            <span className="fg-h3 flex-1" style={{ fontSize: "var(--text-16)" }}>
               Forge
             </span>
             {onToggleCollapsed && (

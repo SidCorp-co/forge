@@ -70,7 +70,6 @@ const RECREATE_DROPPED_TABLES = `
 const RULE_ONE = 'Every mutation gives feedback via a toast. No silent success.';
 const RULE_TWO = 'Keyboard focus stays visible on every interactive element.';
 
-/** The shape `compileUxContract` used to emit: the preamble, then one bullet per rule. */
 function compiledProse(rules: string[]): string {
   return ['# UX Completeness Contract — test', '', ...rules.map((r) => `- ${r}`)].join('\n');
 }
@@ -162,7 +161,6 @@ describe('ISS-1068 — the retirement migration preserves prose or refuses by na
         expect(entry?.body).toContain(RULE_ONE);
         expect(entry?.body).toContain(RULE_TWO);
 
-        // Criterion 9: what the entry used to be is restorable.
         const [backup] = await tx`
           SELECT kind, injection FROM ux_contract_retirement_backup
            WHERE project_id = ${projectId} AND slug = 'ux-contract'`;
@@ -275,10 +273,6 @@ describe('ISS-1068 — the retirement migration preserves prose or refuses by na
     );
   });
 
-  // cm:guard the assertion is the RESTORE, not the presence of a backup row. A backup of a chosen
-  // handful of columns reads exactly like a real one and cannot be inserted back — `schedules.name`
-  // is NOT NULL with no default — so "a copy exists" is the check that would have passed on the
-  // shape this case exists to refuse. Every field below is a non-default value for that reason.
   it('removes a DISABLED ux-contract-improve schedule and its backup restores the whole row', async () => {
     const scheduleId = randomUUID();
 

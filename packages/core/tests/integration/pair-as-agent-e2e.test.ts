@@ -137,10 +137,6 @@ describe('an org admin pairs a box as one of their agents', () => {
       device_id: string;
     };
 
-    // cm:guard the token's OWNER is the assertion, and it is read back through `verifyPat`
-    // — the same door a request arrives at. An approval that never recorded `agent_id`
-    // mints for the approver instead, and every other assertion in this file stays green:
-    // a person's box and an agent's box both pair, both poll, both get a token.
     expect((await pat.verifyPat(token))?.row.userId).toBe(agent.userId);
 
     const [device] = await harness.db.execute<{ owner_id: string }>(
@@ -153,9 +149,6 @@ describe('an org admin pairs a box as one of their agents', () => {
     expect(await restReaches(token, projectC)).toBe(false);
   });
 
-  // cm:guard criterion 34, measured on THIS route rather than on the minting function:
-  // a person's box is what every existing pairing is, and the fence it gets must not have
-  // moved because the agent branch was added beside it.
   it('still pairs as the person, reaching no project, when no agent is chosen', async () => {
     const code = await init();
     expect((await approve(code, ownerId)).status).toBe(200);
@@ -200,10 +193,6 @@ describe('who may hand a machine an agent’s identity', () => {
     const res = await approve(code, member.id, agent.userId);
     expect([403, 404]).toContain(res.status);
 
-    // cm:guard the code is still PENDING after the refusal, not approved-without-the-agent.
-    // A route that refused the agent and approved the pairing anyway would hand that same
-    // member a working box on the next poll — the refusal would read as honoured while the
-    // machine came up regardless.
     expect((await poll(code)).status).toBe(204);
   });
 

@@ -38,7 +38,6 @@ export function AddPersonDialog({
     onClose();
   };
 
-  // cm:guard the same rule the agent dialogue follows: a refused add keeps the dialogue open and keeps the selection, because the refusal names the project the person holds no role on and that is what the adder has to act on (ISS-1011 criteria 42, 47).
   const confirm = () => {
     if (!picked) return;
     add.mutate({ userId: picked.userId }, { onSuccess: close });

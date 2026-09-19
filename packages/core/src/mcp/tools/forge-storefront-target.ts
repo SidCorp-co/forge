@@ -1,21 +1,3 @@
-/**
- * ISS-387 / ISS-558 — `forge_storefront_target` MCP tool.
- *
- * Exposes the project's Epodsystem STORE CONTEXT (slug + name + theme ids +
- * commerce flag + endpoint) to skills running on a runner, so a shop skill
- * knows which store/theme to build against. It deliberately returns NO API
- * key — the `crmk_` key reaches the runner only via the injected
- * `mcpServers.epodsystem` entry (see `integrations/epodsystem/resolver.ts`),
- * never through this read surface.
- *
- * ISS-558: supports multiple storefronts per project. The optional `label`
- * param selects a named binding ('' or omitted = default/oldest binding).
- * `stores[]` lists all active bindings for discovery.
- *
- * Returns `{ configured: false }` when the project has no active Epodsystem
- * integration. Authorization is membership-level, like `forge_coolify_deploy`.
- */
-
 import { z } from 'zod';
 import { epodsystemEndpoint } from '../../integrations/epodsystem/endpoints.js';
 import { fetchStorefrontThemes } from '../../integrations/epodsystem/themes.js';
@@ -44,7 +26,6 @@ const inputSchema = z
 
 type Input = z.infer<typeof inputSchema>;
 
-// cm:why best-effort: a slow or down Epodsystem must degrade this tool to "themes unknown", never fail it — a shop skill that cannot read its store context has nothing to fall back on
 async function resolveLiveThemes(
   pair: Parameters<typeof effectiveConfig>[0],
   config: EpodsystemConfig,
@@ -59,7 +40,6 @@ async function resolveLiveThemes(
   }
 }
 
-// cm:edge lockstep -> packages/core/src/integrations/mcp-preview-service.ts — the injection gate is computed THERE and only there; recomputing it here is what let `configured:true` drift into meaning "tools available" when it never did
 async function resolveInjectionStatus(
   projectId: string,
   bindingId: string,
@@ -148,7 +128,6 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     const config = effectiveConfig<EpodsystemConfig>(pair);
     const selectedLabel = ((pair.binding as Record<string, unknown>).label as string) ?? '';
 
-    // cm:why themes are resolved LIVE, never from the stored config — a draft is created mid-run by customize_theme, so a cached draftThemeId is stale by construction (it was permanently null, which is what made every draft preview silently resolve to the live theme)
     const live = await resolveLiveThemes(pair, config);
     const mcpInjection = await resolveInjectionStatus(projectId, pair.binding.id);
 
@@ -166,7 +145,6 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
       draftThemeId: live?.draftThemeId ?? null,
       themes: live?.themes ?? null,
       versions: live?.versions ?? null,
-      // cm:guard a caller MUST branch on this — `false` means themes/draftThemeId are unresolved, NOT that no draft exists, and treating unresolved as absent is how a step ends up building on the live theme
       themesResolvedLive: live !== null,
       mcpInjection,
       commerceEnabled: config.commerceEnabled ?? null,

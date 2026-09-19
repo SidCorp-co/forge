@@ -7,17 +7,6 @@ import { wsClient } from './client';
 import { replayOnFirstOpen, replayOnReconnect, routeEvent } from './event-router';
 import { userRoom } from './rooms';
 
-/**
- * Mount once under the auth provider. The WS client is a singleton, so
- * multiple useWebSocket() calls are safe, but only the first adds the
- * listener pair.
- *
- * Subscribes the connection to the current user's user-room so that
- * user-scoped server events (`pat.*`, `notification.*`, …) reach this client.
- * `RoomManager.publish()` only delivers to explicit subscribers, so without
- * this the server's `roomManager.publish(userRoom(userId), …)` calls would
- * be silently dropped on the client.
- */
 export function useWebSocket(): void {
   const qc = useQueryClient();
   const { user, isLoading } = useAuth();
@@ -28,7 +17,6 @@ export function useWebSocket(): void {
     const room = userRoom(user.id);
     wsClient.subscribe(room);
     const off = wsClient.on((env) => routeEvent(env, qc));
-    // cm:guard the first open is NOT a reconnect and must not be replayed as one: on a cold load the page's queries are still in flight, and the blanket replay is a second round of requests for a gap that is usually empty (ISS-1019).
     const offOpen = wsClient.onOpen(({ first, openedAt }) => {
       if (first) replayOnFirstOpen(qc, openedAt);
       else replayOnReconnect(qc);

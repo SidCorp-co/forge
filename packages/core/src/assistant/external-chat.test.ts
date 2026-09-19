@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why the module boundaries are mocked so this file exercises the glue — resolve, open the turn,
-// drain, persist, reply — rather than the store or the provider.
 const appended: string[] = [];
 const silences: string[] = [];
 /** One entry per persistMessages call: `role:content`, or `role:!reason` for a silence. */
@@ -107,8 +105,6 @@ vi.mock('./providers/registry.js', () => ({
   resolveForProject: async () => ({ provider: mockProvider, model: 'm' }),
 }));
 
-// cm:why the fake db answers exactly two selects and one insert, in that order — the project, the
-// app config, then the audit row; a third select here means the turn grew a read this file does not model.
 let selectCall = 0;
 const fakeDb = {
   select: () => ({
@@ -228,7 +224,6 @@ describe('runExternalChatTurn — turn context placement', () => {
   });
 });
 
-// cm:guard a SCREENED adapter's transcript holds the sentence the room was SHOWN, and the model's first answer is not that sentence: it can be replaced by a corrective retry or a fixed fallback, so the answer is the caller's to record once it knows what went out.
 describe('runExternalChatTurn — what a turn writes to the room it reads', () => {
   const base = {
     projectId: 'p1',
@@ -246,7 +241,6 @@ describe('runExternalChatTurn — what a turn writes to the room it reads', () =
     expect(out.reply).toBe('The answer is 42.');
   });
 
-  // cm:guard `questionInHistory` shows the model the window ONCE: the collector wrote it as rows, and a turn that appended `message` again would show the same text twice and spend a slot of the bounded history on the copy (ISS-1087).
   it('does not append a question that is already in the history, and persists nothing under `nothing`', async () => {
     persisted.length = 0;
     selectCall = 0;
@@ -274,8 +268,6 @@ describe('runExternalChatTurn — what a turn writes to the room it reads', () =
     expect(out.assistantMessageId).toBeNull();
   });
 
-  // cm:guard a SILENCE is still written under `question-only`: there is no answer for the caller to
-  // record in its place, and the reason the turn produced nothing is the row's whole point.
   it('still writes the silence under `question-only`, because nothing replaces it', async () => {
     persisted.length = 0;
     selectCall = 0;
@@ -306,7 +298,6 @@ describe('runExternalChatTurn — who the turn speaks as, and to', () => {
     turnSelf.speakerContext = null;
   };
 
-  // cm:guard the speaker is the LINKED AUTHOR handed in, never the principal the turn acts as: a group window runs as the room's execution principal, and a preference line bound to it would hand one person's style to everyone in the room (ISS-1034 criteria 18, 62).
   it('hands the linked speaker, not the principal, to the self read, and puts the style line on the newest user message', async () => {
     reset();
     turnSelf.speakerContext = 'Reply style for the person you are answering: concise — short.';
@@ -333,7 +324,6 @@ describe('runExternalChatTurn — who the turn speaks as, and to', () => {
     expect(messages.at(-1)?.content).toMatch(/---\n\nstatus\?$/);
   });
 
-  // cm:guard an explicit null speaker stays null — it is the unlinked author, and falling back to the principal here would bind the unlinked person's turn to whoever the room runs as (ISS-1034 criteria 19, 20, 63).
   it('keeps an explicit null speaker null and lets the unlinked sentence ride the newest user message', async () => {
     reset();
     turnSelf.speakerContext =
@@ -369,18 +359,6 @@ describe('runExternalChatTurn — who the turn speaks as, and to', () => {
   });
 });
 
-/**
- * ISS-1029 — what a turn does when the transcript refuses an event, and
- * ISS-1030 — where that property is now asserted.
- *
- * The accumulator refuses a tool result naming no call this turn made, by name
- * (`transcript-entry.test.ts` proves the refusal itself). This is the other
- * half: the refusal must end the TURN loudly rather than be swallowed by the
- * loop that is watching. It used to be asserted against `run-turn.ts`, the SSE
- * door's own turn loop; that door is gone and this is the surviving loop the
- * same `cm:guard` sits on — the conversation progress observer raises exactly
- * this, and `conversation-progress.ts` is the accumulator's caller.
- */
 describe('a transcript refusal ends the turn rather than being swallowed', () => {
   it('throws the refusal verbatim and closes the provider stream on the way out', async () => {
     selectCall = 0;
@@ -393,8 +371,6 @@ describe('a transcript refusal ends the turn rather than being swallowed', () =>
           yield { type: 'chunk' as const, text: 'the model is still talking' };
           yield { type: 'done' as const };
         } finally {
-          // cm:guard this is what `gen.return()` reaches. Without it a refused
-          // turn leaves the provider stream open and the connection with it.
           returned = true;
         }
       },

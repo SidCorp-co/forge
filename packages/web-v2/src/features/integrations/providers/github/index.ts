@@ -5,11 +5,9 @@ export const github: ProviderModule = {
   provider: "github",
   label: "GitHub",
   icon: "github",
-  // cm:guard null because the App manifest flow mints all three secrets and nothing is ever typed — the map this replaced had no GitHub row and fell through to `apiKey`, so the drawer offered a replace-key box whose PATCH the provider's own schema refuses.
   secretField: null,
   secretPlaceholder: null,
   drillable: true,
-  // cm:edge contract -> packages/core/src/integrations/github/adapter.ts — core's own declaration, and `integrations/web-declaration-parity.test.ts` refuses the two when they disagree. It said "none" until ISS-1074 made github core-mediated; a connect form reading the old value offers no switch for a grant the server would have accepted, which is the mirror of the defect ISS-1071 found here.
   agentPathKind: "core-mediated",
   mcpServerName: null,
   multiBinding: false,

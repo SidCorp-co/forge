@@ -9,9 +9,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { startConversationProgress } from './conversation-progress.js';
 
-// cm:guard a REAL watcher with its publish discarded, rather than `progress` being made optional on
-// `webConversationTurn`: a caller that may omit it is a caller that can lose a turn's streaming
-// silently, and these files are about the door's persona rather than about the socket (ISS-1078).
 function discardedProgress() {
   return startConversationProgress({
     conversationId: 'conversation-1',
@@ -73,8 +70,6 @@ describe('the fork a web conversation takes', () => {
     expect(startConversationAgentTurn).toHaveBeenCalledTimes(1);
     const args = startConversationAgentTurn.mock.calls[0]?.[0];
     expect(args?.conversationContext).toContain('a.ts or b.ts');
-    // cm:guard the current question is NOT repeated into the context: the prompt builder already
-    // prints it as the question being answered, and a second copy reads as it having been asked twice.
     expect(args?.conversationContext).not.toContain('the second one');
   });
 
@@ -85,8 +80,6 @@ describe('the fork a web conversation takes', () => {
     expect(args?.conversationContext).toBeNull();
   });
 
-  // cm:guard the whole of the other branch: `assistant` must reach none of this, because the in-core
-  // turn reads the room for itself and a dispatch here would be a second answer to one question.
   it('dispatches nothing at all in Assistant mode', async () => {
     startConversationAgentTurn.mockClear();
     expect(await divert(turn({ mode: 'assistant' }))).toBeNull();

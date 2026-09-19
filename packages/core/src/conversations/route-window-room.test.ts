@@ -176,7 +176,6 @@ describe('tool as a group mode', () => {
     expect(runConversationTurn).not.toHaveBeenCalled();
   });
 
-  // cm:guard a direct room is one person asking one agent and is owed its reply, whatever the fold or the room says (criterion 21).
   it('reads as reply in a direct venue (criterion 21)', async () => {
     conversationRow = { ...conversation, shape: 'direct', presence: { answerInGroup: 'tool' } };
     await route();

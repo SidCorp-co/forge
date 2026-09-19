@@ -58,7 +58,6 @@ function describe(profile: SpeakerProfile, candidates: SpeakerCandidate[], userI
       emailOnChannel: profile.email,
     },
     candidates,
-    // cm:guard the caller is told whether THEY may confirm, and never handed a selected candidate. A single candidate is a proposal like any other: selecting it because it is alone is guessing the intent behind input that named no user.
     youMayConfirm: candidates.some((c) => c.userId === userId && c.confirmable),
     confirm: {
       method: 'POST',
@@ -96,7 +95,6 @@ speakerLinkProjectRoutes.use(
   assertEmailVerified(),
 );
 
-// cm:guard project access is asserted BEFORE the directory is read, on both routes — the read spends this project's Rocket.Chat bot credential, so a caller who is not a member must be refused while the credential is still untouched rather than after it has answered for them
 speakerLinkProjectRoutes.post('/projects/:projectId/speaker-links/proposals', async (c) => {
   const userId = c.get('userId');
   const projectId = c.req.param('projectId');
@@ -119,7 +117,6 @@ speakerLinkProjectRoutes.post('/projects/:projectId/speaker-links', async (c) =>
   const { profile, candidates } = found;
 
   const mine = candidates.filter((cand) => cand.userId === userId);
-  // cm:guard a local-part candidate PROPOSES and never confirms — it is offered so a person can see the near-miss, and accepting it would let anyone bind a chat account whose local part equals their own on some other domain. The residual on the whole-address tier is ISS-977's own priced trade-off: an operator who can edit a chat account's email can generate this prompt, and the exit condition named there is a redeemed pairing code (ISS-200) or a per-speaker rate limit.
   if (!mine.some((cand) => cand.confirmable)) {
     const near = mine.find((cand) => cand.matchedOn === 'local-part');
     if (near) {
@@ -140,7 +137,6 @@ speakerLinkProjectRoutes.post('/projects/:projectId/speaker-links', async (c) =>
     );
   }
 
-  // cm:guard let the unique index decide, never a SELECT before the INSERT — two confirmations of one speaker both read no row, and the loser of a select-then-insert reaches the constraint as a 500 instead of the 409 this route documents
   const [row] = await db
     .insert(assistantSpeakerLinks)
     .values({
@@ -192,7 +188,6 @@ speakerLinkMeRoutes.get('/me/speaker-links', async (c) => {
   return c.json({ links });
 });
 
-// cm:guard DELETE removes the row — there is no disabled state, because a row present IS the authorization. Scoped to the caller's own userId in the same WHERE as the key, so no id in the path can reach somebody else's link.
 speakerLinkMeRoutes.delete('/me/speaker-links/:source/:namespace/:externalId', async (c) => {
   const source = c.req.param('source');
   if (!isConversationAdapter(source)) {

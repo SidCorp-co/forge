@@ -16,7 +16,6 @@ const { pmDispatchHandler, pmDispatchInputSchema } = await import('./forge-pm-di
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
 
-// cm:guard the ~200 lines of enqueue/authz/manual-mode scenarios this replaced tested a path ISS-895 deleted: every job type PM could dispatch was a staged step, and none is in `RUNNER_CAPABILITIES` any more. Restoring those cases would assert a job that no runner can accept, i.e. green on a dispatch that dead-ends.
 describe('forge_pm.dispatch after the staged lane was removed (ISS-895)', () => {
   it('refuses every job type by name rather than enqueuing something unrunnable', async () => {
     for (const jobType of ['code', 'plan', 'review', 'test', 'fix', 'release', 'drive'] as const) {

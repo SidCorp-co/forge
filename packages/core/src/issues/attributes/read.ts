@@ -31,7 +31,6 @@ async function refLabels(rows: readonly AttributeRow[]): Promise<Map<string, str
   return out;
 }
 
-// cm:guard Returns what was asserted and nothing else. No state is computed here and none is stored: a derived value kept beside its evidence is a cached state, and a cached state is what lets a view drift from the record it came from (ISS-1010).
 export async function loadIssueAttributes(issueUuid: string): Promise<RenderedAttribute[]> {
   const rows = (await db
     .select({

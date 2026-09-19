@@ -41,9 +41,6 @@ const window = (over: Partial<ConversationWindow> = {}): ConversationWindow => (
 });
 
 describe("threadEntries", () => {
-  // cm:guard ISS-1078 — the order a turn in flight takes in the thread. Watched wrong in Chrome on a
-  // local walk, 2026-09-17: a FRESH room has no stored read yet, so the question lives only in the
-  // outbox, and a progress entry placed before the whole outbox drew the answer above the question.
   describe("a turn in flight", () => {
     const live = {
       conversationId: "c1",
@@ -63,8 +60,6 @@ describe("threadEntries", () => {
       expect(entries[2]).toMatchObject({ item: { id: "o2" } });
     });
 
-    // cm:guard `sending` sits BELOW it with `queued`: that row is a question the server has not
-    // confirmed, so nothing above it is an answer to it.
     it("comes before a question still in flight", () => {
       const entries = threadEntries([], [], [queued("o1", "sending")], [], live);
       expect(entries.map((e) => e.kind)).toEqual(["progress", "outbox"]);
@@ -81,7 +76,6 @@ describe("threadEntries", () => {
     expect(entries.map((e) => e.kind)).toEqual(["said", "silence", "said"]);
   });
 
-  // cm:guard the whole criterion in one case: the SAME messages and a window that has not closed must not render as a silence, because "it read this and had nothing to add" and "nobody has got to this yet" are different facts and a person acts differently on each.
   it("renders an open window as pending rather than as a silence", () => {
     const entries = threadEntries([said(0)], [window({ closedAt: null, decision: null })]);
     expect(entries.map((e) => e.kind)).toEqual(["said", "pending"]);
@@ -124,11 +118,6 @@ describe("threadEntries", () => {
   });
 });
 
-// cm:guard ISS-1039 criteria 19, 20 and 27 — a window handed to a runner session is a WAIT and not
-// a silence, and the four states of that wait are four different things on screen. Before this, a
-// `handed-off` window fell through to the silence branch and rendered as "a reply was sent and
-// never confirmed", which is criterion 27's exact failure: the most alarming sentence the thread
-// owns, printed over a turn that is working normally.
 describe("threadEntries \u00b7 a window handed to a runner session", () => {
   const turn = (over: Partial<AgentTurn> = {}): AgentTurn => ({
     windowId: "w1",
@@ -167,9 +156,6 @@ describe("threadEntries \u00b7 a window handed to a runner session", () => {
     expect(entries.map((e) => e.kind)).toEqual(["said", "said"]);
   });
 
-  // cm:guard the pair can be split for as long as the read between them takes, and the gap is a
-  // WAIT rather than nothing at all: a handed-off window whose turn row has not arrived renders
-  // pending, which is what keeps the thread from going blank mid-handoff.
   it("renders a handed-off window whose turn has not arrived yet as pending", () => {
     const entries = threadEntries([said(0)], [handed], [], []);
     expect(entries.map((e) => e.kind)).toEqual(["said", "pending"]);

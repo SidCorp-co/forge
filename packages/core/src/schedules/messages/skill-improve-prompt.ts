@@ -158,14 +158,6 @@ This JSON is parsed by the platform to track idempotency. Output ONLY the sentin
 
 // ── Report parsing ────────────────────────────────────────────────────────────
 
-/**
- * Parses the structured report the agent embeds in its final message.
- *
- * Returns null when no sentinel is found or JSON is malformed.
- * Only `applied` and `proposed` outcomes are recorded in `updatedVersions`;
- * `skipped` is intentionally excluded so a later config change re-triggers
- * the message (see idempotency spec).
- */
 export function parseSkillImproveReport(text: string): {
   entries: SkillImproveReportEntry[];
   updatedVersions: AppliedVersions;

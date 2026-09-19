@@ -84,7 +84,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     return rows.map((r) => r.title);
   }
 
-  // cm:guard every ordering case here sets age AGAINST cost deliberately, and that is what makes them falsifying: measured while writing this, restoring `desc(updatedAt)` turns 6 of the 7 red. Let age and cost agree in any one of them and it passes against the order it exists to replace.
   it('puts the expensive question above the cheap one that arrived later', async () => {
     const expensive = await blockedIssue(3);
     await question(expensive, { claims: 2, workspaces: 1, dependents: 4 });
@@ -94,7 +93,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     expect(await bucket()).toEqual(['ISS-1', 'ISS-2']);
   });
 
-  // cm:guard the ages run OPPOSITE to the costs on purpose: newest carries the cheapest question, oldest the dearest, so neither `desc(updatedAt)` nor `asc(updatedAt)` can produce this order by accident.
   it('ranks a held claim above a pinned workspace, and that above a dependent', async () => {
     const claims = await blockedIssue(9);
     await question(claims, { claims: 1 });
@@ -107,7 +105,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     expect([claims, workspaces, dependents].every(Boolean)).toBe(true);
   });
 
-  // cm:guard age must still BREAK ties and still be returned: the row carries `updatedAt` because the reader is told how long it has waited, and a cost-only order that dropped it would rank two equal-cost questions arbitrarily between runs.
   it('falls back to age when the cost is equal, oldest first', async () => {
     await blockedIssue(1);
     await blockedIssue(5);
@@ -119,7 +116,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     for (const row of rows) expect(row.updatedAt).toBeTruthy();
   });
 
-  // cm:guard an issue blocked with NO question row is still in the bucket. `waiting` and `needs_info` are reachable by a human hand as well as by an agent asking, and a join that dropped the row would hide every block a person set.
   it('keeps an issue a human blocked by hand, below the ones that cost something', async () => {
     const asked = await blockedIssue(9);
     await question(asked, { claims: 1 });
@@ -129,7 +125,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     expect(byHand).toBeTruthy();
   });
 
-  // cm:guard only an OPEN question costs anything. An answered or voided one holds no claim and no worktree, so counting it would rank a settled decision above a live one forever.
   it('ignores the cost of a question that is no longer open', async () => {
     const live = await blockedIssue(5);
     await question(live, { claims: 1 });
@@ -139,7 +134,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     expect(await bucket()).toEqual(['ISS-1', 'ISS-2']);
   });
 
-  // cm:guard two parked runs on one issue hold two sets of resources, so the costs SUM rather than taking the larger. A max would rank one issue holding 1+1 claims level with one holding a single claim.
   it('adds up the cost of every open question on one issue', async () => {
     const one = await blockedIssue(0);
     await question(one, { claims: 1, workspaces: 5 });
@@ -150,7 +144,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     expect(await bucket()).toEqual(['ISS-2', 'ISS-1']);
   });
 
-  // cm:guard the cap is 20 and not `PER_BUCKET`, and this asserts the NUMBER because the justification is a number: 56 issues sat at `waiting`/`needs_info` across 17 projects fleet-wide on 2026-09-08, so a cap of 5 renders 91% of the population unreachable.
   it('returns up to the declared cap rather than five', async () => {
     const { AWAITING_INPUT_CAP } = await import('../../src/me/attention-buckets.js');
     expect(AWAITING_INPUT_CAP).toBe(20);
@@ -159,7 +152,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     expect((await bucket()).length).toBe(AWAITING_INPUT_CAP);
   });
 
-  // cm:why criterion 53 wants the cost of waiting SHOWN, not merely obeyed. The ordering shipped without the numbers, so a reader saw the right row first and no reason why — and `blocker_kind`, which says WHO can end the wait, was not on the row at all. A queue whose order cannot be explained is one whose order gets overridden by hand (ISS-964 criteria 19, 53).
   it('carries the cost it ordered by, and who can end the wait', async () => {
     const { selectAwaitingInput } = await import('../../src/me/attention-buckets.js');
     const issueId = await blockedIssue(1);
@@ -178,7 +170,6 @@ describe('awaiting input is ranked by the cost of waiting (real Postgres)', () =
     ).toBe('human');
   });
 
-  // cm:guard the numbers come from OPEN questions only, matching the ordering's own rule: a settled question holds no claim, so counting it would show a cost that is not being paid.
   it('shows nothing for a question already answered', async () => {
     const { selectAwaitingInput } = await import('../../src/me/attention-buckets.js');
     const issueId = await blockedIssue(1);

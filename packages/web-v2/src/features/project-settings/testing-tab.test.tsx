@@ -32,8 +32,6 @@ const STORED = {
   },
   live: {
     url: "https://app.example.com",
-    // cm:guard `live.apiUrl` is STORED and NOT RENDERED, deliberately: it is the key that proves
-    // the save spreads the stored side rather than rebuilding it from the four inputs on screen.
     apiUrl: "https://api.example.com",
     commitUrl: "https://api.example.com/health",
     commitPath: "data.commit",
@@ -92,9 +90,6 @@ describe("Testing tab · limits (ISS-767, ISS-1069)", () => {
     expect(sent().limits).toBeNull();
   });
 
-  // cm:guard the field ASKS A QUESTION rather than inviting anything, which is the whole reason it
-  // was renamed: the field it replaced said "notes" and was filled on 4 of 32 projects. A screen
-  // that renamed the key and kept the invitation would have changed nothing that was measured.
   it("names the field for what it asks, not for notes in general", () => {
     renderTab();
     expect(screen.getByText("What this environment does not have")).toBeInTheDocument();
@@ -129,9 +124,6 @@ describe("Testing tab · the live side (ISS-1069)", () => {
     expect(field("Live commit path")).toHaveValue("data.commit");
   });
 
-  // cm:guard the commit path's own hint has to carry BOTH fleet shapes and the empty case, because
-  // it is the one field an operator cannot guess: `sid-desk` answers `{"commit":…}` and `sidpeak`
-  // answers `{"data":{"commit":…}}`, and a blank path means the whole body is the commit.
   it("says what a commit path looks like, including what blank means", () => {
     renderTab();
     const hint = screen.getByText(/dot path to the commit/i).textContent ?? "";
@@ -167,10 +159,6 @@ describe("Testing tab · the live side (ISS-1069)", () => {
 });
 
 describe("Testing tab · what a save must not take with it (ISS-1069)", () => {
-  // cm:guard the server REPLACES `environments` outright — nothing merges, at any depth — so a save
-  // that rebuilt the blob from form state alone would delete every key this screen does not render.
-  // `live.apiUrl` and `someFutureKnob` are the two shapes of that: a field the schema names and one
-  // it does not.
   it("keeps the credentials, the preview side, live.apiUrl and an unknown key", () => {
     renderTab();
     fireEvent.change(limitsBox(), { target: { value: "updated" } });
@@ -189,9 +177,6 @@ describe("Testing tab · what a save must not take with it (ISS-1069)", () => {
     expect(env.someFutureKnob).toBe("round-trips");
   });
 
-  // cm:guard `preview: null` is a one-box project SAYING it has no other side. Writing `{}` over it
-  // turns a statement into a gap every reader has to re-derive, and would make the project look
-  // half-configured on a screen that reports gaps.
   it("leaves a null preview null rather than writing an empty preview object", () => {
     renderTab({ ...STORED, preview: null });
     fireEvent.change(limitsBox(), { target: { value: "updated" } });
@@ -210,9 +195,6 @@ describe("Testing tab · what a save must not take with it (ISS-1069)", () => {
     });
   });
 
-  // cm:guard a ROW carries every key it was stored with. The server catchalls unknown keys at row
-  // level too, so a save that rebuilt rows from the rendered fields alone deleted whatever a client
-  // one version ahead had written there. Found by a codex review of the landing head.
   it("keeps an unknown key inside a testing URL row and inside a credential row", () => {
     renderTab({
       ...STORED,
@@ -232,9 +214,6 @@ describe("Testing tab · what a save must not take with it (ISS-1069)", () => {
     expect((sent().testCredentials as Record<string, unknown>[])[0]?.credKnob).toBe("c");
   });
 
-  // cm:guard a preview whose only content is a key this screen does not render is DECLARED. The
-  // emptiness test read the rendered fields alone, so an unrelated save wrote `preview: null` over
-  // it — a silent delete arriving through the one side that is allowed to be null.
   it("keeps a preview whose only content is a key the screen does not render", () => {
     renderTab({ ...STORED, preview: { futureKnob: "keep" } });
     fireEvent.change(limitsBox(), { target: { value: "updated" } });

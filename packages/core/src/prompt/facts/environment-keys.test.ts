@@ -48,9 +48,6 @@ describe('{{project:test-urls}}', () => {
     expect(out).toBe('- Live: https://app.x\n- Live API: https://api.app.x');
   });
 
-  // cm:guard a project that declares NEITHER side resolves to nothing, which renders as the empty
-  // string — the same answer the old shape gave for an empty `testingUrls`. Rendering a heading
-  // with no addresses under it would put an empty section in every such project's prompt.
   it('renders nothing at all for a project that declares neither side', () => {
     expect(resolver(null)('test-urls')).toBeUndefined();
     expect(resolver({ preview: null, live: {} })('test-urls')).toBeUndefined();
@@ -77,10 +74,6 @@ describe('{{project:test-notes}} and {{project:test-creds}}', () => {
     expect(resolver({ limits: null })('test-notes')).toBeUndefined();
   });
 
-  // cm:guard a POINTER and never the value. This string is spliced VERBATIM into a
-  // device-installed SKILL.md, so a resolver that rendered the stored credential would write it to
-  // disk on every paired box — and it must name the NEW path, or an agent following it reads a key
-  // no response carries.
   it('renders `test-creds` as a pointer at the new path and never a stored value', () => {
     const out =
       resolver({
@@ -93,8 +86,6 @@ describe('{{project:test-notes}} and {{project:test-creds}}', () => {
     expect(out).not.toContain('qa');
   });
 
-  // cm:guard the keys this change did NOT touch still answer what they answered, because the
-  // resolver is one map and a change to it is a change to all of them.
   it('leaves `production-branch` and an unreserved key answering their refusals', () => {
     expect(resolver(FILLED)('production-branch')).toContain('was retired');
     expect(resolver(FILLED)('deploy-notes')).toContain('forge_knowledge');

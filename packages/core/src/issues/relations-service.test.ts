@@ -1,10 +1,3 @@
-/**
- * ISS-889 — moved from `mcp/tools/issue-relations.test.ts` with the module it
- * covers. The spies are now the two halves of the edge write — the durable
- * `writeIssueDependency` and the post-commit `emitIssueDependencyEffects` —
- * rather than the MCP handler that used to own them.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
@@ -25,7 +18,6 @@ let sawOverlap = false;
 const setEdgeSpy = vi.fn(async (input: { toIssueId: string }, _writer: unknown, _ex?: unknown) => {
   if (inFlight > 0) sawOverlap = true;
   inFlight++;
-  // cm:guard the suspension here must be a REAL one (a timer, not `await Promise.resolve()`) — a microtask-only await resolves before any sibling iteration can start, so `sawOverlap` stays false even under `Promise.all` and the test green-lights the exact refactor the guard in relations-service.ts forbids
   await new Promise((resolve) => setTimeout(resolve, 5));
   inFlight--;
   return { id: `edge-${input.toIssueId}`, created: true, updated: false, effect: 'added' };

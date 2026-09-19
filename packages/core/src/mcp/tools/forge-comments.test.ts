@@ -25,7 +25,6 @@ vi.mock('../../storage/index.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-// cm:guard `.orderBy()` must be BOTH awaitable and `.limit()`-able, and LAZILY so. `listIssueCommentPage` awaits the reply query at `orderBy` with no `limit` after it, while the root query calls `.limit()` on the same object: return only `{ limit }` and the reply query resolves to a builder whose spread throws `requires ...iterable`, but resolve the rows EAGERLY and the root query's own `orderBy()` eats the first `mockResolvedValueOnce` it never reads. A `then` that calls the mock is the only shape that gets both (ISS-956).
 const selectOrderByRows = vi.fn(async (): Promise<unknown[]> => []);
 const selectOrderBy = vi.fn(() => ({
   limit: selectLimit,
@@ -34,12 +33,9 @@ const selectOrderBy = vi.fn(() => ({
 }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
-// cm:guard TWO leftJoins before `where().limit(1)` — that is `effectiveProjectRole`'s real shape, and a mock chain one join short resolves at the wrong link, handing every role check an undefined row that reads as no access.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-// cm:guard branch on the TABLE, never on the chain shape — the ISS-963 name lookup reads comment_attachments through the same .where().orderBy().limit() shape the auth lookups use, so a shared resolver hands it a row queued for a project row and every attachment is refused as a duplicate of itself
 const noCollision = { orderBy: () => ({ limit: async () => [] as unknown[] }) };
-// cm:guard `insertComment`'s stage read used to join `projects` and be told apart by that join; since the body mandate was removed (2026-09-14) it is a plain `from(issues).where().limit()`, indistinguishable from an auth lookup by chain shape — so the stage row is queued on `selectLimit` like any other, and a case one short resolves its insert against an auth row.
 const selectFrom = vi.fn((table: unknown) => {
   if (table === commentAttachments) {
     return { where: () => noCollision, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin };
@@ -64,7 +60,6 @@ vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
 }));
 
-// cm:guard stub only the READ-side join — the create path must keep the real persistCommentAttachment, because the mime resolution and the name-collision refusal this suite asserts both live inside it and a stub would assert the stub
 const listCommentAttachmentsForIssueMock = vi.fn(
   async (..._args: unknown[]) => new Map<string, unknown[]>(),
 );
@@ -88,12 +83,10 @@ const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 const TOKEN_ID = '99999999-9999-4999-8999-99999999aaaa';
 const ORG_ID = '88888888-8888-4888-8888-888888888888';
 
-// cm:guard ONE org-aware select, because `lib/authz.ts:effectiveProjectRole` folds the org role into the same statement — queueing two rows here feeds the second to whatever query runs next and shifts every later mock by one.
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 const adminAccessRow = { orgId: ORG_ID, memberRole: 'admin', orgRole: null };
 
 const fakePrincipal = makeFakePrincipal(TOKEN_ID, OWNER_ID);
-// cm:guard the agent marker is the credential's OWN `deviceId` since ISS-932 wave 4, so the cases asserting `authorDeviceId` need a principal carrying one. A `makeFakePrincipal` is a person's PAT with no device and correctly leaves the column null — assert the marker with that and the case passes while proving the opposite of what it says.
 const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, DEVICE_ID);
 
 const baseCommentRow = {
@@ -148,7 +141,6 @@ describe('forge_comments tool', () => {
       principal: fakePrincipal,
       projectSlug: null,
     });
-    // cm:guard the three `selectLimit` programmings are ORDERED and positional: issue lookup, then the org-aware role row, then the root page. Insert a query anywhere in the path and every case in this file resolves at the wrong link, which reads as no access rather than as a broken mock.
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     selectLimit.mockResolvedValueOnce([baseCommentRow]);
@@ -160,7 +152,6 @@ describe('forge_comments tool', () => {
 
     expect(result.comments).toHaveLength(1);
     expect(result.comments[0]?.documentId).toBe(COMMENT_ID);
-    // cm:guard ISS-532 — the frame WRAPS, never replaces: an agent reads a comment as data, and a framing that dropped the original text would make every body unreadable while this assertion, checking only the frame, stayed green.
     expect(result.comments[0]?.body).toContain('Hello');
     expect(result.comments[0]?.body).toContain('UNTRUSTED_DATA source="comment.body"');
     expect((result.comments[0] as unknown as { attachments: unknown[] }).attachments).toEqual([]);
@@ -201,7 +192,6 @@ describe('forge_comments tool', () => {
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:why fifty ~9KB bodies, which is ~450KB raw against a 38K cap: the truncation path is only reachable well over the cap, and a smaller fixture would pass whether or not the cap is enforced.
     const fatRows = Array.from({ length: 50 }, (_, i) => ({
       ...baseCommentRow,
       id: `5555555${i}-5555-4555-8555-555555555555`.slice(0, 36),
@@ -231,7 +221,6 @@ describe('forge_comments tool', () => {
     expect(result.notice).toMatch(/more rows match/i);
     // Total serialized response must stay under a safe threshold
     expect(JSON.stringify(result).length).toBeLessThan(50_000);
-    // cm:guard ISS-956 reversed the shed direction on this surface: the trim now sheds the NEWEST rows and the page resumes from the oldest survivor. Assert the FIRST row is the thread's first comment — shedding the oldest under a cursor steps the walk over rows nothing replays, and the counts above are identical either way.
     const kept = result.comments as Array<{ documentId: string }>;
     expect(kept[0]?.documentId).toBe(fatRows[0]?.id);
     expect(result.nextCursor).toEqual(expect.any(String));
@@ -290,7 +279,6 @@ describe('forge_comments tool', () => {
     );
   });
 
-  // cm:guard ISS-638 was the FK trip: a PAT principal has no `devices` row, and the stub `mcp/handler.ts` fabricated for it carried the PAT *token* id, so stamping that into `author_device_id` failed comment creation for every PAT caller. ISS-931 deleted the stub and the marker now comes off the token's own `job:`/`session:` name, so a person's PAT names no job and this asserts the null — keep asserting it, because a non-null here is both the old FK trip and, in forge-plugin's `answered()`, a person's comment read as an agent's.
   it("create with a person's PAT inserts authorDeviceId: null and succeeds", async () => {
     const tool = forgeCommentsTool({
       principal: humanPat(null),
@@ -387,7 +375,6 @@ describe('forge_comments tool', () => {
     selectLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
     ]);
-    // assertPrincipalIsMember (device path) → effective-role lookup
     selectLimit.mockResolvedValueOnce([adminAccessRow]);
     // assertCommentDeletePermission: effective project admin passes
     selectLimit.mockResolvedValueOnce([adminAccessRow]);

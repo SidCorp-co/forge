@@ -14,7 +14,6 @@ import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } fro
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
-// cm:edge contract -> packages/core/src/agent-sessions/terminal-effects.ts — the terminal-session bridge list fans out on marker keys, and these are the ones still written in Rocket.Chat's own room vocabulary. `agentChat` is no longer written by anything: ISS-1039 moved that lane onto a venue, and what remains is the dated legacy bridge reading rows dispatched before it.
 export type RoomReplyMarker = 'escalation' | 'agentChat';
 
 export interface RoomPostAuth {
@@ -23,7 +22,6 @@ export interface RoomPostAuth {
   userId: string;
 }
 
-// cm:guard returns null rather than throwing — callers treat that as "cannot deliver" and fall back, and a throw here would escape the bridge's best-effort contract
 export async function resolveRoomPostAuth(
   connectionId: string,
   logContext: Record<string, unknown>,
@@ -46,8 +44,6 @@ export async function resolveRoomPostAuth(
 }
 
 /** The room is still this project's to post into, right now. */
-// cm:guard a stored rid is a claim about the PAST: a session records the room it began in, and the binding that put it there can move while the work runs — so posting on the strength of the connection alone lands one project's answer in a room another project owns (ISS-1001 invariant 2).
-// cm:edge contract -> packages/core/src/integrations/rocketchat/conversation-port.ts — `authForVenue` makes this same check for the live delivery path; this is it for every path that reads a rid out of stored metadata.
 export async function roomStillBoundTo(args: {
   connectionId: string;
   projectId: string;
@@ -74,13 +70,11 @@ export interface RoomReplyMeta {
   botName: string;
   askedByUsername: string;
   question: string;
-  // cm:guard null means the row STORED none — an older row, or a lane that writes no shape — and a `direct` shape with a null principal is refused rather than run as the organization's creator (escalation-bridge.ts). Do not default either field.
   shape: 'direct' | 'group' | null;
   principalUserId: string | null;
   deliveredAt: string | null;
 }
 
-// cm:guard never coerce connectionId/rid/botName to a default — a missing one means "not a room-reply session", and defaulting it turns that into a delivery attempt against an empty room id
 export function readRoomReplyMeta(
   metadata: unknown,
   marker: RoomReplyMarker,
@@ -108,8 +102,6 @@ export function readRoomReplyMeta(
   };
 }
 
-// cm:guard compare-and-set, so exactly one caller delivers even when the runner's happy-path PATCH and a kernel sweeper/failure hook race on the same session
-// cm:guard the spread preserves unknown sibling keys — `agent-chat.ts`'s failover writes `metadata.agentChat.failover`, and rebuilding this object from RoomReplyMeta's fields alone would silently drop the attempt counter that bounds the retry
 export async function claimRoomReplyDelivery(
   session: SessionRow,
   marker: RoomReplyMarker,
@@ -126,7 +118,6 @@ export async function claimRoomReplyDelivery(
     .where(
       and(
         eq(agentSessions.id, session.id),
-        // cm:guard the `::text` cast is load-bearing — Drizzle renders `${marker}` as a bind parameter, and `jsonb -> $1` with an untyped parameter is ambiguous in Postgres (`->` overloads on text and int), so it fails at runtime with "operator is not unique" rather than at build time
         sql`(${agentSessions.metadata} -> ${marker}::text ->> 'deliveredAt') IS NULL`,
       ),
     )
@@ -134,9 +125,6 @@ export async function claimRoomReplyDelivery(
   return claimed.length > 0;
 }
 
-// cm:guard DB-backed, never an in-memory Set — this must be instance-independent and self-clear the moment the session goes terminal via ANY writer
-// cm:guard `IS NOT DISTINCT FROM` and never `=`, because the thread is absent for a room's own messages: `->> 'tmid'` yields SQL NULL there, and `= NULL` is NULL rather than true, so an equality test silently stops deduping the main channel and lets one room run two concurrent sessions (ISS-987).
-// cm:why keyed by the CONVERSATION, not the room: a thread is a side conversation the room need not follow, and matching on `rid` alone made a second thread's mention in a busy channel look like an in-flight duplicate and vanish (ISS-987)
 export async function hasInFlightRoomSession(
   projectId: string,
   rid: string,
@@ -158,7 +146,6 @@ export async function hasInFlightRoomSession(
   return rows.length > 0;
 }
 
-// cm:guard the discriminator is `messageRoleToTurnRole` and is not re-derived here. Two on-disk shapes used to exist and that normalizer read both; since ISS-1030 there is one, every row at rest was rewritten, and what a device on the previous release sends is converted on the way in. Reading `entry.role` here would put the second shape back in the one place a legacy entry can still reach — a room reply.
 export function extractFinalAssistantText(messages: unknown): string | null {
   if (!Array.isArray(messages)) return null;
   for (let i = messages.length - 1; i >= 0; i--) {

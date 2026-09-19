@@ -85,7 +85,6 @@ describe('PM reads over REST', () => {
     expect(res.status).toBe(200);
   });
 
-  // cm:guard a NON-MEMBER, not merely an anonymous caller: every one of these reads returns the shape of a project's work — its issues, its dependency graph, what its runners are carrying. `assertProjectRole(access, 'viewer')` is the only thing between a signed-in stranger and that, and a 401-only test would pass with the membership check deleted.
   it.each([['snapshot'], ['graph'], ['runner-load']])(
     'refuses a signed-in stranger on %s',
     async (leaf) => {
@@ -113,7 +112,6 @@ describe('PM reads over REST', () => {
     expect((await get(`/api/projects/${project.id}/pm/snapshot`, mate.token)).status).toBe(200);
   });
 
-  // cm:guard the depth cap is enforced by the ROUTE schema, not left to the service — `readPmGraph` takes depth as a plain number, so an uncapped route hands it straight to a recursive BFS and a caller picks the cost of the query.
   it('refuses a graph depth past the cap', async () => {
     const { project, token } = await seed();
     expect((await get(`/api/projects/${project.id}/pm/graph?depth=99`, token)).status).toBe(400);

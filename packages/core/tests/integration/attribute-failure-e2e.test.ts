@@ -76,7 +76,6 @@ describe('runner failure attribution E2E (ISS-806)', () => {
     return rows[0]?.last_error ?? null;
   }
 
-  // cm:guard the whole issue in one assertion — before this, a box failing 100% of push-bearing jobs reported last_error NULL and read as healthy
   it('stamps last_error on the box that failed its own preflight', async () => {
     const s = await seedRunner();
     expect(await lastErrorOf(s.runnerId)).toBeNull();

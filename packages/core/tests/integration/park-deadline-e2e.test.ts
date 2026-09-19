@@ -36,7 +36,6 @@ let reapExpiredParks: typeof import('../../src/jobs/park-deadline.js').reapExpir
 let reapSessionLostJobs: typeof import('../../src/jobs/loop-monitor.js').reapSessionLostJobs;
 
 const MINUTES = 60_000;
-// cm:guard ISO strings, never Date objects — postgres-js has no column type to bind a Date against inside a raw `sql` template and throws ERR_INVALID_ARG_TYPE.
 const ago = (m: number): string => new Date(Date.now() - m * MINUTES).toISOString();
 
 beforeAll(async () => {
@@ -76,7 +75,6 @@ async function session(opts: {
   const id = randomUUID();
   const runId = randomUUID();
   const at = ago(opts.quietMinutes);
-  // cm:guard `in`, not `??` — an explicit `runtimeState: null` is the print-mode case, and `??` collapses it back to the park, which turns that test into a second copy of the one above it.
   const state = 'runtimeState' in opts ? opts.runtimeState : 'awaiting_input';
   await harness.db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
@@ -124,7 +122,6 @@ async function sweep(): Promise<number> {
 }
 
 describe('the residency deadline', () => {
-  // cm:guard the default is 10min residency + 5min grace = 15. A park at 10 minutes is one the runner is still holding, and reaping it here would make core and the runner race to close the same session.
   it('leaves a park the runner still owns alone', async () => {
     const id = await session({ quietMinutes: 10 });
     expect(await sweep()).toBe(0);
@@ -137,7 +134,6 @@ describe('the residency deadline', () => {
     expect(await stateOf(id)).toEqual({ status: 'failed', reason: 'residency_expired' });
   });
 
-  // cm:guard the ONLY assertion that can fail on a mistyped JSON path — every other case reads the default, which COALESCE supplies whether the path resolves or not. Deleting this test does not weaken the suite, it blinds it.
   it('honours a residency the project actually configured', async () => {
     await setResidency(3600);
     const id = await session({ quietMinutes: 30 });
@@ -152,7 +148,6 @@ describe('the residency deadline', () => {
     expect(await stateOf(id)).toEqual({ status: 'failed', reason: 'residency_expired' });
   });
 
-  // cm:guard this hop owns the park and NOTHING else — a working session that has gone quiet belongs to the heartbeat hop, and reaping it here would give it a reason that sends whoever reads it to the wrong logs.
   it('does not touch a session that is working, however quiet', async () => {
     const id = await session({ quietMinutes: 120, runtimeState: 'working' });
     expect(await sweep()).toBe(0);
@@ -164,7 +159,6 @@ describe('the residency deadline', () => {
     expect(await sweep()).toBe(0);
   });
 
-  // cm:guard the point of the hop is CAPACITY, not a tidier row. Closing the session while its job stays `running` leaks the duplex slot exactly as before — this pair is the only assertion that the park hop buys anything.
   it('lets the session-lost hop open a kill on the job it was holding', async () => {
     await session({ quietMinutes: 20, withJob: true });
     expect(await jobKillOpened()).toBe(false);

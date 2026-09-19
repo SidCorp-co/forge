@@ -1,15 +1,5 @@
 'use client';
 
-// Create-project flow (ISS-319, extended in ISS-453 to a 2-step onboarding
-// wizard). A SlideOver-hosted form wired to `POST /api/projects` via
-// `useCreateProject`. Slug auto-derives from the name until the user edits it
-// by hand; client validation mirrors the server schema (slug 3–64
-// lowercase/digits/hyphens, name 1–200). On success we invalidate `['projects']`
-// (done by the hook) and move to step 2 — "Set up pipeline" — which saves
-// repoPath/baseBranch through the EXISTING project PATCH
-// (`useUpdateProject`) and surfaces the runner-bind checklist. It sends no
-// pipelineConfig: the server's defaults apply until Settings writes one.
-// "Skip for now" routes straight to the project.
 
 import { type FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -216,11 +206,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               maxLength={100}
             />
           </Field>
-          {/* cm:guard a new project declares `releaseModel: 'none'`, which reads no live
-              branch at all, so this dialog does not ask for one. Asking here, and defaulting
-              the answer to 'main', is how 25 of 32 fleet projects came to carry a production
-              branch nothing ever promoted to — including projects with no repository. The
-              live branch is declared under Settings → Release, with the model that reads it. */}
 
           <div>
             <Button
@@ -241,7 +226,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             <ol className="fg-body-sm mt-2 list-decimal space-y-1.5 pl-5 text-subtle">
               <li>
                 Pair a device with your account: run{' '}
-                <code className="font-mono text-[13px] text-fg">forge-runner login</code> on the
+                <code className="font-mono text-13 text-fg">forge-runner login</code> on the
                 machine that will execute jobs.
               </li>
               <li>

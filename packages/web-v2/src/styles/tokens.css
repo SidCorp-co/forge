@@ -81,6 +81,13 @@
   --fg-disabled:   var(--ink-400);
   --fg-on-accent:  #FFFFFF;
 
+  /* Scrims: --ink-900 is rgb(24 27 34), so a dialog's backdrop is the page's own
+     darkest ink at an alpha, not a fourth grey. --scrim-media is deeper because a
+     lightbox has to sink a photograph, not a panel. */
+  --scrim:         rgb(24 27 34 / 0.25);
+  --scrim-strong:  rgb(24 27 34 / 0.4);
+  --scrim-media:   rgb(15 17 21 / 0.82);
+
   --border-subtle: var(--paper-200);
   --border-default:var(--paper-300);
   --border-strong: var(--paper-400);

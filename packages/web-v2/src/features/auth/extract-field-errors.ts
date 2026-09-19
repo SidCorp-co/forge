@@ -1,10 +1,5 @@
-// Ported from `packages/web/src/lib/api/extract-field-errors.ts`.
 import { ApiError } from '@/lib/api/client';
 
-/**
- * Backend returns zod failures as `details: { fieldErrors: { field: string[] } }`
- * via `z.flattenError`. Pull the first message per field for inline display.
- */
 export function extractFieldErrors<T extends string>(
   err: unknown,
   knownKeys: readonly T[],

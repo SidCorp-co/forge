@@ -24,13 +24,10 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
-// cm:guard these two budgets bound how long `lifecycle::fail` is delayed, and that is the only thing they are for — a failure core never hears about is worse than a lost diff. 60s worst case is deliberate and safe: core's own quiet-reap tolerance is RESULT_QUIET_MINUTES = 60, so a minute is invisible to it, while the 20s a network push can exceed would throw away exactly the large diffs worth saving.
 const PICK_BUDGET: Duration = Duration::from_secs(10);
 const LOCAL_BUDGET: Duration = Duration::from_secs(15);
 const PUSH_BUDGET: Duration = Duration::from_secs(45);
 
-/// What became of the failed attempt's uncommitted work.
-// cm:edge contract -> packages/core/src/jobs/prior-attempts.ts — `salvageSchema` there is `.strict()` and its `outcome` enum is these five strings. A variant added here without adding it there is a 400 on `POST /api/jobs/:id/fail`, which loses the WHOLE failure report, not just the salvage half.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     Pushed,
@@ -123,18 +120,8 @@ fn truncate(s: &str, max: usize) -> String {
     s[..end].to_string()
 }
 
-/// How long a durability check may take.
-// cm:guard its own budget and not `PUSH_BUDGET`: this runs on the release path during recovery,
-// where a sweep that blocks costs every other run on the box its turn, and a fetch against an
-// unreachable remote hangs rather than failing. Shorter than the push it verifies, because it
-// moves no objects of its own worth speaking of.
 const FETCH_BUDGET: Duration = Duration::from_secs(20);
 
-/// Whether a checkout's commits exist anywhere but this box.
-// cm:guard three values and not a bool, because "not published" and "could not tell" lead to
-// different acts: the first is work to publish, the second is a box that cannot see its remote and
-// must not conclude anything about durability from that. Collapsing them would make an unreachable
-// network read as work at risk, or worse, as work that is safe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Publication {
     /// Every commit here is reachable from a remote ref, proven by a fresh fetch.
@@ -145,34 +132,11 @@ pub enum Publication {
     Unknown { why: String },
 }
 
-/// Does any remote have this checkout's commits? Asked by FETCHING, never by trusting a push.
-// cm:guard the fetch is what makes this an answer rather than a memory. A `git push` that exited 0
-// proves the command returned, not that the ref is observable: a push can land on a remote that
-// later rejects it in a hook, a proxy can answer for a mirror that never received the objects, and
-// a box that pushed before its own clock or credentials went bad has a local memory of success and
-// nothing behind it. The whole point of the check is to ask the remote now (ISS-1050).
-// cm:guard counted against EVERY remote ref rather than the branch's upstream, for the same reason
-// `daemon/checkpoint.rs` does: a run that pushed under a differently-named remote branch HAS
-// published its work, and an upstream-only count would call it unpublished and hold its worktree.
 pub async fn publication_of(worktree: &Path) -> Publication {
-    let fetched =
-    // cm:guard `--prune`, and it is the difference between asking and remembering. Without it a
-    // remote-tracking ref that the remote no longer has survives the fetch, `rev-list --remotes`
-    // counts against that stale ref, and this reports Published on the strength of a local memory
-    // of a push — which is the exact claim the guard above says this function does not make. Found
-    // by a planted counterexample that passed: the branch below was unreachable in every fixture
-    // until one was built where the local ref and the remote disagreed.
-    // cm:guard `--all`, and it is the SAME argument one remote further out. The count below spends
-    // every remote-tracking ref, so refreshing only `origin` left a second remote's refs counting
-    // toward `Published` while no fetch had touched them — ISS-1050 finding F6. The set fetched and
-    // the set counted are one set or this function is back to trusting a memory. A repo with one
-    // remote pays nothing for it.
-    // cm:guard a remote that cannot be reached makes the whole answer `Unknown`, never a count over
-    // the remotes that did answer. Unknown holds the worktree; a partial count releases it.
-        tokio::time::timeout(
-            FETCH_BUDGET,
-            git(worktree, &["fetch", "--prune", "--quiet", "--all"]),
-        );
+    let fetched = tokio::time::timeout(
+        FETCH_BUDGET,
+        git(worktree, &["fetch", "--prune", "--quiet", "--all"]),
+    );
     match fetched.await {
         Ok(Some(out)) if out.status.success() => {}
         Ok(Some(out)) => {
@@ -221,15 +185,9 @@ pub async fn publication_of(worktree: &Path) -> Publication {
     }
 }
 
-/// Push this checkout's branch, then ask the remote whether it took it.
-// cm:guard the answer is `publication_of`'s and not the push's, so a push that returned 0 over a
-// ref no fetch can see reports `Unpublished` rather than success. That is the difference between
-// preserving work and believing you did.
 pub async fn publish(worktree: &Path, branch: &str) -> Publication {
     let refspec = format!("HEAD:refs/heads/{branch}");
     let argv = ["push", "origin", refspec.as_str()];
-    // cm:guard a failed push is not returned as an error here: the fetch below is the authority,
-    // and a push that failed while the ref is somehow already present must still read as published.
     let _ = tokio::time::timeout(PUSH_BUDGET, git(worktree, &argv)).await;
     publication_of(worktree).await
 }
@@ -358,8 +316,6 @@ pub struct SalvageInput<'a> {
     pub repo_root: &'a Path,
     /// The project's base branch per the server, when it has one.
     pub base_branch: Option<&'a str>,
-    /// The branch the master named this job's agent — its worktree, exactly.
-    // cm:guard match this branch EXACTLY, never by prefix — a master that groups two issues names a branch no issue key predicts, so a prefix guess salvages nothing or, worse, a stranger's tree (dev1 2026-08-26: five agent worktrees, two dirty).
     pub agent_branch: &'a str,
     pub job_id: &'a str,
     pub attempt: u32,
@@ -374,7 +330,6 @@ async fn pick_target(input: &SalvageInput<'_>) -> std::result::Result<Target, Sa
         None => return Err(Salvage::failed("git worktree list could not be spawned")),
     };
     let root = input.repo_root.canonicalize();
-    // cm:guard the repo ROOT is excluded unconditionally, and that is the whole safety of this: the root sits on the project's BASE branch, so committing its leftovers would put unreviewed WIP straight onto `main`. Excluding the base branch by name as well covers a second worktree someone attached to it. This held when core sent no `worktreeBranch` and the root was the only checkout a job ever had; it holds for the same reason now that core sends one, because the worktree lane moves the job OFF the root rather than putting an ISS-* branch on it.
     let candidates: Vec<Target> = parse_worktrees(&listing)
         .into_iter()
         .filter(|t| {
@@ -393,7 +348,6 @@ async fn pick_target(input: &SalvageInput<'_>) -> std::result::Result<Target, Sa
     }
     let seen: Vec<String> = dirty.iter().map(|t| t.branch.clone()).collect();
     dirty.retain(|t| t.branch == input.agent_branch);
-    // cm:guard filtering everything away must NOT report `none`. `none` means the checkout was clean, and the five outcomes exist so that "why is there no salvage?" stays answerable — an agent whose tree is gone would otherwise look identical to one that committed everything.
     if dirty.is_empty() && !seen.is_empty() {
         return Err(Salvage::refused(format!(
             "no dirty worktree on {}; saw {}",
@@ -401,7 +355,6 @@ async fn pick_target(input: &SalvageInput<'_>) -> std::result::Result<Target, Sa
             seen.join(", ")
         )));
     }
-    // cm:guard REFUSE on more than one rather than picking, and never restore a tie-break here. Git will not check one branch out twice, so an exact match yielding two trees means this filter stopped being exact — and the arm this replaces broke that tie by mtime, which is precisely how a stranger's branch got committed to. A refusal names the fault; a pick hides it behind a salvage that looks like it worked.
     match dirty.len() {
         0 => Err(Salvage::bare(Outcome::None)),
         1 => Ok(dirty.remove(0)),
@@ -432,7 +385,6 @@ pub async fn salvage_wip(input: SalvageInput<'_>) -> Salvage {
     let refspec = format!("HEAD:refs/heads/{}", target.branch);
     let argv = ["push", "origin", refspec.as_str()];
     let push = git(&target.path, &argv);
-    // cm:guard a push that fails, times out, or finds the remote branch moved is `committed_not_pushed`, never an error and never a `--force`: the network may be the very reason the job failed, and the commit is still on the box for an operator. L2 renders that outcome as "treat that work as lost and redo it", which is the honest instruction — the next attempt may run on another box and cannot reach it.
     match tokio::time::timeout(PUSH_BUDGET, push).await {
         Ok(Some(out)) if out.status.success() => Salvage {
             outcome: Outcome::Pushed,
@@ -466,7 +418,6 @@ enum Committed {
 async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: &str) -> Committed {
     let wt = target.path.as_path();
     let branch = target.branch.as_str();
-    // cm:guard re-read HEAD rather than trusting the listing: `pick_target` and this run seconds apart, and a checkout that moved between them would take the commit with it. Detached HEAD reports as the literal string `HEAD`, which no branch name can collide with.
     let head = match git(wt, &["rev-parse", "--abbrev-ref", "HEAD"]).await {
         Some(out) if out.status.success() => stdout_trim(&out),
         Some(out) => return Committed::Stop(Salvage::failed(stderr_brief(&out))),
@@ -478,7 +429,6 @@ async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: 
         )));
     }
 
-    // cm:guard `add -A`, NEVER `-f`: `.gitignore` is the only thing between a salvage and a committed `.env`, and a failed job's worktree is full of exactly the untracked scratch a run leaves behind. An ignored file the next attempt needs is a gitignore bug to fix in the repo, not something to override from here.
     if let Some(out) = git(wt, &["add", "-A"]).await {
         if !out.status.success() {
             return Committed::Stop(Salvage::failed(stderr_brief(&out)));
@@ -499,7 +449,6 @@ async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: 
 
     let message = commit_message(branch, job_id, attempt, failure);
     let mut argv: Vec<String> = identity_args(wt).await;
-    // cm:guard `--no-verify` is load-bearing, not a shortcut: a pre-commit hook that fails is a likely REASON the job failed, and `core.hooksPath` pointing at a missing dir already refuses every commit on some boxes. A salvage blocked by the repo's own hooks preserves nothing.
     argv.extend(["commit", "--no-verify", "-m", &message].map(str::to_string));
     let argv_ref: Vec<&str> = argv.iter().map(String::as_str).collect();
     if let Some(out) = git(wt, &argv_ref).await {
@@ -622,7 +571,6 @@ mod tests {
         cleanup(&root);
     }
 
-    // cm:guard the repo root sits on the BASE branch, so a salvage that reached it would commit unreviewed WIP onto `main`. This test is the only thing standing between that guard and a refactor.
     #[tokio::test]
     async fn never_touches_a_dirty_repo_root() {
         let (root, _wt) = repo("root", "ISS-2-beta").await;
@@ -759,12 +707,6 @@ mod tests {
         cleanup(&root);
     }
 
-    // cm:guard the count and the fetch must cover the SAME set of remotes, and until ISS-1050
-    // finding F6 they did not: `--prune origin` refreshed one remote and `rev-list --not --remotes`
-    // counted against all of them, so a remote-tracking ref for a second remote that no fetch had
-    // touched made an unpublished HEAD read `Published` and licensed the release. That is exactly
-    // the local memory of a push the guard above this function says it does not trust, reached
-    // through the one remote it was not asking.
     #[tokio::test]
     async fn a_stale_ref_for_a_second_remote_is_not_a_remote_that_has_the_work() {
         let (root, wt) = repo("secondremote", "ISS-6-f6").await;

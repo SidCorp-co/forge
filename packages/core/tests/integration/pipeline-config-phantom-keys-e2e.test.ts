@@ -89,7 +89,6 @@ describe('migration 0234 removes the phantom pipelineConfig keys (ISS-994)', () 
     });
   });
 
-  // cm:guard `open.mode` is the ONE representable way to close the entry gate — `pipeline-config-service.ts` refuses `open.enabled = false` outright — so a migration that took it would silently release every project a human was holding.
   it('leaves the entry status untouched, mode included', () => {
     expect(after.states?.open).toEqual({
       enabled: true,

@@ -118,14 +118,11 @@ export interface PipelineRunSummary {
    * ISS-789 — jobs on this run that are not yet terminal (`queued`,
    * `dispatched`, `running`).
    */
-  // cm:guard this counts JOBS, never occupancy — `agent_sessions` has no `job_id` and hangs off `pipelineRunId`, so a master-lane run reads `liveJobs: 0` while fully live. Reading 0 as "nothing left working on it" is what made 14 heartbeating runs look like a leak (2026-09-12); confirm against `lastSessionBeatAt` below, which is that confirmation carried on the same row.
   liveJobs: number;
   /**
    * ISS-998 — the newest heartbeat of any non-terminal `agent_sessions` row on
    * this run, or `null` where the run has none.
    */
-  // cm:guard this is the OTHER half of `liveJobs` and it rides on the same row because a caller that has to fetch it separately cannot get a consistent answer: `agent_sessions` is paged, the set moves under an offset walk, and a session that ends between two pages takes a still-running one off the end of the list with it. One query, one snapshot, both facts (ISS-998).
-  // cm:guard graded on the BEAT and never on `status === 'running'`: the sweeper fails a silent session on its own schedule, so between a box dying and the sweep there are `running` rows with hours-old heartbeats, and taking those as proof of life keeps an abandoned run uncounted for as long as the reaper is behind.
   lastSessionBeatAt: string | null;
   /** ISS-411 — per-attempt device/retry timeline (jobs-sourced). */
   attempts: PipelineRunAttempt[];
@@ -133,7 +130,6 @@ export interface PipelineRunSummary {
   retrySummary: PipelineRunRetrySummary | null;
 }
 
-// cm:why the list endpoint stays cheap by omitting the per-step and per-attempt rollups, one query each; only the single-run summary pays for them
 export type PipelineRunListItem = Omit<PipelineRunSummary, 'steps' | 'attempts' | 'retrySummary'>;
 
 const EMPTY_COST: PipelineRunCostSummary = {
@@ -218,7 +214,6 @@ async function loadCostForRun(runId: string): Promise<PipelineRunCostSummary> {
       requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
       sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
     })
-    // cm:guard `usage_records.session_id` is an `agent_sessions.id` and NOT a job id (verified on beta, ISS-308), so the run is reached by joining that table rather than by reading a column named for a job. The cast is on the `uuid` side and never on `session_id`: casting the column is what stopped this join using `usage_records_session_id_idx` (ISS-1015), and the column is constrained to null or a canonical lowercase uuid, so the regex that used to guard a cast here has nothing left to guard.
     .from(usageRecords)
     .innerJoin(agentSessions, usageSessionMatch(sql`= ${agentSessions.id}::text`))
     .where(eq(agentSessions.pipelineRunId, runId));
@@ -258,19 +253,16 @@ async function loadAttemptsForRun(runId: string): Promise<{
     })
     .from(jobs)
     .leftJoin(devices, eq(devices.id, jobs.deviceId))
-    // cm:edge contract -> packages/core/src/db/schema.ts — the ISS-877 cause token is on `agent_sessions.failure_reason`, NOT on the job row: `jobs.failure_reason` is the classifier's free-text sentence and `jobs.failure_kind` is the four-value retry axis, so a reader that wants to tell a spend cap from a disk-full MUST come through this join or it is back to rendering one label for every death.
     .leftJoin(agentSessions, eq(agentSessions.id, jobs.agentSessionId))
     .where(eq(jobs.pipelineRunId, runId))
     .orderBy(asc(jobs.queuedAt));
 
-  // cm:guard the device map is built over EVERY device named anywhere in the retry chain, not over the rows already loaded: `_autoRetry.target` can name a box no attempt has run on yet, and resolving only the loaded rows leaves that target rendered as a bare uuid.
   const nameById = new Map<string, string>();
   for (const r of rows) {
     if (r.deviceId && r.deviceName) nameById.set(r.deviceId, r.deviceName);
   }
 
   const attempts: PipelineRunAttempt[] = rows.map((r) => {
-    // cm:guard the retry state is surfaced only where the row actually CARRIES `_autoRetry`: `readAutoRetryPayload` answers its zero state for every row, so surfacing it unconditionally would put a round counter and a rotation target on every attempt that never retried.
     const hasAutoRetry =
       !!r.payload &&
       typeof r.payload === 'object' &&
@@ -296,7 +288,6 @@ async function loadAttemptsForRun(runId: string): Promise<{
     } satisfies PipelineRunAttempt;
   });
 
-  // cm:guard the headline is taken from the MOST RECENT attempt carrying rotation state, walking backwards: an earlier attempt's round counter and target are a fact about a rotation that has since moved on, and reading the first match forwards would show a reader the box the run has already given up on.
   let retrySummary: PipelineRunRetrySummary | null = null;
   for (let i = attempts.length - 1; i >= 0; i--) {
     const ar = attempts[i]?.autoRetry;
@@ -329,9 +320,7 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     startedAt: toIsoRequired(row.startedAt),
     finishedAt: toIso(row.finishedAt),
     cost: EMPTY_COST,
-    // cm:why 0 is the honest default for a caller that did not batch the count — never a guess about liveness
     liveJobs: 0,
-    // cm:why `null` is "this caller did not load it", which is the same thing a reader does with "this run has no session": neither is a claim that the run is dead
     lastSessionBeatAt: null,
   };
 }
@@ -379,9 +368,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     ...rowToListItem(row),
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
-    // cm:guard load this from the same batched helper as the list surface and never leave the `rowToListItem` default standing — a spread whose `liveJobs: 0` is not overridden makes the detail endpoint answer 0 for EVERY run, which is the run-liveness lie ISS-789 exists to remove and is what it shipped as for the whole of ISS-789's first half
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
-    // cm:guard the same rule as `liveJobs` above: loaded from the batched helper, never left on `rowToListItem`'s null — a detail endpoint answering `null` for every run says "no session" about runs that have one
     lastSessionBeatAt: liveMap.get(runId)?.beat ?? null,
     steps,
     cost,
@@ -395,8 +382,6 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
  * Runs with no usage rows are absent from the map; callers should fall back
  * to {@link EMPTY_COST}.
  */
-// cm:guard the classification is EXHAUSTIVE over `jobStatuses` by its TYPE and is not a hand-list checked for membership: `satisfies readonly JobStatus[]` catches a status removed from the schema and says nothing about one added, so a new non-terminal state would silently stop counting as work in flight and its run would read stalled. A `Record<JobStatus, …>` refuses to compile until the new status is classified here (ISS-998).
-// cm:guard `held` is classified FALSE deliberately and is not an oversight: it is non-terminal but SLOTLESS — a job waiting on a mechanical condition, per `db/schema.ts#jobStatuses` — so counting it as work in flight would keep a run whose only job is parked out of the stalled band for as long as it waits.
 const JOB_STATUS_IS_LIVE: Record<JobStatus, boolean> = {
   queued: true,
   dispatched: true,
@@ -407,7 +392,6 @@ const JOB_STATUS_IS_LIVE: Record<JobStatus, boolean> = {
   cancelled: false,
 };
 const LIVE_JOB_STATUSES = jobStatuses.filter((s) => JOB_STATUS_IS_LIVE[s]);
-// cm:guard the session side needs no such table: it is the shared `terminalAgentSessionStatuses` inverted in SQL, and `agent_sessions.status` is `notNull()` with a default, so `NOT IN` cannot drop a row for a null status.
 
 const sqlList = (values: readonly string[]) =>
   sql.join(
@@ -416,15 +400,11 @@ const sqlList = (values: readonly string[]) =>
   );
 
 /** Both halves of run liveness for many runs, in ONE statement. */
-// cm:guard ONE statement and not two in a `Promise.all`: read-committed gives each statement its own snapshot, so a handoff that ends a session and starts a job can be straddled — the job count reads the state before it and the heartbeat reads the state after, and the run comes back claiming no job AND no session when it always had one of them. That impossible pair is exactly what the stalled count acts on (ISS-998).
-// cm:why batched like `loadCostByRunIds`: the list renders up to `limit` runs, and a per-run pair of counts would make the honest answer cost more than the dishonest one (ISS-789).
-// cm:edge contract -> packages/web-v2/src/features/agents/stalled-runs.ts — `stalledRuns` reads `liveJobs` and `lastSessionBeatAt` together; a run counted on one of them alone is either a live master-lane run called dead or an orphan left uncounted.
 async function loadRunLivenessByRunIds(
   runIds: string[],
 ): Promise<Map<string, { liveJobs: number; beat: string | null }>> {
   const out = new Map<string, { liveJobs: number; beat: string | null }>();
   if (runIds.length === 0) return out;
-  // cm:guard raw with EXPLICIT aliases and an explicit `r.` correlation, not a builder select of two bare subqueries: drizzle emits an unaliased `${pipelineRuns.id}` as `"id"`, which inside the job subquery resolves to `jobs.id` and correlates every run to itself, and two unnamed scalar subqueries both come back as `?column?` so the driver's row object keeps only the last. Both faults read as "no live jobs" on every run — caught by `tests/integration/run-live-jobs-e2e.test.ts`, which is why that file is the falsification for this query and the unit test above cannot be (ISS-998).
   const rows = await db.execute<{
     run_id: string;
     live_jobs: number | string;

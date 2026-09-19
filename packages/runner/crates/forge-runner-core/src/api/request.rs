@@ -25,8 +25,6 @@ pub struct Response {
     pub outcome: Outcome,
 }
 
-/// `issues` and `/issues` and `/api/issues` all mean the same endpoint.
-// cm:why a skill writes the path it read in a route file (`/api/issues`), a human writes the short form; refusing either would make the escape hatch something you have to look up
 pub fn normalize_path(path: &str) -> String {
     let p = path.trim();
     if p.starts_with("/api/") || p == "/api" {
@@ -86,7 +84,6 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         .request(method, &url)
         .bearer_auth(client.device_token());
 
-    // cm:edge contract -> packages/core/src/mcp/handler.ts — the ONE reader of `X-Forge-Project-Slug` in core, and it reads it off the MCP transport, not this REST client. The header used to be how a device token — which carries no project scope of its own — named the project for a call; no REST route resolves a project from it today, so on this path it is inert rather than load-bearing. ISS-931 renamed the middleware the old target named (`require-pat-or-device.ts` -> `require-pat.ts`) and did not measure whether this send can go; a change that does may delete it, and `the_token_and_the_project_slug_are_both_on_the_wire` below is the test that says what would stop being sent.
     if let Some(slug) = &req.project_slug {
         rb = rb.header("X-Forge-Project-Slug", slug.as_str());
     }
@@ -130,7 +127,6 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         };
     }
 
-    // cm:guard the body goes to STDERR on a failure, never stdout — a skill that does `forge-runner api ... > out.json` and only then checks `$?` must not find an error object sitting where the data was supposed to be. Route it to stdout and a caller that forgets the status check silently parses the error as the answer.
     let message = serde_json::from_str::<Value>(&text)
         .ok()
         .and_then(|v| v.get("message")?.as_str().map(str::to_string))
@@ -208,7 +204,6 @@ mod tests {
         assert_eq!(r.stderr, "");
     }
 
-    // cm:guard this is the assertion that keeps `api ... > out.json` honest. Move the error body to `stdout` in `run` and only this goes red — every other test here still passes, because they read the outcome rather than the stream.
     #[tokio::test]
     async fn an_error_body_never_reaches_stdout() {
         let (url, _rx) =
@@ -248,7 +243,6 @@ mod tests {
         assert!(r.outcome.retryable);
     }
 
-    // cm:guard the END-TO-END half of the DELIVERY_UNKNOWN rule: `run` must pass the request's own method into `transport_failure`. Hard-code a method there and this stays green in `exit.rs` while the real command still tells a caller to retry a POST that may have landed.
     #[tokio::test]
     async fn a_dropped_post_reports_delivery_unknown_not_a_retry() {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

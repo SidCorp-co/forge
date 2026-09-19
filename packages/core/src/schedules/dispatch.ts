@@ -44,7 +44,6 @@ const NON_STEWARD_STANDING_KEYS = new Set<string>([
 
 type StandingBuilder = (input: { mode: ScheduleMode; projectId: string }) => string;
 
-// cm:guard A standing key listed here MUST also appear in NON_STEWARD_STANDING_KEYS above, or its session is tagged metadata.steward and the steward-report parser mis-handles output that is not a steward report. Absent from this map, a standing key silently falls through to the steward prompt instead of erroring.
 const STANDING_BUILDERS: Record<string, { build: StandingBuilder; defaultMode: ScheduleMode }> = {
   [DRIFT_CHECK_KEY]: { build: buildDriftCheckPrompt, defaultMode: 'propose' },
   [PRODUCT_MAP_KEY]: { build: buildProductMapRefreshPrompt, defaultMode: 'auto' },
@@ -100,29 +99,6 @@ export function resolveTemplatePrompt(schedule: {
   return { prompt: built, standing: false };
 }
 
-/**
- * Reroute schedule.run onto the interactive agent-session rails used by
- * `POST /api/agent-sessions/start`. The schedule prompt is delivered to the
- * desktop runner via `agent:start` WS broadcast — there is no `jobs` row,
- * no dispatcher, no capability gate. Each scheduled run shows up in
- * `/settings/sessions` with full turn history, indistinguishable from a
- * user-initiated chat (except for `metadata.source='schedule.run'`).
- *
- * Why this design (vs the old jobs/dispatcher path):
- *  - `jobs(type='custom')` failed the dispatcher capability gate permanently
- *    (`runner_unsupported_type:claude-code`) because `custom` is excluded
- *    from `RUNNER_CAPABILITIES` by design — it has no canonical runner
- *    mapping. Forcing schedules through that gate was type-laundering.
- *  - Schedules are conceptually "automated new-chat sessions" — they should
- *    ride the same rails as `/api/agent-sessions/start`.
- *  - Pure of any direct mutation on `schedules.lastStatus` — caller updates
- *    `lastStatus` from the returned `status`. `lastSessionId` IS updated
- *    here (best-effort) so the UI's "last run" link resolves.
- *
- * Antigravity runner is rejected at create/update time
- * (SCHEDULE_RUNNER_NOT_SUPPORTED). The check at the top of this function is
- * defensive for any pre-existing row that may have slipped past the gate.
- */
 export async function dispatchScheduleRun(
   input: DispatchScheduleInput,
 ): Promise<DispatchScheduleResult> {
@@ -137,8 +113,6 @@ export async function dispatchScheduleRun(
   if (schedule.kind === 'release_batch') {
     return dispatchScheduleReleaseBatchRun(input);
   }
-  // ISS-1085 slice 3 — same runner-less shape: core calls Sentry itself, so there is no device and
-  // no agent session to wait on.
   if (schedule.kind === 'sentry_pull') {
     return dispatchScheduleSentryPull(input);
   }
@@ -193,13 +167,6 @@ export async function dispatchScheduleRun(
     .limit(1);
   if (!project) return { ok: false, reason: 'project-not-found', status: 'skipped' };
 
-  // Device pool is the source of truth for "is a desktop runner ready?".
-  // Tick: no device → `skipped` (the schedule's `lastStatus` reflects this
-  //   and the next cron firing tries again).
-  // Manual /run: no device → caller turns `skipped` into a 409 so the user
-  //   knows nothing was started. There is no queue to wait on now.
-  // Schedules are always REMOTE (no desktop origin) — same device resolution as
-  // chat so the two cannot drift.
   const client = await resolveChatDevice(
     { projectId: resolvedProjectId, deviceId: null, metadata: null },
     undefined,
@@ -323,15 +290,6 @@ export async function dispatchScheduleRun(
   return { ok: true, sessionId: inserted.id, status: 'running', resolvedProjectId };
 }
 
-/**
- * ISS-618 — script-kind schedule dispatch. Runs a sandboxed Node.js script
- * (see ./script/executor.ts) on the cron cadence with NO agent_sessions row
- * and NO Claude runner involved. History goes to `schedule_runs` instead of
- * `agent_sessions`; `sessionId` in the returned result is actually the
- * `schedule_runs.id`, kept under the same field name so callers (routes.ts /
- * service.ts) that only look at `result.status` / `result.sessionId` need no
- * branching of their own.
- */
 async function dispatchScheduleScriptRun(
   input: DispatchScheduleInput,
 ): Promise<DispatchScheduleResult> {
@@ -426,11 +384,9 @@ async function dispatchScheduleScriptRun(
   return { ok: true, sessionId: run.id, status: 'success', resolvedProjectId };
 }
 
-// cm:edge naming -> packages/core/src/schedules/dispatch-types.ts — every caller imports these from this module; they live next door so the runner-less branches can use them without an import cycle, and re-exporting keeps that a file layout rather than an API change
 export type {
   DispatchScheduleInput,
   DispatchScheduleResult,
   ScheduleRowForDispatch,
 } from './dispatch-types.js';
-// cm:edge protocol -> packages/core/src/jobs/loop-monitor.ts — it reaches the failover through a dynamic import('../schedules/dispatch.js'), so this re-export is load-bearing: move the symbol and that call resolves to undefined at runtime with nothing failing to compile.
 export { redispatchScheduleSessionOnFailover } from './failover.js';

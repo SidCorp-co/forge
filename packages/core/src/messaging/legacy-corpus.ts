@@ -1,17 +1,5 @@
-/**
- * The input set the compatibility baseline is measured over.
- *
- * Declared BEFORE the rule bodies moved out of the adapter tree, and read by
- * the characterization harness that ran the old bodies over it. Nothing here is
- * an expectation — those are generated, in `legacy-verdicts.fixture.json`, and a
- * fixture written by reading the old code would have recorded a belief about it
- * rather than its behaviour (ISS-997).
- */
-
-// cm:guard the texts and the segment sets are DATA in `legacy-corpus.json`, not literals here: a third of them must be Vietnamese, because the rules being frozen match Vietnamese phrasing, and translating one to pay the language gate would shrink the baseline instead of paying anything.
 import corpus from './legacy-corpus.json' with { type: 'json' };
 
-/** Text put to a reader, whatever the rule reading it. */
 export const LEGACY_TEXTS: readonly string[] = corpus.texts;
 
 /** The `segments` shape the operator screen takes. */

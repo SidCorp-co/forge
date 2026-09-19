@@ -1,19 +1,3 @@
-/**
- * ISS-1027 — the stated retention rule for every append-only table in this
- * schema, in one place.
- *
- * Every table here was added as an append-only record with the deletion
- * question deferred, and the deferral was invisible: a table with no rule and a
- * table whose rule is "keep it all" look identical from the outside. So each
- * one carries an entry, including the two that are never swept, and each entry
- * carries the reason it has the window it has.
- *
- * A window is policy rather than kernel state, so an operator moves it with an
- * environment variable and no redeploy. An override below the floor is not
- * absorbed: `resolveRetention` reports it and uses the floor, because a window
- * silently widened back up is the same defect as one silently narrowed down.
- */
-
 /** One table's stated rule. */
 export interface RetentionRule {
   /** The physical table this rule governs. */
@@ -36,13 +20,6 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     floorDays: 7,
     why: 'The events a session transcript is derived from. They go only once that transcript is recorded as finalised, because the transcript is the record that survives and these rows are what rebuild it. A session whose finalisation never happened has its transcript derived by the sweep rather than its events expired — unless only part of its history is left, in which case both are kept and the session is reported, since a rebuild from a suffix would replace a stored transcript with a shorter one. A week is the shortest window an incident can still be reconstructed from.',
   },
-  // cm:guard swept per SESSION and all-or-nothing, never per row on age alone: a
-  // transcript is rebuilt from `seq` 1 upward, so deleting a prefix and leaving a
-  // suffix would let a later rebuild replace a complete stored transcript with a
-  // shorter one. `retention/statements.ts` carries that predicate and
-  // `jobs/session-transcript.ts` refuses to rebuild a chat session whose stored
-  // history is not whole — both halves, because either alone still admits the
-  // truncation.
   {
     table: 'agent_session_events',
     days: 30,
@@ -78,7 +55,6 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     floorDays: 7,
     why: 'One row per memory search, read by `GET /api/admin/retrieval/breakdown`, which defaults to a 7-day window and takes an arbitrary `since`.',
   },
-  // cm:guard NOT swept, and the reason is a live coupling rather than caution: `docs/architecture/agent-surface.md`'s MCP tool-deletion rule spends `count(*)` over the WHOLE table as evidence that a tool was never called, and `admin/mcp-audit-queries.ts` runs exactly that query with no date filter. A window here turns "zero rows, never called" into "zero rows in N days" and licenses deleting a quarterly-called tool with nothing going red. `drizzle/migrations/0063_mcp_audit_log.sql` declares 90 days in a comment and is superseded by this entry; ISS-1027 deleted the unwired `enforceMcpAuditRetention` that implemented it. What would end this: a durable per-tool lifetime aggregate that survives deletion, which needs a table of its own.
   {
     table: 'mcp_audit_log',
     days: null,
@@ -152,14 +128,6 @@ export function retentionRuleFor(table: string): RetentionRule | undefined {
   return RETENTION_RULES.find((rule) => rule.table === table);
 }
 
-/**
- * The window one table sweeps at right now, for a surface that has to render it.
- *
- * `null` means this table has no time window, which is a stated rule and not an
- * absence. A table with no entry at all is a different thing and throws by name:
- * a caller asking about a table this schema states nothing for has a bug, and
- * answering `null` would dress it as a policy decision.
- */
 export function resolvedWindowDaysFor(table: string, env: Env = process.env): number | null {
   const rule = retentionRuleFor(table);
   if (!rule) {
@@ -170,12 +138,6 @@ export function resolvedWindowDaysFor(table: string, env: Env = process.env): nu
   return resolveRetention(rule, env).days;
 }
 
-/**
- * How many un-finalised sessions one sweep may try to finalise. The bound is
- * what stops a nightly tick rebuilding a whole backlog of transcripts in one
- * run; the sweep spends it least-recently-attempted first so a session that
- * keeps failing cannot hold it.
- */
 export function finalizeRepairMax(env: Env = process.env): number {
   const raw = env[FINALIZE_REPAIR_ENV];
   if (raw === undefined || raw.trim() === '') return FINALIZE_REPAIR_DEFAULT;

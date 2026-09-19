@@ -74,7 +74,6 @@ beforeEach(() => {
 });
 
 describe("a failed read is not an absent connection", () => {
-  // cm:guard falling through to the connect form under a failed list is how an operator pastes a second key file for an account that is already connected
   it("shows the failure and a retry, never the connect form", () => {
     listIsError.mockReturnValue(true);
     render(<GoogleSection projectId="proj-1" />);
@@ -98,7 +97,6 @@ describe("connecting an account", () => {
     expect(screen.getByText(/not a service-account key file yet/i)).toBeInTheDocument();
   });
 
-  // cm:guard the enabling read is the WHOLE file, not `client_email` alone: any JSON carrying that one field would otherwise clear the form and the server would refuse the paste the screen had just called valid
   it("a document carrying client_email but no key is still refused", () => {
     render(<GoogleSection projectId="proj-1" />);
     fireEvent.change(screen.getByPlaceholderText(/"type":"service_account"/), {
@@ -165,7 +163,6 @@ describe("an existing binding", () => {
     });
   });
 
-  // cm:guard the two credential states must never share a label — one says replace the key, the other says the key is fine and the sheet is not shared with it, and an operator reading the wrong one does work that reproduces the state exactly (ISS-924)
   it("tells a rejected key apart from an unshared sheet", () => {
     listItems.mockReturnValue([binding({ lastHealthStatus: "needs_reauth" })]);
     const { unmount } = render(<GoogleSection projectId="proj-1" />);
@@ -226,7 +223,6 @@ describe("the connections directory (criterion 28)", () => {
     );
   });
 
-  // cm:guard the exact string, not just "different from needs_reauth". The label is shared by Coolify, GitHub and Google, whose remedies are three different pages, so it has to name the CLASS of problem and leave the page to the provider's own panel. "Needs wider scope" sent a Google operator hunting an OAuth setting they do not have.
   it("names the permission rather than an OAuth scope", () => {
     expect(DIRECTORY_STATUS_META.needs_scope.label).toBe("Permission needed");
     expect(DIRECTORY_STATUS_META.needs_scope.label).not.toMatch(/scope/i);

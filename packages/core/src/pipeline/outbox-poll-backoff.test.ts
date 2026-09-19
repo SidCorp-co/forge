@@ -1,20 +1,3 @@
-/**
- * ISS-1021 criteria 24 and 25 — the outbox poll's idle backoff, and its reset.
- *
- * Its own file rather than a block in `outbox-worker.test.ts`, because that suite imports only
- * `drainOutboxOnce` and never starts the timer; this one runs the whole self-re-arming loop, which
- * is a different setup for the same module.
- *
- * Nothing covered this before. Measured while re-judging on 2026-09-18: `pollIntervalMs`,
- * `POLL_MAX_INTERVAL_MS` and `tick` appear nowhere outside `outbox-worker.ts`, so the backoff and
- * the reset could both be deleted and the whole suite stayed green — for a change whose entire
- * stated price is "8s of added worst-case latency on the first transition after an idle spell".
- *
- * The interval is not observable from the module (it is a private `let`), so the assertion is on
- * the DELAY the loop asks `setTimeout` for. That is the thing the criterion is about: a poll that
- * "lengthens its interval" lengthens exactly this number.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmitResult } from './hooks.js';
 
@@ -112,9 +95,6 @@ beforeEach(() => {
   dbExecute.mockClear();
   vi.spyOn(globalThis, 'setTimeout').mockImplementation(((_fn: () => void, ms?: number) => {
     delays.push(ms ?? 0);
-    // A handle shaped like a real one, so `clearTimeout` in the module still works. The callback
-    // is not called here — `runScheduledTick` drives it by hand off the spy's own call record, so
-    // nothing in this file waits on wall time.
     return { unref: () => {} } as unknown as ReturnType<typeof setTimeout>;
   }) as typeof setTimeout);
 });

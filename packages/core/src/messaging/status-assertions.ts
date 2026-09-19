@@ -8,8 +8,6 @@
  * tracker already lives with (ISS-997).
  */
 
-// cm:ignore CM013 — the Vietnamese alternatives below are the phrasing agents on this project actually write, and the abstention markers must carry them or the grammar reads a denial as a claim.
-
 import { issueTokenRe } from './issue-tokens.js';
 
 /** What the tracker is asked about. Only what the tracker actually holds. */
@@ -22,11 +20,9 @@ export interface StatusAssertion {
   readonly quote: string;
 }
 
-// cm:guard `deployed` is NOT here and must not be added: the tracker holds a merge stamp and a status and holds no deploy fact, so a rule claiming to check a deploy would be checking nothing and reporting a pass — which is the shape of evidence this issue exists to stop producing.
 /**
  * Is this status word half of a hyphenated compound, and so an adjective?
  */
-// cm:guard `-` is a word boundary to `\b`, so `closed-loop`, `closed-source` and `merged-comment` each matched a status word and bound to whatever reference sat nearby — `ISS-42 adds a closed-loop check` asserted that ISS-42 was closed and refused a true sentence. A false refusal at `comment-write` costs an agent the ability to record anything on the issue it is working, which is worse than the silence this rule replaces, so the compound is skipped rather than parsed (ISS-997).
 function inCompound(clause: string, at: number, length: number): boolean {
   return clause[at - 1] === '-' || clause[at + length] === '-';
 }
@@ -64,7 +60,6 @@ const ABSTAIN: readonly RegExp[] = [
   REVERSAL_RE,
 ];
 
-// cm:guard a status word is a PREDICATE or it is nothing. "take the issue to landed code", "ISS-757 assertion matches shipped classifier", "an already-merged branch" are the word used as an adjective on something that is not the issue, and every one of those three is a real line from this project's own comments that an earlier draft read as a claim. The test is the token after it: a predicate is followed by a preposition, a conjunction, a determiner, a number or punctuation — never by a bare noun.
 const PREDICATE_FOLLOWERS = new Set([
   'at',
   'as',
@@ -129,12 +124,10 @@ function isPredicate(rest: string): boolean {
   const next = /^\s+([A-Za-z][\w'-]*)/.exec(rest);
   if (!next) return true;
   const word = next[1] as string;
-  // cm:why an issue reference straight after the word is the OTHER assertion shape — "Merged ISS-807 to main", "closed ISS-996" — where the word is the verb and the issue is its object, not a noun it modifies.
   if (/^[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}$/.test(word)) return true;
   return PREDICATE_FOLLOWERS.has(word.toLowerCase());
 }
 
-// cm:guard the two directions get DIFFERENT windows, and that is measured rather than tidy. Reading backwards ("ISS-947 and ISS-948 are `closed` and merged") the widest gap any real assertion in the corpus has is five. Reading forwards the word is the verb and its object follows immediately ("Merged ISS-807 to main"), so anything wider is something else — "drift work merged too, so the epic ISS-589 now has..." is about the drift work, and a five-word forward window read it as a claim about the epic.
 const MAX_WORDS_BEFORE = 5;
 const MAX_WORDS_FORWARD = 1;
 
@@ -151,7 +144,6 @@ function stripQuoted(text: string): string {
     .replace(/^[ \t]*>.*$/gm, (m) => ' '.repeat(m.length));
 }
 
-// cm:why a clause and not a sentence: "ISS-1 is merged, but ISS-2 is not" carries an assertion and a denial in one sentence, and binding the denial to both would abstain on a real claim while binding neither would refuse a true one. A bare ` but ` splits too, because it is a contrast strong enough to change what is being asserted; a bare ` and ` does NOT, because "ISS-947 and ISS-948 are closed and merged" would shred into four clauses holding nothing.
 const CLAUSE_SPLIT_RE =
   /([.;:!?\n]+|,\s+(?:but|and|while|whereas|though|although)\b|\s+but\s+|\s+—\s+|\s+--\s+)/i;
 
@@ -161,7 +153,6 @@ interface Clause {
   readonly asked: boolean;
 }
 
-// cm:guard the terminator is captured and carried, not discarded: `?` is both a clause boundary and the one signal that the clause was a QUESTION, and splitting it away read "Is ISS-996 merged?" as a claim that it is.
 function clausesOf(text: string): Clause[] {
   const pieces = stripQuoted(text).split(CLAUSE_SPLIT_RE);
   const out: Clause[] = [];
@@ -186,7 +177,6 @@ function referencesIn(clause: string, prefixes: readonly string[]): Hit[] {
   return hits;
 }
 
-// cm:guard the status word binds to the reference in its OWN clause and to the nearest one — a comment naming two issues must be judged against two rows, and binding both words to the first reference is how a true statement about one gets refused because of the other (ISS-997 criterion 35).
 function bind(hits: readonly Hit[], at: number): Hit | null {
   let before: Hit | null = null;
   for (const h of hits) if (h.at < at && (!before || h.at > before.at)) before = h;

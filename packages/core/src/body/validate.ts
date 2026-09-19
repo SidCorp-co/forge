@@ -35,7 +35,6 @@ class Sink {
   }
 }
 
-// cm:guard REFUSED by name and never unwrapped like any other unknown tag: the component set was removed (2026-09-14) and a caller still emitting `<forge-review>` is a caller whose structure would be silently flattened into prose — the reading it meant, gone, with a 200 and a warning nobody reads. `forge-plugin` skills are the callers this is aimed at, and they reach this over the wire.
 function refuseComponent(name: string): never {
   throw new BodyInvalidError(
     `\`<${name}>\` is not markup this server accepts — the forge-* component set was removed on 2026-09-14. Send markdown, or plain HTML from the allowlist.`,

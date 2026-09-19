@@ -101,7 +101,6 @@ describe('creatorIsAgent', () => {
     expect(creatorIsAgent({ creatorAgency: 'agent', createdVia: 'web' })).toBe(true);
   });
 
-  // cm:guard THE case an OR cannot express, and the reason this reader is not `activity-routes.ts:isAgentForRow`. Rewrite `creatorIsAgent` as `agency === 'agent' || isAgentChannel(via)` and this line goes red on its own: the stored `human` is discarded and the channel decides again, which is the whole defect the column was added to end.
   it('a stored human beats an agent channel', () => {
     expect(creatorIsAgent({ creatorAgency: 'human', createdVia: 'mcp' })).toBe(false);
   });
@@ -120,9 +119,6 @@ describe('creatorIsAgent', () => {
 });
 
 describe('creatorIsAgentCondition', () => {
-  // cm:guard the fragment's top level is an OR spliced raw into its caller, so without its own
-  // parentheses `and(status, cond)` binds as `status AND a='agent' OR (...)` and the filter returns
-  // agent rows of every other status. Drop the outer pair in `creator.ts` and this goes red.
   it('is parenthesised as a whole, so an AND-composing caller cannot re-bind it', () => {
     const chunks = (creatorIsAgentCondition() as unknown as { queryChunks: unknown[] }).queryChunks;
     const text = chunks
@@ -150,10 +146,6 @@ describe('buildCreatedByCondition', () => {
     expect(agentCond).not.toBe(personCond);
   });
 
-  // cm:guard the person branch is the NEGATION of the label predicate, not a second spelling of it.
-  // A person-uuid filter that still reads only `created_via` surfaces the rows the list shows as
-  // Forge Agent under that person's own name — display and filter drifting apart is what ISS-756
-  // fixed for the channel and ISS-1093 has to keep fixed for the column.
   it("a person's rows exclude what the list marks as an agent's, read off the same column", () => {
     const cols = columnsOf(buildCreatedByCondition('11111111-1111-1111-1111-111111111111'));
     expect(cols).toContain('creator_agency');
@@ -170,7 +162,6 @@ function columnsOf(node: unknown, acc = new Set<string>()): Set<string> {
 }
 
 describe('buildOriginCondition', () => {
-  // cm:why keying the lane on created_via alone is the bug — a scheduled sweep writing through MCP records `mcp`, so its findings landed in the human Backlog lane (on forge-dev, every single one)
   it('detector keys off detector_key, not just created_via', () => {
     const cols = columnsOf(buildOriginCondition('detector'));
     expect(cols).toContain('detector_key');

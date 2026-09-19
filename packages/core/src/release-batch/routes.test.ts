@@ -130,9 +130,6 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
     expect(body.message).toContain('box-b');
   });
 
-  // cm:guard the set is refused, not collapsed. ISS-1046 widened what core RETURNS to the whole
-  // live set without widening the attempt ledger, which records one reading per run — so a
-  // two-endpoint release would be proved at one and claimed for both.
   it('answers 409 RELEASE_MULTI_CHANNEL_UNSUPPORTED, saying how many were declared', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(new ReleaseMultiChannelUnsupportedError(2));

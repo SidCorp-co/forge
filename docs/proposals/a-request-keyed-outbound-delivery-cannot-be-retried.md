@@ -16,7 +16,7 @@ lookup of an existing row, so a second insert under the same key does not dedupe
 error surfaces wherever the caller happened to be.
 
 `queue.ts:enqueueOutboundDispatch` sends every outbound dispatch with `retryLimit: 5` and
-`retryBackoff: true`, and `runOutboundDispatch` **rethrows** on failure by design — the `cm:guard` in
+`retryBackoff: true`, and `runOutboundDispatch` **rethrows** on failure by design — the invariant in
 `queue.test.ts` says why: pg-boss's retry policy is the only thing that re-runs the job.
 
 Those three facts do not compose. pg-boss re-runs the job with the same payload, the payload carries

@@ -12,7 +12,6 @@ import {
 /** The JSON the model reads out of a result's first text block. */
 const body = (r: CallToolResult) => JSON.parse((r.content[0] as { text: string }).text);
 
-// cm:why an empty context is enough here: building `tools[]` reads the descriptor only, and every guard in this file rejects before a handler could want a db or a principal.
 const ctx = {} as McpContext;
 
 function stubTool(name: string, onCall: (a: Record<string, unknown>) => unknown): McpTool {
@@ -178,7 +177,6 @@ describe('chat mcp-adapter', () => {
     expect(received).toEqual({ action: 'create', data: {} });
   });
 
-  // cm:guard these two are the ADAPTER's contract and use a guard of their own: the `forge_issues` guard this file once borrowed left chat with its tool (ISS-1009), and the rule that a rejecting guard stops the handler while an allowing one may rewrite the args is the adapter's whether any spec uses it.
   it('a guard that rejects stops the handler; one that allows may rewrite the args', async () => {
     let received: Record<string, unknown> | null = null;
     const { execute } = buildToolset(ctx, [

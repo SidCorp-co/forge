@@ -16,7 +16,6 @@ import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 
-// cm:why 2 failovers means 3 devices tried in total, counting the one the run was first dispatched to
 const MAX_SCHEDULE_FAILOVERS = 2;
 
 interface ScheduleFailoverState {
@@ -31,7 +30,6 @@ export type ScheduleFailoverResult =
       status: 'not-schedule' | 'exhausted' | 'no-device' | 'no-prompt' | 'side-effects' | 'error';
     };
 
-// cm:why the disposition is written as a sentence rather than a token because it lands in `failure_detail`, whose contract (ISS-877) is prose — the token column `failure_reason` keeps the classifier's cause and is never touched here
 const FAILOVER_DISPOSITIONS: Record<
   Exclude<ScheduleFailoverResult['status'], 'redispatched'>,
   string
@@ -44,17 +42,6 @@ const FAILOVER_DISPOSITIONS: Record<
   error: 'no failover (the failover attempt threw)',
 };
 
-/**
- * ISS-875 — replace the disposition the classifier PREDICTED on the failed row
- * with the one this attempt actually applied.
- *
- * `finalizeScheduleSessionFailure` stamps `failure_detail` before the failover
- * runs, so the row reads `usage/session limit → cross-device failover` whatever
- * happens next; the outcome was previously only logged. Callers that never made
- * such a claim (the loop-monitor sweep, whose sessions carry the bare
- * `no_client_ack` token) pass no `failureClass` and are left alone — there is
- * nothing to correct.
- */
 async function stampFailoverDisposition(
   sessionId: string,
   result: ScheduleFailoverResult,
@@ -149,7 +136,6 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
     return { ok: false, status: 'not-schedule' };
   }
 
-  // cm:guard NEVER re-dispatch a session that may have committed work: re-running replays every side effect it already landed. Attached (`claudeSessionId` non-null) with anything other than a PROVEN `toolCallCount: 0` counts as may-have — `/desktop/status` never patches the count, so unknown must refuse. ISS-875: session 1584cfcf died on a usage limit at 15 tool calls having created ISS-872, and only the absence of a free device stopped the classifier path (session-failure.ts, which unlike the loop-monitor's `claudeSessionId IS NULL` sweep has no predicate of its own) from creating it a second time.
   if (failed.claudeSessionId != null && meta.toolCallCount !== 0) {
     await alertAbandonedScheduleWork({
       id: failed.id,
@@ -171,7 +157,6 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
   const attempt = (prior.attempt ?? 0) + 1;
   if (attempt > MAX_SCHEDULE_FAILOVERS) return { ok: false, status: 'exhausted' };
 
-  // cm:guard reuse the prompt stored on the failed session; never re-build it — a one-shot skill-improve template re-trips its own idempotency gate on a rebuild and returns null, so the failover would dispatch nothing while reporting success.
   const messages = Array.isArray(failed.messages) ? failed.messages : [];
   const firstUser = messages.find(
     (m): m is { role: string; content: string } =>
@@ -218,15 +203,12 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
       message: firstUser.content,
       broadcastEvent: 'agent-session.created',
     });
-    // cm:why lastStatus:'running' — a failover is a fresh dispatch too; without this the prior 'failed' write lingers as the reported outcome for the whole failover attempt
     try {
       await db
         .update(schedules)
         .set({ lastSessionId: dispatched.id, lastStatus: 'running' })
         .where(eq(schedules.id, meta.scheduleId as string));
-    } catch {
-      // cm:why swallowed: the re-dispatch itself already committed, and a stale lastStatus only mis-labels the schedule row in the UI until the new session reports
-    }
+    } catch {}
     return { ok: true, status: 'redispatched', sessionId: dispatched.id, deviceId };
   } catch (err) {
     logger.error(

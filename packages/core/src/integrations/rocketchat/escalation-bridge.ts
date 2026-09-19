@@ -4,7 +4,6 @@
  * fresh Bao-persona turn to author the reply the user sees, creating any
  * proposed follow-up issue under Bao's own authority.
  */
-// cm:guard must be fired from BOTH terminal writers — agent-sessions/routes.ts PATCH (runner happy-path) and lifecycle/transition.ts (sweeper, cascade, cancel, dispatch-failure) — or a whole class of escalations hangs silent
 
 import { eq } from 'drizzle-orm';
 import { runExternalChatTurn } from '../../assistant/external-chat.js';
@@ -52,7 +51,6 @@ export interface EscalationPayload {
 
 const JSON_FENCE_RE = /```json\s*([\s\S]*?)```/gi;
 
-// cm:guard the LAST fenced block wins (a model may think out loud first) and this must never throw — a missing fence or bad JSON degrades to the raw text, so a PM reply that forgot the contract still delivers instead of being dropped
 export function parseEscalationPayload(text: string): EscalationPayload {
   const matches = [...text.matchAll(JSON_FENCE_RE)];
   const fence = matches[matches.length - 1]?.[1];
@@ -109,7 +107,6 @@ interface EscalationRoute {
   principalUserId: string;
 }
 
-// cm:why the identity the Bao turn runs as, resolved the same way buildRoutes does it (projects -> organizations.createdBy); null on a missing row is a synthesis failure the caller falls back from
 async function resolveEscalationRoute(projectId: string): Promise<EscalationRoute | null> {
   const [proj] = await db
     .select({ slug: projects.slug, name: projects.name, orgId: projects.orgId })
@@ -137,7 +134,6 @@ const EMPTY_SYNTHESIS = {
 const correctiveSynthesis = (problems: string[]): string =>
   `[SYSTEM CHECK — not from the user] Your previous answer cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, and reply in the user's language.`;
 
-// cm:guard a FRESH turn, never a continuation of the room's in-memory sessionByRid: this bridge fires from terminal writers that do not hold that map and may run on another core instance
 async function synthesizeViaBao(
   session: SessionRow,
   meta: RoomReplyMeta,
@@ -145,7 +141,6 @@ async function synthesizeViaBao(
 ): Promise<{ text: string; proof: ReplySendProof }> {
   const route = await resolveEscalationRoute(session.projectId);
   if (!route) return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
-  // cm:guard a direct room whose stored principal is missing REFUSES the synthesis instead of falling through to the organization's creator: this turn can file an issue, and a DM's single human is the only authority the room grants (ISS-987). The honest fallback is already the no-route answer, so the refusal costs the room a synthesis and never an answer.
   if (meta.shape === 'direct' && !meta.principalUserId) {
     logger.error(
       { sessionId: session.id, rid: meta.rid },
@@ -160,7 +155,6 @@ async function synthesizeViaBao(
     webBaseUrl: webBaseUrl(),
     botName: meta.botName,
   });
-  // cm:guard pass NO tools on a pure relay turn — runExternalChatTurn's requireInitialToolUse would otherwise force a needless call
   const tools = payload.issueProposal
     ? buildProjectToolset(
         buildChatToolContext({
@@ -184,7 +178,6 @@ async function synthesizeViaBao(
 
   let result = await synthesise(null);
 
-  // cm:guard this door repairs, and until ISS-997 it did not — it read the verdict and fell straight to the fallback, costing the room the whole answer on a first miss. It CAN repair, unlike `agent-chat-completion`: the synthesis is this function's own model turn, so there is something to ask again. The budget is the `escalation-synthesis` row, not a number here.
   const outcome = await withRepairs('escalation-synthesis', [result.reply], {
     screen: async (segments): Promise<MessageVerdict> => {
       const text = (segments[0] ?? '').trim();
@@ -213,10 +206,6 @@ async function synthesizeViaBao(
     );
     return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
   }
-  // cm:guard the proof is minted from the verdict `withRepairs` PASSED — the repair loop may have
-  // screened a rewritten attempt, and what has to be admitted is the text about to be posted. Until
-  // ISS-978 this line hand-built `{ ok: true, problems: [] }`, which asserted a screen had run over a
-  // string it never named and would have compiled just as well with no screen in the file at all.
   const text = result.reply.trim();
   const admitted = proven('escalation-synthesis', wholeAgentText(text), outcome.verdict);
   if (!admitted) {
@@ -233,9 +222,6 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
   const meta = readRoomReplyMeta(session.metadata, 'escalation');
   if (!meta) return;
   if (meta.deliveredAt) return;
-  // cm:guard the room is checked against THIS session's project before anything is posted: an escalation is minutes or hours long, and a room rebound in the meantime is not this project's to answer into (ISS-1001).
-  // cm:guard and BEFORE the claim, not after it: a transient failure in this lookup throws, and a throw after the claim spends the one stamp this delivery has — the answer is then lost to a database blip with every later sweep reading it as already delivered. An UNBOUND room is terminal and takes the claim on purpose, so the sweeper stops retrying what can never succeed.
-  // cm:guard FIRST of a pair — the second read sits immediately before `sendFixedReply` below, because the synthesis turn between them is long enough for a binding to move: this one decides whether to spend a model turn at all, that one whether its answer may still be delivered (ISS-1001).
   const bound = await roomStillBoundTo({
     connectionId: meta.connectionId,
     projectId: session.projectId,
@@ -278,8 +264,6 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
     }
   }
 
-  // cm:guard the binding is read a SECOND time, here, because `synthesizeViaBao` above is a whole model turn and a rebind fits easily inside it — the first read, taken before the claim, cannot know what happened during the synthesis (ISS-1001).
-  // cm:why no claim is touched here: the claim above is already spent and that is right, since a rebound room is terminal for THIS delivery; the answer is not re-queued, because the project that would retry it is no longer the room's.
   if (
     !(await roomStillBoundTo({
       connectionId: meta.connectionId,
@@ -312,7 +296,6 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
 /**
  * The room saw this answer, so the room's transcript holds it.
  */
-// cm:guard the synthesis TURN stays out of the transcript and only its answer goes in: the turn's own input is `buildSynthesisMessage`, an instruction the room never saw, so running it against the room's conversation would put words in a person's mouth. The answer goes through the neutral transcript door instead, with the receipt the send returned — which is also the only way an escalated reply satisfies the same delivery-proof rule the fast path does (ISS-1001 criterion 15).
 async function recordInRoomTranscript(
   serverUrl: string,
   projectId: string,

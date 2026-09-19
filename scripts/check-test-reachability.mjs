@@ -1,17 +1,4 @@
 #!/usr/bin/env node
-// Every tracked test file must be collected by some runner, and a suite that is
-// skipped unconditionally must say why.
-//
-// Both halves come from real findings, on 2026-08-25. `packages/tests` held 64
-// test files that no runner collected — no package.json, so pnpm never saw the
-// directory and turbo never ran it — and they had been testing two deleted
-// packages since 2026-08-23. Separately, the device-runner E2E sat behind
-// `describe.skipIf(!process.env.FORGE_E2E_REAL_PAIR)` waiting on endpoints that
-// had already shipped; when the flag was finally set it failed immediately, with
-// three bugs accumulated in a code path nothing had executed for months.
-//
-// Neither is visible to a test runner: a file it never collects produces no
-// output at all, and a skipped suite reports as a pass.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -53,7 +40,6 @@ function collect(configRel) {
     .map((l) => l.trim())
     .filter((l) => TEST_FILE_RE.test(l))
     .map((l) => relative(ROOT, resolve(cwd, l)));
-  // cm:guard an empty answer is a FAILED answer, never "this runner collects nothing". A `vitest list` that errors prints to stderr and exits non-zero, but one whose config loaded and matched nothing looks identical to a successful empty run — and treating either as zero would make every file that runner owns look unreachable, or worse, let a broken runner shrink the collected set until the gate passes on a repo that runs no tests at all.
   return files.length > 0 ? files : null;
 }
 
@@ -75,7 +61,6 @@ if (!tracked) {
 }
 
 const testFiles = tracked.filter((f) => TEST_FILE_RE.test(f));
-// cm:guard `git ls-files` reads the INDEX, so a test file deleted on disk and not yet staged is still listed and the read below dies on a raw ENOENT stack that names node:fs and not the file. Say which file and what to do about it — the gate's own crash must not read as vitest breaking (ISS-998).
 const vanished = testFiles.filter((f) => !existsSync(join(ROOT, f)));
 if (vanished.length > 0) {
   console.error(
@@ -90,7 +75,6 @@ if (configs.length === 0) {
   process.exit(2);
 }
 
-// cm:guard preflight before `vitest list`. With no node_modules every runner answers `null`, `judge` reports `\`vitest list\` failed` for the first config, and that names vitest as the thing that broke — a reader chases a runner that was never installed. The absence has to be stated before the collection that misattributes it.
 const missingDeps = absentPrerequisites(ROOT, ['deps']);
 if (missingDeps.length > 0) {
   console.error(`test-reachability: could not run — ${remedyLines(missingDeps)[0]}`);
@@ -99,7 +83,6 @@ if (missingDeps.length > 0) {
 
 const collectedPerRunner = Object.fromEntries(configs.map((cfg) => [cfg, collect(cfg)]));
 const declaredSkips = readSkips();
-// cm:guard the read is guarded and the miss is COLLECTED rather than thrown: `git ls-files` answers the index, so a test file deleted from the working tree and not yet staged is tracked and absent, and an unguarded read made that ordinary state exit 2 with a `node:fs` stack naming nothing a reader could act on (2026-09-14).
 const unreadable = [];
 const skipHits = testFiles.filter((f) => {
   let src;

@@ -1,13 +1,3 @@
-/**
- * ISS-1030 — what a continued assistant turn keeps.
- *
- * The CLI emits one turn as several `assistant` lines and the fold merges them
- * into one growing entry. Everything about that merge which is not simply "text
- * and tool calls" lives here, because the filter that used to do it silently
- * dropped every other block member — a turn whose TodoWrite landed on any line
- * but the first stored no todo list at all, on the pipeline path as well as the
- * chat one.
- */
 import { describe, expect, it } from 'vitest';
 import {
   type AgentMessage,
@@ -19,11 +9,6 @@ import {
 const makeId = () => createIdFactory();
 
 describe('a continued assistant turn', () => {
-  // cm:guard the case ISS-1030 found: the continuation filter admitted `text` and
-  // unseen `tool` blocks and dropped every other member, so a turn whose
-  // TodoWrite landed on any assistant line but the first stored no todo list at
-  // all — on the pipeline path as well as the chat one. The assertion is on the
-  // BLOCKS a thread draws, because the todo list has no other home.
   it('carries a todo list that arrives on a continuation rather than dropping it', () => {
     const id = makeId();
     const messages: AgentMessage[] = [];

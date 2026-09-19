@@ -67,7 +67,6 @@ describe("deriveDirectoryStatus", () => {
         card({ status: "connected", meta: { lastHealthStatus: "needs_reauth" } }),
       ),
     ).toBe("needs_reauth");
-    // cm:guard a credential verdict outranks an open breaker — the breaker is a symptom of the refusals and showing Degraded hides the one thing the operator can act on
     expect(
       deriveDirectoryStatus(
         card({ status: "connected", meta: { breakerOpen: true, lastHealthStatus: "needs_reauth" } }),
@@ -200,10 +199,6 @@ describe("groupCardsByProvider", () => {
     expect(groups[1].cards).toHaveLength(1);
   });
 
-  // cm:guard a service row sorts LAST, under both deploy stages. Without this the
-  // rank could return the same number for every input and the two cases above would
-  // still pass, because a sort that ties leaves the input order — and the input
-  // order there already happens to be the answer for one of them.
   it("sorts a service row below both deploy stages", () => {
     const groups = groupCardsByProvider([
       card({

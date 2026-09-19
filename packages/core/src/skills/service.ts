@@ -111,7 +111,6 @@ export type SkillListRow = {
  * The catalog projection: the twelve columns a `forge_skills.list` row is
  * rendered from, and nothing else.
  */
-// cm:guard every column here is read by `toSkillListRow` or by the dedup beside it (`mcp/tools/forge-skills.ts`), and none of the seven heavy fields — `prompt`, `skillMd`, `files`, `tools`, `manifest`, `changelog`, `localGuide` — may join them: the catalog surface selected all seven for every global and project skill and then dropped them (ISS-1025), which is the same token-cap overflow ISS-428 removed from the RESPONSE without ever removing it from the query. A field the list starts rendering is added in both places or in neither.
 export const skillListProjection = {
   id: skills.id,
   name: skills.name,
@@ -160,12 +159,6 @@ export async function getSkillForProject(
   return row;
 }
 
-/**
- * Shared CRUD used by BOTH the REST routes and the MCP tools so the two
- * surfaces can never drift. None of these check authorization — callers must
- * verify owner/admin first. All create project-scoped skills only; global
- * skills are managed by the boot-time seeder, never via these paths.
- */
 export interface CreateProjectSkillInput {
   projectId: string;
   name: string;
@@ -416,7 +409,6 @@ export async function resolveOrAdoptProjectSkill(
     files: (Array.isArray(global.files) ? global.files : []) as SkillFileInput[],
     basedOnGlobalSkillId: global.id,
     basedOnGlobalVersion: global.version,
-    // cm:guard ISS-741 — this is the SYSTEM provisioning bridge (bootstrap fan-out + domain-template apply) and not a user create/adopt path, which is the only reason it may name a reserved meta skill; it must keep delivering forge-onboard's disk copy until ISS-742 retires it.
     allowReservedMetaName: true,
   });
   return created.id;

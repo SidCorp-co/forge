@@ -840,9 +840,6 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
     expect(job.issueId).toBe('iss-1');
   });
 
-  // cm:guard the retry carries the RECORDED payload, not a rebuild of it: a Sentry status update
-  // names a target label and a status that `{ runId, issueId }` cannot carry, so a rebuild would
-  // re-dispatch a different request under a button that says it repeats the failed one (ISS-1085).
   it('202 — replays the recorded request whole, including a sentry target label and status', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
@@ -1156,9 +1153,6 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     expect(body.code).toBe('ALREADY_EXISTS');
     expect(body.message).toContain('partner-a');
     expect(createConnection).not.toHaveBeenCalled();
-    // cm:guard the preflight asks the index's WHOLE key. Dropping the label refused a second
-    // NAMED storefront; dropping the role refused a service binding beside a DEPLOY one at the
-    // same label, which after ISS-1046 is the shape every fleet epodsystem binding is in.
     expect(findActiveServiceBindingAtLabel).toHaveBeenCalledWith(
       PROJECT_ID,
       'epodsystem',
@@ -1166,7 +1160,6 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     );
   });
 
-  // cm:guard the pair the partial index admits and the old preflight refused.
   it('201 — a service binding is allowed beside a DEPLOY one at the same label', async () => {
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);

@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-// Bubble panel auto-injects which page (and which issue) the user is on so the
-// agent can ground its replies without the user typing "ISS-XX" by hand. Shared
-// by the REST routes and the single chat-turn dispatcher.
 export const pageContextSchema = z
   .object({
     page: z.string().min(1).max(40),
@@ -36,10 +33,6 @@ export function readPersistedPageContext(value: unknown): PageContext | null {
 export function samePageContext(a: PageContext | null | undefined, b: PageContext): boolean {
   if (!a) return false;
   if (a.page !== b.page) return false;
-  // If both sides have an issueId, they must match. When one side is missing
-  // (the issue query hadn't resolved yet on the previous turn, or this turn),
-  // treat the same page as a match — otherwise we'd echo the [Context: …] line
-  // every time the issue data races into place.
   if (a.issueId && b.issueId) return a.issueId === b.issueId;
   return true;
 }

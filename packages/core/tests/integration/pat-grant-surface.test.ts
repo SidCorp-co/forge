@@ -69,7 +69,6 @@ beforeAll(async () => {
 
   const { mintPat } = await import('../../src/auth/pat.js');
 
-  // cm:guard minted through `mintPat` and then FORCED to NULL by hand, because a token minted today takes the code path that WRITES the column while a production token predates the column entirely — asserting on the freshly minted one would assert that the new writer works, not that the old rows survive, which is the only question the deploy actually turns on.
   const legacy = await mintPat({ userId: user.id, name: 'unmigrated' });
   unmigrated = legacy.plaintext;
   await harness.db.execute(
@@ -242,7 +241,6 @@ describe('the mint route offers the menu and refuses anything off it', () => {
     ]);
   });
 
-  // cm:guard the name is refused by the ENUM, not by a handler branch, which is what makes "an operator cannot invent a route group" a property of the schema rather than of someone remembering to check. A 400 here and a 201 with the name dropped are the two outcomes, and only the first is the fence.
   it('refuses a name that is not on the menu, rather than dropping it', async () => {
     const res = await send('POST', '/api/pat', await sessionToken(), {
       name: 'invented-group',
@@ -306,7 +304,6 @@ describe('the header names the grant that fixes the refusal', () => {
     expect(res.accepted).toBe('schedules:read');
   });
 
-  // cm:guard the token here holds every OTHER name on the menu, which is what makes this a test of the header's claim rather than of the fence in general: if the refusal survives a grant of all thirteen siblings, the one name the header printed is the one the route actually needed (ISS-974).
   it('still refuses a token granted every other name on the menu', async () => {
     const res = await send('GET', path(), everythingElse);
     expect(res.status).toBe(403);

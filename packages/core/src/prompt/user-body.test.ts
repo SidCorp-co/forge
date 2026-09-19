@@ -7,7 +7,6 @@ import { buildJobPromptString } from './user.js';
  * from this one. Its own file because `user.test.ts` is frozen at its size.
  */
 
-// cm:edge contract -> packages/core/src/body/prepare.ts — ISS-898. The prompt is one of four read paths that must see the PROJECTION, and this is the case that would go red if the projection were dropped from this one.
 describe('an html component description reaches the prompt as text, not markup', () => {
   const snapshot = {
     title: 'Body templates',
@@ -21,7 +20,6 @@ describe('an html component description reaches the prompt as text, not markup',
     descriptionFormat: 'html',
   };
 
-  // cm:guard the LABELS a component's own `toText()` used to add ("Who it hurts:", an evidence row rendered from its attributes) are gone with the registry (2026-09-14), and their loss is priced here rather than discovered: the projection is generic prose extraction now, so a stored component body reaches an agent as its text and an ATTRIBUTE-ONLY child such as `<forge-row date=… />` reaches it as nothing. It costs the 11 rows fleet-wide that carry one, which the owner accepted when the vocabulary was removed.
   it('carries the prose and the mermaid source, and no forge- tag', () => {
     const out = buildJobPromptString({
       jobType: 'triage',

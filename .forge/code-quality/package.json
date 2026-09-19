@@ -1,0 +1,42 @@
+{
+  "name": "eslint-plugin-code-quality",
+  "version": "0.15.0",
+  "description": "ESLint rules and configs for maintainable comments, god-file limits, and design-token discipline",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "bin": {
+    "code-quality-gate": "./bin/code-quality-gate.mjs",
+    "code-quality-setup": "./bin/code-quality-setup.mjs"
+  },
+  "files": [
+    "src",
+    "bin",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "eslint": ">=9 <11"
+  },
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "comments",
+    "god-files",
+    "max-lines",
+    "code-quality",
+    "design-tokens",
+    "contrast",
+    "accessibility"
+  ],
+  "license": "MIT",
+  "author": "Thanh Nguyen"
+}

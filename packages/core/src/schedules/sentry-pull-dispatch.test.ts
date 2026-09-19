@@ -1,9 +1,3 @@
-/**
- * ISS-1085 slice 3 — what a `sentry_pull` tick writes.
- *
- * One `schedule_runs` row, whichever way the pull went, and NO agent session — asserted as the
- * absence of a session write, because "runs inside core" is a claim about what is not created.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const inserted: Record<string, unknown>[] = [];
@@ -125,11 +119,6 @@ describe('dispatchScheduleSentryPull', () => {
     expect(runSentryPullMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard F3 from the review of the landing head. Not every step of `runSentryPull` answers with
-  // an outcome: resolving the project's creator, building the adapter context and reading the
-  // thresholds all precede its own guards. A rejection reaching here uncaught left this row
-  // `running` with no `finished_at` forever — a schedule_runs row claiming in-flight work no box
-  // was doing.
   it('settles the run row as FAILED when the pull throws instead of answering', async () => {
     runSentryPullMock.mockRejectedValue(new Error('readThresholds: connection terminated'));
     const result = await dispatchScheduleSentryPull(INPUT);

@@ -1,18 +1,16 @@
 "use client";
 
-// Project settings → Pipeline → "Stage permissions".
-//
-// Reads and writes states[*].allowedTools / disallowedTools / mcpServers, the
-// tool policy the dispatcher hands each session and which was API-only until
-// ISS-814. Runner pools (`deviceIds`) are displayed here but edited in
-// RunnerPoolsSection, which owns the stage × runner matrix.
-//
-// Takes the already-fetched pipelineConfig rather than querying, so it never
-// flickers mid-edit. Collapsed by default per stage: the only way a denylist
-// this long stays legible on one screen.
 
 import { useState } from "react";
-import { Badge, Banner, Button, Checkbox, Collapsible, MonoTag } from "@/design";
+import {
+  Badge,
+  Banner,
+  Button,
+  CardTitle,
+  Checkbox,
+  Collapsible,
+  MonoTag,
+} from "@/design";
 import { providerForMcpServerName } from "@/features/integrations/providers/registry";
 import { formatPipelineConfigError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
@@ -56,10 +54,6 @@ function namesOf(names: string[]): string {
   return names.map((raw) => humanizeToolName(raw).label).join(", ");
 }
 
-// cm:guard a stored integration name in this map is a LEFTOVER, not a per-stage MCP server: nothing
-// reads it any more, and the grant that does reach an agent is `agentAccess` on the binding. Shown
-// as the bare `MonoTag` it used to be, it read as a working per-stage declaration, which is how a
-// stage could look configured while the integration reached nothing.
 function McpServerTag({ name }: { name: string }) {
   const integration = providerForMcpServerName(name);
   if (!integration) return <MonoTag>{name}</MonoTag>;
@@ -76,7 +70,6 @@ function McpServerTag({ name }: { name: string }) {
 
 /** The stages an editor offers: every ladder status, so a stage with no
  *  override yet can be given one. */
-// cm:guard `PIPELINE_STATUS_ROWS` and nothing else — the same guard `summarizeStageConfig` carries. The extra-status row this used to append was unreachable (core's `statesConfigSchema` is a `strictObject`, so such a document fails to parse at all) and, had one arrived, it was an editable row whose save 400s (ISS-1000).
 function editableRows(config: PipelineConfig): StagePermissionRow[] {
   const states = (config.states ?? {}) as Record<string, PipelineStateConfig | undefined>;
   return PIPELINE_STATUS_ROWS.map(({ status, label }) => ({
@@ -86,7 +79,6 @@ function editableRows(config: PipelineConfig): StagePermissionRow[] {
   }));
 }
 
-// cm:guard this is the editor's React key, and it must change whenever the STORED stage does: `useState` initialisers do not re-run, so an identity key leaves the form showing pre-save values after a successful write.
 function stageEditorKey(config: PipelineStateConfig): string {
   return JSON.stringify(config);
 }
@@ -113,7 +105,6 @@ function StageEditor({
     snapshot(denied, allowed, mcp) !==
     snapshot(stored.disallowedTools ?? [], stored.allowedTools ?? [], stored.mcpServers ?? {});
 
-  // cm:guard an EMPTY list is `undefined`, never `[]`: `stageConfigSchema` accepts both, but a stored `disallowedTools: []` reads on every later screen as "this stage was deliberately given an empty denylist" rather than "this stage has no override", which is the distinction `summarizeStageConfig` renders.
   function save() {
     const patch: PipelineStateConfig = {
       disallowedTools: denied.length > 0 ? denied : undefined,
@@ -218,7 +209,7 @@ export function StagePermissionsSection({
 
   return (
     <div className="mt-6 border-t border-line pt-5">
-      <h3 className="fg-label text-fg">Stage permissions</h3>
+      <CardTitle className="fg-label text-fg">Stage permissions</CardTitle>
       <p className="fg-body-sm mb-3 text-muted">
         What each stage&apos;s agent may and may not reach, and the MCP servers layered on for that
         stage alone. Runner pools are shown here and edited in the matrix below.

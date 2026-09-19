@@ -1,11 +1,3 @@
-/**
- * ISS-652 — GET /api/admin/alerts, the pull half of the Tier 1 alert engine.
- * Own `requireAdmin()` router (mirrors ISS-651's `aggregate-routes.ts`) so it
- * is importable standalone in an integration test. All alert logic lives in
- * `alert-queries.ts`; this file only validates the query string and shapes
- * the response.
- */
-
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -18,7 +10,6 @@ import { computeAlerts } from './alert-queries.js';
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:guard `staleSeconds` must stay OPTIONAL with no default — a default here is indistinguishable from a caller-supplied value inside `computeAlerts`, and it would shadow the configured `stuckJobSeconds` on every request, so the GET would keep answering on 600s however the operator set the threshold.
 const alertsQuerySchema = z.object({
   staleSeconds: z.coerce.number().int().min(60).max(86_400).optional(),
 });

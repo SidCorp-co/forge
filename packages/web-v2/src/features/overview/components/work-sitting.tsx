@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Card, CardContent, DotStrip, Waffle } from "@/design";
+import {
+  Card,
+  CardContent,
+  CardTitle,
+  DotStrip,
+  SectionTitle,
+  Waffle,
+} from "@/design";
 import { bucketHref, formatElapsed, projectSilenceRows, waffleCells } from "../derive";
 import { BUCKET_ORDER } from "../derive";
 import { PULSE_BUCKET_LABELS } from "../types";
@@ -13,7 +20,6 @@ export interface WorkSittingProps {
 }
 
 /** Section 2 — where is the work sitting? */
-// cm:guard the age dots carry NO door: `work.humanBlockedAges` is ages alone, so no exact list of those issues can be opened from here, and a dot that looked clickable would be an affordance over nothing (ISS-988 criteria 42-44). Giving them one means the response carrying their identities first.
 export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
   const cells = waffleCells(pulse.work.buckets);
   const rows = projectSilenceRows(pulse, nowMs);
@@ -22,7 +28,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-4">
-        <h2 className="fg-h3">Where the work is sitting</h2>
+        <SectionTitle className="fg-h3">Where the work is sitting</SectionTitle>
 
         {cells.some((c) => c.count > 0) ? (
           <Waffle
@@ -44,10 +50,10 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
 
         {ages.length > 0 ? (
           <div className="flex flex-col gap-1">
-            <h3 className="fg-body-sm text-muted">
+            <CardTitle className="fg-body-sm text-muted">
               Blocked on a person — {ages.length} {ages.length === 1 ? "issue" : "issues"}, oldest{" "}
               {formatElapsed(Math.max(...ages))}
-            </h3>
+            </CardTitle>
             <DotStrip
               items={ages.map((age, i) => ({
                 key: `age-${i}`,
@@ -60,7 +66,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
         ) : null}
 
         <div id="pulse-per-project" className="flex flex-col gap-2">
-          <h3 className="fg-body-sm text-muted">Longest without an issue run</h3>
+          <CardTitle className="fg-body-sm text-muted">Longest without an issue run</CardTitle>
           {rows.length === 0 ? (
             <p className="fg-body-sm text-muted">No projects in scope.</p>
           ) : (

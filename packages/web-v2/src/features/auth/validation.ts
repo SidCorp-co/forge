@@ -1,10 +1,3 @@
-/**
- * Client-side pre-submit validation. web-v2 carries no `zod` dependency (the
- * cold auth payload stays lean), so these are hand-rolled checks that mirror
- * the server contract just closely enough to catch obvious mistakes before the
- * round-trip. The server (`@forge/contracts` zod schemas + `core/src/auth`) is
- * always the authority — a tampered client still gets rejected there.
- */
 
 // Pragmatic email shape — one `@`, a dot in the domain, no whitespace. Matches
 // the v1 behaviour (zod `.email()`) for the cases real users hit.

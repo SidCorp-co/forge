@@ -48,7 +48,6 @@ const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
 // Kebab-case label: starts with alphanumeric, followed by alphanumeric or dashes.
 const LABEL_REGEX = /^[a-z0-9][a-z0-9-]*$/;
 
-// cm:edge contract -> packages/web-v2/src/features/project-settings/components/integrations-tab.tsx — the same two declarations, worded the same way, because the two create forms reach the same columns
 const ROLE_SELECT_OPTIONS: SelectOption[] = [
   { value: "service", label: "Service — a project-wide facility" },
   { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
@@ -377,10 +376,6 @@ function AddEpodsystemForm({
     (!hasDefault || (label.trim().length > 0 && !labelError)) &&
     !create.isPending;
 
-  // cm:guard the role picker CLEARS the stages it hides. A hidden control whose value
-  // still submits is how a service binding reaches the server carrying a stage, which
-  // the database refuses by constraint (`integration_bindings_role_stages_chk`) — a 500
-  // where the form could simply not have sent it.
   function chooseRole(next: BindingRole) {
     setRole(next);
     setError(null);
@@ -396,9 +391,6 @@ function AddEpodsystemForm({
 
   async function handleCreate() {
     setError(null);
-    // cm:guard this refusal is the FORM's, said before the round trip and naming the
-    // remedy: the database refuses a deploy binding with no stage, and "400 Bad Request"
-    // names neither the field nor what a valid value looks like.
     if (role === "deploy" && stages.length === 0) {
       setError(
         "Choose at least one stage — a deploy target has to serve Preview, Live or both.",
@@ -406,10 +398,6 @@ function AddEpodsystemForm({
       return;
     }
     try {
-      // cm:guard the two arms are written out rather than spread onto one object: the create body is
-      // discriminated on `role`, a spread collapses to the union `BindingRole` that no arm admits,
-      // and the discriminant is what makes a service binding carrying a stage a compile error here
-      // instead of a 500 from the `integration_bindings_role_stages_chk` constraint.
       const common = {
         provider: "epodsystem",
         config: {},
@@ -558,7 +546,7 @@ function ThemePanel({ config }: { config: EpodsystemReadConfig }) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-subtle bg-sunken p-3">
       <span className="fg-label text-subtle">Store &amp; themes</span>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[12px]">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-12">
         <dt className="text-subtle">Store</dt>
         <dd>
           {config.storeName ?? config.storeSlug ?? "— (run Test)"}
@@ -602,7 +590,7 @@ function ThemePanel({ config }: { config: EpodsystemReadConfig }) {
           href={storefrontUrl}
           target="_blank"
           rel="noreferrer"
-          className="text-[13px] font-semibold text-accent hover:underline"
+          className="text-13 font-semibold text-accent hover:underline"
         >
           Open storefront ↗
         </a>

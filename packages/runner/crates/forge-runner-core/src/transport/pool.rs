@@ -14,8 +14,6 @@ use super::CoreClient;
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 
-/// One claimable row, as `GET /me/pool` answers it.
-// cm:guard every field but `job_id` and `type` is `#[serde(default)]`, and the four issue-less kinds are why: core LEFT JOINs the issue, so `title`, `status` and the rest come back null for exactly the rows this module exists to take. A required field here would make the pool undecodable for the only work in it.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolEntry {
@@ -40,9 +38,6 @@ struct PoolResponse {
     items: Vec<PoolEntry>,
 }
 
-/// The work core built for a job this box has taken but not yet started.
-// cm:edge contract -> packages/core/src/jobs/prepare-claimed-job.ts — `PreparedJob` is this shape, and its own guard says identity travels WITH the preparation and never from the runner's own pool read: a pool entry is a snapshot this box may have held for minutes, and rebuilding the job's identity from it is the mismatch `prepareClaimedJob` refuses one guard down, arriving by a different door.
-// cm:guard `agent_session_id` is core's, minted by the preparation, and the box must never invent one. It is the row the issue's "visible as an agent_sessions row" is about, and it exists the instant a prepare succeeds — before any process does.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedJob {
@@ -69,9 +64,6 @@ pub struct PreparedJob {
     pub runner_id: String,
 }
 
-/// What a refused preparation says, in core's own words.
-// cm:guard every variant core can answer is named here, and `Unknown` carries the raw string rather than collapsing into it. A master that cannot tell `release_label_missing` from `budget_exhausted` retries the one condition retrying cannot change; an operator reading a log needs the word core chose, not this crate's guess at it.
-// cm:edge lockstep -> packages/core/src/devices/claim.ts — `PrepareResult`'s refusal union. A member added there and not here decodes as `Unknown`, which is the deliberate soft landing; a member removed there leaves a variant no core answers, which is dead and should go.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     NotFound,
@@ -128,8 +120,6 @@ pub enum Prepared {
     Refused(Refusal),
 }
 
-/// A stamp, or the named reason the job is no longer this box's to start.
-// cm:guard its own type and NOT a `Prepared` carrying an empty preparation. `startJobForMaster` answers `{ok:true}` and nothing else — a synthesised `PreparedJob` here would put a record with an empty `agentSessionId` into a caller's hands, which is the silent substitution this repo refuses, wearing a shape that type-checks.
 pub enum Started {
     Ok,
     Refused(Refusal),
@@ -145,8 +135,6 @@ struct ClaimResponse {
     prepared: Option<PreparedJob>,
 }
 
-/// Every claimable row for this box, optionally narrowed to one project.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `GET /me/pool`, device-authenticated. Its own guard says a row with no `jobId` is a malformed claim waiting to happen, which is why `job_id` is the one field this crate requires.
 pub async fn list(
     client: &CoreClient,
     project_id: Option<&str>,
@@ -178,15 +166,12 @@ pub async fn list(
     Ok(parsed.items)
 }
 
-/// Take a job without starting it: it stays `queued` and becomes HELD.
-// cm:guard the caller OWES a `start` or a `release` for every `Took`, and there is no third answer. Core's three-minute reaper is the backstop rather than the plan: a hold nobody follows through on keeps the row out of the pool for that whole window, and it is this box that would be waiting for its own work.
 pub async fn prepare(client: &CoreClient, job_id: &str, session_id: &str) -> Result<Prepared> {
     let body = serde_json::json!({ "jobId": job_id, "sessionId": session_id });
     let parsed = post(client, "/api/devices/me/pool/prepare", body).await?;
     if parsed.ok {
         return match parsed.prepared {
             Some(p) => Ok(Prepared::Took(Box::new(p))),
-            // cm:guard an `ok:true` with no preparation is a CONTRACT BREAK and is refused by name rather than treated as an empty success. The job is held at this point, so a silent `None` would leave the row out of the pool with nobody intending to run it.
             None => Err(Error::Other(
                 "pool prepare answered ok with no preparation — the job is held and nothing can run it".into(),
             )),
@@ -197,8 +182,6 @@ pub async fn prepare(client: &CoreClient, job_id: &str, session_id: &str) -> Res
     )))
 }
 
-/// Hand a prepared job to the process now starting it.
-// cm:edge lockstep -> packages/core/src/devices/claim.ts — `startJobForMaster` stamps `device_id`, `runner_id`, `status` and `started_at` and clears the hold in ONE statement. Nothing here may run between those; a job left with `device_id` NULL while its agent is alive makes every runner route 403 at 2/s with no backpressure (measured on epodsystem 2026-09-05).
 pub async fn start(client: &CoreClient, job_id: &str, session_id: &str) -> Result<Started> {
     let body = serde_json::json!({ "jobId": job_id, "sessionId": session_id });
     let parsed = post(client, "/api/devices/me/pool/start", body).await?;
@@ -220,7 +203,6 @@ pub async fn release(client: &CoreClient, job_id: Option<&str>, session_id: &str
     Ok(())
 }
 
-// cm:guard a refused claim answers 200 with `ok:false`, so a non-2xx here is a TRANSPORT fault and must stay an `Err` — core's own route guard says a busy issue and a lost race are ordinary outcomes and making them errors invites a retry loop against a condition retrying cannot change. Folding a 500 into `Refused` would do the reverse and hide a broken core as a full pool.
 async fn post(client: &CoreClient, path: &str, body: serde_json::Value) -> Result<ClaimResponse> {
     let url = client.url(path);
     let resp = client
@@ -248,9 +230,6 @@ async fn post(client: &CoreClient, path: &str, body: serde_json::Value) -> Resul
 mod tests {
     use super::*;
 
-    // cm:guard the four issue-less kinds decode with every issue field null, which is the ONLY
-    // shape this module ever sees in production. A required `title` or `status` would make the pool
-    // undecodable for exactly the work it exists to take.
     #[test]
     fn a_release_row_with_no_issue_still_decodes() {
         let raw = serde_json::json!({
@@ -278,9 +257,6 @@ mod tests {
         assert!(parsed.items.is_empty());
     }
 
-    // cm:guard every refusal core can answer maps to its own variant. This list is the lockstep the
-    // guard on `Refusal` names: a reason that fell through to `Unknown` would be indistinguishable
-    // from a core newer than this binary, and the two need different answers.
     #[test]
     fn every_refusal_core_can_answer_has_its_own_name() {
         for raw in [
@@ -304,8 +280,6 @@ mod tests {
         }
     }
 
-    // cm:guard a reason this binary has never heard of keeps its WORD. A core deployed ahead of the
-    // fleet is the ordinary case, and an operator reading the log needs what core said.
     #[test]
     fn a_reason_from_a_newer_core_keeps_its_word() {
         let refusal = Refusal::of("some_future_reason");

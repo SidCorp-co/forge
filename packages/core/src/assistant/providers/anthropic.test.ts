@@ -167,9 +167,6 @@ describe('toRequestBody', () => {
   });
 });
 
-// cm:why the frame list is hoisted out of the case: this file's longest function is measured
-// against a 150-line budget, and a wire fixture is data rather than a step of the test. The
-// assertions stay in the case where a reader looks for them.
 const FULL_STREAM = [
   frame({
     type: 'message_start',
@@ -249,11 +246,6 @@ describe('anthropic provider — stream', () => {
     expect(sentBody(fetchImpl).max_tokens).toBe(8192);
   });
 
-  // cm:guard an ENCRYPTED thinking block carries no readable text, so it becomes one event marked
-  // `redacted` with an empty string rather than a `reasoning` event nobody can read or an empty
-  // thinking block. The accumulator turns it into a thinking block with no text; nothing downstream
-  // builds an expander from it
-  // (ISS-1079).
   it('turns an encrypted thinking block into one marked reasoning event carrying no text', async () => {
     const fetchImpl = vi.fn(async () =>
       ok([

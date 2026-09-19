@@ -1,6 +1,3 @@
-// cm:guard ISS-1016 — the ONE place the REST issue-list row is named, for `GET /api/projects/:id/issues` (routes.ts) and `GET /api/projects/:id/issues/search` (search.ts). It is deliberately NOT `list-service.ts`'s `IssueListRow`: that one is the MCP browse row and omits `createdById` and `createdVia`, which creator hydration on both REST routes reads off the row it selected. Copying it here would make both endpoints answer with a null creator.
-// cm:guard what this drops is what the row costs to read, never what a caller might want: the six TOAST-eligible body columns and the `ident_search` tsvector, which is a generated search index no client can use. Every scalar stays — `metadata` because web-v2's run drawer reads `metadata.branchConfig.branch` off a search row, `createdById` because its issues list groups on it. Adding a column back is one line here; dropping one is a contract change and needs the consumer sweep the filing asked for.
-
 import type { SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
@@ -85,7 +82,6 @@ export const REST_ISSUE_LIST_OMITTED = [
   'identSearch',
 ] as const;
 
-// cm:guard a list row gets `displayId` and NOTHING else derived. `serializeIssue` in routes.ts also grafts `descriptionNodes`, which is parsed from a column this projection does not read — and because its own signature takes the body columns as OPTIONAL, handing it a row from here type-checks and answers `descriptionNodes: null` on every row. That is the silent substitution this function exists to refuse: the list says nothing about a body rather than saying the body is empty.
 export function serializeRestListRow<T extends { issSeq: number }>(
   row: T,
   prefix: string | null,
@@ -93,7 +89,6 @@ export function serializeRestListRow<T extends { issSeq: number }>(
   return { ...row, displayId: formatIssueRef(prefix, row.issSeq) };
 }
 
-// cm:guard ISS-1016 — both REST list handlers get their page from HERE and build no `db.select()` of their own, because the index assertions in `issue-list-index-plan-e2e.test.ts` EXPLAIN what this returns. A handler with a query of its own is a query no plan test covers, and an EXPLAIN over a hand-built copy of it proves nothing about what production runs — which is the mistake ISS-1015 shipped and caught in review.
 /** One page of either REST issue list, ordered and limited. */
 export function issueListPageQuery(opts: {
   where: SQL | undefined;

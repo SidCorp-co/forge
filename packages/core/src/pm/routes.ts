@@ -200,9 +200,6 @@ pmRoutes.post(
       });
     }
 
-    // cm:edge protocol -> packages/core/src/notifications/close-escalation.ts — what an
-    // answered escalation does to its record is the notifications module's to decide; this
-    // route says only that the question was answered.
     await closeEscalationTasks(projectId, decisionId);
 
     const spawn = await spawnPmSession({

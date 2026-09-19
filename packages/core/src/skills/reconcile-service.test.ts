@@ -1,8 +1,6 @@
 import { RECONCILE_GATES, RECONCILE_RUN_STATUSES, RECONCILE_VERDICTS } from '@forge/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:why `tables`, when set, routes `.limit()` by the real table object passed to `.from()` so one query (e.g. runners) can resolve different rows than another (e.g. skills) in the same test; unset keeps every query resolving to `rows`.
-// cm:why `txSelect`/`txReturning` are the transaction-scoped analogues — keyed by table, consulted only inside `db.transaction`'s callback, so a run's FOR-UPDATE select and a guarded UPDATE...returning() on the SAME table can resolve independently.
 const dbStub = vi.hoisted(() => ({
   rows: [] as unknown[],
   tables: null as Map<unknown, unknown[]> | null,
@@ -14,7 +12,6 @@ vi.mock('../db/client.js', () => {
     from: (t: unknown) => build(t),
     where: () => build(table),
     limit: () => Promise.resolve(dbStub.tables ? (dbStub.tables.get(table) ?? []) : dbStub.rows),
-    // cm:why a query with no .limit() (the device-observation read) still has to resolve — without this the chain object itself is awaited and reaches the caller as a non-array
     then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
       Promise.resolve(dbStub.tables ? (dbStub.tables.get(table) ?? []) : dbStub.rows).then(
         res,
@@ -96,7 +93,6 @@ import {
   validateC1C5,
 } from './reconcile-service.js';
 
-// cm:why contracts/reconcile.ts tuples must mirror db/schema.ts
 describe('reconcile contract parity', () => {
   it('RECONCILE_VERDICTS matches schema', () => {
     expect([...RECONCILE_VERDICTS].sort()).toEqual([...reconcileVerdicts].sort());
@@ -127,7 +123,6 @@ describe('isRunningBodyObserved', () => {
     ).toBe(true);
   });
 
-  // cm:why a device still on the previous body means the stored copy is NOT what runs there, so the bundle must not claim observation and C4 refuses the run
   it('is false when any device observed a different body', () => {
     expect(
       isRunningBodyObserved(H, [
@@ -263,7 +258,6 @@ describe('spawnReconcileRun — refusal events', () => {
     expect(call.eventType).toBe('reconcile.failed');
     expect(call.outcome).toBe('skipped');
     expect(call.reason).toMatch(/C1/);
-    // cm:why guards BLOCKER AD — forwarding skillId for a nonexistent skill would 23503 against skill_activity_events_skill_id_skills_id_fk.
     expect(call.skillId).toBeUndefined();
   });
 
@@ -296,7 +290,6 @@ describe('spawnReconcileRun — refusal events', () => {
         ],
       ],
       [projects, [{ agentConfig: {} }]],
-      // cm:why must AGREE with contentHash — a device observing a different sha is the stale case, which now labels runningBody `from-code` and makes C4 refuse before the runner check this test targets
       [deviceSkills, [{ observedSha: 'hash-1', shadowedBy: null }]],
       [divergenceCharters, []],
       [reconcileRuns, []],

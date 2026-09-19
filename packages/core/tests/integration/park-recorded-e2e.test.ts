@@ -123,7 +123,6 @@ describe('the park as a job event', () => {
     expect((await sessionRow(sess))?.runtime_state).toBe('awaiting_input');
   });
 
-  // cm:guard the two rules must stay SEPARATE. A park-only batch records the park and must NOT count as activity — folding this write into the heartbeat branch beside it would make the park invisible in exactly the case it exists for, since that branch skips a park-only batch entirely.
   it('records a park without counting it as a heartbeat', async () => {
     const { job, sess } = await jobWithSession();
     const before = (await sessionRow(sess))?.last_heartbeat_at;
@@ -159,7 +158,6 @@ describe('the park as a job event', () => {
     expect((await sessionRow(sess))?.runtime_state).toBe('awaiting_input');
   });
 
-  // cm:guard the column is `text` with no database check, so an unrecognised string would PERSIST and then read as "not parked" to the exemption and "not a park" to the residency deadline — a session invisible to both hops with nothing to show for it.
   it('drops a state the enum does not know rather than writing it', async () => {
     const { job, sess } = await jobWithSession();
     await post(job, [park]);
@@ -167,7 +165,6 @@ describe('the park as a job event', () => {
     expect((await sessionRow(sess))?.runtime_state).toBe('awaiting_input');
   });
 
-  // cm:guard never revive a session the kernel has already closed. The park deadline reaps to `failed`, and a late batch from the process it reaped would otherwise re-park a terminal row — which `resolveSessionSend` reads as "still reachable" and stops falling back on.
   it('refuses to park a session that has already reached a terminal status', async () => {
     const { job, sess } = await jobWithSession('failed');
     await post(job, [park]);

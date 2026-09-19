@@ -3,16 +3,6 @@
 use super::CoreClient;
 use crate::error::{Error, Result};
 
-/// Acknowledge a claimed job (ISS-449, Decision B). Best-effort on the caller
-/// side, and it has exactly one caller: `daemon/pool_jobs.rs:take_one`, right
-/// after core stamps the job to this box (ISS-1080). Between 2026-09-16 and that
-/// change NOTHING in either crate called it, and every job core acked was acked
-/// by the server's own fallback — treating the first `job_event` as the ack.
-// cm:guard best-effort is the DESIGN and a failed ack must not fail the claim: the fallback above still acks the job on its first progress event, so a lost ack costs one supervision tick, while a claim unwound over it costs the release. What the call buys is the three minutes before that first event — `jobs/loop-monitor.ts:reapAckMisses` fails a `dispatched` job with `acked_at IS NULL` and no job events after `PIPELINE_NEVER_CLAIMED_MS`.
-///
-/// ISS-798: `skills_ran_with` carries the on-disk `.hash` marker values for
-/// each seeded skill (keyed by skill name), read right before the job starts.
-/// `None` when no skills were seeded or the runner cannot determine them.
 pub async fn ack(
     client: &CoreClient,
     job_id: &str,
@@ -44,8 +34,6 @@ pub async fn fail(client: &CoreClient, job_id: &str, error: &str) -> Result<()> 
     fail_with_salvage(client, job_id, error, None).await
 }
 
-/// Force-fail a job, carrying what the runner preserved of its working copy.
-// cm:edge contract -> packages/core/src/jobs/lifecycle-routes.ts — `failBodySchema` there is `.strict()`, so an unknown key in `salvage` rejects the WHOLE request with a 400 and the failure itself is never recorded. `workspace::salvage::Salvage::to_json` is the only thing that should build this value.
 pub async fn fail_with_salvage(
     client: &CoreClient,
     job_id: &str,
@@ -85,7 +73,6 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        // cm:guard 403 and 409 carry the SAME marker `events.rs:post_batch` puts on them, because `is_disowned` is one predicate asked of both transports: core answering `INVALID_STATE` to a fail on a terminal job means exactly what a 409 on its events means — this job is no longer this box's to work. Until ISS-1082 only the events route was marked, so `pool_jobs::supervise` read a terminal job's refusal as a failure of its own call and re-sent it every tick, for ever, keeping the registry entry that counts against `max_job_panes`.
         if status.as_u16() == 403 || status.as_u16() == 409 {
             return Err(Error::Other(format!(
                 "{}: lifecycle {status}: {text}",
@@ -97,9 +84,6 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
     Ok(())
 }
 
-/// Ask core whether a duplex turn ending is also the JOB ending.
-// cm:edge contract -> packages/core/src/jobs/turn-verdict-routes.ts — reads `done` out of the JSON body by name; a rename there does not fail here, it makes `unwrap_or(true)` the answer for every turn and every park finalizes the job it was waiting on.
-// cm:guard fails CLOSED to `done: true` on ANY error — a runner that cannot reach core must finish the job, not hold a resident session on a question core never confirmed. The direction does NOT rest on the box's cap, which is now per-device (`devices.max_concurrent` via core's `effectiveDeviceCap`, so it can be >1): it rests on the asymmetry underneath it — a job finished early is retryable, a slot wedged by a session waiting on an answer nobody will give is not, and it is wedged on exactly the failure where nobody is watching. Re-argue THAT before flipping it; a bigger cap only changes how many slots the leak costs.
 pub async fn turn_is_job_end(client: &CoreClient, job_id: &str) -> bool {
     let url = client.url(&format!("/api/jobs/{job_id}/turn-verdict"));
     let resp = match client
@@ -173,7 +157,6 @@ mod tests {
         assert!(turn_is_job_end(&client(url), "job-1").await);
     }
 
-    // cm:guard the three failure shapes all answer TRUE, and that asymmetry is deliberate: a wrong `true` finishes a job that is retryable, a wrong `false` wedges the only runner slot on a question core never confirmed. These are the tests that fail if someone "fixes" the default to be cautious.
     #[tokio::test]
     async fn a_renamed_key_finishes_the_job_rather_than_holding_the_slot() {
         let url = serve_once("200 OK", r#"{"finished":false}"#).await;
@@ -201,7 +184,6 @@ mod tests {
         assert!(turn_is_job_end(&client(url), "job-1").await);
     }
 
-    // cm:guard a terminal job's refusal must read as DISOWNED on this transport too. forge-vm 2026-09-17: two `release_batch` jobs done at 08:45 and 08:51 left their panes standing until 13:01, because `fail` on a terminal job answers `409 INVALID_STATE` and nothing here said so — `supervise` kept the entry and re-sent it every 60s, holding 2/2 of the box's job panes and stalling every project on it for four hours.
     #[tokio::test]
     async fn a_terminal_job_refusing_a_fail_reads_as_disowned() {
         let url = serve_once(
@@ -224,7 +206,6 @@ mod tests {
         assert!(crate::transport::events::is_disowned(&e), "{e}");
     }
 
-    // cm:guard the pair above is an assertion and not a tautology only while this one holds: an ordinary bad request is THIS box's mistake and must not be read as the job having moved on.
     #[tokio::test]
     async fn an_ordinary_client_error_is_not_disowned() {
         let url = serve_once("400 Bad Request", "{}").await;

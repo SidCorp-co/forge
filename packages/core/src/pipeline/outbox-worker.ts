@@ -7,48 +7,6 @@ import type { Actor } from './activity.js';
 import { assertHookDelivered, hooks } from './hooks.js';
 import { emitPipelineWedge } from './wedge.js';
 
-/**
- * ISS-196 — drains the `pipeline_outbox` table and re-emits the `transition`
- * hook out-of-band. Rows are produced by the AFTER UPDATE trigger on
- * `issues.status` so any commit (REST, MCP, raw SQL) reaches subscribers
- * even when the producer process crashed mid-emit.
- *
- * ISS-678 — claim-then-emit, not claim-and-emit-in-one-tx. A single
- * `UPDATE ... RETURNING` claims a batch (stamps `claimed_at`) and commits
- * immediately, THEN hooks fire with no transaction open — a subscriber that
- * blocks on a lock no longer pins this connection's MVCC snapshot or the
- * `FOR UPDATE SKIP LOCKED` row locks. A crash between claim and emit leaves
- * `processed_at` NULL under an expired lease, so the next tick re-claims and
- * re-emits: at-least-once survives crashes, exactly as before. Duplicate
- * emits are safe because the orchestrator's per-issue `pg_advisory_xact_lock`
- * + in-lock active-job re-check collapse them (orchestrator.ts).
- *
- * Concurrency: `FOR UPDATE SKIP LOCKED` makes multiple workers safe — each
- * picks a disjoint batch.
- *
- * ISS-831 — a subscriber failure (`EmitResult.failures`, scoped to
- * `pipeline-orchestrator` via `assertHookDelivered`) is now a delivery
- * failure, same as a thrown/rejected emit: the row is left `processed_at`
- * NULL and `claimed_at = now()`, so it is not re-claimable until the
- * `CLAIM_LEASE_MS` lease expires — a free ~120s backoff, no new column.
- * `attempts` counts REdeliveries, not deliveries: it is bumped by
- * `claimBatch`'s own `CASE WHEN claimed_at IS NOT NULL` only when a row is
- * re-claimed after a failure, so the first delivery leaves it at 0. Capped at
- * `MAX_REDELIVERIES` — a row that hits the cap stays `processed_at IS NULL`
- * forever (`VISION: state-never-lies`: never silently mark it done) and raises a
- * `pipeline_wedge` naming the issue and the stuck status.
- *
- * Accepted tradeoff: a retry re-emits to EVERY subscriber, not just the one
- * that failed (no per-subscriber redelivery targeting — that needs
- * persisting subscriber identity per outbox row, out of scope). Bounded by
- * `MAX_REDELIVERIES`: the orchestrator is idempotent under its per-issue
- * `pg_advisory_xact_lock`, so its redelivery is a real retry; the other two
- * subscribers (activity, notifications) collapse redeliveries of the same
- * row via `dedupeKey = transition:<outboxId>` (ISS-849, notify-transitions.ts
- * / subscribers.ts) — `row.id` passed as `outboxId` below is what makes that
- * collapse possible.
- */
-
 const POLL_INTERVAL_MS = 1_000;
 /**
  * ISS-1021 — how far an idle poll backs off, and the ceiling it stops at.
@@ -63,10 +21,6 @@ const POLL_INTERVAL_MS = 1_000;
 const POLL_MAX_INTERVAL_MS = 8_000;
 const BATCH_LIMIT = 50;
 const CLAIM_LEASE_MS = 120_000;
-// cm:why counts REdeliveries (see module header) — the filter `attempts < MAX_REDELIVERIES` therefore allows 1 initial delivery + MAX_REDELIVERIES retries before dead-lettering
-// Exported for the integration test that holds this to the `idx_outbox_unprocessed` predicate
-// migration 0281 wrote: the bound lives twice, once here and once in a SQL file, and nothing but
-// that test can see the two disagree.
 export const MAX_REDELIVERIES = 3;
 
 // Index signature lets this satisfy postgres-js's `Record<string, unknown>`
@@ -89,7 +43,6 @@ let running = false;
 let stopping = false;
 let pollIntervalMs = POLL_INTERVAL_MS;
 
-// cm:edge contract -> packages/core/src/pipeline/orchestrator.ts — this claim lease's at-least-once guarantee is only sound because considerEnqueue/buildAndEnqueueStepJob dedupe a re-emitted transition per-issue under pg_advisory_xact_lock
 async function claimBatch(): Promise<OutboxRow[]> {
   return db.execute<OutboxRow>(sql`
     UPDATE pipeline_outbox o
@@ -98,7 +51,6 @@ async function claimBatch(): Promise<OutboxRow[]> {
       FROM (
         SELECT id FROM pipeline_outbox
          WHERE processed_at IS NULL
-           -- cm:guard ISS-1021 — a LITERAL, never a bind parameter, and that is the whole point of
            -- the change. idx_outbox_unprocessed is partial on this same predicate, and a GENERIC
            -- plan cannot prove the predicate is implied by "attempts < $n" because $n is unknown
            -- when that plan is built. A custom plan substitutes the value and does prove it, so
@@ -127,9 +79,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
   const rows = await claimBatch();
   const delivered: string[] = [];
 
-  // cm:guard never await hooks.emit() while a transaction is open on this connection or any other — subscribers (e.g. the orchestrator) open their own tx and can block on an unbounded lock, pinning whatever tx is still around
   for (const row of rows) {
-    // cm:guard `agency` here is IMPLIED by `actor_type`, not carried — the outbox row records who owned the transition and nothing about who was at the keyboard, so the moment a job token drives one this rebuild will call it human. Carry agency on `kernel_transitions_outbox` and read it here; this branch is a stand-in that reproduces exactly what the row already meant, not an answer to the agency question.
     const actor: Actor =
       row.actor_type === 'device' || row.actor_type === 'system'
         ? { type: 'device', id: row.actor_id ?? '<system>', agency: 'agent' }
@@ -141,18 +91,11 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
         actor,
         from: row.from_status as IssueStatus,
         to: row.to_status as IssueStatus,
-        // cm:why reopenCount is not carried on the outbox row (immutable event record) — subscribers that need it can read it from `issues`
         reopenCount: 0,
         outboxId: row.id,
         ...(row.reason ? { reason: row.reason } : {}),
       });
-      // cm:edge contract -> packages/core/src/pipeline/hooks.ts — only a `pipeline-orchestrator` failure is escalated; a best-effort subscriber failing (e.g. pm, which has no local guard) must not block delivery or raise a wedge claiming the status change was unprocessed
       assertHookDelivered(result, { owned: ['pipeline-orchestrator'] });
-      // cm:guard ISS-1021 — the SUCCESS write is deferred to one statement after the loop; the
-      // FAILURE write below stays per-row and must. A failure carries that row's own `last_error`
-      // and re-stamps its own `claimed_at` lease, so batching failures would either lose the
-      // per-row message or put every failed row on one lease clock. Successes carry nothing but
-      // their id, so one `id = ANY(...)` is the same write.
       delivered.push(row.id);
       processed++;
       if (isSentryEnabled()) {
@@ -186,7 +129,6 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
           },
         });
       }
-      // cm:why this fires exactly once, on the final permitted delivery's failure: claimBatch's `attempts < MAX_REDELIVERIES` filter means a row with attempts === MAX_REDELIVERIES will never be re-claimed, so this is the last chance to surface it
       if (row.attempts >= MAX_REDELIVERIES) {
         await emitPipelineWedge({
           projectId: row.project_id,
@@ -206,22 +148,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
     }
   }
 
-  // cm:guard ISS-1021 — one statement for the whole batch, and it runs AFTER every emit rather
-  // than between them, so the "never hold a transaction open across hooks.emit()" guard above is
-  // untouched: this opens its own, with no hook running.
-  //
-  // Priced trade-off: a crash between the last emit and this write re-delivers the batch instead
-  // of one row. That is the SAME at-least-once event the module header already documents, with a
-  // window of one batch rather than one row, and it is safe for exactly the reason stated there —
-  // the orchestrator collapses a re-emitted transition under its per-issue advisory lock, and the
-  // other two subscribers dedupe on `transition:<outboxId>`. It buys 50 round trips per full
-  // batch. The condition that would end it is a subscriber that stops being idempotent, which
-  // `assertHookDelivered`'s owned set is what protects.
   if (delivered.length > 0) {
-    // cm:guard an explicit IN list, never `= ANY(<array>::uuid[])` — drizzle binds a JS array as a
-    // single scalar parameter, so the ANY form reaches Postgres as `ANY(($1)::uuid[])` with one
-    // uuid in $1 and fails at execution. The unit test's mocked `db.execute` accepted it happily;
-    // only a real database said otherwise. `BATCH_LIMIT` caps this at 50 parameters.
     await db.execute(sql`
       UPDATE pipeline_outbox
          SET processed_at = now(), claimed_at = NULL
@@ -239,9 +166,6 @@ async function tick(): Promise<void> {
   running = true;
   try {
     const { processed, failed } = await drainOutboxOnce();
-    // cm:guard back off on an EMPTY batch, and reset on the first row claimed — including a row
-    // whose delivery failed. A failure means work exists, so treating it as idle would lengthen
-    // the poll exactly while a wedged subscriber needs retrying.
     if (processed === 0 && failed === 0) {
       pollIntervalMs = Math.min(pollIntervalMs * 2, POLL_MAX_INTERVAL_MS);
     } else {
@@ -250,9 +174,6 @@ async function tick(): Promise<void> {
     rearm();
   } catch (err) {
     logger.error({ err }, 'outbox-worker: tick failed');
-    // cm:guard a THROWN tick is not an idle one — the table was never read, so nothing here says
-    // there is no work. Hold the current interval rather than backing off on an error, or a
-    // database blip would quietly stretch the drain to its ceiling.
     rearm();
   } finally {
     running = false;
@@ -277,8 +198,6 @@ function rearm(): void {
 export function registerOutboxWorker(): void {
   if (timer) return;
   stopping = false;
-  // cm:guard a self-re-arming one-shot timer, NOT setInterval — the interval is now variable, and
-  // setInterval cannot change its period without being torn down and rebuilt on every tick.
   pollIntervalMs = POLL_INTERVAL_MS;
   rearm();
 }

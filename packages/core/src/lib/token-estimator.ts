@@ -1,17 +1,3 @@
-/**
- * Lightweight token estimator for prompt cost preview / block contribution
- * analysis. Pure heuristic — no model call, no tokenizer dep — sized to be
- * within ~10% of Anthropic SDK tokenizer output for English / code text.
- *
- * Use it for budget estimation, block breakdown, and analytics. Do NOT use
- * for billing — the canonical token counts come from Claude API's
- * `usage.input_tokens` after the request.
- *
- * Heuristic: ~3.6 chars/token for mixed English + code. Adjusts upward for
- * very long strings (tokenizers split rare/long sequences more aggressively)
- * and downward for short strings (overhead of BOS/special tokens).
- */
-
 const CHARS_PER_TOKEN = 3.6;
 const SHORT_THRESHOLD = 32;
 const LONG_THRESHOLD = 4000;

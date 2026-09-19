@@ -115,9 +115,6 @@ describe('fixtures', () => {
     expect((await counts()).result.pass).toBe(true);
   });
 
-  // cm:why the states are no longer invented: the fixture answers the project's EFFECTIVE pipeline —
-  // the product's canonical ladder with this project's stage overrides applied — so the list a reply
-  // is held to is the eight rungs, and the stored config's keys are not it (ISS-1066).
   it('pipeline states fill the joined list from the effective ladder, in order, with nothing outside it', async () => {
     const LADDER = [
       'open',
@@ -321,7 +318,6 @@ describe('memory cleanup', () => {
     expect(result.cleanup.memories).toEqual({ found: 4, deleted: 4, remaining: 0 });
     expect(fake.state.notes).toEqual(seeded);
     const lists = fake.state.requests.filter((r) => r.method === 'GET' && r.path === '/api/memory');
-    // cm:why 6 notes over pages of one is six reads plus the empty-check; listing twice (before and after) is what the read-back costs
     expect(lists.length).toBeGreaterThanOrEqual(8);
     expect(result.pass).toBe(true);
   });

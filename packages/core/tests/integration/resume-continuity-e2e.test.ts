@@ -97,7 +97,6 @@ describe('ISS-887 resumeContinuity over real Postgres', () => {
     `);
   }
 
-  // cm:guard reads the SERVICE, not the MCP tool it used to go through — `buildSessionFailuresReport` is where the rule lives since ISS-894, and the tool and `GET /api/projects/:id/metrics/session-failures` are both thin callers of it. Asserting through a transport would make this test fail for reasons that have nothing to do with resume continuity, and would have died with the tool.
   async function readContinuity() {
     return (await buildReport(projectId, 30)).resumeContinuity;
   }

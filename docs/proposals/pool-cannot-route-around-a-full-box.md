@@ -14,7 +14,7 @@ reads as "send the next attempt somewhere else". On the push dispatcher it means
 On the pool path — how this project's jobs are actually claimed — it means nothing:
 
 - `readPool` (`devices/pool.ts`) selects on `status`, `held_by`, `retry_after_at`, the run's
-  status and the sibling-job exclusion. Its own `cm:guard` forbids adding a routing filter, on the
+  status and the sibling-job exclusion. Its own invariant forbids adding a routing filter, on the
   grounds that routing is the master's judgement and a pool that pre-decides it is the kernel
   deciding routing again. So `_autoRetry.target` is never consulted, and the box that just refused
   the job may claim the clone.

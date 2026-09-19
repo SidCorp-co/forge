@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why client stubbed because the tool now reaches the DB for the org tier — the code-tier cases still never query, since with no resolvable project context resolveOrgId yields null and the org layer is skipped
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
@@ -10,7 +9,6 @@ const { FORGE_GUIDES, listGuides } = await import('../../guides/registry.js');
 const { forgeGuideTool } = await import('./forge-guide.js');
 const { INTEGRATION_GUIDE_SLUG_PREFIX } = await import('../../guides/integration-guides.js');
 
-// cm:why no projectSlug / boundProjectId — this is the "no project context" caller the code tier must keep serving, and it is what keeps these cases DB-free
 const tool = forgeGuideTool({
   principal: { kind: 'pat', agency: null, agentUserId: null, userId: 'u1', tokenId: 't1' },
   device: { id: 'd1', ownerId: 'u1' },
@@ -55,7 +53,6 @@ describe('forge_guide MCP tool', () => {
     await expect(tool.handler({ action: 'publish' })).rejects.toBeTruthy();
   });
 
-  // cm:guard the code tier must stay reachable with NO project context — that is what the unauthenticated /api/guides surface serves, and a regression here would make every guide pointer org-gated
   it('serves the code tier with no project context at all', async () => {
     const result = (await tool.handler({ action: 'list' })) as { guides: unknown[] };
     expect(result.guides.length).toBe(FORGE_GUIDES.length);

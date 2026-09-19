@@ -1,24 +1,3 @@
-/**
- * ISS-431 — periodic connection health sweep.
- *
- * Health is otherwise written only when something happens: a deploy dispatch
- * (coolify, ISS-429), an explicit Test, or the create/bind probe. MCP-injection
- * providers (postman/epodsystem) never dispatch, so without this sweep their
- * `lastHealthStatus` freezes at whatever the last manual Test recorded — a
- * stale `error` (or `ok`) can sit on the card for weeks. The sweep re-probes
- * each ACTIVE connection that has at least one ACTIVE binding, hourly, via the
- * adapter's own `healthcheck` (which persists the result + needs_reauth
- * detection itself).
- *
- * Scope guards:
- *  - one probe per CONNECTION (not per binding) — health lives on the
- *    connection; the first pair supplies the config/env context.
- *  - connections probed in the last {@link MIN_PROBE_AGE_MS} are skipped so
- *    the sweep never stomps a fresher deploy/test signal.
- *  - probes run sequentially with a per-probe timeout — a hung provider costs
- *    one timeout, not the whole sweep.
- */
-
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';

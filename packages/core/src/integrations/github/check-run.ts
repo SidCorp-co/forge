@@ -1,42 +1,9 @@
-/**
- * Writing `forge/issue-contract` onto one head. ISS-1072.
- *
- * ## Why this is find-then-write rather than an upsert
- *
- * The Checks API has no upsert. `POST /check-runs` with a name already on that
- * head makes a SECOND run under the same name; only `PATCH /check-runs/:id`
- * replaces one. So a publish is a lookup and then one of two writes, and the
- * lookup filters GitHub's runs on the name and on this App.
- *
- * ## Why the whole of it is under a lock, and why the ANSWER is inside too
- *
- * Two publishes for one head are ordinary, not exotic: a `pull_request`
- * delivery and a record write land within milliseconds of each other all day.
- * Without serialisation both lookups find no run and both create one, and the
- * pull request carries two contradictory check runs with nobody able to say
- * which is current.
- *
- * The answer is computed INSIDE the lock for the second half of the same
- * problem. Serialising only the write still lets a publish that computed its
- * answer first, and got to the write second, replace a newer answer with an
- * older one — a check that reads current and is not, which is the exact failure
- * the projection this rides on exists to remove. Computing inside means the
- * last writer in is also the one that looked last.
- *
- * The lock is a Postgres advisory lock rather than a row lock, because there is
- * no row to lock: the thing being serialised lives on GitHub. It is taken
- * transaction-scoped so it cannot leak onto a pooled connection, and the
- * transaction does no other database work — it holds a connection across an
- * HTTP call, which is why every request under it carries an 8s timeout.
- */
-
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { CHECK_RUN_NAME, type CheckConclusion, checkRunBody } from './check-run-body.js';
 import type { GitHubRepoClient } from './client.js';
 import { type ContractAnswer, contractAnswerForIssue } from './contract-answer.js';
 
-// cm:guard the namespace half of the advisory key, and it is a CONSTANT so that two different features hashing the same string never collide on one lock. `hashtext` is 32-bit and collides on its own; a shared namespace would make two unrelated subsystems wait on each other for no reason anybody could find.
 const ADVISORY_NAMESPACE = 1072;
 
 export interface PublishedCheck {
@@ -55,7 +22,6 @@ const repoPath = (client: GitHubRepoClient) =>
 
 /** The id of the run this App already published on that head, or null. */
 async function existingRunId(client: GitHubRepoClient, headSha: string): Promise<number | null> {
-  // cm:guard filtered by check_name AND by this App's own runs — `?check_name=` alone would match a run some other App published under the same name, and PATCHing another App's check run is refused by GitHub with a 403 that reads exactly like a missing permission.
   const listing = await client.publish<CheckRunListing>({
     op: 'lookup',
     method: 'GET',
@@ -83,10 +49,6 @@ export async function publishContractCheck(
       sql`SELECT pg_advisory_xact_lock(${ADVISORY_NAMESPACE}, hashtext(${`${client.bindingId}:${args.headSha}`}))`,
     );
 
-    // cm:guard the answer's reads go through `tx`, never the pool. This transaction already holds
-    // one of ten pooled connections and is about to hold it across up to three HTTP calls; a read
-    // on the pool from in here needs a SECOND connection, so ten concurrent publishes would each
-    // hold one and each wait for another until `idle_in_transaction_session_timeout` broke them.
     const answer = await contractAnswerForIssue(args.issueId, tx);
     const body = checkRunBody(answer);
     const output = { title: body.title, summary: body.summary, text: body.text };

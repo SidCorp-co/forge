@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard `applyKernelTransition` is the only reliable hook point for every session-terminal writer EXCEPT the runner's own `PATCH /:id` happy path, which is a direct `db.update` wired separately in `agent-sessions/routes.ts`. Anything hung here — the ISS-675 escalation bridge, the ISS-927 token revoke — needs its second half there, and this suite covers only the half that lives here.
-
 const deliverEscalationReplyOnce = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../integrations/rocketchat/escalation-bridge.js', () => ({
   deliverEscalationReplyOnce: (...args: unknown[]) => deliverEscalationReplyOnce(...args),
@@ -13,7 +11,6 @@ const auditValues = vi.fn(async (..._args: unknown[]) => undefined);
 
 function makeExec(returningRows: unknown[]) {
   const exec: Record<string, unknown> = {
-    // cm:why the chokepoint reaches its write through `exec.transaction`, so a double lacking one never executes the body it is meant to be asserting on
     transaction: (fn: (tx: unknown) => unknown) => fn(exec),
     execute: vi.fn(async (..._args: unknown[]) => undefined),
     update: vi.fn(() => ({
@@ -66,7 +63,6 @@ describe('applyKernelTransition — ISS-675 escalation bridge hook', () => {
       source: 'test',
     });
 
-    // cm:why an absence assertion on a fire-and-forget call is vacuous unless the call has had a turn of the loop to land in
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(deliverEscalationReplyOnce).not.toHaveBeenCalled();
   });
@@ -115,7 +111,6 @@ describe('applyKernelTransition — the agency written on the audit row', () => 
     auditValues.mockClear();
   });
 
-  // cm:guard the value must come from the CALLER, never from `actor.type`. A `user` actor is the only kind that can be either, because that is the shape a job or session token transitions under — read it off the type and every agent write in the system records `human`, which is the default the column already had and the reason it needed a writer at all.
   it.each([
     ['a person at the keyboard', 'human' as const],
     ['a job or session token', 'agent' as const],
@@ -133,7 +128,6 @@ describe('applyKernelTransition — the agency written on the audit row', () => 
     expect(auditedRow()).toMatchObject({ actorType: 'user', actorAgency: agency });
   });
 
-  // cm:guard `system`, `sweeper` and `runner` carry NO `agency` field — the type is a machine by construction and the union refuses one, so there is no call site able to record a sweeper as a person. If this ever reads `'human'`, the union has been flattened back to an optional field and the compiler has stopped naming omissions.
   it.each([['system' as const], ['sweeper' as const], ['runner' as const]])(
     'records a %s actor as an agent without being told',
     async (type) => {

@@ -722,7 +722,7 @@ clearable rather than requiring DB access. Two candidate fixes:
 1. the L2 gate treats `dropped` as satisfying a `blocks` edge — defensible
    because `dropped` is terminal and can never merge, unlike `draft`, but it
    contradicts the owner's 2026-08-14 ruling next door (the
-   `alarmUnrunnableBlockedDependents` cm:why in `sweeper.ts`,
+   `alarmUnrunnableBlockedDependents` rationale in `sweeper.ts`,
    "alarm, never a gate change") and loosens a safety gate;
 2. dropping an issue expires its own outgoing `blocks` edges — repairs the
    actual failure (the wave forgot to clean up) without touching the gate.

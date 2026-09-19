@@ -117,7 +117,6 @@ function rankGroup(
   files: Array<{ name: string; result: BenchResult }>,
   shipped: string[],
 ): RunRow[] {
-  // cm:why one k for every file IN THE GROUP, the largest named, as compare.ts does: pass^k at k = 1 and at k = 3 are different figures, and a ladder that ranked one against the other would order builds by their k, not their passes (codex F1)
   const k = Math.max(1, ...files.map((f) => f.result.k));
   return files
     .map(({ name, result }) => {
@@ -138,7 +137,6 @@ function rankGroup(
         tasksWalked: sides.length,
         tasksShipped: shipped.length,
         partial: !shipped.every((id) => walked.has(id)),
-        // cm:guard a task the project cannot be asked is not a thin one: `0/0 trials (thin)` marked the whole run thin on a run that walked every applicable task three times (ISS-1066)
         thin: sides.some((x) => x.side.thin),
         notApplicable: result.tasks.flatMap((t) =>
           t.notApplicable ? [{ id: t.id, why: t.notApplicable }] : [],
@@ -306,8 +304,6 @@ const projectHeading = (slug: string | null): string =>
 /** The ladder for a terminal: one run table per project under its own score definition, then the windows. */
 export function ladderLines(runs: RunRow[], windows: WindowRow[]): string[] {
   const lines: string[] = [];
-  // cm:guard one table, one score definition and one delta PER PROJECT: a task's pass rate is about
-  // the project it was walked on, so a single ladder over two projects ranks two questions (ISS-1066)
   for (const group of groupByProject(runs)) {
     lines.push(
       projectHeading(group.slug),
@@ -332,7 +328,6 @@ export function ladderLines(runs: RunRow[], windows: WindowRow[]): string[] {
   return lines;
 }
 
-// cm:why a backslash is escaped before the pipe: escaping only the pipe leaves `\\|` readable as an escaped backslash followed by a live pipe, which splits the cell (CodeQL js/incomplete-sanitization)
 export const mdCell = (c: string): string => c.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 const mdRow = (cells: string[]): string => `| ${cells.map(mdCell).join(' | ')} |`;
 const mdTable = (head: string[], rows: string[][]): string[] => [

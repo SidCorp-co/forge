@@ -124,7 +124,6 @@ describe('held job resume E2E', () => {
     expect(enqueueMock).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard the second resume must lose, and losing must mean NO enqueue — this is the real race (two operators, or one racing releaseHeldJobs), and a mocked db cannot be wrong about a CAS it never runs
   it('a second concurrent resume loses the CAS and enqueues nothing', async () => {
     const jobId = await insertHeldJob();
 
@@ -156,7 +155,6 @@ describe('held job resume E2E', () => {
     expect(enqueueMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard migration 0181's whole point — before it, `issue_intervention_events` hardcoded `manual_cancel` for every `kind='intervention'` row, so this resume would have been charted as a cancel in the interventions view
   it('appears in the interventions view as manual_resume, not manual_cancel', async () => {
     const jobId = await insertHeldJob();
     await mods.resumeHeldJob(jobId, { ...opts, actorUserId: ownerId });
@@ -169,7 +167,6 @@ describe('held job resume E2E', () => {
     expect(rows[0]?.detail).toBe('workspace re-provisioned by hand');
   });
 
-  // cm:guard a hand-inserted row with no `action` must keep reading as a cancel — 0117-era rows are exactly that shape, and relabelling history is how a migration turns a metric into a discontinuity
   it('still labels an action-less intervention row manual_cancel', async () => {
     const jobId = await insertHeldJob();
     await harness.db.execute(sql`

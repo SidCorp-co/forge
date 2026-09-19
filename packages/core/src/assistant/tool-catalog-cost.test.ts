@@ -170,8 +170,6 @@ describe('the serialization a quoted figure came from', () => {
     expect(variants.size).toBe(5);
   });
 
-  // cm:guard the uncapped shape MUST be derived, never carried: the report quotes a figure for it, and a variant list that cannot produce that figure leaves the quote unfalsifiable (ISS-983 F1)
-  // cm:edge naming -> packages/core/src/assistant/tool-catalog-cost.ts — the label below is that module's own variant key, matched WHOLE. Reword it there and this lookup returns undefined, which is the shape this line failed in when `forge_guide` made "the chat nine" wrong (ISS-1007); the label carries no count for the same reason.
   it('derives the uncapped shape, and it is larger than the capped chat one', () => {
     const catalog = measureLiveCatalog();
     const variants = new Map(catalogVariants(catalog));
@@ -181,7 +179,6 @@ describe('the serialization a quoted figure came from', () => {
     expect(uncapped).toBeGreaterThan(catalog.chars);
   });
 
-  // cm:guard no variant label may claim `/mcp`: that door is `mcp/server.ts`'s ListToolsRequestSchema handler, a different tool list under a different key spelling, and naming it here is the substitution this module exists to refuse (ISS-983)
   it('claims no variant is the /mcp door, because none of them is', () => {
     const catalog = measureLiveCatalog();
     for (const [label] of catalogVariants(catalog)) {
@@ -286,7 +283,6 @@ describe('every token figure the run prints says where it came from', () => {
 });
 
 describe('the catalog splits into three buckets that sum to the whole (ISS-983 F2)', () => {
-  // cm:guard `chars - described` is NOT schema — it also holds tool names, JSON punctuation, the array framing and the cache_control marker. Reporting it as schema overstates what a schema trim could ever reach, which is the one question this module is asked.
   it('names wire framing as itself rather than folding it into schema', async () => {
     const lines: string[] = [];
     const log = vi.spyOn(console, 'log').mockImplementation((...a) => {

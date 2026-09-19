@@ -23,7 +23,6 @@ const upsertSchema = z
     retrievalMinScore: z.number().min(0).max(1).optional(),
     enabledChannels: z.array(z.string().min(1).max(100)).max(100).optional(),
     systemPromptOverride: z.string().max(40_000).nullable().optional(),
-    // cm:guard `memoryModel` and `memoryReindex` are deliberately absent here — the flip is the POST /:projectId/memory-model operation (estimate first, 409 while a reindex is live) and the reindex state is the job's, so `.strict()` turning either key into a 400 is what stops a plain PUT from flipping a read path with no data behind it or erasing a running migration's state
     retrievalRerank: z.boolean().optional(),
     retrievalExpandRelations: z.boolean().optional(),
   })

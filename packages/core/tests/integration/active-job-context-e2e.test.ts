@@ -1,21 +1,3 @@
-/**
- * ISS-573 / ISS-787 / ISS-931 — `resolveMachineTokenContext` against real Postgres.
- *
- * The resolver used to require `jobs.status = 'running'`, a value nothing in
- * core ever writes (queued → dispatched → terminal). Every agent-facing caller
- * therefore resolved null forever: `forge_feedback` stamped null
- * issueId/runId/jobId/stage on all of its reports, and the retired
- * `forge_ux_findings` tool rejected every write with `no_active_issue`.
- * The first test below is the one that reproduces that: a `dispatched` job under
- * a `queued` session is exactly the state a pipeline agent calls a tool from.
- *
- * ISS-931 changed the KEY from `devices.id` to the caller's own token. The
- * status predicates are unchanged and still asserted here; what is new is that
- * a `job:` token names one job, so the "most recently dispatched wins" guess
- * the device key forced is gone — and a `session:` token, which has no device
- * to look up, resolves at all.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -95,7 +77,6 @@ describe('resolvePipelineContext E2E (ISS-573, re-keyed ISS-932 wave 4)', () => 
     `);
 
     const jobId = randomUUID();
-    // cm:guard stamp `device_id` on the JOB, not only on the session — `startJobForMaster` (devices/claim.ts) sets status, device_id, runner_id and dispatched_at in ONE statement, so a dispatched job with a null device_id is a state core never writes, and a fixture omitting it makes `resolveMachineTokenContext` look like it loses the device (that is exactly how this suite went red in CI).
     await harness.db.execute(sql`
       INSERT INTO jobs (
         id, project_id, issue_id, type, status, device_id, agent_session_id,
@@ -116,7 +97,6 @@ describe('resolvePipelineContext E2E (ISS-573, re-keyed ISS-932 wave 4)', () => 
     boundProjectId,
   });
 
-  // cm:guard this is the ISS-573 reproduction — `dispatched` job + `queued` session is the ordinary state a pipeline agent calls an MCP tool from, and the old `jobs.status = 'running'` predicate matched it never
   it('resolves a dispatched job under a queued session, from the box and the project alone', async () => {
     const s = await seed({ sessionStatus: 'queued', jobStatus: 'dispatched' });
     const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
@@ -147,7 +127,6 @@ describe('resolvePipelineContext E2E (ISS-573, re-keyed ISS-932 wave 4)', () => 
     if (!got.ok) expect(got.reason).toBe('not_pipeline_context');
   });
 
-  // cm:guard the ambiguous case REFUSES and writes nothing. Its predecessor took "the most recently dispatched job on that box" and mis-attributed every call on a runner at concurrency 3 (ISS-931) — a guess that is right most of the time is the failure mode, because nothing downstream can tell the wrong writes from the right ones.
   it('refuses by name when the box runs two sessions for one project', async () => {
     const s = await seed({});
     const second = randomUUID();
@@ -160,7 +139,6 @@ describe('resolvePipelineContext E2E (ISS-573, re-keyed ISS-932 wave 4)', () => 
     if (!got.ok) expect(got.reason).toBe('ambiguous_pipeline_context');
   });
 
-  // cm:guard ISS-557 — a steward or schedule run is a session with NO job row, and it must still resolve so its reports carry a session id. A job-first lookup answers nothing here.
   it('resolves a session that is running no job, with the job fields null', async () => {
     const s = await seed({});
     await harness.db.execute(sql`DELETE FROM jobs WHERE id = ${s.jobId}`);
@@ -205,7 +183,6 @@ describe('resolvePipelineContext E2E (ISS-573, re-keyed ISS-932 wave 4)', () => 
     },
   );
 
-  // cm:guard the project half of the fence is load-bearing, not decoration: one box serves many projects, so a credential bound to B must never resolve A's session.
   it('does not resolve another project running on the same box', async () => {
     const mine = await seed({});
     const theirs = await seed({});

@@ -10,7 +10,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:guard `effective.ts` is imported for ONE constant and reaches `db/client.ts` on the way, which reads the environment at module load. Mocking the client keeps this a test about two tables agreeing; without it the suite fails on a missing DATABASE_URL and says nothing about the document.
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 const { MANAGED_META_SKILLS } = await import('../skills/effective.js');
@@ -25,17 +24,11 @@ const DOC = readFileSync(
   'utf8',
 );
 
-// cm:guard the record rules are pinned here beside the cell rules and for the identical reason: a
-// rule the document does not name is one an agent meets for the first time in a refusal, and
-// `field-budget` is read at the same door as the four cell rules above it without belonging to a
-// cell — being reached by the parse rather than by a segment is no reason to be undocumented
-// (ISS-1089).
 const ruleIds = [
   ...new Set([...registeredCells().flatMap((c) => c.rules.map((r) => r.id)), ...RECORD_RULE_IDS]),
 ].sort();
 
 describe('the shape document', () => {
-  // cm:guard the assertion is on MANAGED_META_SKILLS and not on a route, because that constant IS the delivery decision: it is what `resolveManagedMetaPrompts` reads and what keeps the document off the device disk sync. A copy on disk would be the version an agent reads while core refuses it by a newer one.
   it('is served over the MCP prompt channel, not synced to disk', () => {
     expect(MANAGED_META_SKILLS).toContain(SKILL_NAME);
   });
@@ -58,7 +51,6 @@ describe('the shape document', () => {
     expect(DOC).toContain(`\`${id}\``);
   });
 
-  // cm:guard a door's ENDING is the half an agent plans around — whether a refusal is the last word or something gets posted anyway — so naming the door while misstating its ending would be worse than omitting it.
   it.each(DOORS.map((d) => [d.id, d.ending] as const))(
     'gives `%s` the ending it actually declares (%s)',
     (id, ending) => {
@@ -82,7 +74,6 @@ describe('the shape document', () => {
     }
   });
 
-  // cm:guard the document must not become the second copy of the vocabulary the fleet just deleted. It says a rule is about what a message CLAIMS; a version of it listing tags to include would be the `forge-*` prefix set returning under a new name, which is the one outcome the issue names as failure.
   it('tells an agent there is no vocabulary to learn', () => {
     expect(DOC).toMatch(/never about what tags it is made of/i);
   });

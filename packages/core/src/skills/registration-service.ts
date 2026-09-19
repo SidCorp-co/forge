@@ -4,13 +4,6 @@
  * (ISS-894 wave 3); the seam is the concern, not the size.
  */
 
-/**
- * Bind (or clear) a skill to a pipeline stage for a project. Matches the F2
- * REST behaviour: atomic upsert on `(projectId, stage)` then remove any
- * other stage rows this skill previously held (one-stage-per-skill rule).
- *
- * Returns the resulting registration (or null stage when cleared).
- */
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects, skillRegistrations, skills } from '../db/schema.js';
@@ -81,7 +74,6 @@ export async function registerSkillForProject(
     return { projectId, skillId, stage: null };
   }
 
-  // cm:guard only a project skill owned by THIS project may be registered — a global is a template and must be adopted (cloned) first
   const [target] = await db
     .select({ scope: skills.scope, projectId: skills.projectId })
     .from(skills)
@@ -144,7 +136,6 @@ export interface SkillRegistrationView {
  * Stages with no skill registered are NOT returned — clients diff against
  * the canonical stage list (`STAGE_NAMES`) to surface gaps.
  */
-// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — `isEntryGateClosed` is the only reader of `mode`, and it reads `states.open`. Reporting `'auto'` off that status told a caller a stage was ungated when nothing there gates at all, which is the display half of the ISS-994 affordance.
 export async function listSkillRegistrations(projectId: string): Promise<SkillRegistrationView[]> {
   const [project] = await db
     .select({ agentConfig: projects.agentConfig })

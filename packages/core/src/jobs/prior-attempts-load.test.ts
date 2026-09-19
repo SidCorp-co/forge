@@ -1,19 +1,3 @@
-/**
- * ISS-1023 criterion 37 — the prior-attempts walk reports each attempt's message count without
- * reading that session's transcript.
- *
- * Its own file because `prior-attempts.test.ts` mocks `../db/client.js` as the empty object `{}`
- * and imports only the renderer; nothing there can reach `loadPriorAttempts`, and the walk had no
- * test of any kind. Found while re-judging the criteria on 2026-09-18: reverting the ledger read
- * to `select({ messages })` plus `.length` would have kept the whole suite green, and the defect
- * it restores is a 35 MB transcript crossing the wire on the dispatch path to print one number
- * into a prompt.
- *
- * The claim is about what the SELECT asks for, so the stub records the projections rather than
- * only the answers: an assertion on the returned `messageCount` passes whichever column the count
- * came from.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { jobs } from '../db/schema.js';
 

@@ -29,7 +29,6 @@ describe("statusDonut", () => {
 			open: 4,
 			awaiting_release: 5, // terminal — excluded from total + produces no segment
 		});
-		// cm:edge contract -> packages/core/src/projects/health-routes.ts — the donut centre must equal that route's "Open issues" KPI, which is why the 5 `awaiting_release` are dropped from the total here too.
 		expect(d.total).toBe(12);
 		const byKey = Object.fromEntries(d.segments.map((s) => [s.key, s.count]));
 		// ISS-509 — buckets fold by semantic tone. in_progress + testing +
@@ -37,7 +36,6 @@ describe("statusDonut", () => {
 		// "blocked" segment — it now matches its in-progress chip + the overview bar.
 		expect(byKey.active).toBe(7); // in_progress(2) + testing(1) + developed(3) + reopen(1)
 		expect(byKey.queued).toBe(5); // approved(1) + open(4) (neutral)
-		// cm:guard `awaiting_release` must produce NO segment at all, not a zero one — it is excluded as terminal, and a zero-count `ready` segment would render an empty slice with a label.
 		expect(d.segments.some((s) => s.key === "ready")).toBe(false);
 		// pct sums to 100 across non-empty segments
 		expect(d.segments.reduce((n, s) => n + s.pct, 0)).toBeCloseTo(100, 5);
@@ -59,7 +57,6 @@ describe("statusDonut", () => {
 		expect(d.segments.map((s) => s.key)).toEqual(["active", "queued"]);
 	});
 
-	// cm:guard the donut reports no stage count and the KPI shows no "across N stages" caption — both counted values of a status→stage map against a ladder ISS-897 deleted (ISS-999)
 	it("reports no stage count, because a status has no stage", () => {
 		expect(statusDonut({ open: 2, in_progress: 1 })).not.toHaveProperty(
 			"activeStageCount",
@@ -165,7 +162,6 @@ describe("projectAttention", () => {
 			},
 		],
 		pendingSkillUpdates: [],
-		// cm:why the per-project dashboard deliberately does NOT carry unseen drafts: every row it renders pairs with an action button (retry / diff / input) and "read this proposal and decide" is not one of them. The cross-project inbox and the overview digest are that bucket's surfaces.
 		unseenDrafts: [],
 		unseenDraftsTotal: 0,
 		offlineRunners: [],
@@ -189,7 +185,6 @@ describe("projectAttention", () => {
 });
 
 describe("runnersSummary", () => {
-	// cm:why the spine is the project's runners, so these fixtures carry no owner at all — the field the old defect keyed on is gone from the input
 	const runners = [
 		{ runnerId: "r1", deviceId: "d1", deviceName: "mac", platform: "macos", deviceStatus: "online", runnerStatus: "online" },
 		{ runnerId: "r2", deviceId: "d2", deviceName: "lin", platform: "linux", deviceStatus: "online", runnerStatus: "online" },
@@ -348,7 +343,6 @@ describe("activeRuns / idleRuns — liveness comes from liveJobs, not from a ste
 		expect(activeRuns([run({ liveJobs: 1 })])).toHaveLength(1);
 	});
 
-	// cm:guard this is the case the old `currentStep !== "tested"` guess got wrong: every park OTHER than the release gate read as live forever. getcontent measured 14 runs at status running, 3 with any live job.
 	it.each(["waiting", "needs_info", "on_hold", "triage"])(
 		"does NOT count a run parked at %s with no live job",
 		(currentStep) => {

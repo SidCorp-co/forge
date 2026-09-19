@@ -1,13 +1,5 @@
 "use client";
 
-// Create-issue flow (ISS-331). A SlideOver-hosted form wired to
-// `POST /api/projects/:id/issues` via `useCreateIssue`. Title is required
-// (mirrors the server schema); priority defaults to `medium`; description,
-// category, and complexity are optional. On success we invalidate `['issues']`
-// (done by the hook) and navigate to the new issue's detail page. Modeled on
-// the New Project dialog (ISS-319).
-//
-// cm:why ISS-454 — Quick capture sends its Context textarea as `description` rather than a field of its own, so a one-liner still reaches triage with enough to act on instead of bouncing to needs_info
 
 import {
   type ClipboardEvent,
@@ -38,10 +30,8 @@ import type { IssueComplexity, IssuePriority } from "../types";
 import { BodyEditor } from "./body-editor";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 
-// cm:edge lockstep -> packages/core/src/lib/attachment-mime.ts#allowedSetForTarget — this list must mirror the server's `issue` target so a file is refused here rather than after an upload round-trip. The note this replaces pointed at core's `issueCreateSchema` allow-list, which no longer holds the set — the three per-target sets are now one table in that module.
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;
-// cm:edge lockstep -> packages/core/src/issues/attachment-service.ts — this set exists only to reject before an upload round-trip, so a mime core accepts and this omits is invisible: the picker silently filters the file and the person is told the type is unsupported, while an agent posting the same file through forge_uploads succeeds. `image/svg+xml` is STILL omitted deliberately — core serves it `Content-Disposition: attachment`, and whether an <img> thumbnail renders under that header is unverified here; route it through the sandboxed HtmlArtifact path before adding it.
 const ALLOWED_MIMES = new Set([
   "image/png",
   "image/jpeg",
@@ -62,7 +52,6 @@ const ALLOWED_MIMES = new Set([
 const ACCEPT_ATTR =
   "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/html,video/mp4,video/webm,video/quicktime,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.mp4,.webm,.mov,.txt,.md,.csv,.docx,.xls,.xlsx,.log,.sql,text/*";
 
-// cm:guard the browser reports `""` for a `.log` or `.sql` and cannot read the bytes, so this must let an unknown type through to the server rather than filter it — core resolves the type from the bytes now and refuses only what is not UTF-8 text (ISS-957)
 function isStageable(mime: string): boolean {
   return ALLOWED_MIMES.has(mime) || mime === "" || mime.startsWith("text/");
 }
@@ -97,7 +86,6 @@ const MODE_TABS = [
   { value: "quick", label: "Quick capture" },
 ];
 
-// cm:guard stage every file under a name no sibling holds — a clipboard screenshot is always `image.png`, and the server refuses the WHOLE batch when one member repeats a name, so letting two pastes share one name drops every file the user attached; rename rather than refuse, because two screenshots are two documents (ISS-963)
 function uniqueStagedName(name: string, used: Set<string>): string {
   if (!used.has(nameKey(name))) return name;
   const dot = name.lastIndexOf(".");
@@ -109,7 +97,6 @@ function uniqueStagedName(name: string, used: Set<string>): string {
   }
 }
 
-// cm:edge lockstep -> packages/core/src/lib/attachment-mime.ts#safeName — the server compares SANITISED names, so a key that skips the sanitisation stages `a b.png` beside an already-staged `a_b.png` and the server then drops the whole batch on a collision this saw as two names (ISS-963)
 function nameKey(name: string): string {
   return name
     .normalize("NFC")
@@ -118,7 +105,6 @@ function nameKey(name: string): string {
     .replace(/[^\p{L}\p{M}\p{N}._-]/gu, "_");
 }
 
-// cm:guard each dropped file gets ITS OWN reason — one shared message reads as the verdict on all of them, and the server's own wording carries a row id and tells the reader to "cite it", which is a sentence for an agent and not for the person who just dragged a file in (ISS-963)
 const ATTACHMENT_ERROR_COPY: Record<string, string> = {
   ATTACHMENT_NAME_TAKEN: "this issue already has a file with that name",
   MIME_NOT_ALLOWED: "that file type isn't accepted",
@@ -150,7 +136,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // cm:guard reset on OPEN, not on close — a dialog dismissed mid-create must not carry its draft or its error into the next issue somebody files.
   useEffect(() => {
     if (open) {
       setMode("standard");
@@ -169,7 +154,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     // `create` is stable from React Query; resetting only on `open` is intended.
   }, [open]);
 
-  // cm:guard this is the ONLY staging path — the picker, the drop and the paste all land here, so a rule added to one of those handlers instead of this one holds for a third of the ways a file arrives (ISS-963)
   const acceptFiles = useCallback((picked: FileList | File[]) => {
     const accepted: File[] = [];
     const errs: string[] = [];
@@ -228,7 +212,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     [acceptFiles],
   );
 
-  // cm:guard pull in only `kind === "file"` blobs — pasted TEXT must fall through to the Textarea or it is inserted twice, once by this handler and once by the browser; the empty-name fallback here is cosmetic only, and `acceptFiles` is what keeps two pastes from sharing a name (ISS-963)
   const onPaste = useCallback(
     (e: ClipboardEvent) => {
       // Quick capture sends no attachments — never stage invisible files there.
@@ -301,7 +284,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
           ...(attachments.length ? { attachments } : {}),
         });
       }
-      // cm:guard a 201 whose `attachmentErrors` is non-empty is a PARTIAL success — core drops the whole batch when one member fails, so reporting only `Issue created` tells the user their files landed when none did (ISS-963)
       const dropped = created.attachmentErrors ?? [];
       if (dropped.length > 0) {
         toast({
@@ -320,7 +302,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   }
 
   return (
-    // cm:edge contract -> packages/core/src/guides/registry.ts#what-is-an-issue — the caption below states the same admission test as that guide and the job preamble; keep all three in step
     <SlideOver open={open} onClose={onClose} title="New issue" width={480}>
       <form onSubmit={onSubmit} onPaste={onPaste} className="flex h-full flex-col gap-4">
         <Tabs

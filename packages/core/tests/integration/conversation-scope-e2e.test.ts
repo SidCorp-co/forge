@@ -22,7 +22,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard ONE harness for the whole file: `db/client.ts` binds to DATABASE_URL at import time, so a second setupTestDatabase() puts the fixtures on one database and the code under test on another.
 let harness: TestDatabase;
 let scope: typeof import('../../src/conversations/scope.js');
 let participants: typeof import('../../src/conversations/participants.js');
@@ -119,8 +118,6 @@ describe('who may read a conversation', () => {
     });
   });
 
-  // cm:guard this is the empty-scope hole held open as a test: the check is "a role on every project in the set", and an `every` over nothing is TRUE — so a room with no handle must be refused by name.
-  // cm:guard the room is emptied by STAMPING the handle gone, not by deleting its membership. Since ISS-1003 a revoke no longer empties a scope — that was the defect — so a test that reached the empty set through `project_members` would now be measuring nothing while still passing its assertion about a room it never emptied.
   it('refuses a room that is about no project rather than granting it to everyone', async () => {
     const room = await openRoom(projectA);
     const [handle] = await participants.listParticipants(room.id);
@@ -134,7 +131,6 @@ describe('who may read a conversation', () => {
         cause: { code: 'CONVERSATION_NO_SCOPE' },
       });
     }
-    // cm:why a caller naming NO user is refused one step earlier and by its own code — it forgot, rather than being a person without a role; both are 403 and neither reads the room
     await expect(scope.assertConversationReadable(room.id, null)).rejects.toMatchObject({
       status: 403,
       cause: { code: 'CONVERSATION_NO_AUTHORITY' },
@@ -240,8 +236,6 @@ describe('the door a handle comes through', () => {
     expect(await scope.derivedScope(room.id)).toEqual([projectA]);
   });
 
-  // cm:guard two callers removing a DIFFERENT handle each count two live and each pass `live <= 1`, so an unserialized check commits both and leaves the unreadable room it exists to prevent.
-  // cm:why a third connection holds the row until BOTH are waiting: two removals started from JavaScript alone interleave as the event loop pleases and can pass without ever racing.
   it('refuses one of two concurrent removals that would empty the room between them', async () => {
     const room = await openRoom(projectA);
     const second = await harness.db.transaction(async (tx) =>
@@ -362,7 +356,6 @@ describe('a turn continuing a conversation by id', () => {
     expect(turn.conversationId).toBe(room.id);
   });
 
-  // cm:guard being allowed to READ a room is not the same as a turn belonging to it: naming project B and conversation A passes the read check on A while the toolset is built for B.
   it('refuses a turn arriving under a project the conversation is not about', async () => {
     const room = await openRoom(projectA);
     await expect(
@@ -387,7 +380,6 @@ describe('a turn continuing a conversation by id', () => {
     ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_ADAPTER_CONFLICT' } });
   });
 
-  // cm:guard a turn naming NO authority is refused as that and never as an anonymous caller: one omitted argument in an adapter's runtime silenced every room while the unit suites stayed green
   it('refuses a turn that names no authority at all, by name', async () => {
     const room = await openRoom(projectA);
     await expect(
@@ -400,7 +392,6 @@ describe('a turn continuing a conversation by id', () => {
     ).rejects.toMatchObject({ cause: { code: 'CONVERSATION_NO_AUTHORITY' } });
   });
 
-  // cm:guard a persisted turn APPENDS to the room, so it takes `member` and not `viewer` — the threshold the same room's rename and delete already take
   it('refuses a viewer continuing a conversation, and admits a member', async () => {
     const room = await openRoom(projectA);
     const viewer = await createTestUser(harness.db);
@@ -431,7 +422,6 @@ describe('a turn continuing a conversation by id', () => {
     expect(turn.conversationId).toBe(room.id);
   });
 
-  // cm:guard the assistant row is BY the room's handle: the account that spoke is known here, and a transcript whose assistant rows are all by nobody cannot say which handle answered
   it('names the room handle as the author of what the assistant said', async () => {
     const room = await openRoom(projectA);
     const turn = await turns.openTurn({
@@ -449,7 +439,6 @@ describe('a turn continuing a conversation by id', () => {
     expect(written.map((m) => m.authorUserId)).toEqual([null, handle?.userId]);
   });
 
-  // cm:guard a turn is its question AND its answer or neither: committing the user row and failing on the assistant one leaves a transcript ending on a person waiting (ISS-1001 invariant 7)
   it('commits a turn whole or not at all', async () => {
     const room = await openRoom(projectA);
     const turn = await turns.openTurn({
@@ -459,7 +448,6 @@ describe('a turn continuing a conversation by id', () => {
       readerUserId: ownerId,
     });
     turns.appendUserMessage(turn, 'asked');
-    // cm:why the CHECK constraint refuses this role, and only the SECOND message carries it
     turn.pending.push({
       role: 'nonsense' as never,
       id: null,
@@ -475,7 +463,6 @@ describe('a turn continuing a conversation by id', () => {
     await expect(turns.persistMessages(turn)).rejects.toThrow();
 
     expect(await store.countMessages(room.id)).toBe(0);
-    // cm:guard still retryable: the queue is cleared by the commit and not by the attempt
     expect(turn.pending).toHaveLength(2);
   });
 

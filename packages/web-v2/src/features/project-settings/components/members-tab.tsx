@@ -5,13 +5,15 @@ import {
   Button,
   Card,
   CardContent,
+  CardTitle,
   ErrorState,
   Field,
   IconButton,
   Input,
+  SectionTitle,
   Select,
-  type SelectOption,
   Skeleton,
+  type SelectOption,
 } from "@/design";
 import { useOrgMembers } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
@@ -91,7 +93,7 @@ export function MembersTab({
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-4">Members</h2>
+        <SectionTitle className="fg-h3 mb-4">Members</SectionTitle>
 
         {membersQ.isLoading ? (
           <div className="space-y-2">
@@ -145,7 +147,7 @@ export function MembersTab({
 
         {canEdit && (
           <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <h3 className="fg-label text-fg">Pending invitations</h3>
+            <CardTitle className="fg-label text-fg">Pending invitations</CardTitle>
             {invitationsQ.isLoading ? (
               <Skeleton className="h-9 w-full rounded-md" />
             ) : invitationsQ.isError ? (
@@ -184,7 +186,7 @@ export function MembersTab({
 
         {canEdit && orgId && orgCandidates.length > 0 && (
           <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <h3 className="fg-label text-fg">Add from organization</h3>
+            <CardTitle className="fg-label text-fg">Add from organization</CardTitle>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <Field label="Org member">
@@ -223,9 +225,9 @@ export function MembersTab({
 
         {canEdit && (
           <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <h3 className="fg-label text-fg">
+            <CardTitle className="fg-label text-fg">
               Invite by email (outside the org)
-            </h3>
+            </CardTitle>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <Field label="Email">

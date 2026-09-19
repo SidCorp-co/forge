@@ -1,14 +1,3 @@
-// Read-side capability tickets. `upload_tickets` solved "write bytes without a
-// session"; this solves the mirror problem, which had no answer at all: an agent
-// could SEE an attachment (vision) but could not obtain its bytes — the
-// authenticated download route 401s for a device token, a PAT, and no-auth
-// alike, and a third-party service told to fetch that URL has no Forge session
-// either. Agents worked around it by recreating owner-supplied images from
-// scratch with Playwright, which is not a workaround so much as a data loss.
-//
-// The unguessable id IS the credential (same reasoning as the upload ticket),
-// so the route needs no Authorization header and any fetcher can use it.
-
 import { and, eq, gt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { downloadTickets } from '../db/schema.js';

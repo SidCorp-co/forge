@@ -218,7 +218,6 @@ describe('ISS-448 I1 orphan trigger + backfill', () => {
       expect((await jobRow(orphanJob)).status).toBe('cancelled');
       expect((await jobRow(orphanJob)).failure_reason).toBe('orphan_under_terminal_run');
       expect((await sessionRow(orphanSession)).status).toBe('cancelled_stale');
-      // ...legitimate in-flight rows under the active run untouched.
       expect((await jobRow(liveJob)).status).toBe('running');
       expect((await sessionRow(liveSession)).status).toBe('idle');
     });

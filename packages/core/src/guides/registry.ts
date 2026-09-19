@@ -16,7 +16,6 @@
 // Search already supplies those) and do not restate the status ladder /
 // enums (`prompt/facts/registry.ts` owns those).
 
-// cm:guard both note modules are leaves — `issues/dependency-effects.ts` imports the schema as `import type` only and `projects/project-facts.ts` imports nothing but zod — so neither breaches the no-DB rule below. Keep them that way, or this module and both its read surfaces start needing a live DB.
 import { WORK_EVIDENCE_WAIVER_NOTE } from '../issues/dependency-effects.js';
 import {
   ALWAYS_INJECT_ENFORCEMENT_NOTE,
@@ -28,14 +27,12 @@ import type { ForgeGuide } from './types.js';
 
 export type { ForgeGuide };
 
-// cm:guard no DB/env/side-effect import may reach this module, mirroring `prompt/facts/registry.ts` — the REST route, the MCP tool and every test import it without a live DB, and one such import makes all three need one
 export const FORGE_GUIDES: readonly ForgeGuide[] = [
   {
     slug: 'project-settings-and-test-credentials',
     title: 'Project settings & test credentials',
     summary:
       'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why forge_config never returns them.',
-    // cm:edge contract -> packages/core/src/projects/project-facts.ts — the body interpolates both always-inject notes where it names the tier
     version: 3,
     body: `## Project settings & test credentials
 
@@ -246,7 +243,6 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
     summary:
       'The three shapes an issue body takes and how to tell which one you are writing, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
     version: 2,
-    // cm:guard the HTML-artifact paragraph must keep saying "attach, never paste": `prompt/user.ts` truncates `description` at DEFAULT_FIELD_CAPS.description before an agent sees it, so an inlined page evicts the requirements instead of merely bloating them
     body: `## Writing an issue
 
 A reader must get the problem in about fifteen seconds. How you get them there depends on which of three things you are writing, so pick the shape FIRST — most of the unreadable issue bodies in this tracker are the wrong shape, not bad writing.

@@ -40,7 +40,7 @@ The next runner change with no such sentence merges with no tag and **nothing re
 | `projects/autonomous-contract.ts` → `requiredProjectKnowledge` | computes `{slug, role, because}` from what the project declares; `missingProjectKnowledge` is what settings and the prompt both read |
 | three comments in `system.ts` | the layer order is cache-motivated: the shared prefix must stay "the longest common cacheable span" |
 
-The `cm:why` above the facts block states the existing intent, and it is the constraint this
+The rationale above the facts block states the existing intent, and it is the constraint this
 proposal must not break: facts are injected at preamble build **rather than copied into skill
 bodies**, so a skill stays pure business logic and current without re-syncing every skill file.
 

@@ -20,6 +20,7 @@ import {
   Menu,
   MonoTag,
   PageContainer,
+  PageTitle,
   SegmentedControl,
   SessionRowSkeleton,
   StatusChip,
@@ -28,11 +29,11 @@ import {
   TD,
   TH,
   THead,
-  TR,
   Tooltip,
-  useElapsed,
+  TR,
   type MenuItem,
   type SegmentOption,
+  useElapsed,
 } from "@/design";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
@@ -164,7 +165,6 @@ function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSes
   }
 }
 
-/** Zero-render WS room subscription — used to fan out across visible projects. */
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
   return null;
@@ -186,8 +186,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   // gets set when `projectId` is unset.
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
 
-  // Resolve each row's project slug (id → slug) so session rows can link to the
-  // project-scoped detail + issue routes at both tiers.
   const slugById = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of projectsQ.data ?? []) m.set(p.id, p.slug);
@@ -223,8 +221,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     const issueFiltered = issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
     // ISS-477 — workspace tier: keep only sessions whose project is in the active org.
     const scoped = projectId ? issueFiltered : issueFiltered.filter((r) => orgProjectIds.has(r.projectId));
-    // ISS-465 — kind dimension applies BEFORE the status filter so the status
-    // counts reflect the chosen kind ("3 Running chats" vs "3 Running runs").
     return scoped.filter((r) => matchesKind(kind, r));
   }, [sessionsQ.data, issueFilter, kind, projectId, orgProjectIds]);
 
@@ -233,7 +229,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r] as const)), [rows]);
   const openRow = openSessionId ? rowById.get(openSessionId) : undefined;
 
-  // cm:guard one `now` per render, read once and passed down: deriving it inside each consumer lets the tab counts, the row chips and the filter disagree about which sessions are stalled within a single paint
   const now = Date.now();
   const displays = useMemo(
     () => rows.map((r) => deriveSessionDisplayStatus(r, now)),
@@ -255,9 +250,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         const ms = since ? now - new Date(since).getTime() : NaN;
         if (Number.isFinite(ms) && ms >= 0) waits.push(ms);
       }
-      // ISS-322 — "Zombie jobs" counts only LIVE stalled sessions (heartbeat
-      // overdue, pending auto-recovery). A terminal `cancelled_stale` is benign
-      // swept cleanup and no longer inflates this alert.
       if (d === "stalled") zombies += 1;
     });
     // Median wait across queued sessions (draft "Median wait" metric).
@@ -332,7 +324,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
           band of mostly 0/— on quiet projects), with Sweep on the same row. */}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
-          <h1 className="fg-h2">Sessions</h1>
+          <PageTitle className="fg-h2">Sessions</PageTitle>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <StatPill label="Active" value={String(stats.active)} />
             <StatPill label="Queued" value={String(stats.queued)} />
@@ -674,7 +666,6 @@ function RunnerCell({
   );
 }
 
-// cm:why the chip gets a second line under it at all: one word is the whole of twenty different endings, so a live stalled row carries a countdown to the server's auto-reap — "stalled (display)" must never read as "already reaped (server)" — and a terminal row carries its cause.
 function StatusCell({
   row,
   display,
@@ -692,7 +683,6 @@ function StatusCell({
   // taking priority over the generic idle→paused mapping used everywhere else
   // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
   const awaitingReply = isAwaitingReply(row);
-  // cm:guard every terminal session is classified here rather than chip-mapped directly: benign cleanup and lifecycle cancels take the neutral `swept` token with a tooltip that says why, and only a genuine failure earns the red `failed` token and its amber reason — a red chip on filed-away work is an alarm nobody can act on (ISS-322, ISS-998).
   const outcome = classifySessionOutcome(display, row.failureReason);
   const chipStatus = awaitingReply
     ? "waiting"
@@ -702,7 +692,6 @@ function StatusCell({
   const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
   const showReason =
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
-  // cm:guard a `cancelled` session carries no `failureReason` — nothing failed — so the line below it comes from the OUTCOME instead. Without it the row says only "Closed", which is the calm terminal tone this design system reserves for filed-away work and does not say that somebody stopped this session (ISS-998).
   const subLine = showReason ? reason : display === "cancelled" ? outcome.label : null;
   // Red reason text only for a genuine failure; swept/cleanup reads subtle.
   const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";
@@ -818,10 +807,7 @@ function SessionMobileCard({
   deviceName?: string;
   now: number;
   actions: RowActions;
-  /** Set at the project tier only — when present, rows navigate as before. */
   projectId?: string;
-  /** Workspace tier only (ISS-664): opens the inline reply panel instead of
-   *  navigating away from the cross-project list. */
   onInlineOpen: (id: string) => void;
 }) {
   const router = useRouter();

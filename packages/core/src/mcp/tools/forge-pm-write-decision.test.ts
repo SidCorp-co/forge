@@ -53,7 +53,6 @@ const { pmWriteDecisionHandler, pmWriteDecisionInputSchema } = await import(
 );
 const { writePmDecision } = await import('../../pm/decisions-service.js');
 
-// cm:why these cases have moved down a layer TWICE, each time to the layer that still runs. First off the deprecated `forge_pm.<action>` shim, when that was deleted; now off `pmWriteDecisionHandler`, because ISS-931 put an unconditional credential refusal in front of it — the action needs a `runners` row keyed on a paired device and `/mcp` no longer authenticates one. `writePmDecision` is live code with no other caller and no REST twin, so its behaviour is asserted here directly; the refusal itself is the last case in this file.
 const forgePmWriteDecisionTool = () => ({
   handler: async (args: unknown) => writePmDecision(pmWriteDecisionInputSchema.parse(args)),
 });
@@ -98,7 +97,6 @@ describe('forge_pm.write_decision', () => {
     expect(result.decisionId).toBe(DECISION_ID);
     expect(result.indexed).toBe('queued');
 
-    // cm:guard the indexer is scheduled on a microtask, NOT awaited by the handler — drop this flush and the assertion below runs before the call it is looking for, passing or failing on timing rather than behaviour
     await new Promise<void>((r) => queueMicrotask(() => r()));
 
     expect(indexMemorySpy).toHaveBeenCalledWith(
@@ -137,12 +135,6 @@ describe('forge_pm.write_decision', () => {
     expect(result.escalation.notificationId).toBe('33333333-3333-4333-8333-333333333333');
   });
 
-  // cm:guard ISS-1063 — the escalation's question, options, severity and expiry live ONLY
-  // in that notification's body: nothing else persists them. So when an operator has
-  // `pm_escalation` in the emission switch's set, the call refuses BY NAME after the
-  // decision row is already committed, rather than returning a shape that reads as
-  // "escalated, nobody told" when the truth is "the question is gone". Returning a null
-  // id here was tried and reverted in the same change.
   it('with escalate refused by the switch: writes the decision, then refuses naming it', async () => {
     const tool = forgePmWriteDecisionTool();
     emitNotificationSpy.mockResolvedValue(null);
@@ -214,7 +206,6 @@ describe('forge_pm.write_decision', () => {
       }),
     ).rejects.toThrow();
   });
-  // cm:guard the MCP action is refused on the CREDENTIAL, and this is the case that says so. Without it, `writePmDecision` above looks reachable from an agent and the three cases before it read as coverage of a live MCP action rather than of a service behind a permanent refusal (ISS-931).
   it('the MCP action itself refuses every caller /mcp can produce', async () => {
     await expect(
       pmWriteDecisionHandler(

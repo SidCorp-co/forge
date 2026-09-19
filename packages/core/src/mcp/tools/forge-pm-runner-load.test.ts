@@ -29,7 +29,6 @@ vi.mock('../../db/client.js', () => ({
 
 const { pmRunnerLoadHandler, pmRunnerLoadInputSchema } = await import('./forge-pm-runner-load.js');
 
-// cm:why these cases used to run through the deprecated `forge_pm.<action>` shim factory, which was deleted once nothing named it; the handler and its schema are what `forge_project_pm` actually dispatches into, so the coverage moves down one layer instead of leaving with the shim — for runner_load, dispatch and write_decision this file is still the only place that behaviour is tested
 const forgePmRunnerLoadTool = (c: typeof ctx) => ({
   handler: async (args: unknown) =>
     pmRunnerLoadHandler(c.principal, pmRunnerLoadInputSchema.parse(args)),
@@ -58,7 +57,6 @@ describe('forge_pm.runner_load', () => {
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  // cm:guard the payload carries the raw `inFlight` count and NO capacity field. Core enforces no ceiling since the master began claiming from the pool, so any headroom reported here would be a limit nothing applies — the operator reads the count and concludes, this tool does not conclude for them.
   it('returns runner list with inFlight and no capacity field', async () => {
     const tool = forgePmRunnerLoadTool(ctx);
     const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];

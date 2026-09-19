@@ -7,7 +7,6 @@ describe("diffLines", () => {
     expect(diffStat(d)).toEqual({ added: 0, removed: 0 });
   });
 
-  // cm:why the reviewer's whole decision rests on seeing removals — rendering a replaced line as one add would let a rewrite read as an edit
   it("shows a replaced line as one removal and one addition", () => {
     const d = diffLines("keep\nold\nkeep2", "keep\nnew\nkeep2");
     expect(diffStat(d)).toEqual({ added: 1, removed: 1 });

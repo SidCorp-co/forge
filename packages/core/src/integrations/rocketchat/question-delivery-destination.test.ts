@@ -79,9 +79,6 @@ vi.mock('./room-delivery.js', () => ({
   resolveRoomPostAuth: async () => ({ serverUrl: 'https://c', authToken: 't', userId: 'bot' }),
 }));
 
-// cm:guard the mock ADMITS what it was shown rather than returning a bare `ok`: since ISS-978 a
-// verdict carries the segments it was passed over, and a proof is minted only where those match
-// what is being sent — so a screen that records nothing turns every post here into a refusal.
 vi.mock('../../messaging/screen.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../messaging/screen.js')>();
   return {

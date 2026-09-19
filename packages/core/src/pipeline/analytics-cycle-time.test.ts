@@ -104,8 +104,6 @@ describe('GET /api/pipeline/cycle-time', () => {
     expect(body[1]?.n).toBe(8);
   });
 
-  // cm:guard ISS-1022 — the window is in the SQL and not only in the schema, so these read the statement the route sent rather than its status code: a `days` that parses, defaults and refuses correctly while never reaching the query is the shape this endpoint had before, and it is what made one request scan every status transition of every visible project.
-  // cm:guard the walk RECURSES into a nested `SQL` chunk, and must: a chunk is a `StringChunk` of literal text, a nested statement with chunks of its own, or a bare bound value, and a walk that stops at the top level reports the window predicate missing the moment the CTE is composed from a helper rather than written inline. `JSON.stringify` of the statement is not an option — it throws on the circular `PgTable` graph.
   const cycleTimeScan = async (query: string) => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);

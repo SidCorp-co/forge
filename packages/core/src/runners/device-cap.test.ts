@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from './device-cap.js';
 
-// cm:guard every "not proven new enough" case below must stay FALSE. The claim refuses a below-floor box outright rather than degrading it, so relaxing one of these does not cost throughput — it hands the retry engine a candidate that can never claim, and the queue burns all 30 attempts without ever reaching `all_devices_exhausted`.
 describe('atLeastVersion', () => {
   it('accepts a runner exactly at the floor', () => {
     expect(atLeastVersion(AGENT_NAMING_MIN_RUNNER, AGENT_NAMING_MIN_RUNNER)).toBe(true);

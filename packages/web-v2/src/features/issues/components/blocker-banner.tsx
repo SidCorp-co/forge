@@ -1,6 +1,5 @@
 "use client";
 
-// cm:guard render only, and every field it renders comes from ONE `deriveBlockerState` verdict — re-joining status, `pipelineHealth` or the `blocks` edges here would give the banner a second opinion about why the issue is stuck, and the caller renders nothing at all for a null verdict
 import { Banner, Button } from "@/design";
 import type { BlockerState } from "../derive";
 import { IssueRefBadge } from "./issue-ref-badge";

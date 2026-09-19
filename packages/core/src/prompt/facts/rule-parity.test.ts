@@ -1,29 +1,8 @@
-/**
- * Cross-surface rule parity.
- *
- * Forge states the same operating rules in more than one place, and nothing
- * kept them in sync. On 2026-08-07 the note/plan affordance rules existed in
- * THREE copies — the guide registry, the runner's `.forge/orientation.md`
- * template, and the mandatory prompt block — and a fix to the first two left
- * the third (the one injected into every job) still teaching the behaviour it
- * was meant to remove. The worktree rule had the same shape: a contextual fact
- * said "never check out in the main tree" while the higher-precedence
- * `PIPELINE_RULES_TEXT` handed the agent a `git checkout` to run, so four
- * projects lost uncommitted work to the rule that was supposed to prevent it.
- *
- * This is the skill-fork problem one level up: the platform duplicates rules
- * across surfaces that no mechanism reconciles. These tests are that
- * mechanism. They assert INTENT, not bytes — the surfaces legitimately differ
- * in framing, escaping and audience, so byte-equality would just get disabled.
- */
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/orientation.rs — the runner template is the other copy of the affordance rules; edit one, this test fails until you edit the other
-
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { OPERATING_AFFORDANCES_TEXT, renderFact } from './registry.js';
 
-// cm:why five levels up from packages/core/src/prompt/facts reaches the repo root
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..', '..');
 const ORIENTATION_RS = join(
   REPO_ROOT,
@@ -32,16 +11,13 @@ const ORIENTATION_RS = join(
 
 /** Strip the escaping each surface needs so intent can be compared directly. */
 function normalize(text: string): string {
-  return (
-    text
-      .replaceAll('\\`', '`')
-      .replaceAll('\\n', '\n')
-      .replaceAll('\\"', '"')
-      // cm:why the runner copy is a `format!` template, where a literal brace is doubled — without this an affordance rule containing `{` can never match on that side, and the parity rule silently becomes unassertable
-      .replaceAll('{{', '{')
-      .replaceAll('}}', '}')
-      .replace(/\s+/g, ' ')
-  );
+  return text
+    .replaceAll('\\`', '`')
+    .replaceAll('\\n', '\n')
+    .replaceAll('\\"', '"')
+    .replaceAll('{{', '{')
+    .replaceAll('}}', '}')
+    .replace(/\s+/g, ' ');
 }
 
 const promptCopy = normalize(OPERATING_AFFORDANCES_TEXT);
@@ -140,14 +116,12 @@ describe('rule parity — operating affordances (prompt preamble vs runner orien
     expect(runnerCopy, 'missing from the runner orientation template').toContain(flag);
   });
 
-  // cm:guard the exact row that survived two of three fixes on 2026-08-07 — if it comes back anywhere, an agent is being taught to file notes as issues again.
   it('neither surface still routes a note to a draft issue', () => {
     const retired = /To record a note \/ follow-up \| create an issue at `draft`/;
     expect(promptCopy).not.toMatch(retired);
     expect(runnerCopy).not.toMatch(retired);
   });
 
-  // cm:guard removed 2026-08-18 (owner decision) — stages were deferring fixable bugs into unowned drafts instead of fixing them; 30 had accumulated on forge-dev, two of them (ISS-791, ISS-845) describing that very failure while sitting in it. If "an issue that passes the gates" returns as a residual home on either surface, the deferral loop is back.
   it('neither surface offers a new issue as a home for a residual', () => {
     const retired = /ONE of: an issue that passes the gates/;
     expect(promptCopy).not.toMatch(retired);

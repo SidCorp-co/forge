@@ -100,7 +100,6 @@ beforeEach(async () => {
   projectB = (
     await createTestProject(harness.db, owner, { orgId, slug: `beta-${randomUUID().slice(0, 8)}` })
   ).id;
-  // cm:guard the OWNER is made an explicit member of both rather than leaned on for an org-derived role, because this file is about the project-role rules and an org admin passes every one of them for a reason that has nothing to do with the doors under test.
   for (const p of [projectA, projectB]) await member(p, owner, 'admin');
   await member(projectA, colleague, 'member');
   await member(projectA, viewer, 'viewer');
@@ -208,7 +207,6 @@ describe('adding an agent', () => {
   });
 
   it('refuses an actor holding less than a member role on that project, and names it', async () => {
-    // cm:guard the actor passes the room's OWN write door — member on every project the room is already about — and holds only `viewer` on the project being brought in. Without that first half the refusal comes from `assertConversationWritable` and this case proves the wrong door.
     const room = await openRoom();
     expect((await addPerson(room.id, colleague)).status).toBe(201);
     await member(projectB, colleague, 'viewer');
@@ -322,7 +320,6 @@ describe('starting a room', () => {
     expect(people.sort()).toEqual([owner, colleague].sort());
     expect(agents.sort()).toEqual([projectA, projectB].sort());
     expect(room.shape).toBe('group');
-    // cm:guard nothing has been said in it, which is the half of the criterion that separates this from adding members to a room a message already opened.
     const detail = await app.request(`/api/conversations/${room.id}`, {
       headers: { authorization: ownerAuth },
     });
@@ -364,12 +361,10 @@ describe('who a room could still take in', () => {
     expect(body.people.map((p) => p.userId)).toContain(colleague);
     expect(body.people.map((p) => p.userId)).not.toContain(owner);
     expect(body.handles.map((h) => h.project.id)).toContain(projectB);
-    // cm:guard project B has never been talked to, so it has no agent account yet and the candidate carries the name it WILL be given: a list that offered only minted handles would make "which projects can this room be about" an answer about history rather than about access.
     expect(body.handles.find((h) => h.project.id === projectB)?.userId).toBeNull();
     expect(body.handles.map((h) => h.userId)).not.toContain(await agentOf(projectA));
   });
 
-  // cm:guard the room this list is for does not exist yet, and it will OPEN holding its own project's agent — so offering that agent would be offering a member the room already has. The cost is not a duplicate row, which `settleShape` absorbs: it is that the confirmation shown before the room opens counts handles, and a second one there promises a shared room where a one-to-one room is what gets created (ISS-1011).
   it('does not offer the agent of the project the room will open with', async () => {
     const minted = await agentOf(projectA);
     const res = await app.request(
@@ -381,14 +376,11 @@ describe('who a room could still take in', () => {
       handles: Array<{ userId: string | null; project: { id: string } }>;
     };
     expect(body.handles.map((h) => h.userId)).not.toContain(minted);
-    // cm:guard the OTHER project is still offered, so this is a rule about one member and not a list that went empty.
     expect(body.handles.map((h) => h.project.id)).toContain(projectB);
   });
 
-  // cm:guard excluded by IDENTITY and not by project: a project can hold more than one agent, and the second of them is a member the room will not already have. Excluding the whole project would drop it from the list silently, leaving a room somebody can still compose by adding it a moment after opening — which is the shape of a capability lost without a refusal (ISS-1011).
   it('still offers a SECOND agent of that project, which the room will not already hold', async () => {
     const opening = await agentOf(projectA);
-    // cm:guard minted AFTER the opening handle and said so in the row, because which agent a room opens with is decided by `created_at` — a second agent seeded with an earlier one would be the handle itself, and the test would pass while asserting nothing.
     const other = randomUUID();
     await harness.db.execute(
       sql`INSERT INTO users (id, email, kind, password_hash, email_verified_at, created_at)
@@ -437,7 +429,6 @@ describe('an agent that would cost the room a reader', () => {
     const body = (await res.json()) as {
       handles: Array<{ project: { id: string }; losesReaders: string[] }>;
     };
-    // cm:guard the colleague holds `member` on A and NOTHING on B, so bringing B in is exactly the act that costs them the room — and the owner, an admin on both, is not named.
     const beta = body.handles.find((h) => h.project.id === projectB);
     expect(beta?.losesReaders).toEqual(['Grace']);
   });

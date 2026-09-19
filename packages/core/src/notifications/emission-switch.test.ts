@@ -79,14 +79,6 @@ describe('the seam still refuses a type an operator turns off', () => {
   });
 });
 
-/**
- * An INVENTORY of the files allowed to write the table, not a proof that each
- * write consults the switch — a text scan cannot tell a call from a mention,
- * and this one does not claim to. What it does refuse is the thing that
- * actually goes wrong: a FOURTH producer appearing in a file nobody reviewed
- * against this gate. Adding a write to one of the three named files still needs
- * a reader; adding one anywhere else fails here naming the file.
- */
 describe('only the three known files write the notifications table', () => {
   const root = join(import.meta.dirname, '..');
   const WRITERS = [

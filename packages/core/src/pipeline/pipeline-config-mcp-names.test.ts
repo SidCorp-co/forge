@@ -9,10 +9,6 @@
 import { describe, expect, it } from 'vitest';
 import { pipelineConfigPatchSchema, pipelineConfigSchema } from './pipeline-config-schema.js';
 
-// ISS-1071 rule 7 — the check is on the WRITE schema and the asymmetry IS the assertion: four
-// control-plane readers `safeParse` a STORED document and take a silent branch on failure, so a name
-// check on the read side turns one stale document into a project that dispatches nothing and reports
-// nothing (the ISS-807 shape).
 describe('mcpServers validation (ISS-623 W1 / ISS-1071 rule 7)', () => {
   it('the WRITE schema rejects an unknown true-shorthand at the project default', () => {
     expect(() => pipelineConfigPatchSchema.parse({ mcpServers: { shop: true } })).toThrow(
@@ -28,8 +24,6 @@ describe('mcpServers validation (ISS-623 W1 / ISS-1071 rule 7)', () => {
     ).toThrow(/mcpServers entry.*shp.*not a known catalog server/);
   });
 
-  // ISS-1038 — `epodsystem: true` used to be the legal way to let an agent use an integration. The
-  // refusal must send the operator to the binding, not to a second settings tab.
   it('the WRITE schema now rejects a PROVIDER name, and says where the switch moved to', () => {
     expect(() => pipelineConfigPatchSchema.parse({ mcpServers: { epodsystem: true } })).toThrow(
       /agent-access switch on that integration's binding/,

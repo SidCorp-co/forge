@@ -25,7 +25,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// cm:guard spread the REAL drizzle-orm and wrap only `eq` — replacing the module wholesale breaks `db/schema.ts`, which builds its relations at import time and is what this file's subject imports for the `labels` table.
 vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>();
   return {
@@ -109,7 +108,6 @@ describe('assertParentIsLegal', () => {
     expect(await codeOf(() => assertParentIsLegal(P, c, top))).toBe('CIRCULAR_HIERARCHY');
   });
 
-  // cm:guard the FK permits a cycle, so a chain that already loops must TERMINATE here rather than spin — this test hangs the suite instead of failing it if the seen-set is removed
   it('terminates on an ancestry that already loops without reaching this module', async () => {
     const x = seed('x', { parentId: 'y' });
     seed('y', { parentId: x });
@@ -149,7 +147,6 @@ describe('moduleSlugBase', () => {
     expect(moduleSlugBase('  ...Billing!!  ')).toBe('billing');
   });
 
-  // cm:guard the empty string is not a legal slug — `labels_slug_chk` requires a module to have one, and `''` would satisfy IS NOT NULL while reading as no identity at all, so a name that derives nothing must fall back rather than pass through
   it('falls back to `module` for a name that derives no alphanumerics', () => {
     expect(moduleSlugBase('!!!')).toBe('module');
     expect(moduleSlugBase('   ')).toBe('module');

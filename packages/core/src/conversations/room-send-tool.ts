@@ -1,13 +1,3 @@
-/**
- * The one way a `tool`-mode turn reaches its room: a tool the model calls with
- * the text it wants posted (ISS-1087).
- *
- * It captures and never sends. The text it captures replaces the model's own
- * reply before the screen, and goes out through the same `deliver` every other
- * turn uses — so there is one delivery path, and a turn that never calls this
- * has said nothing, which the runner records by name.
- */
-
 import type { ChatToolset } from '../assistant/tools/mcp-adapter.js';
 import { toolError } from '../assistant/tools/mcp-adapter.js';
 
@@ -22,7 +12,6 @@ export interface RoomSendCapture {
 /**
  * Build the tool and the capture it writes into.
  */
-// cm:guard ONE message per turn and the FIRST stands: a second call is refused naming the first, because a room turn delivers exactly one message under its delivery key and a later call that replaced the earlier would let the model revise what a watcher may already have been shown. An empty text is refused rather than captured as a send of nothing (ISS-1087 criteria 18-20).
 export function roomSendCapture(): RoomSendCapture {
   let text: string | null = null;
   const toolset: ChatToolset = {

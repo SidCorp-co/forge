@@ -3,7 +3,6 @@ import type { MemoryHit } from './search.js';
 
 const selectQueue: unknown[][] = [];
 const whereArgs: unknown[] = [];
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('../issues/issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -33,8 +32,6 @@ type Digest = {
   expired: boolean;
 };
 const relations = new Map<string, { blocks: Digest[]; blockedBy: Digest[] }>();
-// cm:guard the batched read is mocked as ONE call over the whole seed set, so a rewrite back to
-// one read per seed fails on the call count rather than on a timing that nobody watches (ISS-1024)
 const loadIssueRelationsForIssues = vi.fn(async (issueIds: string[], _projectId: string) => {
   return new Map(
     issueIds.map((id) => [id, relations.get(id) ?? { blocks: [], blockedBy: [] }] as const),
@@ -134,8 +131,6 @@ describe('expandIssueRelations', () => {
     expect(loadIssueRelationsForIssues).toHaveBeenCalledWith(['A', 'B', 'C', 'D', 'E'], PROJECT);
   });
 
-  // cm:guard the edge read is ONE call however many seeds there are — it was one per seed until
-  // ISS-1024, which with the label read and the hydration made twelve queries for every search
   it('reads the edges of five seeds in one call', async () => {
     const hits = ['A', 'B', 'C', 'D', 'E'].map((id) => issueHit(id));
     for (const h of hits) relations.set(h.sourceRef, { blocks: [edge('Z')], blockedBy: [] });

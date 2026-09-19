@@ -6,7 +6,11 @@
 // carries the app's name and the three numbers that settle "do I need to open
 // this": how many credentials, how many want attention, how many are off.
 
-import { Card, Icon } from "@/design";
+import {
+  Card,
+  Icon,
+  SectionTitle,
+} from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { type ConnectionGroup, groupSummary } from "../connection-groups";
 import { providerIcon } from "../providers/registry";
@@ -30,12 +34,7 @@ export function ConnectionGroupSection({
   const rowsId = `connections-${group.provider}`;
   return (
     <Card>
-      {/* The button sits INSIDE the heading rather than beside it: the apps are
-          this page's grouping, so they have to be reachable by heading
-          navigation, and a disclosure whose control is the heading's only child
-          keeps one control per section rather than a label and a button. `h2`
-          because the page's own title is the `h1`. */}
-      <h2 className="fg-h3">
+      <SectionTitle className="fg-h3">
         <button
           type="button"
           aria-expanded={open}
@@ -57,7 +56,7 @@ export function ConnectionGroupSection({
           <span>{group.label}</span>
           <span className="fg-body-sm font-normal text-muted">{groupSummary(group)}</span>
         </button>
-      </h2>
+      </SectionTitle>
       {/* The container the header's aria-controls names exists while the
           section is shut too — a disclosure pointing at nothing is a dangling
           reference assistive technology cannot follow — and `hidden` is what

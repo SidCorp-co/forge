@@ -338,10 +338,6 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     expect(body.actualUsage).toBeNull();
   });
 
-  // cm:guard the rows are keyed on the AGENT SESSION and a decoy is keyed on the job id, because
-  // until ISS-1015 this route filtered `session_id::uuid = job.id` and this case asserted it: the
-  // old fixture tagged its rows with the job id, so it was green here and null on every live job —
-  // 0 of beta's 24,085 usage rows match any job id, 24,085 match an agent session.
   it('actualUsage sums the usage_records rows of the job AGENT SESSION, not of the job id', async () => {
     const { user, project } = await seedUserProject('admin');
     const systemHash = await seedPromptBlob('preamble');

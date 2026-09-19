@@ -1,20 +1,3 @@
-/**
- * Recovery-stats writer (ISS-197).
- *
- * The L1 dispatch gate serialises sessions per-issue (no two sessions share
- * an issue_id), so an unconditional read-modify-write of the
- * `agent_sessions.pipeline_health` jsonb is safe — there is no second
- * writer for the same row. A future refactor that breaks that invariant
- * must replace this module with a SQL-side `jsonb_set` UPDATE, or a row
- * lock.
- *
- * The retry engine calls `incrementRecoveryStats` ONCE per failure (even
- * when the failure is non-retryable, so the operator still sees the count)
- * and `incrementAutoRetryCount` ONCE per scheduled retry. `markSessionTerminal`
- * is called when the verifier decides the retry would be wasted; it writes
- * the non-failure terminal status without touching `failureReason`.
- */
-
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
@@ -109,8 +92,6 @@ export async function incrementAutoRetryCount(sessionId: string): Promise<Recove
   return next;
 }
 
-// cm:guard route through `applyKernelTransition`, never `db.update` — both values this takes are terminal, so a direct write leaves the row terminal with NO `kernel_transitions` row, and invariant I2 says every terminal write is auditable. It went unseen because the guard scanned for a status LITERAL and this passes a variable; the guard now rejects a non-literal status on a kernel table for exactly that reason.
-// cm:edge lockstep -> packages/core/src/lifecycle/transition-guard.test.ts — that guard is what keeps this routed; weakening its non-literal rule makes this bypassable again with no test going red.
 export async function markSessionTerminal(
   sessionId: string,
   terminal: 'completed_via_recovery' | 'cancelled_stale',

@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard PAT-SHAPED, because a box now presents an ordinary `forge_pat_*` carrying `device_id` (ISS-932). An opaque string here never reaches the device branch at all — `requireUserOrDevice` routes on `isPatLike` — so the mock would go unconsulted and the suite would prove nothing about the device path.
 const DEVICE_PAT = `forge_pat_dev_${'a'.repeat(64)}`;
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
@@ -35,14 +34,6 @@ vi.mock('../db/client.js', () => {
 
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 
-// cm:why the chat derive is stubbed rather than modelled: this file's subject is
-// the blind-schedule rule, and since ISS-1030 a terminal device PATCH carrying
-// neither `messages` nor `toolCallCount` also fires the carrier derive — which
-// reads `agent_session_events` and `agent_sessions` through the same chained db
-// double every case here queues answers into, so every read it makes shifts that
-// queue under the assertions. What the derive itself does with a real carrier is
-// proved in `tests/integration/chat-transcript-carrier-e2e.test.ts`, against a
-// database rather than a queue.
 const deriveChatTurnFinalMock = vi.fn(async () => false);
 vi.mock('../jobs/session-transcript.js', () => ({
   deriveChatTurnFinal: () => deriveChatTurnFinalMock(),
@@ -309,11 +300,6 @@ describe('PATCH /api/agent-sessions/:id — ISS-859: a scheduled run that read n
 });
 
 describe('countTranscriptToolCalls — the transcript answers what a run called', () => {
-  // cm:guard this exists because `count_tool_uses` in the runner's `chat.rs` does
-  // not any more. It was the ONLY record that a chat or schedule turn used a
-  // tool, and it existed solely because the transcript could not answer —
-  // measured on forge-dev, session 5250d5e1: 17 assistant turns over dozens of
-  // tool calls, zero tool frames stored. The transcript answers now.
   it('counts the ordered blocks a turn actually drew', () => {
     expect(
       countTranscriptToolCalls([
@@ -332,10 +318,6 @@ describe('countTranscriptToolCalls — the transcript answers what a run called'
     ).toBe(2);
   });
 
-  // cm:guard blocks OR toolCalls, never both summed: the derive writes the same
-  // call into both fields, so adding them doubles every count and a turn that
-  // called one tool would read as two — which, at zero, is the difference between
-  // a run recorded blind and one recorded clean.
   it('does not double-count a call that appears in both fields', () => {
     expect(
       countTranscriptToolCalls([

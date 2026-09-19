@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('./issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -15,7 +14,6 @@ vi.mock('../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOffset = vi.fn((): Record<string, unknown>[] => []);
 const selectOrderBy = vi.fn(() => ({ limit: vi.fn(() => ({ offset: selectOffset })) }));
-// cm:why the tab-count read is the only one that calls `.groupBy()`, which is what lets the capture below tell it apart from the list read (ISS-1010).
 const bucketGroupBy = vi.fn((): Record<string, unknown>[] => []);
 const bucketWhereArgs: unknown[] = [];
 const listWhereArgs: unknown[] = [];
@@ -29,10 +27,8 @@ const selectWhere = vi.fn((arg?: unknown) => ({
     bucketWhereArgs.push(arg);
     return (bucketGroupBy as (...x: unknown[]) => unknown)(...a);
   },
-  // cm:why The totalCount query awaits select().from().where() directly — make the chain object thenable so the 200-path tests (ISS-437) can run through it.
   then: (resolve: (v: unknown) => void) => resolve([{ n: 0 }]),
 }));
-// cm:why `loadProjectAccess` walks a leftJoin chain, so it is routed back into the same where/limit FIFO the list reads from — a second chain here would answer the access check out of order with the query under test.
 const selectLeftJoin = vi.fn(
   (): Record<string, unknown> => ({
     leftJoin: selectLeftJoin,
@@ -60,9 +56,6 @@ const distinctAs = vi.fn(() => ({
 const dbSelectDistinct = vi.fn(() => ({
   from: vi.fn(() => ({ where: vi.fn(() => ({ as: distinctAs })) })),
 }));
-// ISS-700 — the withFailureInfo rollup runs
-// selectDistinctOn([jobs.issueId]).from(jobs).where().orderBy() (awaited
-// directly; mockReturnValueOnce an array of the grouped row shape).
 const failureInfoOrderBy = vi.fn((): Record<string, unknown>[] => []);
 const dbSelectDistinctOn = vi.fn(() => ({
   from: vi.fn(() => ({ where: vi.fn(() => ({ orderBy: failureInfoOrderBy })) })),
@@ -84,7 +77,6 @@ vi.mock('./agent-sessions-hydrator.js', () => ({
   ),
 }));
 
-// cm:why buildCreatedByCondition stays real (SQL-shape covered by creator.test.ts); only hydrateCreatorsForIssues is stubbed
 const hydrateCreatorsForIssues = vi.fn(async () => new Map());
 vi.mock('./creator.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./creator.js')>();
@@ -321,7 +313,6 @@ describe('withFailureInfo (ISS-700)', () => {
       },
     });
     expect(body[1]).toMatchObject({ id: ISSUE_B, failureInfo: null });
-    // Exactly ONE extra grouped query regardless of page size — no per-row fetch.
     expect(dbSelectDistinctOn).toHaveBeenCalledTimes(1);
   });
 
@@ -435,7 +426,6 @@ function namesStatusColumn(node: unknown, depth = 0): boolean {
   if (depth > 8 || node === null || typeof node !== 'object') return false;
   const o = node as Record<string, unknown>;
   if (o.name === 'status' && typeof o.table === 'object') return true;
-  // cm:guard skip `table`: every column back-references the whole issues table, which owns a `status` column, so descending into it makes any condition look like it names the status and the assertion passes for the wrong reason.
   for (const [k, v] of Object.entries(o)) {
     if (k === 'table') continue;
     if (Array.isArray(v)) {
@@ -478,7 +468,6 @@ describe('withBuckets — the tab counts (ISS-1010)', () => {
     expect(b).toHaveProperty('humanDraft');
   });
 
-  // cm:guard passing `conditions` instead of `axisFree` makes the two reads identical — every tab but the open one would then read zero, which is what this catches.
   it('counts the statuses the status filter excludes, not only the ones on screen', async () => {
     queueAuthSelect();
     queueProjectAccessMember();

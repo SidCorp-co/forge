@@ -1,10 +1,3 @@
-// Canonical PII / auth scrubbing primitives. Imported by every Sentry
-// adapter (dev renderer, core, web client + server) so the privacy
-// contract is defined exactly once. Add new sensitive keys here, not
-// in per-surface adapters.
-//
-// `parseSourceCommit` sits here for the same reason: every surface names a deploy
-// by the same rule or the surfaces cannot be compared.
 
 /** Header names whose values must be replaced before send. Compared case-insensitively. */
 export const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([
@@ -15,7 +8,6 @@ export const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([
   'x-csrf-token',
 ]);
 
-/** Object key names whose values must be replaced before send. Compared case-insensitively. */
 export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
   'authToken',
   'auth_token',
@@ -32,10 +24,6 @@ export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
   'sessionToken',
   'session_token',
   'bearerToken',
-  // ISS-225 — `environments.testCredentials[]` carries QA login pairs (the column was
-  // `previewDeploy` until ISS-1069 renamed it; this set matches on the KEY NAME and not on a path,
-  // which is why the rename kept that spelling and why a future rename of the FIELD would stop the
-  // redaction silently — the scrubber would succeed and the secret would be in the log).
   'testCredentials',
   // ISS-1036 — a GitHub App's PEM and a Google service-account key file. Both
   // are credentials with no token-shaped signature of their own, so the key
@@ -56,21 +44,9 @@ export const URL_TOKEN_PATTERN = /([?&](?:token|jwt|access_token|refresh_token|a
  */
 export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
 
-/**
- * ISS-1036 — a PEM private key, whole. Matched across the body rather than
- * per line, because the key-name rules cannot reach this: `SCRUB_BODY_KEYS`
- * only fires where the key sits beside its name, and the per-line value match
- * in {@link scrubLogText} stops at the first space, which in
- * `-----BEGIN PRIVATE KEY-----` arrives before any key material. One pattern
- * covers both shapes a key travels in — real newlines in a log, and the
- * `\n`-escaped single line of a service-account JSON file.
- */
 export const PEM_PRIVATE_KEY_PATTERN =
   /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
 
-// cm:guard this second pattern is not redundant with the paired one above and must run after it: a log cut mid-key has a BEGIN marker and no END, which the paired pattern does not match at all — and an unmatched truncated key is a whole credential printed in the clear, because the truncation takes the tail and not the head.
-// cm:guard two things here are de-ambiguations and not behaviour changes, and both answer CodeQL `js/polynomial-redos` (high, PR 430) against input that is a build log, a runner's stdout, a Sentry body — text nobody controls. First, the label is BOUNDED: `[A-Z ]*` overlapped the literal `PRIVATE KEY` after it, so many `-----BEGIN ` markers made the engine walk the class back a character at a time at each one. Second, the separator between two base64 runs is REQUIRED (`+`, not `*`): written `(?:(?:\\n|\s)*[A-Za-z0-9+/=]{16,})*` it could match empty at a run boundary, giving one base64 line a partition for every way of cutting it into chunks of 16. Each rewrite accepts the same strings the loose form did for every label and key shape that exists, so NO unit test can fail on either and none pretends to — the case below defends the COVERAGE the bound must not lose, and the alert clearing is the evidence for the bound itself.
-// cm:guard the continuation is runs of at least 16 base64 characters, NOT `[A-Za-z0-9+/=\s]*`. The loose form also matches ordinary prose — every word after an unterminated BEGIN marker is letters and spaces — so a log with one truncated key came back with the rest of the build output redacted, which is the diagnostic loss ISS-277 spent a day on.
 export const PEM_PRIVATE_KEY_HEAD_PATTERN =
   /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----(?:\\n|\s)*(?:[A-Za-z0-9+/=]{16,}(?:(?:\\n|\s)+[A-Za-z0-9+/=]{16,})*)?/g;
 
@@ -81,36 +57,11 @@ export const PEM_PRIVATE_KEY_HEAD_PATTERN =
  */
 export const GOOGLE_ACCESS_TOKEN_PATTERN = /ya29\.[A-Za-z0-9_\-.]+/g;
 
-/**
- * ISS-412 — env-assignment lines in build/deploy logs. Matches `KEY=value`
- * (optionally `export KEY=value`) where KEY is SHOUTING_SNAKE_CASE and ANY
- * underscore-delimited segment of the key is in the secret token set
- * (`PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS`). Segment match —
- * not pure suffix — so production names like `SENTRY_DSN_CORE` /
- * `SENTRY_DSN_WEB` (a secret token sandwiched between service prefixes and
- * tenant tags) and `AWS_SECRET_ACCESS_KEY` are caught alongside the simple
- * trailing-suffix forms (`JWT_SECRET`, `POSTGRES_PASSWORD`). Line-anchored
- * via the per-line split in {@link scrubLogText} so it cannot match a
- * mid-line URL query param. Value spans to end-of-line so quoted multi-word
- * values are fully masked. Plain non-secret lines like `NODE_ENV=production`,
- * `SERVICE_URL_CORE=...`, `GITHUB_OAUTH_CLIENT_ID=...` pass through.
- *
- * Why segment-match instead of `\b<key>\b`: regex `\b` is `\w`↔non-`\w`,
- * and `_` is a word char, so `\bpassword\b` does NOT match
- * `POSTGRES_PASSWORD` — the underscore eats the boundary. The previous
- * suffix-only form missed `SENTRY_DSN_CORE` for the same structural reason.
- */
 export const ENV_SECRET_ASSIGNMENT_PATTERN =
   /^(\s*(?:export\s+)?(?:[A-Z0-9]+_)*(?:PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS)(?:_[A-Z0-9]+)*)\s*=\s*\S.*$/;
 
 export const FILTERED = '[Filtered]';
 
-/**
- * Walk every string value in `obj` (recursively, depth-limited) and replace
- * matches of {@link PAT_STRING_PATTERN} with `[Filtered]`. Sentry payloads
- * are arbitrarily nested; we bound recursion to avoid pathological loops on
- * cyclic objects.
- */
 export function scrubStringValues(obj: unknown, depth = 0): void {
   if (depth > 8 || !obj) return;
   if (typeof obj !== 'object') return;
@@ -145,13 +96,6 @@ export function scrubPatInString(s: string): string {
     .replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED);
 }
 
-/**
- * Mutates `obj` in place, replacing values whose keys appear in
- * SCRUB_BODY_KEYS. Walks nested objects and arrays depth-limited (≤ 8) so
- * deeply-nested secrets like `environments.testCredentials[]` get redacted
- * too. Matched subtrees are replaced with `[Filtered]` outright — we do not
- * recurse INTO a redacted subtree.
- */
 export function scrubBodyKeys(obj: unknown, depth = 0): void {
   if (depth > 8 || !obj || typeof obj !== 'object') return;
   if (Array.isArray(obj)) {
@@ -168,7 +112,6 @@ export function scrubBodyKeys(obj: unknown, depth = 0): void {
   }
 }
 
-/** Mutates `headers` in place, replacing values whose keys appear in SCRUB_HEADER_KEYS. */
 export function scrubHeaders(headers: Record<string, string | string[] | undefined>): void {
   for (const k of Object.keys(headers)) {
     if (SCRUB_HEADER_KEYS.has(k.toLowerCase())) {
@@ -187,30 +130,7 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Line-oriented secret scrubbing for free-form log text (e.g. a Coolify
- * build/deploy log surfaced over MCP). Unlike {@link scrubSentryEvent}, which
- * walks structured event objects, this redacts secret-SHAPED tokens inside
- * arbitrary text while preserving the surrounding diagnostic signal.
- *
- * Reuses the same canonical key sets as the rest of this module:
- *  - {@link PAT_STRING_PATTERN} (Forge PAT plaintext), {@link PEM_PRIVATE_KEY_PATTERN}
- *    (a private key, matched across lines before the split),
- *    {@link GOOGLE_ACCESS_TOKEN_PATTERN} and {@link URL_TOKEN_PATTERN}
- *    (tokenized URL query params).
- *  - {@link SCRUB_HEADER_KEYS}: `Authorization: Bearer xxx`, `Cookie: ...`, etc.
- *  - {@link SCRUB_BODY_KEYS}: `token=...`, `"apiKey":"..."`, `password=...`, ...
- *  - `extraSecrets`: literal secret VALUES known to the caller (e.g. the
- *    integration's own `apiToken` / `previousApiToken`), redacted wholesale.
- *
- * CRITICAL: redaction is token-scoped — we replace only the secret value, never
- * the whole line. Whole-line masking of `ENV`/`ARG`/stderr would swallow the
- * very diagnostic the log is being read for (ISS-277: `Cannot find module
- * '@codemirror/state'`). Short `extraSecrets` (< 6 chars) are ignored to avoid
- * shredding the log with spurious matches.
- */
 export function scrubLogText(text: string, extraSecrets: string[] = []): string {
-  // cm:why the header value is matched as the REST of the line, because scrubbing runs per line: a pattern stopping at the first space would redact the word `Bearer` and leave the credential behind it.
   const headerKeys = Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join('|');
   const headerRe = new RegExp(`\\b(${headerKeys})(\\s*[:=]\\s*).+`, 'gi');
   // Value stops at whitespace, quote, comma, brace, or `&` — the `&` guard
@@ -219,7 +139,6 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
   const bodyRes = Array.from(SCRUB_BODY_KEYS).map(
     (k) => new RegExp(`(\\b${escapeRegExp(k)}\\b\\s*[:=]\\s*"?)([^\\s",}&]+)`, 'gi'),
   );
-  // cm:guard the PEM pass runs over the WHOLE text and before the split — a key with real newlines in it is several lines, and every per-line rule below is blind to it by construction
   return text
     .replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
     .replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
@@ -231,7 +150,6 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
       for (const s of extraSecrets) {
         if (s && s.length >= 6) out = out.split(s).join(FILTERED);
       }
-      // cm:guard this env-assignment pass must stay LAST among the per-line rules: it runs after `extraSecrets` so an integration token echoed inside an env value is already scrubbed, and its suffix match is the strongest signal, so an earlier replacement moved below it would undo the redaction.
       out = out.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);
       return out;
     })
@@ -288,8 +206,6 @@ interface SentryLikeEvent {
   breadcrumbs?: Array<{ message?: string; data?: unknown }>;
 }
 
-// cm:guard the one rule that decides whether a build knows its own commit, shared because every reporting surface must answer this question identically: `/version` is compared to a Sentry release by hand, and two parses that disagree make that comparison meaningless.
-// cm:why 7 to 40 hex digits and nothing else: a deploy platform hands a build whatever its own config holds, and Coolify's application row for this repo reads `git_commit_sha=HEAD`, so the literal `HEAD`, a tag and an unexpanded `${SOURCE_COMMIT}` are all values that really arrive. Reporting one of them as an identity is worse than reporting none, because a caller cannot tell it is not a commit.
 const SOURCE_COMMIT_PATTERN = /^[0-9a-f]{7,40}$/i;
 
 /** The commit a build was told it was made from, or `null` for anything that is not one. */

@@ -102,7 +102,6 @@ describe('issues.opened — the door decides, not this file', () => {
     expect(finalizeIntakeMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard the refusal is named. Falling through to `unhandled event` would make a project whose door is shut indistinguishable from a webhook that never fired, and one live project loses its arrivals at the default.
   it('a closed door says which door refused, not "unhandled event"', async () => {
     creatorFound();
     admitGithubIssueMock.mockResolvedValue({ admitted: false, reason: 'github-intake-closed' });
@@ -139,7 +138,6 @@ describe('issues.opened — the door decides, not this file', () => {
     expect(finalizeIntakeMock).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard ONE statement, and it is an INSERT. The upsert this replaced ran a SELECT and then either an UPDATE or an INSERT, and the UPDATE arm is what rewrote a title somebody had since corrected here. `db.update` throws in this file's mock so that arm cannot come back quietly.
   it('issues one statement and never an update', async () => {
     creatorFound();
     admitGithubIssueMock.mockResolvedValue({ admitted: true, status: 'open', gated: false });
@@ -195,7 +193,6 @@ describe('issues.edited and issues.closed — the door admits once', () => {
 });
 
 describe('the projection is reached first (ISS-1062)', () => {
-  // cm:guard outcome 5 is enforced by this ORDERING and no longer by the guard below it: a `pull_request` delivery returns into the projection before the issues branch exists. The assertion is that it never reaches the door, not merely that no row appeared.
   for (const eventType of ['pull_request', 'check_run', 'push'] as const) {
     it(`${eventType} goes to the projection and never reaches the issues path`, async () => {
       const r = await handleGitHubEvent(ctx, eventType, {

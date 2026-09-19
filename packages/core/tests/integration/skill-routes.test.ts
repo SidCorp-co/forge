@@ -11,8 +11,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard the box's credential comes from the real `pairDevice` helper, never a hand-made string, so `requireDevice` performs the whole resolution it does in production — verify the token, read `device_id`, load the row. A stubbed bearer here would leave the one thing this file exists to exercise unexercised.
-
 describe('F2 skill routes integration', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
@@ -658,7 +656,6 @@ describe('F2 skill routes integration', () => {
       },
       body: JSON.stringify({ stage: 'approved' }),
     });
-    // cm:guard 404 and NOT 401 since ISS-932, and the change of code IS the assertion. A box's credential is an ordinary PAT now, so it authenticates here — what stops it is the empty `projectIds` allowlist it is minted with, which makes `effectiveProjectRole` answer null for every project. 401 would mean refused at the door; 404 means let in and fenced to nothing, which is also the shape that refuses to confirm the project exists. If this ever reads 200, the fence in `devices/credential.ts` is gone and a paired box speaks for its owner on every project its holder can see.
     expect(res.status).toBe(404);
   });
 

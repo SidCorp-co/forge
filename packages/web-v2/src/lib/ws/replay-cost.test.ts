@@ -25,9 +25,6 @@ function deferred<T>() {
 const tick = (ms = 40) => new Promise<void>((r) => setTimeout(r, ms));
 const unsubs: Array<() => void> = [];
 
-// cm:guard the BEFORE side has to be the replay this change removed, written out here, and not
-// `replayOnReconnect` — that function is still live and has since been fixed too, so using it as the
-// baseline would compare the new behaviour against itself and report every figure as unchanged.
 const REMOVED_BLANKET_REPLAY = [
 	["issues"],
 	["jobs"],
@@ -65,7 +62,6 @@ afterEach(() => {
 });
 
 describe("what a first-open replay costs, by the state of the query it lands on", () => {
-	// cm:guard ONE call, not two: `Query.fetch` returns the existing retryer when a fetch is running and the query holds no data, so the blanket replay never doubled a cold load's in-flight queries and removing it saves nothing there (ISS-1019).
 	it("costs a query still in flight with no data ONE call, under either replay", async () => {
 		for (const replay of [blanketReplay, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
 			const qc = client();
@@ -85,7 +81,6 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 		}
 	});
 
-	// cm:guard TWO calls under the blanket replay and two under the new one: a query already settled when the socket opened had its answer on screen while the socket was not delivering, which is a real gap, so this is the one case the first-open replay must keep paying for.
 	it("costs a query settled before the open TWO calls, under either replay", async () => {
 		for (const replay of [blanketReplay, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
 			const qc = client();
@@ -104,7 +99,6 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 		}
 	});
 
-	// cm:guard the mixed cold load the issue asks for, both ways, and the point is that the totals are EQUAL: the first-open half of ISS-1019 moves no request count, and what it buys is a rule that is explicit and tested rather than accidental.
 	it("costs a mixed cold load the same total under both replays", async () => {
 		const totals: number[] = [];
 		for (const replay of [blanketReplay, (qc: QueryClient) => replayOnFirstOpen(qc, Date.now())]) {
@@ -131,8 +125,6 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 		expect(totals[1]).toBe(totals[0]);
 	});
 
-	// cm:guard the ONE figure this change moves, and it moves UP: a questions query on its first fetch had its unconditional replay swallowed by the blanket path, and `invalidateThroughInFlight` is that prefix's recovery finally happening rather than appearing to.
-	// cm:guard the three notification keys ride the reconnect replay since ISS-1019 turned window focus off: `routeEvent` reaches them live, but a notification that arrived while the socket was down was repaired by returning to the tab and by nothing else, so this is what goes red if they are dropped from REPLAY_PREFIXES.
 	it("repairs the open count after a reconnect, which focus used to do", async () => {
 		const qc = client();
 		let calls = 0;
@@ -149,7 +141,6 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 		expect(calls).toBe(2);
 	});
 
-	// cm:guard the bell's list is `enabled: open` and therefore usually DISABLED when a reconnect lands, so what the replay owes it is staleness rather than a request — it must refetch on the next open rather than serve the cached list the missed notification is absent from.
 	it("leaves the closed bell's list stale, so opening it fetches rather than serving the gap", async () => {
 		const qc = client();
 		qc.setQueryData(["notifications"], { items: [], totalCount: 0 });
@@ -161,7 +152,6 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 		expect(qc.getQueryState(["notifications"])?.isInvalidated).toBe(true);
 	});
 
-	// cm:guard a reconnect has a DEFINITE gap, so a query whose first request took its snapshot during the outage must be repaired — this is the case that goes red if `replayOnReconnect` goes back to calling `qc.invalidateQueries` directly and has its invalidation swallowed.
 	it("repairs a query whose first fetch was running across a reconnect", async () => {
 		const qc = client();
 		let calls = 0;
@@ -204,7 +194,6 @@ describe("what a first-open replay costs, by the state of the query it lands on"
 });
 
 describe("what a burst of events costs", () => {
-	// cm:guard twenty transitions used to refire the hydrated issues search twenty times. One is the figure; counting `invalidateQueries` calls instead of query-function calls would pass against a coalescer that collapsed nothing the query client acted on.
 	it("costs each affected query ONE call beyond its first fetch, for twenty events", async () => {
 		const qc = client();
 		const calls = new Map<string, number>();

@@ -1,23 +1,3 @@
-/**
- * ISS-927 — the activity feed's agent marker, and the one property that let it
- * ship at all.
- *
- * The read path was deliberately deferred on 2026-09-02 (recorded on the issue
- * and, until this change, in `docs/proposals/agency-is-not-persisted.md`): every
- * row written before migration 0193 carries `actor_agency`'s `'human'` DEFAULT,
- * runner writes included, so a feed wired to the column ALONE would drop the
- * agent marker across the whole of history.
- *
- * What makes it shippable now is that the column can only ADD agents. The type
- * test stays as the floor, so no pre-column row moves; and it has to ship now,
- * because converting an unattended caller from a device token to a session PAT
- * moves its writes from `actor_type: 'device'` to `actor_type: 'user'` — without
- * the column those rows would newly read as a person's.
- *
- * Both halves are asserted here. Deleting either one is a silent regression in
- * a different direction, which is why neither is left to the other's test.
- */
-
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
@@ -69,7 +49,6 @@ describe('the agent marker reads the row, not just the actor type', () => {
     expect(out?.actor?.isAgent).toBe(false);
   });
 
-  // cm:guard THE case the owner's deferral was protecting, and the reason the read path is an OR rather than a column read. Every row written before migration 0193 carries `'human'` by DEFAULT — including the runner writes `actor_type: 'device'` correctly calls agents. Replace the `||` with `row.actorAgency === 'agent'` and this goes red, which is the whole of what "no historical row changes" means.
   it('keeps the marker on a pre-column device row carrying the human default', async () => {
     resolvesTo(true, 'device');
     const [out] = await __testing.attachActors([
@@ -78,7 +57,6 @@ describe('the agent marker reads the row, not just the actor type', () => {
     expect(out?.actor?.isAgent).toBe(true);
   });
 
-  // cm:guard agency is per ROW, not per actor, and this is the case that proves the decision was not folded into `resolveActors`' `(type, id)`-keyed map. One person legitimately appears as both: a comment they typed and a transition their session token made, in the same response. A map-level fold would give the whole batch whichever answer the last row carried.
   it('gives the same user id different answers on different rows', async () => {
     resolveActors.mockResolvedValueOnce(
       new Map([[`user:${USER}`, { type: 'user', id: USER, displayName: 'x', isAgent: false }]]),

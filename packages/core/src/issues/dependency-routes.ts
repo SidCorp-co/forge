@@ -75,7 +75,6 @@ issueDependencyRoutes.get(
       .limit(1);
     if (!issue) throw notFound('issue not found');
 
-    // cm:guard resolve the role through `loadProjectAccess`, never by reading `project_members` directly: an org admin/owner holds project `admin` on every project their org owns WITHOUT a membership row (`orgDerivedProjectRole`), so a raw row lookup 403s them. Measured on forge-beta 2026-08-23: 25 of 25 issues on the Issues page, 50 failed requests per load, for the org's own admin.
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
@@ -103,7 +102,6 @@ issueDependencyRoutes.post(
     const { dependsOnId: fromIssueId, kind, reason, validUntil } = c.req.valid('json');
     const userId = c.get('userId');
 
-    // cm:guard reject the self-edge BEFORE the sides lookup — `inArray` de-duplicates the two ids, so a self-edge comes back as ONE row and the length check below answers 404 instead of 400 SELF_DEP (caught by dependency-routes-e2e)
     if (fromIssueId === toIssueId) {
       throw badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
     }
@@ -115,7 +113,6 @@ issueDependencyRoutes.post(
     if (sides.length !== 2) throw notFound('one or both issues not found');
     const [a, b] = sides;
     if (!a || !b) throw notFound('one or both issues not found');
-    // cm:why both sides must share a project so membership can be checked ONCE, against `a` — the service refuses a mismatch as well, but only against the projectId it is handed, and this route has to choose that value before it can authorize anything
     if (a.projectId !== b.projectId) {
       throw badRequest(
         { message: 'cross-project edges not supported via this route' },
@@ -146,7 +143,6 @@ issueDependencyRoutes.post(
   },
 );
 
-// cm:edge lockstep -> packages/core/src/issues/dependency-service.ts — every IssueDependencyErrorCode needs a case here; an unmapped one falls through as a 500 with the raw code as its message
 function toHttpDependencyError(err: unknown, input: SetIssueDependencyInput): unknown {
   if (!(err instanceof IssueDependencyError)) return err;
   const { fromIssueId, toIssueId } = input;

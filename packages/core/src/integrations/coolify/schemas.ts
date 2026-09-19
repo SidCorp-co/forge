@@ -11,7 +11,6 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
-// cm:why `id` is server-assigned when omitted so it stays STABLE across config edits — it is the key mapping an outbound deploy to the target it was for, so regenerating it would orphan deliveries already recorded against the old one
 const coolifyTargetSchema = z
   .object({
     id: z.string().min(1).max(64).optional(),
@@ -19,7 +18,6 @@ const coolifyTargetSchema = z
     resourceUuid: z.string().min(1).max(200),
     healthUrl: z.string().url().max(500).optional(),
   })
-  // cm:guard never default `healthUrl` — an absent one is the operator declaring NO post-deploy health gate for this target, and a derived default would arm automatic rollback on every application whose health path Forge guessed wrong (ISS-971)
   .transform((t) => ({
     id: t.id ?? randomUUID(),
     label: t.label,
@@ -37,7 +35,6 @@ const COOLIFY_ROLLBACK_PROSE_REFUSAL =
  * rather than a zod object so the refusal of the OLD prose value is a sentence naming the
  * replacement, not `expected object, received string`.
  */
-// cm:guard the union `releaseChannelFields` implies across providers is a shape, NOT a type: `rollback` alone differs, and this key must stay LAST in `coolifyConfigSchema` so it overrides the spread above it. `RELEASE_CHANNEL_KEYS` still lists it because splitProviderConfig routes by key name and is indifferent to the value's shape (ISS-925).
 const coolifyRollbackSchema = z
   .unknown()
   .superRefine((value, ctx) => {
@@ -62,8 +59,6 @@ const coolifyRollbackSchema = z
 
 export const coolifyConfigSchema = z.object({
   baseUrl: z.string().url().max(500),
-  // cm:why several targets under one binding because a split BE/FE deploy is two separate Coolify applications sharing one project's credential and release gate
-  // cm:guard labels are UNIQUE within a binding, and the refusal is here because nothing downstream can recover from a duplicate: a `coolify.confirm` job carries only `targetLabel`, so two targets sharing one makes the post-deploy health gate read the first match's health URL and roll back that application instead of the one that failed (ISS-971)
   targets: z
     .array(coolifyTargetSchema)
     .min(1)
@@ -89,5 +84,4 @@ export const coolifySecretsSchema = z.object({
   apiToken: z.string().min(8).max(2000),
 });
 
-// cm:why binding-tier = per project: two projects share one org connection (the credential + baseUrl) but each deploys its own targets and names its own release box, probes and rollback — a key left on the connection tier is also a key a project admin cannot write on an org-owned connection
 export const COOLIFY_BINDING_CONFIG_KEYS = ['targets', ...RELEASE_CHANNEL_KEYS] as const;

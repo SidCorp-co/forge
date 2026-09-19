@@ -1,17 +1,3 @@
-/**
- * ISS-931 rule 2 — the four tools the pipeline cannot run without must work
- * under the credential a job or session actually holds, or the change does not
- * ship: `forge_step_start`, `forge_phase`, `forge_step_handoff.*` and
- * `forge_uploads`.
- *
- * Three of the four already asked `assertPrincipalIsWriter` before this issue.
- * What made them look device-scoped was `McpContext.device`, a row
- * `mcp/handler.ts` fabricated for every PAT — so the risk this file covers is
- * not that they reject a machine token today, it is that a later change
- * reintroduces a device requirement in front of one of them and nothing says
- * so until a pipeline stalls mid-run.
- */
-
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -71,7 +57,6 @@ describe('the keep-forever tools under a `session:` token', () => {
     }
   });
 
-  // cm:guard assert on the ABSENCE of a credential refusal, never on success — `db` is `{}` here, so every one of these calls fails further in, and a test written to expect success would be asserting the stub rather than the gate. A device requirement reintroduced in front of any of these four is what this case exists to catch, and it would arrive as exactly this text: the refusals in `project-authz.ts` and `require-pat.ts` are the only messages on this transport that name a device.
   it.each(KEEP_FOREVER)('$name is not refused on the credential', async ({ name, args }) => {
     const { client, server } = await connect('00000000-0000-4000-8000-0000000000b2');
     try {

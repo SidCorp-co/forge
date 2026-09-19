@@ -38,11 +38,6 @@ describe('effectivePipelineStates (ISS-1066)', () => {
   });
 });
 
-// cm:why this reads resolve.ts's TEXT rather than importing it: that module pulls in the db client
-// and env at module load, so a test importing it would need a database to assert which function
-// builds a pure array. ISS-1066 kept a second copy of the rule in that file behind a parity test,
-// because a file another run holds is not its to edit; ISS-1048 collapsed the copy on landing, and
-// what is worth guarding now is the wiring that collapse created rather than the drift it prevented.
 describe('the resolver builds its ladder from this function (ISS-1048)', () => {
   const resolveSource = readFileSync(new URL('./resolve.ts', import.meta.url), 'utf8');
 

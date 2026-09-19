@@ -4,9 +4,6 @@ import type { AgentSchedule } from '../db/schema.js';
 // UTC Monday and "day 1" = UTC day-of-month — operator timezone is irrelevant.
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-// Anchor for biweekly parity: Monday 2024-01-01 (UTC) — week 0. Any later
-// Monday's index is `floor((midnight - anchor) / 7d)`, and "even week" means
-// `index % 2 === 0`.
 const BIWEEKLY_EPOCH_MONDAY_UTC = Date.UTC(2024, 0, 1);
 
 export function shouldRunToday(schedule: AgentSchedule, date: Date): boolean {

@@ -1,26 +1,6 @@
-/**
- * The interventions metric (VISION §1 metric ②), read and rolled up.
- *
- * ISS-944 — this lived inside the `/api/pipeline/interventions` handler, which
- * is a cross-project fan-out and therefore off `PAT_ALLOWED_PREFIXES`, so the
- * one metric the project calls its north star had no shape any token could
- * reach. Moved here so the fan-out and the project-scoped twin in `routes.ts`
- * answer from one query and one rollup rather than two copies of the
- * bucketing.
- *
- * Reads the `issue_intervention_events` view: one row per intervention-class
- * event — `wedge` (pipeline_wedge notifications), `manual_<action>` (C0's
- * audited job_events.kind='intervention', labelled by the row's own action
- * since migration 0181), `user_run_flip` (C1 kernel_transitions, entity='run',
- * actor_type='user') and `direct_sql` (ISS-884: a terminal flip on a job or run
- * that no `applyKernelTransition` transaction produced, i.e. written by hand).
- * `issueId: null` groups the project-scoped events (pm/system runs).
- */
-
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 
-// cm:edge contract -> packages/core/drizzle/migrations/0217_unaudited_transition_detector.sql — the view is what decides these strings, and `manual_` is a PREFIX with the action appended, not a fixed value. This union read `'manual_cancel'` until ISS-884 while 0181 had been emitting `manual_resume` / `manual_answer` / `manual_inject` for months, and the rollup below charted every one of them as a run flip.
 type EventRow = {
   source: 'wedge' | `manual_${string}` | 'user_run_flip' | 'direct_sql';
   project_id: string;

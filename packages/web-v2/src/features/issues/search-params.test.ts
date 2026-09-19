@@ -43,7 +43,6 @@ describe("issuesApi.search", () => {
     expect(paramsOfLastCall().get("withDependencies")).toBe("1");
   });
 
-  // cm:guard the other grouped-query opt-ins are asserted beside it deliberately: each one that goes missing costs a column or a badge and nothing goes red, and a caller trimming "unused" params would otherwise take them one at a time
   it("keeps the other grouped-query opt-ins the row cells read", async () => {
     await issuesApi.search(PROJECT, {});
     const params = paramsOfLastCall();

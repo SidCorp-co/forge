@@ -178,7 +178,6 @@ describe('/ws auth — Sec-WebSocket-Protocol subprotocol (ISS-286)', () => {
   });
 });
 
-// cm:guard the db mock returns NO rows on purpose, and that is the assertion: subscribing to the cross-tenant `global` room must not reach a project-membership lookup at all. A mock that returned a membership would make this suite pass whether or not the lookup happens (ISS-2A).
 describe('/ws subscribe — global room (ISS-2A)', () => {
   function dialPersistent(opts: {
     protocols?: string | string[];
@@ -217,7 +216,6 @@ describe('/ws subscribe — global room (ISS-2A)', () => {
   });
 });
 
-// cm:guard the allow-list is a SECOND way into a `project:` room, not a replacement for membership — both arms need a test, because dropping either one fails silently: no denial is sent for a room the client simply never receives events on (ISS-653)
 describe('/ws subscribe — project room (ISS-653)', () => {
   const PROJECT_ROOM = 'project:11111111-1111-4111-8111-111111111111';
 
@@ -280,7 +278,6 @@ describe('/ws subscribe — project room (ISS-653)', () => {
   });
 });
 
-// cm:guard assert a HANDLER CALL, never the absence of a denial: a `runner:*` frame dropped before its handler produces no denial, no log and no red, so only a positive assertion can see it (ISS-934).
 describe('/ws runner frames carry no room (ISS-934)', () => {
   function dialDevice(): Promise<import('ws').WebSocket> {
     const url = `ws://127.0.0.1:${port}/ws`;

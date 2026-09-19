@@ -12,9 +12,6 @@
 import type { AgentModeOffer, ConversationMode } from "../types";
 
 /** What each mode is, in the words a person picking between them needs. */
-// cm:guard each line says what the mode CAN REACH and not what it is called: "Agent" alone tells
-// somebody choosing nothing, and the one difference they are choosing on is whether the answer can
-// open a file in the repository.
 const MODES: Array<{ mode: ConversationMode; label: string; hint: string }> = [
   {
     mode: "assistant",
@@ -41,17 +38,9 @@ export function ConversationModeToggle({
   /** The whole control, while a send is in flight. */
   disabled?: boolean;
 }) {
-  // cm:guard Agent is offered DISABLED and labelled rather than hidden: a control that is not there
-  // teaches a person the feature does not exist, and one that is there and greyed with its reason
-  // beside it tells them what to do about it — pair a box. The reason is the server's own sentence
-  // and is never composed here (ISS-1039).
   const agentBlocked = !offer.available;
 
   return (
-    // cm:guard each option is a NATIVE radio in a label rather than a button carrying
-    // `role="radio"`: the group is a single choice, and the native control is what gives a keyboard
-    // its arrow-key walk and a screen reader its "1 of 2" for free. The input is visually hidden
-    // and the label is the pill, so the hit target is the whole pill either way.
     <fieldset
       className="flex flex-wrap items-center gap-2 border-0 px-4 pt-3"
       data-testid="conversation-mode-toggle"

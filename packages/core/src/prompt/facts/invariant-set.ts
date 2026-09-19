@@ -1,14 +1,3 @@
-// Stage ① of the Update Pipeline (ISS-795 §2): the platform invariant set.
-//
-// `tier: 'mandatory'` facts ARE the non-forking layer — `prompt/system.ts`
-// renders them into every agent prompt, so they reach every project on deploy
-// with no sync. This module turns that set into an identity + a delta so a
-// change to it can be OBSERVED, which is what stage ② needs.
-//
-// The rendered text is deliberately NOT carried here: the agent already has it
-// in its system prompt. What it cannot otherwise know is WHICH version is in
-// force and WHAT just changed.
-
 import { createHash } from 'node:crypto';
 import { listFacts, renderFact } from './registry.js';
 
@@ -42,7 +31,6 @@ export function buildPlatformInvariantSet(): PlatformInvariantSet {
       id: fact.id,
       title: fact.title,
       version: fact.version,
-      // cm:why hash the RENDERED text, not the version — an edit that forgets to bump `version` still moves the digest
       sha: sha8(renderFact(fact.id, {}) ?? ''),
     }))
     .sort((a, b) => a.id.localeCompare(b.id));

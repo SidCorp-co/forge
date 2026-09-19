@@ -1,13 +1,3 @@
-/**
- * ISS-164 — the per-gate `waitingOn` builders for `pipeline-health.ts`.
- *
- * Each function answers ONE arm of the dispatch CASE in
- * `jobs/queued-gates.ts#buildGateReasonCase`. They live apart from the
- * classifier because the classifier owns only the PRECEDENCE between arms;
- * what each arm reports, and the incident each shape came from, belongs
- * beside the arm itself. Pure: no db, and any clock is injected.
- */
-
 import type { RunnerAvailability } from '../jobs/queued-gates.js';
 import type {
   PipelineHealth,
@@ -44,7 +34,6 @@ export function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['w
 
 /** The `retry_cooldown` waitingOn for a candidate inside the fixed inter-attempt
  *  wait `retry.ts` stamps after a failure, or `null`. */
-// cm:guard this arm is what keeps the cooldown honest, and it predates nothing — for every cooldown-gated job on `main` this classifier reported NO waitingOn at all, i.e. exactly the idle-and-actionable render the file's own guard forbids, because `retry_cooldown` had no member in `PipelineWaitingReason` while `buildGateReasonCase` has returned it since ISS-197
 export function retryCooldownWaitingOn(
   candidate: PipelineHealthJob,
   sinceIso: string,
@@ -63,7 +52,6 @@ export function retryCooldownWaitingOn(
 }
 
 /** The runner-layer (L4/L5) `waitingOn` for a queued candidate, or `null`. */
-// cm:guard report the EMPTY pool before a saturated one — "no runner is online" and "every runner is busy" read almost identically in the UI but need opposite actions (bring a host back vs. wait), and the empty-pool arm is the one that was missing while 11 jobs sat behind dead runners for up to 22 days
 export function runnerWaitingOn(
   sinceIso: string,
   runnerPool: RunnerAvailability,

@@ -30,7 +30,6 @@ import {
 
 const JWT_SECRET = 'test-secret-at-least-32-chars-long-abcdef-123456';
 
-// cm:guard ONE harness for the whole file. `db/client.ts` binds to DATABASE_URL at import time, so a second setupTestDatabase() puts the fixtures on one database and everything the code under test writes on another — the tests then read empty tables and fail for a reason that has nothing to do with the code.
 let harness: TestDatabase;
 let ownerId: string;
 let otherId: string;
@@ -122,7 +121,6 @@ describe('attention · the question park', () => {
     expect(await awaitingInput()).toHaveLength(1);
   });
 
-  // cm:guard the creator fallback applies ONLY while the issue is unowned — once someone is assigned the park is theirs, and showing it to the filer as well puts one question in two lists with one answer, which is how two people each assume the other replied.
   it('does not surface a park assigned to someone else', async () => {
     await parkIssue({ assignee: otherId, createdBy: ownerId });
     expect(await awaitingInput()).toHaveLength(0);
@@ -140,7 +138,6 @@ describe('attention · the question park', () => {
     expect(rows[0]?.status).toBe('waiting');
   });
 
-  // cm:guard ISS-970 — the negative case, and the one the unit lane cannot hold: `on_hold` is a pause a person CHOSE, and `cancel` sets it with the `parkIssue: true` default, so a bucket that carries it manufactures one "a human is needed" row per cancelled duplicate run. Measured 2026-09-07: 3 cancels, 3 rows, 0 questions. Widening the predicate back turns this file red before any screen shows the alarm again.
   it('does not surface a deliberate pause as a question for a human', async () => {
     await parkIssue({ status: 'on_hold', assignee: null, createdBy: ownerId });
     await parkIssue({ status: 'on_hold', assignee: ownerId, createdBy: otherId });
@@ -155,12 +152,10 @@ describe('attention · the question park', () => {
     expect(rows[0]?.status).toBe('needs_info');
   });
 
-  // cm:why `needsReview` deliberately keeps assignee-only, so a `developed` issue the user filed and nobody owns must NOT appear here — this is the boundary of the change and it regresses silently.
   it('leaves needs_review assignee-only', async () => {
     await parkIssue({ status: 'developed', assignee: null, createdBy: ownerId });
     expect((await attention()).needsReview).toHaveLength(0);
   });
-  // cm:why the ROUTE half of criterion 53. `selectAwaitingInput` grew the cost and the blocker, and `issueItem` is shared by six buckets — so the fields reached the selector and stopped there, which reads exactly like a query that never returned them.
   it('serves the cost and the blocker on the awaiting bucket', async () => {
     const issueId = await parkIssue({ assignee: null, createdBy: ownerId });
     await harness.db.execute(sql`
@@ -178,7 +173,6 @@ describe('attention · the question park', () => {
     expect(row?.blockerKind).toBe('human');
   });
 
-  // cm:why the id is what tells a DECISION apart from a `waiting` a person typed, and both land in this one bucket looking identical — without it the row can say a human is needed and not that there is a row they can settle (ISS-980 criterion 25).
   it('names the open question on the awaiting bucket', async () => {
     const issueId = await parkIssue({ assignee: null, createdBy: ownerId });
     const questionId = randomUUID();
@@ -191,14 +185,12 @@ describe('attention · the question park', () => {
     expect(row?.questionId).toBe(questionId);
   });
 
-  // cm:guard the falsifying half: a park a PERSON entered has no question row, and a non-null id here would send that reader to a screen with nothing on it. NULL is the honest answer, exactly as it is for `blockerKind`.
   it('names no question on a park a person entered by hand', async () => {
     await parkIssue({ status: 'waiting', assignee: null, createdBy: ownerId });
     const [row] = await awaitingInput();
     expect(row?.questionId).toBeNull();
   });
 
-  // cm:guard an ANSWERED question costs nothing and blocks nobody, so it must not be named here either — the id and the kind are read through the same `status='open'` predicate, and a surface offering a settled decision to answer is worse than one offering none.
   it('names no question once the decision has been settled', async () => {
     const issueId = await parkIssue({ assignee: null, createdBy: ownerId });
     await harness.db.execute(sql`
@@ -211,7 +203,6 @@ describe('attention · the question park', () => {
     expect(row?.blockerKind).toBeNull();
   });
 
-  // cm:guard the OTHER buckets must NOT grow these keys: `needsReview` is not a wait anybody is paying for, and a cost of three zeros there reads as a measured zero rather than as not-applicable.
   it("leaves the other buckets' shape alone", async () => {
     await parkIssue({ status: 'developed', assignee: ownerId, createdBy: ownerId });
     const { needsReview } = await attention();
@@ -279,23 +270,6 @@ describe('the park notification', () => {
     expect(await inbox(ownerId)).toEqual([{ key: null, resolved: false, severity: 'warning' }]);
   });
 
-  /*
-   * ISS-1063 — three cases that used to live here are GONE, and what they asserted is worth
-   * stating rather than quietly dropping.
-   *
-   * They held that a park notification carried `issue:<id>:question`, that answering the
-   * question stamped it resolved, and that a `waiting` park on the same issue kept its own
-   * key so one answer did not retire the other. All three were about a `resolution_key` on
-   * an `issue_status_changed` row, and that type is now a `signal`: an issue moved, and an
-   * event cannot stop having happened. The record layer refuses the key structurally (a
-   * CHECK constraint) and `deliver.ts` refuses it by name, so there is no state left for
-   * those cases to assert.
-   *
-   * What replaced the behaviour: the park reaches its human through `GET /me/attention`'s
-   * `awaitingInput` bucket, which derives from the issue's LIVE status and self-clears on
-   * the answer — no read flag, no key, nothing to leave lit. The cases below this comment
-   * still hold the two things that survive: the filer is told, and the actor is not.
-   */
   it('carries no resolution key, because a status change is an event and cannot resolve', async () => {
     const issueId = await issueFiledBy(ownerId, 'in_progress');
     await move(issueId, 'in_progress', 'needs_info');

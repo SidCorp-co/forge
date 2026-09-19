@@ -14,7 +14,7 @@ A master pane carries one capability, `FORGE_CONTROL_TOKEN`, minted at spawn int
 environment. `daemon/session_tokens.rs` maps that token to the core `agent_sessions` id the pane was
 registered under, and `run_declare` resolves the caller through it. A pane cannot be handed a new
 one: its environment is fixed at exec, so `ensure_master` mints on the spawn path only, and the
-`cm:guard` there says why — re-minting for an adopted pane would refuse every frame it sends for the
+invariant there says why — re-minting for an adopted pane would refuse every frame it sends for the
 rest of its life.
 
 Core's side is `devices/master-session.ts:ensureMasterSession`, which reuses a master session row

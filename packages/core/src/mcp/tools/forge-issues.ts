@@ -63,9 +63,7 @@ import {
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
 
-// cm:edge lockstep -> packages/core/src/issues/create-service.ts — every error the create service can raise needs a case here; the agent-facing contract is the `CODE: message` prefix, and the UPDATE path routes its label resolution through this same mapper
 function toMcpIssueError(err: unknown): unknown {
-  // cm:guard the refusal reaches the agent with the ELEMENT, ATTRIBUTE and legal set intact — that named message is what it corrects from on the next call, and a generic BAD_REQUEST leaves it guessing
   if (err instanceof BodyInvalidError) return new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
   if (err instanceof PrimaryModuleError) {
     return new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
@@ -76,7 +74,6 @@ function toMcpIssueError(err: unknown): unknown {
     );
   }
   if (err instanceof AttachmentError) return new Error(`${err.code}: ${err.message}`);
-  // cm:guard the CURRENT value is serialised into the message because MCP has no `details` channel — a refusal that only says "you lost" leaves the agent's one remaining move a blind unconditional overwrite, which is the write this refusal exists to stop
   if (err instanceof SessionContextExpectMismatch) {
     return new Error(
       'SESSION_CONTEXT_MISMATCH: `sessionContext` no longer holds the value this write expected — ' +
@@ -116,14 +113,11 @@ const filtersSchema = z
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
-    // cm:guard `taskStatus` must stay named apart from the issue-level `status` on this one input object: collapsing the two makes a `listTasks` filter silently match `issues.status` instead
     issue: z.uuid().optional(),
     taskStatus: z.enum(taskStatuses).optional(),
-    // cm:guard a name that resolves to nothing short-circuits to an EMPTY set, never to "no filter" — the alternative hands the caller every issue in the project as the label's issues
     label: z
       .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
       .optional(),
-    // cm:why ISS-593 — same name|uuid shape as `label`, resolved against `kind='module'` only, so the name of a plain label matches nothing rather than silently behaving as `label`
     module: z
       .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
       .optional(),
@@ -143,30 +137,22 @@ const dataObject = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(100_000).nullable().optional(),
-    // cm:edge contract -> packages/core/src/body/formats.ts — ISS-898. Optional; absent means `markdown`, which is what keeps every shipped template's `forge_issues → create` example valid unchanged.
     descriptionFormat: z.enum(BODY_FORMATS).optional(),
     status: z.enum(issueStatuses).optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
-    // cm:why setting this on create makes the kernel guarantee at most one live issue per (project, detectorKey) — see issues/detector-key.ts
     detectorKey: z.string().trim().min(1).max(120).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     plan: z.string().max(200_000).nullable().optional(),
-    // cm:guard the serialised-size ceiling on this field is app code's alone and must stay matched to `plan`'s — Postgres jsonb carries no per-column limit, so nothing below this line stops one issue's accumulated context blowing up TOAST and the query plans that read it
     sessionContext: sessionContextSchema,
-    // cm:guard ISS-959 — a PRECONDITION, not a field. It is absent from `SHARED_ISSUE_PATCH_FIELDS` on purpose; adding it there would write the value the caller read back into a column.
     expect: sessionContextExpectSchema.optional(),
-    // cm:edge contract -> packages/core/src/issues/release-notes.ts — `ReleaseNotesSchema` is what refuses an invalid `section` at the MCP boundary, so a section added there and not here is accepted by one side and rejected by the other (ISS-199)
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
-    // cm:guard an audit LABEL and never a second column — all three values stamp the one `merged_at`, so a reader that branches on `target` to decide where the work landed is reading a string somebody typed (ISS-286)
     target: z.enum(['feature', 'base', 'prod']).optional(),
-    // cm:edge contract -> packages/core/src/issues/merge-routes.ts — the same field on the REST door, and the same shape refusal; the two are one claim with two surfaces
     commit: mergedCommitShaSchema.optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
-    // cm:why the task fields ride this same `data` block rather than a schema of their own: createTask/updateTask are sub-actions of one tool, and a second input schema would advertise them as a second tool
     issueId: z.uuid().optional(),
     taskTitle: z.string().trim().min(1).max(500).optional(),
     taskDescription: z.string().max(50_000).nullable().optional(),
@@ -175,11 +161,8 @@ const dataObject = z
     isAgentTask: z.boolean().optional(),
     taskAcceptanceCriteria: z.array(z.string()).nullable().optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    // cm:guard REQUIRED on any status write that enters `reopen` (RFC 0002 INV-8) — it is posted as a comment before the flip and is what the fix step scopes its patch against; `note` is accepted as a fallback so a caller that already explains itself there is not rejected
     reason: z.string().trim().min(1).max(10_000).optional(),
-    // cm:guard say WHICH kind whenever you write `waiting` (RFC 0002 INV-5) — core never derives it, so an omitted kind leaves the board rendering "a human is needed" with no hint of what is being asked; it is cleared automatically on any exit
     waitingKind: z.enum(waitingKinds).optional(),
-    // cm:guard the caller-facing half of this rule is the `.describe()` below and NOT this line: nothing but a description reaches an agent reading the tool schema, and the rule was invisible to every caller for the day it lived only here (ISS-996). Keep the two in step, and keep them distinct from `reason` — a park that says why it stopped twice mints a question nobody can act on.
     needs: z
       .string()
       .trim()
@@ -189,8 +172,6 @@ const dataObject = z
       .describe(
         'What a person must supply for a `needs_info` park to start again — NOT `reason`, which is why the work stopped. Sending it mints the free-text question that person answers; omitting it mints one saying the run did not say what would settle this. Minted only for an agent-held credential.',
       ),
-    // cm:guard REPLACE-SET, not additive — `[]` clears every label and `undefined` means no change, so a caller that has not read the issue's current `labels[]` clobbers the set it did not send (ISS-633)
-    // cm:guard the object arm mirrors REST's `labelAttachItemSchema` exactly — `labelId` takes a NAME or a uuid like the bare string, `isPrimary` is legal only on a module, and both arms resolve through `resolveLabelIdsForWrite`, so the two surfaces cannot drift apart
     labels: z
       .array(
         z.union([
@@ -205,7 +186,6 @@ const dataObject = z
   })
   .strict();
 
-// cm:edge contract -> packages/core/skills — the bundled skill markdown hand-writes `forge_issues → update → { data: { ... } }` payloads, and this object is `.strict()`, so a key named in a skill but absent here fails the whole call (the `status` write included) with a 400; `builtin-seed-field-names.test.ts` asserts the two sides agree.
 export const ISSUE_UPDATE_DATA_KEYS = Object.keys(dataObject.shape);
 
 const dataSchema = dataObject.optional();
@@ -224,7 +204,6 @@ export const STEP_START_HEAVY_FIELDS = [
   'sessionContext',
 ] as const;
 
-// cm:why derived from STEP_START_HEAVY_FIELDS rather than listed again, so the fields lean `step_start` omits are exactly the ones `get` can ask back for; `releaseNotes` is the one addition — small enough to be worth fetching alone
 const GET_SELECTABLE_FIELDS = [...STEP_START_HEAVY_FIELDS, 'releaseNotes'] as const;
 
 const inputSchema = z
@@ -247,7 +226,6 @@ const inputSchema = z
     documentId: z.uuid().optional(),
     filters: filtersSchema,
     data: dataSchema,
-    // cm:why Kept off `dataSchema`, which is `.strict()` and shared with create/update; an attribute write is its own shape and folding it in would widen the body every other action validates against (ISS-1010).
     attributes: z
       .array(
         z
@@ -294,13 +272,11 @@ function sanitizeDeep(value: unknown): unknown {
   return value;
 }
 
-// cm:guard ISS-532 — human/external free-text reaching an agent must be framed by `markUntrusted`, never merely char-stripped: `sanitizeUntrusted` neutralizes invisible/bidi smuggling but does NOT tell the model the span is data, so a field promoted from agent-authored to human-authored and left on char-strip becomes an injection surface. REST/web-v2 serialize separately, so the human UI never shows the framing.
 export function serialize(row: IssueRow, prefix: string | null): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: formatIssueRef(prefix, row.issSeq),
     title: markUntrusted(row.title, { source: 'issue.title' }),
-    // cm:guard ISS-898 — the description reaches the agent PROJECTED, not as raw markup. Under thin-init `prompt/user.ts` inlines only the title, so THIS is the path a description actually travels; handing over raw HTML would spend the caller's context on tag names and shrink what the 8,000-char cap can hold, which is the gap the projection exists to close.
     description:
       row.description == null
         ? null
@@ -309,8 +285,6 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
           }),
     descriptionFormat: row.descriptionFormat,
     status: row.status,
-    // cm:guard emit it on BOTH projections or the kind is unreadable through MCP: core never derives it (see the `waitingKind` input guard), and an absent key reads as `null` to a caller — a park asking for a DECISION and one asking for a RESOURCE then look identical, which is what a `waiting` read looked like until 2026-09-09
-    // cm:edge lockstep -> packages/core/src/issues/list-service.ts — `IssueListRow`, its `projection` and `serializeListRow` carry the same field; adding it to one surface only leaves the triage list unable to say what any park wants
     waitingKind: row.waitingKind,
     priority: row.priority,
     category: row.category,
@@ -339,10 +313,6 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
  * widen this back to `serialize()`.
  */
 
-// cm:guard EXPORTED for one reason and it is not reuse: `integrations/sentry/chokepoint.test.ts`
-// asserts that this projection char-strips a title and does NOT frame it, so that the trade-off
-// priced in the `cm:why` below is a red test when somebody changes it rather than a comment
-// somebody has to find. Do not widen callers — `list` is still the only one.
 export function serializeListRow(
   row: IssueListRow,
   prefix: string | null,
@@ -350,10 +320,8 @@ export function serializeListRow(
   return {
     documentId: row.id,
     issueId: formatIssueRef(prefix, row.issSeq),
-    // cm:why char-stripped and NOT framed, unlike `serialize` — a full DATA banner per title across many rows would defeat the token cap this projection exists for (ISS-428, ISS-532); invisible/bidi smuggling is still neutralized
     title: sanitizeUntrusted(row.title),
     status: row.status,
-    // cm:edge lockstep -> packages/core/src/mcp/tools/forge-issues.ts — `serialize` carries the same field; see the guard there
     waitingKind: row.waitingKind,
     priority: row.priority,
     category: row.category,
@@ -363,7 +331,6 @@ export function serializeListRow(
     mergedAt: row.mergedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    // cm:why ISS-960 — only when the query carried `filters.search`; on an unfiltered browse the key is absent rather than `[]`, so "not searched" and "matched on nothing literal" stay distinguishable
     ...(row.matchedFields ? { matchedFields: row.matchedFields } : {}),
   };
 }
@@ -516,8 +483,6 @@ function parseDate(value: string, field: string): Date {
 
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
-  // cm:guard order is load-bearing here, not taste: `buildToolset` truncates this string at DESCRIPTION_CAP before chat reads it, so a rule written past the cut reaches that model in no form at all. The four a caller cannot act without are ordered ahead of the cut, and held there by forge-issues-description.test.ts.
-  // cm:edge contract -> packages/core/src/assistant/tools/mcp-adapter.ts — DESCRIPTION_CAP decides how much of this string the chat front-end ever reads, while the `/mcp` transport serves all of it: the two doors read different halves of one piece of prose
   description:
     'Issues and their tasks; every sub-action is in the action enum, and documentId takes a ' +
     'uuid or the short ISS-<n>.\n' +
@@ -577,7 +542,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     const input = inputSchema.parse(args);
     const { principal } = ctx;
 
-    // cm:guard `data` is ONE shared schema across all 11 actions, so a field only `create`/`update` apply is accepted and dropped by the other nine — refuse it by name here rather than returning 200 on a write that did nothing (ISS-868). `transition` is the dangerous one: it wakes considerEnqueue→dispatch, so a discarded `blocks` edge ships the dependent ahead of its blocker.
     if (
       input.data?.relations !== undefined &&
       input.action !== 'create' &&
@@ -595,7 +559,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const issuesLimit = input.limit ?? 25;
         const f = input.filters;
-        // cm:guard ISS-960 — `filters.issue` and `filters.taskStatus` belong to `listTasks` and this action cannot honour them, so they are REFUSED by name. Dropping them silently returned the project's newest issues instead, and at `limit: 1` that is indistinguishable from a single-issue lookup: a master read one issue's merge state as another's twice in one morning before this refusal existed.
         for (const key of ['issue', 'taskStatus'] as const) {
           if (f?.[key] !== undefined) {
             throw new Error(
@@ -610,7 +573,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             statusNot: f?.statusNot,
             priority: f?.priority,
             category: f?.category,
-            // cm:guard this mapping is hand-copied field by field, and a filter accepted by `filtersSchema` but dropped here fails SILENTLY in the worst direction: the caller gets every row back and reads it as "nothing matched the narrowing", not as a broken filter. Add a filter above and you must add it here in the same edit — measured on ISS-912, where `complexity` reached all three projections and the strict schema while nothing could filter on it.
             complexity: f?.complexity,
             createdAfter: f?.createdAfter ? parseDate(f.createdAfter, 'createdAfter') : undefined,
             createdBefore: f?.createdBefore
@@ -648,7 +610,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsMember(principal, issue.projectId);
         if (input.fields && input.fields.length > 0) {
-          // cm:guard project out of `serialize()`'s output and never out of the raw row — the DATA banners `markUntrusted` puts on `description` and `acceptanceCriteria` exist only on the framed copy, so a projection taken off the row hands the agent untrusted text with nothing marking it as untrusted
           const full = serialize(issue, await activeIssuePrefix(issue.projectId));
           const projected: Record<string, unknown> = {
             documentId: full.documentId,
@@ -659,13 +620,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           return projected;
         }
-        // cm:edge contract -> packages/core/src/issues/dependency-read.ts — the ONLY read path an agent has onto its own edges; REST GET /api/issues/:id/dependencies is JWT-only, so without this a token that can write an edge still cannot verify one landed
         const [full, relations, attributes] = await Promise.all([
           serializeWithAttachments(issue),
           loadIssueRelations(issue.id, issue.projectId),
           loadIssueAttributes(issue.id),
         ]);
-        // cm:why The typed fields ride the read an agent already makes, rather than a surface of their own: what the issue owes and who owes it is part of the issue, not a second thing to go and fetch (ISS-1010).
         return { ...full, relations, attributes };
       }
 
@@ -745,7 +704,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
 
-        // cm:guard resolved BEFORE the transaction, mirroring REST PATCH's `assertLabelsInProject` — a bad label name must fail the call rather than roll a started write back (ISS-633). `undefined` is "no change" and `[]` clears every label, so the two cannot be collapsed.
         let labelIds: ResolvedLabelAttach[] | undefined;
         if (input.data.labels !== undefined) {
           try {
@@ -771,9 +729,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         const { updates, warnings: bodyWarnings } = collected;
 
-        // cm:edge ordering -> packages/core/src/issues/release-record-required.ts — the second reader of this order, and the reason a close needs one call rather than two: that rule re-reads issues.release_notes, so a reversed order throws RELEASE_RECORD_REQUIRED on a legal { releaseNotes, status:'closed' } and discards the note the caller just wrote to satisfy it
         const willWriteFields = Object.keys(updates).length > 0 || labelIds !== undefined;
-        // cm:guard REFUSE rather than ignore. `expect` reaches the database only through `updateIssueFields`, and this action also writes a status and relations by other calls — so `{ expect, status }` with no field to write would transition unconditionally while the caller believes a precondition held it. REST's second refine on `issuePatchSchema` says the same thing at its own door; this is that door.
         if (input.data.expect && !willWriteFields) {
           throw new Error(
             'BAD_REQUEST: data.expect is a precondition on a FIELD write — it holds nothing against a status or relations change. Send the field(s) to write alongside it.',
@@ -781,7 +737,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         if (willWriteFields) {
-          // cm:why sql`now()`, matching transitionIssueStatus below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
           updates.updatedAt = sql`now()`;
           try {
             await updateIssueFields({
@@ -796,7 +751,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
         }
 
-        // cm:edge ordering -> packages/core/src/jobs/queued-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker. This order is also the SAFE side of a partial failure, which is why the two writes are deliberately not one transaction: edges landed + transition failed leaves an extra `blocks` edge holding a job, which a human can retract, where the reverse ships a dependent ahead of its blocker and cannot be undone.
         const r = await applyIssueRelations(
           { actor: principalHookActor(principal), createdById: principal.userId },
           issue.projectId,
@@ -820,7 +774,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         const fresh = await loadIssue(issue.id);
-        // cm:guard report what the call DID under `action`, matching mark_merged/unmark below — this used to return the literal `status:'updated'` over the issue's own status enum, so a caller could not read back the status it had just written, and `relations` was parsed and silently discarded (ISS-868)
         const updateResult: Record<string, unknown> = {
           ...(await serializeWithAttachments(fresh)),
           action: 'updated',
@@ -856,7 +809,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         return transitionOutput;
       }
 
-      // cm:why ISS-286 — an explicit, idempotent, auditable marker that decouples `merged_at` from the implicit `markMergedIfLeavingBase` side-effect, so a skill can stamp the merge straight after verifying a push; since the blocker gate was deleted the stamp is a FACT a master reads off the relation rather than something the kernel enforces, and what it means for a dependent is the master's call
       case 'mark_merged':
       case 'unmark': {
         const issueId = input.data?.issueId;
@@ -886,7 +838,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               hookActor: principalHookActor(principal),
             },
           });
-          // cm:guard report the ACTION under `action`, never by overwriting `status` — `merged`/`unmarked` are not `issueStatuses` members, so a caller read a lifecycle value that cannot exist (§10)
           return { ...(await serializeWithAttachments(fresh)), action };
         } catch (err) {
           if (err instanceof MergeMarkerError) throw new Error(`${err.code}: ${err.message}`);

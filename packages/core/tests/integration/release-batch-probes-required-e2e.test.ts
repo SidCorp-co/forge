@@ -1,21 +1,3 @@
-/**
- * ISS-1042 criteria 1 and 2 — a project with no probes may not run a release.
- *
- * `finishReleaseBatch` wrapped its whole verification in `if (channel.verify)`,
- * so a project that declared a release gate and no probes fell straight through
- * to the closes: every claimed issue reached `closed` on the sentence an agent
- * wrote about its own work, and `finish` is the only thing in Forge that writes
- * `closed` past the gate. The refusal now stands at BOTH doors — creation, so
- * the operator is told before anything moves, and finish, because a run created
- * before this rule existed reaches the close with no probes.
- *
- * Integration rather than unit: what is under test is `resolveReleaseChannel`
- * reading a real binding row, and a mocked channel would assert the predicate
- * this change writes rather than the hole it closes. The fixture declares
- * probes by default now, so `{ verify: null }` is the shape of a project that
- * declares none.
- */
-
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -68,9 +50,6 @@ describe('a release refuses a project that declares no probes', () => {
     `);
   }
 
-  // cm:guard the refusal must land BEFORE the claim, and the assertion on the issue's status is
-  // what says so. A refusal thrown after the CAS update would leave the roster at `releasing`
-  // under a run nobody will ever finish, which is worse than the hole it replaces.
   it('refuses to create a batch, naming RELEASE_PROBES_UNDECLARED, and claims nothing', async () => {
     await declareProduction({ verify: null });
     await seedReleaseRunner();
@@ -81,9 +60,6 @@ describe('a release refuses a project that declares no probes', () => {
     expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
   });
 
-  // cm:guard a run created BEFORE this rule existed is the case this exists for, and it is why the
-  // refusal cannot live at creation alone. Seeded by claiming with probes and then taking them
-  // away, which is the same world that run wakes up in.
   it('refuses to finish a run whose project declares no probes, and closes nothing', async () => {
     await declareProduction();
     await seedReleaseRunner();
@@ -98,8 +74,6 @@ describe('a release refuses a project that declares no probes', () => {
     expect(await runStatus(runId)).toBe('running');
   });
 
-  // cm:guard the counterexample: the SAME path with probes declared closes the roster. Without it
-  // the two refusals above are satisfied by a `finish` that refuses everything.
   it('closes the roster once the probes are declared and agree', async () => {
     await declareProduction();
     await seedReleaseRunner();

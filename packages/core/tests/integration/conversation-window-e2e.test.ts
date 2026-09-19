@@ -92,7 +92,6 @@ const claim = (over: Record<string, unknown> = {}) =>
 /**
  * Which constraint refused a statement.
  */
-// cm:guard the NAME and not the message: drizzle wraps a driver error in its own, whose text is the SQL that failed — so `toThrow(/constraint/)` passes for any refusal at all, including a typo in the statement, and the assertion would be green over a table with no constraints on it.
 async function refusedBy(run: Promise<unknown>): Promise<string> {
   try {
     await run;
@@ -121,7 +120,6 @@ describe('a window is extended, never doubled', () => {
     expect(await windowCount()).toBe(1);
   });
 
-  // cm:guard two strangers, because a single connection sees its own uncommitted insert and the partial unique index is never asked the question this table added it for (ISS-1004 rule 1).
   it('settles two simultaneous collectors on one window', async () => {
     const a = independent();
     const b = independent();
@@ -132,7 +130,6 @@ describe('a window is extended, never doubled', () => {
     expect(await windowCount()).toBe(1);
   });
 
-  // cm:guard the predicate is `claimed_at IS NULL` and not `closed_at IS NULL`, and this is the case that separates them: a window being routed has already read its messages, so a message arriving mid-route must open the SUCCESSOR rather than join a decision that can no longer see it (ISS-1004 review F2).
   it('opens a successor for a message that arrives while the window is being routed', async () => {
     const first = await open(0);
     const [claimed] = await claim();
@@ -172,7 +169,6 @@ describe('a window is claimed before it routes', () => {
     expect(await claim()).toHaveLength(0);
   });
 
-  // cm:guard the lease is what recovers a core that claimed a window and stopped: without it a non-null `claimed_at` wedges the window for good, which is the restart durability the row was added for (ISS-1004 review F1).
   it('is claimable again once the lease has expired', async () => {
     await open(0);
     expect(await claim()).toHaveLength(1);
@@ -199,7 +195,6 @@ describe('a window is claimed before it routes', () => {
     expect(await claim({ venuePrefixes: ['chat.example.co'] })).toHaveLength(1);
   });
 
-  // cm:guard a release is NOT a close: a core that finds it cannot deliver here has taken no decision, and writing one would tell a person their message was considered and refused when nobody looked at it (ISS-1004 rule 4).
   it('goes back to collecting when it is released', async () => {
     await open(0);
     const [claimed] = await claim();
@@ -227,7 +222,6 @@ describe('a window that closes says why', () => {
     expect((await windows.getWindow(id))?.decision).toBe('guard-backoff');
   });
 
-  // cm:guard the constraint, planted rather than assumed: a close with no decision is the unreadable silence this table exists to make impossible, and a convention would not have stopped it.
   it('cannot be closed with no decision at all', async () => {
     await open(0);
     const [claimed] = await claim();
@@ -240,7 +234,6 @@ describe('a window that closes says why', () => {
     ).toBe('conversation_windows_closed_has_decision');
   });
 
-  // cm:guard a close is a route and a route is claimed first: an unclaimed close is a decision two cores could both have taken.
   it('cannot be closed before it is claimed', async () => {
     const win = await open(0);
     expect(
@@ -345,7 +338,6 @@ describe('a collected message and its window', () => {
     expect(claimed?.firstSeq).toBe(rows[0]?.seq);
   });
 
-  // cm:guard the range read, planted: a window claimed while its successor keeps collecting can have its whole contents pushed past the conversation's newest rows, and a reader that took the tail and filtered it found nothing — which closed a person's question `unreachable` for good (ISS-1004, review pass 1 F4).
   it('reads an older window own messages from behind a busy successor', async () => {
     const externalId = `chat.example.co ${randomUUID()}`;
     await collectOne({ externalId, projectId, text: 'the question nobody answered' });
@@ -374,7 +366,6 @@ describe('a collected message and its window', () => {
     expect(own.map((m) => m.content)).toEqual(['the question nobody answered']);
   });
 
-  // cm:guard a venue arriving under a project the room is not about is refused BEFORE anything is written: the atomicity of the pair is proved in `conversation-collect-atomic-e2e.test.ts`, and what this holds is that a refused venue leaves no message and no window either (ISS-1001).
   it('writes nothing for a venue bound to a project the room is not about', async () => {
     const externalId = `chat.example.co ${randomUUID()}`;
     await store.openConversation({

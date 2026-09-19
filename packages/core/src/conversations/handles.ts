@@ -1,16 +1,3 @@
-// A project's handle: the agent a person addresses when they talk to that
-// project in a room, and the only thing a conversation's scope comes from.
-//
-// It is an ISS-932 agent account and nothing new — a `users` row wearing
-// `kind:'agent'`, a member of one org and one project, whose authorization is
-// the membership it holds. What this module adds is that a conversation may
-// mint one, and that it mints one WITHOUT a token.
-//
-// Since ISS-1093 an agent MAY be a member of several projects, so "a member of
-// one project" stopped being true of agents in general. It is still what a
-// project's handle is, and `existingProjectHandle` now says so rather than
-// relying on it.
-
 import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
@@ -27,7 +14,6 @@ export interface ProjectHandle {
   minted: boolean;
 }
 
-// cm:guard the handle is derived from the slug rather than asked for, because nothing in a room chooses it and a project that cannot produce a legal handle must still be addressable; `isAgentHandle`'s shape is the authority and the id-based fallback is what a slug of punctuation resolves to.
 export function handleNameForProject(slug: string, projectId: string): string {
   const derived = slug
     .toLowerCase()
@@ -39,20 +25,10 @@ export function handleNameForProject(slug: string, projectId: string): string {
 /**
  * The handle this project ALREADY has, or null — the look without the mint.
  */
-// cm:guard the one copy of "which of a project's agents is its handle", so the candidate list can leave out the agent a new room will open with and `resolveProjectHandle` can reuse the same one. Two copies of this ordering would drift into two different answers to that question, and the visible cost of the drift is a confirmation that counts a handle the room will not have (ISS-1011).
 export async function existingProjectHandle(
   tx: Executor,
   projectId: string,
 ): Promise<{ userId: string; handle: string | null } | undefined> {
-  // cm:guard a candidate must be a member of THIS project and of no other. Before ISS-1093 that
-  // was true of every agent by construction, so this narrowing changes the answer for no row that
-  // exists today — it excludes exactly the population ISS-1093 created. Without it, an agent an
-  // org admin made to cover eight projects becomes the conversational voice of whichever of them
-  // has no handle yet, purely by being older; and unlike a minted handle, which carries no
-  // `personal_access_tokens` row on purpose, that agent holds a write-capable credential. The
-  // guard on `resolveProjectHandle` below says minting a token here would put a principal with
-  // write authority into every room a person opens — this is the same hole reached from the other
-  // side, by a token-holding agent walking into the candidate list.
   const other = alias(projectMembers, 'other_membership');
   const [row] = await tx
     .select({ userId: users.id, handle: organizationMembers.handle })
@@ -83,9 +59,6 @@ export async function existingProjectHandle(
  * scoped, and it is the only thing standing between two first-time venues of
  * one handle-less project and two handles for that project.
  */
-// cm:guard the lock comes BEFORE the look, not around the insert: without it both callers read no account, both mint, and the project ends with two handles whose union is still one project — so nothing downstream ever reports the duplicate. The conversations' unique index cannot serialize this because the two venues' external ids differ (ISS-1001 criterion 43).
-// cm:guard a handle is minted with NO `personal_access_tokens` row and that is the point: it is a name in a room, and an agent with no token cannot act. Minting a credential here would put a principal with write authority into every room a person opens.
-// cm:edge contract -> packages/core/src/orgs/agent-accounts.ts — `createAgentAccount` is the same account shape reached from the org console, and it DOES mint a token; a column added to the shape there has to arrive here too, and `0241_conversations.sql` holds a third copy in SQL because a migration cannot call either.
 export async function resolveProjectHandle(
   tx: Executor,
   projectId: string,
@@ -124,14 +97,11 @@ export async function resolveProjectHandle(
       email: synthesizeAgentEmail(handle),
       kind: 'agent',
       passwordHash: null,
-      // cm:guard stamped verified at creation for the same reason `createAgentAccount` does it: `assertEmailVerified` gates the PAT-authenticated REST surface and an agent has no mailbox. It is safe only because `signUserToken` refuses `kind:'agent'` outright.
       emailVerifiedAt: new Date(),
     })
     .returning({ id: users.id });
   if (!created) throw new Error('conversations: agent-account insert returned no row');
 
-  // cm:guard the handle is written in the SAME insert as the membership it is unique within, never patched on afterwards: a membership that exists for one statement without its handle is a row the `(org_id, handle)` index cannot refuse, so two venues racing the same slug would both pass and the advisory lock above would have bought nothing.
-  // cm:guard NO `onConflictDoNothing` here, unlike every other insert in this file: `created.id` is a user this statement made, so the only conflict reachable is `(org_id, handle)` — another agent in this org already answering to this name. Swallowed, the transaction commits an agent with a project membership and no org membership, and the room then fails later at `loadHandle` with `HANDLE_HAS_NO_NAME`, which names the wrong thing entirely. Aborting names the constraint at the row that caused it (ISS-1003 criterion 12).
   await tx
     .insert(organizationMembers)
     .values({ orgId: project.orgId, userId: created.id, role: 'member', handle });

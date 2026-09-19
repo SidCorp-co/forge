@@ -22,10 +22,11 @@ import {
   ErrorState,
   IconButton,
   Input,
+  SectionTitle,
   Select,
-  type SelectOption,
   Skeleton,
   Textarea,
+  type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCreateLabel, useDeleteLabel, useLabels, useUpdateLabel } from "../hooks";
@@ -56,8 +57,6 @@ export function flattenModules(modules: ProjectLabel[]): ModuleNode[] {
   for (const list of byParent.values()) list.sort((a, b) => a.name.localeCompare(b.name));
 
   const out: ModuleNode[] = [];
-  // cm:guard the `seen` set bounds the walk — `parentId` is only acyclic because the server
-  // refuses a cycle (CIRCULAR_HIERARCHY); a row written around that route would recurse forever.
   const seen = new Set<string>();
   const walk = (parent: string, depth: number) => {
     for (const m of byParent.get(parent) ?? []) {
@@ -107,7 +106,6 @@ function ModuleRow({
   const [description, setDescription] = useState(m.description ?? "");
   const [expanded, setExpanded] = useState(false);
 
-  // cm:why the options exclude this module and its whole subtree — the server refuses exactly those with CIRCULAR_HIERARCHY, and offering a choice that can only fail is worse than not offering it
   const parentOptions = useMemo<SelectOption[]>(() => {
     const banned = descendantIds(modules, m.id);
     return [
@@ -134,7 +132,6 @@ function ModuleRow({
     onPatch({ description: next === "" ? null : next });
   }
 
-  // cm:why the name input takes the whole first line below `sm` — with five controls wrapping in one flex row at 375px the `flex-1` input is what loses, and it collapsed to zero width on the live walk while the colour well and the parent select kept their intrinsic size
   return (
     <li className="rounded-md border border-line" style={{ marginLeft: depth * INDENT_PER_DEPTH_PX }}>
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
@@ -233,14 +230,13 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
   function add() {
     const trimmed = newName.trim();
     if (trimmed === "") return;
-    // cm:why no colour is sent — the server derives a stable one from the name (`autoModuleColor`), so a module never arrives grey and the create form stays one field
     create.mutate({ name: trimmed, kind: "module" }, { onSuccess: () => setNewName("") });
   }
 
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-1">Modules</h2>
+        <SectionTitle className="fg-h3 mb-1">Modules</SectionTitle>
         <p className="fg-body-sm mb-4 text-muted">
           The parts of this project issues are attributed to. Each issue has one primary module and
           any number of secondary ones.

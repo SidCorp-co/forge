@@ -154,30 +154,11 @@ fn default_skill_auto_pull() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerSettings {
-    /// Size of the box's session-permit pool. Clamped to >= 1 at use.
-    ///
-    /// It bounds NOTHING today: a permit is taken only by a spawn that opts in
-    /// with `counts_against_session_cap`, and the only spawn left on a box is a
-    /// chat turn, which opts out. Jobs used to be the caller that opted in; a run
-    /// is a subagent inside a master's own session now and never reaches this
-    /// process. The field stays because the pool is the mechanism a future
-    /// opt-in would use, and because removing it is a config-file break for
-    /// every box that sets it, for no behaviour.
-    // cm:guard do NOT read this as the box's process ceiling — it is not one. A master is bounded one-per-project and by its own residency, and how wide a master dispatches is the project's `parallel runs`, read by the plugin and invisible here. An operator told to raise this number to run more work is being sent to a knob that decides nothing.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number sizes `session_sem`, whose permit is taken only when a spec sets `counts_against_session_cap`.
     #[serde(default = "default_duplex_max_sessions")]
     pub duplex_max_sessions: u32,
     /// Send `runner:register` (gated behind core `runnerFramework` flag).
     #[serde(default)]
     pub register_enabled: bool,
-    /// How many pool jobs — `release_batch`, `smoke`, `reconcile`, `verify_skill` — may
-    /// have a live pane on this box at once. Clamped to >= 1 at use.
-    ///
-    /// Unlike `duplex_max_sessions` above, this one bounds something: each of these
-    /// jobs is a real `claude` process in a tmux pane on this machine, opened by
-    /// `daemon/pool_jobs.rs` and counted from the registry it rebuilds at startup.
-    // cm:guard the ceiling is the BOX's alone and core cannot see it. Core does not refuse a claim for capacity and must not start: `runner_full` was a hold nothing enforced and was removed on 2026-09-05, and a refusal reporting a hold that does not exist is worse than none. What core does instead is bound the WAIT — `release-batch/unstarted-recovery.ts` hands the roster back after a deadline set loose enough to outlast a box sitting at this number.
-    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — `take_one` reads this as its `bound` and checks it before it reads the pool, so a full box costs core no round trip and takes no hold it must give back.
     #[serde(default = "default_max_job_panes")]
     pub max_job_panes: u32,
 }
@@ -196,29 +177,13 @@ fn default_duplex_max_sessions() -> u32 {
     3
 }
 
-// cm:guard TWO, not three, and the difference from `duplex_max_sessions` is deliberate: a release holds a production credential and runs the longest of the four kinds, so a default that lets a box take three at once makes one slow release into three. An operator who wants more raises it knowingly.
 fn default_max_job_panes() -> u32 {
     2
 }
 
-/// `[runner] max_concurrent`, `device_max_concurrent` and `chat_max_concurrent`
-/// were all removed on 2026-09-04. The first two were parsed and written for
-/// their whole life and read by nothing, so a box set to 4 ran exactly one job
-/// and said nothing about it. `chat_max_concurrent` WAS read — it sized both the
-/// chat turn queue and the duplex process ceiling — so a config that sets it is
-/// asking for something the runner no longer does with that key.
-///
-/// Serde ignores unknown keys, so an old file still loads — but ignoring is what
-/// made them a trap. Warn only on a value the operator can only have typed:
-/// every config the runner ever WROTE carries `max_concurrent = 1` and
-/// `device_max_concurrent = 0`, and warning the whole fleet about its own
-/// defaults is noise nobody reads.
-// cm:guard warn, NEVER refuse to start. These keys were serialized into every config file this tool has ever written, so a hard failure here is a fleet-wide outage on upgrade — the opposite of the loud break, which is meant to stop a WRONG action, not every action.
-// cm:edge contract -> packages/core/src/devices/claim.ts — this warning text tells the operator WHERE the ceiling now lives, and it must name this box, not core: core stopped deciding a box's session count when the master began dispatching its own runs, so a message pointing at core sends them to a knob that decides nothing. The guard on that claim is the record of why.
 fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
     const RUNNER_OWNS_IT: &str =
         "pipeline concurrency is decided by this runner — see `duplex_max_sessions`";
-    // cm:guard `chat_max_concurrent` is the one retired key whose value was LOAD-BEARING, so its warning must name the key that replaced it. Say only "no longer read" here and an operator who raised it to 8 is told their line is inert while the ceiling it used to lift silently sits at the default 3.
     const CHAT_UNCAPPED: &str = "chat no longer has a concurrency limit at all, and the duplex          process ceiling this number used to size now reads `duplex_max_sessions`";
     for (key, tool_written_default, why) in [
         ("max_concurrent", "1", RUNNER_OWNS_IT),
@@ -332,9 +297,6 @@ mod tests {
         assert!(back.skills.auto_pull);
     }
 
-    // cm:guard an old config MUST still load. `save()` serialized `max_concurrent` and
-    // `device_max_concurrent` into every file this tool has ever written, so if removing the
-    // fields made parsing strict, every runner in the fleet would fail to start on upgrade.
     #[test]
     fn a_config_carrying_the_retired_keys_still_loads() {
         let raw = r#"
@@ -385,8 +347,6 @@ chat_max_concurrent = 5
         );
     }
 
-    // cm:guard the scan is table-scoped: `max_concurrent` under ANOTHER table is not this key, and
-    // reading it would warn an operator about a line that is doing its job.
     #[test]
     fn a_same_named_key_in_another_table_is_not_mistaken_for_the_retired_one() {
         let raw = "[skills]\nmax_concurrent = 9\n\n[runner]\nchat_max_concurrent = 3\n";

@@ -18,7 +18,6 @@ function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url');
 }
 
-// cm:guard `exp` must stay under GitHub's 10-minute ceiling and `iat` must be backdated — GitHub rejects a JWT whose `iat` is in its own future, which is what a box with a clock a few seconds fast produces. 60 seconds of backdating costs nothing and removes a failure that presents as an unexplained 401 on a credential that is fine.
 export function buildAppJwt(appId: string, privateKeyPem: string, nowMs = Date.now()): string {
   const now = Math.floor(nowMs / 1000);
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
@@ -40,7 +39,6 @@ export function __resetInstallationTokenCache(): void {
   cache.clear();
 }
 
-// cm:guard the HEADERS travel with the refusal, and dropping them is what makes a mint-time rate limit indistinguishable from a mint-time permission error — GitHub answers 403 for both, and `x-ratelimit-remaining` / `retry-after` are the only things that tell them apart. The messages below are unchanged by ISS-1072 and must stay so: a caller that wants a different sentence builds one from this evidence rather than rewording the one an operator already knows.
 export class GitHubAuthError extends Error {
   readonly status: number;
   readonly headers: HeadersLike | null;
@@ -98,7 +96,6 @@ export async function installationTokenWithExpiry(args: {
     signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
   });
 
-  // cm:guard 401 means the APP credential is wrong (bad key, wrong appId, skewed clock); 404 means the App is not installed on that account, which is an operator authorising it again, not replacing a credential. Reporting either as the other sends the operator to the wrong page.
   if (res.status === 401) {
     throw new GitHubAuthError(
       401,

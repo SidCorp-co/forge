@@ -12,7 +12,6 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-// cm:guard TWO leftJoins, because `lib/authz.ts:effectiveProjectRole` chains two before `where().limit(1)` — a mock with one silently resolves the role to undefined and every case here passes for the wrong reason.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
@@ -75,7 +74,6 @@ describe('forge_agent_sessions.list', () => {
     expect(result.sessions[0]?.id).toBe(SESSION_ID);
   });
 
-  // cm:guard ISS-787 — the SAME limit must reach `.limit()` as limit+1 AND reach buildListEnvelope un-inflated: the disclosure is wiring, not a helper, so a tool that hands the overfetched value on as `limit` computes hasMore off the probe row and reports a bound page as complete
   it('over-fetches by one and discloses the limit that bound the page', async () => {
     const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
@@ -113,7 +111,6 @@ describe('forge_agent_sessions.list', () => {
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  // cm:guard the list query must use a body-free column PROJECTION and never a bare `db.select()`, because the multi-MB `messages` transcript would overflow the MCP token cap; this asserts the projection map of the final sessions select, so a `select()` added later goes red here rather than in a client (ISS-428).
   it('projects a body-free column set (no messages/diff jsonb; exposes messageCount)', async () => {
     const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
@@ -149,12 +146,6 @@ describe('forge_agent_sessions.get', () => {
     };
   }
 
-  // cm:guard ISS-1023 — the tail and the total are computed by POSTGRES now, so this case can only
-  // prove that the tool returns what the query handed it. It deliberately does NOT assert a length
-  // of 20 against a 35-message stub any more: with the slicing in SQL the stub decides the answer,
-  // so such an assertion would pass whatever the query did and could never go red for the thing it
-  // names. The claim that the database really returns the last 20 and the true total is proved
-  // where the SQL runs — `tests/integration/agent-session-tail.test.ts`.
   it('returns the tail and total the query produced, adding nothing of its own', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     const tail = Array.from({ length: 20 }, (_, i) => ({ role: 'user', content: `m${i + 15}` }));
@@ -171,10 +162,6 @@ describe('forge_agent_sessions.get', () => {
     expect(result.session.messages[19]?.content).toBe('m34');
   });
 
-  // cm:guard the empty-transcript shape is the QUERY's answer now — both expressions coalesce, so
-  // a session with a null `messages` comes back as `[]` and `0` rather than as nulls the tool has
-  // to repair. Asserted here as pass-through, and against a real null column in
-  // `tests/integration/agent-session-tail.test.ts`.
   it('passes an empty transcript through as [] and 0', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages: [], totalMessages: 0 }]);

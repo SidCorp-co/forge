@@ -108,12 +108,10 @@ describe('gradeRow', () => {
   });
 
   it('language_mismatch for a Vietnamese question answered with no Vietnamese word, not for English', () => {
-    // cm:ignore CM001 - a Vietnamese question is the fixture the rule is about
     const vi = 'Dự án này có bao nhiêu issue đang mở?'; // i18n-allow: test fixture
     expect(gradeRow(row({ query: vi, reply: 'There are 3 open issues.' }), OPTS).modes).toEqual([
       'language_mismatch',
     ]);
-    // cm:ignore CM001 - the Vietnamese answer that passes
     expect(
       gradeRow(row({ query: vi, reply: 'Dự án hiện có 3 issue đang mở.' }), OPTS).modes, // i18n-allow: test fixture
     ).toEqual([]);

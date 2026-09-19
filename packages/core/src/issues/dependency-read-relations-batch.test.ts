@@ -74,8 +74,6 @@ describe('loadIssueRelationsForIssues', () => {
     expect(out.get('Z')).toEqual({ blocks: [], blockedBy: [] });
   });
 
-  // cm:guard the parity is the point: `loadIssueRelations` IS this function called with one id, so
-  // what a relation says has one writer and cannot drift between the batched and single callers
   it('returns, for each seed, what the single-issue read returns for that seed', async () => {
     edgeRows = [
       edgeRow(),
@@ -90,7 +88,6 @@ describe('loadIssueRelationsForIssues', () => {
     expect(batched.get('C')).toEqual(singleC);
   });
 
-  // cm:guard these rows are inlined into an agent's context WITHOUT the untrusted-data framing the issue's own fields get, so the digest carries ids, kind and expiry and never caller-authored text from another issue — a title, a description or an edge `reason`
   it('carries no issue title, no issue description and no edge reason', async () => {
     edgeRows = [edgeRow()];
     const out = await loadIssueRelationsForIssues(['A'], PROJECT);

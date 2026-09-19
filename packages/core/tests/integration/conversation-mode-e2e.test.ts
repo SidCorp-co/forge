@@ -45,8 +45,6 @@ beforeAll(async () => {
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
-  // cm:edge lockstep -> packages/core/src/index.ts — the mount is `/api/conversations`; this file
-  // builds its own app, so the two can disagree about where the router sits and every URL is absolute.
   app.route('/api/conversations', conversationRoutes);
   app.onError(errorHandler);
 }, 120_000);
@@ -93,9 +91,6 @@ describe('the mode a room is opened in', () => {
     expect((await webRoom()).mode).toBeNull();
   });
 
-  // cm:guard criterion 4, and this is the assertion that would go red if the refusal were widened to
-  // an accepted-and-ignored: the room's own mode has to be NAMED in what comes back, because a
-  // client told only "no" cannot tell which lane it is actually in.
   it('refuses a mode sent into a room that already holds a message, naming the mode it answers in', async () => {
     const created = await webRoom();
     await store.appendMessage({
@@ -112,9 +107,6 @@ describe('the mode a room is opened in', () => {
     expect(JSON.stringify(body)).toContain('assistant');
   });
 
-  // cm:guard criterion 7: a room opened before ISS-1039 has a null column AND a transcript, and it
-  // answers `assistant`. The refusal above names that, rather than reporting the column as unset and
-  // silently settling a mode over a conversation already under way.
   it('reads a room that held messages before the column existed as an assistant room', async () => {
     const created = await webRoom();
     await store.appendMessage({
@@ -127,9 +119,6 @@ describe('the mode a room is opened in', () => {
     expect(store.effectiveConversationMode(row as { mode: null })).toBe('assistant');
   });
 
-  // cm:guard criteria 17 and 18 together, and they are one case because the second is what makes the
-  // first worth having: the message is NOT taken in, so there is no Assistant answer standing where
-  // the person asked for a box. This harness has no runner registered, which IS the condition.
   it('refuses Agent mode on a project with no paired box, and takes the message in nowhere', async () => {
     const created = await webRoom();
 
@@ -143,9 +132,6 @@ describe('the mode a room is opened in', () => {
     expect((await store.getConversation(created.id))?.mode).toBeNull();
   });
 
-  // cm:guard criterion 15 and 16: the offer travels with the room and carries the reason, because
-  // the browser cannot make a fleet read and a composer that guessed would grey a control out for
-  // the wrong reason or offer one the send then refuses.
   it('tells the composer Agent is unavailable, and why, on a project with no box', async () => {
     const created = await webRoom();
     const res = await app.request(`/api/conversations/${created.id}`, {
@@ -157,9 +143,6 @@ describe('the mode a room is opened in', () => {
     expect(body.agentMode.reason).toContain('no box paired');
   });
 
-  // cm:guard criterion 5 — a client that names nothing gets the lane the product answers in, and it
-  // is SETTLED rather than left null: a room whose column stayed null would go on offering the pick
-  // after a conversation had already happened in it.
   it('opens a room in Assistant mode when the first send names none', async () => {
     const created = await webRoom();
     const res = await send(created.id, { content: 'no mode named' });
@@ -167,9 +150,6 @@ describe('the mode a room is opened in', () => {
     expect((await store.getConversation(created.id))?.mode).toBe('assistant');
   });
 
-  // cm:guard criterion 6, which is the whole point of settling it rather than storing a preference:
-  // there is no value of the field meaning "change it", and a later send that names one is refused
-  // whether or not it names the mode that won. To talk to the other one, open another room.
   it('never changes the mode after the first send, by any later send', async () => {
     const created = await webRoom();
     expect([201, 202]).toContain((await send(created.id, { content: 'first' })).status);
@@ -185,10 +165,6 @@ describe('the mode a room is opened in', () => {
     }
   });
 
-  // cm:guard criteria 8 and 9: two first sends racing in one empty room. The settle is fenced on
-  // `mode IS NULL` inside the transaction that commits the message, so exactly one is admitted —
-  // and the loser is told which mode won rather than having its message quietly collected into the
-  // other lane.
   it('admits exactly one of two first sends, and names the winner to the other', async () => {
     const created = await webRoom();
     const [a, b] = await Promise.all([
@@ -203,10 +179,6 @@ describe('the mode a room is opened in', () => {
   });
 });
 
-// cm:guard the commit consult's F1, F2, F5 and F6, each of which is a READ answering from something
-// core wrote at dispatch time rather than from evidence the thing happened. They are integration
-// cases because every one of them is a fragment of SQL over a real row — a `->>` on jsonb, a null
-// `started_at` — and a mocked query builder would assert the shape of the builder instead.
 describe('what a room is told about a turn it handed to a box', () => {
   /** One `agent_sessions` row carrying the conversation marker, as the dispatcher writes it. */
   async function agentSession(over: {
@@ -265,8 +237,6 @@ describe('what a room is told about a turn it handed to a box', () => {
     await agentSession({ ...over, marker: { ...over.marker, conversationId } });
   };
 
-  // cm:guard `dispatchChatTurn` commits `status: 'running'` before it publishes to any box, so this
-  // is the difference criterion 19 asks the screen to show: core sent it, and nothing has it yet.
   it('calls a turn dispatched until a box has written a runtime state of its own', async () => {
     const created = await webRoom();
     await withRoom(created.id, { windowId: randomUUID(), startedAt: new Date().toISOString() });
@@ -283,9 +253,6 @@ describe('what a room is told about a turn it handed to a box', () => {
     expect((await turnsIn(created.id))[0]?.state).toBe('running');
   });
 
-  // cm:guard the claim is one writer winning the right to deliver; the answer is a transcript row
-  // written after it. A screen served `delivered` on the claim drops its waiting entry and stops
-  // polling over a turn whose reply does not exist yet.
   it('does not call a claimed turn delivered until the answer is stamped', async () => {
     const created = await webRoom();
     await withRoom(created.id, {
@@ -308,10 +275,6 @@ describe('what a room is told about a turn it handed to a box', () => {
     expect((await turnsIn(created.id))[0]?.state).toBe('delivered');
   });
 
-  // cm:guard THE case the mocked reader cannot prove: a session created for a window and never
-  // dispatched carries a null `started_at`, and reading it as a handoff closes that window saying a
-  // box is working on an answer nothing was asked for — while the reservation stops the recovery
-  // dispatching one. The room then waits forever.
   it('does not read a session that was created and never dispatched as a handoff', async () => {
     const windowId = randomUUID();
     const created = await webRoom();
@@ -336,9 +299,6 @@ describe('what a room is told about a turn it handed to a box', () => {
     expect(await conversationAgentTurnForWindow(windowId)).toEqual({ sessionId: id });
   });
 
-  // cm:guard the draft's own door, which exists because the composer's first question is asked
-  // before any room does: a screen with nothing to read was offering Agent enabled, and a person on
-  // a project with no box learned that only from the refusal, after composing and sending.
   it('answers the draft composer about the project, with no room in hand', async () => {
     const res = await app.request(`/api/conversations/agent-mode?projectId=${projectId}`, {
       headers: await auth(ownerId),

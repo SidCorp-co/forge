@@ -85,7 +85,6 @@ export async function writePmDecision(input: PmDecisionInput) {
     });
   });
 
-  // cm:guard the decision row is committed BEFORE the escalation, deliberately: a notification that fails must surface, and must not take the record of the turn with it. A PM that decided something and could not reach the owner has still decided it, and the next turn reads that decision back out of the table.
   if (input.escalate) {
     const escalate = input.escalate;
     const [project] = await db
@@ -107,7 +106,6 @@ export async function writePmDecision(input: PmDecisionInput) {
       expiresAt: escalate.expiresAt,
     });
 
-    // cm:edge protocol -> packages/core/src/notifications/emit.ts — ISS-510: go through that helper, never a bare insert. It is what sets severity from the contract and fires `notificationCreated`, whose fan-out carries the project-room escalation bridge keyed on `decisionId`; an insert here lands a row nobody is told about.
     const escalationNotification = await emitNotification({
       userId: project.createdBy,
       projectId: input.projectId,
@@ -116,16 +114,6 @@ export async function writePmDecision(input: PmDecisionInput) {
       body,
       decisionId,
     });
-    // cm:guard ISS-1063 — this THROWS on a suppressed escalation and must keep throwing
-    // while the emission switch is on, because the escalation's question, options,
-    // severity and expiry live ONLY in that notification's body: there is no other
-    // durable home for them. Returning a null id here was tried and reverted in the
-    // same change — it reads as "escalated, nobody told" while the truth is "the
-    // question is gone", which is the silent substitution CLAUDE.md forbids. The
-    // decision row is already committed by the guard above, so the refusal costs the
-    // escalation and not the turn, and the caller is told by name which of the two it
-    // lost. When the record-kind model lands and `pm_escalation` becomes a task with a
-    // durable record of its own, this branch stops being reachable by suppression.
     if (!escalationNotification) {
       throw new Error(
         `writePmDecision: decision ${decisionId} was written, but its escalation could not be ` +

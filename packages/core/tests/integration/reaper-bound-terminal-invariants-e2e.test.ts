@@ -9,21 +9,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-/**
- * ISS-1021 — the job-axis bound against the invariant it could break.
- *
- * `reapAckMisses` used to read its whole candidate set, so one tick's work scaled with the last
- * outage rather than with the loop. Bounding it at 200 is only safe if a candidate a truncated
- * tick did not read is still reaped, and if neither direction of the run/job terminal invariant
- * can be crossed by the truncation. Those are criteria 11, 12 and 13, and reading the diff proves
- * none of them: the reaper is bounded by a `LIMIT` a test has to cross to see.
- *
- * The retry tail is mocked away: `finalizeKillGateReap` routes a confirmed reap into
- * `finalizeFailedJob`, which may enqueue a REPLACEMENT child, and a run holding a fresh queued job
- * is legitimately still open. That would measure the retry policy rather than the bound. The
- * kernel transition that writes the job terminal is NOT mocked, so every status this file asserts
- * on is one Postgres actually holds.
- */
 vi.mock('../../src/pipeline/wedge.js', async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
   emitPipelineWedge: async () => undefined,

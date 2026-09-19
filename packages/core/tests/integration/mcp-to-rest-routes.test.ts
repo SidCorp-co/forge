@@ -91,7 +91,6 @@ async function seed() {
   return { user, project, token };
 }
 
-// cm:guard a project role BELOW admin only exists for someone who is not the org owner — `effectiveProjectRole` is org-aware and hands the org owner implicit project admin, so seeding role:'member' on the project creator produces an admin and every negative role case passes for the wrong reason.
 async function seedNonAdminMember(project: { id: string; orgId: string }) {
   const { user, token } = await verifiedUser();
   await createTestOrgMember(harness.db, {
@@ -129,7 +128,6 @@ describe('GET /version — replaces forge_version', () => {
     expect(typeof body.version).toBe('string');
     expect(body.version.length).toBeGreaterThan(0);
     expect(Number.isInteger(body.uptimeSeconds)).toBe(true);
-    // cm:guard the key is served whether or not the build was told its commit, because `release-gate` condition 4 compares this field to a merge SHA and an omitted key is indistinguishable from an older image. A test box passes no build argument, so `null` is the value here and a string is the value on a deploy.
     expect(Object.keys(body)).toContain('sourceCommit');
     expect(body.sourceCommit === null || /^[0-9a-f]{7,40}$/i.test(body.sourceCommit)).toBe(true);
   });
@@ -281,7 +279,6 @@ describe('release batch lifecycle — replaces forge_release_batch', () => {
     });
   });
 
-  // cm:guard the context is the only lifecycle route allowed to need the branches — it answers 409 with the code the agent acts on; abort and finish below must keep answering for the same undeclared project
   it('answers 409 RELEASE_BRANCHES_UNDECLARED for the context of a project with no baseBranch', async () => {
     const { project, token } = await seed();
     const runId = await seedBatchRun(project.id);
@@ -293,7 +290,6 @@ describe('release batch lifecycle — replaces forge_release_batch', () => {
     });
   });
 
-  // cm:guard this is the case the MCP tool could not have: it read the project OFF the run, so a mismatch was impossible. A project-scoped URL makes it possible, and the PAT fence bites on the path id alone — so without this refusal a token scoped to one project finishes another project's release.
   it('refuses a runId that belongs to a different project than the path names', async () => {
     const mine = await seed();
     const theirs = await seed();
@@ -310,7 +306,6 @@ describe('release batch lifecycle — replaces forge_release_batch', () => {
     expect(finish.status).toBe(404);
   });
 
-  // cm:guard the queued job is the row batch edfd569d left behind on 2026-09-03: abort released the claims, the retry stayed `queued` under a `running` run, and the previous batch's retry had already shipped to production after ITS abort — a green here means nothing under an aborted run can still execute
   it('abort releases the claims, cancels the run and its jobs, and closes no issue', async () => {
     const { user, project, token } = await seed();
     const runId = await seedBatchRun(project.id);

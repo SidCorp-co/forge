@@ -1,10 +1,13 @@
 "use client";
 
-// cm:edge contract -> packages/core/src/memory/consolidation.ts — `resolveKnowledgePromotion` is the only reader of what this writes, and it runs inside the nightly `memory-consolidation` job; a field renamed on one side arrives as undefined on the other with no error anywhere
-// cm:guard round-trip the WHOLE fetched config and edit only this slice (`...config`) — PATCH /pipeline-config merges shallowly, so a partial object drops every sibling key the operator set elsewhere on this page
 
 import { useEffect, useState } from "react";
-import { Banner, Button, Toggle } from "@/design";
+import {
+  Banner,
+  Button,
+  CardTitle,
+  Toggle,
+} from "@/design";
 import { formatPipelineConfigError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import type { PipelineConfig } from "../types";
@@ -49,7 +52,7 @@ export function KnowledgePromotionSection({
 
 	return (
 		<div className="mt-6 border-t border-line pt-5">
-			<h3 className="fg-label text-fg">Knowledge promotion</h3>
+			<CardTitle className="fg-label text-fg">Knowledge promotion</CardTitle>
 			<p className="fg-body-sm mb-3 text-muted">
 				Every night at <strong>03:00 UTC</strong> the memory consolidation job
 				looks for memories this project has actually re-read, and files each one

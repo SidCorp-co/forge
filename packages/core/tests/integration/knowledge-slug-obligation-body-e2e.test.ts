@@ -1,15 +1,3 @@
-// ISS-1048 — release readiness answers "does this project declare its test commands?" from the
-// slugs `selectAllSlugsFromKnowledge` returns. That is only sound while a present slug means real
-// text. `bodySchema` refuses a whitespace body at the door, but migration 0254 copies every
-// `agentConfig.projectFacts` value across unchanged, from a map that had no such rule — so a
-// project that held `test-commands: "   "` arrives holding a row that would answer its obligation
-// with three spaces, where the contract this replaces read the text, trimmed it, and reported the
-// gap. A validator cannot repair rows that predate it, so the fence is in the query.
-//
-// The assertion goes red by deleting `btrim(body) <> ''` from the query: the whitespace slug comes
-// back and the gap it should have reported disappears. Real Postgres, because every unit test of
-// this path mocks the function itself and cannot see the SQL.
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -36,12 +24,6 @@ beforeAll(async () => {
   // this file's disposable schema BEFORE that import, or it connects to whatever DATABASE_URL the
   // shell happened to hold.
   process.env.DATABASE_URL = harness.url;
-  // `config/env.ts` parses the whole environment at module scope and `db/client.ts` imports it, so
-  // importing the service below throws before any test body runs unless these are present. They are
-  // absent on CI and were present in the shell that first ran this file, which is exactly how this
-  // passed locally and failed there. Set per file, the way every other integration test that
-  // imports a service does it; ISS-1067 is the issue that stops import-time parsing being a thing
-  // each test has to know about.
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   const user = await createTestUser(harness.db);

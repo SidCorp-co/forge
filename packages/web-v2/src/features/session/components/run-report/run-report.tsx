@@ -68,7 +68,6 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
   const [lens, setLens] = useState<Lens>("story");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const runQ = useRun(session.pipelineRunId ?? undefined, !!session.pipelineRunId);
-  // cm:why the detail row carries no cost — `estimatedCost` is attached by the LIST endpoint only, so without this rollup the whole Cost card reads "—" on every finished run.
   const costQ = useSessionCost(session.id);
 
   const groups = useMemo(() => deriveActivityGroups(items), [items]);

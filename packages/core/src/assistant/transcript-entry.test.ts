@@ -24,9 +24,6 @@ function toolOf(blocks: ContentBlock[] | null, at: number): ToolCall {
   return b.toolCall;
 }
 
-// cm:guard these two REFUSE by index rather than casting past the absence — the whole subject of
-// this file is which block landed where, so an accessor that returns undefined for a missing one
-// turns a wrong-order failure into `expected undefined to be 'Let me look.'`, which names nothing.
 function textOf(blocks: ContentBlock[] | null, at: number): string {
   const b = blocks?.[at];
   if (b?.type !== 'text' || b.text === undefined) throw new Error(`no text block at ${at}`);
@@ -45,8 +42,6 @@ describe('the assistant turn accumulates one canonical entry', () => {
 
     const blocks = acc.blocks();
     expect(blocks?.map((b) => b.type)).toEqual(['text', 'tool', 'text']);
-    // cm:guard the chunks COALESCE — one text block, not one per token, which is what a per-event
-    // merge would have produced and what would have put hundreds of blocks in the column.
     expect(textOf(blocks, 0)).toBe('Let me look.');
     expect(textOf(blocks, 2)).toBe('You have two.');
   });
@@ -113,9 +108,6 @@ describe('the assistant turn accumulates one canonical entry', () => {
     expect(entry?.content).toBe('hi');
   });
 
-  // cm:guard this is the refusal the issue turns on: dropping an unmatched result is the silent
-  // substitution the whole change exists to remove, and `mergeMessages` left to itself would append
-  // a stray `tool_result` message that renders as a tool nobody called.
   it('refuses a result naming a call this turn never made, by name', () => {
     const acc = fold([call({ id: 'c1' })]);
     expect(() => acc.apply({ type: 'tool_result', id: 'nope', result: 'x' })).toThrow(/nope/);
@@ -127,8 +119,6 @@ describe('the assistant turn accumulates one canonical entry', () => {
     expect(() => acc.apply({ type: 'tool_result', id: 'c1', result: 'x' })).toThrow(/none/);
   });
 
-  // cm:guard arguments that are not a JSON object are KEPT, because `{}` would say the model called
-  // the tool with none — a different claim, and a false one.
   it('keeps arguments it cannot parse rather than reporting none', () => {
     const tc = toolOf(fold([call({ args: 'not json at all' })]).blocks(), 0);
     expect(tc.input).toEqual({ arguments: 'not json at all' });
@@ -139,10 +129,6 @@ describe('the assistant turn accumulates one canonical entry', () => {
   });
 });
 
-// cm:guard reasoning gets the SAME treatment prose does, for the same reason: it arrives on the same
-// wire at the same rate, and one block per delta would put one block per token in the column. What
-// differs is the close — prose is closed by a tool call, reasoning by the first event of any other
-// kind at all, because "it thought, then it said this" is the order a reader is owed (ISS-1079).
 describe('reasoning becomes one thinking block', () => {
   it('coalesces consecutive reasoning deltas into a single block', () => {
     const acc = fold([
@@ -190,12 +176,6 @@ describe('reasoning becomes one thinking block', () => {
     expect(acc.blocks()).toEqual([{ type: 'thinking', thinking: 'hmm' }]);
   });
 
-  // cm:guard an encrypted block becomes a thinking block with NO TEXT, and never one holding the
-  // empty string: a block with no text is what "the model paused and left nothing readable" means,
-  // and the renderer draws it as a line with no expander, where a block holding "" would give a
-  // reader a control that opens onto nothing. It is a block rather than a count on the entry because
-  // the durable row has a column for blocks and none for a count — the count form was true while the
-  // socket carried the live entry and gone the moment the stored row replaced it (whole-set read F1).
   it('records an encrypted block as a thinking block carrying no text', () => {
     const acc = fold([
       { type: 'reasoning', text: '', redacted: true },
@@ -205,10 +185,6 @@ describe('reasoning becomes one thinking block', () => {
     expect(acc.entry()?.thinkingCount).toBeUndefined();
   });
 
-  // cm:guard TWO adjacent encrypted pauses are two blocks and not one. The count form this
-  // replaced would have said "Thought twice" from a single carrier; blocks carry no number, so
-  // coalescing them here would lose one pause with nothing saying so — and coalescing is exactly
-  // what the readable path does to consecutive reasoning events one branch away (ISS-1079).
   it('keeps two adjacent encrypted pauses as two blocks', () => {
     const acc = fold([
       { type: 'reasoning', text: '', redacted: true },
@@ -260,13 +236,6 @@ describe('reasoning becomes one thinking block', () => {
   });
 });
 
-// cm:guard the coalescing window is ONE constant, and this test is the only thing that keeps it
-// one. It scans the directory rather than importing the two callers, because the failure it defends
-// against is a third caller nobody thought to import: `conversation-progress.ts`
-// each held their own `= 120` for one commit, with a comment on one of them saying to raise or
-// lower both or neither. A comment is not a constraint. The decision that fixed the window stated
-// its undo as raising or lowering a single shared constant, so a second declaration of one IS the
-// defect, whatever value it carries (ISS-1078).
 describe('the coalescing window is declared once', () => {
   const dir = join(import.meta.dirname, '.');
 

@@ -26,7 +26,6 @@ describe('the reference a branch opens with', () => {
     expect(referenceInHeadRef('iss-1062-x')).toEqual({ prefix: 'ISS', issSeq: 1062 });
   });
 
-  // cm:why the separator class is the whole rule: without it `ISS-10` would also match the branch `ISS-1062-...` under a lazier digit bound, and one issue's branch would link to another's row.
   it('does not take a key that is only mentioned in the middle of a branch', () => {
     expect(referenceInHeadRef('feature/not-ISS-1062')).toBeNull();
     expect(referenceInHeadRef('revert-ISS-1062-github')).toBeNull();
@@ -46,7 +45,6 @@ describe('the reference a branch opens with', () => {
   });
 });
 
-// cm:guard this stub DISCARDS the predicate, so nothing below can prove the `project_id` in the WHERE. That is deliberate and it is the whole reason `tests/integration/repo-projection-e2e.test.ts` plants two projects against Postgres: a stub whose `where` returns itself makes a scoping test pass whatever the query asks for, which is the proof-by-absence ISS-1071's own F2 was filed for. What these cases prove is the ORDER of the two reads and the short-circuit, which is a property of this function and not of the database.
 /** A reader that records what it was asked and answers from a fixed set. */
 function reader(opts: { heldPrefixes?: string[]; issue?: { id: string } | undefined }): {
   dbi: IssueRefReader;
@@ -84,7 +82,6 @@ describe('resolving a branch to an issue', () => {
     ).resolves.toBe('issue-1');
   });
 
-  // cm:why the aliases table's own CHECK refuses `ISS`, so a project that never renamed holds NO alias row — reading only the aliases would stop every ordinary branch on every ordinary project from resolving.
   it('resolves a prefix this project has held', async () => {
     const r = reader({ heldPrefixes: ['FD'], issue: { id: 'issue-2' } });
     await expect(

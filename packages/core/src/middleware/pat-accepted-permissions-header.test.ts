@@ -32,7 +32,6 @@ vi.mock('../auth/jwt.js', () => ({
   verifyUserToken: (...a: unknown[]) => verifyUserToken(...a),
 }));
 
-// cm:guard `patPermissionWanted` is spied rather than replaced: the default delegates to the real one, so every value assertion below is against the real declaration and only the last block changes what it answers. A stub-by-default here would turn the whole file into a test of its own fixture.
 const permissionWanted = vi.fn();
 vi.mock('../auth/pat-permissions.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../auth/pat-permissions.js')>();
@@ -116,7 +115,6 @@ function wantedOf(body: Record<string, unknown> | null): string | undefined {
   return details?.wanted;
 }
 
-// cm:guard these four mirror the ONE contract `authenticatePat` offers about `onVerified`: it fires the instant `verifyPat` resolves a row, and never otherwise. A mock that fires it unconditionally would make the last case below — a throttle above verification — pass while the fence leaked (ISS-974), so the callback is invoked here only where the real function would invoke it.
 function verifiesAs(p: ReturnType<typeof principal>) {
   authenticatePat.mockImplementation(async (_c, _t, _l, onVerified?: () => void) => {
     onVerified?.();
@@ -160,7 +158,6 @@ describe('a success is told what admitted it, not only a refusal', () => {
     expect(res.header).toBe('issues:write');
   });
 
-  // cm:guard `/api/schedules` is the one path here whose resource can be MOVED without changing the union, so this is the assertion that goes red when `PAT_PERMISSION_RESOURCES` reassigns it — which is what says the header follows the fence's own declaration rather than a table of its own (ISS-974).
   it('names the resource the declaration gives the path, not the one the path looks like', async () => {
     verifiesAs(principal(null));
     const res = await send('/api/schedules');
@@ -196,7 +193,6 @@ describe('every refusal that knows the answer says it', () => {
   });
 });
 
-// cm:guard ABSENT, never empty-valued: an empty header on these paths reads as "this route requires nothing" on exactly the routes a PAT may never reach, which is a worse answer than silence. `toBeNull` is the assertion, and `toBe('')` would pass a `wanted ?? ''` that ships the opposite claim (ISS-974).
 describe('a path no permission covers carries no header at all', () => {
   it.each(['/api/pat', '/api/me/ops-health'])('%s is refused with no header', async (path) => {
     verifiesAs(principal(null));
@@ -223,7 +219,6 @@ describe('the header belongs to the PAT fence and to nothing else', () => {
     expect(authenticatePat).not.toHaveBeenCalled();
   });
 
-  // cm:guard the line is AUTHENTICATION, never the status code, and these three are what hold it there. The middle case and the last one are the SAME 429 to a reader of the response: only whether `verifyPat` resolved separates them, which is why the callback and not the status decides (ISS-974). Read the status-based version of this — `refusal.status === 429` — as the shape that passes the middle case and leaks on the last.
   it('a throttled token that DID verify is still told what the route wanted', async () => {
     throttles(true);
     const res = await send('/api/issues');
@@ -268,7 +263,6 @@ describe('one resolution per request, handed to every consumer', () => {
     expect(permissionWanted).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard the resolver answers `schedules:read` first and `issues:read` after, so a second resolution on the request path admits the request while the header names what was refused — or refuses while the header names what was allowed, depending which consumer calls first. Either way the two disagree, which is the failure no assertion about the header's VALUE can see (ISS-974).
   it('cannot let the header and the decision disagree when the resolver changes its mind', async () => {
     verifiesAs(principal(['issues:read']));
     permissionWanted

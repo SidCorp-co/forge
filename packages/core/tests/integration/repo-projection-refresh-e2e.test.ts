@@ -24,7 +24,6 @@ const REACHABLE_KEY = generateKeyPairSync('rsa', {
 }).privateKey;
 
 describe('a refresh is fenced on the head it answered for', () => {
-  // cm:guard THE case the `AND head_sha = <captured>` in `storeRefresh` exists for: a slow read for a head the row has since left knows nothing about the head it now carries, so neither its counts nor its complaint belongs there.
   it('writes neither values nor error onto a row whose head has moved', async () => {
     await g.seedIssue(g.projectId, 4242);
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
@@ -84,7 +83,6 @@ describe('a refresh is fenced on the head it answered for', () => {
 });
 
 describe('a refresh is fenced on the base as well as the head', () => {
-  // cm:guard the case F1 of the whole-set consult found. A retarget from `main` to `release` does NOT move the head, so a head-only fence lets a refresh computed against `main` land on a row that now says `release` — the same wrong behind-by a stale head would give, reached without anybody pushing anything.
   it('writes nothing onto a row whose base has moved under the same head', async () => {
     await g.seedIssue(g.projectId, 4242);
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
@@ -121,7 +119,6 @@ describe('a refresh is fenced on the base as well as the head', () => {
     expect(r?.refresh_error).toBeNull();
   });
 
-  // cm:guard the upsert's own half of F1: the refresh columns describe one head ON ONE BASE, so a payload that moves the base must clear them in the statement that moves it.
   it('clears the refresh facts when the base moves and the head does not', async () => {
     await g.seedIssue(g.projectId, 4242);
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
@@ -153,7 +150,6 @@ describe('a refresh is fenced on the base as well as the head', () => {
 });
 
 describe('two refreshes for one row are ordered by when they started', () => {
-  // cm:guard TWO pushes to one base start two refreshes for one row at the same head and the same base, so head and base cannot tell them apart. They may finish in either order, and the row must keep the answer of the one that started LAST — keying on the finish time instead would let a read of an older base overwrite a read of a newer one whenever the older read happened to be slower.
   it('keeps the later-started answer when the earlier-started read finishes last', async () => {
     await g.seedIssue(g.projectId, 4242);
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
@@ -210,12 +206,6 @@ describe('a push to a base nothing is waiting on', () => {
     vi.unstubAllGlobals();
   });
 
-  // cm:guard `openPullRequestsOnBase`'s `base_ref` predicate is what this is about, and the plant
-  // that proves it is dropping that one `eq`: a base-blind read turns every push to any ref into a
-  // refresh of every open row, and the return value goes from 0 to 1 here.
-  // cm:guard the key is a REAL one and the installation id is set, so the `fetch` stub is genuinely
-  // reachable: with a placeholder string the token signing throws first, and `calls` would stay
-  // empty however wrong the selection was — an assertion that cannot fail covers nothing.
   it('writes no row and makes no GitHub read', async () => {
     await g.seedIssue(g.projectId, 4242);
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
@@ -250,7 +240,6 @@ describe('a delivery that cannot read at all says so on the rows', () => {
     secrets: { appId: '1', privateKey: 'unused — the refusal happens before any signing' },
   };
 
-  // cm:guard F5 of the whole-set consult. A bare null left the row with null counts and nothing beside them, which says "nobody has asked yet" and "Forge cannot ask" in one breath — and only the second is something an operator can act on.
   it('records the missing installation on the pull request it could not read for', async () => {
     await g.seedIssue(g.projectId, 4242);
     const ctx = { ...g.ctx(), ...noInstallation };
@@ -288,7 +277,6 @@ describe('the cap a base push stops at, against real rows', () => {
     vi.unstubAllGlobals();
   });
 
-  // cm:guard F4 of the whole-set consult. The first shape read `cap + 1` rows and marked the one extra, so a base with 27 open pull requests left two of them stale with no sentence on them — the silent truncation the cap's own message exists to prevent, hiding inside the mechanism meant to prevent it.
   it('refreshes the cap and marks the WHOLE remainder, not one sentinel row', async () => {
     vi.stubGlobal('fetch', async (url: string) => ({
       ok: true,

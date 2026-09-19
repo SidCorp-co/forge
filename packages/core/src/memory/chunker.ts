@@ -7,7 +7,6 @@
 
 import type { MemorySource } from '../db/schema.js';
 
-// cm:guard CHUNKED_SOURCES is the ONE place the owner's scope decision (2026-09-04: `comment` and `job` mirrors stay flat) lives — the write path, the estimate and the reindex job all filter on it, so a source added here is chunked everywhere at once and a source named anywhere else is a second copy that will drift
 export const CHUNKED_SOURCES: readonly MemorySource[] = [
   'issue',
   'note',
@@ -73,7 +72,6 @@ function pieces(text: string): string[] {
   return out;
 }
 
-// cm:guard the tail is one character short of CHUNK_OVERLAP_CHARS because the joining newline counts — a full 200 + '\n' + a full 1200 piece is 1401, one over the CHUNK_MAX_CHARS the proposal and the estimate both promise
 function overlapTail(previous: string): string {
   const budget = CHUNK_OVERLAP_CHARS - 1;
   if (previous.length <= budget) return previous;

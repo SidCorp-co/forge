@@ -21,7 +21,6 @@ use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::transport::inbox::{self, Ack};
 use crate::transport::CoreClient;
 
-// cm:edge contract -> packages/core/src/agent-sessions/session-send.ts — the payload `requestSessionSend` publishes. `jobId` is the key a PIPELINE session is held under here; `sessionId` is the key a CHAT session is held under AND the id both report routes are addressed by. Neither one serves both roles, which is why the frame carries both.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SendFrame {
@@ -38,7 +37,6 @@ struct SendFrame {
 
 const DEFAULT_WRITE_MS: u64 = 8_000;
 
-// cm:guard the runner's write deadline must stay STRICTLY BELOW the grace core is waiting out, and on an overrun the runner must go SILENT rather than ack — a partial line cannot be un-written, the CLI skips a malformed one and keeps running, and an ack would tell core a `cancel` landed that was in fact lost.
 fn write_deadline(frame_ms: Option<u64>) -> std::time::Duration {
     let ms = frame_ms.map_or(DEFAULT_WRITE_MS, |d| (d * 4 / 5).max(1_000));
     std::time::Duration::from_millis(ms)
@@ -57,7 +55,6 @@ pub async fn handle_session_send(
             return;
         }
     };
-    // cm:guard `job_id` FIRST. A pipeline session is held under its job id, and falling back to the session id for one would find no entry and ack `gone` — core would then fall back for a session that is alive and parked, which is the wedge this whole path exists to remove.
     let key = frame
         .job_id
         .clone()
@@ -67,7 +64,6 @@ pub async fn handle_session_send(
 
     match frame.kind.as_str() {
         "cancel" => {
-            // cm:guard a master is ENDED by killing its pane, not by `runner.close`, which knows nothing about a session it does not parent. Falling through to the resident map would ack `gone` for a master that is still running and still holding work.
             if let Some(pane) = masters.pane_for_session(&sid) {
                 let _ = terminal::kill(&pane).await;
             } else {
@@ -88,7 +84,6 @@ pub async fn handle_session_send(
         }
         "work" | "answer" | "inject" => {
             let Some(body) = frame.body.clone().filter(|b| !b.trim().is_empty()) else {
-                // cm:guard NO ack for an empty body, deliberately. `gone` would be a lie about a session that is alive and would make core fall back while it still holds its runner slot; `delivered` would lose the message outright. Silence resolves `unknown`, which is the outcome that makes core wait.
                 tracing::error!(
                     "[inbox] {} with no body — session={sid} seq={seq}",
                     frame.kind
@@ -101,9 +96,6 @@ pub async fn handle_session_send(
     }
 }
 
-/// Type a message into a master's pane, and say whether it landed (ISS-919 B6).
-// cm:guard the terminal arm is tried FIRST for a session this box hosts as a pane, because the resident map does not contain it and `send_resident` would answer with an error the caller reads as `gone`. A master that is alive, attached to by a human and holding work would then be reported dead, and core would fall back on the strength of that report.
-// cm:guard the pane write is a real ack, not a courtesy one. `send_line` fails when the session is absent and when the paste is refused, which are the two ways a message does not reach the composer — so `delivered` here means the same thing it means on the resident path, and the `applied` half stays what it always was: unreported, because a pane emits no turn boundary.
 async fn deliver_to_pane(masters: &Arc<Masters>, session_id: &str, body: &str) -> Option<bool> {
     let pane = masters.pane_for_session(session_id)?;
     match terminal::send_line(&pane, body).await {
@@ -133,7 +125,6 @@ async fn deliver(
     let write = runner.send_resident(&key, body, pending);
     match tokio::time::timeout(write_deadline(frame.deadline_ms), write).await {
         Ok(Ok(())) => inbox::ack(client, &frame.session_id, frame.seq, Ack::Delivered).await,
-        // cm:guard a session that is not resident is `gone`, and that is the branch core acts on: it is what turns a human's answer into a fresh dispatch instead of a message into a process that will never read it.
         Ok(Err(e)) => {
             tracing::info!("[inbox] session={} not resident: {e}", frame.session_id);
             inbox::ack(client, &frame.session_id, frame.seq, Ack::Gone).await;
@@ -161,7 +152,6 @@ mod tests {
         }
     }
 
-    // cm:guard the key choice is the whole difference between reaching a parked pipeline session and telling core it is gone. A pipeline session is held under its JOB id; looking it up by session id finds nothing and acks `gone`, which makes core fall back on a session that is alive and still holding its runner slot.
     #[test]
     fn a_pipeline_message_is_keyed_by_the_job_and_a_chat_message_by_the_session() {
         let f = frame("answer", Some("yes"), Some("job-9"));
@@ -170,7 +160,6 @@ mod tests {
         assert_eq!(g.job_id.unwrap_or(g.session_id), "sess-1");
     }
 
-    // cm:guard STRICTLY below the grace core is waiting out, and never zero. An overrun must leave the runner silent rather than acked, so a deadline that meets or exceeds core's would let a write land after core had already called it `unknown` and moved on.
     #[test]
     fn the_write_deadline_stays_under_the_grace_core_is_waiting_out() {
         assert!(write_deadline(Some(10_000)) < std::time::Duration::from_millis(10_000));
@@ -195,7 +184,6 @@ mod tests {
         );
     }
 
-    // cm:guard a body that is only whitespace is NOT a message. Writing it would start a turn on nothing, and the agent would answer a question it was never asked.
     #[test]
     fn a_blank_body_is_not_a_body() {
         assert!(frame("answer", Some("   \n"), None)

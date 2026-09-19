@@ -1,24 +1,3 @@
-/**
- * ISS-922 — the evidence a run needs before it may claim `completed`.
- *
- * A deploy dispatch writes one CONFIRMATION HOLD per deploy target onto
- * `pipeline_runs.metadata`. Until every hold reports back from Coolify, the
- * run's terminal status is not the dispatcher's to write: `closeRun` and its
- * two siblings ask {@link resolveDeployGate} first, and a run with an
- * unresolved hold stays `running` at `release.deploy.in_flight` — which is
- * true — instead of closing `completed` on the evidence that somebody asked
- * for a deploy.
- *
- * Measured on the fleet 2026-09-06, before this module existed: 5,408 outbound
- * deliveries and 0 inbound ever, `release.deploy.done` stamped 0 times, and 50
- * runs sitting at `status='completed'` while their own `current_step` still
- * read `release.deploy.in_flight`.
- *
- * Every hold carries its own `deadlineAt`, so the gate is bounded by
- * construction: past the deadline an unconfirmed deploy resolves `failed`
- * rather than waiting, and no run can leak on this axis.
- */
-
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -26,7 +5,6 @@ import { pipelineRuns } from '../db/schema.js';
 export const DEPLOY_CONFIRM_METADATA_KEY = '__forge_deploy_confirm';
 export const DEPLOY_CLOSE_PENDING_METADATA_KEY = '__forge_deploy_close_pending';
 
-// cm:why 30 minutes, against the 60 of `RESULT_QUIET_MINUTES`: the gate must always resolve BEFORE the sweeper's own quiet window opens, or two mechanisms decide one run's outcome. The price is a false `failed` on a build slower than 30 minutes, and it ends when a project can declare its own deadline.
 export const DEPLOY_CONFIRM_WINDOW_MS = 30 * 60_000;
 
 export type DeployConfirmationStatus = 'pending' | 'succeeded' | 'failed';
@@ -48,11 +26,8 @@ export const dispatchHoldKey = (requestId: string): string => `dispatch:${reques
 /** Key for a real per-target hold, once Coolify has named the deployment. */
 export const targetHoldKey = (deliveryId: string): string => `target:${deliveryId}`;
 
-// cm:guard `jsonb_set(..., create_missing => true)` creates only the LAST path element — with the holds map absent, a two-element path writes NOTHING and returns success. Verified against Postgres 16, 2026-09-06: `jsonb_set('{}', ARRAY['a','b'], '1', true)` is `{}`. So the parent map is materialised first, in the same expression.
 const holdsParentEnsured = sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('__forge_deploy_confirm', coalesce(${pipelineRuns.metadata} -> '__forge_deploy_confirm', '{}'::jsonb))`;
 
-// cm:guard every write here is a single `jsonb_set` on ONE key, never a read-modify-write of the whole map — two targets of the same binding settle concurrently and a whole-map write loses one of them silently, which is the exact failure this module exists to make impossible.
-// cm:guard the `status IN ('running','paused')` predicate is what makes a hold un-writable on a terminal run. A run that closed before its deploy was asked for cannot prove that deploy, and stamping it anyway is how `completed` came to wear `release.deploy.in_flight`.
 async function writeHold(runId: string, key: string, hold: DeployConfirmation): Promise<boolean> {
   const written = await db
     .update(pipelineRuns)
@@ -119,7 +94,6 @@ export async function openDeployDispatchHold(args: {
  * @returns `false` when the run refused any hold — it went terminal while the
  * deploy was being dispatched, so nothing can witness this deploy's outcome.
  */
-// cm:guard the target holds are written whether or not a placeholder exists, and `requestId` is optional for exactly that reason: a dispatch with no requestId has no placeholder to replace, and gating the WRITE on one would leave its run with no holds at all — which `resolveDeployGate` reads as `clear`, i.e. the original defect.
 export async function replaceDispatchHoldWithTargets(args: {
   runId: string;
   requestId?: string;
@@ -176,14 +150,6 @@ export type DeployGateVerdict =
   | { verdict: 'defer'; confirmed: number; total: number }
   | { verdict: 'failed'; detail: string };
 
-/**
- * What the holds permit a caller that wants to write `completed`.
- *
- * `clear` — no deploy was dispatched for this run, or every target confirmed.
- * `defer` — a deploy is genuinely still in flight; nobody may call the run yet.
- * `failed` — Coolify reported a failure, or a deploy went unconfirmed past its
- * deadline. Both are the run's outcome, not an annotation on it.
- */
 export function resolveDeployGate(holds: DeployHolds, now: Date = new Date()): DeployGateVerdict {
   const entries = Object.values(holds);
   if (entries.length === 0) return { verdict: 'clear' };

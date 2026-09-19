@@ -34,7 +34,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// cm:guard the write is ONE statement against ONE key and not a document this route assembled, so the assertion is on what the statement carried. A drizzle `sql` template interleaves literal `StringChunk`s with the raw bound values, and the two values here are the removed-key JSON and the added-key JSON, in that order.
 function agentConfigWrites(): Array<{ removed: string[]; added: Record<string, unknown> }> {
   return dbExecute.mock.calls.map(([stmt]) => {
     const chunks = (stmt as unknown as { queryChunks: unknown[] }).queryChunks;
@@ -107,7 +106,6 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     return req(`/${PID}/plugins`, { method: 'PATCH', body: JSON.stringify(body), token });
   }
 
-  // cm:guard the write REPLACES `plugins` and NAMES NO OTHER KEY. This case used to assert that the whole blob went back with the siblings spread into it — the ISS-767 pattern, one omitted spread from wiping `pipelineConfig`. ISS-1070 removed the spread rather than guarding it: the route reads the blob only to answer 404, and the statement carries `plugins` alone, so a sibling written between the read and the write is not restored because it is never sent.
   it('replaces the list and names no sibling key of agentConfig', async () => {
     const token = await signUserToken('uuid-owner');
     seed({
@@ -123,7 +121,6 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard `null` DELETES the key rather than writing `plugins: null` — `GET /api/devices/me/plugins` unions this list across projects, and a null entry there is a shape its reader does not have.
   it('deletes the key on null rather than writing a null value', async () => {
     const token = await signUserToken('uuid-owner');
     seed({ personaStyle: 'be terse', plugins: [PLUGIN] });
@@ -142,7 +139,6 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     expect(agentConfigWrites()).toEqual([{ added: { plugins: [] }, removed: [] }]);
   });
 
-  // cm:guard the shape is validated SERVER-side, not only in the form. A device resolves what it installs from this list, so a malformed name or a ref that is not a SHA reaches a box that then fails to install with no operator anywhere near it.
   it('400s on a malformed entry, before any write', async () => {
     for (const bad of [
       { marketplace: '', name: 'forge', pinnedRef: null },

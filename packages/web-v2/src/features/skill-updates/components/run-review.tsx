@@ -4,7 +4,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Badge, Button, ErrorState, Field, Skeleton, Textarea } from "@/design";
+import {
+  Badge,
+  Button,
+  CardTitle,
+  ErrorState,
+  Field,
+  Skeleton,
+  Textarea,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { diffLines, diffStat, withContext } from "../diff";
 import {
@@ -81,14 +89,14 @@ export function RunReview({ projectId, runId, canManage }: RunReviewProps) {
 
       {run.rationale ? (
         <section>
-          <h3 className="mb-1 text-sm font-medium">Why the agent decided this</h3>
+          <CardTitle className="mb-1 text-sm font-medium">Why the agent decided this</CardTitle>
           <p className="text-muted max-w-prose whitespace-pre-wrap text-sm">{run.rationale}</p>
         </section>
       ) : null}
 
       {votes.length > 0 ? (
         <section>
-          <h3 className="mb-1 text-sm font-medium">Verifiers</h3>
+          <CardTitle className="mb-1 text-sm font-medium">Verifiers</CardTitle>
           <ul className="space-y-2">
             {votes.map((v) => (
               <li key={v.jobId} className="border-line rounded-r border-l-2 pl-3 text-sm">
@@ -101,7 +109,7 @@ export function RunReview({ projectId, runId, canManage }: RunReviewProps) {
       ) : null}
 
       <section className="min-h-0">
-        <h3 className="mb-1 text-sm font-medium">Changes to the running skill body</h3>
+        <CardTitle className="mb-1 text-sm font-medium">Changes to the running skill body</CardTitle>
         {stat.added === 0 && stat.removed === 0 ? (
           <p className="text-muted text-sm">No change to the body.</p>
         ) : (

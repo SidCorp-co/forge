@@ -1,8 +1,5 @@
 // The composition root: mount every domain's routes, run the start sequence, serve, wind down.
 
-// cm:guard splitting this by responsibility (app / boot / shutdown) is NOT free and was measured on 2026-08-25: it costs +26 on `.arch.baseline.json`'s frozen total, which `improves: down` refuses, so the build blocks and the only ways past it are widening the gate or reverting. The extracted halves reach strict SUBSETS of what the remaining half reaches — boot 18 and shutdown 9 are both inside app's 47 — so the split adds no coupling at all and the whole rise is per-file counting of the same edges two and three times. The cheapest shape (shutdown alone) still costs +8; there is no free one. Exit condition and the evidence: SidCorp-co/archmap#1 (`scope: "module"` on the fan-out evaluator).
-// cm:guard FIRST import in this file, and it must stay first. ESM evaluates every imported module before any statement in this one, so an `initSentry()` call placed among the imports runs after all of them — which is what this file did until 2026-08-25, leaving import-time crashes unreported by the very thing meant to report them. Module evaluation follows import order, so only position buys the guarantee.
-// cm:edge ordering -> packages/core/src/observability/sentry-init.ts — that module's whole job is to be imported before the rest; moving this line down, or letting a formatter sort it down, silently restores the bug
 import './observability/sentry-init.js';
 import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
@@ -199,11 +196,6 @@ export const app = new Hono<{ Variables: RequestIdVars }>();
 app.use('*', requestId());
 app.use('*', requestLogger());
 
-// cm:guard an explicit origin from the `CORS_ORIGINS` allow-list, NEVER `*` — cookie-based browser auth needs Access-Control-Allow-Credentials, which the spec refuses alongside a wildcard origin, so widening this silently logs every browser client out
-// cm:guard read on the FIRST REQUEST, never at module scope: this file is imported by tests and by
-// anything that reaches `app`, and a module-scope `env.CORS_ORIGINS` made that import validate the
-// whole environment and throw on a missing variable (ISS-1067). The list is memoised, so the split
-// still happens once rather than per request.
 let corsOrigins: string[] | undefined;
 function allowedOrigins(): string[] {
   corsOrigins ??= env.CORS_ORIGINS.split(',')
@@ -211,13 +203,11 @@ function allowedOrigins(): string[] {
     .filter((s) => s.length > 0);
   return corsOrigins;
 }
-// cm:why `/mcp` is mounted below with the same allow-list because it is reached from a BROWSER, not only by CLIs — the settings/mcp Test Connection panel calls it — and `X-Forge-Project-Slug` is in `allowHeaders` for that panel's preflight, alongside the bearer PAT (ISS-161).
 const corsMiddleware = cors({
   origin: (origin) => (allowedOrigins().includes(origin) ? origin : null),
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token', 'X-Forge-Project-Slug'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  // cm:guard a response header a browser must READ has to be listed here or `fetch` hides it, whatever the server sent. `Retry-After` and the `X-RateLimit-*` set are the whole of what a 429 tells a client (ISS-961), and none of them is CORS-safelisted, so omitting one leaves the web UI guessing exactly as the CLI used to. `PAT_ACCEPTED_PERMISSIONS_HEADER` joined them for the same reason on the other three PAT outcomes (ISS-974), imported rather than spelled again so the two lists cannot name different headers.
   exposeHeaders: [
     'X-Total-Count',
     'Retry-After',
@@ -244,7 +234,6 @@ export async function runShutdown(
 ): Promise<number> {
   logger.info({ signal }, '@forge/core shutdown initiated');
 
-  // cm:guard build this promise BEFORE awaiting anything below — server.close() stops accepting new connections at the call, and only resolves once the in-flight requests drain, so constructing it later keeps the listener open across the whole shutdown sequence
   const httpClosed = new Promise<void>((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
   });
@@ -257,7 +246,6 @@ export async function runShutdown(
     await unregisterAgentCronTicker();
     await unregisterPmEscalationSweeper();
     await unregisterAssistantWeekly();
-    // cm:guard ISS-830 — MUST be awaited while the DB is still open and before closeDb(). The outbox claims a batch by committing `claimed_at = now()`, and only the emitting tick clears it (success → processed_at, failure → claimed_at NULL). Abandon that tick and the rows stay claimed until CLAIM_LEASE_MS (120s) expires, so every rolling restart that lands mid-drain adds up to two minutes of latency to the pipeline transitions in that batch.
     await stopOutboxWorker();
     await stopBoss();
     await httpClosed;
@@ -279,22 +267,18 @@ export async function runShutdown(
 
 registerEagerSubscribers(hooks);
 
-// cm:edge ordering -> packages/core/src/mcp/request-class.ts — this mount must stay ABOVE `requirePat()`: it decides which of the two per-token budgets the request spends, and `requirePat` is what charges it. Reversed, every MCP call falls back to the `write` bucket and ISS-961's split stops applying to the surface it was reported from.
 app.use('/mcp', mcpRequestClass());
 app.use('/mcp', requirePat());
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
 
-// cm:guard mount BOTH — a self-hoster exposes core directly at the root, while the hosted edge proxy forwards only `/api/*`, so dropping either mount breaks one deployment shape and leaves the other working. The runner self-updater fetches `{core}/api/install/latest.json` (ISS-392), and the handlers echo the arriving prefix into the download URLs they emit, so the two mounts are not interchangeable.
 app.route('/', installRoutes);
 app.route('/api', installRoutes);
 
-// cm:why dual-mounted for the same reason as installRoutes above; every pointer Forge emits (FORGE_MCP_INSTRUCTIONS, the mcp-tool-reference fact) uses the `/api/guides` form, so the root mount serves only self-hosters
 app.route('/', guideRoutes);
 app.route('/api', guideRoutes);
 
-// cm:guard a redirect on the API host to the WEB origin, and it exists for runners already installed. Their browser-approve login builds `{core_url}/pair?code=…` from the API host and cannot know `APP_BASE_URL`, so removing this breaks every box in the field with no upgrade available to fix it — and only a runner release would repair it.
 app.get('/pair', (c) => {
   const code = c.req.query('code');
   const base = env.APP_BASE_URL.replace(/\/+$/, '');
@@ -309,23 +293,19 @@ app.route('/api/auth', devForceVerifyRoutes);
 app.route('/api/auth', meRoutes);
 app.route('/api/auth', preferenceRoutes);
 app.route('/api/auth', logoutRoutes);
-// cm:why ISS-158 — this router only ISSUES the fresh-auth proof; the gating lives on the sensitive routes themselves (PAT creation, device revoke, password change) via `requireFreshAuth()`, so mounting it here gates nothing on its own.
 app.route('/api/auth', reauthRoutes);
 app.route('/api', patRoutes);
 app.route('/api/auth', oauthRoutes);
-// cm:guard mount projectHealthRoutes BEFORE projectRoutes — the latter's `GET /:id` carries a `z.uuid()` validator that 400-rejects the literal "health" segment, so the wrong order turns this route into a validation error rather than a 404 anyone would notice
 app.route('/api/projects', projectHealthRoutes);
 app.route('/api/projects', opsHealthProjectRoutes);
 app.route('/api/me', opsHealthMeRoutes);
 app.route('/api/me', collaboratorsMeRoutes);
-// cm:guard every deep `/:id/<segment>` module under this prefix mounts BEFORE `projectRoutes`, whose `GET /:id` would otherwise be reachable first. None of them collides today, and keeping the order is what stops the next one that would.
 app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', runLedgerRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', assistantWeeklyRoutes);
 app.route('/api/orgs', orgRoutes);
-// cm:guard several route modules may share one prefix — Hono composes sub-apps by path, not one-Hono-per-prefix (ISS-628) — but it then runs the middleware of EVERY router whose mount prefix matches, so a bare `use('*', ...)` on any one of them gates its neighbours' paths too. Check the sibling's middleware, not only its paths, before adding a mount here.
 app.route('/api/orgs', sshKeyRoutes);
 app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
@@ -349,12 +329,9 @@ app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', moduleDiagramRoutes);
 app.route('/api/projects', projectActivityRoutes);
 app.route('/api/projects', jobProjectRoutes);
-// cm:guard issueAttachmentRoutes MUST mount before issueExtrasRoutes — extras carries `use('*', requireAuth(), assertEmailVerified())`, which covers every /api/issues path, so registered first it answers 401 for the PAT/device callers the attachment routes exist to serve (ISS-719). Disjoint paths do NOT save you; only registration order does. See middleware/route-mount-order.test.ts.
 app.route('/api/issues', issueAttachmentRoutes);
-// cm:guard mount issueExtrasRoutes BEFORE issueRoutes — its `/pipeline-timing` is a STATIC segment and `issueRoutes`' `GET /:id` carries a `z.uuid()` validator, so the wrong order answers 400 on a real route instead of serving it. Same shape as the projectHealthRoutes guard above.
 app.route('/api/issues', issueExtrasRoutes);
 app.route('/api/issues', issueMergeRoutes);
-// cm:guard the ticket id minted by `forge_uploads` IS the credential, so this router declares no gate of its own and must stay off `/api/issues`, whose routers all carry one. What it is NOT is a prefix nothing guards — the `cm:edge` on `auth/pat-permissions.ts` measured a PAT on `GET /api/uploads` taking the fence's own `PAT_NOT_PERMITTED` at 46805dc0, because Hono runs the middleware of EVERY router whose mount prefix matches and three are mounted bare at `/api`. So giving `/api/uploads` a permission resource would not be inert, and the prose here said the opposite until ISS-974.
 app.route('/api/uploads', uploadRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
@@ -442,7 +419,6 @@ const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const port = env.PORT;
 
-  // cm:guard boot dies here rather than at insert time: `memories.embedding` is a fixed-width vector column, and a mismatched EMBEDDINGS_DIM passes client-side validation and then fails — or silently corrupts — on every write. Relaxing this to a warning trades a loud boot failure for quiet data loss.
   if (env.EMBEDDINGS_DIM !== MEMORY_EMBEDDING_DIM) {
     throw new Error(
       `EMBEDDINGS_DIM=${env.EMBEDDINGS_DIM} does not match the memories.embedding column dimension (${MEMORY_EMBEDDING_DIM}). Changing the embedding dimension requires a migration that rebuilds the column and re-embeds all rows.`,
@@ -463,18 +439,9 @@ if (isMain) {
       contentHash: change.contentHash,
     });
   }
-  // cm:why here, beside the skill seed — the platform invariant set lives in code, so a deploy is exactly when it can change (ISS-795 stage ①)
   await sweepPolicyLanded();
   await seedDomainTemplates(db);
-  // cm:guard UNCONDITIONAL, and it has to be. This used to sit behind the
-  // `chatProvider` flag, which also mounted `POST /api/chat`; `/api/conversations`
-  // is mounted unconditionally and drains through the same provider registry, so
-  // a deployment that turned the flag off left the conversation door answering
-  // with no provider behind it — the shape `assistant/conversation-drain.ts`
-  // already names on its own gate. ISS-1030 removed the SSE door and the flag
-  // with it, and this is the half that was never the flag's to decide.
   bootstrapChatProviders();
-  // cm:guard the Forge UI is a conversation ADAPTER and registers like one — one call, which is the whole of what ISS-1002 claimed a second adapter costs the store, and this line is the first payment of it. The call is `assistant/`'s own so that this file reaches no module it did not already (ISS-1004 step 5).
   registerWebConversationAdapter();
   bootstrapRunnerAdapters();
   await registerStaleDetector();
@@ -508,10 +475,8 @@ if (isMain) {
   registerAnswerResume(hooks);
   registerCommentMirror(hooks);
   registerPhaseJournalClose(hooks);
-  // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first
   registerPausedRunWedgeResolve(hooks);
 
-  // cm:guard ordering — both run AFTER the subscribers above, or the worker's first drain hits an empty bus and the outbox rows it drained are gone with nothing subscribed to act on them (ISS-196)
   registerOutboxWorker();
   await registerReconciler();
 
@@ -521,10 +486,8 @@ if (isMain) {
     logger.info({ port: info.port }, '@forge/core listening');
   });
 
-  // cm:why serve() returns a union including http2, and ws's WebSocketServer takes only http/https — the cast narrows to the HTTP/1 server this call actually asked for
   attachWs(server as unknown as HttpServer);
 
-  // cm:guard never awaited and never fatal: the manager dials bot-user DDP sockets and takes a single-owner advisory lock, so a Rocket.Chat server that is slow or unreachable must not hold up boot or fail it (ISS-604).
   void startRocketChatManager().catch((err) =>
     logger.error({ err }, 'rocketchat: manager start failed'),
   );

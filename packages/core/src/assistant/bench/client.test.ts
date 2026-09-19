@@ -119,9 +119,6 @@ describe('the project readers (ISS-1061)', () => {
     );
   });
 
-  // cm:why the old assertion here read the stored config's KEYS back as the project's pipeline, and
-  // that is the ISS-1066 defect: it is per-stage configuration over four optional keys, `forge-plugin`
-  // stores one of them, and an empty map means every canonical rung rather than none.
   it('pipelineStates answers the effective ladder, whatever the stored config names', async () => {
     const LADDER = [
       'open',

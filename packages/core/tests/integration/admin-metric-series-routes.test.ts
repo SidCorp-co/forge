@@ -83,7 +83,6 @@ describe('admin metric series route (ISS-975)', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    // cm:guard `env.ts` freezes `env` at first import, so ADMIN_EMAILS must be set BEFORE the dynamic import below — set it after and requireAdmin reads an empty allow-list and every case in this file 403s (ISS-816)
     process.env.ADMIN_EMAILS = ADMIN_EMAIL;
 
     const { adminMetricSeriesRoutes } = await import('../../src/admin/metric-series-routes.js');
@@ -152,7 +151,6 @@ describe('admin metric series route (ISS-975)', () => {
       expect(await codeOf(res)).toBe('EMAIL_NOT_VERIFIED');
     });
 
-    // cm:guard `/api/admin` is deliberately absent from `auth/pat-permissions.ts`, so a PAT is refused inside requireAuth before this handler runs — even one owned by an allow-listed, verified admin. This case is what keeps that true if the permission menu is later edited: listing the prefix there would widen every PAT onto the whole cross-tenant console (ISS-975).
     it('403s PAT_NOT_PERMITTED for a valid PAT owned by a verified allow-listed admin', async () => {
       const admin = await verifiedUser(ADMIN_EMAIL);
       const { plaintext } = await mintPat({ userId: admin.id, name: 'admin-pat' });
@@ -228,7 +226,6 @@ describe('admin metric series route (ISS-975)', () => {
     );
   });
 
-  // cm:guard the three equalities are judged on ONE seeding and one window: both surfaces read live `now()`, so seeding between the two requests would move the boundary under the second and the comparison would be of two different spans.
   describe('against GET /overview, on one seeding', () => {
     it.each(METRIC_NAMES)(
       '%s reports the same value, deltaPct and spark the glance does',
@@ -255,7 +252,6 @@ describe('admin metric series route (ISS-975)', () => {
   describe('a bucket with nothing in it', () => {
     it('carries 0 for a count metric and null for a ratio metric', async () => {
       const token = await adminToken();
-      // cm:why the admin this case just minted carries `created_at = now()`, which is a REAL signup inside the window — pushed clear of the 48h span so "no rows" means no rows.
       await harness.db.execute(sql`UPDATE users SET created_at = now() - interval '200 hours'`);
 
       const [countRes, ratioRes] = await Promise.all([

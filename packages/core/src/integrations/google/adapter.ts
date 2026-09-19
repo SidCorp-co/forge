@@ -86,18 +86,6 @@ function identityFrom(serviceAccountJson: string): { clientEmail: string; projec
   };
 }
 
-/**
- * The connection config to persist: the CONNECTION's own stored config with the
- * identity merged in.
- *
- * cm:guard never build this from `ctx.config`. That is `effectiveConfig` —
- * connection overlaid with binding — so writing it back promotes this project's
- * binding-tier keys onto the shared credential, and `defaultSpreadsheetId` is
- * exactly such a key. One org account bound to two projects would then have
- * whichever project was health-checked last decide the fallback sheet for the
- * other, which is the `wholesale-config-clobber` red flag reached by a write
- * rather than a PATCH (ISS-1036).
- */
 async function connectionConfigWithIdentity(
   connectionId: string,
   identity: { clientEmail: string; projectId?: string },
@@ -142,7 +130,6 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
 
     const identity = identityFrom(serviceAccountJson);
     const spreadsheetId = ctx.config?.defaultSpreadsheetId;
-    // cm:guard a valid credential with nothing to read is `degraded`, never `ok` — "the account authenticates" is a weaker claim than this card makes anywhere else, and reporting it green is how a binding that can reach no sheet passes test-connection and fails at the first job (ISS-1036)
     if (typeof spreadsheetId !== 'string' || spreadsheetId.length === 0) {
       await updateConnection(ctx.connectionId, {
         config: await connectionConfigWithIdentity(ctx.connectionId, identity),
@@ -229,7 +216,6 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
     secrets: googleSecretsSchema,
     patchSecrets: googleSecretsSchema.partial(),
     primaryCredentialField: 'serviceAccountJson',
-    // cm:why the whole service-account JSON is the rotating unit, not the PEM inside it — Google reissues a key as a new file whose `private_key_id` and `client_email` travel with the PEM, and rotating the PEM alone would leave the connection signing with a key id Google no longer maps to it
     previousCredentialField: 'previousServiceAccountJson',
     independentSecretFields: [],
     bindingConfigKeys: GOOGLE_BINDING_CONFIG_KEYS,

@@ -49,7 +49,7 @@ The headline number is the `on_hold` row: cancelled runs where nobody was asked 
 process fixes none of them. And on all 17 parked issues, human comments since the park: **zero**.
 
 **4. It optimises a path drive jobs do not take.** `jobs/resume-policy.ts#resolveResumePolicy` gates
-the session-group lookup on `job.type !== AUTONOMOUS_JOB_TYPE`, with a `cm:guard` saying why — a
+the session-group lookup on `job.type !== AUTONOMOUS_JOB_TYPE`, with a invariant saying why — a
 drive job resumes through `forge_phase resume_point`, never `--resume`. Measured over 90 days: drive
 jobs with `resume_failed` = **0**. The `[RESUME_FAILED]` branch this proposal was built around has
 never fired for the mode it targets.

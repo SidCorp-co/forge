@@ -70,9 +70,6 @@ afterEach(cleanup);
 beforeEach(() => {
   for (const m of [list, setArchived, rename, remove]) m.mockReset();
   archivedIds = new Set(["c3"]);
-  // cm:guard the mock branches on the ARCHIVED argument, for the reason `conversation-panel.test.tsx`
-  // gives over the same two reads: a mock answering one set for every call would let a screen that
-  // never sends the flag still look like its toggle worked.
   list.mockImplementation(async (projectId: string, _pageSize: number, wantArchived: boolean) => {
     const items = ROOMS.filter(
       (r) => r.projectId === projectId && archivedIds.has(r.id) === wantArchived,
@@ -141,9 +138,6 @@ describe("ConversationsScreen · the archived set is reachable from the screen t
     expect(screen.queryByRole("button", { name: "Archive Old migration" })).not.toBeInTheDocument();
   });
 
-  // cm:guard the person is asserted to STAY on the archived side: bringing a room back is not a
-  // request to leave the list somebody is working through, and a screen that jumped to the live set
-  // on each unarchive would lose their place after the first one.
   it("brings a room back, leaves the person where they were, and lists it live when they switch back", async () => {
     mount();
     await screen.findByRole("button", { name: opener("Release plan", "Alpha") });
@@ -162,9 +156,6 @@ describe("ConversationsScreen · the archived set is reachable from the screen t
     expect(screen.getByRole("button", { name: "Archive Old migration" })).toBeInTheDocument();
   });
 
-  // cm:guard the two mounts are asserted to agree: the rail and the mobile drawer render the same
-  // component, and a toggle each of them owned would leave the drawer on the live rooms while the
-  // rail behind it showed the archived ones — one screen disagreeing with itself.
   it("opens the mobile drawer on the same set the rail is showing", async () => {
     mount();
     await screen.findByRole("button", { name: opener("Release plan", "Alpha") });

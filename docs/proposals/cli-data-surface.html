@@ -159,7 +159,7 @@
   <tr>
     <td><span class="x">✕</span> Quan hệ <code>blocks</code> <b>nguyên tử</b> chỉ có ở MCP</td>
     <td><span class="k">→</span> REST nhận <code>relations</code> ngay trong transaction của create/update</td>
-    <td>REST <b>đã</b> đặt được <code>blocks</code> — <code>issues/dependency-routes.ts</code> có GET/POST/DELETE <code>/api/issues/:id/dependencies</code>, và <code>mcp/tools/issue-relations.ts</code> có <code>cm:edge contract</code> trỏ về nó. Khoảng trống thật hẹp hơn: chỉ MCP commit được edge <b>trước</b> khi <code>issueCreated</code> phát ra. Đó đúng là race mà red flag <code>open-then-block</code> nói tới.</td>
+    <td>REST <b>đã</b> đặt được <code>blocks</code> — <code>issues/dependency-routes.ts</code> có GET/POST/DELETE <code>/api/issues/:id/dependencies</code>, và <code>mcp/tools/issue-relations.ts</code> có <code>coupling contract</code> trỏ về nó. Khoảng trống thật hẹp hơn: chỉ MCP commit được edge <b>trước</b> khi <code>issueCreated</code> phát ra. Đó đúng là race mà red flag <code>open-then-block</code> nói tới.</td>
   </tr>
   <tr>
     <td><span class="x">✕</span> Không có hợp đồng lỗi</td>
@@ -182,7 +182,7 @@
 
 <div class="note">
 <b>Đã kiểm và BỎ</b> — ba chỗ trông như lệch nhưng không phải, đừng vẽ thành mũi tên:<br>
-· <b>sanitize chỉ ở MCP</b> → là thiết kế. <code>forge-issues.ts:365</code> có <code>cm:guard</code>: <i>"REST/web-v2 serialize separately, so the human UI never shows the framing."</i><br>
+· <b>sanitize chỉ ở MCP</b> → là thiết kế. <code>forge-issues.ts:365</code> có <code>invariant</code>: <i>"REST/web-v2 serialize separately, so the human UI never shows the framing."</i><br>
 · <b>apply-transition chỉ ở MCP</b> → chỉ là bố cục file; REST chạm nó qua <code>issues/transition.ts</code> mount riêng.<br>
 · <b>dispatch-tick chỉ ở MCP</b> → không còn lệch nào để vẽ: cả hai vẫn bắn hook <code>issueCreated</code>, và cái tick riêng của MCP biến mất cùng <code>jobs/dispatch-tick.ts</code> (ISS-933 — core không mint job drive nữa).
 </div>

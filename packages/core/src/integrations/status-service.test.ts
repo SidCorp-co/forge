@@ -1,14 +1,3 @@
-/**
- * The status cards, whose KEY is how a screen addresses one binding rather than another.
- *
- * Under the retired model a duplicate key was unreachable: a binding served exactly one
- * environment, and one project could not have two `prod` Coolify bindings. ISS-1046 makes two
- * live deploy bindings legal, and a card set with two identical keys is one React renders once
- * — every drill-in, test and delete then reaches whichever row the list happened to hold first,
- * silently. Nothing tested any of this: `buildIntegrationsStatusCards` appeared in exactly two
- * files before this one, both of them source.
- */
-
 import { describe, expect, it, vi } from 'vitest';
 
 // `status-service.ts` reaches the db client transitively, which validates the environment at
@@ -60,8 +49,6 @@ describe('a status card names one binding and no other', () => {
     expect(keys).toEqual(['coolify:preview', 'coolify:live']);
   });
 
-  // cm:guard the defect this file exists for. Two bindings serving the SAME stage collide on the
-  // stage-keyed spelling, and the card set then has two members the screen cannot tell apart.
   it('keys two same-stage bindings apart rather than minting the same key twice', () => {
     const keys = cards([row({ id: 'b1' }), row({ id: 'b2' })]).map((c) => c.key);
     expect(new Set(keys).size).toBe(2);

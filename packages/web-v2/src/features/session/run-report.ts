@@ -1,14 +1,3 @@
-// web-v2 feature module: session — the run-report derive.
-//
-// A pipeline session is not a conversation: nobody typed anything, and the
-// question a reader arrives with is what the agent DID and why the step
-// failed. These pure functions turn the flattened `ConversationItem[]` from
-// types.ts into the five views the run report renders — activity groups, a
-// transcript, the tape, the blocker, and the time breakdown. Kept out of
-// types.ts so the chat surface pays nothing for them.
-//
-// Every number is read off the transcript. A field the derive cannot find is
-// omitted, never defaulted to zero — a fabricated 0 reads as a measurement.
 
 import type { SessionRow } from "@/features/sessions/types";
 import type { ConversationItem, MessageEntry, RunTotals, ToolCallData, ToolKind } from "./types";
@@ -89,7 +78,6 @@ function editCounts(tc: ToolCallData): { added: number; removed: number } {
 const PASSED = /(\d+)\s+passed/i;
 const FAILED = /(\d+)\s+failed/i;
 
-// cm:why the LAST line carrying a passed count wins, not the first: vitest prints "Test Files 1 failed | 212 passed" above "Tests 428 passed | 1 failed", and matching across the whole blob paired 212 with the failure count from the next line, reporting a suite size that was never run.
 function testCounts(text: string): { passed: number; failed: number } | null {
   let best: { passed: number; failed: number } | null = null;
   for (const line of text.split("\n")) {
@@ -217,7 +205,6 @@ function headlineFor(kind: ActivityKind, n: number, calls: ToolCallData[]): stri
     case "ran":
       return `Ran ${plural(n, "command")}`;
     case "edited":
-      // cm:guard count DISTINCT paths, not edit calls — the left column's "Files changed" counts paths, and an agent that edits one file six times made this row read "Edited 52 files" beside a list of 22.
       return `Edited ${plural(distinctPaths(calls), "file")}`;
     case "forge":
       return `Forge · ${plural(n, "call")}`;
@@ -296,7 +283,6 @@ function transcriptArg(tc: ToolCallData): string {
  * 10 are the verdicts. Drop them and the record still lists what ran, but no
  * longer says what the agent thought it was doing.
  */
-// cm:guard only role `assistant` is the agent talking — a runner `system` entry lands as role `tool` and `assistantBlocks` turns its content into an ordinary text block, so without this "Session started" rendered as the agent's first sentence and counted toward the notes.
 function wroteIt(item: ConversationItem): boolean {
   return item.role === "assistant";
 }
@@ -341,7 +327,6 @@ export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[]
   return rows;
 }
 
-// cm:why 120 chars, measured on a getcontent `drive` run: 58 of 69 text blocks fall under it and are step markers ("Now the route itself."), while all 10 above it are substantive verdicts. Taking simply the LAST block would have surfaced "Now the close comment." as the run's conclusion.
 const SUMMARY_MIN_CHARS = 120;
 
 export interface Narration {
@@ -433,7 +418,6 @@ export function readTranscriptMeta(
   messages: unknown[] | null | undefined,
   items: ConversationItem[],
 ): TranscriptMeta {
-  // cm:edge contract -> packages/core/src/lib/agent-stream-parser.ts — `totals`, `thinkingCount` and `isError` exist on the entry only because that derive keeps them; it dropped all three until 2026-08-23, and every number on this page silently read "—" instead of being wrong, which is why nobody noticed.
   let totals: RunTotals | null = null;
   let thinkingPauses = 0;
   for (const raw of messages ?? []) {

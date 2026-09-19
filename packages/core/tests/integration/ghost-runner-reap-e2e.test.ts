@@ -120,7 +120,6 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
     expect(await statusOf(runnerId)).toBe('offline');
   });
 
-  // cm:guard the day count comes from `admin_thresholds`, never a constant — a reaper that ignores the configured value is the whole defect ISS-654 fixes.
   it('follows the configured threshold rather than the default', async () => {
     const { runnerId } = await seedRunner({ lastSeenDaysAgo: 5 });
 
@@ -178,7 +177,6 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
     },
   );
 
-  // cm:guard a runner that never heartbeat at all falls back to created_at — a NULL last_seen_at otherwise makes the comparison NULL and the row is silently immortal.
   it('falls back to created_at for a runner that never heartbeat', async () => {
     const { runnerId } = await seedRunner({ lastSeenDaysAgo: null });
 

@@ -117,7 +117,6 @@ describe('capacity deferral E2E', () => {
     const [row] = await harness.db.execute<Record<string, unknown>>(
       sql`SELECT * FROM jobs WHERE id = ${id}`,
     );
-    // cm:guard the camelCase overlay is required, not cosmetic — a raw `db.execute` returns snake_case keys, so handing the row straight to the engine leaves `projectId`/`deviceId` undefined and the pool read then scopes to project `undefined`, which returns an empty set and makes EVERY case in this file look like a capacity outage
     return {
       ...row,
       projectId,
@@ -136,7 +135,6 @@ describe('capacity deferral E2E', () => {
     };
   }
 
-  // cm:guard the assertion is on the ROUND, not on whether a retry happened — a retry happens either way, and the round is the only thing that separates "waiting for capacity" from "burning the budget that decides which hold reason this job ends on"
   it('defers without spending a round when every runner is rate-limited', async () => {
     await rateLimitTheFleet();
     const job = await failedJob({ round: 4, target: deviceId, tries: 1, done: ['other-device'] });
@@ -159,7 +157,6 @@ describe('capacity deferral E2E', () => {
     expect(rotation.deferredSince).toBeTruthy();
   });
 
-  // cm:guard `all_devices_exhausted` is the POINT of the ceiling — it is condition-checked in jobs/hold.ts, so the job releases itself when a runner frees. Landing on `retry_rounds_exhausted` here instead is what used to require a human with no button to press.
   it('gives up with the self-clearing reason once the ceiling passes', async () => {
     await rateLimitTheFleet();
     const stale = new Date(Date.now() - mods.CAPACITY_DEFER_CEILING_MS - 5_000).toISOString();
@@ -191,7 +188,6 @@ describe('capacity deferral E2E', () => {
     expect(resolveWedgeMock).toHaveBeenCalledWith(`capacity:${projectId}:all`);
   });
 
-  // cm:guard an offline fleet and a rate-limited one must reach the SAME deferral — both mean "nothing can take this work", and only the notification text should differ. A branch that treats offline as retryable spends the budget against boxes dispatch will refuse.
   it('defers the same way when the fleet is offline rather than limited', async () => {
     await harness.db.execute(sql`UPDATE runners SET status = 'offline' WHERE id = ${runnerId}`);
     await harness.db.execute(sql`UPDATE devices SET status = 'offline' WHERE id = ${deviceId}`);
@@ -208,7 +204,6 @@ describe('capacity deferral E2E', () => {
     const ev = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
     expect(ev.reason).toBe('no capable device is online');
   });
-  // cm:guard a box BELOW the claim floor belongs in the same deferral as offline and rate-limited, because the claim refuses it outright (`runner_too_old`) rather than degrading — it can never take the work, so counting it as a usable device hands the retry engine a candidate that cannot claim and the job burns all 30 attempts instead of holding. This is the third member of the same proposition the two cases above pin; the floor landed on 2026-09-05 with a TypeScript half and no SQL half, and epodsystem paid for it the same day.
   it('defers the same way when the only live box is below the claim floor', async () => {
     await harness.db.execute(
       sql`UPDATE devices SET agent_version = '0.10.5' WHERE id = ${deviceId}`,
@@ -224,7 +219,6 @@ describe('capacity deferral E2E', () => {
     expect(clone).toBeTruthy();
     const rotation = clone?.payload._autoRetry as { round: number };
     expect(rotation.round).toBe(2);
-    // cm:guard read the NOTIFICATION TEXT, not just the call count. The offline case above says "no capable device is online", and that sentence is false here in the way that costs the most time: the host is online with a green heartbeat and only its build is too old, so an operator told to check the Runners tab finds nothing wrong and never reaches the one-command fix.
     expect(emitWedgeMock).toHaveBeenCalledTimes(1);
     const ev = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
     expect(ev.reason).not.toContain('online');

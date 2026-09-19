@@ -13,17 +13,8 @@ import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 export const writeMemoryInputSchema = z.object({
   projectId: z.uuid(),
   source: z.enum(memorySources),
-  // `sourceRef` is the unique natural key paired with (projectId, source).
-  // Bounded length keeps the unique-constraint index small; 512 matches the
-  // REST DELETE schema in list-routes.ts.
   sourceRef: z.string().trim().min(1).max(512),
-  // Embedding service consumes the raw text. The indexer truncates to
-  // MAX_EMBED_CHARS internally (8192) and reports it via `truncated` in the
-  // result so callers can surface the trim.
   textContent: z.string().trim().min(1).max(100_000),
-  // Free-form metadata stored on the row. Used by `metadataFilter` containment
-  // queries in `forge_memory.search` / `forge_memory.get`. Keep values JSON-
-  // serializable; nested structures are allowed.
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -40,20 +31,8 @@ const NEAR_DUPLICATE_PROBE_SOURCES = new Set<string>(['note', 'knowledge']);
 
 export class MemoryWriteValidationError extends Error {}
 
-/**
- * Sources where the text is authored by an agent for future recall (as
- * opposed to lifecycle mirrors of issues/comments/jobs/pm-decisions, whose
- * content mirrors an external record verbatim). Only these get the quality
- * guard below.
- */
 const AGENT_AUTHORED_SOURCES = new Set<string>(['note', 'knowledge', 'policy']);
 
-/**
- * Longest fenced code block a memory may carry. Memory stores invariants +
- * pointers, not code — copied code is a second source of truth that rots on
- * the next commit. Short blocks stay allowed for runnable one-liners
- * (verify commands, queries).
- */
 const MAX_CODE_BLOCK_LINES = 5;
 
 /** Returns the line count of the longest fenced (```/~~~) block, 0 if none. */
@@ -81,15 +60,6 @@ function longestFencedBlockLines(text: string): number {
   return longest;
 }
 
-/**
- * Kernel guard on agent-authored memory (note/knowledge/policy). Prompt-side
- * style rules are soft and silently violated; these two are enforced here:
- * - size: text beyond MAX_EMBED_CHARS is stored but never embedded, so it is
- *   semantically unsearchable — a silent lie to future recall.
- * - code dumps: fenced blocks longer than MAX_CODE_BLOCK_LINES belong in the
- *   repo, not in memory.
- * Lifecycle mirrors are exempt — they must store their record verbatim.
- */
 function assertAgentMemoryQuality(input: WriteMemoryInput): void {
   if (!AGENT_AUTHORED_SOURCES.has(input.source)) return;
   if (input.textContent.length > MAX_EMBED_CHARS) {

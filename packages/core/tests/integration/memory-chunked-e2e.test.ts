@@ -38,7 +38,6 @@ vi.mock('../../src/queue/boss.js', () => ({
 
 const MARKER = 'zanzibar';
 const DIM = 1536;
-// cm:guard HEAD_CHARS must exceed CHUNK_MAX_CHARS plus the longest context prefix and stay well below the long body's marker offset (~5,900) — a passage that holds the marker must embed hot while the whole document embeds cold, or the flip proves nothing
 const HEAD_CHARS = 2000;
 
 /** Outage switch and call counter for the fake embeddings client. */
@@ -74,7 +73,6 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  // cm:guard the mocked boss module is imported and settled BEFORE the modules that import it — concurrent imports inside one Promise.all hand a consumer the real module (measured 2026-09-04 on rerank.js in the sibling e2e)
   await import('../../src/queue/boss.js');
   const emb = await import('../../src/embeddings/index.js');
   EmbeddingUnavailableError = emb.EmbeddingUnavailableError;

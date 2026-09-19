@@ -1,14 +1,5 @@
 "use client";
 
-// Header notification bell cluster (ISS-504 / ISS-597 / ISS-510 / ISS-523).
-// Owns everything behind the TopBar bell: the dropdown (+ click-away + Esc),
-// the notification/invitation queries, accept/decline mutations with the
-// decline ConfirmDialog, row → item mapping, and the always-mounted realtime
-// delivery + unread-indicator bridges. The layout only owns the `open` state
-// (the TopBar bell button toggles it) and passes it down — so this component
-// must stay MOUNTED even while closed, or the delivery/indicator hooks stop.
-// Rendered inside the layout's `relative` TopBar wrapper (the dropdown is
-// absolutely positioned against it).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog, NotificationsMenu } from "@/design";
@@ -42,8 +33,6 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
   const { toast } = useToast();
   const { data: projects } = useProjects();
 
-  // cm:guard the list and the open count are scoped to the current user SERVER-side, and realtime is free because the WS event-router invalidates these exact query keys on `notification.created` — pick another key and the bell stops updating with nothing red to say so (ISS-504).
-  // cm:guard both list queries are gated on `open` because the menu they feed renders only under `open` — the component itself must stay MOUNTED while closed, which is what the header comment is about, and that is a different thing from fetching while closed (ISS-1019).
   const notificationsQuery = useNotifications(open);
   const { data: openCount } = useOpenCount();
   const markRead = useMarkRead();

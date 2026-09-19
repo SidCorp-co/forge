@@ -2,8 +2,6 @@ import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, type LabelKind, labels } from '../db/schema.js';
 
-// cm:edge contract -> packages/contracts/src/rows.ts — `ModuleAttribution` is this shape under the name a client reads it by; `kind` is what lets that client tell a module from a label without a second call, and `isPrimary` is the attribution itself.
-// cm:guard this IS the issue-detail `labels[]` projection — `issues/routes.ts` calls it rather than re-declaring the join, because the two copies it used to carry drifted the moment a column was added to one of them (ISS-947).
 export type IssueLabelLite = {
   id: string;
   name: string;
@@ -25,14 +23,6 @@ export type LabelAttachInput = string | { labelId: string; isPrimary?: boolean |
 /** A resolved junction row, ready to insert. */
 export type ResolvedLabelAttach = { labelId: string; isPrimary: boolean };
 
-/**
- * ISS-633 — an issue's current labels. Used by the MCP focused single-issue
- * serializers (`serializeWithAttachments` / `serializeManifestWithAttachments`
- * in mcp/tools/forge-issues.ts) so a skill can read-then-replace `data.labels`
- * without clobbering the existing set. Kept in its own module (mirroring
- * `listIssueAttachments` in attachment-service.ts) so it can be mocked
- * independently of the generic `db.select` chain in tests.
- */
 export async function listIssueLabels(issueId: string): Promise<IssueLabelLite[]> {
   return db
     .select({
@@ -49,7 +39,6 @@ export async function listIssueLabels(issueId: string): Promise<IssueLabelLite[]
     .where(eq(issueLabels.issueId, issueId));
 }
 
-// cm:guard carry the missing VALUES, not a message — REST answers 400 `INVALID_LABELS` and MCP answers a `BAD_REQUEST: …` string naming each unresolved label, and both are asserted; a shared message rewrites one caller's contract
 export class LabelResolutionError extends Error {
   constructor(readonly missing: string[]) {
     super('INVALID_LABELS');
@@ -57,7 +46,6 @@ export class LabelResolutionError extends Error {
   }
 }
 
-// cm:guard the write path (`resolveLabelIdsForWrite`) and the tolerant read path (`resolveLabelIdsTolerant`) MUST split their input on THIS regex — they differ only in throw-vs-drop, so a second copy lets one treat a value as an id while the other treats it as a label name, silently creating a label nobody asked for. ISS-889 forked it once already; both now live in this file so the fork cannot recur across a module boundary.
 export const LABEL_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -71,7 +59,6 @@ export const LABEL_UUID_PATTERN =
  * database cannot: a primary that is a plain label, and a set with more than one primary.
  * Both throw HERE, outside the transaction, exactly as an unresolved label does.
  */
-// cm:why resolves names as well as uuids so an agent can write `labels:['bug']` without a lookup round trip; the tolerant READ-path resolver below drops unknowns instead, and the two must not be swapped
 export async function resolveLabelIdsForWrite(
   projectId: string,
   rawValues: readonly LabelAttachInput[],
@@ -116,7 +103,6 @@ export async function resolveLabelIdsForWrite(
   ];
   if (missing.length > 0) throw new LabelResolutionError(missing);
 
-  // cm:guard de-duplicate on the RESOLVED id, not on the raw value — a set naming the same label once by name and once by uuid would otherwise insert two rows and violate the junction's composite primary key at commit, turning a caller's typo into a 500.
   const resolved = new Map<string, boolean>();
   for (const item of items) {
     const row = byId.get(item.labelId) ?? byName.get(item.labelId);
@@ -132,7 +118,6 @@ export async function resolveLabelIdsForWrite(
   return [...resolved].map(([labelId, isPrimary]) => ({ labelId, isPrimary }));
 }
 
-// cm:guard a distinct class from LabelResolutionError because the two map to different HTTP codes and different MCP prefixes — folding them loses which half of the write was wrong, and `INVALID_LABELS` carries a `missing[]` these have nothing to put in.
 export class PrimaryModuleError extends Error {
   constructor(
     readonly code: 'PRIMARY_NOT_MODULE' | 'MULTIPLE_PRIMARY',
@@ -168,12 +153,6 @@ export async function resolveLabelIdsTolerant(
   return resolvedIds;
 }
 
-/**
- * ISS-593 — tolerant module name|uuid -> id resolver for the `module` READ filter. Same
- * throw-free contract as `resolveLabelIdsTolerant`, and the same uuid/name split, but
- * constrained to `kind='module'`: the name of a plain label resolves to nothing, so filtering
- * by it returns no issues rather than quietly behaving as `label`.
- */
 export async function resolveModuleIdsTolerant(
   projectId: string,
   rawValues: readonly string[],
@@ -186,7 +165,6 @@ export async function resolveModuleIdsTolerant(
   if (uuidValues.length > 0) matchConds.push(inArray(labels.id, uuidValues));
   if (nameValues.length > 0) matchConds.push(inArray(labels.name, nameValues));
 
-  // cm:guard the `kind='module'` predicate is the whole point — without it this is `resolveLabelIdsTolerant` under another name, and `?module=bug` would filter on the plain label `bug` while the caller reads the result as a module's issues.
   const rows = await db
     .select({ id: labels.id })
     .from(labels)
@@ -202,7 +180,6 @@ export async function resolveModuleIdsTolerant(
  * all; a per-row read of `listIssueLabels` would be one request per row. Modules only: a plain
  * label on the same junction is not an attribution and the list has no column for it.
  */
-// cm:edge contract -> packages/contracts/src/rows.ts — this IS `ModuleAttribution`, re-declared rather than imported because `@forge/contracts` depends on `@forge/core` and not the other way round; a field added there and not here reaches no client
 export type ModuleAttribution = {
   labelId: string;
   name: string;
@@ -228,8 +205,6 @@ export async function listModulesForIssues(
     .innerJoin(labels, eq(labels.id, issueLabels.labelId))
     .where(and(inArray(issueLabels.issueId, [...issueIds]), eq(labels.kind, 'module')));
 
-  // cm:guard the primary sorts first within each issue — the list cell renders `modules[0]`, so an
-  // issue whose secondary happened to come back first would show the wrong module as its primary.
   for (const r of rows) {
     const list = out.get(r.issueId) ?? [];
     const entry = { labelId: r.labelId, name: r.name, color: r.color, isPrimary: r.isPrimary };

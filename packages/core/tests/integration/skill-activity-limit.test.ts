@@ -121,7 +121,6 @@ describe('GET /api/skill-activity is bounded, and says so', () => {
     expect(body.truncated).toBe(true);
   });
 
-  // cm:guard a cut page keeps the NEWEST events and still reads oldest-first: truncating from the front would hide the events a reader opening an activity log came for
   it('keeps the most recent events when the limit cuts, still oldest-first', async () => {
     await seedEvents(5);
     const res = await get(`projectId=${projectId}&limit=2`);
@@ -173,7 +172,6 @@ describe('GET /api/skill-activity is bounded, and says so', () => {
   it('summarises every event in the packet while returning only the page', async () => {
     await seedEvents(1);
     await seedPacket('P-rollup', 3);
-    // cm:guard a second packet is seeded so the aggregate's packet predicate is load-bearing: with only one packet in the table, a summary that counted every row would answer 3 as well
     await seedPacket('P-other', 4, 'skill.body.changed');
     const res = await get('packetId=P-rollup&limit=2');
     expect(res.status).toBe(200);

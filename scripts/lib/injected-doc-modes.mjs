@@ -1,23 +1,3 @@
-// Mode-qualification rules for the docs injected into every agent session.
-//
-// A guide body and a `tier: 'mandatory'` fact are read by agents on EVERY
-// project, and the fleet is not all one pipeline mode. So a sentence naming a
-// status transition is a mode-specific claim: `waiting → approved` is the
-// staged answer, and on an autonomous project the driver can write neither
-// status. The rule is therefore not "never name these statuses" — a global doc
-// must be able to describe staged — but "name the mode you mean".
-//
-//   R1  a status transition whose target is outside the driver's vocabulary
-//   R2  a STEP named as the actor of something the reader is told about
-//
-// R2 exists because R1 read green over the claim that actually cost the most:
-// `those are written by the clarify/plan steps` carries no transition at all,
-// and an autonomous project has neither step. ISS-874 burned ~450 messages and
-// 3 dispatches across four sessions on that shape.
-//
-// Split from the CLI so the verdict is testable: the CLI reads the tree and
-// exits, neither of which a test can call.
-
 const TRANSITION_VERB =
   /\b(approv\w*|mov\w*|park\w*|cascad\w*|promot\w*|re-enter\w*|transition\w*|advanc\w*|revert\w*|set)\b/i;
 
@@ -87,25 +67,16 @@ export function transitionsOnLine(line, allStatuses, driverStatuses) {
 
 const STEP_NOUN = '(?:steps?|stages?|phases?)';
 
-/** `written by the clarify/plan steps` — the step is the agent of the claim. */
 const AGENT_OF = /\b(?:written|owned|set|filled|decided|declared|produced|authored)\s+by\b/i;
 
 /** `the plan step exists to decide` — the step is the subject, verb adjacent. */
 const ACTIVE_VERB = '(?:declares?|owns?|writes?|decides?|produces?|sets?|exists?\\s+to)';
 
-// cm:guard the two shapes above are the WHOLE rule, and widening them is what turns this gate off. Measured on this tree: a bare active verb anywhere in the sentence flags `On a review or test step that rejects … after your write` (`write`), and a possessive flags `the release stage's human-confirm gate` — two lines whose correct fix is NO CHANGE, so the only way to silence the gate is to add a mode name that makes the doc say something false. A rule whose fix makes the doc worse gets waived, not obeyed.
 function namesStepAsActor(sentence, alt) {
   const adjacent = new RegExp(`\\b(?:${alt})\\s+${STEP_NOUN}\\s+${ACTIVE_VERB}\\b`, 'i');
   return AGENT_OF.test(sentence) || adjacent.test(sentence);
 }
 
-/**
- * Sentences, with a char→line map, because prose in these docs WRAPS: the
- * ISS-874 claim straddles two physical lines (`… written by the` / `clarify and
- * plan steps …`), which a per-line scan reads as an agent and a step that never
- * meet. A markdown table row stands alone — rows are independent claims, and
- * joining them lets one row's mode name silence its neighbours.
- */
 export function sentencesOf(text) {
   const src = text.split('\n');
   const isRow = (l) => l.trimStart().startsWith('|');

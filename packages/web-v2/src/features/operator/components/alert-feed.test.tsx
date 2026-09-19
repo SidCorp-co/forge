@@ -81,7 +81,6 @@ describe("the reap control", () => {
     expect(screen.getByRole("button", { name: /reap/i })).toBeInTheDocument();
   });
 
-  // cm:guard A1 lists jobs too and its entity shape is identical, so an id-blind "kind === 'job' gets a button" puts a reap on the orphan alert, where cancelling the job does not repair the invariant that raised it
   it("is NOT offered on an A1 job entity", () => {
     renderFeed([alert("A1", "crit", [stuckJob])]);
     expect(screen.queryByRole("button", { name: /reap/i })).not.toBeInTheDocument();

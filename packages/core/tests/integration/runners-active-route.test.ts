@@ -12,8 +12,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:why the route is exercised as real SQL against Postgres through an in-process `app.request`, because every assertion here is about what the query returns and a mocked chain answers for none of it
-// cm:guard a job under a TERMINAL pipeline_run leaves its runner IDLE and never drops it from the result — the exclusion is join-side for exactly that reason (ISS-258)
 type Mods = {
   runnerRoutes: typeof import('../../src/runners/routes.js').runnerRoutes;
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
@@ -76,7 +74,6 @@ describe('GET /api/runners/active', () => {
   }
 
   async function insertRunner(projectId: string, name: string): Promise<string> {
-    // cm:guard `runners.device_id` is NOT NULL since 2026-09-04 — seed a real device instead of the `host='remote'`/NULL shape this fixture used, which now fails the insert rather than producing a row.
     const ownerRows = (await harness.db.execute(
       sql`SELECT created_by AS id FROM projects WHERE id = ${projectId}`,
     )) as unknown as Array<{ id: string }>;
@@ -158,7 +155,6 @@ describe('GET /api/runners/active', () => {
     expect(idle?.current).toBeNull();
   });
 
-  // cm:guard the route builds its reference in raw SQL, so the prefix must be JOINED in — this case is the only thing that catches a `projects` column selected with no `projects` in the FROM, which the unit suites cannot see at all (ISS-992)
   it("names the issue with the project's own prefix", async () => {
     const { user, project } = await seed();
     const jwt = await mods.signUserToken(user.id);

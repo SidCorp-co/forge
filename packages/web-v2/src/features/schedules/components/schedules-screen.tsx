@@ -16,6 +16,7 @@ import {
   IconButton,
   MonoTag,
   PageContainer,
+  PageTitle,
   Skeleton,
   Spinner,
   StatusChip,
@@ -24,9 +25,9 @@ import {
   TD,
   TH,
   THead,
-  TR,
   Toggle,
   Tooltip,
+  TR,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useRunSchedule, useScheduleRuns, useSchedules, useSetScheduleEnabled } from "../hooks";
@@ -288,7 +289,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
   return (
     <PageContainer className="min-h-dvh">
       <header className="mb-6">
-        <h1 className="fg-h2">Schedules</h1>
+        <PageTitle className="fg-h2">Schedules</PageTitle>
         <p className="fg-body-sm mt-1">
           Recurring agent runs for this project. Expand a row to see its run history.
         </p>
@@ -445,7 +446,6 @@ function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowAc
       await actions.run(row.id);
       setOpen(true);
     } catch {
-      // error surfaced by the mutation's onError toast
     }
   }
 

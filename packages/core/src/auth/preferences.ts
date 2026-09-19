@@ -23,7 +23,6 @@ const DEFAULTS = {
   language: 'en' as const,
 };
 
-// cm:guard `answerStyle` is a closed enum and `assistantInstructions` bounded free text, and the assistant fields go through `preference-changes.ts` rather than the theme/language upsert below: every write to them leaves a row the person can restore from, and a write that skipped the trail would be the one change they could not undo (ISS-1034).
 const patchBodySchema = z
   .object({
     theme: z.enum(PREF_THEMES).optional(),
@@ -86,7 +85,6 @@ preferenceRoutes.get('/preferences/changes', async (c) =>
   c.json({ items: await listPreferenceChanges(c.get('userId')) }),
 );
 
-// cm:guard 409 and never a silent overwrite: a restore applies only while the field still holds what that change set, and the refusal names the later change so the person can restore THAT one instead (ISS-1034 criterion 61).
 preferenceRoutes.post(
   '/preferences/changes/:id/restore',
   zValidator('param', changeParamSchema, (r) => {

@@ -33,8 +33,6 @@ const { extractFinalAssistantText, readRoomReplyMeta, roomStillBoundTo } = await
   './room-delivery.js'
 );
 
-// cm:guard the rule every path that posts from a STORED rid depends on: a session records the room
-// it began in, and the binding that put it there can move while the work runs (ISS-1001).
 describe('roomStillBoundTo', () => {
   const args = { connectionId: 'conn-1', projectId: 'proj-1', rid: 'ROOM1' };
 
@@ -61,12 +59,6 @@ describe('roomStillBoundTo', () => {
 });
 
 describe('extractFinalAssistantText', () => {
-  // cm:guard a legacy `role` entry answers NOTHING, and this assertion is the
-  // point rather than a tautology: this reader discriminates through
-  // `messageRoleToTurnRole`, which lost its `role` branch in ISS-1030. Every row
-  // at rest was rewritten and what an old daemon sends is converted on the way
-  // in, so a `role` entry reaching here is a conversion that did not happen — and
-  // answering it would hide that by making the legacy path work anyway.
   it('does not read a legacy `role` entry — the conversion happens before this', () => {
     const text = extractFinalAssistantText([
       { role: 'user', content: 'hi' },
@@ -147,7 +139,6 @@ describe('readRoomReplyMeta', () => {
     });
   });
 
-  // cm:why null and not a default: a `direct` row whose principal reads as the organization's creator is the substitution ISS-987's authority rule exists to refuse, so an absent field has to stay distinguishable from a present one
   it('reads the shape and the stored speaker back when the row carries them', () => {
     const meta = readRoomReplyMeta(
       {

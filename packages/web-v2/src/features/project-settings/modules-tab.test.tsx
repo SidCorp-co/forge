@@ -26,7 +26,6 @@ import type { ProjectLabel } from "./types";
 expect.extend(matchers);
 afterEach(cleanup);
 
-// cm:why Select scrolls its active option into view and jsdom has no scrollIntoView, so opening the parent picker throws without this stub
 Element.prototype.scrollIntoView = vi.fn();
 
 function mod(id: string, name: string, parentId: string | null = null): ProjectLabel {

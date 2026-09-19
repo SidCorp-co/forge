@@ -12,18 +12,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// End-to-end coverage for step-handoff (proposal Y).
-// Exercises the full happy + sad paths:
-//   1. Project config opts into handoffs for stage 'approved' / step 'plan'.
-//   2. A plan job runs; agent writes handoff via POST /api/issue-step-contexts,
-//      then reports completion with `summary: "...DONE"` via /api/jobs/:id/complete.
-//   3. Job finalizes as `done` on a clean exit (exitCode 0).
-//   4. Variant: agent emits DONE WITHOUT writing the row — job still finalizes
-//      as `done`. Handoff is best-effort context, NOT a server-side status
-//      gate (see lifecycle-routes.ts / finalize-done.ts).
-//   5. Variant: agent emits HANDOFF_GIVE_UP with a clean exit — still `done`;
-//      the trailing marker is not interpreted server-side.
-
 const DIM = 1536;
 
 function hotVector(idx: number): number[] {
@@ -221,12 +209,6 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
 
   // ---------- DONE without write — handoff is NOT a status gate ----------
 
-  // Step-handoff is best-effort context for the next step, deliberately NOT a
-  // server-side completion gate (lifecycle-routes.ts: exitCode 0 → done;
-  // finalize-done.ts comment "handoff is not a status gate"). A clean exit
-  // finalizes the job as `done` even when the agent skipped the handoff write —
-  // the next step falls back to raw issue fields. (Was previously asserted to
-  // fail with failureKind='handoff_not_written'; that gating was removed.)
   it('emits DONE WITHOUT writing the handoff → still finalizes as done (no failure stamp)', async () => {
     const { projectId, device, deviceToken } = await seedProjectWithHandoffsEnabled();
     const { jobId } = await createPipelineRunAndJob({ projectId, deviceId: device.id });
@@ -252,9 +234,6 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
 
   // ---------- HANDOFF_GIVE_UP marker — also NOT a status gate ----------
 
-  // The HANDOFF_GIVE_UP marker is no longer interpreted server-side; a clean
-  // exitCode 0 still finalizes as `done` regardless of the summary's trailing
-  // marker. (Was previously asserted to fail with handoff_validation_failed.)
   it('emits HANDOFF_GIVE_UP with exitCode 0 → still finalizes as done (marker not gated)', async () => {
     const { projectId, device, deviceToken } = await seedProjectWithHandoffsEnabled();
     const { jobId } = await createPipelineRunAndJob({ projectId, deviceId: device.id });

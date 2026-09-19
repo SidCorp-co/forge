@@ -1,18 +1,3 @@
-/**
- * pg-boss health probe — detects schedule misses on the `* * * * *`
- * pipeline-sweeper backstop.
- *
- * Piggy-backs on the existing `pipeline-sweeper` schedule instead of
- * introducing a second pg-boss schedule that would itself need watching.
- * `runPipelineSweep` calls `recordPipelineSweeperTick()` at the top of
- * every successful tick; the probe runs a 30s setInterval and alerts when
- * the gap since the last tick exceeds the threshold.
- *
- * Alert delivery: Sentry breadcrumb + WS `dispatcher.tick_missing` event
- * on the global room. Alerts are coalesced to one per 5-minute window;
- * a fresh tick clears the cooldown so a subsequent miss alerts again.
- */
-
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { globalRoom } from '../ws/rooms.js';
@@ -35,9 +20,6 @@ let timer: ReturnType<typeof setInterval> | null = null;
 
 export function recordPipelineSweeperTick(now: number = Date.now()): void {
   lastPipelineSweeperTickAt = now;
-  // A fresh tick clears the cooldown so a future gap alerts again instead
-  // of being suppressed by an old alert that is still inside the 5-minute
-  // window.
   lastAlertAt = null;
 }
 

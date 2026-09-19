@@ -48,10 +48,6 @@ const promptTurn: ConversationItem = {
 /**
  * Every element under `root` carrying a max-width that RESTRICTS the column.
  */
-// cm:guard `max-w-full` is deliberately not counted, and the distinction is the whole point: a
-// 100% cap cannot compound with anything, and `StreamingText` carries one as a wrapping guard
-// beside `break-words`. Counting it would make this test refuse a line that protects long tokens,
-// which is a different rule going the other way.
 function cappedElements(root: HTMLElement): string[] {
   return Array.from(root.querySelectorAll<HTMLElement>("*"))
     .map((el) => el.getAttribute("class") ?? "")
@@ -71,9 +67,6 @@ describe("the assistant column", () => {
     expect(cls).not.toMatch(/max-w-\[\d+%\]/);
   });
 
-  // cm:guard `sm:` asks the VIEWPORT, and this renderer draws a 360-900px resizable dock as well as
-  // a full page. A breakpoint here is a rule about the screen applied to a column the screen knows
-  // nothing about.
   it("asks no viewport breakpoint what width to be", () => {
     const { container } = render(<Conversation items={[agentTurn]} readOnly />);
     for (const cls of cappedElements(container)) expect(cls).not.toContain("sm:max-w-");
@@ -83,8 +76,6 @@ describe("the assistant column", () => {
     const { container } = render(<Conversation items={[agentTurn]} readOnly />);
     const [cls] = cappedElements(container);
     expect(cls).toContain("w-full");
-    // cm:why `min-w-0` is asserted: a flex child defaults to `min-width: auto`, so one long
-    // unbreakable token inside a tool card would push the column past its own cap.
     expect(cls).toContain("min-w-0");
   });
 });
@@ -102,12 +93,6 @@ describe("a person's bubble", () => {
   });
 });
 
-// cm:guard the tree scan is the only assertion that can see a second literal appearing in a file
-// this test never renders — which is exactly how the compounding pair got there: two files, each
-// correct on its own. What it proves is bounded and the bound is worth stating: it catches these
-// five values in non-test sources under these two features, and it would NOT catch a sixth value, a
-// named Tailwind maximum, an inline style, or a cap written in a third feature. A mounted render
-// proves one turn; this proves the duplication that actually happened cannot come back the same way.
 describe("no second copy of either policy", () => {
   const ROOTS = [
     join(import.meta.dirname, ".."),

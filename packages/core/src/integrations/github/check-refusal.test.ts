@@ -56,7 +56,6 @@ describe('403 is three different things and is never guessed between', () => {
     expect(refusal.message).toContain('reconnecting will not change this');
   });
 
-  // cm:guard the two kinds of evidence can arrive together, and the ORDER decides what an operator is told. Read the headers first and this answer says "No permission is missing; nothing needs granting" — a positive claim about a permission nothing checked, which sends the operator to wait out a reset that changes nothing.
   it('keeps the permission diagnosis when a spent quota arrives on the same answer', () => {
     const refusal = describeRefusal(
       err({

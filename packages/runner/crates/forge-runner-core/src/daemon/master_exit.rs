@@ -14,8 +14,6 @@ use crate::error::Result;
 use crate::runner::close_loop;
 use crate::runner::ledger::Ledger;
 
-/// How long a master may go without work before it is allowed to leave.
-// cm:guard an hour, and it is a floor on IDLENESS rather than on residency. Restarting a master costs a cold context and a skill install, so leaving after one empty sweep would trade the whole point of residency for a pane; leaving never makes a box serving six quiet projects carry six permanent processes.
 pub const MASTER_IDLE_BEFORE_EXIT: Duration = Duration::from_secs(60 * 60);
 
 /// One child run, reduced to the only thing this decision asks of it.
@@ -40,8 +38,6 @@ pub enum StayReason {
     ChildrenUnfinished(Vec<String>),
 }
 
-/// Read this master's children out of the ledger.
-// cm:guard the ledger answers this, never a job counter (ISS-933 criterion 20). `pool load` reported `jobsRunning: 1` while six agents ran, and a master that trusted that number would have exited over five live runs; the ledger is the only thing on the box that knows what it started.
 pub fn children(ledger: &Ledger, master_session_id: &str) -> Result<Vec<Child>> {
     let mut out = Vec::new();
     for run in ledger.runs_for_master(master_session_id)? {
@@ -54,8 +50,6 @@ pub fn children(ledger: &Ledger, master_session_id: &str) -> Result<Vec<Child>> 
     Ok(out)
 }
 
-/// Both halves, in one answer.
-// cm:guard BOTH conditions, and the conjunction is the deliverable (ISS-933 criterion 19). Idleness alone is the failure this replaces: a master that leaves while a child run is open takes the only process that would have closed that run's loop, and the run then waits out core's ten-minute heartbeat reaper instead of ending on the box that owns it.
 pub fn verdict(idle_for: Duration, children: &[Child]) -> Verdict {
     if idle_for < MASTER_IDLE_BEFORE_EXIT {
         return Verdict::Stay(StayReason::RecentWork);

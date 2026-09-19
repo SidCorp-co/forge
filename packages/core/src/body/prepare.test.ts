@@ -88,7 +88,6 @@ describe('plain markup is repaired and reported, never refused (Decision 3)', ()
 });
 
 describe('bodyNodes — the tree web renders from', () => {
-  // cm:guard a STORED component body still parses to a tree, and this is asserted on BYTES rather than through `prepareBody`: writing one is refused from 2026-09-14, so the only way to hold this claim is to hand it the bytes a row already contains.
   it('hands back the parsed tree of a stored component body', () => {
     const stored = '<forge-review sha="60e8d635" verdict="request-changes"></forge-review>';
     const nodes = bodyNodes(stored, 'html');
@@ -105,7 +104,6 @@ describe('bodyNodes — the tree web renders from', () => {
     expect(bodyNodes('a < b is prose', null)).toBeNull();
   });
 
-  // cm:guard the RAW-TEXT lift for `<forge-diagram>` stays in the scanner even though writing one is refused from 2026-09-14: a diagram's content carries `-->` and `<br/>`, so a stored row containing one is unreadable without it — and `bodyNodes` is what draws those rows.
   it('reads a stored raw diagram byte-identically rather than as markup', () => {
     const stored =
       '<forge-diagram kind="mermaid">flowchart TB\n  A --> B\n  B --> C<br/>D</forge-diagram>';
@@ -132,7 +130,6 @@ describe('bodyNodes — the tree web renders from', () => {
     expect(bodyNodes('<forge-review sha="60e8d635"', 'html')).toBeNull();
   });
 
-  // cm:edge contract -> packages/core/src/body/parse.ts — `ad14294a` made a non-raw text node hold DECODED characters, so what the web renderer receives is `"` and `&`, not `&quot;` and `&amp;`. React escapes on output; a renderer that unescaped again would double-unescape, and one written against the pre-ad14294a tree would print the entity.
   it('hands the renderer decoded characters, so nothing downstream unescapes twice', () => {
     const raw = '<blockquote><p>a &amp; b, &quot;quoted&quot;, 3 &lt; 4</p></blockquote>';
     const stored = prepareBody({ raw, format: 'html' }).body;
@@ -150,7 +147,6 @@ describe('bodyNodes — the tree web renders from', () => {
   });
 });
 
-// cm:guard component markup is REFUSED by name and never unwrapped like any other unknown tag: the vocabulary was removed on 2026-09-14, and a caller still emitting `<forge-review>` — a `forge-plugin` skill, over the wire — would otherwise have its structure silently flattened into prose behind a 200.
 describe('forge-* markup is refused by name', () => {
   it('names the element and says the set was removed', () => {
     const err = refusal('<forge-review sha="60e8d635" verdict="approve"></forge-review>');
@@ -168,7 +164,6 @@ describe('forge-* markup is refused by name', () => {
     ).toThrow(/forge-outcome/);
   });
 
-  // cm:guard a body that merely MENTIONS the name in text is not markup and must stay accepted: refusing on the string rather than on the element would reject every comment discussing the removal.
   it('leaves the name in prose alone', () => {
     const out = prepareBody({ raw: '<p>we removed forge-review</p>', format: 'html' });
     expect(out.body).toContain('we removed forge-review');

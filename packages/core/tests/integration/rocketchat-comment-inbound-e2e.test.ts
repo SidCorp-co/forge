@@ -25,7 +25,6 @@ const posts: Array<{ rid: string; tmid: string | undefined; text: string }> = []
 let nextMessageId: string | null = null;
 let postCount = 0;
 let postThrows: Error | null = null;
-// cm:guard read DURING the post, which is the only moment that can tell a comment marked delivered before it succeeded from one marked after: every state once the call returns is identical either way, and a process that dies here is what the at-least-once rule is about (ISS-981 criteria 30, 31).
 let atPostTime: (() => Promise<void>) | null = null;
 
 vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) => {
@@ -35,9 +34,6 @@ vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) 
     ...actual,
     sendFixedReply: vi.fn(
       async (transport: { rid: string; tmid?: string }, text: string, proof: unknown) => {
-        // cm:guard the mock re-asserts what the real door enforces: a proof is a claim about ONE
-        // string, so it is compared against the text it is handed. This read `proof.ok` until ISS-978
-        // F5, which any literal satisfied and which named no text at all.
         if (proof !== actual.FIXED_REPLY_CONSTANT && (proof as { text?: string })?.text !== text) {
           throw new Error('text reached the outbound door under a proof that does not name it');
         }
@@ -181,7 +177,6 @@ describe('the announcement is claimed, not receipted', () => {
       body: 'said once',
     });
 
-    // cm:guard both claims run against the SAME null, which is the race: a receipt written after the emit lets both of them announce, and two `commentCreated` for one sentence is the agent acting twice on its own echo (ISS-981 criteria 10, 11).
     const claim = async () =>
       (
         await db
@@ -269,7 +264,6 @@ describe('an announcement is owed until it is made', () => {
     });
     expect(written.announcementOwed).toBe(true);
 
-    // cm:guard the redelivery must still owe it: reading `created: false` as proof the bus was told is how a committed comment never reaches the parked session it was written to wake (ISS-981 criterion 12).
     const again = await inbound.writeMirroredComment({
       issueId,
       authorId: ownerId,
@@ -341,7 +335,6 @@ describe('an unannounced comment is announced by the drain', () => {
     const { seen, bus } = recordingBus();
 
     expect(await inbound.drainOwedAnnouncements(bus)).toBe(1);
-    // cm:guard `authored` is what `answer-resume.ts` reads — it stopped reading `actor.type` on 2026-09-13, because an agent on a human's PAT reads `user`/`human` on both actor fields — so this emit carrying anything but `human` leaves the parked session never woken (ISS-981 criteria 5, 12).
     expect(seen).toEqual([{ commentId, actor: 'user', authored: 'human' }]);
 
     const [row] = await db
@@ -379,7 +372,6 @@ describe('an unannounced comment is announced by the drain', () => {
       .set({ announceLeaseUntil: new Date(Date.now() - 1_000) })
       .where(eq(rcSchema.rocketchatCommentMirrors.commentId, commentId));
 
-    // cm:guard the lease EXPIRING is what makes the emit at-least-once: without it an announcer that died holding the claim leaves the comment unannounced for ever, and the reply the parked session was waiting for is never heard (ISS-981 criterion 12).
     const after = recordingBus();
     expect(await inbound.drainOwedAnnouncements(after.bus)).toBe(1);
     expect(after.seen.map((e) => e.commentId)).toEqual([commentId]);
@@ -390,7 +382,6 @@ describe('a roomful of replies at once', () => {
   it('writes ten concurrent replies without starving the connection pool', async () => {
     const connectionId = await bindRoom();
 
-    // cm:guard TEN, which is the pool width: each of these holds a pooled connection for its transaction, so a read inside `insertComment` that went to the pool instead of the caller's handle leaves all ten waiting for an eleventh until they time out (ISS-981, review F3).
     const written = await Promise.all(
       Array.from({ length: 10 }, (_, i) =>
         inbound.writeMirroredComment({

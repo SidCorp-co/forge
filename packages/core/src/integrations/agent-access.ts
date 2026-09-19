@@ -1,22 +1,5 @@
-/**
- * Whether an agent working a project may use one of its integrations — the ONE switch, on the
- * binding, asked where the integration is connected.
- *
- * What it replaced: a sentinel key in `pipelineConfig.mcpServers`, a map on a different settings
- * tab, read only by three per-provider resolvers. A binding could report Connected and healthy and
- * reach no agent, and the only surface that edited that map offered a catalog of two secret-free
- * servers whose add-custom form refused the sentinel's only legal value. This module is the whole
- * of the replacement: the grant is a column, the gate is a function, and both are asked at the
- * agent boundary and nowhere else.
- */
-
 import type { AgentPathKind, IntegrationDeclaration } from './types.js';
 
-/**
- * Two values and no more. Per-tool scoping within a provider is a different question and this
- * deliberately cannot express it: a third value would be a scope nothing reads, which is how the
- * sentinel became a switch nobody could find.
- */
 export const AGENT_ACCESS_VALUES = ['none', 'all'] as const;
 export type AgentAccess = (typeof AGENT_ACCESS_VALUES)[number];
 
@@ -27,13 +10,6 @@ export function isAgentAccess(value: unknown): value is AgentAccess {
   return (AGENT_ACCESS_VALUES as readonly unknown[]).includes(value);
 }
 
-/**
- * Does this binding reach an agent at all?
- *
- * False for a provider declaring no agent path however the column reads — the column is inert
- * there, and a grant stored on a rocketchat binding by some future careless write must not become
- * a path that did not exist.
- */
 export function grantHolds(
   decl: Pick<IntegrationDeclaration, 'capabilities'> | undefined,
   binding: { agentAccess: string },
@@ -43,13 +19,6 @@ export function grantHolds(
 }
 
 /** Which authorization tier a write to this binding's grant takes. */
-// cm:guard ISS-1071 rule 5 — a `direct-mcp` grant hands a PROJECT'S CREDENTIAL to a runner box, so
-// it takes the org-admin escalation that already guards `active`, `secrets` and `config` on an
-// org-owned connection. A `core-mediated` grant only widens which caller may ask core to make a
-// call core was already making, so it stays with the project-admin fields. Collapsing the two to
-// one tier gets it wrong in one direction or the other: project-admin everywhere lets a project
-// admin export an org's shared credential, org-admin everywhere makes a project admin unable to
-// turn on a tool Forge performs on their behalf.
 export function agentAccessTier(
   decl: Pick<IntegrationDeclaration, 'capabilities'> | undefined,
 ): 'project-admin' | 'org-admin' | 'refused' {
@@ -67,9 +36,3 @@ export function noAgentPathMessage(provider: string): string {
 export function notGrantedMessage(provider: string, bindingId: string): string {
   return `binding ${bindingId} (${provider}) is connected but no agent on this project may use it: its agent access is \`none\`. An org owner or admin turns it on where the integration is connected — Settings → Integrations — and connection health does not gate it.`;
 }
-
-// The query that reads this grant lives in `store.ts`, with every other read of these two tables —
-// deliberately NOT here. This module must stay importable without a database: it is what the
-// capability tests, the declaration checker and the adapter tests ask "may an agent use this?", and
-// an import of `db/client.js` runs core's env validation at module load, so a pure predicate living
-// beside a query turns every such test into one that needs a live DATABASE_URL.

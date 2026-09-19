@@ -93,7 +93,6 @@ describe('reapOrphanedIssueRuns status coverage E2E (ISS-879)', () => {
     expect(await runStatus(runId)).toBe('completed');
   });
 
-  // cm:guard `released` must stay OUT of the list — the release step runs inside the still-open run (ISS-669), so reaping there cancels the job doing the release
   it.each(['awaiting_release', 'waiting', 'in_progress'])(
     'leaves a run under a non-run-closing `%s` issue alone',
     async (status) => {

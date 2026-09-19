@@ -24,7 +24,6 @@ export function renderTurnContext(ctx: TurnContext): string | null {
   if (ctx.pageContext && Object.keys(ctx.pageContext).length > 0) {
     sections.push(`Page context:\n${JSON.stringify(ctx.pageContext, null, 2)}`);
   }
-  // cm:guard on the newest USER message with the other volatile context and never in the system prompt: the speaker changes between turns in a group room, and a byte that moves in the system message is the cached prefix `tools[]` sits in gone for every round of the turn (ISS-1034).
   const speaker = ctx.speakerContext?.trim();
   if (speaker) sections.push(speaker);
   return sections.length > 0 ? sections.join('\n\n') : null;
@@ -39,7 +38,6 @@ function prefixContent(
   return prefix;
 }
 
-// cm:guard not a second `system` message and not its own `user` message — LiteLLM hoists every system role into Gemini's `system_instruction`, which puts the volatile block back in the cacheable prefix, and a standalone user message breaks Gemini's role alternation; the prefix on the newest user turn is the only placement that is both cache-neutral and provider-neutral
 export function applyTurnContext(
   messages: readonly ChatMessage[],
   ctx: TurnContext,

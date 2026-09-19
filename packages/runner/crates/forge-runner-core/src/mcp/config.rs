@@ -7,20 +7,6 @@ use serde_json::Value;
 use crate::auth::cred_store::load_pat;
 use crate::error::{Error, Result};
 
-/// Write `{ mcpServers: { forge: <http>, ...override } }` to a temp file and
-/// return its path. The Forge server points at `<core>/mcp` and authenticates
-/// with the BOX'S OWN agent credential + project slug header.
-///
-/// Core mints no per-job credential since ISS-932 wave 4, so there is exactly
-/// one credential on the box and `load_pat` is the only source.
-///
-/// When the box holds none the `forge` entry is OMITTED and a warning names why.
-/// The device token is deliberately NOT a fallback: `/mcp` refuses it (ISS-931),
-/// so writing it would buy a 401 at the first tool call instead of an absent
-/// server at startup, and the 401 arrives with no line naming the writer.
-// cm:edge contract -> packages/core/src/middleware/require-pat.ts — `requirePat` accepts `forge_pat_*` and refuses every other bearer BY NAME; the refusal text tells a box reading it to install a newer forge-runner, and this function is what makes that upgrade the fix
-// cm:guard NEVER fall back to `device_token` here. It authenticates `/ws` and the `requireDevice` REST routes and nothing on `/mcp`, and a config carrying it is indistinguishable at startup from a working one — `claude` connects, `tools/list` 401s, and the session reads it as a core outage.
-// cm:guard the credential is resolved HERE and only here, through `cred_store::load_pat` — the same rule `write_persistent` carries below and for the same reason: that helper is the one place `$FORGE_PAT` and the stored credential are ordered, and a second resolution is how one path on a box starts honouring a different credential from another.
 pub fn write(
     core_url: &str,
     project_slug: &str,
@@ -37,17 +23,6 @@ pub fn write(
     )
 }
 
-/// [`write`] with the directory named rather than resolved.
-///
-/// The seam exists for the tests. The file NAME is the property two of them
-/// assert — it is stable, derived from slug and job id, never a uuid — so it
-/// cannot be randomised to make a run independent of every other run on the
-/// box. Isolation has to come from the directory instead: with a single shared
-/// one, two `cargo test --workspace` runs write the same path and the loser
-/// panics on a file the winner already unlinked, which reads as a defect in the
-/// config writer rather than as two runs colliding (ISS-939).
-// cm:guard tests pass a directory of their own; production passes `mcp_config_dir()` and nothing else. A test that reaches this through `write` is back on the shared path and will fail somebody else's run instead of its own.
-// cm:guard `token` is a TEST SEAM and `write` is its only production caller, which passes what `load_pat` returned. Resolving it inside this function instead makes every test here depend on whether the machine happens to hold a credential — measured 2026-09-08: the suite passed on a dev box with a cred store and failed on CI without one, so the green said nothing about the code.
 fn write_in(
     dir: &Path,
     core_url: &str,
@@ -104,10 +79,6 @@ fn write_in(
 
     let doc = serde_json::json!({ "mcpServers": servers });
 
-    // The runner keeps all its state under `~/.config/forge-runner/` (credentials,
-    // config, skills-cache); the per-job MCP config lives beside them in `mcp/`,
-    // never as a UUID in the shared `/tmp` root.
-    // cm:guard one file per JOB, not per slug, and the unlink at completion is why. A shared per-slug path was safe only while the repo-root lock serialised same-project spawns through `runner.start`; ISS-920 released that lock earlier on purpose, so a sibling's completion would unlink the path this job is about to hand `claude` — read back as `agent_startup_failed: MCP config file not found`.
     sweep_stale(dir);
     let path = dir.join(format!(
         "forge-mcp-{}-{}.json",
@@ -115,7 +86,6 @@ fn write_in(
         sanitize_slug(job_id)
     ));
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
-    // cm:guard write-then-rename, never a bare `fs::write`: that truncates first, so a reader opening the path mid-write gets a partial document and `claude` reports an invalid MCP config with nothing naming the writer. UNTESTED and untestable in this suite — the difference is only visible to a concurrent reader, and a test that races is a test that lies either way. It is here on the argument, not on a green.
     let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     write_owner_only(&tmp, &body)?;
     std::fs::rename(&tmp, &path)?;
@@ -129,14 +99,11 @@ const MCP_CONFIG_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(2
 /// config apart from a per-job one in the shared directory.
 const SESSION_PREFIX: &str = "forge-master-mcp-";
 
-/// Drop MCP configs no live job can own.
-// cm:guard the per-job path costs this sweep, and the sweep is the whole reason a per-job path is affordable: every spawn unlinks its own file at completion and on a spawn failure, so anything left is a daemon that died between the two, and without this the folder grows one token-bearing 0600 file per crash forever. Since ISS-931 the token in there is the JOB's, revoked when the job ends, so a leaked file ages out of usefulness as well as off disk — the sweep is still what keeps the disk bounded. 24h is NOT slack over the longest live job — `timeoutSeconds` reaches exactly 86_400 and a parked duplex session adds its residency on top. It is safe because `claude` reads `--mcp-config` at startup only, so unlinking under a running session costs nothing; a future that re-reads it makes this number wrong.
 fn sweep_stale(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
-        // cm:guard an AGE is the wrong question to ask a session file and this sweep must never ask it. A per-job file's age answers whether its job can still be alive; a master's answers nothing, because a live master stops rewriting its file for as long as core is unreachable. Sweeping one on any age — a day, a week — deletes a live pane's record, after which `session_matches` reads a correctly configured master as stale and prints `tmux kill-session` at an operator. The price is that a project unbound from this box leaves one 0600 file behind: `write_session` removes it the moment that project resolves no servers, and nothing else here can know the project is gone.
         if entry
             .file_name()
             .to_string_lossy()
@@ -174,18 +141,6 @@ fn mcp_config_dir() -> PathBuf {
     dir
 }
 
-/// The MCP config a resident master's pane is started with: the servers its
-/// project declares, resolved by core, for the whole life of that session.
-///
-/// Returns the path to hand `claude --mcp-config`, or `None` when the project
-/// resolved no servers — in which case any file left from a previous session is
-/// REMOVED rather than left to configure a project that no longer declares it.
-///
-/// Distinct from [`write`], which is one job's temp config, and from
-/// [`write_persistent`], which writes only `forge` into the checkout. This one
-/// carries rendered integration credentials, so it never goes near the checkout.
-// cm:guard one file per PROJECT, and the prefix is what keeps it off the per-job path: `forge-mcp-<slug>-<job>.json` and `forge-master-mcp-<slug>.json` share a folder, and a project slugged `session` would otherwise collide with a job of another project. One per project is safe because one master per project is the bound `daemon::master` already enforces.
-// cm:guard the write is UNCONDITIONAL even when the bytes are unchanged, because the mtime is what keeps this file out of `sweep_stale`. A master runs for days and the sweep drops anything older than 24h; a version that skipped an identical write would delete a live master's config out from under the next comparison and report every project on the box as mis-configured.
 pub fn write_session(
     slug: &str,
     servers: &serde_json::Map<String, Value>,
@@ -193,9 +148,6 @@ pub fn write_session(
     write_session_in(&mcp_config_dir(), slug, servers)
 }
 
-/// [`write_session`] with the directory named rather than resolved — the same
-/// test seam, and for the same reason, as [`write_in`].
-// cm:guard tests pass a directory of their own; production passes `mcp_config_dir()` and nothing else.
 fn write_session_in(
     dir: &Path,
     slug: &str,
@@ -203,38 +155,21 @@ fn write_session_in(
 ) -> Result<Option<PathBuf>> {
     let path = session_path_in(dir, slug);
     if servers.is_empty() {
-        // cm:guard `Ok(None)` means "this pane was given nothing AND nothing on
-        // disk says otherwise". A discarded removal makes it mean only the
-        // first, and the caller cannot tell the difference.
         clear_session_in(dir, slug)?;
         return Ok(None);
     }
     let doc = serde_json::json!({ "mcpServers": Value::Object(servers.clone()) });
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
-    // cm:guard write-then-rename, never a bare `fs::write` — the same reason `write_in` carries: a truncating write is a partial document to anything reading the path mid-write.
     let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     write_owner_only(&tmp, &body)?;
     std::fs::rename(&tmp, &path)?;
     Ok(Some(path))
 }
 
-/// Remove every session config belonging to a project this box no longer
-/// serves, whatever its age.
-///
-/// `active_slugs` must be the AUTHORITATIVE set — the assignment listing core
-/// answered with. `sweep_stale` deliberately never touches these files, because
-/// a live master stops rewriting its own for as long as core is unreachable and
-/// an mtime therefore says nothing about whether a pane is using it. Which
-/// projects this box serves does say so, and it is the only thing that does.
-// cm:guard NEVER call this with a guessed, partial or defaulted set. Every name missing from it is read as a project this box has stopped serving, so one empty listing accepted as authoritative deletes the config of every live master on the box at once — and a pane cannot be told a new one, so each would run without its servers until an operator ended it.
-/// `Ok` carries the orphans it could NOT remove, as `(path, why)`. `Err` means
-/// the directory could not be read at all, so nothing was even attempted.
 pub fn sweep_orphaned_sessions(active_slugs: &[String]) -> Result<Vec<(PathBuf, String)>> {
     sweep_orphaned_sessions_in(&mcp_config_dir(), active_slugs)
 }
 
-// cm:guard a removal that failed is RETURNED, not discarded. These files hold rendered integration credentials for a project this box has stopped serving; a sweep that cannot delete one and says nothing is a deprovisioning that reports itself complete, and there is no second reader — nothing else ever looks at this namespace again once the project is gone from the listing.
-// cm:guard a directory that could not be READ is an `Err`, never an empty `Ok`. This is the only sweep that ever visits the session namespace, so "I found no orphans" and "I could not look" have the same consequence on disk and opposite meanings to an operator deprovisioning a project — and the first one is what a discarded `read_dir` reports.
 fn sweep_orphaned_sessions_in(
     dir: &Path,
     active_slugs: &[String],
@@ -267,19 +202,10 @@ fn sweep_orphaned_sessions_in(
     Ok(left)
 }
 
-/// Forget what this project's master was given: no file, so the next
-/// comparison reads a pane that carries nothing, which is the truth whenever
-/// the pane was started without `--mcp-config`.
-///
-/// Called where [`write_session`] FAILED and the pane started anyway.
-// cm:guard the file and the flag are one fact and must never disagree. The file is read back by `session_matches` as "what this pane was given"; leaving a file the pane never received makes a later identical declaration read as a MATCH, and the stale-pane report that criterion 5 exists for goes silent for the whole life of that pane.
 pub fn clear_session(slug: &str) -> Result<()> {
     clear_session_in(&mcp_config_dir(), slug)
 }
 
-/// [`clear_session`] with the directory named rather than resolved — the same
-/// test seam, and for the same reason, as [`write_session_in`].
-// cm:guard a removal that FAILED is an error and not a discarded `let _`. The caller starts the pane either way — refusing to start a master over its config directory would take out every project on a box that went read-only, including the ones declaring no servers — but it is the only party that can say the record is now untrustworthy, and it cannot say what it was not told. A file left behind here makes the next identical declaration read as a match and silences criterion 5's report for the life of that pane.
 fn clear_session_in(dir: &Path, slug: &str) -> Result<()> {
     match std::fs::remove_file(session_path_in(dir, slug)) {
         Ok(()) => Ok(()),
@@ -351,13 +277,6 @@ fn restrict_dir_perms(dir: &Path) {
 #[cfg(not(unix))]
 fn restrict_dir_perms(_dir: &Path) {}
 
-/// Write `body` to `path` as a file that is owner-only (`0600`) from the moment
-/// it exists, and refuse rather than publish one that is not.
-///
-/// Every file this module writes carries a bearer token or a rendered
-/// integration credential.
-// cm:guard the mode goes on at OPEN, not after the bytes. `fs::write` creates at `0666 & !umask` and fills it, so a tightening afterwards leaves a window in which the credential is on disk world-readable — and a `set_permissions` that simply failed left it that way for good, silently, because the result was discarded.
-// cm:guard a mode that cannot be established is an ERROR and the file is removed. This is a behaviour change on the per-job path too: a filesystem that does not honour modes used to get a spawn carrying a readable token, and now gets a refusal naming the path. That is the intended direction — the alternative is a live credential readable by every account on the box, reported by nothing.
 #[cfg(unix)]
 fn write_owner_only(path: &Path, body: &str) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -380,18 +299,12 @@ fn write_owner_only_checked(
 ) -> Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
-    // cm:guard `create_new`, never `create(true)`. `mode()` applies only to a file this call CREATES, so a `.tmp.<pid>` left at 0644 by a crash whose pid was reused would be truncated, filled with a live credential and only then checked — which is the readable-credential window this function exists to close. Removing first and refusing a racing creator is what makes the mode an assertion rather than a wish.
     let _ = std::fs::remove_file(path);
     let mut f = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .open(path)?;
-    // cm:guard check the mode BEFORE the first credential byte. A filesystem
-    // that accepts the open and emulates permissions gives a file that is not
-    // 0600; writing first and checking after puts the secret on disk readable
-    // for the width of the write, which is the window this function exists to
-    // close — and removing it afterwards does not unread it.
     let mode = mode_of(&f)?;
     if mode != 0o600 {
         drop(f);
@@ -414,27 +327,6 @@ fn write_owner_only(path: &Path, body: &str) -> Result<()> {
     Ok(())
 }
 
-/// Write a persistent `<repo>/.mcp.json` wiring the project's Forge MCP server
-/// so a human running `claude` in the provisioned folder can talk to Forge out
-/// of the box. Distinct from [`write`], which is the per-job temp config (it
-/// also merges integration overrides with fresh tokens).
-///
-/// Authed by the OPERATOR'S PAT — the credential a human can actually hold —
-/// and never by the box's device token, which `/mcp` refuses (ISS-931), nor by
-/// a machine-minted job token, which belongs to one job and is revoked when it
-/// ends. With no stored PAT the `forge` entry is left ALONE rather than written
-/// with something that cannot work: whatever is already in the file (possibly a
-/// working hand-written entry) survives, and the warning names the fix.
-///
-/// READ-MERGE, not overwrite: any servers a human (or another tool) added to an
-/// existing `.mcp.json` are preserved; only the `forge` entry is upserted
-/// (overridden on key collision). A missing/empty file is created fresh; a file
-/// that exists but isn't valid JSON / isn't an object is left untouched and an
-/// error is returned, so we never clobber a user's hand-written config.
-///
-/// The file carries a bearer token, so we add it to `.git/info/exclude` (NOT
-/// the tracked `.gitignore`) to guarantee it's never committed. Idempotent.
-// cm:guard read the PAT through `cred_store::load_pat`, never take a token as a parameter. That helper is the ONE place `$FORGE_PAT` and the stored credential are resolved in one order (see its own guard), and a parameter here is how the provisioned folder would start honouring a different credential from `forge-runner api` on the same box.
 pub fn write_persistent(repo_path: &Path, core_url: &str, project_slug: &str) -> Result<()> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
     let Some(pat) = load_pat().ok().flatten() else {
@@ -524,8 +416,6 @@ mod tests {
         dir
     }
 
-    /// A config directory belonging to this process alone.
-    // cm:guard every test that writes a per-job config takes one of these and calls `write_in`. The path `write` resolves is `~/.config/forge-runner/mcp/`, shared by every run on the box AND by the operator's own daemon, so a test on it deletes a sibling run's file — measured 2026-09-06 as `write_uses_a_stable_named_path_not_a_uuid ... FAILED` under two concurrent `cargo test --workspace` runs, 311 passed serially (ISS-939). The pid is the isolation; the file name inside stays stable, which is the property these tests are for.
     fn tmp_mcp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("forge-mcp-cfg-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -589,11 +479,6 @@ mod tests {
         let _ = std::fs::remove_file(&p1);
     }
 
-    /// The file name is stable and the directory is not, which is the whole of
-    /// ISS-939: two `cargo test --workspace` runs on one box must not resolve to
-    /// the same path, while the name inside each run stays derived from the slug
-    /// and job id rather than randomised.
-    // cm:guard assert BOTH halves in one test. Asserting only the stable name leaves a suite that passes while every run shares a path; asserting only that the paths differ would pass against the uuid naming this file exists to refuse.
     #[test]
     fn the_directory_isolates_runs_and_the_file_name_stays_stable() {
         let one = tmp_mcp_dir("iso-one");
@@ -693,19 +578,11 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// ONE test for everything that reads the credential store, because the
-    /// store resolves process-wide env and cargo runs tests in threads — the
-    /// same reason `auth/cred_store.rs` states above its own single case. The
-    /// lock is shared with that module; the cases below are ordered, not
-    /// independent.
-    // cm:guard hold `ENV_TEST_LOCK` for the WHOLE body and never split these into separate `#[test]`s. `load_pat` reads `$FORGE_PAT` first, so two tests setting it are two tests reading each other's value — measured as four simultaneous failures the first time they were written apart (ISS-931).
     #[test]
     fn credential_store_paths() {
         let _env = crate::auth::cred_store::ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        // cm:guard RAII, so a panic below does not hand the next test in this
-        // process a config dir that is not the box's own (ISS-1044).
         let pat = ScopedVar::set("FORGE_PAT", "forge_pat_dev_operator");
 
         // -- the provisioned folder is authed by the operator's PAT --
@@ -721,7 +598,6 @@ mod tests {
         assert_eq!(forge["headers"]["X-Forge-Project-Slug"], "proj");
         let _ = std::fs::remove_dir_all(&repo);
 
-        // cm:guard assert the header VALUE, not merely that a `forge` entry exists. The entry existed before ISS-932 wave 4 too, carrying first the device token and then a per-job one; a presence-only assertion stays green against exactly the config `requirePat` refuses. That the value comes from the STORE is `write`'s own single line, covered by the provisioned-folder case above rather than here — this case owns what the per-job file carries once a credential is resolved.
         let path = write_in(
             &tmp_mcp_dir("box-cred"),
             "https://core.example",
@@ -782,7 +658,6 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&repo);
 
-        // cm:guard a blank credential is the shape a malformed store yields, and it must be treated as ABSENT rather than written as `Bearer ` — there is no second source to fall back to since ISS-932 wave 4, so an empty string here would produce a config that authenticates as nobody and 401s at the first tool call.
         let path = write_in(
             &tmp_mcp_dir("blank"),
             "https://core.example",
@@ -852,9 +727,6 @@ mod tests {
             .collect()
     }
 
-    /// Criterion 9. The file carries rendered integration credentials, so the
-    /// mode and the location are the whole of what keeps them off a shared box.
-    // cm:guard assert the MODE, not just that a file exists. `write_owner_only` is what makes it 0600 and it refuses rather than publishing a file it could not tighten; without this assertion a version that went back to writing at the umask and hoping would leave a world-readable file holding a live epodsystem key, and every other assertion in this module would still pass.
     #[test]
     fn the_session_file_is_owner_only_and_lands_only_in_the_directory_it_was_given() {
         let dir = tmp_mcp_dir("session-perms");
@@ -888,9 +760,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Criterion 10, first half. The write is unconditional, which is what keeps
-    /// the mtime ahead of `sweep_stale` for a master that runs for days.
-    // cm:guard the MTIME is the assertion, because the mtime is the property: `sweep_stale` drops anything older than 24h and a master runs for weeks. Backdating the file past that window and requiring the next write to move it forward is what a skip cannot survive — a content check alone passes against any version that decides by comparing the declaration it last wrote rather than the bytes on disk, and that is the cheaper way to write the skip.
     #[test]
     fn an_unchanged_declaration_still_rewrites_the_file_at_each_start() {
         let dir = tmp_mcp_dir("session-rewrite");
@@ -933,9 +802,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Criterion 10, second half. A project that stops declaring servers must
-    /// not keep configuring its master from a file nothing rewrites.
-    // cm:guard the REMOVAL is the assertion. Returning `None` while leaving the file is the silent half: `pane_argv` would drop the flag, the next `session_matches` would read the stale file, find no match and report every such project as a mis-configured pane forever.
     #[test]
     fn a_project_that_resolves_no_servers_has_its_file_removed_and_owed_no_path() {
         let dir = tmp_mcp_dir("session-empty");
@@ -955,8 +821,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F2. The per-job age sweep must not reach a master's file at all.
-    // cm:guard the JOB file in the same directory must still go at 24h, or this test passes against a sweep that was simply switched off. Both halves are the assertion, and so is the third: the master path still removes the file, so excluding it from the sweep is not a leak with no other route off disk.
     #[test]
     fn the_job_sweep_never_reaches_a_session_file_whatever_its_age() {
         let dir = tmp_mcp_dir("sweep-two-clocks");
@@ -1017,9 +881,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F3. The credential is owner-only from the moment the file exists, not
-    /// from a tightening afterwards that nothing checks.
-    // cm:guard write under a PERMISSIVE umask, because that is the only condition under which the old order was wrong. With the process umask at 022 a later `set_permissions` produced 0600 anyway and the window was invisible; at 000 a file created by `fs::write` is 0666 and stays so if the tightening fails.
     #[cfg(unix)]
     #[test]
     fn a_credential_file_is_owner_only_under_a_permissive_umask() {
@@ -1040,9 +901,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F3's ordering, which no real filesystem here can produce: the mode is
-    /// read BEFORE the credential is written, and a bad one writes nothing.
-    // cm:guard the closure asserts the file is EMPTY at the moment it is asked. That is the whole finding — a version checking after `write_all` would also return an error and also remove the file, and every other assertion here would pass while the secret had already been on disk at the wrong mode for the width of the write.
     #[cfg(unix)]
     #[test]
     fn a_mode_that_did_not_take_refuses_before_a_single_credential_byte_is_written() {
@@ -1071,10 +929,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F2's other half. The age sweep never touches a session file, so the
-    /// assignment listing is its only route off disk — and it must delete by
-    /// ABSENCE from that listing, never by age.
-    // cm:guard the oldest file belonging to a served project must SURVIVE, and that half is the whole point: a live master stops rewriting its file for as long as core is unreachable, so any version that reintroduced an age here would delete the config of the very master it cannot reach core to check.
     #[test]
     fn only_a_project_this_box_no_longer_serves_loses_its_session_file() {
         let dir = tmp_mcp_dir("orphan-sweep");
@@ -1112,9 +966,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F2's failure half: an orphan that could not be removed is REPORTED, and
-    /// a live project's file is still untouched while that is happening.
-    // cm:guard the active file surviving is half the assertion. A version that answered the read-only directory by giving up early would also return no failures, and the operator would read a clean sweep over credentials still on disk.
     #[cfg(unix)]
     #[test]
     fn an_orphan_that_could_not_be_removed_comes_back_named() {
@@ -1146,9 +997,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A directory that could not be READ is an error, and one that is simply
-    /// not there is a clean sweep. The two must never answer the same.
-    // cm:guard the readable-but-empty case is the control. Without it a version that returned `Err` for every directory would pass the first half and report a permanent deprovisioning failure on every box that has no orphans, which is all of them.
     #[cfg(unix)]
     #[test]
     fn a_directory_that_could_not_be_read_is_not_a_clean_sweep() {
@@ -1174,10 +1022,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F1, the branch that made the fix worth making: a removal that FAILS
-    /// must not report success. Only the caller can say the record is
-    /// untrustworthy, and it cannot say what it was not told.
-    // cm:guard removing a file needs write on its PARENT, so a read-only directory is the real shape of this failure — the same shape that put the caller in the write-error branch to begin with. A version discarding the error leaves a file the pane never received and reports that it is gone.
     #[cfg(unix)]
     #[test]
     fn a_session_file_that_could_not_be_removed_is_an_error_not_a_silent_success() {
@@ -1206,10 +1050,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F3, the half a fresh-file test cannot reach: the temp path is
-    /// predictable, so it may already exist, and `mode()` does not touch a file
-    /// this call did not create.
-    // cm:guard pre-create the temp path at 0644 and put a marker in it. A version using `create(true)` truncates that file, writes the credential into it and only then reads the mode — so the credential is on disk world-readable before anything checks, which is the whole window this function exists to close.
     #[cfg(unix)]
     #[test]
     fn a_temp_path_left_readable_by_a_crash_does_not_receive_the_credential() {
@@ -1231,9 +1071,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F1. The file is a record of what the pane was GIVEN, so the path that
-    /// starts a pane without one must leave no file behind.
-    // cm:guard `clear_session` exists for the write-error branch of `ensure_master`, where the pane starts with no `--mcp-config` and a file from the previous start may still be on disk. Leaving it makes the next identical declaration read as a match and silences the stale report for the whole life of that pane.
     #[test]
     fn clearing_a_session_leaves_a_declaring_project_reading_as_stale() {
         let dir = tmp_mcp_dir("session-cleared");
@@ -1260,8 +1097,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The comparison a sweep makes against a live pane, in all four shapes.
-    // cm:guard the (no file, nothing declared) corner must read as a MATCH. A pane started with no `--mcp-config` for a project that declares nothing is correctly configured; reading it as a mismatch would print the `tmux kill-session` remedy for every project on the fleet that never wanted a server.
     #[test]
     fn a_pane_matches_only_when_the_file_says_what_core_says_now() {
         let dir = tmp_mcp_dir("session-match");

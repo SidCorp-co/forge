@@ -25,13 +25,6 @@ describe('messageRoleToTurnRole', () => {
     expect(messageRoleToTurnRole({ type: 'tool_result' })).toBe('tool');
   });
 
-  // cm:guard a legacy `role` entry answers NULL, and that is the assertion rather
-  // than an oversight. Every row at rest was rewritten by
-  // `db/backfill-canonical-transcripts.ts` and what a device on the previous
-  // release sends is converted on the way in by `canonical-legacy.ts`, so a
-  // `role` entry arriving here is a conversion that did not happen. Reading it
-  // anyway would make the missing conversion invisible and put the second shape
-  // back (ISS-1030).
   it('does not read a legacy `role` entry — the conversion happens before this', () => {
     expect(messageRoleToTurnRole({ role: 'user', content: 'hi' })).toBeNull();
     expect(messageRoleToTurnRole({ role: 'assistant', content: 'hi' })).toBeNull();

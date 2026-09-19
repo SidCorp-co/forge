@@ -7,7 +7,16 @@
 // and the labels-tab add/remove-row UI. Passwords are masked by default with a per-row reveal
 // toggle; values are never logged.
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, CardContent, Field, IconButton, Input, Textarea } from "@/design";
+import {
+  Button,
+  Card,
+  CardContent,
+  Field,
+  IconButton,
+  Input,
+  SectionTitle,
+  Textarea,
+} from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import { useUpdateProject } from "../hooks";
 import type { EnvironmentsConfig, TestCredential, TestingUrl } from "../types";
@@ -21,10 +30,6 @@ const PASSWORD_MAX = 500;
 const LIMITS_MAX = 8000;
 const COMMIT_PATH_MAX = 200;
 
-// cm:guard a ROW carries every key it was stored with, not only the two or three this screen
-// renders. The server's schema catchalls unknown keys at row level too (ISS-1069), so a row
-// rebuilt from the rendered fields alone deletes whatever a client one version ahead wrote — the
-// same clobber the top-level spread already guards against, one level down.
 type UrlRow = TestingUrl & Record<string, unknown>;
 type CredRow = TestCredential & Record<string, unknown>;
 
@@ -119,8 +124,6 @@ function keptCredentials(rows: CredRow[]): CredRow[] {
     .map((c) => ({ ...c, label: c.label.trim(), username: c.username.trim(), password: c.password }));
 }
 
-// cm:guard the SAME emptiness rule `normalizeEnvironments` applies server-side, so a tab that touched no preview field saves the `preview: null` it was given rather than an empty object. A null preview is a one-box project SAYING it has no other side; writing `{}` over it turns a statement into a gap somebody has to re-derive (ISS-1069).
-// cm:guard a preview whose only content is a key this screen does not render is DECLARED, not empty. Judging emptiness on the rendered fields alone would delete that key the first time somebody edited the limits — the one thing the top-level spread exists to prevent, arriving through the preview side instead.
 function previewDeclared(form: Form, storedPreview: Record<string, unknown> | null): boolean {
   return (
     form.previewUrl.trim() !== "" ||
@@ -270,10 +273,6 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
 
   function save() {
     if (!dirty || hasErrors) return;
-    // cm:guard the stored blob is spread FIRST at every level the tab edits, because the server's
-    // `environments` patch REPLACES the column outright — nothing merges, at any depth. A save that
-    // rebuilt the object from the form alone would delete every key this screen does not render:
-    // `live.apiUrl`, and any deploy knob a later version adds through the catchall.
     const stored = (project.environments ?? {}) as Record<string, unknown>;
     const storedLive = (stored.live ?? {}) as Record<string, unknown>;
     const environments: EnvironmentsConfig = {
@@ -302,7 +301,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
     <div className="space-y-6">
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-1">What this environment does not have</h2>
+          <SectionTitle className="fg-h3 mb-1">What this environment does not have</SectionTitle>
           <p className="fg-caption mb-4 text-muted">
             The settings below say what exists. This one says what does <i>not</i>. Agents read it
             before planning a live test, so a limit written here is caught while work is still being
@@ -333,7 +332,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
 
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-1">Live</h2>
+          <SectionTitle className="fg-h3 mb-1">Live</SectionTitle>
           <p className="fg-caption mb-4 text-muted">
             Where a release of this project actually ships. Without the commit endpoint below, every
             live deploy binding has to declare its own verification probe, and a release is refused
@@ -386,7 +385,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
 
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-1">Preview</h2>
+          <SectionTitle className="fg-h3 mb-1">Preview</SectionTitle>
           <p className="fg-caption mb-4 text-muted">
             A separate deployment QA opens before a release. Leaving all three blank says this
             project has no preview side, which is normal for a one-box project &mdash; nothing
@@ -427,7 +426,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
 
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-1">Testing URLs</h2>
+          <SectionTitle className="fg-h3 mb-1">Testing URLs</SectionTitle>
           <p className="fg-caption mb-4 text-muted">
             Named links QA opens while verifying the preview side — admin panels, mailbox,
             dashboards.
@@ -497,7 +496,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
 
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-1">Test credentials</h2>
+          <SectionTitle className="fg-h3 mb-1">Test credentials</SectionTitle>
           <p className="fg-caption mb-4 text-muted">
             Login accounts QA uses against either side. Passwords are masked by default.
           </p>

@@ -25,14 +25,6 @@ function provider(rounds: ChatStreamEvent[][]): ChatProvider {
   };
 }
 
-// cm:why its own file rather than a describe in `run-turn-core.test.ts`: that file is at its frozen
-// size budget, and the budget's answer to a legitimate addition is a split —
-// `run-turn-core-precall.test.ts` is the same split for the same reason.
-// cm:guard this drain is a CLOSED if-chain with no final `else yield event`, so every member of
-// ChatStreamEvent an adapter can emit needs an arm here or it is dropped between the provider and
-// every observer with nothing on either side saying so. `reasoning` was added to the union by
-// ISS-1079 and would have shown nothing on screen while passing every adapter test. These two cases
-// are the only thing standing between that union and a silent drop.
 describe('runTurnEvents — reasoning passes through', () => {
   it('yields a reasoning event onward, in the order the provider sent it', async () => {
     const { events, result } = await drain(

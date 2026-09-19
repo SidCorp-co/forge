@@ -1,28 +1,3 @@
-/**
- * ISS-1015 — every session-scoped `usage_records` rollup is served by
- * `usage_records_session_id_idx`, and the `pipeline_run_step_durations` view no
- * longer runs a subquery per job row.
- *
- * An index that exists proves nothing and a cost estimate is not a test, so
- * what this file asserts is the plan the planner actually chose, on a fixture
- * whose row count, session cardinality and selectivity are fixed here rather
- * than left to judgement — the planner reads all three, and a fixture of
- * twenty rows takes a sequential scan whatever the predicate says.
- *
- * Fixture, sized on beta as it stood on 2026-09-17 (24,085 usage rows over
- * 15,657 distinct session ids, 21,899 agent sessions, 31,197 jobs, 7,880 runs):
- *   16,000 agent_sessions over 5,000 pipeline_runs  (~3.2 sessions per run)
- *    8,000 jobs over 2,000 issues, one session each  (4 jobs per issue)
- *   24,000 usage_records over those 16,000 sessions  (1.5 rows per session)
- * `ANALYZE` runs before any plan is read.
- *
- * Every assertion below carries the fraction of the 24,000 it selects, because
- * that fraction is what decides the plan. The negative control is the point of
- * the file: the predicate this change removed must read `Seq Scan on
- * usage_records` on this same fixture, or none of the assertions above it is
- * able to fail.
- */
-
 import { type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -100,9 +75,6 @@ async function expectViewMatchesLegacy(db: TestDb): Promise<void> {
   expect(Number(shapes?.costless)).toBeGreaterThan(0);
   expect(Number(shapes?.priced)).toBeGreaterThan(0);
   expect(Number(shapes?.no_duration)).toBeGreaterThan(0);
-  // cm:guard BOTH sides of the 0128 duration guard, because only one of them is free: a fixture
-  // whose jobs never reach `done` yields NULL for every row, and the equality above then holds
-  // between two views whose duration expressions could differ in any way at all.
   expect(Number(shapes?.positive_duration)).toBeGreaterThan(0);
 }
 
@@ -116,7 +88,6 @@ const ACCEPTED = 'accepted';
  * so read it rather than matching the wrapper's message — which names the query
  * and would match a syntax error just as happily.
  */
-// cm:guard naming the whole error when no constraint field is present, rather than returning the same value an accepted write returns: the first version of this helper answered `undefined` for both, so a run where the constraint did not exist at all read identically to one where it refused.
 async function constraintRefusing(db: TestDb, query: ReturnType<typeof sql>): Promise<string> {
   try {
     await db.execute(query);
@@ -134,7 +105,6 @@ async function constraintRefusing(db: TestDb, query: ReturnType<typeof sql>): Pr
  * the route rather than at a predicate this file rebuilds. Module level for the
  * per-function line budget, like the 0177 view body above.
  */
-// cm:guard the router reads `db` off the environment at import, so `DATABASE_URL` has to name the harness BEFORE the dynamic import below. A static import would bind the module to whatever `DATABASE_URL` the shell happened to carry, and the case would then pass or fail against a database that is not this fixture.
 async function mountAgentSessions(
   url: string,
   userId: string,
@@ -192,8 +162,6 @@ async function readSessionCost(app: Hono, token: string, id: string): Promise<Se
 describe('ISS-1015 · usage_records rollups are index-served', () => {
   let harness: TestDatabase;
   let projectId: string;
-  /** The real `/api/agent-sessions` router, mounted so criterion 8 can be judged
-   *  at the route rather than at a predicate rebuilt here. */
   let app: Hono;
   let ownerToken: string;
   let issueContextPeakQuery: (issueId: string) => SQL;
@@ -342,18 +310,6 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
     expect((await read(sql`${upper}`))?.n).toBe(0);
   });
 
-  /**
-   * criteria 8, at the route. The case above proves the HELPER canonicalises;
-   * it rebuilds the predicate itself, so it stays green if `/:id/cost` stops
-   * calling `canonicalSessionId` altogether. This one calls the real router, so
-   * the caller is what is on trial: drop the canonicalisation from the route's
-   * `sessionMatch` and the uppercase request answers zeroes while the lowercase
-   * one answers the fixture's figures, and the equality below goes red.
-   *
-   * `sampleCount > 0` is asserted on its own rather than left implied by the
-   * equality: two zeroed rollups are equal too, and an equality of nothing to
-   * nothing is the shape this whole file exists to refuse.
-   */
   it('answers GET /api/agent-sessions/:id/cost identically for an uppercase id', async () => {
     const lower = sessionId(4_242);
     const upper = lower.toUpperCase();

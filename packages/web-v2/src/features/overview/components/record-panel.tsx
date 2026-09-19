@@ -16,7 +16,6 @@ export interface RecordPanelProps {
 /**
  * The records behind one figure, listed.
  */
-// cm:guard where `records.length < total` the panel says both numbers: the response caps its identity lists, and a panel that presents the capped set as the whole is the truncation-as-truth defect this criterion exists to refuse (ISS-988 criterion 46).
 export function RecordPanel({ title, total, records, onClose }: RecordPanelProps) {
   const capped = records.length < total;
   return (

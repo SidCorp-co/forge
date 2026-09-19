@@ -1,15 +1,3 @@
-/**
- * Generic OIDC provider — covers Google + any spec-compliant issuer
- * (Auth0, Authentik, Keycloak, ZITADEL, …).
- *
- * The shape is identical regardless of vendor: discover endpoints, exchange
- * code for tokens (token_endpoint), verify id_token via JWKS, optionally
- * call userinfo_endpoint to fill in email if the id_token didn't carry it.
- *
- * Both `googleProvider` and `oidcProvider` exports below are thin wrappers
- * that point at the same machinery; only the issuer URL changes.
- */
-
 import { getDiscovery, verifyIdToken } from './oidc-discovery.js';
 import type { ProviderConfig } from './providers.js';
 import type { AuthorizeArgs, CallbackArgs, OAuthIdentity, OAuthProvider } from './types.js';

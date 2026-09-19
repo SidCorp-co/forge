@@ -20,7 +20,6 @@ export type DeviceLoad = {
    * Claude OAuth session died, `rate_limit` while a reset is pending, a
    * quarantine after repeated box-scoped failures.
    */
-  // cm:guard report these RAW and never fold them into "usable: false". Before this design, `fresh_capable_runners` excluded an `auth` runner from dispatch by name, and that exclusion was ALSO the deadlock: `clearRunnerLimit` fires on a successful job, and the box could not win one while excluded. Nothing excludes it now, so this is the master's only way to know — and a master that reads `auth` can route around the box AND say why, which is the half the old gate could never do.
   runnerFaults: Array<{ runnerId: string; limitReason: string; until: string | null }>;
 };
 
@@ -40,7 +39,6 @@ export type FleetEntry = {
   jobsRunning: number;
   agentVersion: string | null;
   lastSeenMinutes: number | null;
-  // cm:guard the fleet view carries faults for the same reason it keeps offline boxes: a master spreading three jobs over three boxes reads THIS list, and an `auth`-dead runner that looks healthy here gets one of them. Same shape as `DeviceLoad['runnerFaults']` — raw flags, never a usable/unusable verdict.
   runnerFaults: DeviceLoad['runnerFaults'];
 };
 
@@ -53,7 +51,6 @@ const RUNNER_FAULTS = sql`COALESCE((
   WHERE rf.device_id = d.id AND rf.limit_reason IS NOT NULL
 ), '[]'::json) AS runner_faults`;
 
-// cm:guard mirror `jobs/in-flight.ts#OCCUPYING_JOBS_FOR` EXACTLY — statuses AND the terminal-parent filter. A master sizing its next batch off a number that counts orphans reads a busy box where the claim will happily take more, and one that omits the filter reads a full box that is actually idle. Both directions end in a batch the box cannot honour.
 const OCCUPYING = sql`j.status IN ('dispatched', 'running')
   AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))`;
 
@@ -135,7 +132,6 @@ export async function readProjectLoad(projectId: string): Promise<ProjectLoad | 
 }
 
 /** Every device bound to the project, whether or not it is online. */
-// cm:guard an offline device stays in this list rather than being filtered out — the master's question is "where could this work go", and a box that dropped 60 minutes ago is a different answer from a box that never existed. Filtering makes a shrunken fleet indistinguishable from a small one.
 export async function readFleetLoad(
   projectId: string,
   livenessSeconds: number,

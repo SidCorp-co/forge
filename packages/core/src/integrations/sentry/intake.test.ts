@@ -1,11 +1,3 @@
-/**
- * ISS-1085 slice 3 — what the scheduled pull writes, and what it refuses to write.
- *
- * The db is mocked, so what these assert is the statements core issues and the values it puts in
- * them, not rows in a database. Two of them go further than that on purpose: the metadata merge is
- * asserted as the SQL TEXT postgres will execute (rendered through drizzle's own dialect), because
- * "it merges rather than clobbers" is a claim about the statement and a mock cannot answer it.
- */
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -46,9 +38,6 @@ const handle = {
 vi.mock('../../db/client.js', () => ({
   db: {
     ...handle,
-    // cm:why the transaction handle is the same object: what these assert is which statements the
-    // code issues, and postgres's own atomicity is not something a mock can answer for. That it
-    // issues BOTH writes through `db.transaction` is asserted directly in intake-review.test.ts.
     transaction: (fn: (tx: typeof handle) => Promise<unknown>) => {
       transactions.push(1);
       return fn(handle);
@@ -334,10 +323,6 @@ describe('sentryMetadataMerge — a merge, asserted as the SQL postgres runs', (
         seenAt: '2026-09-18T00:00:01Z',
       }),
     );
-    // cm:guard the whole statement, because the load-bearing parts are `coalesce` (an issue whose
-    // metadata is NULL must still merge rather than stay NULL) and `||` (postgres's top-level merge,
-    // which keeps every key this path did not resend). A `.set({ metadata: {...} })` would render as
-    // a bare parameter and this assertion would go red naming it.
     expect(sql).toBe(`coalesce("issues"."metadata", '{}'::jsonb) || $1::jsonb`);
     expect(JSON.parse(String(params[0]))).toEqual({
       sentry: {

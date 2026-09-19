@@ -35,16 +35,11 @@ describe('the export the corpus is drawn from', () => {
     expect(corpus.reviewed.length).toBeGreaterThan(200);
   });
 
-  // cm:guard the floor is the whole point. A `no-developer-detail` whose check returned no breaks,
-  // or a `screenLead` that resolved every project to the technical cell, would satisfy every
-  // admitted row above and this case alone would red. Measured when it was written: 20 of 66.
   it('holds enough refused leads that a screen admitting everything cannot pass', () => {
     const refused = corpus.rows.filter((r) => r.product.length > 0);
     expect(refused.length).toBeGreaterThanOrEqual(15);
   });
 
-  // cm:guard and the inverse floor, for a screen that refused everything: a rule that broke on all
-  // input would satisfy the case above and red only here.
   it('holds enough admitted leads that a screen refusing everything cannot pass', () => {
     const admitted = corpus.rows.filter((r) => r.product.length === 0);
     expect(admitted.length).toBeGreaterThanOrEqual(30);

@@ -13,7 +13,6 @@ const sources = readdirSync(here)
 
 describe('questions/ imports nothing from integrations/', () => {
   it('reads at least the modules this rule is about', () => {
-    // cm:guard the scan proves it scanned something: a glob that matched nothing would pass every assertion below while checking no file at all.
     expect(sources.map((s) => s.file).sort()).toEqual(
       expect.arrayContaining(['protections.ts', 'read.ts', 'routes.ts', 'stop.ts', 'write.ts']),
     );
@@ -26,7 +25,6 @@ describe('questions/ imports nothing from integrations/', () => {
         .filter((spec) => /(^|\/)integrations\//.test(spec))
         .map((spec) => `${file} -> ${spec}`),
     );
-    // cm:guard a down bot, a missing binding or a chat outage must never fail or slow the kernel write that records a park, and an import is the first step toward one doing so (ISS-978 criterion 4).
     expect(offenders).toEqual([]);
   });
 

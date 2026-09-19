@@ -1,12 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-/**
- * Verify an HMAC-SHA256 signature against a raw request body.
- *
- * Accepts headers in GitHub's canonical shape (`sha256=<hex>`) as well as
- * bare hex. Uses `timingSafeEqual` with a length-guard so length mismatches
- * don't throw before the comparison happens.
- */
 export function verifyHmacSignature(
   secret: string,
   rawBody: string,

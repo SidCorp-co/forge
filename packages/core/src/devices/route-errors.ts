@@ -1,8 +1,3 @@
-/**
- * The refusals and the one path param every device route family shares, so a module split
- * out of `pool-routes.ts` cannot drift from the parent it was split from.
- */
-
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 

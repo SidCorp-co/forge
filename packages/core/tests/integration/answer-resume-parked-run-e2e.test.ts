@@ -91,12 +91,10 @@ describe('an answer a box will come back for', () => {
     expect(await aBoxWillReadThisAnswer(await question({}))).toBe(true);
   });
 
-  // cm:guard no waiter means nothing is coming back for this answer, and core must dispatch rather than leave the issue parked forever. A park mints its question inside the transition and registers no waiter, which is now the COMMON case rather than the exotic one.
   it('is not recognised when no run registered for it', async () => {
     expect(await aBoxWillReadThisAnswer(await question({ withWaiter: false }))).toBe(false);
   });
 
-  // cm:guard the question's own STATUS is deliberately not read: the answer path runs after the row is `answered`, so a status filter here would answer false for every question a box is actually waiting on — the exact failure that retired the predicate this replaced.
   it.each(['open', 'answered'] as const)(
     'reads the waiter whatever the question status says (%s)',
     async (status) => {

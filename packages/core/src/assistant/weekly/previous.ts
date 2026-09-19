@@ -1,10 +1,3 @@
-/**
- * ISS-1056 — the pinned issue is the series: the previous week's history file is the newest
- * `assistant-history-*.json` attachment on it, and a week already published is a comment whose
- * first line starts with the report head. A failure comment's first line does not, so a week that
- * failed on Monday is retried on Tuesday.
- */
-
 import { and, desc, eq, like } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { commentAttachments, comments } from '../../db/schema.js';

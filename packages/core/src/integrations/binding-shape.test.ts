@@ -11,9 +11,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-// cm:why `checkBindingShape` asks the REGISTRY which providers can deploy (ISS-1071), and filling
-// the registry imports every adapter, several of which reach the db client and with it the whole env
-// contract — hence two mocks in a file whose subject touches neither.
 vi.mock('../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
@@ -75,9 +72,6 @@ describe('the shapes it refuses by name', () => {
     expect(pairing.safeParse({ role: 'deploy' }).success).toBe(false);
   });
 
-  // cm:guard the refusal must NAME the duplicate rather than collapse it: `["live","live"]` and
-  // `["live"]` are different claims about what the caller believes, and answering 201 to both
-  // tells neither of them which one landed.
   it('refuses a duplicated stage rather than de-duplicating it', () => {
     const msg = refusal(pairing.safeParse({ role: 'deploy', stages: ['live', 'live'] }));
     expect(msg).toContain('is a set');

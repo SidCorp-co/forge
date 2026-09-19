@@ -28,9 +28,6 @@ import {
  * meaningful: an aborted run must leave the old name in place with every row unwritten, which is a
  * claim about the column's NAME and not only its contents.
  */
-// cm:guard module scope and not one long `describe`, because the setup below is shared by three
-// subjects — the forward rewrite, the abort, and the rollback — and nesting them under a fourth
-// `describe` put its callback past the function line budget.
 let harness: TestDatabase;
 let forward: string[];
 let down: string;
@@ -69,15 +66,6 @@ async function runForward(): Promise<void> {
   for (const statement of forward) await harness.db.execute(sql.raw(statement));
 }
 
-/**
- * The whole error chain as text, or `null` where the migration succeeded.
- *
- * cm:guard the CAUSE and not the message. Drizzle wraps a failed statement as `Failed query:
- * <the sql>` and hangs the Postgres error off `.cause`, so an assertion reading only the top
- * message matches the migration's own source text — including every slug-shaped word in it — and
- * would go green against a migration that aborted for an entirely different reason, or that named
- * no project at all.
- */
 async function forwardError(): Promise<string | null> {
   try {
     await runForward();
@@ -113,9 +101,6 @@ async function read(id: string, column: 'environments' | 'preview_deploy'): Prom
 beforeAll(async () => {
   harness = await setupTestDatabase();
   forward = await statements('../../drizzle/migrations/0279_environments.sql');
-  // cm:guard the down file is ONE statement block — it carries its own BEGIN/COMMIT and no
-  // `--> statement-breakpoint`, because nothing in the migrator ever reads it. A split that
-  // produced more than one piece means the file grew a breakpoint it must not have.
   const downParts = await statements('../../drizzle/rollback/0279_down.sql');
   expect(downParts).toHaveLength(1);
   down = downParts[0] as string;
@@ -125,9 +110,6 @@ afterAll(async () => {
   await harness.cleanup();
 });
 
-// cm:guard the rename happens BEFORE any row is seeded, because `seed` writes the OLD column
-// name — that is the whole point of the rewind. Doing it per test rather than once is what keeps
-// an abort case, which leaves the column un-renamed, from poisoning the next test.
 beforeEach(async () => {
   await truncateAll(harness.db);
   await rewind();
@@ -160,9 +142,6 @@ describe('every row moves, and nothing is dropped', () => {
     });
   });
 
-  // cm:guard the catchall's half of the contract, in the database rather than in zod: the schema
-  // passes unknown keys through so a client one version ahead is not truncated by this one, and a
-  // migration that dropped them would make that promise false the moment it ran.
   it('carries a key it does not recognise through unchanged', async () => {
     const id = await seed('p-unknown', {
       stagingUrl: 'https://stg.example.com',
@@ -175,10 +154,6 @@ describe('every row moves, and nothing is dropped', () => {
     expect(out.futureKnob).toEqual({ nested: ['a', 1, null] });
   });
 
-  // cm:guard ABSENT, JSON null and empty are ONE answer — this project has no preview side — and
-  // the migration writes that answer once so three readers do not each derive it. Each case below
-  // is a different stored byte sequence, and a migration that handled only the first would leave
-  // the other two reading as a half-filled preview.
   it.each([
     ['the three keys absent', { testCredentials: [] }],
     ['the three keys JSON null', { stagingUrl: null, stagingApiUrl: null, testingUrls: null }],
@@ -210,9 +185,6 @@ describe('every row moves, and nothing is dropped', () => {
     });
   });
 
-  // cm:guard a SQL null and a JSON null both say "nothing is declared" and are left EXACTLY as
-  // they are. Writing the new shape over them would turn 28 untouched projects into 28 rows
-  // carrying a live object nobody filled, which reads as a declaration.
   it('leaves a SQL null exactly as it is', async () => {
     const id = await seed('p-sql-null', undefined);
 
@@ -248,20 +220,11 @@ describe('a row the new shape cannot hold aborts by name, writing nothing', () =
     ['a row that already carries a preview key', { preview: { url: 'https://x' } }],
     ['a row that already carries a live key', { live: { url: 'https://x' } }],
     ['a row that already carries a limits key', { limits: 'already here' }],
-    // cm:guard an ELEMENT the new shape cannot hold, which a type check on the ARRAY misses. SQL
-    // would carry these across untouched and then `normalizeEnvironments` — which answers
-    // {label, url} rows and drops everything else — would read the project as having NO preview
-    // side while the column still held the address. Found by a codex review of the landing head.
     ['a testingUrls entry that is a bare string', { testingUrls: ['https://beta.example.com'] }],
     ['a testingUrls entry that is null', { testingUrls: [null] }],
     ['a testingUrls entry that is a number', { testingUrls: [7] }],
     ['a testCredentials entry that is a bare string', { testCredentials: ['admin'] }],
     ['a testCredentials entry that is null', { testCredentials: [null] }],
-    // cm:guard the KNOWN FIELD types inside a row, which an element-shape check misses: the reading
-    // coerces with `String(row.url ?? '')`, so an object-valued `url` comes back as the literal text
-    // `[object Object]` and a missing `password` comes back as an empty string — a login that looks
-    // recorded and is not. These are the fields `testingUrlSchema` and `testCredentialSchema` make
-    // required strings, so every row refused here is one PATCH would refuse today.
     [
       'a testingUrls row whose url is an object',
       { testingUrls: [{ label: 'Beta', url: { href: 'https://beta.example.com' } }] },
@@ -285,17 +248,11 @@ describe('a row the new shape cannot hold aborts by name, writing nothing', () =
 
     expect(await forwardError()).toContain(slug);
 
-    // cm:guard the column is still under its OLD name and the row is still the operator's own
-    // value. An abort that had already renamed the column would leave a database the previous
-    // image cannot serve and the new one cannot finish migrating.
     expect(await read(id, 'preview_deploy')).toEqual(
       typeof value === 'string' ? JSON.parse(value) : value,
     );
   });
 
-  // cm:guard EVERY offender at once, so an operator fixes them in one pass rather than one
-  // redeploy each. A migration naming only the first found turns a five-row problem into five
-  // deploy cycles.
   it('names every offending project in one message', async () => {
     await seed('offender-alpha', { notes: 7 });
     await seed('offender-beta', { stagingUrl: [] });
@@ -318,10 +275,6 @@ describe('a row the new shape cannot hold aborts by name, writing nothing', () =
  * field in the old shape and printing it is the only chance an operator gets to write it down.
  */
 describe('rollback/0279_down.sql', () => {
-  // cm:guard a connection of its own with `onnotice` wired, because the NOTICE is half of what
-  // this file has to prove: the live side has no field in the old shape, so printing it is the
-  // only chance an operator gets to write those values down before they go. A run that swallowed
-  // the notice would pass every value assertion below and still be the wrong rollback.
   async function runDown(): Promise<string[]> {
     const notices: string[] = [];
     const client = postgres(harness.url, {
@@ -355,8 +308,6 @@ describe('rollback/0279_down.sql', () => {
     expect(await read(id, 'preview_deploy')).toEqual(before);
   });
 
-  // cm:guard limits text typed AFTER the deploy comes back too, because the old shape has a field
-  // for it. This is the half of the restoration that is not merely "undo what we wrote".
   it('restores limits written after the deploy into notes', async () => {
     const id = await seed('p-late-limits', { stagingUrl: 'https://stg.example.com' });
 
@@ -370,14 +321,6 @@ describe('rollback/0279_down.sql', () => {
     expect(out.notes).toBe('typed later');
   });
 
-  // cm:guard the several equivalent empties all come back as `{}`, which is the ONE way the
-  // restoration is not byte-exact — and it costs nothing, because every reader in the tree goes
-  // through `?? {}` and then a per-key `typeof` test. Stating it here is what stops the next
-  // reader mistaking it for a bug.
-  // cm:guard a value INSIDE a row the forward migration never touched comes back byte for byte.
-  // This was `jsonb_strip_nulls(jsonb_build_object(…))`, which strips RECURSIVELY: a row carrying
-  // an explicit null under a key nobody here knows about lost it, and nothing told the operator.
-  // Found by a codex review of the landing head.
   it('does not strip an explicit null inside a testing URL row it never touched', async () => {
     const before = {
       stagingUrl: 'https://stg.example.com',

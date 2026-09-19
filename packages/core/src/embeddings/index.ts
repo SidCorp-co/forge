@@ -31,7 +31,6 @@ function get(): EmbeddingsPort {
 export const QUERY_CACHE_MAX = 256;
 export const QUERY_CACHE_TTL_MS = 10 * 60_000;
 
-// cm:guard a bounded LRU keyed by the CONFIGURED model and the text, filled only from a result the primary model produced, and in front of the QUERY path alone: the embedding service on beta answers in 0.7 s or 11 s for the same text, and a retried or repeated search paid that twice; a fallback vector is never stored under the primary's key, so the primary's recovery is not hidden behind a cached stand-in (ISS-1041 criteria 1-6). The write path (`embed`, `embedBatch`) stays uncached: the indexer's identical-text skip is measured by counting the client's calls, and a cache there would alias what those measurements mean while holding vectors nobody asks for twice. Insertion order is recency: a hit is re-set to the end, and the first key is the eviction.
 const queryCache = new Map<string, { vec: number[]; at: number }>();
 
 /** The write path: one request per call, nothing remembered. */

@@ -1,12 +1,3 @@
-/**
- * `forge_pm.dispatch` (Epic 3, ISS-19) — PM agent enqueues a coder-skill
- * job (triage / plan / code / review / test / fix / release) for an issue.
- *
- * ISS-145: handler body extracted into `pmDispatchHandler` and consumed by
- * both the legacy shim factory below and the consolidated
- * `forge_project_pm` dispatcher.
- */
-
 import { z } from 'zod';
 import { jobTypes, modelTiers } from '../../db/schema.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';

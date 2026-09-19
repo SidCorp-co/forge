@@ -372,7 +372,6 @@ describe('ISS-948 · the cases that refresh nothing', () => {
     });
   }
 
-  // cm:guard `verified_by_test` belongs on the refreshing side, not with `blocked_fixture` — it is the verdict that the automated suite covers the AC, so the tests passed; `blocked_fixture` says the AC could not be exercised at all.
   it('refreshes the primary on a test handoff with result "verified_by_test"', async () => {
     const node = await insertNode('module-pipeline', 'flow A');
     const mod = await insertModule('pipeline', node);
@@ -441,7 +440,6 @@ describe('ISS-948 · a refresh that fails does not fail the handoff', () => {
     const issueId = await insertIssue('landed');
     await attribute(issueId, mod, true);
 
-    // cm:guard break the READ the loop performs, not the loop's own code — a stubbed module would prove the stub. Dropping the column `loadAttributedModules` selects makes the query throw inside the try, which is the only shape that exercises the never-fatal contract.
     await harness.db.execute(sql`ALTER TABLE labels RENAME COLUMN slug TO slug_moved`);
     try {
       const written = await landTest(issueId);

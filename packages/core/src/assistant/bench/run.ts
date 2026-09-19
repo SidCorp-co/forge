@@ -80,12 +80,10 @@ async function readFixtures(args: TrialArgs): Promise<Record<string, string>> {
     }
     if (name === 'newestOpenIssues') {
       const open = await client.newestOpenIssues(project.id, BRIEF_OPEN_ISSUES);
-      // cm:guard a task asking for a list the project cannot supply is recorded not applicable before any trial starts (bench/brief.ts:fixtureNotApplicable); reaching here with none is a caller that skipped that check, and an empty list would grade a reply about nothing
       if (open.length === 0)
         throw new Error('the project holds no open issue, so there is no bounded list to ask for');
       values.openIssueKeys = open.map((i) => i.key).join(', ');
       values.openIssueCount = String(open.length);
-      // cm:guard the newest one's id, so `linkTo` still demands a link that RESOLVES: without it a reply naming the keys and linking nothing passes every remaining check vacuously
       values.openIssueId = open[0]?.id ?? '';
     }
     if (name === 'pipelineStates')
@@ -93,7 +91,6 @@ async function readFixtures(args: TrialArgs): Promise<Record<string, string>> {
     if (name === 'nonce') {
       values.nonce = freshToken(args);
       values.nonce2 = freshToken(args);
-      // cm:guard two tokens that collide would let a correction task pass by matching the first value; a caller's randomId that repeats is refused here rather than graded kindly
       if (values.nonce === values.nonce2) throw new Error('nonce and nonce2 came out equal');
     }
     for (const key of FIXTURE_KEYS[name]) {
@@ -144,17 +141,11 @@ const ownedBy =
     rooms.some((r) => n.sourceRef.startsWith(`conversation:${r}:`)) ||
     tokens.some((t) => n.text.includes(t));
 
-/**
- * Every note the trial's rooms wrote or that carries a trial token, across every page; deleted by
- * its sourceRef and listed again. Ownership is the room in the sourceRef, never "new since the
- * trial began": a note somebody else writes meanwhile is not ours to delete (codex F1).
- */
 async function deleteNotes(
   args: TrialArgs,
   rooms: string[],
   tokens: string[],
 ): Promise<{ memories: NonNullable<CleanupRecord['memories']>; listed: boolean }> {
-  // cm:why every trial, not only the memory tasks: the ten method tasks carry no token, and the notes the assistant kept for "remember my deploy window" outlived every ISS-1051 run (22 on the QA project on 2026-09-16) because the cleanup only knew the room
   const left = ownedBy(rooms, tokens);
   const projectId = args.project.id;
   let found = 0;
@@ -170,7 +161,6 @@ async function deleteNotes(
     return { memories: { found, deleted, remaining }, listed };
   } catch (err) {
     args.log?.(`memory cleanup refused: ${errorText(err)}`);
-    // cm:guard a refusal mid-cleanup must not read as clean: what was found and not deleted is counted as remaining, and one is charged where the listing itself was refused
     return { memories: { found, deleted, remaining: Math.max(1, found - deleted) }, listed };
   }
 }
@@ -183,7 +173,6 @@ async function cleanup(
   values: Record<string, string>,
 ): Promise<{ record: CleanupRecord; notesKept: number | null }> {
   const now = args.now ?? (() => new Date());
-  // cm:why null and not the found count when the listing was refused: the record charges one remaining so the trial fails, and a grader reading `found` 0 there would call the assistant tidy (ISS-1064)
   let notesKept: number | null = null;
   const record: CleanupRecord = {
     rooms: await deleteRooms(args, roomIds),
@@ -409,7 +398,6 @@ export async function runTrial(
   const roomRows = rows.filter((r) => r.sessionId !== null && rooms.includes(r.sessionId));
   const models = [...new Set(roomRows.flatMap((r) => (r.model ? [r.model] : [])))];
   const { judged, refused } = await judgeTurns(args, sends, attempts, models, values);
-  // cm:why the cleanup's count reaches every turn's grade: the notes a trial kept are known only after the rooms are read back, and a check on the last turn is where a task bounds them (ISS-1064)
   const turns = sends.map((sent, i) =>
     turnRecord(sent, attempts[i] ?? [], args, values, judged[i], notesKept),
   );
@@ -421,7 +409,6 @@ export async function runTrial(
     result: {
       at: started.toISOString(),
       retried: args.client.retries() - retriesBefore,
-      // cm:guard a trial whose room or notes outlived the cleanup is not a pass: the next reading of the project would carry them
       pass:
         error === null &&
         turns.length === args.task.turns.length &&

@@ -82,10 +82,6 @@ describe('listInOrder, labeled and linkTo (codex F1–F3 on ISS-1061)', () => {
     ]);
   });
 
-  // cm:why measured, not imagined: on the QA project `open-issues-linked` scored 0/3 against beta on
-  // 2026-09-16 with a reply that had listed all five in the deployment's own order — `ISS-2` matched
-  // inside `ISS-25`, and `ISS-10` inside an `ISS-1056` that the newest issue's title carried
-  // (ISS-1066)
   it('holds an issue key to its whole self, so a key that prefixes another is not found inside it', () => {
     const keys = 'ISS-25, ISS-11, ISS-10, ISS-9, ISS-2';
     const check: Check = { kind: 'listInOrder', list: '{openIssueKeys}' };

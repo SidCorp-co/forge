@@ -1,12 +1,3 @@
-/**
- * The refusal a filing meets at this door, and the one line a filing that was
- * accepted still earns.
- *
- * Rendering only. Every word of what was read and what the shape wants comes
- * from `shape.ts` and `kinds.ts`, so the refusal cannot claim a rule the
- * reader did not apply.
- */
-
 import { article, type CliSection, listed } from './kinds.js';
 import type { CliGap, CliShape } from './shape.js';
 
@@ -30,8 +21,6 @@ export interface DuplicateSeen {
   readonly title: string;
 }
 
-// cm:guard the way out has to be a FLAG the door reads, never a sentence it does not. The check is word overlap and not meaning — "Dark mode broken on the settings page" and "…on the profile page" score 0.750 — so a caller with only prose to answer with cannot restate its way past a deterministic check, and every false positive is final. `assistant/tools/registry.ts` carries the same escape under the same name for the same reason; one word for one thing across doors.
-// cm:why `confirmNotDuplicate` is the one spelling of this flag: the chat door carried its own copy in `assistant/tools/registry.ts` until 2026-09-15 and files through this door now (ISS-1009).
 export function duplicateGap(seen: DuplicateSeen, override: string): CliGap {
   return {
     because: 'duplicate',

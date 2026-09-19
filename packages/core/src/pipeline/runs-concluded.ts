@@ -43,14 +43,9 @@ type Candidate = {
   last_job_status: 'done' | 'failed' | 'cancelled';
 };
 
-// cm:edge contract -> packages/core/src/jobs/loop-monitor.ts — the quiet window is RESULT_QUIET_MINUTES, deliberately the SAME number and not a knob of its own: 60 minutes is already this repo's stated ceiling for how long a legitimate pipeline may go quiet, and two thresholds for one question drift apart.
 const QUIET_WINDOW_MS = RESULT_QUIET_MINUTES * 60_000;
 
-// cm:guard `paused` is admitted (ISS-654) ONLY under the extra no-live-session clause below, never on the all-jobs-terminal test alone — `run-pause.ts` documents `paused` as an operator hold, and a hold that could still be resumed into work is a human's decision this pass may not override. A paused run with every job terminal, nothing beating on it and an hour of silence has nothing left to resume into, which is the one shape that is a phantom rather than a hold.
-// cm:guard the `EXISTS (jobs)` clause is load-bearing in BOTH directions: it keeps this pass off `reapOrphanedOneShotRuns`' job-less rows, and it is what makes an open run at issue-status `awaiting_release` judgeable here without contradicting ISS-669. ISS-669 protects a `released` issue whose release step is STILL RUNNING inside the open run — that run has an active job and is excluded by the clause below, whereas one whose release job went terminal days ago is exactly the leak.
 function selectConcluded(now: Date, scope: LoopScope) {
-  // cm:guard the cutoff is bound from the caller's `now`, never SQL's `now()` — the same shape `reapOrphanedOneShotRuns` uses, and the only thing that makes the `now` parameter mean anything. Read the server clock here instead and a test that pins the clock silently proves nothing about the window it thinks it set.
-  // cm:why serialised to ISO because postgres-js rejects a raw Date param.
   const quietCutoffIso = new Date(now.getTime() - QUIET_WINDOW_MS).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
   return db.execute<Candidate>(sql`
@@ -90,7 +85,6 @@ function selectConcluded(now: Date, scope: LoopScope) {
   `);
 }
 
-// cm:guard the run's outcome is its LAST job's, never an any-failed rollup — a run whose failed job was RETRIED to success concluded successfully, and reporting it `failed` would make the run status lie in the other direction. Requirement 2 of ISS-923 is stated about the last job for exactly this reason.
 function outcomeFor(
   lastJobStatus: Candidate['last_job_status'],
 ): 'completed' | 'failed' | 'cancelled' {
@@ -104,9 +98,6 @@ function outcomeFor(
  * terminal status and stayed that way for `RESULT_QUIET_MINUTES`. A `paused`
  * run additionally has to hold no live `agent_session`.
  */
-// cm:edge lockstep -> packages/core/src/pipeline/runs-cascade.ts — the inverse of that module's orphan invariant; the forward defences and this one are one statement read in two directions and are documented together.
-// cm:guard best-effort per row — one failure is logged and skipped, never aborting the pass, the convention both sibling reapers in `sweeper.ts` follow.
-// cm:why the per-row log line is required, not decoration: ISS-923 asks for the reconciliation to be auditable run by run rather than a bulk UPDATE, and it is also how the standing backlog drains — this pass closes the existing leak on its own first ticks after deploy, so no one-shot migration exists to go stale.
 export async function reapConcludedRuns(
   now: Date = new Date(),
   scope: LoopScope = {},
@@ -129,7 +120,6 @@ export async function reapConcludedRuns(
         },
         'pipeline-sweeper: closing concluded run (every child job terminal)',
       );
-      // cm:guard count only what actually closed — a run whose deploy is still unconfirmed is DEFERRED (ISS-922), and counting it here would make the sweeper's own log the next thing claiming a close that did not happen.
       if ((await closeRun(row.id, outcome)) === 'settled') reaped++;
     } catch (err) {
       logger.error(
@@ -154,9 +144,6 @@ type JoblessCandidate = {
   any_failed: boolean;
 };
 
-// cm:guard `kind = 'issue'` only — `reapOrphanedOneShotRuns` already owns the job-less `system`/`interactive` rows on its own device-aware grace, and two passes reaping one row would race to close it twice.
-// cm:guard the window is the SAME RESULT_QUIET_MINUTES, never the shorter heartbeat floor the one-shot reaper uses: an issue run is opened BEFORE its first job is enqueued, so a cutoff measured in minutes would close a run that is about to be dispatched into and leave the dispatch pointing at a terminal run.
-// cm:guard a live `agent_session` excludes the row even with no jobs — an interactive drive attached to the issue run reports through the session, not a job, and closing under it fires the terminal-run trigger that orphans the session.
 function selectJobless(now: Date, scope: LoopScope) {
   const quietCutoffIso = new Date(now.getTime() - QUIET_WINDOW_MS).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
@@ -192,7 +179,6 @@ function selectJobless(now: Date, scope: LoopScope) {
  * Close every `kind='issue'` run that never grew a job and has gone quiet past
  * `RESULT_QUIET_MINUTES` with no live session under it.
  */
-// cm:guard `cancelled`, not `failed`, when nothing ever ran under the run — a run with no job and no session produced no failure to report, and stamping one puts a fiction in the outcome every success-rate metric reads.
 export async function reapJoblessRuns(
   now: Date = new Date(),
   scope: LoopScope = {},

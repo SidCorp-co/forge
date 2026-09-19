@@ -131,14 +131,12 @@ describe('stdout frames that reach the table', () => {
     expect(await storedLineTypes(job)).toEqual(['assistant', 'result']);
   });
 
-  // cm:guard the denylist must pass an UNKNOWN frame through — turning it into an allowlist would stop storing the first frame kind a future CLI emits and report nothing, which is the silent substitution this filter exists to avoid becoming
   it('keeps a frame type it has never seen', async () => {
     const job = await jobWithSession();
     await post(job, [stdoutLine({ type: 'frame_invented_next_year' })]);
     expect(await storedLineTypes(job)).toEqual(['frame_invented_next_year']);
   });
 
-  // cm:guard the regression this filter could cause — a fan-out session emits nothing but partial deltas for minutes, and if dropping them dropped the liveness signal too the loop monitor would reap a live agent, the exact failure `--include-partial-messages` was turned on to prevent (ISS-479); persistence and liveness are separate doors and must stay that way
   it('acks and bumps the session heartbeat for a batch that is entirely filtered out', async () => {
     const job = await jobWithSession();
     const r = await post(job, [delta, delta]);
@@ -157,8 +155,6 @@ describe('stdout frames that reach the table', () => {
 });
 
 describe('the cc-startup signal counts assistant turns', () => {
-  // cm:guard the batch MUST carry persisted non-assistant stdout rows (system/user/result) or this test cannot fail — deltas are dropped before they reach the table, so a batch of only assistants and deltas counts the same under both the old `stdout` predicate and the assistant one, and the planted regression passes
-  // cm:guard drives the REAL `deriveCcStartupSignals`, not a copy of its SQL — the predicate reaches into jsonb through a drizzle column reference inside a raw `sql` template, and a template that fails to render is swallowed by that function's catch, which logs and returns null; reimplementing the query here would assert Postgres works and prove nothing about the caller
   it('counts assistant lines, not stdout rows', async () => {
     const job = await jobWithSession();
     await post(job, [

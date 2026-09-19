@@ -132,7 +132,6 @@ export function PropertiesRail({
   onEditModules,
   canMarkMerged,
 }: PropertiesRailProps) {
-  // cm:why modules and plain labels arrive in ONE `labels[]` told apart by `kind` (ISS-593), and split into two rows here because they answer two different questions
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
   const primaryModule = modules.find((m) => m.isPrimary);
@@ -142,12 +141,10 @@ export function PropertiesRail({
   const isDecompose = (e: IssueDependencyEdge) => e.kind === "decomposes" || e.kind === "parent";
   const blockedBy = incoming.filter((e) => e.kind === "blocks");
   const blocks = outgoing.filter((e) => e.kind === "blocks");
-  // cm:why a decompose edge runs parent→child, so INCOMING is this issue's epic and OUTGOING is a child — reading the direction the other way swaps Parent and Subtasks on the screen
   const parents = incoming.filter(isDecompose);
   const subtasks = outgoing.filter(isDecompose);
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
-  // cm:guard the reason is RENDERED above the rows, never left as a greyed-out control — a disabled Select takes no focus, so a `title` is unreachable by keyboard and absent on touch, and a rail that silently stops accepting a priority is indistinguishable from one that is broken (ISS-1010)
   const held = heldByAgent(issue.status, issue.agentStatus);
   return (
     <div className="divide-y divide-line-subtle">

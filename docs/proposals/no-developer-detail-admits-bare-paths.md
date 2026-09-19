@@ -13,7 +13,7 @@ Two shapes go through that a reader holding no technical lens should not be show
 
 - **A file path with no line number.** `PATH_LINE_RE` in `packages/core/src/messaging/text-rules.ts`
   is anchored on `\.[a-z]{1,5}:\d+`, so `registry.test.ts still asserted the old combined message`
-  and `conversation-thread.tsx's cm:guard says …` are admitted while `search.ts:158` is refused.
+  and `conversation-thread.tsx's invariant says …` are admitted while `search.ts:158` is refused.
   Corpus rows 2, 14, 22 and 34 are the admitted ones.
 - **A commit sha.** No rule reads one. `23 of 23 checks pass at fa6ecb212` and `merged at ca28999e`
   are admitted (corpus rows 0 and 42).

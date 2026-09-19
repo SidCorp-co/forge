@@ -3,27 +3,6 @@ import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from './dispatch-liveness.js';
 
-/**
- * Pick a device for a new interactive agent session for `projectId`.
- *
- * Resolution order:
- *  1. The freshest online `claude-code` runner row for this project (mirrors
- *     `onlineCapableDeviceIds` filters: status='online',
- *     last_seen_at within the dispatch-liveness window), preferring a
- *     HEALTHY runner (no future `rate_limited_until`, `limit_reason` not
- *     `auth`) over a limited one — a limited runner is still returned when it
- *     is the only online candidate, so the pool never wedges (ISS-780).
- *  2. The project's `defaultDeviceId` if it points to an online device.
- *  3. `null` — caller must surface "no device available" to the user.
- *
- * ISS-172 Slice A: the source of truth is the `runners` table, not the
- * deprecated `project_devices` pool. A device may be a runner for N projects
- * simultaneously; this query returns the device id for THIS project only.
- *
- * `excludeDeviceIds` (ISS-584 B) skips devices already tried — used by the
- * schedule cross-runner failover so a dead-on-arrival runner is not re-picked
- * on the retry. The default-device fallback honours the exclude list too.
- */
 export async function findAvailableDeviceForProject(
   projectId: string,
   opts: { excludeDeviceIds?: string[] } = {},
@@ -84,22 +63,6 @@ export async function findAvailableDeviceForProject(
   return defaultDevice?.id ?? null;
 }
 
-/**
- * Verify that `deviceId` is a chat-capable runner for `projectId` and return it
- * when eligible, else `null`. "Chat-capable" mirrors the primary
- * `findAvailableDeviceForProject` filters (type='claude-code',
- * status='online', within the dispatch-liveness window, device not disabled) —
- * so an explicit runner pick from the UI is validated against the exact same
- * gate the auto-pick uses, and a stale/offline/foreign choice is rejected rather
- * than silently dispatched to a dead cwd (ISS-420). Used by the chat runner
- * picker (`resolveChatDevice` override path).
- *
- * By default also gates on health (no future `rate_limited_until`, `limit_reason`
- * not `auth`) — a runner whose daemon is online but whose Claude CLI is dead is
- * not chat-capable (ISS-780). `allowLimited:true` skips that gate for callers
- * that must honour an explicit pick (an override) or check pin liveness
- * regardless of health (the self-heal migration check in `resolveChatDevice`).
- */
 export async function findChatCapableDeviceForProject(
   projectId: string,
   deviceId: string,
@@ -128,15 +91,6 @@ export async function findChatCapableDeviceForProject(
   return rows[0]?.device_id ?? null;
 }
 
-/**
- * Resolve the working repo path for a session.
- *
- * The web client may pass an explicit `repoPath` override; otherwise we fall
- * back to `projects.repoPath`. We do NOT fall back to a per-device override
- * — that's a Strapi-era concept (`device.projectPaths[slug]`) that does not
- * exist in core's device schema yet. Add it back if the desktop client needs
- * per-device path overrides.
- */
 export function resolveRepoPath(
   override: string | null | undefined,
   projectRepoPath: string | null,
@@ -145,21 +99,6 @@ export function resolveRepoPath(
   return v.length === 0 ? null : v;
 }
 
-/**
- * Working dir for an interactive/schedule session dispatched to `deviceId`.
- *
- * Chat & schedule run `claude` with this as cwd ON THE CHOSEN RUNNER'S box, so
- * it must be that runner's local binding path — NOT `projects.repoPath`, which
- * is only a default hint valid on the owner's own machine. Sending the project
- * path to a remote runner makes `claude` spawn in a non-existent cwd and fail
- * with "No such file or directory"; the session then hangs `running` forever.
- *
- * Returns the runner binding `repo_path` for (project, device) when set, else
- * `null` so the caller falls back to the project default — correct for the
- * desktop client, which has no binding and runs on the owner's box. Mirrors the
- * job path (`daemon/dispatch.rs resolve_repo`), keeping chat/schedule + jobs in
- * lockstep.
- */
 export async function resolveRunnerRepoPath(
   projectId: string,
   deviceId: string,
@@ -178,7 +117,6 @@ export async function resolveRunnerRepoPath(
  * `null` for the desktop/local path). Combines the runner binding lookup with
  * the project-default fallback so callers never hand-roll the chain.
  */
-// cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — the turn dispatcher and the runner re-pin route must resolve cwd identically
 export async function resolveSessionRepoPathForDevice(
   projectId: string,
   deviceId: string | null,

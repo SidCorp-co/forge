@@ -125,7 +125,6 @@ describe('the issue list answers from the credential, not the channel', () => {
     const stored = await harness.db.execute<{ created_via: string; creator_agency: string | null }>(
       sql`SELECT created_via, creator_agency FROM issues WHERE id = ${id}`,
     );
-    // The channel still says `web` — this is the row shape that used to read as the owner.
     expect(stored[0]?.created_via).toBe('web');
     expect(stored[0]?.creator_agency).toBe('agent');
 
@@ -237,13 +236,6 @@ describe('one credential, one actor, across every kind of write in a run', () =>
     expect(items.every((i) => i.actor === null || i.actor.isAgent)).toBe(true);
   });
 
-  // cm:guard the credential here is an AGENT ACCOUNT's, not a person's PAT, and the
-  // difference is the whole of what `comments.author_agency` stores. ISS-1003 decided
-  // that a person's own token establishes NEITHER a person nor an agent and therefore
-  // stores NULL rather than a claim it cannot make; that decision is not this issue's
-  // to reverse, and the identity this issue delivers — a box holding an agent account's
-  // credential — is exactly the case it does answer. Swapping this for a person's PAT
-  // reopens a question recorded on ISS-1093 rather than proving a regression.
   it('marks a comment written on an agent credential as an agent’s', async () => {
     const { plaintext: token } = await accounts.createAgentAccount({
       orgId,
@@ -394,12 +386,6 @@ describe('a stored agency outranks the channel, in the label and in the filter',
     return id;
   }
 
-  // cm:guard the predicate is TWO-valued, asserted against Postgres rather than read off the
-  // string. Both halves of `creatorIsAgentCondition` are NULL-producing for this row, so an
-  // unguarded version returns SQL NULL and its negation returns NULL too — the row then belongs
-  // to neither filter while the list shows it under its creator's address. The label assertion
-  // alone stays green through that, which is why the two filters are counted here as well
-  // (ISS-1093, review finding F1).
   it('keeps a row written before the column in its creator’s filter, on either channel', async () => {
     const token = await personPat();
     for (const channel of ['web', null]) {
@@ -449,10 +435,6 @@ describe('rows written before the column', () => {
     expect((await rowOnList(await personPat(), id)).creatorIsAgent).toBe(true);
   });
 
-  // cm:guard criterion 12, and the direction the backfill must NOT run in.
-  // `activity_log.actor_agency` DEFAULTs to 'human' over every row written before
-  // migration 0193, so a two-way copy would assert `human` about rows nothing ever
-  // established anything for. This row keeps NULL and falls to the channel floor.
   it('an old person-filed row is left alone and still reads from its channel', async () => {
     const id = await createIssueWith(await signUserToken(personId), 'a person, long ago');
     await asIfWrittenBeforeTheColumn(id);

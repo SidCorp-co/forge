@@ -83,8 +83,6 @@ describe('epodsystemAdapter.healthcheck — rotation-window fallback (ISS-405)',
     );
 
     expect(res.status).toBe('ok');
-    // First call (primary) returns 401; second call (previous) returns ok; third
-    // call is the enrichment probe with the SAME (previous) key.
     expect(calls[0]).toBe('Bearer crmk_current');
     expect(calls[1]).toBe('Bearer crmk_previous');
     expect(calls[2]).toBe('Bearer crmk_previous');
@@ -190,11 +188,6 @@ describe('what the healthcheck may write back onto a shared connection', () => {
     }) as unknown as typeof fetch;
   }
 
-  // cm:guard `ctx.config` is `effectiveConfig(pair)` — the connection overlaid
-  // with THIS project's binding — so writing it back promotes the binding's own
-  // keys onto the credential every other project bound to it inherits. The three
-  // release-channel keys are binding-tier for exactly that reason. Same defect as
-  // ISS-1036's F1 on the Google adapter.
   it('writes the resolved store identity and none of the binding tier keys', async () => {
     healthyFetch();
     findConnectionByIdMock.mockResolvedValue({ id: CONN_ID, config: { orgId: 'org-0' } });

@@ -41,18 +41,6 @@ const badRequest = (details: unknown) =>
 export const meRecentChangesRoutes = new Hono<{ Variables: AuthVars }>();
 meRecentChangesRoutes.use('/recent-changes', requireAuth(), assertEmailVerified());
 
-/**
- * `GET /me/recent-changes` — the "what just changed that I should care about"
- * panel (ISS-665, replaces the raw chat-log activity feed): most-recently
- * updated issues across every project the caller can see (explicit membership
- * at any role, or org owner/admin — same visibility rule as `loadVisibleProjectIds`
- * elsewhere). Ordered by `issues.updatedAt` desc.
- *
- * Known limitation: there is no per-transition audit log, so `updatedAt` is a
- * proxy for "changed" — it also bumps on non-status edits (title, priority,
- * etc). A dedicated change-events feed would be a larger follow-up; the
- * common case (status transitions moving through the pipeline) is covered.
- */
 meRecentChangesRoutes.get(
   '/recent-changes',
   zValidator('query', listQuerySchema, (r) => {

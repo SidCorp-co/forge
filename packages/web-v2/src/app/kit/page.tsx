@@ -25,13 +25,14 @@ import {
   type RailItem, type SwitcherProject,
 } from "@/features/shell";
 import { useToast } from "@/providers/toast-provider";
+import { PageTitle, SectionTitle } from "@/design/primitives/heading";
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
     <section id={id} className="scroll-mt-6">
       <div className="mb-4">
         <Kicker>{id}</Kicker>
-        <h2 className="fg-h2 mt-1">{title}</h2>
+        <SectionTitle className="mt-1">{title}</SectionTitle>
         {hint && <p className="fg-body-sm mt-1 max-w-2xl">{hint}</p>}
       </div>
       <div className="rounded-lg border border-line bg-surface p-6 shadow-sm">{children}</div>
@@ -203,7 +204,7 @@ function ElapsedDemo() {
   const elapsed = useElapsed(start, running);
   return (
     <div className="flex items-center gap-3">
-      <span className="font-mono text-fg" style={{ fontSize: 15, minWidth: 64 }}>{elapsed}</span>
+      <span className="font-mono text-fg" style={{ fontSize: "var(--text-15)", minWidth: 64 }}>{elapsed}</span>
       <Button
         size="sm"
         variant={running ? "danger" : "secondary"}
@@ -227,7 +228,7 @@ function AnimatedStatDemo() {
   const display = useAnimatedNumber(n);
   return (
     <div className="flex items-center gap-3">
-      <span className="font-mono text-fg" style={{ fontSize: 22, fontWeight: 700, minWidth: 72 }}>
+      <span className="font-mono text-fg" style={{ fontSize: "var(--text-22)", fontWeight: 700, minWidth: 72 }}>
         {Math.round(display)}
       </span>
       <span className="fg-caption">tests passed</span>
@@ -401,11 +402,11 @@ export default function KitPage() {
         <main className="flex min-w-0 flex-1 flex-col gap-10">
           <header>
             <div className="flex items-center gap-2.5">
-              <span className="inline-flex size-9 items-center justify-center rounded-lg" style={{ background: "var(--flame-500)", color: "#fff" }}>
+              <span className="inline-flex size-9 items-center justify-center rounded-lg" style={{ background: "var(--flame-500)", color: "var(--fg-on-accent)" }}>
                 <Icon name="pipeline" size={20} strokeWidth={2} />
               </span>
               <div>
-                <h1 className="fg-h1">Forge — Web v2 kit</h1>
+                <PageTitle>Forge — Web v2 kit</PageTitle>
                 <p className="fg-body-sm">Design layer preview · light theme · Hanken Grotesk + JetBrains Mono</p>
               </div>
             </div>
@@ -417,7 +418,7 @@ export default function KitPage() {
                 <div key={token} className="flex flex-col items-center gap-1.5">
                   <span className="size-14 rounded-md border border-line" style={{ background: `var(${token})` }} />
                   <span className="fg-caption">{label}</span>
-                  <span className="font-mono text-[10px] text-subtle">{token}</span>
+                  <span className="font-mono text-10 text-subtle">{token}</span>
                 </div>
               ))}
             </Row>
@@ -426,7 +427,7 @@ export default function KitPage() {
               {STAGES.map((s) => (
                 <div key={s.key} className="flex flex-col items-center gap-1.5">
                   <span className="size-9 rounded-pill" style={{ background: s.color }} />
-                  <span className="font-mono text-[11px] text-muted">{s.label}</span>
+                  <span className="font-mono text-11 text-muted">{s.label}</span>
                 </div>
               ))}
             </Row>

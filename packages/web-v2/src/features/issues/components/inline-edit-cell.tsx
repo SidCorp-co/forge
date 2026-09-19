@@ -76,7 +76,6 @@ interface StatusEditProps {
  * registry — forward move first, then the bounces, then the discards. A rung
  * with no exit says so rather than opening empty (ISS-982).
  */
-// cm:guard the three no-target states are DISTINCT lines and must stay so: "loading", "could not load" and "no exits at all" are three different things for the person holding the mouse, and collapsing them renders ordinary latency as a failure and a terminal issue as a broken menu
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
   const statusLabel = useStatusLabeller();
   const { exits, isPending, isError } = useStatusExits();

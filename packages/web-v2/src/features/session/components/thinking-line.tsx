@@ -14,8 +14,6 @@ function spent(ms: number): string {
   if (ms < 1_000) return `${Math.round(ms)}ms`;
   const s = ms / 1_000;
   if (s >= 10) return `${Math.round(s)}s`;
-  // cm:why a trailing `.0` is trimmed rather than kept for alignment: this sits inside a sentence a
-  // person reads, and "Thought for 4.0s" claims a precision the clock behind it does not have.
   const one = s.toFixed(1);
   return `${one.endsWith(".0") ? one.slice(0, -2) : one}s`;
 }
@@ -23,10 +21,6 @@ function spent(ms: number): string {
 /**
  * The collapsed label, in its four forms.
  */
-// cm:why the duration wins over the count when both are present: a turn whose
-// reasoning was readable is described better by how long it took than by how
-// many times it paused, and the two are never the same fact — `durationMs`
-// belongs to one block, `count` to the whole turn.
 export function thinkingLabel(b: {
   text?: string | undefined;
   durationMs?: number | undefined;
@@ -44,11 +38,6 @@ export function thinkingLabel(b: {
 /**
  * One pause, collapsed to a line.
  */
-// cm:guard the expander exists ONLY where there is text to expand onto. A pause
-// with nothing to read — every Claude Code turn's count, and every block a
-// provider encrypted — renders as a static line: an expandable "Thought" that
-// opens onto nothing is the affordance defect this component was specified to
-// refuse, and a disabled-looking chevron is the same defect wearing a hint.
 export function ThinkingLine({
   text,
   durationMs,
@@ -69,7 +58,7 @@ export function ThinkingLine({
 
   if (!expandable) {
     return (
-      <div data-testid="thinking-line" className="flex items-center gap-1.5 text-subtle" style={{ fontSize: 12 }}>
+      <div data-testid="thinking-line" className="flex items-center gap-1.5 text-subtle" style={{ fontSize: "var(--text-12)" }}>
         <Icon name="cpu" size={12} />
         <span>{label}</span>
       </div>
@@ -84,7 +73,7 @@ export function ThinkingLine({
         aria-expanded={open}
         onClick={toggle}
         className="flex w-fit items-center gap-1.5 rounded text-subtle hover:text-default"
-        style={{ fontSize: 12 }}
+        style={{ fontSize: "var(--text-12)" }}
       >
         <Icon name="cpu" size={12} />
         <span>{label}</span>
@@ -94,7 +83,7 @@ export function ThinkingLine({
         <div
           data-testid="thinking-line-text"
           className="whitespace-pre-wrap border-l border-line-subtle pl-2 text-subtle"
-          style={{ fontSize: 12 }}
+          style={{ fontSize: "var(--text-12)" }}
         >
           {text}
         </div>

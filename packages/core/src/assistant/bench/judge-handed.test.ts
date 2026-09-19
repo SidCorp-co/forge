@@ -91,9 +91,6 @@ describe('what the judge is handed', () => {
     expect(second?.user).toContain('turn 1 replied: Kept.');
   });
 
-  // cm:why `preference-bullets` and not `filing-guidance`, which stood here: ISS-1066 gave that task a
-  // rubric sending the judge to the brief's filing rules, so it is no longer a task without one. The
-  // byte-identity of the block itself is pinned in judge.test.ts, over inputs a test controls exactly.
   it('a task without a rubric, fixtures or a brief sends the judge no rubric and no reference block', async () => {
     const fake = createFakeDeployment({ script: recall, judge: () => verdict });
     const client = createClient({ api: 'https://api.test', fetch: fake.fetch });

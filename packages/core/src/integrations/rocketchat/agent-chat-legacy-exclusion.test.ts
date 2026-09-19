@@ -1,12 +1,3 @@
-// One live turn per room, across the rename.
-//
-// ISS-727's exclusion was keyed on a rid and a tmid; ISS-1039's is keyed on the
-// conversation. Both are correct and neither can see the other, so for as long
-// as a session dispatched before the deploy is still running, a second question
-// in its room reaches only the new key — finds nothing — and starts a second box
-// on the same room. The `cm:hack` in `agent-chat.ts` is that one read, and this
-// is the case it exists for.
-
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../config/env.js', () => ({
@@ -50,9 +41,6 @@ describe('a Rocket.Chat agent turn asked into a room that still holds an old-for
     expect(startConversationAgentTurn).not.toHaveBeenCalled();
   });
 
-  // cm:guard the rid and the tmid are read out of the VENUE, because that is all this lane is handed
-  // now: keying the legacy read on anything else would silently exclude the wrong room, which is
-  // worse than not reading at all.
   it('asks about the room and thread the venue names, under the old marker', async () => {
     hasInFlightRoomSession.mockResolvedValueOnce(false);
     await startAgentChat(ARGS);

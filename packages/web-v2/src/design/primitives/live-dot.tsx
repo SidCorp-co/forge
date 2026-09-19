@@ -15,7 +15,7 @@ export interface LiveDotProps {
 export function LiveDot({ state, withLabel = false }: LiveDotProps) {
   const m = META[state];
   return (
-    <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--fg-muted)" }}>
+    <span className="inline-flex items-center gap-1.5" style={{ fontSize: "var(--text-12)", color: "var(--fg-muted)" }}>
       <span
         className={m.pulse ? "forge-pulse" : ""}
         style={{ width: 7, height: 7, borderRadius: 999, background: m.color }}

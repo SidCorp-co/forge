@@ -1,21 +1,5 @@
 "use client";
 
-// Chrome-style docked conversation panel. Instead of overlaying the content as a
-// SlideOver, the conversation lives as a resizable right-hand column in the
-// workspace flex row — the main content reflows/shrinks beside it, exactly like
-// a browser side panel. Desktop-only (md+); below md the layout keeps the
-// SlideOver overlay (a fixed split doesn't fit a phone width).
-//
-// The panel wraps the same `ConversationPanel` the mobile overlay mounts,
-// passing `onClose` so its header carries the collapse control (one header, no
-// dock chrome on top). Ported from the chat dock at ISS-1004 step 5: the
-// geometry is unchanged. What it wraps changed at ISS-1028, from the chat alone
-// to the chat AND its history, because a dock that could only ever show a new
-// draft was the whole of the report.
-//
-// The splitter is an `<hr>` with a tabIndex and the arrow keys bound, never a
-// bare `role="separator"` div: it was pointer-only until that port — visible,
-// announcing nothing, and unmovable without a mouse.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConversationPanel } from "./conversation-panel";
@@ -38,7 +22,6 @@ export function ConversationDock({
   onWidthChange: (w: number) => void;
   onClose: () => void;
 }) {
-  // cm:guard the live width is LOCAL during a drag and committed once on pointer-up: a pointer move that set the persisted value would re-render the whole memo-heavy workspace layout on every frame, and the prop is adopted only when no drag is in flight so a hydrate cannot fight the hand
   const [w, setW] = useState(width);
   const draggingRef = useRef(false);
   useEffect(() => {
@@ -53,7 +36,6 @@ export function ConversationDock({
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!draggingRef.current) return;
-    // cm:why right-anchored, so the panel widens as the pointer travels LEFT and the arithmetic is the viewport minus the clientX
     const next = window.innerWidth - e.clientX;
     setW(Math.min(MAX_W, Math.max(MIN_W, next)));
   }, []);
@@ -65,7 +47,6 @@ export function ConversationDock({
       try {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       } catch {
-        // cm:why a pointer already released throws here and is not a failure: the capture is released by the browser on some cancel paths before this runs
       }
       const committed = Math.min(MAX_W, Math.max(MIN_W, window.innerWidth - e.clientX));
       onWidthChange(committed);
@@ -73,7 +54,6 @@ export function ConversationDock({
     [onWidthChange],
   );
 
-  // cm:guard the keyboard step COMMITS on every press rather than on a key-up: there is no pointer-up to commit on, so a width moved by the arrow keys and never persisted would snap back on the next render that adopted the prop.
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const step = e.shiftKey ? 64 : 16;

@@ -20,7 +20,6 @@ function fakeDb(rows: Array<Record<string, unknown>>): { execute: () => unknown 
   return { execute: () => Promise.resolve(rows) };
 }
 
-// cm:guard reject from `execute`, which is the ONLY query this function makes. It used to reject from a `select` chain that resolved `mergeStates`; when that read was deleted (ISS-863) the fake kept passing — for a TypeError on an absent `execute`, not for the DB error the case names.
 function failingDb(): { execute: () => unknown } {
   return { execute: () => Promise.reject(new Error('connection reset')) };
 }
@@ -41,7 +40,6 @@ describe('bucketOf', () => {
     expect(bucketOf('closed', false)).toBe('closed_unshipped');
   });
 
-  // cm:guard `dropped` is terminal and shipped nothing by definition, whatever evidence happens to exist — bucketing it as in_flight counts a finished issue as work in progress forever
   it('dropped is closed_unshipped whether or not evidence exists', () => {
     expect(bucketOf('dropped', false)).toBe('closed_unshipped');
     expect(bucketOf('dropped', true)).toBe('closed_unshipped');

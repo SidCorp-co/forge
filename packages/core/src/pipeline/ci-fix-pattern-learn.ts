@@ -5,27 +5,6 @@ import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
 import type { HooksBus } from './hooks.js';
 
-/**
- * ISS-32 — CI fix pattern learning.
- *
- * When an issue successfully traverses `reopen → developed`, capture the
- * (errors, diff) signature on its `sessionContext.ciFixContext` as a memory
- * row tagged `kind:'ci_fix_pattern'`. Its query side was removed with the
- * staged lane (ISS-897) — nothing injects these patterns into a job payload
- * today, so this is a write with no reader until one is built.
- *
- * Storage piggybacks on the existing `memories` table:
- *   source     = 'note'
- *   sourceRef  = `ci_fix_pattern:<errorTypesKey>:<fileTypesKey>`
- *   metadata   = { kind: 'ci_fix_pattern', errorTypes, fileTypes, diffSummary, branch? }
- *
- * Dedup is automatic via the `memories_project_source_ref_uq` unique index —
- * a second `reopen → developed` with the same error+file signature updates
- * the existing row instead of inserting a duplicate. After upsert we enforce
- * a per-(errorType) cap of `MAX_PATTERNS_PER_ERROR_TYPE` rows by deleting
- * the least-recently-updated entries (see `enforcePatternCap`).
- */
-
 const MAX_DIFF_SUMMARY_CHARS = 1024;
 export const MAX_PATTERNS_PER_ERROR_TYPE = 5;
 
@@ -127,29 +106,6 @@ export async function storeCiFixPattern(args: {
   }
 }
 
-/**
- * Delete the least-recently-updated `ci_fix_pattern` rows for a given
- * errorType once the count exceeds `MAX_PATTERNS_PER_ERROR_TYPE`.
- *
- * Why `updated_at`, not `created_at`: `indexMemory` upserts via
- * `onConflictDoUpdate` and refreshes `updated_at` (and `embedded_at`) on
- * every re-store, while `created_at` is preserved across upserts. Sorting
- * by `created_at` would evict a frequently-updated, high-signal pattern
- * the moment a 6th distinct sibling appears, while a stale row that has
- * never been re-encountered survives. Eviction by `updated_at` keeps the
- * patterns we keep seeing and drops the ones we've stopped seeing.
- *
- * Best-effort cap: two concurrent learners on the same errorType can
- * momentarily leave 6+ rows because each sees a snapshot taken before the
- * other commits. A stray row is harmless (it just falls out on the next
- * insert), so we do not lock or serialise — this is a quality-of-life
- * pruner, not a hard invariant.
- *
- * Multi-errorType skew: a row tagged `errorTypes:['a','b']` counts toward
- * both caps. Eviction is by `updated_at` regardless, so the multi-type row
- * may survive longer than a same-age single-type row simply because its
- * latest upsert was the most recent for both buckets. Acceptable for v1.
- */
 export async function enforcePatternCap(projectId: string, errorType: string): Promise<void> {
   const errorTypeJson = JSON.stringify([errorType]);
   // Sort newest-updated-first and skip the freshest MAX rows; the remainder
@@ -199,7 +155,6 @@ export function registerCiFixPatternLearner(bus: HooksBus): () => void {
     });
 
   const unsub = bus.on('transition', (payload) => {
-    // cm:why only a fix loop (reopen → ... → developed) teaches anything — a first-pass `developed` carries no fix context to learn from
     if (payload.to !== 'developed') return;
     if (payload.reopenCount <= 0) return;
 

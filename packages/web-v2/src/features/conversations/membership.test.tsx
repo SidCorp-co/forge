@@ -110,7 +110,6 @@ describe("the confirmation shown before an agent is added", () => {
     expect(textOf(claims)).toMatch(/stays in the room/i);
   });
 
-  // cm:guard this is the criterion the issue states in the negative, so it is asserted in the negative: no claim may offer removal as a way back. A dialogue that says "you can always take it out again" satisfies every other assertion in this file and is the exact sentence ISS-1011 exists to forbid.
   it("never offers removal as a way to undo the addition", () => {
     const text = textOf(claims).toLowerCase();
     for (const forbidden of ["undo", "reversible", "revert", "take it out again", "change your mind"]) {
@@ -152,7 +151,6 @@ describe("the confirmation shown before a person is added", () => {
     expect(textOf(claims)).toMatch(/everything said in it before now/i);
   });
 
-  // cm:guard a shared room is told the TRUTH rather than the reassuring version: everyone holding a role on its projects can already open it, so claiming an access change would be a claim the code does not make.
   it("says a shared room's access does not change", () => {
     const claims = personAdditionClaims({ name: "Grace", room: shared });
     expect(claims.map((c) => c.key)).toEqual(["person-already-could"]);
@@ -181,7 +179,6 @@ describe("a room's projects on screen", () => {
     expect(screen.getByTestId("scope-notice")).toHaveTextContent("Alpha, Beta");
   });
 
-  // cm:guard the notice describes something STILL TRUE, so it collapses and does not vanish: the collapse control is a disclosure carrying `aria-expanded`, and there is no control anywhere in the notice whose accessible name is a dismissal (ISS-1011 criteria 31, 32).
   it("can be collapsed", () => {
     render(<ScopeNotice room={shared} />);
     const toggle = screen.getByRole("button", { expanded: true });
@@ -259,7 +256,6 @@ describe("the confirmation shown before a room is opened", () => {
     expect(claim?.text).toMatch(/nobody chooses it/i);
   });
 
-  // cm:guard the pre-join claim is the one sentence this builder must NOT carry: nothing has been said in a room that does not exist, so reusing `agentAdditionClaims` here would put a false claim in front of every person who opens one (ISS-1011, review F4).
   it("does not claim the agents will be shown what was already said", () => {
     const keys = roomOpeningClaims({ projects: [alpha, beta], agentCount: 2 }).map((c) => c.key);
     expect(keys).not.toContain("reads-what-was-said");

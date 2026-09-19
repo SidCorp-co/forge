@@ -48,9 +48,6 @@ vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (...args: unknown[]) => findAvailableDeviceForProject(...args),
 }));
 
-// cm:why the transport REGISTRY is mocked rather than a transport's client: the lane reaches a venue
-// through `conversationTransport(adapter).deliver` and knows nothing else about it, so this is the
-// whole of what the ack has to be asserted against.
 const deliver = vi.fn(async () => ({ messageId: 'm1' }));
 vi.mock('../conversations/ports.js', async (orig) => ({
   ...(await orig<typeof import('../conversations/ports.js')>()),
@@ -247,9 +244,6 @@ describe('buildConversationAgentPrompt', () => {
 /**
  * The interim ack, driven through the one door that schedules it.
  */
-// cm:guard exercised through `startConversationAgentTurn` and never through an exported scheduler:
-// the ack is now the lane's own, and a test that called a scheduler directly would keep passing
-// after the dispatch stopped scheduling one (ISS-1039).
 describe('the interim ack', () => {
   async function start(overrides: Record<string, unknown> = {}) {
     selectLimit.mockResolvedValue([]);
@@ -290,8 +284,6 @@ describe('the interim ack', () => {
     expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: ACK }));
   });
 
-  // cm:guard the common case: the answer usually lands first, and an ack posted after it reads as a
-  // second reply to a question already answered.
   it('does NOT post when the turn already finished', async () => {
     await start();
     selectLimit.mockResolvedValue([
@@ -322,9 +314,6 @@ describe('the interim ack', () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  // cm:guard criterion 19's other half: the Forge UI prints `dispatched` and `running` on the thread
-  // itself, so its caller passes no ack at all — and a lane that posted a default one would put the
-  // same fact in the room twice, the second copy indistinguishable from the answer (ISS-1039).
   it('is not scheduled at all when the caller names no ack', async () => {
     await start({ replies: { ...REPLIES, ack: null }, ackAfterMs: null });
     selectLimit.mockResolvedValue([

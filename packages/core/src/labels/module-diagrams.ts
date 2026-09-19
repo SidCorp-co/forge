@@ -69,12 +69,10 @@ function nodeId(prefix: string, index: number): string {
   return `${prefix}${index}`;
 }
 
-// cm:guard every flowchart label goes through here — mermaid reads `"` and `#` inside a label as syntax and answers a parse error rather than a diagram, so a module named `API "v2" #1` is the whole diagram's failure unless its text is escaped at the one place labels are written.
 function quote(text: string): string {
   return `"${text.replace(/["#]/g, (c) => `#${c.codePointAt(0)};`)}"`;
 }
 
-// cm:guard mindmap node text is UNQUOTABLE — `(`, `[` and `{` are the shape delimiters, so `Issue work (3)` parses as a rounded node whose text is `3` and the module's name is silently gone (seen rendered, 2026-09-07). Every bracket becomes a `#nn;` entity here and the count is written with a separator that is not one; putting the count back in parentheses reintroduces exactly that.
 function mindmapText(text: string): string {
   return text.replace(/[#()[\]{}]/g, (c) => `#${c.codePointAt(0)};`);
 }

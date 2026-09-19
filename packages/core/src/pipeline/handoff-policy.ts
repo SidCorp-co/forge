@@ -2,28 +2,6 @@ import type { JobType } from '../db/schema.js';
 import { type HandoffStep, isHandoffStep } from '../memory/step-handoff-schema.js';
 import type { UserPromptPolicyConfig } from './pipeline-config-schema.js';
 
-/**
- * Resolved step-handoff policy with defaults applied.
- *
- * Step-handoff is **default-on system-wide** as of 2026-05-29: projects do
- * NOT need to opt in via `agentConfig.pipelineConfig.states.<state>.userPromptPolicy.handoffs`.
- * Explicit config still wins per-field — a project that sets only
- * `enabled: false` gets the rest of the defaults, etc.
- *
- * The default `injectFromSteps` follows the canonical pipeline order so each
- * downstream state automatically receives every prior step's handoff:
- *
- *   triage  → []                             (root — no prior)
- *   clarify → [triage]
- *   plan    → [triage, clarify]              (repro evidence + root-cause hypothesis)
- *   code    → [triage, plan]
- *   review  → [triage, plan, code]
- *   test    → [triage, plan, code]           (review verdict drives test scope)
- *   fix     → [triage, plan, code, review]
- *
- * clarify's findings flow to plan only — plan distills them into its own
- * handoff, so code/review/test stay lean.
- */
 export interface ResolvedHandoffsPolicy {
   enabled: boolean;
   injectFromSteps: HandoffStep[];
@@ -38,7 +16,6 @@ const DEFAULT_INJECT_BY_STEP: Record<HandoffStep, HandoffStep[]> = {
   review: ['triage', 'plan', 'code'],
   test: ['triage', 'plan', 'code'],
   fix: ['triage', 'plan', 'code', 'review'],
-  // cm:why empty deliberately — `drive` is a whole autonomous turn, so the only handoff worth inheriting is a PRIOR drive attempt's, and carrying context across attempts is the resume axis (ISS-887/ISS-873), not this one. Filling this in here would put a second, silently-different context path beside theirs.
   drive: [],
 };
 
@@ -47,14 +24,6 @@ function defaultInjectFromSteps(jobType: JobType): HandoffStep[] {
   return DEFAULT_INJECT_BY_STEP[jobType];
 }
 
-/**
- * Merge an explicit `userPromptPolicy.handoffs` config (may be undefined) with
- * the system defaults. Used by:
- *   - `prompt/user.ts`     (prompt builder injection + termination block)
- *
- * Keeping the resolution centralised guarantees the call sites agree on
- * what "default-on" means even when a project supplies a partial config.
- */
 export function resolveHandoffsPolicy(
   policy: UserPromptPolicyConfig | null | undefined,
   jobType: JobType,

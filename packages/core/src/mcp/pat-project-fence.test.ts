@@ -1,20 +1,3 @@
-/**
- * ISS-894 — the generic fence in `createMcpServer` is what keeps a
- * project-scoped PAT inside its project across the WHOLE tool surface, and it
- * had no test: every existing MCP test builds `humanPat` with
- * `projectIds: null` / `boundProjectId: null`, so `allow !== null` is false and
- * the branch has never executed once.
- *
- * It mattered most for the fourteen tools that took a device. Until ISS-931 a
- * PAT reached them through a synthesized `ctx.device` carrying the PAT's user,
- * and their handlers asked `assertDeviceOwnerIsMember`, which read only
- * `ownerId` and knew nothing about the token's binding — so this fence, and
- * nothing in those handlers, was what stopped a bound token reading another
- * project. Those handlers now ask `assertPrincipalIsMember`, which reads the
- * allowlist itself, and the cases below assert the two fences agree: the
- * refusal reads NOT_FOUND either way.
- */
-
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -80,7 +63,6 @@ async function connect() {
   return { client, server };
 }
 
-// cm:guard take the result as `unknown` — the SDK types `callTool` as a union whose other arm has no `content`, so a narrower parameter type does not compile and a cast at every call site is what the existing MCP tests do instead.
 function textOf(res: unknown): string {
   const content = (res as { content?: unknown }).content;
   return (content as Array<{ type: string; text: string }> | undefined)?.[0]?.text ?? '';
@@ -103,7 +85,6 @@ describe('a project-bound PAT cannot reach another project over MCP', () => {
     try {
       const res = await client.callTool({ name, arguments: { projectId: FOREIGN } });
       expect(res.isError, name).toBe(true);
-      // cm:guard the refusal must read NOT_FOUND, never FORBIDDEN — a 403 confirms the project exists and turns every one of these tools into an existence oracle for projects the caller cannot see. The wording is the assertion; softening it to a generic "is an error" check would pass while the oracle came back.
       expect(textOf(res), name).toContain('not found or not accessible');
     } finally {
       await client.close();
@@ -118,7 +99,6 @@ describe('a project-bound PAT cannot reach another project over MCP', () => {
         name: 'forge_memory.search',
         arguments: { projectId: BOUND, query: 'x', topK: 1, strategy: 'keyword' },
       });
-      // cm:guard assert what the refusal is NOT, never that the call succeeds — the db is stubbed here, so a bound-project call still fails, just further in. Strengthening this to expect success would make it fail for a reason that has nothing to do with the fence, and the point of the case is only to show the fence is scoped rather than refusing everything.
       expect(textOf(res)).not.toContain('not found or not accessible');
     } finally {
       await client.close();

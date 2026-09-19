@@ -61,7 +61,7 @@ change that re-vendors archmap.** It resolves `node_modules/dependency-cruiser/b
 — the entry point *today's* vendored archmap 0.1.4 spawns. A fixed archmap will spawn
 `bin/dependency-cruiser.mjs`, and the tree will then carry that file and not the old one, so a
 re-vendor alone leaves the prerequisite absent on every run and the gate refusing forever. The
-`cm:edge lockstep` on that entry in `scripts/lib/prerequisite.mjs` names the coupling and is the
+`coupling lockstep` on that entry in `scripts/lib/prerequisite.mjs` names the coupling and is the
 only record of it; the re-vendoring change is where both halves move together.
 
 It fails closed and loudly rather than quietly: the refusal names dependency-cruiser and the file it

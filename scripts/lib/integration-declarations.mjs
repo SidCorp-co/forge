@@ -1,42 +1,3 @@
-// Whether every provider the registry holds answers the questions asked of it.
-//
-// A registry is a single door only while what is behind it is uniform. Until
-// ISS-1071 the capabilities object was optional behind an all-false fallback,
-// so an adapter that declared nothing read as inert to every generic path and
-// said so nowhere — five of seven adapters reached the registry through `as
-// any`. Making the fields required in TypeScript closes that for code the
-// compiler sees; it does not close it for a declaration assembled at run time,
-// spread from a partial, or widened on its way in. This checks the object that
-// actually reaches the map.
-//
-// Two of the rules are not shape rules and are the reason this file exists at
-// all:
-//
-//   · `justification` on a `direct-mcp` arm is ISS-1071 rule 2 — a new provider
-//     defaults to core-mediated, and exporting a project's credential to a
-//     runner box is a decision that gets written down. A `direct-mcp` arm with
-//     an empty justification fails NAMING the provider, because the whole value
-//     of the field is that somebody had to type a sentence.
-//   · `canDispatch` must agree with whether the adapter implements
-//     `dispatchOutbound`. ISS-1062's rule is that a capability is declared or it
-//     is absent, never declared and unimplemented — and until it landed nothing
-//     defended that: `canDispatch` had no reader anywhere in core, six of seven
-//     adapters satisfied a required `dispatchOutbound` with a stub that threw by
-//     name, and github could have declared `true` beside its throwing stub with
-//     all 22 verify checks still green. Both directions fail, because a provider
-//     that implements a dispatch it does not declare is a capability no generic
-//     path will ever reach for.
-//   · `canDeploy` must agree with `@forge/contracts/deploy-capability`. Core's
-//     production image does not carry contracts and a browser build cannot
-//     resolve core, so the deploy capability is written on both sides of the
-//     package boundary on purpose. Asking core's own `providerCanDeploy` here
-//     would be a tautology — it reads this very field — so the comparison is
-//     against the OTHER copy, which is the only one that can disagree.
-//
-// The input is a JSON projection of the live registry rather than the registry
-// itself: the verdict logic is testable from a plain object, and the part that
-// needs a TypeScript runtime stays in the CLI.
-
 export const CAPABILITY_BOOLEANS = [
   'canDispatch',
   'canReceiveWebhook',
@@ -57,11 +18,6 @@ export const SCHEMA_OBJECTS = [
   'patchSecrets',
 ];
 
-// cm:guard these two are checked for DECLARATION and not for truthiness. Null is a legal answer —
-// a provider that stores no rotating credential says so — and `undefined` is a provider that never
-// answered. `rotation.ts` reads this instead of its own per-provider table, so the difference
-// between "declares no primary credential" and "forgot to say" is the difference between a
-// rotation that correctly does nothing and one that silently skips a provider that has one.
 export const SCHEMA_NULLABLE_FIELDS = ['primaryCredentialField', 'previousCredentialField'];
 
 function nonEmptyString(value) {
@@ -104,10 +60,6 @@ function agentPathReasons(path) {
   if (!nonEmptyString(path.serverName)) {
     reasons.push('a direct-mcp agentPath declares no non-empty `serverName`');
   }
-  // cm:guard this refusal names the PROVIDER and not only the field, because the reader who has to
-  // act on it is deciding whether this provider should be direct-mcp at all. "justification is
-  // empty" sends them to add a sentence; "epodsystem is direct-mcp and says why nowhere" sends them
-  // to the question ISS-1071 rule 2 is actually about.
   if (!nonEmptyString(path.justification)) {
     reasons.push(
       "is direct-mcp — its credential is rendered into the runner's MCP config and Forge " +
@@ -124,9 +76,6 @@ function agentPathReasons(path) {
   return reasons;
 }
 
-// cm:guard BOTH directions, and the second one is not pedantry: a provider whose adapter implements
-// `dispatchOutbound` while declaring `canDispatch: false` has a capability every generic path is told
-// it does not have, which is how a face ships and reaches nobody.
 function dispatchReasons(decl) {
   const declared = decl.capabilities?.canDispatch;
   if (typeof declared !== 'boolean') return [];
@@ -169,10 +118,6 @@ function schemaReasons(schemas) {
   return reasons;
 }
 
-// cm:guard the comparison runs for a provider the contract list has never heard of too, and that
-// asymmetry is deliberate: `contractCanDeploy` answers false for an unknown name, so a provider
-// declaring `canDeploy: true` that the contracts copy does not list fails here rather than
-// producing a screen that offers a deploy role the create schema then refuses.
 function deployReasons(decl, contractCanDeploy) {
   const declared = decl.capabilities?.canDeploy;
   if (typeof declared !== 'boolean') return [];
@@ -201,7 +146,6 @@ function deployReasons(decl, contractCanDeploy) {
  * that answers nothing, and neither shows up as anything but silence at the provider's end — which
  * is why they are caught at the gate rather than in a delivery log somebody has to think to open.
  */
-// cm:guard the reverse is a fault too: a header declared with `canReceiveWebhook: false` is a route the filter drops, so the declaration says a delivery is handled and the router never builds the path. ISS-1071's defect was this shape one field over — correct routing for the providers already listed, silence for the new one.
 function webhookReasons(caps) {
   if (!caps) return [];
   const reasons = [];
@@ -251,9 +195,6 @@ export function declarationFaults(report) {
   return faults;
 }
 
-// cm:guard a registry that registered nothing is exit 2 and never exit 0. `registerAllIntegrations`
-// is one call away from being a no-op — an import dropped, a side-effecting module tree-shaken, a
-// throw swallowed — and "no provider is missing a field" is exactly what an empty map reports.
 /** @returns a sentence when the report cannot be judged at all, or null when it can. */
 export function unusableReport(report) {
   if (!Array.isArray(report?.providers)) return 'the probe returned no `providers` array';

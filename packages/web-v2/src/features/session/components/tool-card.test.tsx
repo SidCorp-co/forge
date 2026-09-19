@@ -58,10 +58,6 @@ describe("what a settled card says", () => {
     expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Text · 86 characters");
   });
 
-  // cm:guard a call that COMPLETED carrying nothing is not a call that is still running, and the
-  // difference is the presence of the `result` KEY rather than the truthiness of its value: the
-  // derive's settle writes `output` unconditionally (`agent-stream-parser.ts:mergeMessages`), so
-  // `null`, `""` and `[]` are all legitimate answers from a call that worked.
   it("says a call that returned nothing returned nothing", () => {
     render(<ToolCard tool={call({ result: null })} />);
     expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("No result");
@@ -73,10 +69,6 @@ describe("what a settled card says", () => {
   });
 });
 
-// cm:guard the SAME output-less call, drawn twice: an absent result means "still out" only where
-// the surface says the turn is live. Reading absence alone as running is the lifecycle state being
-// invented, and it would have left every historical call that captured nothing claiming to be in
-// flight forever (implementation consult round 3, F1).
 describe("what a card with no output says", () => {
   const outputless = call({ result: undefined, durationMs: undefined });
 
@@ -112,8 +104,6 @@ describe("what a failed card says", () => {
     expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("ENOENT: no such file");
   });
 
-  // cm:guard the two above are separate outcomes and fail separately: a card can say Failed and
-  // name nothing, or name an error and never say it failed.
   it("still says that it failed when there is no message to show", () => {
     render(<ToolCard tool={call({ isError: true, result: null })} />);
     expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Failed");
@@ -137,9 +127,6 @@ describe("the whole value, on request", () => {
     expect(screen.getByTestId("tool-result-body").textContent).toContain("x".repeat(5_000));
   });
 
-  // cm:guard the body SCROLLS inside its own bounds and wraps what it can, because a tool result
-  // routinely carries an id or a URL with no break in it and the thread's width is the assistant
-  // column's to decide. A card that widens the thread has taken that decision from it.
   it("wraps rather than widening the thread", () => {
     render(<ToolCard tool={call({ result: PROJECT })} />);
     fireEvent.click(screen.getByTestId("tool-result-toggle"));

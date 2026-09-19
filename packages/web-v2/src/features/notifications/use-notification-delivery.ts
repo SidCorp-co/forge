@@ -1,17 +1,5 @@
 "use client";
 
-// Realtime notification delivery bridge (ISS-510).
-//
-// Subscribes to the WS `notification.created` stream and, per the
-// `@forge/contracts` channel matrix, fans each incoming event out to the
-// transient surfaces the bell does NOT cover:
-//   • `toast`   — a clickable on-screen toast (tone from severity).
-//   • `browser` — a native OS notification (when permitted + opted-in + the tab
-//                 is unfocused; see lib/notifications/browser).
-//
-// The persistent bell is driven separately by the event-router's query
-// invalidation, so this hook never touches React Query. Mounted ONCE in the
-// workspace layout, where the issue-routing handler already lives.
 import { useEffect } from "react";
 import { type NotificationSeverity, channelsFor, defaultSeverityForType } from "@forge/contracts/notifications";
 import type { ToastTone } from "@/design/primitives/toast";
@@ -51,10 +39,6 @@ export function planNotificationDelivery(input: {
   };
 }
 
-/** Whether the audible cue should play for a given delivery plan: the sound
- *  piggybacks on the toast/browser decision, so it fires for high-signal types
- *  and stays silent for bell-only/unknown ones. The opt-in gate lives inside
- *  `playNotificationSound`. Exported for tests. */
 export function shouldPlaySound(plan: { toast: boolean; browser: boolean }): boolean {
   return plan.toast || plan.browser;
 }
@@ -62,12 +46,6 @@ export function shouldPlaySound(plan: { toast: boolean; browser: boolean }): boo
 /** The subset of the WS `notification.created` payload this bridge consumes. */
 export interface DeliveryNotification {
   notificationId: string;
-  /**
-   * Whether this event may interrupt. ISS-1063 — records sharing a group key
-   * reach a reader as ONE bell row, and the server sets this false for the
-   * ones that joined a delivery it already announced. Absent means yes, which
-   * is what every ungrouped notification and every older server means.
-   */
   announce?: boolean;
   type: string;
   title: string;
@@ -97,11 +75,6 @@ export function useNotificationDelivery(
       const d = env.data as DeliveryNotification;
       if (!d || typeof d.type !== "string") return;
 
-      // cm:guard the bell refreshes on every event (the router invalidates on the
-      // event name alone); only the interrupting channels are gated here. A grouped
-      // delivery of fifteen parked issues is one toast, one sound and one browser
-      // notification, because being told fifteen times about one cause is the thing
-      // the grouping exists to stop.
       if (d.announce === false) return;
 
       const plan = planNotificationDelivery(d);

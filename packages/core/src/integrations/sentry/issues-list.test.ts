@@ -1,11 +1,3 @@
-/**
- * ISS-1085 slice 3 — the Sentry issue LISTING: the request core issues, and the confinement that
- * makes a declared target label load-bearing rather than decorative.
- *
- * Its own file because `issues.test.ts` reached the 500-line budget: these cases share that file's
- * subject but none of its assertions, and the scaffolding below is deliberately a second copy
- * rather than an import, so neither file can silently change the other's fixture.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const recordDeliveryMock = vi.fn();
@@ -258,9 +250,6 @@ describe('nextSentryCursor', () => {
     expect(nextSentryCursor('<https://x>; rel="next"; results="true"; cursor="abc"')).toBe('abc');
   });
 
-  // cm:guard Sentry ALWAYS emits a rel="next"; `results="false"` is the only thing that says the
-  // page is empty. Reading the header's presence as "there is more" would make every listing walk
-  // to its page bound and report itself incomplete on a complete answer.
   it('answers null where the next page has no results, although the link is present', () => {
     expect(nextSentryCursor('<https://x>; rel="next"; results="false"; cursor="abc"')).toBeNull();
   });
@@ -337,10 +326,6 @@ describe('listSentryIssues — a walk that fails part way keeps what it decided'
     }) as unknown as typeof fetch;
   }
 
-  // cm:guard this drives the REAL listing. An earlier version of this assertion built the error by
-  // hand in the intake test and passed against a `listSentryIssues` that filled the partial with
-  // nothing — the mutation that empties it survived. What is asserted here is that the production
-  // walk puts its own findings on the failure.
   it('throws carrying the pages walked and the refusals already named', async () => {
     answerThenFail(
       [

@@ -12,9 +12,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard every vector here is 1536 zeros with ONE index set, and the ordering assertions depend on that: cosine distance between two such vectors is a step function of whether their hot indices match, so a "realistic" random vector makes the expected order non-deterministic and the tests flake instead of failing.
-// cm:guard the embeddings client is stubbed through `resetEmbeddingsClient` and NOT mocked at the module boundary — the route must run its real error path, which is how `search: 503 when embeddings circuit breaker is open` can assert on the breaker at all.
-
 const DIM = 1536;
 
 const ENV_DEFAULTS: Record<string, string> = {
@@ -38,8 +35,6 @@ function hotVector(hotIdx: number, mag = 1): number[] {
   return v;
 }
 
-// cm:guard wait on something the indexer DID do with this, never a bare setTimeout — the write is queueMicrotask-detached, so a fixed sleep races it plus a DB round trip (measured 2026-08-13: `setTimeout(r, 50)` read count '0' under the full parallel suite, green 11/11 alone)
-//   a wait on something the indexer must NOT have done is the opposite case and stays a fixed sleep: polling a never-true predicate only returns at the deadline, and a short sleep there can only false-PASS
 async function waitFor(predicate: () => Promise<boolean> | boolean, label: string) {
   const deadline = 5000;
   const step = 25;
@@ -209,7 +204,6 @@ describe('F3 memory search + indexer integration', () => {
     expect(typeof body.took_ms).toBe('number');
   });
 
-  // cm:guard assert on `strategy` in the RESPONSE, never on the hits — the route validated this field and did not forward it, so the service defaulted to 'semantic' and reported 'semantic' back while the caller had asked for something else (ISS-894), and a hits-only assertion passes on the broken route and the fixed one alike.
   it('search: the requested strategy reaches the service and is reported back', async () => {
     const { projectId, token } = await seedMember();
 
@@ -438,7 +432,6 @@ describe('F3 memory search + indexer integration', () => {
     });
     await new Promise((r) => setTimeout(r, 50));
 
-    // cm:why the indexer subscribes to issue lifecycle only: in a pipeline project comments are mostly bot status chatter with no automatic read path, and an agent persists a comment-worthy lesson explicitly as source:'knowledge' (removed for perf, a8d5d17b)
     expect(embedCalls).toBe(0);
     const rows = await harness.db.execute<{ count: string }>(
       sql`SELECT count(*)::text AS count FROM memories WHERE source_ref = ${commentId}`,

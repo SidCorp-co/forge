@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 //
-// cm:why the hazard this file covers is the SAVE, not the field — a config PATCH replaces the whole `targets` array, so a save that drops `healthUrl` disarms the post-deploy health gate on a target an operator armed, and nothing in the UI would show it (ISS-971)
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";

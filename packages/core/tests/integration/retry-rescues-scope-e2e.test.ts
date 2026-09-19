@@ -135,7 +135,6 @@ describe('ISS-1022 retry_rescues_since', () => {
     expect(fromFn[0]?.project_id).toBe(a.id);
     expect(fromFn[0]?.failure_reason).toBe('the original failure, filed under B');
 
-    // cm:guard B owns only the ancestor job, so it is told about no rescue at all: a rescue belongs to the project of the job that succeeded, and the crossed-project chain is the case that separates anchor-bounding from output-filtering (ISS-1022).
     expect(await viaFunction([b.id], "now() - interval '30 days'")).toEqual([]);
     expect(await viaView([b.id], 30)).toEqual([]);
   });
@@ -231,7 +230,6 @@ describe('ISS-1022 retry_rescues_since', () => {
     expect(all).toHaveLength(2);
     expect(new Set(all.map((r) => r.project_id))).toEqual(new Set([a.id, b.id]));
 
-    // cm:guard empty is NOT the same answer as null, and this is the assertion that keeps it so: a caller whose visible-project list came back empty must be told nothing, never the fleet.
     expect(await viaFunction([], "now() - interval '30 days'")).toEqual([]);
   });
 

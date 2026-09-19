@@ -53,17 +53,6 @@ beforeEach(async () => {
   projectId = (await createTestProject(harness.db, ownerId, { orgId: org.id })).id;
 });
 
-/**
- * The `postgres` handle the backfill takes, configured as `migrate.ts` leaves it.
- *
- * cm:guard the `drizzle()` wrapper is the fixture and not decoration. Drizzle's
- * postgres-js driver replaces that client's json serializer with an identity
- * one, and `migrate.ts` builds a drizzle instance over this very client — so in
- * production the backfill ALWAYS writes through the identity serializer and
- * `sql.json` throws there for every array. A suite that handed it a clean client
- * exercised a configuration no deploy has: measured 2026-09-17, every case here
- * passed while the container died on its first row.
- */
 async function rawSql() {
   const postgres = (await import('postgres')).default;
   const { drizzle } = await import('drizzle-orm/postgres-js');
@@ -72,15 +61,6 @@ async function rawSql() {
   return client;
 }
 
-/**
- * The handle as the DEPLOY hands it over: drizzle's migrator has just run on it.
- *
- * cm:guard the migrator is part of the fixture and not scenery. Measured
- * 2026-09-17 on a real container path: after `migrate()` has used this client,
- * `sql.json` on it throws for every array it is given, so the backfill died on
- * its first row — on a client the suite had never migrated, every case passed.
- * The one thing that would have met it is a boot.
- */
 async function migratedSql() {
   const sql = await rawSql();
   const { drizzle } = await import('drizzle-orm/postgres-js');
@@ -150,9 +130,6 @@ describe('the canonical-transcript backfill', () => {
     }
 
     const messages = await messagesOf(id);
-    // cm:guard read back through the reader that lost its `role` branch, because
-    // that is the claim: criterion 10 is "a session stored in the old shape still
-    // renders", and the shape the renderer needs is the only thing that proves it.
     const { messageRoleToTurnRole } = await import('../../src/agent-sessions/turns-helpers.js');
     expect(messages.map((m) => messageRoleToTurnRole(m))).toEqual(['user', 'assistant']);
     expect(messages[1]?.blocks).toEqual([
@@ -161,10 +138,6 @@ describe('the canonical-transcript backfill', () => {
     ]);
   });
 
-  // cm:guard the TURN table is converted too, and leaving it out is the half that
-  // would have shipped silently: the web formatter reads a turn row's own entry,
-  // so an unconverted one renders every stored user turn as an agent row the
-  // moment `entryRole` loses its branch.
   it('converts the turn rows as well as the blob', async () => {
     const id = await sessionWithMessages([{ type: 'user', content: 'hi' }]);
     const turnId = await turnOn(id, { role: 'user', content: 'hi' });
@@ -191,9 +164,6 @@ describe('the canonical-transcript backfill', () => {
     } finally {
       await sql$.end();
     }
-    // cm:guard the refusal NAMES the row so an operator can act on it, and the
-    // bad entry is still there afterwards. A migration that deleted it to make
-    // the ALTER succeed would have lost somebody's conversation to a deploy.
     const stillThere = await messagesOf(bad);
     expect(stillThere[1]).toMatchObject({ role: 'moderator' });
     expect(good).toBeTruthy();
@@ -211,10 +181,6 @@ describe('the canonical-transcript backfill', () => {
     expect(await messagesOf(id)).toHaveLength(1);
   });
 
-  // cm:guard the inverse is what makes the rollback a rewrite rather than a
-  // guess. The forward pass edits rows IN PLACE, so restoring the legacy readers
-  // does not restore the rows they read — and serving `role`-shaped readers
-  // against canonical rows is the class of failure ISS-807 was.
   it('puts every converted entry back exactly as it stood', async () => {
     const before = [
       { role: 'user', content: 'fix the bug' },
@@ -235,12 +201,6 @@ describe('the canonical-transcript backfill', () => {
 });
 
 describe('the deploy refuses until the backfill has actually finished', () => {
-  // cm:guard the gate is the MARKER and never the migration ledger. `migrate()`
-  // records a migration when its DDL commits, so a boot that applied the DDL and
-  // then threw on a row it could not represent would answer "already done" for
-  // ever — the refusal that stops the deploy would last exactly one attempt, and
-  // every boot after it would serve canonical-only readers a table still holding
-  // legacy rows.
   it('refuses again on the next boot, and marks only once the conversion returns', async () => {
     const good = await sessionWithMessages([{ role: 'user', content: 'hi' }]);
     const bad = await sessionWithMessages([{ role: 'moderator', content: 'nope' }]);
@@ -267,10 +227,6 @@ describe('the deploy refuses until the backfill has actually finished', () => {
       // And a boot after that does not pay for the scan again.
       expect(await once(raw)).toEqual({ ran: false, reason: 'already-done' });
 
-      // cm:guard the WAY BACK clears the marker. `revert-canonical` is what a
-      // rollback runs; leaving the marker standing would make the next boot of
-      // this release skip the forward pass and start canonical-only readers
-      // against the legacy rows the inverse just restored.
       await revert(raw);
       expect((await messagesOf(good))[0]).toMatchObject({ role: 'user' });
       const ranAgain = await once(raw);

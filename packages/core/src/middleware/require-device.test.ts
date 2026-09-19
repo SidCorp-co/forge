@@ -92,7 +92,6 @@ describe('requireDevice middleware', () => {
     expect(vi.mocked(verifyPat)).toHaveBeenCalledWith(PAT_TOKEN);
   });
 
-  // cm:guard the assertion that carries wave 3 of ISS-932: a valid PAT with no `device_id` must be REFUSED, never accepted as its owner. Accepting it is the `device.ownerId` fiction returning — a person's whole account authority reachable from a box's routes — and a bare `toBe(401)` would not tell that apart from a token that simply failed to verify, which is why `verifyPat` is asserted to have succeeded first.
   it('refuses a valid PAT that carries no device, naming the class and the remedy', async () => {
     vi.mocked(verifyPat).mockResolvedValue({
       row: { ...patRow, name: 'my laptop', deviceId: null },
@@ -109,7 +108,6 @@ describe('requireDevice middleware', () => {
     expect(body.message).toMatch(/forge login/i);
   });
 
-  // cm:guard revoking a box and revoking its token are two writes, so this asserts the SECOND defence: a token that still verifies must not reach a revoked device. Deleting this check leaves an unpaired machine authenticated for as long as its token outlives the revoke.
   it('refuses a token whose device row is revoked, even though the token verifies', async () => {
     vi.mocked(verifyPat).mockResolvedValue({ row: patRow, ownerKind: 'human' } as never);
     selectLimit.mockResolvedValue([{ ...deviceRow, status: 'revoked' }]);

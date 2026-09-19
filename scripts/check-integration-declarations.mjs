@@ -1,41 +1,4 @@
 #!/usr/bin/env node
-// Walk the LIVE integration registry and refuse a declaration that is missing a
-// field the generic paths read.
-//
-// It walks the registry rather than the source because the source is not what
-// runs: a declaration can be spread from a partial, widened on its way in, or
-// assembled by a helper, and `tsc` has signed off on all three. What reaches the
-// map is what every generic path will ask, so that is what is measured.
-//
-// The rule with teeth is ISS-1071 rule 2: a `direct-mcp` arm renders the
-// project's credential into a runner box's MCP config, putting Forge outside the
-// call path, and a provider taking that route says in its own declaration why it
-// offers no core-mediated one. An empty `justification` fails NAMING the
-// provider. Deleting the field does not weaken a message — it removes the only
-// place that decision is written down.
-//
-// ## How a .mjs script reaches a TypeScript registry, and the one trap in it
-//
-// It generates a probe, spawns `tsx` on it, and reads a JSON projection printed
-// between two sentinels. Core's env schema validates at import time, so the
-// probe is given synthetic values for the three variables it requires: a
-// conformance checker must not read an operator's DATABASE_URL and must not be
-// able to reach a real database.
-//
-// The probe is written INSIDE the entrypoint's own package, and that is
-// load-bearing rather than tidy. Measured 2026-09-17: a probe under `scripts/`
-// or under the system temp directory importing
-// `packages/core/src/integrations/registry.ts` gets a SECOND instance of that
-// module — `registerIntegration === registerIntegration` is false across the
-// boundary, so the registrar fills one Map and the probe reads an empty one, and
-// the checker reports "the registry holds no declaration" about a registry that
-// holds eight. Two files in `scripts/` sharing a module proved it is not a tsx
-// cache quirk, and moving the probe into `packages/core/` fixed it outright. A
-// wrong answer that looks exactly like the failure this checker exists to
-// report is worth these eleven lines.
-//
-// Modes: --all (the only mode — a registry is whole or it is not)
-// Exit: 0 every declaration answers · 1 one does not · 2 could not run.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -76,13 +39,6 @@ function specifier(fromDir, target) {
   return withJs.startsWith('.') ? withJs : `./${withJs}`;
 }
 
-// cm:guard the probe prints between two sentinels rather than printing bare JSON. Importing core's
-// module tree brings the logger with it, and one pino line on stdout at import time would turn a
-// working checker into `Unexpected token` — a message about JSON, from which nobody concludes that
-// a module logged while loading.
-// cm:guard the projection is TYPES and raw values, never the objects themselves: a zod schema and a
-// `buildEntry` closure do not survive JSON, and `JSON.stringify` drops a function silently, which
-// would make "declares no buildEntry" and "declares one" print identically.
 function probeSource({ entrypoint, registry, contract, registerFn }) {
   return `import { ${registerFn} } from '${entrypoint}';
 import { listIntegrations } from '${registry}';
@@ -154,9 +110,6 @@ const entrypointRel = cfg.entrypoint ?? 'packages/core/src/integrations/register
 const registerFn = cfg.registerFn ?? 'registerAllIntegrations';
 const entrypoint = join(ROOT, entrypointRel);
 
-// cm:guard an absent entrypoint is exit 2 and never exit 0. "No declaration is faulty" is exactly
-// what a registry nobody populated reports, and the two are indistinguishable downstream — which is
-// the fail-closed contract `verify.mjs` holds every checker here to.
 if (!existsSync(entrypoint)) {
   die(
     `${entrypointRel} not found — the registry could not be populated, so nothing was walked.\n` +
@@ -189,9 +142,6 @@ try {
     maxBuffer: 32 * 1024 * 1024,
     env: {
       ...process.env,
-      // cm:guard synthetic and NOT inherited. A conformance checker that read the operator's
-      // DATABASE_URL could reach a live database from a gate; port 1 on loopback is a value no pool
-      // can connect to. The registry needs the module graph, never a query.
       NODE_ENV: 'test',
       DATABASE_URL: 'postgres://conformance:conformance@127.0.0.1:1/conformance',
       JWT_SECRET: 'conformance-checker-value-which-is-not-a-secret',
@@ -199,9 +149,6 @@ try {
     },
   });
 } finally {
-  // cm:guard `finally`, because the probe lives in a package source tree rather than in /tmp: a
-  // throw between the write and the spawn would otherwise leave a stray .mts inside packages/core
-  // for every other gate to trip over.
   rmSync(dir, { recursive: true, force: true });
 }
 

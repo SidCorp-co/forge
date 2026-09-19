@@ -52,9 +52,6 @@ afterAll(async () => {
   if (harness) await harness.cleanup();
 });
 
-// cm:why a fresh PROJECT per case rather than a truncate: every row this file writes is keyed on
-// one project, so a new project is full isolation, and `truncateAll` over ~300 tables costs 46s
-// per case on a cold database — which is a hook timeout rather than a test.
 beforeEach(async () => {
   const user = await createTestUser(harness.db, { email: `rel-${Date.now()}@test.forge.local` });
   const project = await createTestProject(harness.db, user.id);
@@ -93,9 +90,6 @@ describe('runner_releases — opening one', () => {
     expect(outcome.opened?.readings).toEqual([]);
   });
 
-  // cm:guard criterion 24. A preflight that refused wrote nothing to the repository, so the same
-  // version must be runnable again — and the re-arm has to CLEAR the previous attempt's verdict,
-  // or the second run inherits the first one's failure sentence.
   it('re-arms a row whose tag never reached the repository', async () => {
     const first = await open();
     await store.appendReading(String(first.opened?.id), 1, 'check_crate_version: refused');
@@ -113,11 +107,6 @@ describe('runner_releases — opening one', () => {
     expect(second.opened?.readings).toEqual([]);
   });
 
-  // cm:guard the other half of the same WHERE, and the one a three-value tag state hid: a row
-  // still IN FLIGHT is not a row to re-arm, whatever its tag state reads. Without
-  // `settled_at IS NOT NULL` two overlapping starts share one row — the second resets the first's
-  // step, readings and deadline under it — and whichever refusal lands first settles the row
-  // `absent` while the other caller still has a create request to send.
   it('refuses a second start while the first is still running', async () => {
     const first = await open();
     await store.advance(String(first.opened?.id), 1, { step: 'check_tag_absent' });
@@ -129,9 +118,6 @@ describe('runner_releases — opening one', () => {
     expect(second.held?.settledAt).toBeNull();
   });
 
-  // cm:guard criterion 22, and the reason it is a statement and not a branch: two callers that
-  // both read `absent` and then both insert would both cut. The `WHERE` is what makes the second
-  // one lose inside Postgres.
   it('refuses a second attempt once the tag exists', async () => {
     const first = await open();
     await store.advance(String(first.opened?.id), 1, { tagState: 'present', status: 'building' });
@@ -154,9 +140,6 @@ describe('runner_releases — opening one', () => {
     expect(second.held?.tagState).toBe('unknown');
   });
 
-  // cm:guard the settled-and-unread row is the shape a preflight that could not even READ the tag
-  // leaves, and it re-arms for the same reason the `absent` one does: no create request left this
-  // process, so the same version is still free to cut.
   it('re-arms a settled row whose tag was never read', async () => {
     const first = await open();
     await store.settleFailed(String(first.opened?.id), 1, {
@@ -179,8 +162,6 @@ describe('runner_releases — opening one', () => {
 });
 
 describe('runner_releases — settling one, exactly once', () => {
-  // cm:guard criterion 14 — the SAME completed delivery arriving twice. The second settle answers
-  // `false` and changes nothing, which is why the caller reports 0 rows moved rather than 1.
   it('lets the first settle win and the second write nothing', async () => {
     const opened = (await open()).opened;
     const id = String(opened?.id);
@@ -230,9 +211,6 @@ describe('runner_releases — settling one, exactly once', () => {
     expect(row?.step).toBe('await_build');
   });
 
-  // cm:guard `advance` is conditional for the same reason the settles are: the deadline pass can
-  // name a release between two steps of a sequence still running, and that sequence must not then
-  // move a row somebody already closed.
   it('refuses an advance over a settled row', async () => {
     const id = String((await open()).opened?.id);
     await store.settleFailed(id, 1, { step: 'resolve_commit', failure: 'stopped' });
@@ -241,9 +219,6 @@ describe('runner_releases — settling one, exactly once', () => {
   });
 });
 
-// cm:guard postgres-js puts the constraint's name on the ERROR rather than in its message, so an
-// assertion on `toThrow(/name/)` passes for any failed query at all — including a typo in the SQL
-// under test. Every case below therefore reads `constraint_name`.
 async function violates(name: string, run: Promise<unknown>) {
   const err = (await run.then(() => null).catch((e) => e)) as
     | (Error & { constraint_name?: string; cause?: { constraint_name?: string } })
@@ -253,9 +228,6 @@ async function violates(name: string, run: Promise<unknown>) {
 }
 
 describe('runner_releases — what the database itself refuses', () => {
-  // cm:guard `runner_releases_published_chk`. This is the last line of defence for
-  // `VISION: state-never-lies`: a caller that writes `published` over a tag nothing confirmed is
-  // refused by Postgres rather than by a code path somebody can forget to call.
   it('refuses `published` over a tag of unknown existence', async () => {
     const id = String((await open()).opened?.id);
     await store.advance(id, 1, { tagState: 'unknown' });
@@ -280,8 +252,6 @@ describe('runner_releases — what the database itself refuses', () => {
     );
   });
 
-  // cm:guard `runner_releases_settled_chk`. A terminal row with no clock is a release nobody can
-  // date, and an in-flight row carrying one is a release the deadline pass will never reach.
   it('refuses a terminal row with no settled_at, and an in-flight row with one', async () => {
     const id = String((await open()).opened?.id);
     await violates(
@@ -322,8 +292,6 @@ describe('runner_releases — the reads the rest of the path makes', () => {
     expect(await store.inFlightAtCommit(bindingId, 'abc1234')).toEqual([]);
   });
 
-  // cm:guard the deadline pass's own selection, and `settled_at IS NULL` in it is why a release
-  // already named is never named twice.
   it('offers the deadline pass every unsettled row past its clock, and no settled one', async () => {
     const overdue = String((await open()).opened?.id);
     await harness.db.execute(sql`
@@ -349,10 +317,6 @@ describe('runner_releases — the reads the rest of the path makes', () => {
 });
 
 describe('runner_releases — settling under the reading it was selected on', () => {
-  // cm:guard the deadline pass reads a row and settles it in two statements, and the sequence it
-  // races moves the row between them. `ifUnchanged` is what makes the settle lose that race in
-  // Postgres rather than in a branch: without it the older step and a sentence saying nothing was
-  // written land on a row that has a create request in flight.
   it('refuses a settle whose reading the row has already left', async () => {
     const id = String((await open()).opened?.id);
     await store.advance(id, 1, { step: 'cut_tag', status: 'cutting', tagState: 'unknown' });
@@ -379,11 +343,6 @@ describe('runner_releases — settling under the reading it was selected on', ()
 });
 
 describe('runner_releases — the commit the tag was read at', () => {
-  // cm:guard `commit_sha` is what this release ASKED for and `tag_commit_sha` is what the tag was
-  // READ at, and they differ on exactly the case the row is refusing: a tag that was already
-  // there. The observed one is stored rather than printed once, because every later reader — the
-  // next start's refusal, the deadline pass, the API — rebuilds the sentence from the row, and a
-  // row keeping only the requested commit rebuilds it naming a commit nobody saw the tag at.
   it('keeps the observed target apart from the requested one', async () => {
     const id = String((await open()).opened?.id);
     await store.advance(id, 1, { commitSha: 'abc1234' });
@@ -423,12 +382,6 @@ describe('runner_releases — the commit the tag was read at', () => {
 });
 
 describe('runner_releases — the attempt a write was issued for', () => {
-  // cm:guard the re-arm reuses the ROW, so `settled_at IS NULL` becomes true again and the step and
-  // tag state can come back round to the pair an older reader is holding. Without a number on the
-  // attempt those two writers are indistinguishable in SQL: a caller still inside the attempt the
-  // deadline ended, or a sweep that selected it, then advances, settles and appends readings into
-  // somebody else's live release. This is the ABA the recheck named, and the fence is a column
-  // rather than a branch because both writers are ordinary and neither is wrong to try.
   it('refuses every write from the attempt a re-arm replaced', async () => {
     const first = await open();
     const id = String(first.opened?.id);
@@ -455,8 +408,6 @@ describe('runner_releases — the attempt a write was issued for', () => {
     expect(now?.settledAt).toBeNull();
     expect(now?.readings).toEqual([]);
 
-    // cm:guard the same writes under the CURRENT attempt land, so the fence is about identity and
-    // not about refusing everything after a re-arm.
     expect(await store.advance(id, 2, { step: 'cut_tag', tagState: 'unknown' })).toBe(true);
   });
 

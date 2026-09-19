@@ -39,17 +39,6 @@ interface AppendedTurn {
   role: AgentSessionTurnRole;
 }
 
-// Per-session debouncer for streaming appends. The first append (new turn id)
-// always fires immediately so the client learns the id; subsequent appends to
-// the same turn coalesce into a tail-debounced 100ms broadcast to keep WS load
-// manageable while the runner streams an assistant reply token-by-token.
-//
-// Single-process optimisation: the timer map is local to this Node process. In
-// a multi-replica deploy, two replicas handling streaming PATCHes for the same
-// session would each debounce independently — i.e. up to N broadcasts per
-// 100ms window instead of one. That's still bounded and acceptable; if it ever
-// matters, escalate the coalescing into the WS publish layer (Redis pub/sub or
-// equivalent) so all replicas share a single tail timer per session.
 const TAIL_DEBOUNCE_MS = 100;
 const pendingTailBroadcast = new Map<string, NodeJS.Timeout>();
 

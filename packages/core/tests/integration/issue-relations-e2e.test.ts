@@ -147,7 +147,6 @@ describe('ISS-868 issue relations read', () => {
     expect(edge?.otherMergedAt).toBeInstanceOf(Date);
   });
 
-  // cm:guard report the blocker's status and stamp SEPARATELY and never fold them into one verdict — a blocker that merged and then bounced to `reopen` keeps its stamp (merged_at is COALESCE-once and never cleared), so the stamp alone says "landed" about code that is now suspect. Whoever reads this decides what the pair means; the row's job is to carry both.
   it('reports a reopened blocker with its merge stamp intact', async () => {
     const blocker = await insertIssue(611, 'reopen');
     const dependent = await insertIssue(612);

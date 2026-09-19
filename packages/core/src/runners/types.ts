@@ -57,30 +57,9 @@ export interface DispatchInput {
     dispatchedAt: Date;
     /** `jobs.attempts` — which try this is. */
     attempts: number;
-    // cm:guard `jobs.created_by` is `onDelete: 'restrict'`, so the person who filed the work can never be deleted out from under a live job. Since ISS-932 wave 4 it is NOT the principal any credential is minted as — a box holds an agent-owned one and this column only records who asked.
     createdBy: string;
-    /**
-     * Linked `agent_sessions` row id (when the job was created via a pipeline
-     * transition). The runner uses `jobId` as its local session key
-     * but needs `agentSessionId` to PATCH the canonical session row on
-     * completion (messages, claudeSessionId, diff). Optional because PM /
-     * direct dispatches may not have a linked session yet.
-     */
     agentSessionId?: string | null;
-    /**
-     * Pre-composed runner prompt (`/<skill> <issueId>`). Stamped on the job
-     * payload at insert time by `buildJobPromptString`; the dispatcher
-     * surfaces it here so adapters can forward it as a top-level field on
-     * `job.assigned` for typed consumers. May be null on legacy rows that
-     * pre-date ISS-115.
-     */
     promptString?: string | null;
-    /**
-     * Pipeline preamble (PIPELINE_RULES + TOOL_REFERENCE + project config)
-     * built server-side by `buildPipelinePreamble`. Forwarded to Claude CLI
-     * via `--append-system-prompt`. Stable across jobs of the same project,
-     * so Claude API prompt cache hits for the 2nd+ job in a 5-min window.
-     */
     systemPrompt?: string | null;
   };
   runner: Runner;

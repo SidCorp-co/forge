@@ -16,12 +16,14 @@ import {
   IconButton,
   MonoTag,
   PageContainer,
+  PageTitle,
   Select,
   Skeleton,
   Spinner,
   StatusChip,
   Toggle,
   Tooltip,
+  Input,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import {
@@ -199,9 +201,9 @@ function EnableForm({
       {cadencePreset === "custom" && (
         <div>
           <p className="fg-label mb-1 text-subtle">Cron expression</p>
-          <input
+          <Input
             type="text"
-            className="w-full rounded-md border border-line bg-surface px-3 py-2 fg-body-sm font-mono focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="font-mono"
             placeholder="e.g. 0 9 * * 1"
             value={customCron}
             onChange={(e) => setCustomCron(e.target.value)}
@@ -399,7 +401,7 @@ export function ImproveScreen({ scope }: ImproveScreenProps) {
   return (
     <PageContainer className="min-h-dvh">
       <header className="mb-6">
-        <h1 className="fg-h2">Improve</h1>
+        <PageTitle className="fg-h2">Improve</PageTitle>
         <p className="fg-body-sm mt-1">
           Enable improvement messages to automatically propose or apply skill refinements for this
           project.

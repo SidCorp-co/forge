@@ -180,7 +180,7 @@ export function Select({
                 onMouseEnter={() => !o.disabled && setActive(i)}
                 onClick={() => commit(i)}
                 className={cn(
-                  "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px]",
+                  "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5",
                   o.disabled && "cursor-not-allowed opacity-50",
                   isActive && !o.disabled ? "bg-accent-tint text-accent-text" : "text-fg",
                 )}

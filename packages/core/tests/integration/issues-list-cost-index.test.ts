@@ -1,17 +1,3 @@
-/**
- * ISS-1015 criterion 4, ISS-1081 — the issues-list per-issue cost rollup is
- * planned on the statement the route sends, and no likeness of it.
- *
- * This lived in `usage-session-index.test.ts` until ISS-1081, and the criterion
- * was taken there against a hand-written `INNER JOIN ... ON u.session_id =
- * p.session_id`. That predicate qualified its right-hand side; the statement
- * drizzle emits for `issueCostRollupQuery` did not, so the plan-shape assertion
- * stayed green while every execution of the real query was refused with
- * `column reference "session_id" is ambiguous` and the Issues list answered 500
- * on every non-empty project. What separates this file from that one is only
- * which query it explains.
- */
-
 import { type SQL, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setupTestDatabase, type TestDatabase } from '../helpers/index.js';
@@ -23,7 +9,6 @@ import {
   seedOwnerProject,
 } from './usage-session-ground.js';
 
-// cm:guard `issueCostRollupQuery` is imported AFTER `DATABASE_URL` names the harness, because `src/issues/search.ts` reads `db` off the environment at import. A static import would bind the module to whatever `DATABASE_URL` the shell happened to carry, and the plan below would then be read against a database that is not this fixture.
 async function loadRollupQuery(url: string): Promise<(ids: string[]) => { getSQL: () => SQL }> {
   process.env.DATABASE_URL = url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
@@ -57,18 +42,6 @@ describe('ISS-1015 criterion 4 · the issues-list cost rollup', () => {
 
   const plan = (query: SQL) => explain(harness.db, query);
 
-  // Both widths, because they answer differently and both answers are correct.
-  //
-  // cm:guard a broad page is NOT asserted to be an index scan, and forcing one would
-  // be the wrong fix. One issue resolves about 4 sessions and takes a nested loop over
-  // the index; a 25-issue page resolves about 100 (224 on beta, of 15,657), and at that
-  // width Postgres legitimately prefers to hash `usage_records` whole rather than probe
-  // the index a hundred times. What this change buys the wide case is not an index scan
-  // but an uncast join key: measured on beta 2026-09-17 over a real 25-issue page, the
-  // same rollup falls from 47.2ms at cost 5,273.81 (Merge Join on `(u.session_id)::uuid`)
-  // to 6.2ms at cost 2,709.30. The criterion was written claiming an index scan at both
-  // widths; that was wrong about the planner and is corrected on the issue rather than
-  // relaxed here to match what got built.
   it('serves the issues-list rollup from the index for one issue', async () => {
     expectIndexServed(await plan(issueCostRollupQuery([issueId(7)]).getSQL()));
   });

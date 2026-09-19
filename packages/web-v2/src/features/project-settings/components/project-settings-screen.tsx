@@ -6,15 +6,16 @@
 // shared `useTabParam` hook (ISS-349) so a tab is linkable and the strip matches
 // the other tabbed screens, mirroring the workspace SettingsScreen.
 import {
-	Badge,
-	EmptyState,
-	ErrorState,
-	MonoTag,
-	PageContainer,
-	ProjectLoader,
-	ProjectMark,
-	ScreenTabs,
-	type TabItem,
+  Badge,
+  EmptyState,
+  ErrorState,
+  MonoTag,
+  PageContainer,
+  PageTitle,
+  ProjectLoader,
+  ProjectMark,
+  ScreenTabs,
+  type TabItem,
 } from "@/design";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import {
@@ -144,7 +145,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 								size={40}
 							/>
 							<div className="min-w-0 flex-1">
-								<h1 className="fg-h2 truncate">Project settings</h1>
+								<PageTitle className="fg-h2 truncate">Project settings</PageTitle>
 								<div className="mt-1 flex items-center gap-2">
 									<MonoTag>{project.slug}</MonoTag>
 									<Badge tone={canEdit ? "accent" : "neutral"}>

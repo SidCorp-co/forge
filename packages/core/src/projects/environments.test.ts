@@ -17,9 +17,6 @@ const EMPTY = {
 };
 
 describe('normalizeEnvironments — what a column that says nothing means', () => {
-  // cm:guard `null` here stands for the SQL null a column with no row value holds; the other four
-  // are values a client or a migration can actually store. A reader that handled only the first
-  // would throw on the rest, which is the shape this consolidation exists to make impossible.
   it.each([
     ['SQL null', null],
     ['undefined', undefined],
@@ -62,9 +59,6 @@ describe('normalizeEnvironments — the preview side', () => {
 });
 
 describe('normalizeEnvironments — the live side', () => {
-  // cm:guard `live` is ALWAYS an object while `preview` may be null, and the asymmetry is the
-  // point: every project has a live side, so `live.url === null` is a question somebody can answer
-  // rather than a statement that there is nothing to answer.
   it.each([
     ['absent', {}],
     ['JSON null', { live: null }],
@@ -102,10 +96,6 @@ describe('normalizeEnvironments — the live side', () => {
 });
 
 describe('normalizeEnvironments — a READING, not the stored value', () => {
-  // cm:guard the normaliser answers the four named fields and NOTHING else, so a caller that needs
-  // an unknown key reads the column rather than the reading. Widening it to spread the stored blob
-  // would make the MCP `get` response carry whatever a client one version ahead had written,
-  // which is the opposite of the locked shape that handler promises.
   it('drops a key the schema does not name', () => {
     const out = normalizeEnvironments({ futureKnob: 'x', limits: 'y' });
     expect(out).not.toHaveProperty('futureKnob');
@@ -138,8 +128,6 @@ describe('environmentsPatchSchema — null is a value for nine fields and for no
     expect(environmentsPatchSchema.safeParse(value).success).toBe(true);
   });
 
-  // cm:guard a null INSIDE a row is a missing required string and not a cleared optional one.
-  // Nothing downstream could tell the two apart, so the distinction has to hold at the door.
   const NOT_NULLABLE: [string, unknown][] = [
     ['preview.urls', { preview: { urls: null } }],
     ['testCredentials', { testCredentials: null }],
@@ -156,9 +144,6 @@ describe('environmentsPatchSchema — null is a value for nine fields and for no
 });
 
 describe('environmentsPatchSchema — the catchall, at every level', () => {
-  // cm:guard the row-level catchall is the ONE row rule ISS-1069 changed, and it is a fix rather
-  // than a copy: the top level passed unknown keys through so a client one version ahead is not
-  // truncated by this one, and one level down a plain `z.object` stripped them silently.
   it('passes an unknown key through at the top level, inside a side, and inside a row', () => {
     const parsed = environmentsPatchSchema.parse({
       topKnob: 't',

@@ -4,43 +4,11 @@ import { join } from 'node:path';
 
 import { Hono } from 'hono';
 
-/**
- * Runner distribution: serves the install script, the release manifest, and the
- * binaries the `forge-runner` self-updater consumes. All public (the installer
- * runs before pairing).
- *
- * Binaries live in `RUNNER_RELEASE_DIR`:
- *   <dir>/VERSION                                  e.g. "0.2.10"
- *   <dir>/forge-runner-x86_64-unknown-linux-gnu    (one per target triple)
- *   <dir>/forge-runner-aarch64-apple-darwin
- *
- * The CI release workflow builds these; the deploy populates the dir.
- *
- * Mounting (ISS-392): these routes are mounted at BOTH the core root (`/…`, for
- * self-hosters who expose core directly) AND under `/api/…` (in `index.ts`). On
- * the hosted deploy the edge proxy forwards only `/api/*` to core, so a runner
- * reaching `{core}/install/latest.json` at the root 404s into the web app — the
- * runner therefore fetches `{core}/api/install/latest.json`. The generated
- * download URLs (manifest asset `url`, install.sh's `curl`) are PREFIX-AWARE:
- * they echo back whichever prefix the request arrived on, so a request through
- * `/api/...` yields `/api/install/bin/...` (proxy-reachable) while a direct
- * root request keeps the root paths.
- */
 export const installRoutes = new Hono();
 
 const RELEASE_DIR = process.env.RUNNER_RELEASE_DIR ?? '';
 const ASSET_PREFIX = 'forge-runner-';
 
-/**
- * Public origin of this request. The hosted edge proxy (Cloudflare) terminates
- * TLS and forwards plain http to core, so `new URL(reqUrl).origin` reports
- * `http://…` even though the public site is https-only. That http origin is
- * fatal for the runner: the binary download is a redirect-safe GET, but pairing
- * is a POST and Cloudflare's http→https 301 downgrades POST→GET and drops the
- * body → the runner lands on a device-authed route and gets 401. So upgrade
- * http→https for any non-loopback host (real deploys are always https-fronted;
- * a bare-http localhost dev box is left as-is).
- */
 function origin(reqUrl: string): string {
   const u = new URL(reqUrl);
   const loopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '::1';

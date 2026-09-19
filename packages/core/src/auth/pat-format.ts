@@ -1,15 +1,3 @@
-/**
- * Single source of truth for PAT plaintext format (ISS-150).
- *
- * Shape: `forge_pat_<env>_<64 hex chars>` where <env> ∈ dev|stg|prd.
- * The 18-char prefix `forge_pat_<env>_<4 hex>` is stored in
- * `personal_access_tokens.token_prefix` and used as the lookup key.
- *
- * The regex is exported so the Sentry scrubber and middleware dispatcher
- * use the exact same recognition. Do NOT inline the literal `forge_pat_`
- * elsewhere — import this module.
- */
-
 import { randomBytes } from 'node:crypto';
 
 export const PAT_ENVS = ['dev', 'stg', 'prd'] as const;
@@ -51,7 +39,6 @@ export function patPrefixOf(token: string): string {
   return token.slice(0, PAT_PREFIX_LEN);
 }
 
-// cm:guard a box credential is named after its box so a re-pair can find and rotate the SAME row. The name is a LABEL and nothing reads behaviour off it: `agency` comes from the owner's `users.kind` (ISS-932 wave 4), so a person's token called `device:...` is inert and buys nothing.
 const DEVICE_TOKEN_NAME_PREFIX = 'device:';
 
 export const deviceTokenNameFor = (deviceId: string) => `${DEVICE_TOKEN_NAME_PREFIX}${deviceId}`;

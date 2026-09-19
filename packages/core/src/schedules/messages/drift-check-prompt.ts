@@ -1,17 +1,3 @@
-// Knowledge drift-check prompt builder — ISS-568.
-//
-// Builds the agent prompt for the standing knowledge-drift-check schedule run.
-// Like the skill steward, this fires on EVERY cadence run (no appliedMessageVersions
-// gate) and detects three classes of knowledge rot:
-//   1. STALE — entry whose relatedIssueIds are all >STALENESS_AGE_DAYS old while
-//      newer shipped issues touch the same capability/tags.
-//   2. REMOVED-FEATURE — scenario entry referencing a feature that newer issues removed.
-//   3. UNDOCUMENTED — ≥UNDOCUMENTED_ISSUE_THRESHOLD shipped issues in LOOKBACK_WINDOW_DAYS
-//      touching a capability with NO covering knowledge_entries entry.
-//
-// The agent PROPOSES draft issues only — it NEVER calls forge_knowledge upsert/delete.
-// The completion handler does NOT set metadata.steward, so the steward-report parser skips it.
-
 import type { ScheduleMode } from '../../db/schema.js';
 
 // ── Constants (named and exported so tests can assert their exact values) ────────
@@ -22,10 +8,6 @@ export const STALENESS_AGE_DAYS = 90;
 /** Lookback window (days) for shipped issues (closed/released within this period). */
 export const LOOKBACK_WINDOW_DAYS = 30;
 
-/**
- * Minimum number of shipped issues touching an undocumented capability in
- * LOOKBACK_WINDOW_DAYS before the agent proposes a documentation draft.
- */
 export const UNDOCUMENTED_ISSUE_THRESHOLD = 3;
 
 /** Maximum draft proposals the agent may create per run. */

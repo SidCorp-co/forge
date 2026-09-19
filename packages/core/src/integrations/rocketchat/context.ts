@@ -49,7 +49,6 @@ export function extractQuotedMessageIds(
 }
 
 /** Render REST messages as `[user]: text` lines (oldest first), dropping system messages, the bot's own replies unless `includeBot`, empty bodies and the messages that triggered this turn. Null when nothing remains. */
-// cm:guard a SET of ids and not one, because a turn is now taken over a window of messages rather than over the single one that named the bot: excluding only the newest would seed the model with the rest of its own question, which it is about to be shown again as its own transcript (ISS-1004).
 export function formatConversationLines(
   messages: RocketChatRestMessage[],
   opts: { botUserId: string; excludeMessageIds?: readonly string[]; includeBot?: boolean },
@@ -66,7 +65,6 @@ export function formatConversationLines(
   }
   if (lines.length === 0) return null;
   let block = lines.join('\n');
-  // cm:guard keep the TAIL, never the head — the newest lines are the ones the turn is about, so slicing the other way hands the model a transcript that stops before the question it was asked
   if (block.length > BLOCK_CHAR_CAP)
     block = `… [older messages truncated]\n${block.slice(-BLOCK_CHAR_CAP)}`;
   return block;
@@ -85,7 +83,6 @@ export async function buildConversationContext(
     triggerText?: string | undefined;
   },
 ): Promise<string | null> {
-  // cm:guard the permalink anchors on the NEWEST triggering message, which is the one a person clicking the link expects to land on; a window's oldest message would open the room scrolled above the thing that was actually answered (ISS-1004).
   const newest = opts.excludeMessageIds[opts.excludeMessageIds.length - 1];
   try {
     const [room, thread, threadRoot, permalink] = await Promise.all([
@@ -93,14 +90,11 @@ export async function buildConversationContext(
       opts.tmid
         ? fetchThreadMessages(auth, opts.tmid, HISTORY_MAX_PER_CALL).then((r) => r ?? [])
         : Promise.resolve([]),
-      // cm:why getThreadMessages returns REPLIES only — without the root message, "the task above" in a threaded mention resolves against unrelated room noise
       opts.tmid ? fetchMessage(auth, opts.tmid) : Promise.resolve(null),
-      // cm:why the model can only cite the chat if the permalink is handed to it, so an issue the bot files carries a source link rather than a description of where it came from.
       newest || opts.tmid
         ? buildMessagePermalink(auth, opts.rid, opts.tmid ?? (newest as string)).catch(() => null)
         : Promise.resolve(null),
     ]);
-    // cm:why a quote-reply carries only the parent's `msg` snippet, so the referenced messages are fetched in full or a quoted webhook card's body and task link never reach the model
     const quotedIds = extractQuotedMessageIds(
       [opts.triggerText, threadRoot?.text, ...thread.map((t) => t.text)],
       new Set([...opts.excludeMessageIds, ...(opts.tmid ? [opts.tmid] : [])]),
@@ -225,7 +219,6 @@ const QUOTE_THREAD_PAGE = 50;
 const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
 
 /** A tool's JSON arguments as an object, or the refusal a caller is owed. */
-// cm:guard `null` and a bare scalar are valid JSON and not an object, and a read of `.messageId` off them throws out of the tool instead of refusing by name (whole-set review, round 4 F1).
 function readToolArgs<T extends object>(argsJson: string): { args: T } | { error: string } {
   if (!argsJson.trim()) return { args: {} as T };
   let parsed: unknown;
@@ -245,7 +238,6 @@ interface QuoteNeighbourhood {
   limitation: string | null;
 }
 
-// cm:guard the THREAD is preferred when the anchor sits in one: "this is still wrong" quoted from a thread means the two replies before it in that thread, and the room stream around the same instant is other people's conversation. The root is put first so an anchor that is the first reply still has a neighbour before it.
 async function threadNeighbourhood(
   auth: RocketChatRestAuth,
   anchor: RocketChatRestMessage & { tmid: string },
@@ -254,7 +246,6 @@ async function threadNeighbourhood(
     fetchMessage(auth, anchor.tmid),
     fetchThreadMessages(auth, anchor.tmid, QUOTE_THREAD_PAGE),
   ]);
-  // cm:guard a thread the server refused to read is said so, and never as "beyond the first replies": the page was not short, it was not there (whole-set review, round 6 F1).
   if (replies === null) {
     return {
       before: [],
@@ -273,7 +264,6 @@ async function threadNeighbourhood(
     };
   }
   const after = thread.slice(at + 1, at + 1 + QUOTE_NEIGHBOURS_EACH_SIDE);
-  // cm:guard what the page could NOT show is named: a root the server refused leaves the first replies with nothing before them, and an anchor at the end of a full page may have replies after it this read never reached — either shown as a plain neighbourhood reads as "nothing was said there" (ISS-1087 criterion 30; whole-set review F2).
   const limits: string[] = [];
   if (!root && at < QUOTE_NEIGHBOURS_EACH_SIDE)
     limits.push(
@@ -299,7 +289,6 @@ async function roomNeighbourhood(
     fetchMessagesBeside(auth, rid, anchor.ts, 'before', QUOTE_NEIGHBOURS_EACH_SIDE),
     fetchMessagesBeside(auth, rid, anchor.ts, 'after', QUOTE_NEIGHBOURS_EACH_SIDE),
   ]);
-  // cm:guard a side the room refused to read is NAMED and not shown as empty: "nothing was said after it" and "what was said after it could not be read" lead the model to different answers (ISS-1087 criterion 30; whole-set review F4).
   const refused = [before === null ? 'before' : null, after === null ? 'after' : null].filter(
     (s): s is 'before' | 'after' => s !== null,
   );
@@ -315,7 +304,6 @@ async function roomNeighbourhood(
 /**
  * Expand a quoted message to the two messages either side of it, bounded per turn.
  */
-// cm:guard a TOOL and not automatic inclusion, with every bound enforced HERE: two targets a turn, two neighbours a side, ten messages and ~2000 estimated tokens across all expansions, no expansion of a neighbour's own quotes, and an anchor outside the pinned room refused by name. A bound the model is asked to keep is not a bound, and unavailable material is a stated limitation and never a guessed neighbour (ISS-1087 criteria 25-31, 36).
 export function buildRocketChatQuoteContextToolset(
   auth: RocketChatRestAuth,
   rid: string,
@@ -365,8 +353,6 @@ export function buildRocketChatQuoteContextToolset(
     if (!anchor) {
       return toolError(`message ${messageId} was not found, or the bot cannot see it`);
     }
-    // cm:guard the anchor's room is checked on EVERY fetch and an outsider is refused by name with nothing of it returned: a message id is global on a Rocket.Chat server, and a quote link pasted from another room would otherwise read that room's text into this one (ISS-1087 criterion 29).
-    // cm:guard a message whose room the server did NOT name is refused too, not admitted on a shrug: an unproven room is the same hole as the wrong one (whole-set review F1).
     if (anchor.rid !== rid) {
       return toolError(
         anchor.rid === undefined
@@ -384,7 +370,6 @@ export function buildRocketChatQuoteContextToolset(
       ts: m.ts,
       text: clip(m.text, MESSAGE_CHAR_CAP),
     });
-    // cm:guard the anchor is admitted first and the neighbours nearest it next, so a budget that cuts the set cuts the FARTHEST ones, and the result says it was cut rather than presenting a narrower neighbourhood as the whole (ISS-1087 criterion 28).
     const ranked = [
       anchor,
       ...[...hood.before].reverse().flatMap((b, i) => (hood.after[i] ? [b, hood.after[i]] : [b])),
@@ -406,7 +391,6 @@ export function buildRocketChatQuoteContextToolset(
     }
     messagesUsed += kept.length;
     const messages = kept.sort((a, b) => a.ts.localeCompare(b.ts)).map(shape);
-    // cm:guard every limitation is NAMED, never the first one found: a thread whose root could not be read and whose neighbourhood was then cut to the budget is missing material for two reasons, and a reader told one would take the other side as complete (criterion 28; whole-set review, round 5 F1).
     const limitation =
       [
         hood.limitation,

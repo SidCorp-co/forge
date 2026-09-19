@@ -51,7 +51,6 @@ beforeEach(() => {
 });
 
 describe("PoolBacklogSection", () => {
-	// cm:guard AC12 — the copy that admitting a status does NOT make it run is the one sentence this screen cannot lose. Without it the toggle reads as "start drafts automatically", which is the design ISS-917 rejected, and an operator would turn it on expecting exactly that.
 	it("states in copy that admitting a status does not make it run", () => {
 		renderWith({});
 		expect(
@@ -74,7 +73,6 @@ describe("PoolBacklogSection", () => {
 		expect(screen.getByLabelText(/rows a master may read/i)).toHaveValue(7);
 	});
 
-	// cm:guard clearing the selection must write the key ABSENT, never `{ statuses: [] }`. Absent is the documented "no backlog" state every other project is in; a stored empty object is a second spelling of it that the next screen reads as "configured".
 	it("deletes the key rather than saving an empty statuses array", () => {
 		renderWith({
 			enabled: true,
@@ -107,14 +105,12 @@ describe("PoolBacklogSection", () => {
 		expect(sent.intakeGate).toEqual({ enabled: false });
 	});
 
-	// cm:guard AC12/B5 — the contradiction is shown BEFORE the save and the save is blocked, so the reason reads as a rule of the product rather than as a rejected request. Letting it through would answer a rule with a round trip.
 	it("names the intakeGate contradiction and refuses to save it", () => {
 		renderWith({
 			intakeGate: { enabled: true },
 			poolBacklog: { statuses: ["draft"] },
 		});
 		expect(screen.getByText(/intake gate is on/i)).toBeInTheDocument();
-		// cm:why dirty the form first, so the disabled Save below can only be the conflict — an untouched form is disabled anyway and would prove nothing
 		fireEvent.change(screen.getByLabelText(/rows a master may read/i), {
 			target: { value: "9" },
 		});
@@ -131,7 +127,6 @@ describe("PoolBacklogSection", () => {
 		expect(screen.queryByText(/intake gate is on/i)).toBeNull();
 	});
 
-	// cm:guard the server's refusal must arrive as its own sentence, not as a zod path. `CONFIG_CONFLICT` and the `superRefine` message inside a BAD_REQUEST both already name the two settings; rendering "Invalid input" throws that away at the one moment the operator needs it.
 	it("renders a server refusal as its readable reason, not a raw zod dump", () => {
 		state.isError = true;
 		state.error = new ApiError(

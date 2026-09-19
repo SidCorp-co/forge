@@ -31,7 +31,6 @@ let stored = new Map<string, { step: string; tagState: string }>();
 const settleFailed = vi.fn(async (id: string, attempt: number, patch: Record<string, unknown>) => {
   if (settled.has(id)) return false;
   if (id === 'explodes') throw new Error('write refused');
-  // cm:guard the double carries the attempt fence too, so a pass that stopped passing the row's own attempt through would fail these cases rather than pass them by accident.
   if (attempt !== 1) return false;
   const guard = patch.ifUnchanged as { step: string; tagState: string } | undefined;
   const now = stored.get(id);
@@ -82,7 +81,6 @@ describe('a build that never reported', () => {
     expect(String(patch?.failure)).toContain('reported no build for it');
   });
 
-  // cm:guard criterion 26, and it is the one cause an operator can act on: `connect.ts`'s manifest only decides the events of Apps created AFTER it, so an App that already exists hears no `workflow_run` until somebody sets it up by hand — and an event that never arrives has no 403 to name it with.
   it('names the workflow_run subscription as the thing to check', async () => {
     overdue = [release()];
     await nameOverdueRunnerReleases(NOW);
@@ -92,7 +90,6 @@ describe('a build that never reported', () => {
     expect(failure).toContain('Subscribe to events');
   });
 
-  // cm:guard the subscription is HALF the setup and the sentence has to carry both halves: GitHub gates `workflow_run` on the Actions permission, so an App with the event ticked and Actions unset produces this identical row. An operator sent only to the events list finds it already ticked and stops there.
   it('names the Actions permission the event is gated on, not only the subscription', async () => {
     overdue = [release()];
     await nameOverdueRunnerReleases(NOW);
@@ -110,7 +107,6 @@ describe('a build that never reported', () => {
 });
 
 describe('a process that died mid-sequence', () => {
-  // cm:guard this is the row ISS-1075 point 3 is most about: no delivery will ever arrive for it, so without this pass it stays in flight forever and the tag is found by accident.
   it('names a cut whose answer never came, and says the tag may exist', async () => {
     overdue = [release({ step: 'cut_tag', tagState: 'unknown' })];
     await nameOverdueRunnerReleases(NOW);
@@ -136,7 +132,6 @@ describe('a process that died mid-sequence', () => {
 });
 
 describe('what this pass may not decide', () => {
-  // cm:guard it knows only that nobody said anything, so writing a `tagState` here would be inventing the very reading the row is honest about not having.
   it('writes no tag state of its own', async () => {
     overdue = [release({ tagState: 'unknown' }), release({ id: 'rel-2', tagState: 'absent' })];
     await nameOverdueRunnerReleases(NOW);
@@ -164,7 +159,6 @@ describe('what this pass may not decide', () => {
 });
 
 describe('the window itself', () => {
-  // cm:guard a deadline under the build's own worst case turns this pass from the thing that finds an abandoned release into the thing that fails a live one: `runner-release.yml` runs a Rust check job, then a two-OS matrix, then the publish.
   it('clears the whole workflow rather than its median run', () => {
     expect(RUNNER_RELEASE_DEADLINE_MS).toBeGreaterThanOrEqual(60 * 60_000);
     expect(RUNNER_RELEASE_DEADLINE_MS).toBeLessThanOrEqual(6 * 60 * 60_000);
@@ -178,7 +172,6 @@ describe('the window itself', () => {
 });
 
 describe('a row that moved under the pass', () => {
-  // cm:guard the SELECT and the UPDATE are two statements with a gap between them, and the sequence this pass races closes that gap by moving the row on: a release read here at `resolve_commit`/`unread` is at `cut_tag`/`unknown` the moment a create request goes out. Settling on the older reading writes the wrong step back AND a sentence saying nothing was written, over a row with a tag request in flight — a terminal record of a snapshot that is no longer true. The next tick reads the row as it now stands.
   it('settles nothing when the row is no longer what the pass read', async () => {
     overdue = [release({ id: 'rel-moved', step: 'resolve_commit', tagState: 'unread' })];
     stored.set('rel-moved', { step: 'cut_tag', tagState: 'unknown' });

@@ -12,7 +12,7 @@ export function ProjectLoader({
       <ForgeMascot size={size} mode="both" ring progress={progress} flicker />
       <span
         className="inline-flex items-center gap-2 font-mono"
-        style={{ fontSize: 13, fontWeight: 500, color: done ? "var(--green-600)" : "var(--fg-muted)" }}
+        style={{ fontSize: "var(--text-13)", fontWeight: 500, color: done ? "var(--green-600)" : "var(--fg-muted)" }}
       >
         <span
           className={done ? "" : "forge-pulse"}
@@ -39,7 +39,7 @@ export function ColdBoot({ label = "booting control plane…" }: { label?: strin
         <img className="fm-breathe" src={assetPath("/forge-mark-180.png")} width={72} height={72} alt="Forge" />
       </div>
       <div className="fg-h2" style={{ fontWeight: 800 }}>Forge</div>
-      <span className="inline-flex items-center gap-2 font-mono" style={{ fontSize: 12.5, color: "var(--fg-muted)" }}>
+      <span className="inline-flex items-center gap-2 font-mono" style={{ fontSize: "var(--text-12-5)", color: "var(--fg-muted)" }}>
         <span className="forge-pulse" style={{ width: 7, height: 7, borderRadius: 999, background: "var(--accent)" }} />
         {label}
       </span>
@@ -59,7 +59,7 @@ export function AgentWorking({ label, elapsed }: { label: ReactNode; elapsed?: s
         <img src={assetPath("/forge-mark-32.png")} width={30} height={30} alt="" />
       </span>
       <span className="fg-body-sm text-fg">{label}</span>
-      {elapsed && <span className="ml-auto font-mono text-subtle" style={{ fontSize: 12 }}>{elapsed}</span>}
+      {elapsed && <span className="ml-auto font-mono text-subtle" style={{ fontSize: "var(--text-12)" }}>{elapsed}</span>}
     </div>
   );
 }
@@ -69,7 +69,7 @@ export function ReconnectingBanner({ label = "Runner offline — reconnecting…
   return (
     <div
       className="inline-flex items-center gap-2.5 rounded-md px-3.5 py-2.5 font-semibold"
-      style={{ background: "var(--amberw-50)", border: "1px solid #F6D9A0", color: "var(--amberw-600)", fontSize: 13.5 }}
+      style={{ background: "var(--amberw-50)", border: "1px solid #F6D9A0", color: "var(--amberw-600)", fontSize: "var(--text-13-5)" }}
     >
       <img className="forge-pulse" src={assetPath("/forge-mark-32.png")} width={22} height={22} alt="" />
       {label}

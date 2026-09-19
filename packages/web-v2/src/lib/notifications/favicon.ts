@@ -1,43 +1,18 @@
-// Favicon + document-title open-count indicator (ISS-523, ISS-1063) — the always-visible
-// analogue of the toast/browser channels.
-//
-// The native browser-notification channel (lib/notifications/browser) is gated
-// on the tab being BACKGROUNDED, so a user watching the page never sees a
-// native notification (by design — a focused tab gets the in-app toast). That
-// leaves no persistent "something is still true" signal on the tab itself. This
-// module fills that gap: it overlays a small dot on the favicon and prefixes the
-// document title with the count, both visible whether or not the tab is focused.
-//
-// Driven by the same `useOpenCount()` the header bell uses (see
-// features/notifications/use-open-indicator), so the favicon and the bell can
-// never disagree. ISS-1063 changed WHAT that number is — records still true
-// rather than deliveries nobody opened — and this module carries the number it
-// is handed, which is why the rename reached its function names too. Everything is SSR-safe and degrades to a silent no-op when the
-// DOM / canvas is unavailable; callers never need to guard and nothing here ever
-// throws.
 
 /** Base document title — the favicon/title indicator only PREFIXES this. */
 const BASE_TITLE = "Forge";
-/** Badge dot color — the flame accent (`--flame-500`); kept in sync by hand
- *  since a canvas fill can't read a CSS custom property. */
 const BADGE_COLOR = "#F15A2B";
 /** A contrast ring around the dot so it reads against a dark favicon too. */
 const RING_COLOR = "#FFFFFF";
 
-/** The original favicon href, captured on first use so `show=false` can restore
- *  it exactly (Next injects `/icon.png?<hash>`). */
 let originalHref: string | null = null;
 /** Pre-rendered data-URL variants, built lazily once the base image loads. */
 let plainDataUrl: string | null = null;
 let badgedDataUrl: string | null = null;
 /** Whether we've kicked off the async base-image load yet. */
 let buildStarted = false;
-/** The most recently requested badge state — applied once the variants exist,
- *  so a call made before the image loads still takes effect on load. */
 let pendingShow = false;
 
-/** Locate the existing `<link rel="icon">`, creating one if absent. Returns null
- *  when there's no document (SSR) or `<head>` is unavailable. */
 function getIconLink(): HTMLLinkElement | null {
   if (typeof document === "undefined") return null;
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
@@ -63,10 +38,6 @@ function applyPending(): void {
   }
 }
 
-/** Lazily render the plain + badged favicon variants off the same-origin base
- *  image. The base `/icon.png` is same-origin so the canvas is NOT tainted and
- *  `toDataURL()` is safe; if a future CDN-hosted icon taints it, the SecurityError
- *  is swallowed and the indicator degrades to a no-op. */
 function buildVariants(): void {
   if (buildStarted) return;
   buildStarted = true;
@@ -109,7 +80,6 @@ function buildVariants(): void {
       }
     };
     img.onerror = () => {
-      // base image failed to load — stay on the static favicon, no throw.
     };
     img.src = originalHref ?? link.href;
   } catch {
@@ -117,11 +87,6 @@ function buildVariants(): void {
   }
 }
 
-/**
- * Show or hide the dot on the favicon. Idempotent and safe to call on
- * every open-count change. SSR-safe; never throws. Degrades to a no-op when
- * there's no document, no canvas 2d context, or the base image can't load.
- */
 export function setFaviconBadge(show: boolean): void {
   if (typeof document === "undefined") return;
   try {
@@ -131,7 +96,6 @@ export function setFaviconBadge(show: boolean): void {
     // image onload handler will pick up `pendingShow`.
     applyPending();
   } catch {
-    // Any DOM access can throw in exotic envs — degrade silently.
   }
 }
 

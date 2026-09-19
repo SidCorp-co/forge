@@ -1,16 +1,3 @@
-// web-v2 feature module: session (singular — the run-conversation detail
-// surface). Kept separate from the plural `features/sessions/` index/queue to
-// avoid query-key + component name collisions (ISS-292).
-//
-// Types mirror the per-turn rows returned by `GET /api/agent-sessions/:id/turns`
-// (`packages/core/src/agent-sessions/turns-helpers.ts loadTurns` → raw
-// `agent_session_turns` rows) and the runner `messageEntry` stored at
-// `content.value`. The block-derivation + tool-label + inline-diff logic is
-// ported from v1 (`packages/web/src/components/chat/chat-message/*` +
-// `hooks/use-agent-session-api.ts parseStoredMessages`) so both UIs agree.
-//
-// `@forge/contracts` has no agent-session-turn types yet, so these are re-typed
-// locally (same note as ISS-291's `features/sessions/types.ts`).
 
 import { decodeToolOutput } from "./result-summary";
 import type { ModelTier } from "@forge/contracts";
@@ -56,10 +43,6 @@ export type CanonicalBlock =
   | { type: "text"; text?: string }
   | { type: "tool"; toolCall?: CanonicalToolCall }
   | { type: "todos"; todos?: AgentTodo[] }
-  // cm:edge contract -> packages/core/src/lib/agent-stream-parser.ts — `ContentBlock`, whose
-  // `thinking` member this mirrors (ISS-1079). A member added there and not here is a block the
-  // browser's own type cannot represent; one added here and not to that file's `asBlocks` whitelist
-  // is a block the database drops on the way out.
   | { type: "thinking"; thinking?: string; durationMs?: number };
 
 /** A file attached to a chat user turn (ISS-499). Same `{id,name,mime,size,url}`
@@ -72,9 +55,6 @@ export interface SessionAttachment {
   url: string;
 }
 
-/** The `result` line's run totals, written by the core derive
- *  (`packages/core/src/lib/agent-stream-parser.ts` `RunTotals`). Present on the
- *  final `system`/`result` entry only. */
 export interface RunTotals {
   totalCostUsd?: number;
   durationMs?: number;
@@ -111,7 +91,6 @@ export interface MessageEntry {
 
 export type TurnRole = "user" | "assistant" | "tool";
 
-/** Raw `agent_session_turns` row (`content` wraps the entry as `{ value }`). */
 export interface TurnRow {
   id: string;
   agentSessionId: string;
@@ -150,13 +129,6 @@ export type RenderBlock =
   | { type: "text"; text: string }
   | { type: "tool"; tool: ToolCallData }
   | { type: "todos"; todos: AgentTodo[] }
-  // cm:why ONE render member for three shapes, so the reader is shown the same line by all of them:
-  // `text` where the provider sent readable reasoning; neither `text` nor `count` where a provider
-  // encrypted it, which is a thinking block carrying no text at all; and `count` where all there is
-  // is the number of times the model paused, which is the Claude Code derive's `thinkingCount` and
-  // nothing else's. The renderer collapses every one of them to a line and offers an expander only
-  // where there is text, because an expander that opens onto nothing is the affordance defect this
-  // shape exists to refuse (ISS-1079).
   | { type: "thinking"; text?: string; durationMs?: number; count?: number };
 
 /**
@@ -221,7 +193,6 @@ function formatMcpLabel(name: string, input: Record<string, unknown>): string {
   }
 }
 
-/** Human label for a tool call — ported from v1 `tool-label.ts`. */
 export function getToolLabel(tc: ToolCallData): string {
   const input = tc.input ?? {};
   const filePath = (input.file_path as string) ?? "";
@@ -299,11 +270,6 @@ function toToolCallData(tc: CanonicalToolCall): ToolCallData {
     id: tc.id,
     name: tc.name,
     input: tc.input,
-    // cm:guard `result` is read by KEY and `output` is DECODED, and both halves matter. `??` used to
-    // skip an explicit `result: null` — a call that answered nothing — and hand the card `undefined`,
-    // which the summary reads as still running. And `output` arrives serialized on every path, so
-    // passing it through made every card say `Text · N characters` (ISS-1083, implementation consult
-    // F1).
     result: tc.result !== undefined ? tc.result : decodeToolOutput(tc.output),
     durationMs: tc.durationMs,
     isError: tc.isError,
@@ -333,13 +299,6 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
     }
   } else {
     if (entry.toolCalls?.length) {
-      // cm:guard EVERY tool call reaches a card through `toToolCallData`, these two v1 paths
-      // included. They used to hand their calls through untouched, which was harmless while the
-      // card only previewed `result`: a CLI-derived entry carries its output on `output`, so
-      // `result` was undefined and the card showed nothing. Since ISS-1083 the card reads an absent
-      // result as `Running…`, and a settled turn in history claiming a call is still in flight is
-      // worse than showing nothing. Found by asking what bypasses the decoder rather than by a
-      // failing test, which is why the assertion below it exists.
       for (const tc of entry.toolCalls) {
         out.push(
           tc.name === "TodoWrite"
@@ -357,17 +316,6 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
 /**
  * The turn's pauses that carried no readable text, as the same render block.
  */
-// cm:why PREPENDED rather than placed: a count is a property of the turn and not a member of its
-// block order, so it has no position to preserve and this renderer CHOOSES one. The choice is not a
-// claim about chronology — the count cannot support one — it is that a turn's pauses read better
-// before its output than after it. Before ISS-1079 nothing drew `thinkingCount` outside the run
-// report, so every Claude Code turn's pauses were invisible in the thread and a turn that held
-// nothing else was dropped as empty.
-// cm:edge contract -> packages/core/src/lib/agent-stream-parser.ts — `thinkingCount` is the Claude
-// Code derive's and nobody else's. The assistant providers put a pause in `blocks` instead, with no
-// text where the provider encrypted it, because a block survives the durable row and a count does
-// not. A turn carrying both a count and thinking blocks is therefore a mixed transcript rather than
-// a double count, and drawing both is correct.
 function withPauseCount(entry: MessageEntry, blocks: RenderBlock[]): RenderBlock[] {
   const count = entry.thinkingCount ?? 0;
   if (count <= 0) return blocks;
@@ -378,26 +326,12 @@ function withPauseCount(entry: MessageEntry, blocks: RenderBlock[]): RenderBlock
  * Role decision for an entry, off the canonical `type`: `user` → prompt,
  * `assistant` → agent, everything else → tool.
  */
-// cm:guard no `role` branch, and re-adding one puts the second shape back.
-// Until ISS-1030 this read `entry.role` first, because the desktop runner and
-// edited turns wrote one shape while the derive wrote another. Both producers
-// speak the canonical entry now, `db/backfill-canonical-transcripts.ts` rewrote
-// every row at rest, and what a device on the previous release sends is
-// converted on the way in by core's `agent-sessions/canonical-legacy.ts`.
-// cm:edge lockstep -> packages/core/src/agent-sessions/turns-helpers.ts — the
-// same decision one layer in, and it has to read the same shape: the two answer
-// for the same entry arriving by two doors.
 function entryRole(entry: MessageEntry): TurnRole {
   if (entry.type === "user") return "user";
   if (entry.type === "assistant") return "assistant";
   return "tool";
 }
 
-/**
- * Flatten persisted turn rows into render-ready conversation items. User turns
- * become editable prompts; assistant/tool turns become agent rows with ordered
- * blocks. Empty turns (no text, no tools, no todos) are dropped.
- */
 export function parseTurns(turns: TurnRow[]): ConversationItem[] {
   const items: ConversationItem[] = [];
   for (const turn of turns) {
@@ -441,14 +375,6 @@ export function parseTurns(turns: TurnRow[]): ConversationItem[] {
   return items;
 }
 
-/**
- * Flatten the canonical `agent_sessions.messages` array (returned in full by
- * `GET /api/agent-sessions/:id`) into render-ready items — the read-only
- * fallback for pipeline/CLI-runner sessions whose `/turns` table is empty
- * (ISS-348). Reuses the same per-entry logic as `parseTurns`; items carry a
- * synthetic stable id and no live `turnId` (edit/regen/fork are disabled by the
- * screen when rendering from messages). Empty entries are dropped.
- */
 export function parseMessages(messages: unknown[]): ConversationItem[] {
   const items: ConversationItem[] = [];
   messages.forEach((raw, index) => {
@@ -616,10 +542,6 @@ export function deriveAgentTasks(items: ConversationItem[]): AgentTaskInvocation
   return out;
 }
 
-/**
- * Split a hunk into context/removed/added regions via common prefix+suffix —
- * ported from v1 `inline-diff-summary.tsx`. Pure so it's unit-testable.
- */
 export function splitHunk(hunk: DiffHunk): {
   prefix: string[];
   removed: string[];

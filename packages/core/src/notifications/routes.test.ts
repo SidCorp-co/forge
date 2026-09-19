@@ -96,7 +96,6 @@ describe('GET /api/notifications/open-count', () => {
     expect(res.status).toBe(401);
   });
 
-  // cm:guard the old route is GONE, not redefined. A route named `unread-count` answering an open count is the silent substitution CLAUDE.md forbids — web-v2's caller moved in the same change, and this case is what says the old name stops answering.
   it('404 on the route it replaced', async () => {
     authVerified();
     const res = await buildApp().request('/api/notifications/unread-count', {
@@ -189,7 +188,6 @@ describe('POST /api/notifications/mark-all-read', () => {
 });
 
 describe('PATCH /api/notifications/:id', () => {
-  // cm:guard this route writes `notification_deliveries` and NOTHING else — it is the one place a person's read state is written, and it must not be able to reach the record. `set` carrying anything but `readAt` is the regression: it would put "has a human looked" back on the row that says "is this still true", which is the defect ISS-1063 exists to end.
   it('writes only the delivery’s read state, and emits notificationRead', async () => {
     authVerified();
     updateReturning.mockResolvedValueOnce([{ id: DELIVERY_ID, userId: USER_ID }]);

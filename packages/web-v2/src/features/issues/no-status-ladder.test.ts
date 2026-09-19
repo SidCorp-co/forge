@@ -1,15 +1,3 @@
-// The ladder does not come back — a scan of web-v2's own source (ISS-999).
-//
-// This is a NEGATIVE over a whole tree, which no import graph can express, so it walks the files.
-// It exists because the projection it forbids came back once already: `STATUS_TO_STAGE` was
-// "ported from the project overview's STATUS_TO_STAGE" into `features/issues/derive.ts`, then
-// ported again into `features/pipeline/derive.ts`, and by the time ISS-999 was filed the two copies
-// had drifted to 17 keys and 15 — the second answering `triage` for `releasing` and `dropped`
-// while its neighbour answered `release`. One of them carried a `cm:guard` reading "`dropped` has
-// no stage" on the line directly above `dropped: "triage"`.
-//
-// ISS-897 deleted the seven-stage lane from the kernel. A status says what is true of an issue
-// now; nothing derives a position or a denominator from it.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -32,18 +20,6 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-/**
- * Every name a file's CODE uses: each identifier, plus each `A.b` property access written on an
- * identifier, taken off the parse tree.
- *
- * Several of the files below NAME the deleted symbols on purpose — a `cm:guard` saying what went
- * and why is the record that stops it coming back a third time, and a scan that counted those as
- * violations would push every one of them out of the tree. So comments do not count. This asks the
- * compiler's own parser rather than stripping comments with a regex: a regex stripper reads the
- * `//` inside `"https://host"` as the start of a comment and erases the rest of that line,
- * including whatever real declaration follows it, which is a FALSE PASS — the one failure mode a
- * negative test must not have. `codeNames` is exercised on exactly those shapes below.
- */
 function codeNames(body: string, file: string): Set<string> {
   const names = new Set<string>();
   const source = ts.createSourceFile(
@@ -74,7 +50,6 @@ function codeNames(body: string, file: string): Set<string> {
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       const full = chain(node);
       if (full !== null) {
-        // cm:guard every SUFFIX of the chain, not just the whole of it: `registry.STAGES.length` must answer to a `STAGES.length` check, which is the shape a reader writes it as
         const parts = full.split(".");
         for (let i = 0; i < parts.length; i++) names.add(parts.slice(i).join("."));
       }
@@ -102,7 +77,6 @@ function hits(name: string): string[] {
 
 describe("no status→stage ladder survives in web-v2", () => {
   it("finds enough files to be looking at the real tree", () => {
-    // cm:guard guards the scan itself — a walk that silently matched nothing would pass every case below
     expect(FILES.length).toBeGreaterThan(200);
     expect(hits("statusToChip")).not.toHaveLength(0);
   });
@@ -157,7 +131,6 @@ describe("the scan itself cannot be fooled", () => {
     expect(named("const n = registry.STAGES.length;")).toContain("STAGES.length");
   });
 
-  // cm:guard an element access with a string key is the same declaration written another way, and it used to slip past the identifier walk entirely
   it("reads a bracketed string key as the name it names", () => {
     expect(named('const m = globalThis["STATUS_TO_STAGE"];')).toContain("STATUS_TO_STAGE");
     expect(named('const m = registry["STAGES"].length;')).toContain("STAGES.length");

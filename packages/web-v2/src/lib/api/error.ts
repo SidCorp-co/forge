@@ -18,7 +18,6 @@ const FRIENDLY_CODES: Record<string, string> = {
   ASSIGNEE_NOT_MEMBER: 'Assignee must be a project member.',
   INVALID_LABELS: 'One or more labels do not belong to this project.',
   LABEL_NAME_TAKEN: 'A label with that name already exists in this project.',
-  // cm:why ISS-593/594 — the module taxonomy's typed refusals, each naming the ONE thing to change, because a raw code tells the reader nothing they can act on
   LABEL_IN_USE: 'Issues are still tagged with this — remove it from them first.',
   INVALID_PARENT: 'That parent is not a label in this project.',
   PARENT_NOT_MODULE: 'A module’s parent has to be a module.',
@@ -27,7 +26,6 @@ const FRIENDLY_CODES: Record<string, string> = {
   MODULE_IN_USE: 'Other modules or issues still depend on this one.',
   PRIMARY_NOT_MODULE: 'Only a module can be an issue’s primary.',
   MULTIPLE_PRIMARY: 'An issue has at most one primary module.',
-  // cm:why ISS-950 — a generator that cannot draw says which of the three reasons it is, because "no diagram" is a different instruction to the reader in each case
   NO_MODULES: 'This project has no modules yet — create one to draw its diagrams.',
   NO_MODULE_FLOWS: 'No module stores a flow yet — add a mermaid block to a module’s knowledge node.',
   UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
@@ -43,7 +41,6 @@ export function formatApiError(err: unknown): string {
   return 'Unknown error';
 }
 
-// cm:guard ISS-422 — the pipeline-config codes below must stay OUT of `FRIENDLY_CODES`. That map is a static code→string lookup and cannot read `details`, so a rejection routed through it loses the only actionable half it carries: WHICH stage blocked the save. That is the vague toast this function exists to replace.
 
 /**
  * Map a pipeline stage *status* (as it appears in error `details`) to the
@@ -87,8 +84,6 @@ function joinStageLabels(statuses: string[]): string {
  * message. Falls back to {@link formatApiError} for non-ApiError values and any
  * code without a dedicated message (so behaviour never regresses).
  */
-// cm:why `zValidator` answers a `superRefine` refusal as `BAD_REQUEST` with `z.flattenError`'s `{ formErrors, fieldErrors }`, so the message the schema wrote — readable, already naming the settings it is about — is sitting in `fieldErrors[<top-level key>]` and is otherwise thrown away behind "Invalid input"
-// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — a `ctx.addIssue` whose `path` starts with a key NOT listed here renders as the generic BAD_REQUEST string; the two must be extended together or the operator gets "please check the fields" for a rule that named itself
 const ZOD_REFUSAL_KEYS = ['poolBacklog', 'intakeGate', 'mcpServers', 'states'];
 
 function zodRefusal(details: unknown): string | null {
@@ -111,7 +106,6 @@ export function formatPipelineConfigError(err: unknown): string {
   }
 
   switch (err.code) {
-    // cm:guard pass the server's message THROUGH. A cross-field refusal already names both settings in plain English — that is the whole point of writing it in the schema — and paraphrasing it here is a second copy that drifts silently the moment the rule is edited.
     case 'CONFIG_CONFLICT':
       return err.message;
     case 'MISSING_SKILL_FOR_ENABLED_STAGE':

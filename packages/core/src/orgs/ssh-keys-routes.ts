@@ -1,17 +1,3 @@
-/**
- * Org-scoped Private Keys pool (ISS-628) — workspace resource, first of the
- * planned resource types.
- *
- * GET    /api/orgs/:orgId/ssh-keys              — member. Non-secret list +
- *        `usedByProjects`. NEVER returns the private key.
- * POST   /api/orgs/:orgId/ssh-keys              — admin. `generate` mints a
- *        fresh ed25519 pair; `provide` stores a user-pasted private key.
- * DELETE /api/orgs/:orgId/ssh-keys/:keyId       — admin. Safe-delete: 409 +
- *        referencing-project list when the key is in use (server-side, not
- *        UI-only — see ssh-keys-service.ts).
- * POST   /api/orgs/:orgId/ssh-keys/:keyId/test  — member. Probe reachability
- *        against a caller-supplied repo URL (git ls-remote).
- */
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';

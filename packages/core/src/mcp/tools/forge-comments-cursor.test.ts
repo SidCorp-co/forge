@@ -20,7 +20,6 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-// cm:guard `.orderBy()` must be awaitable AND `.limit()`-able, and LAZILY so — the reply query in `listIssueCommentPage` awaits at `orderBy` with no `limit` after it while the root query calls `.limit()` on the same object. Resolve the rows eagerly and the root query's own `orderBy()` eats the first `mockResolvedValueOnce` it never reads (ISS-956).
 const selectOrderByRows = vi.fn(async (): Promise<unknown[]> => []);
 const selectOrderBy = vi.fn(() => ({
   limit: selectLimit,
@@ -134,7 +133,6 @@ describe('forge_comments list — the cursor (ISS-956)', () => {
     ).rejects.toThrow(/BAD_REQUEST: cursor/);
   });
 
-  // cm:guard `returned` must count the COMMENTS under `comments`, not the subtrees the size trim shed by — `limit` bounds top-level comments, so the two differ on any page carrying a reply, and a `returned` left at the subtree count states a length the array it names contradicts.
   it('reports `returned` as the comments it returned, replies included', async () => {
     grantAccess();
     selectLimit.mockResolvedValueOnce([rootRow]);

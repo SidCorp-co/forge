@@ -108,7 +108,6 @@ vi.mock('../../logger.js', () => ({
 
 const resolveRoomShape = vi.fn();
 
-// cm:why ISS-1004 stopped `route()` answering a message and made it COLLECT one: what this file measures is which handler a message reaches, so the assertions that used to read a turn's arguments now read the row the collector wrote. `conversationsById` is what a later route would read it back through, and is here because the store mock owes it whether this file uses it or not.
 const collected: Array<Record<string, unknown>> = [];
 const conversationsById = new Map<string, { id: string; shape: string; externalId: string }>();
 
@@ -163,7 +162,6 @@ vi.mock('../../conversations/store.js', () => ({
   },
 }));
 
-// cm:why `conversations/ports.js` is NOT stubbed: it is the registry the neutral turn reads to find a venue's transport, so a stub makes every fall-through turn refuse before it runs and the assertion below would pass for the wrong reason (ISS-1002).
 const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-server-id-9' }));
 const { clearConversationTransports, registerConversationTransport } = await import(
   '../../conversations/ports.js'
@@ -241,13 +239,11 @@ vi.mock('./comment-inbound.js', () => ({
   consumeIssueThreadReply: (...args: unknown[]) => consumeIssueThreadReply(...args),
 }));
 
-// cm:guard `route` fires the conversation handler unawaited (`void this.handle(...)`), so a fall-through is only observable after the microtask queue drains — asserting straight after `route` returns reads every fall-through as a consumption.
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 };
 
 beforeEach(() => {
-  // cm:why every message now resolves its speaker, whatever the room's shape — ISS-1004 attributes a collected message to whoever actually spoke, while authority still follows the shape. In a group room an unlinked speaker is a fact and not a refusal, so this default is the ordinary case.
   resolveSpeaker.mockResolvedValue({
     linked: false,
     refusal: { code: 'SPEAKER_UNLINKED', message: 'UNLINKED' },
@@ -277,14 +273,12 @@ describe('a reply inside a question thread', () => {
     connected();
     subjectForThread.mockResolvedValue({ kind: 'question', questionId: 'q-1' });
     await routeMessage('conn-1', { ...MESSAGE, tmid: 'thread-1', mentions: [] });
-    // cm:guard the flush is what makes the fall-through representable: `route` fires the conversation handler unawaited, so asserting `runExternalChatTurn` straight after `route` returns passes whether or not the owned-thread branch returns.
     await flush();
     expect(consumeQuestionThreadReply.mock.calls[0]?.[0]).toMatchObject({
       questionId: 'q-1',
       connectionId: 'conn-1',
     });
     expect(consumeQuestionThreadReply.mock.calls[0]?.[0]?.m?.tmid).toBe('thread-1');
-    // cm:guard the conversation handler is what must NOT have run: a refusal that fell through to it would reach the person as a chat reply about something else, and would additionally spend a provider turn (ISS-978 criterion 20).
     expect(runExternalChatTurn).not.toHaveBeenCalled();
     expect(startEscalation).not.toHaveBeenCalled();
     expect(startAgentChat).not.toHaveBeenCalled();
@@ -300,12 +294,10 @@ describe('a reply inside a question thread', () => {
       retired: false,
       connectionId: 'conn-1',
     });
-    // cm:guard the question handler is what must NOT have run: prose routed there would be read as choosing an option, which grants a permission nobody selected (ISS-981 criteria 18, 29).
     expect(consumeQuestionThreadReply).not.toHaveBeenCalled();
     expect(runExternalChatTurn).not.toHaveBeenCalled();
   });
 
-  // cm:guard each of these three is dropped by `decideSkip` BEFORE the thread is resolved, so the assertion is that an owned issue thread does not buy the message a second chance: a skip moved below the thread lookup would make a reaction on a root into a comment saying nothing (ISS-981 criteria 14, 15, 16).
   it.each([
     [
       'a reaction, which Rocket.Chat re-emits as an edit of the message it is on',
@@ -358,7 +350,6 @@ describe('a reply inside a question thread', () => {
     await routeMessage('conn-1', { ...MESSAGE, tmid: 'someone-elses-thread' });
     await flush();
     expect(consumeQuestionThreadReply).not.toHaveBeenCalled();
-    // cm:guard the fall-through carries the person's own words and their identity, which is what makes it a conversation turn rather than a routing event — a turn built from anything else answers somebody who did not speak. Since ISS-1004 the fall-through is a COLLECT rather than a turn, so the words are asserted where they now land: the row the window will route.
     expect(collected[0]).toMatchObject({
       content: MESSAGE.text,
       authorLabel: MESSAGE.username,
@@ -387,7 +378,6 @@ describe('a reply inside a question thread', () => {
     loose.conns.set('conn-routeless', ac);
     await routeMessage('conn-routeless', { ...MESSAGE, tmid: 'thread-1' });
     await flush();
-    // cm:guard the thread lookup sits AFTER the route for the reason the shape does: the same bot is subscribed on every connection's socket, so a routeless connection must touch nothing (ISS-978 criterion 22).
     expect(subjectForThread).not.toHaveBeenCalled();
     expect(consumeQuestionThreadReply).not.toHaveBeenCalled();
   });
@@ -408,7 +398,6 @@ describe('a reply inside a question thread', () => {
     subjectForThread.mockResolvedValue({ kind: 'question', questionId: 'q-1' });
     await routeMessage('conn-dead', { ...MESSAGE, tmid: 'thread-1', mentions: [] });
     await flush();
-    // cm:guard the message is consumed even with no socket to answer on: falling through to the conversation handler instead would run a provider turn for a reply that is an answer to a question (ISS-978 criterion 20).
     expect(consumeQuestionThreadReply.mock.calls[0]?.[0]).toMatchObject({
       questionId: 'q-1',
       connectionId: 'conn-dead',

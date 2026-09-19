@@ -1,8 +1,3 @@
-// web-v2 feature module: knowledge (user-provided sources → edge graph +
-// ingest). Shapes verified against `packages/core/src/knowledge-edges/routes.ts`
-// and `packages/core/src/knowledge/ingest-routes.ts` for ISS-299.
-// Knowledge entries (ISS-566/P2): shapes mirrored verbatim from
-// `packages/core/src/knowledge/service.ts` (NOT in @forge/contracts).
 
 export type KnowledgeKind =
   | "overview"

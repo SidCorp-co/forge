@@ -1,26 +1,3 @@
-// "Deployed" must not be a sentence an agent writes.
-//
-// The batch already had a report step and it was the agent's own account of
-// what it had just done. The failure that account cannot see is the common one:
-// the deploy command succeeded, the site is healthy, and it is still serving
-// the previous build. A health check that only reads the status code says green
-// through the whole of it.
-//
-// So the project declares probes, and the kernel reads them. Green needs BOTH
-// halves: the live commit changed from what was serving before the release, and
-// it matches the commit the release says it pushed. The first half is why the
-// pre-release read is taken at claim time, before anything moves — without it,
-// an agent reporting the commit that was already live verifies perfectly.
-//
-// TWO QUESTIONS, ASKED IN ORDER, and never one (ISS-1042). Is the application
-// alive, and then is it serving the build the release pushed. They take the
-// repair in different directions: health red with identity green is a runtime
-// fault on a correct build, health green with identity red is routing, caching
-// or a rollout that did not finish. Until ISS-1042 `readProbe` answered `null`
-// to a non-2xx, an unreachable host, an unparseable body and a `commitPath`
-// that plucked nothing alike, so all four arrived as "no probe answered with a
-// commit" — a dead site and a typo in `commitPath` wearing one sentence.
-
 import { logger } from '../logger.js';
 
 export interface VerifyProbe {
@@ -101,8 +78,6 @@ export function describeProbeReading(probe: VerifyProbe, r: ProbeReading): strin
   }
 }
 
-// cm:guard the cache-buster and the no-cache header are BOTH required and neither is decoration — the probe reads through whatever CDN or reverse proxy fronts the site (varnish, in the case this was written for), and a cached 200 from the previous build is exactly the state verification exists to catch
-// cm:guard return the SHAPE of the failure and never a bare null. The four ways a read can fail send the repair in two different directions, and a caller handed one value for all of them writes the sentence "no probe answered" over a site that answered perfectly well.
 export async function readProbe(probe: VerifyProbe): Promise<ProbeReading> {
   const url = new URL(probe.url);
   url.searchParams.set('_forge_cb', String(Math.random()).slice(2));
@@ -254,7 +229,6 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
 /**
  * Why the window closed red, health first and identity second.
  */
-// cm:guard ask HEALTH before identity and never the other way round. A dead application has no identity to be wrong about, and reporting "the live build is unchanged" over a site answering 502 sends the repair at the build when the container is not running. The order here IS the diagnosis the account is written from.
 function failureFor(
   state: LiveState,
   commitBefore: string | null,
@@ -279,7 +253,6 @@ function failureFor(
     return {
       ...base,
       health: 'up',
-      // cm:why this sentence is the one ISS-1042 exists to separate out. The site answered; what failed is the probe DECLARATION, and telling an operator the deploy did not land would send them to the build for a typo in `commitPath`.
       reason: `the application is healthy and no probe reported a commit (${state.unidentified.join('; ')}) — read this as a probe declaration that does not match what the application serves, not as a failed deploy`,
     };
   }
@@ -287,7 +260,6 @@ function failureFor(
     return {
       ...base,
       health: 'up',
-      // cm:why this is the whole point of the pre-release read: the site is up, the deploy reported success, and it is still serving what it served before
       reason: `the live build is unchanged (${state.identity}) — the site is healthy and still serving the pre-release commit`,
     };
   }

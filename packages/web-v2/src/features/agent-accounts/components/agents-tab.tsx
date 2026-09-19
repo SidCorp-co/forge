@@ -15,11 +15,13 @@ import {
   Button,
   Card,
   CardContent,
+  CardTitle,
   EmptyState,
   ErrorState,
   Field,
   Input,
   MonoTag,
+  SectionTitle,
   Skeleton,
   Table,
   TBody,
@@ -52,14 +54,12 @@ export function AgentsTab() {
   const revoke = useRevokeAgentCredentials(orgId);
   const rename = useSetAgentDisplayName(orgId);
   const { projects } = useOrgScopedProjects();
-  // cm:guard ONE flag across both credential actions, not one each: mint and revoke are independent mutations against the same agent's token set, so left separately disabled an admin can start a revoke while a mint is in flight and the two land in either order — the screen announces the credentials are gone and a live one exists, or it shows plaintext the revoke has already killed. Renaming is deliberately outside it: a display name decides nothing, so it races with nothing (ISS-1003 criteria 3, 5).
   const busy = mint.isPending || revoke.isPending;
   const { toast } = useToast();
 
   const [revealed, setRevealed] = useState<{ userId: string; plaintext: string } | null>(null);
   const [renaming, setRenaming] = useState<{ userId: string; value: string } | null>(null);
 
-  // cm:guard the whole tab is gated on the caller's org role rather than on the API's refusal alone. The routes gate too and that is the real fence; this is so an ordinary member is not shown four buttons that every one of them answers 403 to.
   if (activeOrg && activeOrg.role !== "owner" && activeOrg.role !== "admin") {
     return (
       <EmptyState
@@ -79,7 +79,6 @@ export function AgentsTab() {
   async function onMint(agent: AgentAccountRow) {
     try {
       const { plaintext } = await mint.mutateAsync(agent.userId);
-      // cm:guard the plaintext is held in component state and shown ONCE, exactly as a personal token is: no route reads it back, because the row stores a hash. Persisting it anywhere would turn one leak into every credential this screen ever minted.
       setRevealed({ userId: agent.userId, plaintext });
     } catch (err) {
       toast({ title: "Could not mint a credential", description: formatApiError(err), tone: "error" });
@@ -117,7 +116,7 @@ export function AgentsTab() {
   return (
     <div className="space-y-6">
       <header>
-        <h2 className="fg-h3">Agents in {activeOrg?.name ?? "this organization"}</h2>
+        <SectionTitle className="fg-h3">Agents in {activeOrg?.name ?? "this organization"}</SectionTitle>
         <p className="fg-body-sm mt-1">
           An agent is addressed by its handle and read by its name. It can only act while it holds a
           credential.
@@ -127,7 +126,7 @@ export function AgentsTab() {
       {revealed && (
         <Card>
           <CardContent>
-            <h3 className="fg-h3 mb-2">Copy this now — it is shown once</h3>
+            <CardTitle className="mb-2">Copy this now — it is shown once</CardTitle>
             <p className="fg-body-sm mb-3">
               Forge stores a hash of it, so there is nothing to read back. Losing it means minting
               another.
@@ -263,7 +262,7 @@ export function AgentsTab() {
             </Table>
             {openAgent && (
               <div className="mt-6 border-t border-line pt-6">
-                <h3 className="fg-h3 mb-3">Self of {agentLabel(openAgent)}</h3>
+                <CardTitle className="mb-3">Self of {agentLabel(openAgent)}</CardTitle>
                 <AgentSelfEditor
                   orgId={orgId}
                   agentUserId={openAgent.userId}

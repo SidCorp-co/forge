@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Locks the dispatched-path MCP injection contract (ISS-683): per-state
-// catalog shorthand (e.g. `chrome-devtools-mcp: true`) must resolve to a real
-// spec, not survive as a literal boolean — see the ISS-683 comment in
-// resolve-job-mcp-servers.ts for how the boolean previously leaked through.
 const limitResults: unknown[][] = [];
 const limit = vi.fn(() => Promise.resolve(limitResults.shift() ?? []));
 const where = vi.fn(() => ({ limit }));
@@ -48,8 +44,6 @@ describe('resolveJobMcpServers (ISS-683)', () => {
       stageDeclaredNames: ['playwright', 'chrome-devtools-mcp'],
     });
 
-    // The resolved chrome-devtools-mcp entry must be a REAL spec object, not
-    // the literal `true` sentinel that used to leak through unexpanded.
     expect(out.mcpServers?.['chrome-devtools-mcp']).toEqual({
       type: 'stdio',
       command: 'npx',
@@ -144,10 +138,6 @@ describe('resolveJobMcpServers (ISS-683)', () => {
     expect(out.droppedNames).toEqual([]);
   });
 
-  // ISS-1038 — the per-stage `false` defect, at the layer that actually shipped it. Before the fix
-  // the stage map was expanded first and `expandMcpServers` OMITS a `false`, so the spread
-  // `{...projectDefault, ...expandedStage}` put the project's server straight back and the stage's
-  // opt-out reached nothing. The raw stage map has to be re-read after the merge.
   it('a stage `false` beats the project default (ISS-1038)', async () => {
     limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } }]);
     const out = await resolveJobMcpServers({

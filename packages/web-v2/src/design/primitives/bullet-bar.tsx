@@ -15,8 +15,6 @@ export interface BulletBarProps {
 /**
  * A rate drawn against the whole it is a part of.
  */
-// cm:guard the denominator is always rendered beside the rate: "12% failed" over four runs and over four hundred are different claims, and a bar that shows only the share reads identically for both (ISS-988 criterion 37).
-// cm:guard the bar is `aria-hidden` because the label and `value of total` are already text directly above it — the same rule `sparkline.tsx` states. A `role="meter"` here would read the identical figures a second time, and it is the reason the label text may never be dropped in favour of the bar alone.
 export function BulletBar({
   label,
   value,

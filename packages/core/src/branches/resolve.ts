@@ -1,20 +1,3 @@
-/**
- * Two-layer branch config resolver.
- *
- * Resolution order, per field:
- *   1. issue.metadata.branchConfig.<field>   (per-issue override)
- *   2. project.<field>                       (project default — column on `projects`)
- *
- * No hard 'main' fallback — if both layers are unset, the field is `null` so
- * callers surface the misconfig instead of silently merging to main.
- * `targetBranch` has no dedicated project column; falls back to the resolved
- * `baseBranch` when no override sets it explicitly (so `targetBranch` is null
- * only when `baseBranch` is also null).
- *
- * Pure: no I/O, no DB, no framework imports. Safe to use from REST routes,
- * MCP tool handlers, and (eventually) web server components.
- */
-
 export interface BranchConfig {
   baseBranch: string | null;
   targetBranch: string | null;
@@ -57,12 +40,6 @@ export function resolveIssueBranches(issue: IssueLike, project: ProjectLike): Br
   return { baseBranch, targetBranch, liveBranch };
 }
 
-/**
- * Pull a per-issue branch override off an issue row. `metadata.branchConfig`
- * wins; `sessionContext.branchConfig` is the older location and the fallback.
- * Pure — pass the result as `{ metadata: { branchConfig } }` into
- * {@link resolveIssueBranches}.
- */
 export function extractIssueBranchOverride(issue: {
   metadata?: { branchConfig?: IssueBranchOverride | null } | null;
   sessionContext?: { branchConfig?: IssueBranchOverride | null } | null;

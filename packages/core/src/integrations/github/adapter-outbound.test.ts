@@ -91,7 +91,6 @@ describe('the declaration and the implementation agree', () => {
     expect(githubIntegration.capabilities.canDispatch).toBe(true);
   });
 
-  // cm:guard `registry.ts:dispatchThrough` refuses a provider whose adapter implements no outbound dispatch, by name. This asserts github is no longer in that set — which is the whole of criterion 2, and it goes red the moment the method is dropped.
   it('is reachable through `dispatchThrough` instead of its "implements no outbound" refusal', async () => {
     const result = await dispatchThrough('github', ctx, {
       eventName: CHECK_PUBLISH_EVENT,
@@ -103,9 +102,6 @@ describe('the declaration and the implementation agree', () => {
 });
 
 describe('what it refuses, and by what name', () => {
-  // cm:guard the refusal names EVERY verb the table holds, not the first one. ISS-1073 added a
-  // second, and a refusal that had gone on naming one would have told a caller with a typo that the
-  // verb it actually wanted does not exist.
   it('refuses an event it does not serve, naming it AND every verb it does', async () => {
     await expect(
       dispatch()?.(ctx, { eventName: 'pull_request.open', payload: {} }),
@@ -125,7 +121,6 @@ describe('what it refuses, and by what name', () => {
     ).rejects.toThrow(/forge_github/);
   });
 
-  // cm:guard the refusal is RECORDED as well as thrown, and against a NULL binding rather than the dead one: a row scoped to a binding that is gone is a row nothing will list.
   it('refuses a project with no active binding, and writes that refusal to the log', async () => {
     bindingRows = [];
     await expect(
@@ -190,11 +185,6 @@ describe('the merge verb', () => {
     );
   });
 
-  // cm:guard the planted set for the wrong-input rule. Merging is kernel input, where
-  // `VISION: kernel-hard-policy-soft` allows no normalisation at all — so a present-but-invalid
-  // field is refused by name and an ABSENT one still takes the default. Read the two as one and
-  // either every optional field becomes required or a typo silently lands a different shape of
-  // history on the base branch.
   it.each([
     ['a misspelled merge method', { method: 'sqaush' }, /is not a merge method/],
     ['a merge method that is not a string', { method: 7 }, /is not a merge method/],
@@ -218,10 +208,6 @@ describe('the merge verb', () => {
     expect(sent).not.toHaveProperty('expectedHeadSha');
   });
 
-  // cm:guard a refused merge throws a TERMINAL error, and this is the assertion that keeps it one.
-  // The queue retries a thrown error five times with exponential backoff, so a plain Error here
-  // would re-send a merge refused for a failing check an hour later — after the condition that
-  // refused it may have changed, which is ISS-1073's third rule broken by the transport.
   it('throws a terminal refusal, so the queue does not send it again', async () => {
     mergeStoredPullRequest.mockResolvedValue({
       kind: 'refused',

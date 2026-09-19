@@ -234,21 +234,10 @@ describe('POST /api/prompts/preview', () => {
   });
 });
 
-// cm:guard its own `describe` because it is its own contract: every other case in this file asks
-// what the preview RETURNS, and these ask which states it will answer for at all (ISS-1047).
 describe('POST /api/prompts/preview — the states it will answer for', () => {
-  // cm:guard derived from `jobTypes` minus `RUNNER_CAPABILITIES`, never a literal list: one
-  // example passes while the other seven still answer 200, and the literal goes stale the moment a
-  // job type is retired.
   const unclaimable = jobTypes.filter(
     (t) => !new Set(Object.values(RUNNER_CAPABILITIES).flat()).has(t),
   );
-
-  // cm:guard a 200 here is read as "this is the prompt that job gets", so a state no runner can
-  // claim has to be refused rather than answered with the shared prefix: there is no such job, and
-  // ISS-1047 deleted the state block and the facts that made the old answer look complete. The
-  // eight staged types stay in `jobTypes` for the ~30k historical `jobs` rows, so the enum cannot
-  // be the gate and `RUNNER_CAPABILITIES` is.
 
   it('there is something to refuse', () => {
     expect(unclaimable).toEqual(

@@ -15,7 +15,6 @@ import { parseMessages } from "@/features/session/types";
 
 expect.extend(matchers);
 
-// cm:why jsdom implements no scrolling at all, and the thread pins itself to its newest message on every mount — without this stub the component throws before any assertion here is reached
 Element.prototype.scrollIntoView = vi.fn();
 
 const open = vi.fn();
@@ -42,10 +41,6 @@ vi.mock("../api", () => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", name: "Alpha", slug: "alpha", role: "member" }] }),
 }));
-// cm:guard the double takes the message as an ARGUMENT so a test can send two different ones, and
-// it never reads `busy`: the real composer accepts a send while busy only when the caller passes
-// `queueWhileBusy`, and this chat does. A double that refused while busy would make the queue below
-// untestable and would have passed against the defect (ISS-1031).
 let nextMessage = "is the release ready?";
 vi.mock("@/features/session/components/composer", () => ({
   Composer: ({ onSend }: { onSend: (m: string) => Promise<void> }) => (
@@ -57,9 +52,6 @@ vi.mock("@/features/session/components/composer", () => ({
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
-// cm:guard the socket's own router is used rather than a hand-written `setQueryData`: what criteria 1
-// and 2 are about is the frame reaching the composer, and a test that wrote the cache itself would
-// pass against a router that never wrote that key at all (ISS-1078).
 const { routeEvent } = await import("@/lib/ws/event-router");
 const { flushInvalidations } = await import("@/lib/ws/invalidation-coalescer");
 
@@ -72,11 +64,6 @@ beforeEach(() => {
   open.mockReset();
   send.mockReset();
   detail.mockReset();
-  // cm:guard `agentMode` is reset HERE and not only in the case that changes it. The last case in
-  // this file leaves it pending on purpose, and its key sits under the `["conversations"]` prefix
-  // that `useOpenConversation`'s `onSuccess` invalidates and AWAITS — so a hanging read of it makes
-  // the next case's `open` mutation never resolve and its send never fire. Found by a case added
-  // after it, which failed only in a whole-file run (ISS-1078).
   agentMode.mockReset();
   agentMode.mockResolvedValue({ available: true, reason: null });
   open.mockResolvedValue({
@@ -118,7 +105,6 @@ beforeEach(() => {
       { id: "w1", firstSeq: 0, lastSeq: 0, closedAt: "2026-09-14T00:00:01.000Z", decision: "answered", decisionDetail: null },
     ],
   });
-  // cm:why the room reads back with what the send left in it, because that is what the server holds by the time any read of it lands — a mock returning an empty room would be asserting a race rather than the behaviour
   detail.mockImplementation(async () => ({
     id: "c1",
     adapter: "web",
@@ -163,10 +149,6 @@ describe("ConversationChat · the first message of a draft", () => {
   });
 });
 
-// cm:guard ISS-1031 — `POST /conversations/:id/messages` does not return until the agent turn is
-// over, so before this the thread could not show a person's own question until the answer arrived
-// with it: the words sat in the box and the room looked untouched for the whole wait. These four
-// cases are that behaviour, and each was watched failing against the code as it stood.
 describe("ConversationChat \u00b7 what a person sees between pressing send and being answered", () => {
   it("shows the message in the thread before the server has answered", async () => {
     let answer: (v: unknown) => void = () => undefined;
@@ -251,8 +233,6 @@ describe("ConversationChat \u00b7 what a person sees between pressing send and b
     });
     await waitFor(() => expect(screen.getByText("two issues left")).toBeInTheDocument());
 
-    // cm:why the heading renders the first message's text too, so the count is taken inside the
-    // thread rather than over the document — asserting over the whole screen counts the title.
     expect(screen.queryByTestId("thread-outbox-sending")).not.toBeInTheDocument();
     expect(screen.queryByTestId("thread-outbox-queued")).not.toBeInTheDocument();
     expect(screen.queryByTestId("thread-outbox-failed")).not.toBeInTheDocument();
@@ -263,7 +243,6 @@ describe("ConversationChat \u00b7 what a person sees between pressing send and b
   });
 });
 
-// cm:guard ISS-1011 review F6 — whether this caller may change the membership is the SERVER's answer, and the mock here holds a caller who is a `member` on the project and still may not: that is a real combination, because changing membership also takes being a live person in the room, which no project role implies. A screen inferring the capability from the project role offers the control and the server refuses it, which reads as a broken button rather than as a rule.
 describe("ConversationChat · who may change who is in the room", () => {
   const roomWith = (extra: Record<string, unknown>) => ({
     id: "c1",
@@ -313,7 +292,6 @@ describe("ConversationChat · who may change who is in the room", () => {
     expect(await screen.findByRole("button", { name: /add agent/i })).toBeInTheDocument();
   });
 
-  // cm:guard an ANSWER that carried no such field is read as "may not", not as "may": a tab open across the deploy of the half that added it would otherwise show controls whose every use the server refuses.
   it("offers nothing where the room's answer does not carry the capability at all", async () => {
     detail.mockResolvedValue(roomWith({}));
     await openRoster();
@@ -322,11 +300,6 @@ describe("ConversationChat · who may change who is in the room", () => {
   });
 });
 
-// cm:guard ISS-1039 criteria 1, 2, 15 and 16 — the pick between Assistant and Agent is offered in
-// the COMPOSER of an empty room and nowhere else, and Agent is offered disabled-with-a-reason on a
-// project that has no box to run it. Each case here was watched going red: hiding the control
-// unconditionally kills the first, rendering it unconditionally kills the second, and dropping the
-// server's `agentMode` on the floor kills the last two.
 describe("ConversationChat · picking what the room talks to", () => {
   const emptyRoom = (agentMode: { available: boolean; reason: string | null }) => ({
     id: "c1",
@@ -380,8 +353,6 @@ describe("ConversationChat · picking what the room talks to", () => {
       ],
     });
     mountRoom();
-    // cm:why the title renders the first message's text too, so the wait is on ALL of them: a
-    // `getByText` here fails on the second copy rather than on the behaviour being asserted.
     await waitFor(() =>
       expect(screen.getAllByText("is the release ready?").length).toBeGreaterThan(0),
     );
@@ -396,8 +367,6 @@ describe("ConversationChat · picking what the room talks to", () => {
     await waitFor(() => expect(screen.getByTestId("conversation-mode-toggle")).toBeInTheDocument());
     const agent = screen.getByRole("radio", { name: "Agent" });
     expect(agent).toBeDisabled();
-    // cm:guard the reason is READ OFF the server's answer and never composed here: a screen that
-    // writes its own sentence tells a person to pair a box when the real refusal was something else.
     expect(screen.getByText(/no device is paired with Alpha/)).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Assistant" })).toBeEnabled();
   });
@@ -417,11 +386,6 @@ describe("ConversationChat · picking what the room talks to", () => {
   });
 });
 
-// cm:guard the composer of a DRAFT is where this pick is usually made — there is no room yet, so the
-// room's own `agentMode` cannot answer, and the screen was offering Agent enabled on the strength of
-// nothing. A person on a project with no box paired then composed a question and learned from the
-// refusal. Criteria 15 and 16 are about the control being right BEFORE a message is spent
-// (ISS-1039, commit consult F5).
 describe("ConversationChat \u00b7 the pick before any room exists", () => {
   function mountDraft() {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -442,15 +406,10 @@ describe("ConversationChat \u00b7 the pick before any room exists", () => {
   it("offers Agent disabled, with the project's own reason, where no box is paired", async () => {
     agentMode.mockResolvedValue({ available: false, reason: "this project has no box paired" });
     mountDraft();
-    // cm:why the wait is on the REASON and not on the disabled state: the control is disabled while
-    // the read is still in flight too, so waiting on that alone passes before the answer arrives and
-    // asserts the loading sentence.
     await waitFor(() => expect(screen.getByText(/no box paired/)).toBeInTheDocument());
     expect(screen.getByRole("radio", { name: "Agent" })).toBeDisabled();
   });
 
-  // cm:guard an unknown is not a yes: while the read is in flight the control is disabled and says
-  // what it is doing, because offering it and refusing the send a second later is the same lie.
   it("holds Agent closed while it does not yet know", async () => {
     let answer: (v: { available: boolean; reason: string | null }) => void = () => undefined;
     agentMode.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
@@ -463,10 +422,6 @@ describe("ConversationChat \u00b7 the pick before any room exists", () => {
   });
 });
 
-// cm:guard ISS-1078 criteria 1 and 2. Before this, `POST /conversations/:id/messages` was the only
-// thing that could clear "Sending…", and it does not return until the agent turn is over — so a
-// person's own question read as still-in-flight for the whole answer. Both cases below hold that
-// request open for their whole length, which is the only way either one can fail honestly.
 describe("ConversationChat \u00b7 a question the server has filed but not yet answered (ISS-1078)", () => {
   const roomBase = {
     id: "c1",
@@ -488,8 +443,6 @@ describe("ConversationChat \u00b7 a question the server has filed but not yet an
     silenceReason: null,
     createdAt: "2026-09-14T00:00:00.000Z",
   };
-  // cm:why the heading renders the room's first message as its title, so the count is taken inside
-  // the thread — asserting over the document counts the title as a second copy.
   const inThread = (text: string) =>
     screen.getAllByText(text).filter((el) => el.closest("h1") === null);
 
@@ -525,8 +478,6 @@ describe("ConversationChat \u00b7 a question the server has filed but not yet an
 
     await accept(qc, send.mock.calls[0]?.[3] as string);
 
-    // cm:guard the request is asserted STILL OPEN, which is the whole property: a label that cleared
-    // because the turn had ended would be the behaviour this replaces.
     expect(send).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("thread-outbox-sent")).toBeInTheDocument();
     expect(screen.queryByTestId("thread-outbox-sending")).toBeNull();
@@ -538,12 +489,6 @@ describe("ConversationChat \u00b7 a question the server has filed but not yet an
     });
   });
 
-  // cm:guard watched on a local walk in Chrome, 2026-09-17: the mascot placeholder sat under the
-  // reply as it was being typed, saying the turn had produced nothing directly beneath the words it
-  // had produced. ISS-1078 answered that by silencing it the moment frames arrived, which left the
-  // rest of the turn saying nothing at all. ISS-1083 replaces it with a line that says which stage
-  // the turn is in — so this case now asserts the deliberately changed behaviour: the placeholder
-  // is gone from this surface entirely, and the line REMAINS through the frames instead of going.
   it("says which stage the turn is in, from the gap before the first frame through the prose", async () => {
     let answer: (v: unknown) => void = () => undefined;
     send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
@@ -591,10 +536,6 @@ describe("ConversationChat \u00b7 a question the server has filed but not yet an
     });
   });
 
-  // cm:guard criterion 20, and the pairing IS the assertion: the working line is on screen while
-  // `parseMessages` yields NOTHING for the same entry. A stage drawn as a transcript block would
-  // pass the first half and fail the second, and it would be a claim no producer emitted — the
-  // defect ISS-1079 refused when it declined to invent thinking blocks on the Claude Code path.
   it("says a turn with nothing in it is working without inventing a block for it", async () => {
     let answer: (v: unknown) => void = () => undefined;
     send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
@@ -665,8 +606,6 @@ describe("ConversationChat \u00b7 a question the server has filed but not yet an
     await accept(qc, send.mock.calls[0]?.[3] as string);
     expect(inThread("is the release ready?")).toHaveLength(1);
 
-    // cm:guard the replacement read is DELAYED here on purpose: a row dropped on acceptance leaves
-    // the question nowhere at all until this lands, which is consult F4 (ISS-1078).
     rows = [stored];
     await act(async () => {
       openGate();

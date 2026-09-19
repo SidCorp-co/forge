@@ -50,7 +50,6 @@ describe('parseVerifyConfig', () => {
 });
 
 describe('readLiveCommit', () => {
-  // cm:guard a fleet half on the new build is NOT deployed — returning the first probe's answer would report green while some servers still serve the old one
   it('refuses to answer when two probes disagree', async () => {
     answers('aaa', 'bbb');
 
@@ -90,7 +89,6 @@ describe('verifyDeployed', () => {
     expect(out).toEqual({ ok: true, commit: 'new-sha', health: 'up', identity: 'new-sha' });
   });
 
-  // cm:guard THE case: a 200 from a healthy site proves nothing, and this is the read that separates "deployed" from "still running yesterday's build"
   it('goes red when the site is healthy and still serving the pre-release build', async () => {
     answers('old-sha', 'old-sha', 'old-sha', 'old-sha');
 
@@ -109,7 +107,6 @@ describe('verifyDeployed', () => {
     expect(out.ok === false && out.reason).toContain('unchanged');
   });
 
-  // cm:guard without the pre-release baseline an agent reporting the commit that was ALREADY live verifies perfectly, which is the exact shape of a release that deployed nothing
   it('goes red when the release reports the commit that was already serving', async () => {
     answers('same-sha', 'same-sha');
 
@@ -194,8 +191,6 @@ describe('verifyDeployed', () => {
   });
 });
 
-// ISS-1042 — health and identity are two questions, and the four ways a probe read
-// can fail used to arrive as one `null`.
 describe('readLiveState', () => {
   const twoProbes = {
     probes: [
@@ -223,9 +218,6 @@ describe('readLiveState', () => {
     expect(state.unhealthy.join()).toContain('ECONNREFUSED 10.0.0.1:443');
   });
 
-  // cm:guard THE separation this was written for: the application answered, so health is UP, and
-  // what failed is the probe declaration. Reported as "no probe answered" it sends an operator to
-  // the build for a typo in `commitPath`.
   it('reads a 200 whose commitPath plucks nothing as healthy and unidentified', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
@@ -293,8 +285,6 @@ describe('verifyDeployed, health before identity', () => {
     expect(out.ok === false && out.reason).toContain('the application is not answering');
   });
 
-  // cm:guard a healthy site with an unreadable commit must NOT read as a failed deploy — that
-  // sentence is what sent the repair at the build for a probe declaration that never matched.
   it('names the probe declaration, not the deploy, when the site is healthy and unidentified', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

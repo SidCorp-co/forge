@@ -1,12 +1,10 @@
 "use client";
 
-// cm:edge contract -> packages/core/src/devices/routes.ts — that route carries no fresh-auth gate BECAUSE this is the confirmation, so weakening the match here leaves a destructive call with nothing in front of it. Typing the name guards a mistake, not a stolen session; the route's own guard records why the password gate could not be the answer.
 
 import { type ChangeEvent, type KeyboardEvent, useState } from "react";
 import { Button, Input } from "@/design";
 import { useRevokeDevice } from "../hooks";
 
-// cm:guard compare the TYPED name against the device's own, trimmed and nothing more — no lowercasing, no prefix match, no "close enough". Two hosts here are called `ubuntu6` and `ubuntu6 (barlow)`, and a loosened compare revokes the wrong one from a row the operator is not looking at.
 function matches(typed: string, deviceName: string): boolean {
 	return typed.trim() === deviceName.trim();
 }

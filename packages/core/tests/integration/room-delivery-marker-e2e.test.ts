@@ -1,16 +1,3 @@
-/**
- * ISS-727 moved both Rocket.Chat completion bridges onto one marker-parameterized
- * pair of queries, which turned two jsonb keys that used to be SQL literals
- * (`-> 'agentChat'`, `-> 'escalation'`) into a bind parameter. A mocked `db`
- * cannot say whether `jsonb -> $1` resolves at all — Postgres overloads `->` on
- * text and int, and an untyped parameter is ambiguous — so the `::text` cast the
- * code carries is only provable here.
- *
- * Driven against a real database: that both markers bind, that the delivery claim
- * is a compare-and-set exactly one caller wins, and that the claim preserves the
- * sibling keys a bridge's own failover counter lives in.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -110,7 +97,6 @@ describe('room-delivery marker queries', () => {
     });
   }
 
-  // cm:why only a real database answers the null branch: `->> 'tmid'` yields SQL NULL for a room's own messages and `= NULL` is NULL rather than true, so an equality predicate stops deduping the main channel entirely and a mocked db cannot see it (ISS-987 criteria 18, 19, 20)
   it('does not dedup a thread against a different thread in the same room', async () => {
     await seedSession('running', { agentChat: marker('room-1', { tmid: 'thread-a' }) });
 

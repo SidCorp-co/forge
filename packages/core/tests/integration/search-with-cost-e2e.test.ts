@@ -1,16 +1,3 @@
-/**
- * ISS-1081 — `?withCost=1` on the issues search endpoint, against a real
- * Postgres.
- *
- * The sibling unit suite (`src/issues/search.test.ts`) stubs the database, so a
- * statement Postgres cannot even parse passes it. That is how ISS-1015 shipped
- * a rollup whose join predicate emitted a bare `session_id` that resolves in
- * two tables at once, and how the Issues list went down on every non-empty
- * project while every gate stayed green. Only a real Postgres can answer
- * whether the statement drizzle emits is a statement the server accepts, so
- * every case here goes through the mounted router to a live database.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -100,14 +87,6 @@ async function insertIssue(title: string, projectId = project.id): Promise<strin
   return id;
 }
 
-/**
- * One job of `issueId` that ran under `sessionId`.
- *
- * No `agent_sessions` row is written, and that is the point: the rollup reaches
- * usage from `jobs.agent_session_id` straight to `usage_records.session_id`,
- * with no FK between them and no third table in the join. A fixture that seeded
- * the session table would suggest a dependency the query does not have.
- */
 async function insertJobWithSession(issueId: string, sessionId: string): Promise<void> {
   const runId = randomUUID();
   // `completed`, not `running`: `pipeline_runs_issue_open_uq` allows one open
@@ -249,11 +228,6 @@ describe('ISS-1081 · search ?withCost against a real database', () => {
     expect(await search('?withCost=1', empty.id)).toEqual([]);
   });
 
-  // criteria 4 and 5 — read off the statement the route sends, not off a
-  // likeness of it. Criterion 4: every `session_id` in the emitted ON clause is
-  // qualified, so no reference of that name resolves in two tables at once.
-  // Criterion 5: the left side is the uncast `usage_records.session_id`, which
-  // is the index-scan property ISS-1015 bought and this fix may not spend.
   it('emits a join whose session reference is qualified and whose left side is uncast', () => {
     const { sql: text } = mods.issueCostRollupQuery([randomUUID(), randomUUID()]).toSQL();
     const on = /inner join "usage_records" on (.+?)(?: group by | where |$)/i.exec(text)?.[1];

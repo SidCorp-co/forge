@@ -1,15 +1,3 @@
-/**
- * Runner-health write-back for the chat/schedule terminal report, lifted out
- * of `PATCH /api/agent-sessions/:id` so that handler stays inside its frozen
- * size budget (`.forge/size-baseline.json`). Behaviour is unchanged — the
- * guards below travelled with the code they constrain.
- *
- * A device that only ever serves chat turns produces no jobs, so the job-lane
- * limit detector never sees it; without this write-back its `runners` row
- * would keep a stale limit and the dispatch health gate would keep excluding
- * (or keep trusting) it on evidence from days ago.
- */
-
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AgentSessionStatus, runners } from '../db/schema.js';
@@ -46,8 +34,6 @@ export interface ChatRunnerHealthInput {
  * Stamp or clear the executing runner's limit/quarantine from one chat-lane
  * terminal report. Never throws — a health write must not fail the PATCH.
  */
-// cm:guard gate the STAMP on the DEVICE principal — a user/member PATCH can carry an arbitrary crafted `messages` array (patchSchema.messages is unvalidated), so classifying non-device-authored PATCHes would let a project member mis-stamp a healthy runner and DoS pipeline dispatch (queued-gates.ts hard-excludes a rate-limited runner)
-// cm:guard the stamp reads the REPORTED status and the clear reads the PERSISTED one, and the asymmetry is deliberate: a core-side rewrite of `completed` into `failed` (skill_not_synced, audit_ran_blind) is core's own verdict about the AGENT, not evidence the runner is rate-limited — clearing on the rewritten outcome would hide the failure from the health gate, stamping on it would blame the box for the model
 export async function syncRunnerHealthFromChatTerminal(
   input: ChatRunnerHealthInput,
 ): Promise<void> {
@@ -55,7 +41,6 @@ export async function syncRunnerHealthFromChatTerminal(
 
   if (input.principal === 'device' && input.reportedStatus === 'failed' && !input.isUserCancelled) {
     try {
-      // cm:guard classify only runner-authored text — the transcript's first message is buildAgentChatPrompt's output (the user's own question), so an unfiltered blob lets user content trip isRateLimitError/isAuthError and mis-limit a healthy runner
       const text = extractSessionFailureText(input.messages, null, { excludeRoles: ['user'] });
       const limit = detectRunnerLimit(text, null);
       if (limit) {
@@ -70,7 +55,6 @@ export async function syncRunnerHealthFromChatTerminal(
     }
   }
 
-  // cm:why symmetric to the stamp — without it a runner stamped 'auth' once stays excluded forever on a project that only ever runs chat, since nothing else on that lane ever clears the row
   if (input.persistedStatus === 'completed') {
     try {
       const runnerId = await findRunnerId(input.projectId, input.deviceId);

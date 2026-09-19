@@ -22,8 +22,6 @@ import { finalizeFailedJob } from './finalize-failure.js';
  * End a claimed job because the monthly cap is reached, leaving the `held`
  * retry that records why.
  */
-// cm:guard this must NOT become a plain refusal that leaves the job `queued`. A queued job goes straight back into the pool, so the next master claims it, re-runs the same check and posts the same comment — an issue collecting one operator comment per master pass, and a breach that never comes to rest. `held` is what makes the answer stick.
-// cm:edge lockstep -> packages/core/src/devices/claim.ts — the claim calls this and then reports `budget_exhausted`; the reason it returns is for the MASTER's next choice, while the rows written here are the kernel's record. Dropping either half leaves one of the two blind.
 export async function endJobForBudgetBreach(
   job: typeof jobs.$inferSelect,
   budget: BudgetCheckResult,

@@ -1,22 +1,3 @@
-/**
- * A `drive` handoff is code evidence.
- *
- * `collectWorkEvidence` scanned `('code','fix')` on both the job table and the
- * handoff table until 2026-09-02, so an autonomous driver — the one step that
- * writes the code, merges it and closes the issue in a single session — had no
- * evidence at all. `applyMergeMarker` refuses an AGENT's `POST /api/issues/:id/merge`
- * with NO_WORK_EVIDENCE, so the driver's own merge stamp was unreachable, and
- * the close-stamp audit comment told every reader "no branch, commit or code
- * handoff is recorded" for work that had all three. Measured the same day on
- * forge-beta: 7 stored `drive` handoffs, 7 of them carrying a `commitSha`,
- * 0 counted.
- *
- * The unit suite (`src/pipeline/work-evidence.test.ts`) queues rows behind a
- * fake query builder that never executes a `where`, so an `inArray` list is
- * exactly what it cannot see — the assertion there would pass with `drive`
- * absent. This runs the real SQL.
- */
-
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -73,7 +54,6 @@ describe('drive handoffs count as code evidence', () => {
     return issueId;
   }
 
-  // cm:why imported inside the test, not at module scope — work-evidence.ts pulls in db/client.js, which validates env at load time and would throw before beforeAll sets DATABASE_URL
   const load = () => import('../../src/pipeline/work-evidence.js');
 
   it('reads commitSha and filesModified out of a drive handoff', async () => {
@@ -98,7 +78,6 @@ describe('drive handoffs count as code evidence', () => {
     expect(await findMissingWorkEvidence(issueId, harness.db as never)).toBeNull();
   });
 
-  // cm:guard the negative half is what stops the fix from degenerating into "any handoff is evidence": an EMPTY handoff is the ISS-105 fabrication shape, and widening the step list must not widen what counts as proof
   it('still refuses a drive handoff that carries no commit and no files', async () => {
     const issueId = await issueWithHandoff('drive', { outcome: 'ok', summary: 'did things' });
 

@@ -1,5 +1,3 @@
-// cm:guard PURE derivations only — no React, no fetching. This module holds the board's column derivation, the status→chip mapping and the money/duration formatters used by the kanban, run detail and ops views, so one import with a side effect reaches all three at once.
-// cm:guard this file's own STATUS_TO_STAGE went in ISS-999, with its 15 keys against the issues module's 17 — `releasing` and `dropped` were in neither, so both fell through `?? "triage"` and the same issue read `release` on its row and `triage` on the board. The columns are the lane's labels now and the lane is the kernel's: a map from status to a position does not come back here under another name.
 import {
   AUTONOMOUS_LABELS,
   type AutonomousLabel,
@@ -19,10 +17,6 @@ import {
   type StepDurationRow,
 } from "./types";
 
-/** A run's `currentStep` (a `jobType`) → one of the seven staged names, for COLOUR. `fix` folds
- *  onto `code`; anything else — `drive`, `pm`, `custom` — is not one of the seven and answers
- *  `null`, so a caller shows the job type's own name rather than a seven's. */
-// cm:guard the `default` used to answer `triage`, which is why every autonomous run (whose only job type is `drive`) painted the first bead of a seven-bead tracker as its position. ISS-999 deleted that tracker and this answers `null` instead: a name outside the seven is reported as outside the seven, never folded onto the first one.
 export function jobTypeToStage(jobType: string | null | undefined): StageKey | null {
   switch (jobType) {
     case "triage":
@@ -113,8 +107,6 @@ export interface LabelGroup {
  * The two are different relations: `toAutonomousLabel` is many-to-one, so the moment an excluded
  * status shares a label with an included one, subtraction deletes a column full of live issues.
  */
-// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — the kernel owns which label a status reads as, and this owns only which of those labels the board can show. A label added there reaches the board with no edit here, provided some returnable status maps to it.
-// cm:why `excluded` is a parameter and not read straight off the import: with today's enum the forward derivation and a subtract-the-excluded-labels one agree, because `draft` and `closed` each wear a label no other status wears — so a test over the real set cannot tell a correct implementation from the wrong one, and measured nothing. Passing an excluded set where one excluded status SHARES a label with an included one (`waiting` and `needs_info` are both `needs_human`) separates them, and `board-columns.test.ts` does exactly that.
 export function boardColumns(
   excluded: readonly string[] = BOARD_EXCLUDED_STATUSES,
 ): AutonomousLabel[] {
@@ -136,7 +128,6 @@ export function groupIssuesByLabel(issues: PipelineIssueRow[] | undefined): Labe
   const columns = boardColumns();
   const buckets = new Map<AutonomousLabel, PipelineIssueRow[]>(columns.map((l) => [l, []]));
   for (const issue of issues ?? []) {
-    // cm:guard a status with no column gets one rather than being dropped — reachable only if the query's `statusNot` and BOARD_EXCLUDED_STATUSES drift apart, and a silently missing row is the worse failure
     const label = toAutonomousLabel(issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number]);
     const bucket = buckets.get(label);
     if (bucket) bucket.push(issue);
@@ -173,7 +164,6 @@ export interface StepCost {
 /**
  * Fold the `step-durations` window onto the job types it actually contains, slowest median first.
  */
-// cm:guard keyed on the row's own `step` and NOT on a stage. Its predecessor (aggregateStageInsights, ISS-999) returned one row per seven fixed stages whichever of them had run, with an issue count taken from a status→stage map beside it; a `drive` step landed on `triage` and a stage nothing had run still drew a card. A job type with no row here has no row here.
 export function aggregateStepCosts(durations: StepDurationRow[] | undefined): StepCost[] {
   const byStep = new Map<string, { secs: number[]; cost: number }>();
   for (const r of durations ?? []) {
@@ -205,7 +195,6 @@ export interface CardStatusView {
   waitingReason: string;
 }
 
-// cm:guard a queued step OUTRANKS the run's own status — a queued job lives under a `running` pipeline_run, so `runStatusToStatusKey` painted the card "Running" while nothing was running, and a waiting chip merely added beside it would have left the card asserting both (ISS-903)
 export function cardStatus(
   issue: PipelineIssueRow,
   run: { status: PipelineRunStatus } | undefined,

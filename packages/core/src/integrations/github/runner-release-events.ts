@@ -76,12 +76,10 @@ async function readPublication(
     return { ...judged, releaseUrl: release?.htmlUrl ?? null };
   } catch (err) {
     if (!(err instanceof RunnerReleaseRepoError)) throw err;
-    // cm:guard a reading that could not be taken is `unknown` and never `absent`. They are the same row to a careless reader and opposite things to an operator: one says nothing was published, the other says nobody knows, and only the first is a reason to cut again.
     return { publication: 'unknown', detail: err.refusal.message, releaseUrl: null };
   }
 }
 
-// cm:guard the tag is the ONLY term that names which release a build belongs to, and there is no fall back to `head_sha` on purpose: a commit does not name a tag, two `runner-v*` tags can point at one commit, and picking between them settles somebody else's release with this one's readings. A delivery carrying no usable tag is written down as unattributed and settles nothing.
 async function attribute(
   ctx: DeliveryContext,
   run: NonNullable<WorkflowRunPayload['workflow_run']>,
@@ -111,7 +109,6 @@ async function attribute(
     );
     return null;
   }
-  // cm:guard the repository is one of the four terms and it is compared UNCONDITIONALLY, so a delivery that carries no `repository.full_name` fails the term rather than skipping it. Making the comparison conditional on the field being present is how a payload with the field missing settles a release on three terms — and the shape of a delivery is GitHub's to change, not ours to assume.
   if (row.repository !== repository) {
     logger.error(
       { releaseId: row.id, tag, delivered: repository, held: row.repository },
@@ -137,7 +134,6 @@ async function attribute(
  * tag and only its tag, and one carrying no `runner-v*` tag settles nothing
  * (criteria 10 and 11). These terms only reject.
  */
-// cm:guard `head_sha` appears here and NOWHERE in the lookup. Moving it into `attribute` to find a row would be the fallback criterion 10 refuses — two `runner-v*` tags can point at one commit and picking between them settles the wrong release. Rejecting on it is safe for the same reason it is unsafe to select on: a commit that disagrees is positive evidence, a commit that agrees names nothing.
 function validate(
   row: RunnerReleaseRow,
   run: NonNullable<WorkflowRunPayload['workflow_run']>,
@@ -185,7 +181,6 @@ async function settle(
     return moved ? 1 : 0;
   }
 
-  // cm:guard the lead says what the BUILD did and the truth says what the REPOSITORY holds, and they are two readings rather than one sentence: a failed build over a release that exists anyway, and a successful build over a draft nothing will ingest, are both states this path meets and neither is derivable from the conclusion.
   const lead =
     conclusion === 'success'
       ? `The build for \`${row.tag}\` succeeded (${workflowUrl ?? 'no url'}), and the release it should have produced is not whole.`
@@ -224,13 +219,11 @@ export async function applyWorkflowRunEvent(
 ): Promise<number> {
   const run = payload.workflow_run;
   if (!run) return 0;
-  // cm:guard the workflow is matched on its PATH and not on its name: the path is the file this repository owns and a rename of it is a change to the same commit this constant lives in, whereas `name:` is a display string anybody may edit without touching core. Matching on neither is how every workflow's completion reaches this arm.
   if (run.path !== RUNNER_RELEASE_WORKFLOW_PATH) return 0;
   if (payload.action !== 'completed' || run.status !== 'completed') return 0;
 
   const row = await attribute(ctx, run, payload.repository?.full_name ?? null);
   if (!row) return 0;
-  // cm:guard the short circuit is a convenience and NOT the guarantee: `settlePublished` and `settleFailed` are both conditional on `settled_at IS NULL`, which is what makes two deliveries landing milliseconds apart settle once. Reading this as the defence and relaxing the statements is how a re-delivery overwrites a verdict.
   if (row.settledAt !== null) {
     logger.info(
       { releaseId: row.id, tag: row.tag, workflowRunId: run.id },

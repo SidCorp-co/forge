@@ -5,7 +5,18 @@
 // the trail underneath is every write anybody made to them, each restorable.
 import { useEffect, useState } from "react";
 import type { AnswerStyle, PreferenceChange } from "@forge/contracts";
-import { Button, Card, CardContent, Field, Select, type SelectOption, Skeleton, Textarea } from "@/design";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardTitle,
+  Field,
+  SectionTitle,
+  Select,
+  Skeleton,
+  Textarea,
+  type SelectOption,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -64,7 +75,6 @@ export function AssistantPreferencesCard() {
       await restore.mutateAsync(change.id);
       toast({ title: "Restored", description: describeChange(change), tone: "success" });
     } catch (err) {
-      // cm:guard the 409 is shown as what it is — a later change holds the field — and never retried or forced: the trail is the person's own record, and a restore over somebody's newer write would be the silent overwrite the trail exists to make visible (ISS-1034 criterion 53).
       toast({ title: "Could not restore", description: formatApiError(err), tone: "error" });
     }
   }
@@ -72,7 +82,7 @@ export function AssistantPreferencesCard() {
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-1">How the assistant answers you</h2>
+        <SectionTitle className="fg-h3 mb-1">How the assistant answers you</SectionTitle>
         <p className="fg-body-sm mb-4 text-muted">
           Applies to every reply addressed to you — in Forge rooms and in every connected chat.
         </p>
@@ -119,7 +129,7 @@ export function AssistantPreferencesCard() {
           </div>
         )}
 
-        <h3 className="fg-h3 mt-8 mb-2">Changes</h3>
+        <CardTitle className="mt-8 mb-2">Changes</CardTitle>
         {changesQ.isLoading ? (
           <Skeleton className="h-10 w-full rounded-md" />
         ) : !changesQ.data || changesQ.data.length === 0 ? (

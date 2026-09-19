@@ -1,21 +1,9 @@
-/**
- * Response shapes for the cross-tenant Operator Ops Console endpoints
- * (ISS-649). A leaf module with no imports: `public.ts` re-exports it, and
- * `@forge/contracts` re-exports that, so the browser and the handlers read one
- * declaration instead of two that drift.
- */
-
-/** One Tier 2 glance metric: the window's value, its move against the
- *  preceding window of equal length, and a dense per-bucket series for the
- *  current window. `value`/`deltaPct` are null where the denominator was zero
- *  — a ratio nobody can compute, not a zero. */
 export interface AdminGlanceMetric {
   value: number | null;
   deltaPct: number | null;
   spark: number[];
 }
 
-// cm:guard ISS-975 — the ONE list of what the console measures. `admin/metric-series.ts` keys its source registry by this union and `AdminOverview['glance']` is a record over it, so a name added to the glance without a source (or the reverse) is a type error. Widening this to `string` restores the drift the single list exists to prevent: a metric the series route serves that the glance cannot show means one of the two is lying about what the console measures.
 export const GLANCE_METRIC_NAMES = [
   'leadTimeMinutes',
   'interventionsPerClosed',
@@ -26,26 +14,15 @@ export const GLANCE_METRIC_NAMES = [
 
 export type AdminGlanceMetricName = (typeof GLANCE_METRIC_NAMES)[number];
 
-// cm:guard ISS-975 — the ONE window vocabulary, for the same reason as the names above: `/overview` and `/metrics/:metric/timeseries` both build their `z.enum` from this tuple and `WINDOW_SPECS` is a record over it, so neither route can come to offer a window the other does not. A second enum for the same idea is the drift this endpoint was split out to avoid.
 export const GLANCE_WINDOWS = ['24h', '7d', '30d'] as const;
 
 export type AdminMetricWindow = (typeof GLANCE_WINDOWS)[number];
 
-/** One bucket of `GET /api/admin/metrics/:metric/timeseries`. `value` is null
- *  only for a ratio whose denominator was zero — a count with no rows is 0. */
 export interface AdminMetricSeriesPoint {
   bucketStart: string;
   value: number | null;
 }
 
-/**
- * `GET /api/admin/metrics/:metric/timeseries?window=24h|7d|30d`.
- *
- * `points` spans the baseline window AND the current one — twice the window's
- * bucket count, oldest first — which is the same span the glance folds away to
- * produce `value` and `deltaPct`, both repeated here so the shape and the
- * figures an operator already saw are explicable from one response.
- */
 export interface AdminMetricSeries {
   metric: AdminGlanceMetricName;
   window: AdminMetricWindow;
@@ -132,22 +109,13 @@ export interface AdminThresholds {
   deliveryFailRatePct: number;
   interventionLabels: string[];
   ghostRunnerOfflineDays: number;
-  /** ISS-1085 slice 3 — the smallest event count a Sentry issue may carry and still be filed. */
   sentryMinEventCount: number;
-  /** ISS-1085 slice 3 — the smallest affected-user count a Sentry issue may carry and still be filed. */
   sentryMinUserCount: number;
 }
 
-// cm:guard the bounds are declared ONCE here and read by the column, by the PUT schema and by the
-// admission gate's own test. A threshold of 0 or below is not a lenient policy, it is the gate
-// turned off with nothing saying so — the Sentry pull files at `draft` on a project whose backlog a
-// person reads, and the issue this came from measured 688 open issues and 45% dropped on one
-// project already. The upper bound exists so a typo'd 10000000 reads as a refusal rather than as a
-// pull that silently files nothing forever.
 export const SENTRY_THRESHOLD_MIN = 1;
 export const SENTRY_THRESHOLD_MAX = 1_000_000;
 
-// cm:edge lockstep -> packages/core/src/db/schema.ts — `adminThresholds` builds its column defaults from THIS object, so the empty table and the fallback below can never disagree; a value edited here moves both, and adding a field without a column makes the PUT silently drop it.
 export const ADMIN_THRESHOLD_DEFAULTS: AdminThresholds = {
   stuckJobSeconds: 600,
   runnerStarvedSeconds: 300,
@@ -157,9 +125,6 @@ export const ADMIN_THRESHOLD_DEFAULTS: AdminThresholds = {
   deliveryFailRatePct: 20,
   interventionLabels: ['kernel-hardening', 'onboarding'],
   ghostRunnerOfflineDays: 14,
-  // cm:why 10 and 2, not 1 and 1 — ISS-1085's admission gate defaults to NOT filing, and a
-  // threshold of 1 files every one-off error the moment one person hits it once. Ten events from
-  // two distinct people is the smallest signal this fleet would spend an agent on.
   sentryMinEventCount: 10,
   sentryMinUserCount: 2,
 };

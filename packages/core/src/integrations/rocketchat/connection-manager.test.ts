@@ -6,7 +6,7 @@
  * RC REST/DDP) are stubbed so this stays a fast, hermetic unit suite; `handle()`
  * is private, invoked via a loose cast (TS `private` is compile-time only).
  */
-// cm:ignore CM013 — the one frozen comment left in this file is an `i18n-allow` pragma the language gate reads; deleting it to pay the drain reds that gate instead.
+// the one frozen comment left in this file is an `i18n-allow` pragma the language gate reads; deleting it to pay the drain reds that gate instead.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screenPasses } from '../../messaging/screen-passes.fixture.js';
@@ -23,7 +23,6 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
-// cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
   roomStillBoundTo: async () => true,
@@ -98,7 +97,6 @@ vi.mock('../../assistant/tools/principal.js', () => ({
   buildChatToolContext: (...args: unknown[]) => buildChatToolContext(...args),
 }));
 
-// cm:why ISS-1004 split the old `handle()` in two: a message is COLLECTED into its conversation and its window, and the turn is taken later over everything the window holds. These fakes stand in for the rows that path reads, and `handle` below drives both halves so every assertion in this file still measures one message in and one reply out.
 const collected: Array<Record<string, unknown>> = [];
 const conversationsById = new Map<
   string,
@@ -106,7 +104,6 @@ const conversationsById = new Map<
 >();
 let lastOpened: { id: string; shape: 'direct' | 'group'; externalId: string } | null = null;
 
-// cm:guard the two ISS-1034 reads the window makes are answered at the module seam: `roomHandles`/`handleForProject` join tables this fake `select().from().where()` chain has no verb for, and `readSelvesFor` would otherwise consume a row the FIFO below queued for somebody else. Empty means "no self, no handle", which folds to today's constants — the regression these cases already guard (ISS-1034).
 vi.mock('../../conversations/participants.js', async (orig) => ({
   ...(await orig<typeof import('../../conversations/participants.js')>()),
   roomHandles: async () => [],
@@ -172,7 +169,6 @@ vi.mock('../../conversations/store.js', () => ({
   },
 }));
 
-// cm:why `conversations/ports.js` is NOT stubbed: it is the registry the runner reads to find a venue's transport, so a stub would leave the adapter registering into one map and the turn reading another, and every delivery would refuse for a reason no room ever sees (ISS-1002).
 const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-server-id-9' }));
 const { clearConversationTransports, registerConversationTransport } = await import(
   '../../conversations/ports.js'
@@ -190,7 +186,6 @@ vi.mock('./room-shape.js', () => ({
 }));
 
 const { rocketChatManager } = await import('./connection-manager.js');
-// cm:why the route half left the manager for `window-drain.ts` when the manager reached the size budget; the harness still drives collect-then-route as one call because that is the pair production runs.
 const { routeOne } = await import('./window-drain.js');
 
 interface Loose {
@@ -258,9 +253,7 @@ const MESSAGE = {
   images: [],
 };
 
-// cm:guard the fake transport is the FOUR ports and the registry is the real one: `handle` is a caller of the neutral turn now, and a suite that stubbed the registry would prove the adapter against a delivery path production does not have (ISS-1002).
 beforeEach(() => {
-  // cm:why every message now resolves its speaker, whatever the room's shape — ISS-1004 attributes a collected message to whoever actually spoke, while authority still follows the shape. In a group room an unlinked speaker is a fact and not a refusal, so this default is the ordinary case.
   resolveSpeaker.mockResolvedValue({
     linked: false,
     refusal: { code: 'SPEAKER_UNLINKED', message: 'UNLINKED' },
@@ -311,7 +304,6 @@ describe('connection-manager escalation wiring', () => {
       }),
     );
     expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: 'ACK:Babo' });
-    // cm:why the escalate branch returns before the output-guard verify step, so this reply never reaches the screener
     expect(screenRoomReply).not.toHaveBeenCalled();
   });
 
@@ -405,9 +397,6 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     const ac = makeAc();
     await handle(ac, ROUTE, MESSAGE, 'conn-1', 'group');
 
-    // cm:guard the turn is addressed by VENUE, window and delivery key and no longer by a connection
-    // id and a rid: the lane behind this call is shared with the Forge UI, and a room id reaching it
-    // would be this transport's vocabulary back inside it (ISS-1039).
     expect(startAgentChat).toHaveBeenCalledWith(
       expect.objectContaining({
         venue: expect.objectContaining({
@@ -427,7 +416,6 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     expect(startAgentChat.mock.calls[0]?.[0]).not.toHaveProperty('rid');
     expect(startAgentChat.mock.calls[0]?.[0]).not.toHaveProperty('connectionId');
     expect(runExternalChatTurn).not.toHaveBeenCalled();
-    // cm:guard no immediate ack: a fast turn's answer arrives through the completion bridge, and only a slow turn gets the delayed ack, scheduled inside `startAgentChat` rather than sent from here.
     expect(deliver).not.toHaveBeenCalled();
   });
 

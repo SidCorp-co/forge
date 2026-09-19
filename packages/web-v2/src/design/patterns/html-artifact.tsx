@@ -1,11 +1,5 @@
 "use client";
 
-// Renders an uploaded HTML attachment the way an artifact viewer does: inside a
-// sandboxed iframe fed by `srcDoc`. The page may style and script itself, but
-// its origin is opaque, so it cannot read the session it is embedded in.
-//
-// Presentational only — the caller hands over the markup. Fetching the bytes
-// belongs to the feature layer (arch `web-design-holds-no-api-client`).
 
 import { useState } from "react";
 import { cn } from "@/lib/utils/cn";
@@ -22,7 +16,6 @@ export interface HtmlArtifactProps {
 export function HtmlArtifact({ html, title, className, height = 420 }: HtmlArtifactProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // cm:guard the iframe's sandbox below must NEVER gain `allow-same-origin`. Paired with `allow-scripts` that hands the embedded page the app's own origin, and this markup is uploaded by anyone who can comment — session cookies, tokens and the whole DOM become readable. `allow-scripts` alone keeps the origin opaque, which is the only reason rendering uploaded HTML at all is safe.
   return (
     <div className={cn("overflow-hidden rounded-lg border border-line bg-surface", className)}>
       <header className="flex items-center gap-2 border-b border-line bg-sunken px-3 py-1.5">

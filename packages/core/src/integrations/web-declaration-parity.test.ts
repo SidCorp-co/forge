@@ -1,21 +1,3 @@
-/**
- * The web's provider registry and core's declarations must agree about how an agent reaches a
- * provider — and nothing else in either package can notice when they stop.
- *
- * `BindingSummary.agentPathKind` is projected by the server for a SAVED binding, so a binding row
- * always renders from the truth. A CONNECT form has no binding yet, so it reads the kind from
- * `web-v2/src/features/integrations/providers/<provider>/index.ts`, which is a second copy. While
- * writing ISS-1071 that copy was already wrong for two of the eight: it called `github` and
- * `rocketchat` `core-mediated` when both declare no agent path at all. The visible effect is a
- * switch offered on a connect form that the server then refuses by name — a person turning on
- * something the product tells them, one request later, was never a question.
- *
- * This test reads the web files as TEXT on purpose. `@forge/core` cannot import a browser module
- * and web-v2 cannot import core's runtime (that would run core's env validation in a Next build), so
- * a type or an import cannot hold the two together. It is the same shape as
- * `deploy-capability-parity.test.ts`, for the same reason.
- */
-
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

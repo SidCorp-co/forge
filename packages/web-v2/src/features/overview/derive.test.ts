@@ -124,7 +124,6 @@ describe("silenceMark", () => {
     expect(silenceMark(THRESHOLDS.silenceAlarmSeconds, THRESHOLDS)).toBe("alarm");
   });
 
-  // cm:guard the cutoffs must follow the RESPONSE, so this halves both marks and expects the verdict to move with them — a client comparing against its own constant passes every assertion above and fails only this one (ISS-988 criterion 23)
   it("moves its verdict when the response moves its thresholds", () => {
     const halved = {
       ...THRESHOLDS,
@@ -192,7 +191,6 @@ describe("actionQueue", () => {
     expect(rows.find((r) => r.key === "abandonedIssues")?.owner).toBe("person");
   });
 
-  // cm:guard the oldest record has to WIN over the larger count, so this plants a 1-record row that is older than a 9-record one — an ordering keyed on count first passes every other assertion here and fails only this (ISS-988 criterion 33)
   it("orders by the oldest record, oldest first, over the bigger count", () => {
     const rows = actionQueue(
       pulse({
@@ -215,7 +213,6 @@ describe("actionQueue", () => {
     expect(rows.map((r) => r.key)).toEqual(["abandonedIssues", "stuckRuns"]);
   });
 
-  // cm:guard two rows alike in age AND count must fall back to ACTION_ORDER, or the same response renders in a different order on each refresh — the assertion is the FIXED sequence, not merely that both rows appear (ISS-988 criterion 34)
   it("falls back to the fixed order when age and count both tie", () => {
     const rows = actionQueue(
       pulse({
@@ -239,7 +236,6 @@ describe("actionQueue", () => {
     expect(rows[0].records).toHaveLength(2);
   });
 
-  // cm:guard a never-ran project is the EXTREME of "how long since a run"; giving it a zero age sorts the worst row last, which is the inverse of what the queue is for (ISS-988 criterion 30)
   it("sorts a project that has never run above one merely silent", () => {
     const rows = actionQueue(
       pulse({
@@ -280,7 +276,6 @@ describe("projectSilenceRows", () => {
     expect(rows.map((r) => r.slug)).toEqual(["old", "recent"]);
   });
 
-  // cm:guard a never-ran project is FLAGGED rather than given a silence figure: rendering "no pipeline has ever run here" as "silent for 103 days" is a different fact the reader would act on differently (ISS-988 criterion 30)
   it("flags a project that has never run instead of dating it", () => {
     const rows = projectSilenceRows(
       pulse({
@@ -299,7 +294,6 @@ describe("projectSilenceRows", () => {
 });
 
 describe("qualityRates", () => {
-  // cm:guard the rate is computed from summed COUNTS: this plants a 1-of-1 project beside a 1-of-99 one, where a mean of the two per-project rates gives ~0.5 and the honest figure is 0.02 (ISS-988 criterion 52)
   it("is a rate over the totals, never a mean of per-project rates", () => {
     const rates = qualityRates({
       ...EMPTY_QUALITY,
@@ -314,7 +308,6 @@ describe("qualityRates", () => {
     expect(rates.reworkRatio).toBeNull();
   });
 
-  // cm:guard an unset failure reason arrives as the row `unclassified` and is counted, never dropped: 66% of failures carried no reason on 2026-09-12, and a share computed over the classified rows alone reports a third of the truth as the whole (ISS-988 criterion 21)
   it("counts the unclassified reason into the share rather than skipping it", () => {
     const rates = qualityRates({
       ...EMPTY_QUALITY,

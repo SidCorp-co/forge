@@ -71,7 +71,7 @@ function RailKicker({ label, className }: { label: string; className?: string })
   return (
     <span
       className={cn(
-        "select-none px-1 text-center text-[8.5px] font-semibold uppercase leading-none tracking-[0.08em] text-subtle",
+        "select-none px-1 text-center text-8-5 font-semibold uppercase leading-none tracking-[0.08em] text-subtle",
         className,
       )}
     >
@@ -102,18 +102,17 @@ function RailButton({
         active ? 'bg-accent-tint' : 'text-subtle hover:bg-hover',
       )}
     >
-      {/* 3px accent bar pinned to the rail's left edge when active. */}
       {active && (
         <span
           aria-hidden
-          className="absolute bottom-[9px] left-[-8px] top-[9px] w-[3px] rounded-r-[3px]"
+          className="absolute bottom-[9px] left-[-8px] top-[9px] w-[3px] rounded-r-3"
           style={{ background: 'var(--accent)' }}
         />
       )}
       <Icon name={item.icon} size={20} style={active ? { color: 'var(--accent)' } : undefined} />
       <span
         className={cn(
-          'text-[9.5px] font-semibold tracking-[-0.01em]',
+          'text-9-5 font-semibold tracking-[-0.01em]',
           active ? 'text-accent-text' : 'text-muted',
         )}
       >
@@ -121,7 +120,7 @@ function RailButton({
       </span>
       {count > 0 && (
         <span
-          className="absolute right-2 top-[3px] inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-[9px] font-bold text-white"
+          className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
           style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
         >
           {count > 99 ? '99+' : count}
@@ -206,14 +205,10 @@ export function NavRailCompact({
         )}
       </button>
 
-      {/* Global org switcher (ISS-469) — broadest scope, above the project tier. */}
       {orgSwitcher && <div className="mb-3">{orgSwitcher}</div>}
 
-      {/* Project-first (ISS-358): the switcher + project tier sit directly under
-          the brand, above the WORKSPACE tier (divider between the two). */}
       {projectItems && projectItems.length > 0 && activeProject && (
         <>
-          {/* Project mark — hover opens the switcher flyout. */}
           <div className="relative" onMouseEnter={show} onMouseLeave={hide}>
             <button
               type="button"
@@ -222,7 +217,7 @@ export function NavRailCompact({
               aria-expanded={flyOpen}
               aria-label={`Switch project — current ${activeProject.name}`}
               className={cn(
-                'flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-[5px] transition-colors',
+                'flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors',
                 flyOpen ? 'bg-hover' : 'hover:bg-hover',
               )}
             >
@@ -242,7 +237,7 @@ export function NavRailCompact({
                 </span>
               </span>
               {activeProject.liveRuns > 0 && (
-                <span className="font-mono text-[9.5px] font-semibold text-accent-text">
+                <span className="font-mono text-9-5 font-semibold text-accent-text">
                   {activeProject.liveRuns} live
                 </span>
               )}
@@ -271,7 +266,7 @@ export function NavRailCompact({
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
                     placeholder="Find a project…"
-                    className="flex-1 border-none bg-transparent py-0.5 text-[13px] text-fg outline-none placeholder:text-disabled"
+                    className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
                   />
                 </div>
                 <div className="max-h-[300px] overflow-y-auto">
@@ -289,7 +284,7 @@ export function NavRailCompact({
                         className="flex min-w-0 flex-1 items-center gap-[9px] text-left focus-visible:outline-none"
                       >
                         <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={20} radius="var(--r-sm)" />
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{p.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-13 font-medium text-fg">{p.name}</span>
                         {p.liveRuns > 0 && (
                           <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
                         )}
@@ -300,7 +295,7 @@ export function NavRailCompact({
                         aria-label={p.pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
                         aria-pressed={p.pinned}
                         className={cn(
-                          'flex flex-none rounded-xs p-[3px] transition-colors hover:bg-active',
+                          'flex flex-none rounded-xs p-3px transition-colors hover:bg-active',
                           p.pinned ? 'text-accent' : 'text-disabled hover:text-fg',
                         )}
                       >
@@ -309,14 +304,14 @@ export function NavRailCompact({
                     </div>
                   ))}
                   {rows.length === 0 && (
-                    <p className="px-2 py-3 text-[13px] text-muted">No projects match.</p>
+                    <p className="px-2 py-3 text-13 text-muted">No projects match.</p>
                   )}
                 </div>
                 <div className="my-1.5 mx-1 h-px bg-[color:var(--border-subtle)]" />
                 <button
                   type="button"
                   onClick={() => { setFlyOpen(false); onAllProjects(); }}
-                  className="flex w-full items-center gap-2.5 rounded-sm p-2 text-[13px] font-medium text-fg hover:bg-hover"
+                  className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
                 >
                   <Icon name="folder" size={16} className="text-subtle" />
                   View all
@@ -324,7 +319,7 @@ export function NavRailCompact({
                 <button
                   type="button"
                   onClick={() => { setFlyOpen(false); onNewProject(); }}
-                  className="flex w-full items-center gap-2.5 rounded-sm p-2 text-[13px] font-medium text-fg hover:bg-hover"
+                  className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
                 >
                   <Icon name="plus" size={16} className="text-subtle" />
                   New project
@@ -335,7 +330,7 @@ export function NavRailCompact({
 
           {/* Project tier. */}
           <RailKicker label="Project" className="mt-1.5" />
-          <div className="mt-1 flex flex-col items-center gap-[3px]">
+          <div className="mt-1 flex flex-col items-center gap-3px">
             {projectItems.map((it) => (
               <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
             ))}
@@ -345,17 +340,13 @@ export function NavRailCompact({
         </>
       )}
 
-      {/* Zero projects → an "Add project" button sits in the project-mark slot
-          (ISS-355): there is no project context to switch into yet, so the
-          switcher is replaced by the one action that matters. Project-first, it
-          stays above the WORKSPACE tier with a divider between. */}
       {!activeProject && switcherProjects.length === 0 && (
         <>
           <button
             type="button"
             onClick={onNewProject}
             aria-label="Add project"
-            className="flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-[5px] text-subtle transition-colors hover:bg-hover"
+            className="flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle transition-colors hover:bg-hover"
           >
             <span
               className="inline-flex size-[30px] items-center justify-center rounded-md border border-dashed"
@@ -363,7 +354,7 @@ export function NavRailCompact({
             >
               <Icon name="plus" size={16} className="text-subtle" />
             </span>
-            <span className="text-[9.5px] font-semibold tracking-[-0.01em] text-muted">Add</span>
+            <span className="text-9-5 font-semibold tracking-[-0.01em] text-muted">Add</span>
           </button>
 
           <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
@@ -372,7 +363,7 @@ export function NavRailCompact({
 
       {/* Workspace tier — demoted below the project tier (project-first). */}
       <RailKicker label="Space" />
-      <div className="mt-1 flex flex-col items-center gap-[3px]">
+      <div className="mt-1 flex flex-col items-center gap-3px">
         {workspaceItems.map((it) => (
           <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
         ))}
@@ -417,7 +408,7 @@ export function NavRailCompact({
               type="button"
               aria-label="Account menu"
               className="inline-flex size-7 items-center justify-center rounded-pill font-bold text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-              style={{ background: 'var(--cobalt-500)', fontSize: 11 }}
+              style={{ background: 'var(--cobalt-500)', fontSize: "var(--text-11)" }}
             >
               {userInitials ?? 'SK'}
             </button>

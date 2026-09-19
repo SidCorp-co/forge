@@ -215,7 +215,6 @@ describe('a job minted while no master is alive', () => {
   });
 });
 
-// cm:why criterion 5's "a human block releases the box" is about the PROCESS, and on this path that is the whole of it: `counts_against_session_cap` is set on the duplex pipeline-job path alone, so a run session holds no session permit parked or working and a test contrasting the two would pass with both sides zero. What a run session holds is its ISSUES, and a park must go on holding them — a park is a promise to resume (criterion 8).
 describe('the issues a parked run is still carrying', () => {
   it('withholds them while the park stands, and gives them back only when the run closes', async () => {
     const { user, project, device } = await aBoxServingAProject();
@@ -242,7 +241,6 @@ describe('the issues a parked run is still carrying', () => {
       'a parked run still holds its issues: the park is a promise to resume, so offering ISS-964 to another box now is two runs over one issue — the state this exclusion exists to prevent (ISS-964 criterion 5, ISS-933 criterion 7)',
     ).toEqual([]);
 
-    // cm:guard closed through `closeRun`, never an UPDATE: a `pipeline_runs.status` written terminal by hand skips the cascade, so the fixture would assert against a state this system cannot reach.
     await mods.closeRun(run.runId, 'completed');
 
     expect(

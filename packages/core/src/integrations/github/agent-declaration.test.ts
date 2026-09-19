@@ -37,7 +37,6 @@ describe('github declares the agent path ISS-1074 gave it', () => {
     });
   });
 
-  // cm:guard `direct-mcp` would render the App's private key into a runner box's MCP config. That key is the identity every write to every repository the installation covers is made under, so this assertion is a security boundary and not a tidiness one.
   it('is not direct-mcp, so the App key never reaches a box', () => {
     const decl = getIntegration('github');
     expect(decl?.capabilities.agentPath.kind).not.toBe('direct-mcp');

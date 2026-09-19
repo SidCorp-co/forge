@@ -24,13 +24,7 @@ async function collect(iter: AsyncIterable<ChatStreamEvent>): Promise<ChatStream
   return out;
 }
 
-// cm:why its own file rather than a describe in `openai.test.ts`: that file is at its frozen size
-// budget, and the budget's answer to a legitimate addition is a split — `openai.response-format.test.ts`
-// is the same split for the same reason.
 describe('openai-compatible provider — reasoning', () => {
-  // cm:guard `reasoning_content` is the spelling this deployment's endpoints use, and the ONLY one
-  // read. `delta.reasoning` is a second spelling in the wild that nobody here has measured, and
-  // reading an unmeasured field is a guess (ISS-1079 decision 6).
   it('turns delta.reasoning_content into reasoning events, in order with the prose', async () => {
     const fetchImpl = vi.fn(
       async (..._args: unknown[]) =>

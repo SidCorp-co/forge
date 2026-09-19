@@ -98,7 +98,6 @@ vi.mock('../db/client.js', () => ({
       return result;
     }),
     update: outerDbUpdate,
-    // cm:guard the ROTATION path reads `users.kind` before it mints, so a stub that returns nothing here silently turns the 200 case into a 500. `assertNotAgentUser` is defence in depth — an agent can never hold a refresh token because it can never log in — and this row is what keeps the depth measurable rather than assumed (ISS-932).
     select: () => ({
       from: () => ({ where: () => ({ limit: async () => [{ kind: usersKind }] }) }),
     }),

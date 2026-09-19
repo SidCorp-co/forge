@@ -1,34 +1,13 @@
-/**
- * What a message to a person is, and what judging one produces.
- *
- * An audience says who reads it; an intent says what it asks of them. The pair
- * names a cell, the cell holds the rules, and a door holds the rest — how many
- * times a message may be repaired and what happens when it cannot be. Nothing
- * here knows a transport, and nothing here can hand a caller a rewritten message
- * (ISS-997).
- */
-
 import type { MessageFacts } from './facts.js';
 
-/** Who reads it. Two are shipped; `registerAudience` is how a third arrives. */
 export type Audience = string;
 
-/** What it asks of them. `ask` — the reader owes an answer. `report` — nothing. */
-/**
- * What the message asks of its reader. `ask` wants an answer back; `report`
- * and `chat` do not. `chat` is a report the reader is WAITING on, in a room
- * they opened — and it is separate from `report` because the turn behind it
- * ends: figures have a snapshot to be checked against, and a promise of a
- * later action has nothing that will keep it.
- */
-// cm:guard a third intent is a ROW rather than surgery, the same way `audiences.ts` says a third audience is: nothing under this directory switches on an intent value, so `chat` costs a cell row and a door row and no branch anywhere. The pairs are SPARSE and always were — `public:ask` ships reserved with no door — so the set is five cells over two audiences and three intents rather than a filled grid (ISS-1005).
 export type Intent = 'ask' | 'report' | 'chat';
 
 export type CellId = `${string}:${Intent}`;
 
 export const cellId = (audience: Audience, intent: Intent): CellId => `${audience}:${intent}`;
 
-/** One way a message broke one rule, with the offending fragment quoted back. */
 export interface RuleBreak {
   readonly quote: string | null;
   /** Why it broke, phrased as the message's own problem. */
@@ -45,19 +24,10 @@ export interface MessageRule {
   /** A message that obeys it. Asserted against every rule in its own cell. */
   readonly example: string;
   readonly needs: readonly FactKind[];
-  /**
-   * Where this rule breaking makes every later rule in the cell meaningless for
-   * that segment — an empty segment has nothing for the rest of them to read.
-   */
   readonly halts?: boolean;
   check(text: string, facts: MessageFacts): readonly RuleBreak[];
 }
 
-/**
- * A rule broken, told to whoever wrote it: which rule, what went wrong, the
- * shape it should have had, and one message that has it.
- */
-// cm:guard `shape` and `example` are not decoration — a bare "wrong format" makes an agent rewrite by guessing and spend its repair budget on nothing, which is the defect ISS-997 names in its own rules. A refusal built without them is the defect wearing the new type.
 export interface MessageRefusal {
   readonly rule: string;
   readonly why: string;
@@ -71,13 +41,6 @@ declare const judgedByTheScreen: unique symbol;
 /**
  * The whole result of screening. There is NO text on it, in either arm.
  */
-// cm:guard the absence of a text field is the "nothing rewrites what an agent wrote" rule made structural: a layer that could hand back an edited message could turn `blocked: condition 3 was not met` into something friendlier and destroy the one fact the reader needed. Adding a text field here is how that becomes possible again, so do not.
-// cm:guard the `ok` arm is NOMINAL — `judgedByTheScreen` is a module-private `unique symbol`, so no
-// object literal written anywhere else can satisfy it and `{ ok: true }` typed by hand stops
-// compiling. Before ISS-978 this arm was structural, and five reply paths hand-built one: the claim
-// that a passing verdict is evidence a screen ran was true of none of them. A file that mints one
-// declares itself a screen by casting, and `verdict-mint.test.ts` fails CI on a cast this repo has
-// not agreed to.
 export type MessageVerdict =
   | { readonly ok: true; readonly [judgedByTheScreen]: true }
   | { readonly ok: false; readonly refusals: readonly MessageRefusal[] };
@@ -91,17 +54,12 @@ export interface CellSpec {
   /**
    * True where no surface of the product screens this pair yet.
    */
-  // cm:guard it reads "no surface" and not "no door" since ISS-1089: the two lead cells are
-  // screened by a second `screenMessage` call at the `comment-write` door rather than by a door of
-  // their own, so a flag keyed on the door table would call them reserved while they are in use —
-  // and `shape-document.test.ts` would then require the document to say a live cell is reserved.
   readonly reserved: boolean;
 }
 
 /**
  * A door: where a message is screened, and what happens when it cannot pass.
  */
-// cm:guard the ending and the repair count live HERE and never on the cell, because one cell is screened at doors whose lifecycles differ — `question-ask` has the agent on the line and `question-delivery` posts minutes later with nobody to ask again. A count on the cell would have to be right for both and can only be right for one (ISS-997).
 export type DoorPolicy =
   | {
       readonly id: DoorId;

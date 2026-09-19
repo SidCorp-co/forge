@@ -40,7 +40,6 @@ describe('forge_issues list: complexity filter (ISS-912)', () => {
     await truncateAll(harness.db);
   });
 
-  // cm:guard the assertion is that the OTHER issue is ABSENT, not merely that the wanted one is present. A filter core silently drops returns EVERY row, so an assertion that only looks for its own issue passes just as happily against no filtering at all — which is exactly how `complexity` reached all three projections and the strict schema with no way to filter on it.
   it('narrows to the asked-for complexity and leaves the others out', async () => {
     const user = await createTestUser(harness.db);
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);

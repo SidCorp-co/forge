@@ -74,7 +74,6 @@ describe('the Forge UI adapter · deliver', () => {
     expect(receipt.messageId).toEqual(expect.any(String));
   });
 
-  // cm:guard the one this file exists for: a project-room fan-out passes every other assertion here, because the tab that asked is subscribed to both.
   it('publishes to no project room', async () => {
     await webConversationPorts.deliver(venue, codeAuthored('hello'));
     expect(published.filter((p) => p.room.startsWith('project:'))).toEqual([]);
@@ -93,7 +92,6 @@ describe('the Forge UI adapter · deliver', () => {
     });
   });
 
-  // cm:guard a participant row is not a permission: a person keeps their row after losing the access the room's scope is derived from, and the reads refuse them while a push addressed by kind alone hands them the whole answer (review F1).
   it('publishes to nobody whose access to the room has gone', async () => {
     assertConversationReadable.mockImplementation(async (_id: string, userId: string) => {
       if (userId === 'bob') throw new Error('no role on this project any more');
@@ -120,11 +118,6 @@ describe('the Forge UI adapter · deliver', () => {
   });
 });
 
-// cm:guard ISS-1078 criterion 14. A turn in flight is published many times a second, and it is the
-// SAME fan-out `deliver` uses — so the authorization is the same too. Asserted on the progress frame
-// in its own right rather than inferred from the delivery case above, because "progress is authorized
-// exactly as delivery is" is the claim this change makes and an untested claim is the way that stops
-// being true.
 describe('a turn in flight is published to exactly whom the room may be shown to', () => {
   const frame = {
     event: WEB_CONVERSATION_PROGRESS_EVENT,
@@ -166,7 +159,6 @@ describe('the Forge UI adapter · the other three ports', () => {
     expect(speaker).toEqual({ linked: true, userId: 'alice' });
   });
 
-  // cm:guard empty is the ANSWER and not a stub: the store's own rows are this transport's backlog, and a history read here would show the model the transcript `external-chat.ts` already hands it.
   it('fetches no history, because the store is this transport’s history', async () => {
     expect(await webConversationPorts.fetchHistory(venue, 50)).toEqual([]);
     expect(findConversation).not.toHaveBeenCalled();

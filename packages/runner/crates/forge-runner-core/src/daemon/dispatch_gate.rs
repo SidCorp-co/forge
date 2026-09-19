@@ -21,10 +21,6 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-/// What a refused dispatch is told, and the only copy of it.
-// cm:guard the text names BOTH ways forward — the declaration and the close of one already made — because a master reaching this with a declaration it has promised elsewhere cannot act on the first alone. A refusal that names only `run declare` sends that master round the loop it is already stuck in.
-// cm:guard no flags are spelled here. Each verb's own `-h` is the surface that cannot go stale against the binary serving it, and a flag list in a message is the same second copy this issue exists to end.
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill quotes this string's first line, and `the_skill_quotes_the_refusal_it_will_meet` reads both so the two cannot drift.
 pub const REFUSAL: &str =
     "Refused: nothing on this box has been told about the work you are handing out. \
 Declare the run first with `forge-runner run declare`, then dispatch the same subagent again. \
@@ -33,8 +29,6 @@ declaration for the next dispatch. Each verb's own `-h` says what it takes. \
 Without that row this box holds no record of what you handed out, so if this pane dies the issues \
 stay marked as being worked on with nobody working on them.";
 
-/// The dispatch a `PreToolUse` payload describes.
-// cm:guard every field is an OPTION and none is defaulted. Measured against claude 2.1.276 by registering the hook and running a session that dispatched a subagent: the master's own dispatch carries `tool_input.subagent_type` and `tool_use_id` and NO `agent_id`, while a `PreToolUse` raised inside a child carries `agent_id`. Absence is the discriminator, so a missing field invented here would let a child's tool call be judged as a hand-off.
 #[derive(Debug, Default, Clone)]
 pub struct Dispatch {
     /// Present when this tool call was made INSIDE a subagent rather than by the master.
@@ -61,19 +55,18 @@ pub enum Verdict {
     /// Not this gate's subject: not a dispatch, not to a shipped role, or raised inside a child.
     NotOurs,
     /// A declaration covers it, and is now promised to this tool call.
-    Covered { run_id: String },
+    Covered {
+        run_id: String,
+    },
     /// The same tool call asked twice; the answer it already had stands.
-    Replay { run_id: String },
+    Replay {
+        run_id: String,
+    },
     /// Nothing was declared for it.
     Undeclared,
-    /// The box could not tell, so the dispatch goes through and a mark is left.
-    // cm:guard the reason travels WITH the verdict rather than being logged where it was found: this is the one outcome an operator has to be able to read afterwards, and a string left behind in a `warn!` on a box nobody is watching is the silence this whole issue is about, wearing a louder font.
     Unknown(&'static str),
 }
 
-/// Decide, from the payload and what the box knows.
-// cm:guard the child check comes FIRST and is not folded in with the role check. A subagent that dispatches its own child is work belonging to a run that IS declared — invariant 2 of ISS-1094: a subagent has no heartbeat of its own and its liveness derives from the master above it — so refusing there would refuse work the record already covers.
-// cm:guard an unreadable role set is `Unknown` and NEVER an empty set. Empty reads as "no role matches", which makes every dispatch on the box `NotOurs` and turns a blind gate into a silently permissive one — the exact substitution this repository refuses.
 pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
     if d.agent_id.is_some() {
         return Verdict::NotOurs;
@@ -87,18 +80,9 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
     if !roles.contains(role) {
         return Verdict::NotOurs;
     }
-    // cm:guard this check stands ABOVE the tool-call-id check and the order is load-bearing, not
-    // tidiness: "nothing is declared on this box" is a fact the ledger KNOWS, so it is refused
-    // whatever the payload carries, while "which declaration is this dispatch" is a question a
-    // payload with no tool call id cannot answer, so it is answered as uncertain. Hoisting the id
-    // check above this one turns a knowable refusal into an allow, which is why two tests pin the
-    // order from both sides (ISS-1094, review F1 recheck).
     let Some(run_id) = f.pending_run else {
         return Verdict::Undeclared;
     };
-    // cm:guard a dispatch with no tool call id cannot be RESERVED, so calling it covered hands the
-    // same declaration to every such dispatch and marks nothing — a silent pass wearing the word
-    // `Covered`. It is the uncertain case and it is answered as one (ISS-1094, review F1).
     if d.tool_use_id.is_none() {
         return Verdict::Unknown(
             "this dispatch carries no tool call id, so no declaration can be promised to it",
@@ -108,11 +92,9 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
         None => Verdict::Covered {
             run_id: run_id.to_string(),
         },
-        // cm:guard a repeated tool call gets the SAME answer and consumes nothing further. The harness makes no promise that a hook fires once, and a replay treated as a second dispatch would refuse work the master had already been allowed to hand out.
         Some(t) if Some(t) == d.tool_use_id.as_deref() => Verdict::Replay {
             run_id: run_id.to_string(),
         },
-        // cm:guard one declaration authorises exactly ONE dispatch, which is invariant 1 of ISS-1094 — one row per unit of work. Without this, two dispatches in one turn both pass on one row, two subagents answer to one record, and the fix reintroduces the defect it was built to end.
         Some(_) => Verdict::Undeclared,
     }
 }
@@ -129,12 +111,6 @@ pub(crate) enum Agents {
     Unreadable,
 }
 
-// cm:guard the classification lives here, apart from the filesystem, so it is asserted on EVERY
-// platform this crate builds for. The scan's own test can only produce an unreadable directory with
-// `chmod 0`, which windows `Permissions` cannot express, so on that leg the plant silently did not
-// fire and the test read `Some({"runner"})` against `None` — a test asserting the absence of a
-// silent substitution, itself passing silently for the wrong reason. Absence is knowledge; a failed
-// stat is not; and which is which may not differ by platform (ISS-1094).
 pub(crate) fn agents_reach(stat: Result<bool, std::io::ErrorKind>) -> Agents {
     match stat {
         Err(std::io::ErrorKind::NotFound) => Agents::Absent,
@@ -144,13 +120,6 @@ pub(crate) fn agents_reach(stat: Result<bool, std::io::ErrorKind>) -> Agents {
     }
 }
 
-/// Every role name the plugin copies on this box ship.
-///
-/// `None` where nothing could be read, which the gate treats as not knowing
-/// rather than as knowing there are none.
-// cm:guard READ from disk and never a list written here. Hardcoding the five roles this fleet ships today means forge-plugin adding a sixth reopens the hole in silence — the same shape as ISS-1080 updating one copy of the master's guide and missing the other, which is the defect this issue exists to close.
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/plugin_sync.rs — `marketplace_clone_dir` is what puts a clone at this path, and the layout read here (`<clone>/plugin/agents/<role>.md`) is that clone's, not this module's to choose.
-// cm:guard a PARTIAL scan answers `None`, and this is the same inversion as the empty case one line further down. One plugin clone readable and another not yields a non-empty set that looks complete, and every role belonging to the unreadable clone is then classified `NotOurs` — no refusal, no mark, nothing said. A set this function is not sure of is not a set (ISS-1094, review F3).
 pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
     let mut out = BTreeSet::new();
     for clone in std::fs::read_dir(config_dir.join("marketplaces")).ok()? {
@@ -159,11 +128,6 @@ pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
         // complete one at every reader.
         let clone = clone.ok()?;
         let agents = clone.path().join("plugin").join("agents");
-        // cm:guard `is_dir()` is NOT enough here and was the first version of this fix. It answers
-        // false for a directory that is absent AND for one this process may not stat — a clone
-        // whose ancestor is unreadable — so the second was skipped as though it shipped no roles,
-        // and a partial inventory went back looking complete. Absence is knowledge; a failed stat
-        // is not (ISS-1094, review F3).
         match agents_reach(
             std::fs::metadata(&agents)
                 .map(|m| m.is_dir())
@@ -332,8 +296,6 @@ mod tests {
         assert_eq!(decide(&d, &facts(Some(&r), None, None)), Verdict::NotOurs);
     }
 
-    /// Review F1. Covered means reserved; a dispatch that cannot be reserved is not covered.
-    // cm:guard two such dispatches would otherwise BOTH read `Covered` against one declaration, and neither would leave a mark — worse than the refusal it replaces, because nothing anywhere says it happened.
     #[test]
     fn a_dispatch_with_no_tool_call_id_is_uncertain_rather_than_covered() {
         let r = roles();
@@ -378,8 +340,6 @@ mod tests {
         );
     }
 
-    /// Criterion 16. Blind is not the same as permissive, and must not read as it.
-    // cm:guard this is the test that stops the blind case being quietly folded into `NotOurs`. An unreadable role set returning `NotOurs` passes every other test in this file and turns the gate off on any box whose plugin clone is missing.
     #[test]
     fn a_role_set_that_could_not_be_read_is_unknown_and_not_no_match() {
         let v = decide(&dispatch("runner", "toolu_1"), &facts(None, None, None));
@@ -418,15 +378,6 @@ mod tests {
         assert_eq!(agents_reach(Ok(true)), Agents::Readable);
     }
 
-    /// Review F3. A scan that could not finish is not a smaller answer — the
-    /// same rule as above, driven through a real filesystem.
-    // cm:guard the failing half is a directory this process cannot read, not an absent one: an absent `plugin/agents` means that marketplace ships no roles, which IS knowledge. Conflating the two either blinds the gate or refuses every box holding a marketplace that is not a plugin.
-    // cm:guard gated `unix` for the PLANT and not for the rule. The only way to make a directory
-    // unstattable here is `chmod 0`, and windows `Permissions` carries no such bit: on that leg the
-    // `set_mode` call is compiled out, the tree stays readable, the scan answers `Some({"runner"})`
-    // and the plant never fires. A plant that cannot fire is not a green, it is an unrun plant —
-    // so the rule it was protecting is asserted without a filesystem in
-    // `a_stat_that_failed_is_never_read_as_an_absent_directory`, which runs everywhere (ISS-1094).
     #[cfg(unix)]
     #[test]
     fn a_role_scan_that_could_not_finish_is_not_a_partial_answer() {

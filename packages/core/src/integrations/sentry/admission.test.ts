@@ -112,8 +112,6 @@ describe('judgeSentryIssue — every refusal names itself', () => {
 });
 
 describe('judgeSentryIssue — the thresholds are the caller policy, not a constant', () => {
-  // cm:guard this is criterion 13's assertion: the SAME issue, two policies, two verdicts. A test
-  // that only exercised the defaults would pass just as happily against hard-coded numbers.
   it('flips its verdict on the same issue when the policy moves', () => {
     const lenient = judgeSentryIssue(issue({ count: 5, userCount: 1 }), {
       minEventCount: 1,

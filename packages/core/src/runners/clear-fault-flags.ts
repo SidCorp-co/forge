@@ -1,14 +1,3 @@
-// Operator-driven reset of every fault flag on one runner ("Clear error" in the
-// project Runners screen).
-//
-// The automatic clears each own one cause: `clearRunnerLimit` fires on a
-// successful job, the heartbeat expires a lapsed limit, quarantine self-heals on
-// its TTL. None of them helps the operator who has just fixed the box by hand —
-// the runner stays excluded from dispatch until it wins work it cannot be given.
-// This is the manual override: forget the recorded fault and let dispatch try
-// again. If the fault is still real the next failure re-stamps it within seconds,
-// which is why the reset needs no confirmation of health.
-
 import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
@@ -16,9 +5,6 @@ import { logger } from '../logger.js';
 import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { broadcastRunnerChanged } from './apply-runner-limit.js';
 
-// cm:guard every fault-flag column on `runners` must be listed here AND in the guard below — a column this reset forgets is one the operator cannot clear from the UI, which is how a box ends up permanently un-dispatchable
-// cm:edge lockstep -> packages/core/src/runners/apply-runner-limit.ts — limit columns (limit_reason/rate_limited_until/limit_detail + the last_error mirror)
-// cm:edge lockstep -> packages/core/src/runners/quarantine.ts — quarantine columns (quarantined_until/quarantine_reason)
 export async function clearRunnerFaultFlags(runnerId: string, projectId: string): Promise<boolean> {
   const [cleared] = await db
     .update(runners)
@@ -49,7 +35,6 @@ export async function clearRunnerFaultFlags(runnerId: string, projectId: string)
   if (!cleared) return false;
   logger.info({ runnerId, projectId }, 'runner fault flags cleared by operator');
   broadcastRunnerChanged(projectId, runnerId);
-  // cm:guard forgetting the fault MUST also clear the notification it raised — the quarantine wedge is keyed per runner and re-notifies at most daily, so an operator who fixes the box by hand and clears it here would otherwise keep an alarm in their bell for a fault that no longer exists, and see nothing new if it comes back the same day
   await resolvePipelineWedge(runnerId);
   return true;
 }

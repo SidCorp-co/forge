@@ -1,20 +1,4 @@
 #!/usr/bin/env node
-// Every document that asks a reader to adopt something must say what adopting
-// it costs them.
-//
-// `docs/VISION.md` had a Boundaries section — what Forge will not become — and
-// nothing that priced what choosing Forge takes from whoever chooses it. The
-// root CLAUDE.md publishes "a trade-off is priced or it is not taken" while the
-// constitution took its own trade-offs unpriced, and every proposal in the tree
-// did the same. A convention nobody checks is the convention that produced that
-// gap, so the rule arrives with something that complains.
-//
-// Scope: docs/VISION.md and every proposal under docs/proposals/, subdirectories
-// included. A `README.md` at any depth is an index — it carries the rule, not a
-// price of its own — and the `.html` files are drawn figures, which hold no
-// markdown heading tree to check.
-//
-// Exit codes: 0 clean, 1 violations found, 2 could not run.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

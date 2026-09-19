@@ -49,7 +49,6 @@ describe('autonomousStepFor', () => {
 });
 
 describe('isAutonomous', () => {
-  // cm:guard `null` and "a config that parsed" are NOT one case, and this is where that is proved. ISS-897 left one lane, so `mode` is gone and the only question left is whether the config could be read at all — `null` is a missing, archived or unparseable project and must answer false, because rewriting parks and cascading children on a project nobody can see is broken is the worse direction.
   it('answers false only for an unreadable config', () => {
     expect(isAutonomous(null)).toBe(false);
     expect(isAutonomous({ enabled: true } as never)).toBe(true);
@@ -58,13 +57,11 @@ describe('isAutonomous', () => {
 });
 
 describe('dispatchAutonomous', () => {
-  // cm:guard the one `false` this function still returns, and the caller relies on it: an unreadable config must produce no job at all rather than a drive session against a project whose settings nobody could parse.
   it('declines the decision when the config could not be read', async () => {
     expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: null })).toBe(false);
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
   });
 
-  // cm:guard the entry status is where core used to mint, and it must now mint NOTHING. A wake is already published by `ws/master-wake.ts` on this arrival, so the only thing left for core to do here is stay out of the way (ISS-933 criteria 4 and 23).
   it('mints neither a run nor a job at the entry status', async () => {
     expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } })).toBe(
       true,
@@ -74,7 +71,6 @@ describe('dispatchAutonomous', () => {
     expect(openIssueRun).not.toHaveBeenCalled();
   });
 
-  // cm:guard the property the whole branch exists for: falling through at a non-entry status makes the staged resolver report "no skill registered", which pauses the run and comments on the issue every time the agent moves it
   it('owns the decision at every other status, and enqueues nothing there', async () => {
     for (const status of ['confirmed', 'developed', 'testing', 'closed'] as const) {
       expect(await dispatchAutonomous({ ...BASE, status, cfg: { enabled: true } })).toBe(true);
@@ -85,7 +81,6 @@ describe('dispatchAutonomous', () => {
 });
 
 describe('dispatchDriveManual', () => {
-  // cm:guard a human's Run OFFERS the issue and mints nothing. Minting here would be the second live path this wave removes: core's job and the box's run session both claiming one issue, with the ledger able to see only one of them (ISS-933 criterion 4).
   it('releases the issue and wakes the boxes, minting nothing', async () => {
     await expect(dispatchDriveManual({ ...BASE, status: 'open' })).resolves.toEqual({
       released: true,

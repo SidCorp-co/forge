@@ -7,18 +7,22 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "turbo run dev",
-    "build": "turbo run build",
+    "build": "turbo run build --concurrency=2",
     "lint": "turbo run lint",
-    "test": "turbo run test --continue=always",
+    "test": "turbo run test --continue=always --concurrency=2",
     "test:changed": "node scripts/test-changed.mjs",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "turbo run typecheck --concurrency=2",
     "verify": "node scripts/verify.mjs",
     "check:memory": "node scripts/check-memory-anchors.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
-    "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
+    "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "lint:code-quality": "code-quality-gate"
   },
   "devDependencies": {
-    "turbo": "^2.10.11"
+    "eslint": "^10.11.0",
+    "eslint-plugin-code-quality": "file:.forge/code-quality",
+    "turbo": "^2.10.11",
+    "typescript-eslint": "^8.70.0"
   },
   "pnpm": {
     "overrides": {

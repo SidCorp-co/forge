@@ -1,19 +1,3 @@
-/**
- * ISS-1085 slice 4 — the decision ONE Sentry issue gets, whichever door it arrived by.
- *
- * Split out of `intake.ts` when the webhook became a second caller. Everything here is about a
- * single Sentry issue and a single Forge row; `intake.ts` keeps what only a scheduled pull has,
- * which is targets, pages, a report and a `schedule_runs` outcome. There is one implementation and
- * two callers, because two copies of lookup-then-judge-and-file would drift with nothing saying so
- * — a threshold honoured on one door and not the other reads exactly like a gate that ran.
- *
- * The lookup comes BEFORE the admission gate, and the chokepoint against untrusted Sentry text is
- * described where it is decided: `intake.ts`'s header, and `SentryIssueDetail` in `types.ts`. The
- * defence this file owns is structural — `buildSentryIssueRow` returns a closed shape whose
- * `status` is the literal `draft`, and the one status this module moves is decided by the
- * `substatus` enum rather than by any text a payload carried.
- */
-
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { readThresholds } from '../../admin/thresholds.js';
 import { db } from '../../db/client.js';
@@ -98,7 +82,6 @@ export type SentryIntakeOutcome =
   | { kind: 'reopened' }
   | { kind: 'refused'; reason: string };
 
-/** The Forge user a filed issue and a reopen are attributed to, or `null` where the project has none. */
 export async function projectCreatedById(projectId: string): Promise<string | null> {
   const [row] = await db
     .select({ createdBy: projects.createdBy })
@@ -109,7 +92,6 @@ export async function projectCreatedById(projectId: string): Promise<string | nu
 }
 
 /** The admission policy, read from `admin_thresholds` — the SAME read on both doors. */
-// cm:guard read here rather than at each door, so the webhook and the scheduled pull cannot end up judging against different numbers. The thresholds are operator policy (ISS-654), which means they change without a deploy: a door holding its own constant would keep filing at the old bound with nothing anywhere saying the two disagreed.
 export async function readSentryThresholds(): Promise<SentryAdmissionThresholds> {
   const policy = await readThresholds();
   return {
@@ -165,30 +147,10 @@ export function buildSentryIssueRow(
   };
 }
 
-/**
- * The jsonb a re-sighting writes — a MERGE, never a replacement.
- *
- * cm:guard postgres's `||` on jsonb merges at the TOP level, so `metadata.sentry` is replaced and
- * every other key an issue's metadata holds — `branchConfig` among them — survives untouched. A
- * `.set({ metadata: <whole object> })` would be the `wholesale-config-clobber` this repo names as a
- * red flag: it would wipe every key this path did not resend. Exported so the SQL that reaches
- * postgres is asserted as text rather than described in a comment.
- */
 export function sentryMetadataMerge(record: SentrySightingRecord): SQL {
   return sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${JSON.stringify({ sentry: record })}::jsonb`;
 }
 
-/**
- * The SQL that stamps the reopen watermark and touches nothing else.
- *
- * A nested merge rather than a whole-record write, and the difference is not cosmetic. Postgres's
- * `||` merges at the TOP level, so handing it a rebuilt `{sentry: …}` replaces the whole sentry
- * object — and the object this path would rebuild is made from the snapshot read before the
- * transition, so a count another delivery or the scheduled pull committed in between would be
- * overwritten with the older one. The next observation of the newer count would then read as growth
- * and post a duplicate comment. Setting the one key leaves every other key where it is, whoever
- * wrote it and whenever.
- */
 export function sentryWatermarkStamp(lastSeen: string): SQL {
   return sql`jsonb_set(
     coalesce(${issues.metadata}, '{}'::jsonb),
@@ -198,15 +160,6 @@ export function sentryWatermarkStamp(lastSeen: string): SQL {
   )`;
 }
 
-/**
- * What this sighting records, keeping the last KNOWN count where this one carries none.
- *
- * cm:guard `previous` is what the growth test compares against, so writing a null over an
- * established count does not merely lose a number — it makes the NEXT real count look like a first
- * observation, and an increase from 17 to 41 then passes in silence because 17 is no longer there
- * to have been exceeded. A missing reading is a gap in what Sentry told us, never evidence that the
- * count went away, so the last known value is carried forward and the gap is recorded beside it.
- */
 export function sighting(
   issue: SentryIssueDetail,
   shortId: string,
@@ -239,7 +192,6 @@ export function recordedSighting(
   return entry && typeof entry === 'object' ? entry : null;
 }
 
-/** The event count the last sighting recorded, or `null` where none was ever recorded. */
 export function recordedCount(metadata: Record<string, unknown> | null): number | null {
   const entry = (metadata?.sentry ?? null) as { count?: unknown } | null;
   if (!entry || typeof entry.count !== 'number') return null;
@@ -302,7 +254,6 @@ async function observe(
   shortId: string,
   authorId: string,
 ): Promise<Observation> {
-  // cm:guard ONE transaction, and the row is re-read inside it UNDER A LOCK. These are two writes and exactly one comment is owed, which neither ordering of two independent statements can promise: whichever goes first, a failure between them is either a note nobody ever gets or a note everybody gets twice, and two deliveries overlapping read the same baseline and both comment. The lock is what makes the baseline this observation compares against the one no other observer can still be holding. `existing.metadata` from the pre-gate lookup is deliberately NOT reused here — it was read outside this transaction and may already be stale.
   return db.transaction(async (tx) => {
     const [locked] = await tx
       .select({ metadata: issues.metadata })
@@ -338,23 +289,12 @@ async function observe(
   });
 }
 
-/**
- * File one Sentry issue as a Forge issue, or report that one already held the key.
- *
- * `ON CONFLICT DO NOTHING` on the partial unique index is the backstop the lookup above is the
- * graceful path for: two observations overlapping is a normal race, and a constraint violation
- * taking the caller down over it would be the wrong answer to a row that is already exactly where
- * we want it. The `created_via` stamp is not decoration — `issues/creator.ts` classifies origin by
- * it, and an unstamped row files under the wrong origin and vanishes from the list its reader is
- * watching.
- */
 async function file(
   projectId: string,
   createdById: string,
   row: SentryIssueRow,
   baseline: SentrySightingRecord,
 ): Promise<'filed' | 'raced'> {
-  // cm:guard the BASELINE goes in with the row, and leaving it out is not a cosmetic omission. With no `metadata.sentry`, `recordedCount` answers null on the first re-sighting, and a "grew" test written against null treats any count at all as growth — so an issue filed at 17 events and seen again at 17 posts a note saying it got worse. That is the noise the growth test exists to prevent, on the very first observation after filing.
   const inserted = await db.execute<{ id: string }>(sql`
     INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, detector_key, status, created_via, metadata)
     VALUES (${projectId}, ${row.title}, ${row.description}, ${createdById}, ${row.source}, ${row.externalId}, ${row.detectorKey}, ${row.status}, 'system', ${JSON.stringify({ sentry: baseline })}::jsonb)
@@ -370,7 +310,6 @@ async function file(
  * Returns `null` where this regression asks for no status move, so the caller falls through to what
  * the observation already decided.
  */
-// cm:guard `dropped` is NOT reopened, and that is the rule rather than an omission. `closed` is Forge saying the work is done, and evidence that the error is still happening contradicts it — the issue's own contract says Forge cannot hold "fixed" against evidence. `dropped` is a PERSON saying they decided not to fix this, which no amount of recurrence contradicts; a monitoring signal that overrules a person's decision is the one thing this repo's ownership line forbids. The decline is reported by name rather than passed over in silence, because an operator who dropped an issue that keeps firing needs to know it keeps firing.
 async function reopenOnRegression(
   existing: ExistingIssue,
   issue: SentryIssueDetail,
@@ -386,8 +325,6 @@ async function reopenOnRegression(
   }
   if (existing.status !== 'closed') return null;
 
-  // cm:guard the watermark is the RECURRENCE this issue was already reopened for, not the last time anything was seen. Comparing against `previous.lastSeen` instead would be wrong in the common case: the scheduled pull observes the same issue on its own tick and advances `lastSeen`, so a webhook delivering the genuine regression a moment later would find them equal and decline to reopen. `reopenedAtLastSeen` moves only when a reopen actually happens, so an ordinary observation cannot suppress one.
-  // cm:guard a HIGH-WATER MARK rather than an equality test, and the difference is a case equality lets through: recurrence T1 is handled, T2 is handled, the issue is closed again, and T1 is re-delivered. T1 is not equal to the T2 watermark, so an equality test reopens completed work off a replay of something already superseded. Anything at or before the mark is declined.
   const recurrence = parseSeen(issue.lastSeen);
   if (recurrence === null) {
     return {
@@ -403,7 +340,6 @@ async function reopenOnRegression(
     };
   }
 
-  // cm:guard the actor is a `user` carrying an EXPLICIT `agency: null`, and the three states are not interchangeable (`issues/actor-agency.ts`). This write is attributed to the project's creator, because that is whose credential the binding hangs off, but nobody is at the keyboard — an absent `agency` would read `human` and put a webhook's write behind the gates meant for a person's, while `null` is "unestablished" and fails closed to `agent`, which is what a delivery from outside is.
   await transitionIssueStatus(
     {
       id: existing.id,
@@ -418,7 +354,6 @@ async function reopenOnRegression(
     },
   );
 
-  // cm:guard the watermark is stamped AFTER the transition succeeds, never before it or inside it. Stamped first, a transition that then threw would leave the recurrence marked as handled and the issue still closed — the next delivery would decline and the regression would be lost in silence. Stamped after, the failure mode of a lost stamp is a SECOND reopen on the retry, which is noise a person can see rather than a silence nobody can.
   await db
     .update(issues)
     .set({ metadata: sentryWatermarkStamp(issue.lastSeen as string) })
@@ -441,12 +376,10 @@ export async function intakeSentryIssue(
   issue: SentryIssueDetail,
   ctx: SentryIntakeContext,
 ): Promise<SentryIntakeOutcome> {
-  // cm:guard the lookup comes FIRST and an already-filed issue is never re-judged: admission decides whether an error becomes work and has nothing to say about an error that already IS work, so judging first lets a threshold raised today silently stop the count updates on the very issues that threshold had already admitted.
   const shortId = issue.shortId?.trim() ?? '';
   const existing = shortId === '' ? null : await findFiled(ctx.projectId, shortId);
   if (existing) {
     const observed = await observe(existing, issue, shortId, ctx.createdById);
-    // cm:guard the observation is durable BEFORE the transition is attempted, deliberately. The counts and the growth note are what we learned; the reopen is what we do about it. Ordered the other way, a transition that throws would throw away the sighting too, and the next delivery would compare against a stale baseline and call an increase no growth.
     if (issue.substatus === SENTRY_REGRESSED_SUBSTATUS) {
       const regressed = await reopenOnRegression(existing, issue, shortId, observed.previous, ctx);
       if (regressed) return regressed;
@@ -465,7 +398,6 @@ export async function intakeSentryIssue(
   );
   if (outcome === 'filed') return { kind: 'filed' };
 
-  // cm:guard a lost race is not a delivery with nothing to do. Another writer holds the key, so the row exists — reload it and OBSERVE it, or this sighting's counts are thrown away and the person watching that issue is told nothing about the increase that arrived with it.
   const winner = await findFiled(ctx.projectId, verdict.externalId);
   if (!winner) {
     return {

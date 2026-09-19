@@ -1,6 +1,14 @@
 "use client";
 
-import { BulletBar, Card, CardContent, SankeyFlow, Waffle } from "@/design";
+import {
+  BulletBar,
+  Card,
+  CardContent,
+  CardTitle,
+  SankeyFlow,
+  SectionTitle,
+  Waffle,
+} from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatElapsed, qualityRates } from "../derive";
 import type { PulseQuality } from "../types";
@@ -23,7 +31,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-4">
-        <h2 className="fg-h3">Whether the output holds</h2>
+        <SectionTitle className="fg-h3">Whether the output holds</SectionTitle>
 
         {rates.finishedTotal > 0 ? (
           <Waffle
@@ -86,12 +94,12 @@ export function QualitySection({ quality }: QualitySectionProps) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <h3 className="fg-body-sm text-muted">
+          <CardTitle className="fg-body-sm text-muted">
             Why agent sessions failed — {rates.sessionFailureTotal} in 90 days
             {rates.unclassifiedShare !== null
               ? `, ${Math.round(rates.unclassifiedShare * 100)}% unclassified`
               : ""}
-          </h3>
+          </CardTitle>
           {sessionFailures.length === 0 ? (
             <p className="fg-body-sm text-muted">No failed sessions in the window.</p>
           ) : (
@@ -109,7 +117,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <h3 className="fg-body-sm text-muted">What the pipeline actually ran</h3>
+          <CardTitle className="fg-body-sm text-muted">What the pipeline actually ran</CardTitle>
           {pipelineFlow.length === 0 ? (
             <p className="fg-body-sm text-muted">No jobs finished in the window.</p>
           ) : (

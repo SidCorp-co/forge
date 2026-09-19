@@ -141,7 +141,6 @@ export interface UpsertIntegrationGuideArgs {
   version?: number;
 }
 
-// cm:why version auto-increments on every write unless pinned — a body edit that silently kept its version would serve stale bytes to anything caching by (slug, version), and callers forget to bump far more often than they intend to pin
 export async function upsertIntegrationGuide(
   args: UpsertIntegrationGuideArgs,
 ): Promise<IntegrationGuideRow> {

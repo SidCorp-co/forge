@@ -21,7 +21,6 @@ import { SENTRY_THRESHOLD_MAX, SENTRY_THRESHOLD_MIN } from './types.js';
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:guard every field optional and `.strict()` — a PUT is a partial patch over the effective row, so a client that knows one key never has to round-trip the others; strict is what turns a typo'd key into a 400 instead of a silent no-op the operator reads back as "my ceiling did not save".
 const thresholdsBodySchema = z
   .object({
     stuckJobSeconds: z.number().int().min(60).max(86_400),
@@ -32,9 +31,6 @@ const thresholdsBodySchema = z
     deliveryFailRatePct: z.number().int().min(1).max(100),
     interventionLabels: z.array(z.string().trim().min(1).max(100)).max(50),
     ghostRunnerOfflineDays: z.number().int().min(1).max(365),
-    // cm:edge lockstep -> packages/core/src/db/schema-admin-thresholds.ts — the same bounds back
-    // the columns as CHECK constraints, so this schema refuses what the table would reject anyway;
-    // the point of both is that neither door is the only one.
     sentryMinEventCount: z.number().int().min(SENTRY_THRESHOLD_MIN).max(SENTRY_THRESHOLD_MAX),
     sentryMinUserCount: z.number().int().min(SENTRY_THRESHOLD_MIN).max(SENTRY_THRESHOLD_MAX),
   })
@@ -53,7 +49,6 @@ adminThresholdRoutes.put(
   }),
   async (c) => {
     const patch = c.req.valid('json');
-    // cm:guard merge over the EFFECTIVE row, not over the table defaults — the first PUT inserts, so patching a single key against an absent row would otherwise write the column defaults for every other key and quietly discard nothing, while the second PUT would discard the first one's work.
     const next = { ...(await readThresholds()), ...patch };
     await db
       .insert(adminThresholds)

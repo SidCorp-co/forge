@@ -87,7 +87,6 @@ describe("BodyView", () => {
     expect(screen.getByText("prose")).toBeInTheDocument();
   });
 
-  // cm:guard a component body with no tree must NOT reach `<Markdown>`: react-markdown escapes the tags and the reader sees `<forge-review …>` as text, which is the exact defect this file exists to keep out.
   it("shows the text of a body it could not parse rather than escaping its tags", () => {
     render(<BodyView body="<forge-review sha=" format="html" nodes={null} />);
     expect(screen.getByText(/Couldn't read this body/)).toBeInTheDocument();
@@ -100,7 +99,6 @@ describe("BodyView", () => {
     expect(document.querySelector("marquee")).toBeNull();
   });
 
-  // cm:guard the scanner accepts any `[A-Za-z][A-Za-z0-9-]*` name, so these are tags a person can really write. A bare index into the class map reaches `Object.prototype` and emits them.
   it("unwraps a tag whose name collides with Object.prototype", () => {
     render(
       <BodyView
@@ -136,7 +134,6 @@ describe("BodyView", () => {
     expect(order).toEqual(["before", "THE ARTIFACT", "after"]);
   });
 
-  // cm:edge contract -> packages/core/src/body/parse.ts — since `ad14294a` a non-raw text node holds DECODED characters. React escapes them on output, so the renderer must pass them straight through; unescaping here would double-unescape, and escaping here would print the entity.
   it("prints a decoded character as itself, not as its entity", () => {
     render(
       <BodyView

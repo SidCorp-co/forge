@@ -26,9 +26,6 @@ describe('unlinkedMessage — written for the person who will read it', () => {
     expect(message).toContain('RDJAkAgNzqJNttd8b');
   });
 
-  // The refusal this replaced never used the word "email", although a matching address is the
-  // condition that decides the link and a mismatched one is why the first person to hit it was
-  // refused (measured 2026-09-18).
   it('states the condition that decides the link, in words', () => {
     expect(message).toMatch(/email/i);
     expect(message).toMatch(/same/i);

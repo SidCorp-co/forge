@@ -27,10 +27,6 @@ describe("planNotificationDelivery channel routing (ISS-510)", () => {
     expect(plan.tone).toBe("error");
   });
 
-  // cm:why the bell-only case used `comment_added`, which ISS-1063 deleted as a type with
-  // no emitter anywhere. Every surviving type reaches at least `toast`, so the only thing
-  // left that is bell-only is a type the contract does not know — which the unknown/legacy
-  // case below already covers, and which is what `channelsFor`'s fallback is for.
   it("defaults severity from the contract when none is supplied", () => {
     // issue_status_changed's contract severity is info → info tone.
     const plan = planNotificationDelivery({ type: "issue_status_changed" });

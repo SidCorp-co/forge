@@ -1,16 +1,3 @@
-/**
- * Minimal YAML-frontmatter parser for bundled SKILL.md files.
- *
- * Supports the subset the 8 built-in forge-* skills actually use:
- *   key: value            -> string (quotes trimmed)
- *   key: true | false     -> boolean
- *   key: [a, b, c]        -> string[]
- *
- * Anything else is kept as a raw string. A missing opening `---` or closing
- * `---` throws — built-in files are authored, not user content, so we prefer
- * loud failure during seeding over silent truncation.
- */
-
 export interface ParsedManifest {
   frontmatter: Record<string, unknown>;
   body: string;

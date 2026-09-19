@@ -8,6 +8,7 @@ import {
   IconButton,
   Menu,
   MonoTag,
+  PageTitle,
   ProjectLoader,
   SlideOver,
   StatusChip,
@@ -141,7 +142,6 @@ export function SessionScreen({
   }, [turnsQ.data, session?.messages]);
   const fromMessages =
     (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
-  // cm:guard route on `metadata.type`, never on "does it have turn rows": a pipeline session that has been replied to grows turn rows, and the layout would silently fall back to the chat thread on the runs that got the most attention.
   const isRun = session?.metadata?.type === "pipeline" || session?.metadata?.type === "pm";
   // Task-count indicator (ISS-391) — surfaces "this session ran N agents/skills"
   // in the header without opening the context rail. Same derivation the rail uses.
@@ -183,12 +183,6 @@ export function SessionScreen({
     ready: turnsQ.isSuccess,
     itemCount: items.length,
     live,
-    // cm:guard this surface passed NEITHER of the two below until ISS-1083, so it still had the
-    // defect PR #480 fixed for the chat panel: a turn's rows grow in place while it runs, so
-    // `itemCount` does not move and `live` was already true, and the thread followed the first
-    // frame and then stopped. The same derivation the chat uses, for the same reason — the rendered
-    // length of the turn in flight is the only thing that moves, and it moves for a tool result
-    // settling onto its card as well as for prose (scroll consult F3, ISS-1078 review F6).
     streaming: live && !fromMessages,
     streamedChars,
   });
@@ -279,7 +273,7 @@ export function SessionScreen({
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h1 className="fg-h3 truncate">{session.title ?? "Session"}</h1>
+              <PageTitle className="fg-h3 truncate">{session.title ?? "Session"}</PageTitle>
               <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
             </div>
             <div className="mt-1 flex items-center gap-2">
@@ -369,10 +363,6 @@ export function SessionScreen({
         />
       ) : (
         <>
-      {/* cm:guard the scope is HERE, above the thread and outside the queries that refill it, so a
-          disclosure a reader opened survives the turn settling under them: on the chat surface that
-          settle swaps the whole live subtree for a stored one, and state held any lower goes with it
-          (ISS-1083 criterion 24, and `disclosure.tsx` for why). */}
       <DisclosureScope atBottom={atBottom}>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
@@ -381,10 +371,6 @@ export function SessionScreen({
               {turnsQ.isLoading ? (
                 <ProjectLoader label="loading turns…" size={110} />
               ) : items.length === 0 ? (
-                // cm:guard nothing here while the session is LIVE, because the stage line below is
-                // what says so now: this branch used to read "The agent is starting up…", which was
-                // a second sentence about the one fact and sat above a mascot card making the same
-                // claim (ISS-1083 criterion 17).
                 live ? null : (
                   <EmptyState title="No messages yet" message="This session has no turns." />
                 )
@@ -406,21 +392,11 @@ export function SessionScreen({
                   }
                 />
               )}
-              {/* cm:guard ONE position for the whole turn, at the end of the thread, and the
-                  same position whether the turn has produced blocks or nothing at all — which is
-                  the whole of criterion 17. The mascot card this replaced was drawn under every
-                  live turn, saying the agent was working directly beneath the words it had already
-                  written. */}
               {stage && (
                 <div className="mt-3">
                   <TurnStage stage={stage} {...(elapsed ? { elapsed } : {})} />
                 </div>
               )}
-              {/* cm:guard drawn INSIDE the scroller, because it is pinned to that element's own
-                  viewport and nothing else on this screen knows where that is (`new-output.tsx`).
-                  It is the second half of ISS-1078's scroll behaviour: a reader who has scrolled up
-                  is not moved, and now is not left to find out by scrolling back either
-                  (criterion 28). */}
               {newOutput && <NewOutput onGo={toBottom} />}
               <div ref={bottomRef} />
             </div>

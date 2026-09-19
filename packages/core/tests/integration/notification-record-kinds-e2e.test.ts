@@ -193,7 +193,6 @@ describe('notifications · signals', () => {
     expect((await bell())[0]?.type).toBe('issue_status_changed');
   });
 
-  // cm:guard the CHECK is what makes the kind mean something rather than describe something — without it a signal can be given a resolution key by any future emitter and silently rejoin the pile this issue emptied
   it('the database refuses a signal row carrying a resolution key', async () => {
     // The constraint's own name has to reach the reader: drizzle wraps the driver error,
     // so the assertion walks to the cause rather than matching the wrapper's text.
@@ -456,7 +455,6 @@ describe('notifications · silences', () => {
 });
 
 describe('notifications · the metric this change was not allowed to move', () => {
-  // cm:guard VISION §1 metric ② counts one row per `pipeline_wedge` straight off this table (`issue_intervention_events`, migration 0117). Consolidating wedge rows would move a north-star metric in silence, so the delivery layer must leave one record per wedge identity — this is the case that says so.
   it('the interventions view still counts one row per wedge', async () => {
     await wedge('wedge:a', 'job a is wedged', [ownerId, otherId]);
     await wedge('wedge:b', 'job b is wedged', [ownerId, otherId]);

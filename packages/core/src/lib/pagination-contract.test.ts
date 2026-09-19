@@ -29,7 +29,6 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-// cm:guard strip comments BEFORE searching. Measured 2026-08-31: commenting out the only `setTotalCount` in `issues/routes.ts` left an earlier version of this gate green, because the call still appeared in the text — the scan proved nothing until this ran first.
 function executable(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -87,7 +86,6 @@ describe('the REST list contract', () => {
     expect(offenders).toEqual([]);
   });
 
-  // cm:guard the header only reaches a browser while its name is in the CORS allow-list. The body now carries the same number, so losing it DEGRADES rather than breaks — but a caller still on the header form would silently read every list as short, so the pairing is asserted here rather than left to whoever edits the CORS block.
   it('keeps X-Total-Count exposed through CORS', () => {
     const index = readFileSync(join(SRC, 'index.ts'), 'utf8');
     expect(index).toMatch(/exposeHeaders:\s*\[[^\]]*'X-Total-Count'/);

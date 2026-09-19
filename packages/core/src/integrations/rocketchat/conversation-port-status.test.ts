@@ -56,7 +56,6 @@ vi.mock('../../db/client.js', () => ({
   db: {
     select: () => ({
       from: (table: unknown) => ({
-        // cm:why the mock answers by TABLE and not by call order: the two queries are issued in a fixed order today and a counter would silently re-point if that ever changed.
         where: async () =>
           String((table as { [k: symbol]: unknown })[Symbol.for('drizzle:Name')]) ===
           'integration_bindings'
@@ -90,7 +89,6 @@ beforeEach(() => {
       secrets: { authToken: 't', userId: 'bot' },
     },
   ];
-  // cm:why every delivery needs a binding naming the venue's own project: a binding is what says this room belongs to this project TODAY, and a connection alone cannot say it.
   bindings = [{ connectionId: 'conn-1', projectId: PROJECT_ID, config: { rids: ['ROOM1'] } }];
 });
 

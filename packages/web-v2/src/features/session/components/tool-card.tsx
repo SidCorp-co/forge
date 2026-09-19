@@ -26,8 +26,8 @@ export function InlineDiff({ diff }: { diff: FileDiff }) {
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: hunks are positional + stable
           <div key={i} className="overflow-x-auto">
-            {i > 0 && <div className="py-0.5 text-center text-subtle" style={{ fontSize: 10 }}>···</div>}
-            <pre className="font-mono leading-[1.6]" style={{ fontSize: 11 }}>
+            {i > 0 && <div className="py-0.5 text-center text-subtle" style={{ fontSize: "var(--text-10)" }}>···</div>}
+            <pre className="font-mono leading-relaxed-1-6" style={{ fontSize: "var(--text-11)" }}>
               {prefix.map((l, j) => (
                 <div key={`c0-${j}`} className="px-2 text-subtle">{`  ${l}`}</div>
               ))}
@@ -65,10 +65,10 @@ function EditCard({ tool, diff, blockKey }: { tool: ToolCallData; diff: FileDiff
           style={{ transform: open ? "rotate(90deg)" : "none" }}
         />
         <Icon name={diff.isNew ? "plus" : "branch"} size={14} className="flex-none text-subtle" />
-        <span className="flex-1 truncate font-mono" style={{ fontSize: 12 }}>{diff.path}</span>
-        {diff.isNew && <span className="flex-none font-mono" style={{ fontSize: 10, color: "var(--green-600)" }}>NEW</span>}
-        {diff.added > 0 && <span className="flex-none font-mono" style={{ fontSize: 11, color: "var(--green-600)" }}>+{diff.added}</span>}
-        {diff.removed > 0 && <span className="flex-none font-mono" style={{ fontSize: 11, color: "var(--red-600)" }}>-{diff.removed}</span>}
+        <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{diff.path}</span>
+        {diff.isNew && <span className="flex-none font-mono" style={{ fontSize: "var(--text-10)", color: "var(--green-600)" }}>NEW</span>}
+        {diff.added > 0 && <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--green-600)" }}>+{diff.added}</span>}
+        {diff.removed > 0 && <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--red-600)" }}>-{diff.removed}</span>}
       </button>
       {open && <InlineDiff diff={diff} />}
     </div>
@@ -88,16 +88,13 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
           className="flex-none"
           style={{ color: tool.isError ? "var(--red-600)" : "var(--fg-subtle)" }}
         />
-        <span className="flex-1 truncate font-mono" style={{ fontSize: 12 }}>{getToolLabel(tool)}</span>
+        <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{getToolLabel(tool)}</span>
         {typeof tool.durationMs === "number" && (
-          <span className="flex-none font-mono text-subtle" style={{ fontSize: 11 }}>
+          <span className="flex-none font-mono text-subtle" style={{ fontSize: "var(--text-11)" }}>
             {tool.durationMs >= 1000 ? `${(tool.durationMs / 1000).toFixed(1)}s` : `${tool.durationMs}ms`}
           </span>
         )}
       </div>
-      {/* cm:guard the summary is a LINE and not a control unless there is a value behind it. A
-          disclosure that opens onto nothing is the same affordance defect `thinking-line.tsx`
-          refuses one component along, and a running call has nothing behind it yet. */}
       {summary.hasBody ? (
         <button
           type="button"
@@ -105,7 +102,7 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
           aria-expanded={open}
           onClick={toggle}
           className="mt-1 flex w-fit items-center gap-1.5 rounded text-subtle hover:text-default"
-          style={{ fontSize: 11 }}
+          style={{ fontSize: "var(--text-11)" }}
         >
           <Icon name={open ? "chevronDown" : "chevronRight"} size={12} className="flex-none" />
           <span data-testid="tool-result-summary" className="font-mono">{summary.label}</span>
@@ -114,19 +111,16 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
         <p
           data-testid="tool-result-summary"
           className="mt-1 font-mono text-subtle"
-          style={{ fontSize: 11 }}
+          style={{ fontSize: "var(--text-11)" }}
         >
           {summary.label}
         </p>
       )}
       {open && summary.hasBody && (
-        // cm:guard the body wraps and scrolls INSIDE its own bounds. A tool result routinely carries
-        // an id or a URL with no break in it, and the thread's width is the assistant column's to
-        // decide — a card that widens the thread has taken that decision away from it.
         <pre
           data-testid="tool-result-body"
           className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-all border-l border-line-subtle pl-2 font-mono text-subtle"
-          style={{ fontSize: 11 }}
+          style={{ fontSize: "var(--text-11)" }}
         >
           {formatResultBody(tool.result)}
         </pre>
@@ -138,13 +132,6 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
 /**
  * One tool call.
  */
-// cm:why `live` is a prop rather than something the card works out: whether the turn is still
-// arriving is the surface's fact, and `AgentTurn` already holds it as `streamingTail`. A card that
-// guessed from its own emptiness would say "Running…" on every historical call that captured
-// nothing (ISS-1083).
-// cm:why `blockKey` is threaded down rather than built here: the key has to name the TURN this card
-// belongs to, and a card knows only itself. `AgentTurn` builds it, which is also the only place that
-// can guarantee the same key before and after the turn settles (`disclosure.tsx`).
 export function ToolCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boolean; blockKey?: string }) {
   const diff = buildFileDiff(tool);
   if (diff && diff.hunks.length > 0) return <EditCard tool={tool} diff={diff} blockKey={blockKey} />;

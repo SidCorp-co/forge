@@ -16,7 +16,7 @@ export function Input({ icon, variant = "default", className, ...props }: InputP
         {icon && <Icon name={icon} size={16} className="pointer-events-none absolute left-0 text-subtle" />}
         <input
           className={cn(
-            "w-full border-0 bg-transparent p-0 text-base text-fg md:text-[15px]",
+            "w-full border-0 bg-transparent p-0 text-base text-fg md:text-15",
             "placeholder:text-disabled focus-visible:shadow-none focus-visible:outline-none",
             icon && "pl-7",
           )}

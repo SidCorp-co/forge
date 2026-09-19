@@ -199,7 +199,6 @@ describe('the guards the worker already had', () => {
     expect(dispatchThrough).not.toHaveBeenCalled();
   });
 
-  // cm:guard the worker RETHROWS, because pg-boss's retry policy is the only thing that re-runs it.
   it('rethrows a dispatch failure so pg-boss schedules the retry', async () => {
     bound('sentry');
     dispatchThrough.mockRejectedValueOnce(new Error('sentry: Sentry answered HTTP 500'));
@@ -240,9 +239,6 @@ describe('a terminal refusal is not retried', () => {
       },
     });
 
-  // cm:guard the worker RESOLVES for this error, and that is what stops pg-boss retrying. The
-  // delivery row still carries the failure and its sentence — what is dropped is the second
-  // attempt, not the record of the first.
   it('resolves rather than rethrowing, so pg-boss marks the job done', async () => {
     const { NonRetryableDispatchError } = await import('./types.js');
     bound('github');
@@ -253,9 +249,6 @@ describe('a terminal refusal is not retried', () => {
     expect(dispatchThrough).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard and an ORDINARY failure still throws, because the retries are worth having for
-  // everything they were built for. Swallowing both would turn a transient Coolify blip into a
-  // deploy that silently never happened.
   it('still rethrows an ordinary failure, which is what the retries are for', async () => {
     bound('coolify');
     dispatchThrough.mockRejectedValueOnce(new Error('ECONNRESET'));

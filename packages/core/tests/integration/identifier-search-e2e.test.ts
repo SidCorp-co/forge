@@ -138,11 +138,6 @@ describe('identifier-aware keyword search (ISS-907)', () => {
     });
   });
 
-  // cm:guard the set is FROZEN and a fifth name here is a decision rather than a formality: every
-  // table on it pays `forge_identifier_words` on write and a GIN index on storage, and the function
-  // is IMMUTABLE precisely because a generated column may not be recomputed. `conversation_passages`
-  // joined it in ISS-1090 — a room's past is full of identifiers the english dictionary stems into
-  // words no query matches, which is the same argument `memories` was admitted on.
   it('the five tables carry a generated ident_search column with a GIN index', async () => {
     const cols = (await harness.db.execute(sql`
       SELECT table_name FROM information_schema.columns

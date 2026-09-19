@@ -57,7 +57,6 @@ describe('createDownloadTicket', () => {
     expect(ttl).toBeLessThanOrEqual(DOWNLOAD_TICKET_TTL_MS + 50);
   });
 
-  // cm:guard the TTL is the ONLY containment for a credential that travels in a URL — a long-lived ticket is a permanent public link to tenant bytes
   it('keeps the TTL well under an hour', () => {
     expect(DOWNLOAD_TICKET_TTL_MS).toBeLessThanOrEqual(15 * 60 * 1000);
   });
@@ -90,7 +89,6 @@ describe('resolveDownloadTicket', () => {
     expect(set.lastFetchedAt).toBeDefined();
   });
 
-  // cm:guard resolution must NOT consume the ticket — a third-party fetcher retries, and burning it on the first attempt recreates the dead end this whole mechanism removes
   it('does not mark the ticket consumed', async () => {
     updateReturn = [{ targetType: 'issue', attachmentId: 'att-9', projectId: 'proj-9' }];
     await resolveDownloadTicket('ticket-1');

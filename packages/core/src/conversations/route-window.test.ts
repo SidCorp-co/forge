@@ -42,8 +42,6 @@ vi.mock('./store.js', () => ({
     messageRows.filter((m) => m.seq >= r.firstSeq && m.seq <= r.lastSeq),
   deliveredDecisionUnderKey: async () => (delivered ? 'answered' : null),
   assistantSentExternalIds: async () => new Set<string>(),
-  // cm:guard the REAL reading and not a stub: what a null mode means is the claim this module now
-  // forks on, so a mock returning a fixed answer would make every case below say nothing about it.
   effectiveConversationMode: (row: { mode: 'assistant' | 'agent' | null }) =>
     row.mode ?? 'assistant',
 }));
@@ -56,7 +54,6 @@ vi.mock('./windows.js', () => ({
     row.claimedAt && row.claimedBy ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy } : null,
   closeWindow: (...a: unknown[]) => closeWindow(...(a as [])),
   reserveDelivery: (...a: unknown[]) => reserveDelivery(...(a as [])),
-  // cm:guard present on the mock because `route-window.ts` imports it; the overflow path that calls it is `route-window-cut.test.ts`'s and never runs here (ISS-1086).
   splitWindowTail: async () => true,
 }));
 
@@ -73,7 +70,6 @@ vi.mock('./transcript.js', () => ({
 
 let verdict: unknown = { speak: true };
 const decideProactivity = vi.fn(async (_input: unknown) => verdict);
-// cm:guard `decideProactivity` alone is replaced and the module's constants stay real, because `presence.js` folds a room with no self onto those constants — a whole-module mock would fold onto `undefined` and the pass-through assertions below would compare nothing with nothing (ISS-1034 criterion 32).
 vi.mock('./proactivity.js', async (orig) => ({
   ...(await orig<typeof import('./proactivity.js')>()),
   decideProactivity: (...a: unknown[]) => decideProactivity(a[0]),
@@ -151,7 +147,6 @@ describe('every ending closes the window under a decision', () => {
     expect(runConversationTurn).not.toHaveBeenCalled();
   });
 
-  // cm:guard the close is the function's POST-CONDITION and not a step in its happy path: a window left open under a lapsed claim is re-claimed and routed again, which is the double answer the claim exists to prevent (ISS-1004 rule 1).
   it('closes the window even when routing throws', async () => {
     runConversationTurn.mockRejectedValue(new Error('provider exploded'));
     await expect(route()).resolves.toMatchObject({ decision: 'unreachable' });
@@ -162,20 +157,11 @@ describe('every ending closes the window under a decision', () => {
 });
 
 describe('an outcome nobody knows yet', () => {
-  // cm:guard a DIVERTED turn is `handed-off` and not `undetermined`, and the difference is what is
-  // known: `undetermined` says a delivery was started and nobody recorded how it ended, while this
-  // says a session on a box is still writing the answer. The Forge UI prints the first as "a reply
-  // was sent and never confirmed", which was a false sentence under every live Agent turn until
-  // ISS-1039 split them.
   it('records a diverted turn as handed-off', async () => {
     runConversationTurn.mockResolvedValue({ kind: 'diverted', reason: 'agent-turn-dispatched' });
     await expect(route()).resolves.toMatchObject({ decision: 'handed-off' });
   });
 
-  // cm:guard the recovery half, and the case that reds if `handoffFor` is dropped: a core that died
-  // between the dispatch and the close leaves a reservation and no delivered row, which this module
-  // alone cannot tell from a lost delivery. Without the probe the window reopens `undetermined` and
-  // the thread says a reply was sent, about an answer nobody had written (ISS-1039, consult F5).
   it('reads a reservation left by a handoff as handed-off, and dispatches nothing more', async () => {
     const outcome = await routeWindow({
       window: { ...WINDOW, deliveryReservedAt: new Date('2026-09-16T20:00:00.000Z') },
@@ -190,9 +176,6 @@ describe('an outcome nobody knows yet', () => {
     expect(runConversationTurn).not.toHaveBeenCalled();
   });
 
-  // cm:guard the other side of the same read: with no handoff behind it, a reservation is exactly
-  // what it always was, and widening `handed-off` to cover it would tell a person a session is
-  // writing an answer that nothing is writing.
   it('still records a reservation with no handoff behind it as undetermined', async () => {
     const outcome = await routeWindow({
       window: { ...WINDOW, deliveryReservedAt: new Date('2026-09-16T20:00:00.000Z') },
@@ -203,7 +186,6 @@ describe('an outcome nobody knows yet', () => {
     expect(outcome).toMatchObject({ decision: 'undetermined' });
   });
 
-  // cm:guard an `undeliverable` transport error is `undetermined` and NOT `unreachable`: a POST that timed out may have been accepted before the socket went, and calling that a failure is the misclassification rule 4 forbids (ISS-1004 review F3).
   it('records a delivery that was attempted and did not report back as undetermined', async () => {
     runConversationTurn.mockResolvedValue({ kind: 'undeliverable', reason: 'socket hang up' });
     await expect(route()).resolves.toMatchObject({
@@ -226,7 +208,6 @@ describe('a window is delivered at most once', () => {
     expect(runConversationTurn).not.toHaveBeenCalled();
   });
 
-  // cm:guard a reservation with no delivered row is the fourth state and NOT a licence to try again: the previous holder handed the text to the transport and died before it could say how that went (ISS-1004 review F2).
   it('sends nothing when a delivery was reserved and never reported', async () => {
     await expect(route({ deliveryReservedAt: new Date() })).resolves.toMatchObject({
       decision: 'undetermined',
@@ -262,7 +243,6 @@ describe('authority', () => {
     });
   });
 
-  // cm:guard the refusal is DELIVERED, reserved first and written to the transcript under the window's key: `authority-refused` used to be a decision nobody outside the database could read, so a person whose synchronous refusal failed to send got silence (review pass 1 F3).
   it('refuses a one-to-one room whose speaker is linked to nobody, and says so in the room', async () => {
     conversationRow = { ...conversation, shape: 'direct' };
     messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
@@ -284,8 +264,6 @@ describe('authority', () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  // cm:guard a refusal the door would not take is `undetermined` and not `authority-refused`: the window records that nobody was told, and the reservation stops the next claim saying it twice (rule 4).
-  // cm:guard a wording lookup that failed must leave the window claimable rather than reserved: `refusalFor` asks a directory, and a reservation burned by a lookup that sent nothing would leave the person never told (review of the plan, F1).
   it('leaves the window unreserved when the refusal wording cannot be looked up', async () => {
     conversationRow = { ...conversation, shape: 'direct' };
     messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
@@ -303,7 +281,6 @@ describe('authority', () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  // cm:guard the proof carries WHICH decision sent it, so a crash between the refusal and the close cannot be recovered as an ordinary answer (review of the plan, F1).
   it('recovers a delivered refusal as authority-refused and not as answered', async () => {
     conversationRow = { ...conversation, shape: 'direct' };
     messageRows = messages.map((m) => ({ ...m, authorUserId: null }));
@@ -331,7 +308,6 @@ describe('authority', () => {
   });
 });
 
-// cm:guard the speaker is asserted DISTINCT from the principal in a room, because in a direct venue the two are the same id and a test there would pass with the speaker read off the principal — the very substitution that would style every room reply for the org agent (ISS-1034 criterion 19).
 describe('whose preferences a room reply honours', () => {
   it('names the newest linked person as the speaker while the room runs as the principal', async () => {
     const inputs = vi.fn((_c: WindowContext) => ({
@@ -379,7 +355,6 @@ describe('the room’s presence reaches the guards', () => {
     });
   });
 
-  // cm:guard the second handle has NO self row and still counts: its default joins the fold, so one handle's longer bounce is capped back to the default by the handle that never wrote one (codex F4).
   it('folds a handle with no self row as the defaults, not as absent', async () => {
     handles.push({ userId: 'handle-2', handle: 'nabo' });
     selves = new Map([['handle-1', { presence: { loopBounceMs: 60_000 } }]]);
@@ -394,7 +369,6 @@ describe('the room’s presence reaches the guards', () => {
   });
 });
 
-// cm:guard the three rows are one rule read from three sides — gated, let through, not gated — and the direct case is the one that would pass by accident if `mention` were applied to every venue: a direct room's one person names nobody and is still owed every answer (ISS-1034 criteria 66-68).
 describe('answerInGroup: mention', () => {
   const mention = () => {
     selves = new Map([['handle-1', { presence: { answerInGroup: 'mention' } }]]);

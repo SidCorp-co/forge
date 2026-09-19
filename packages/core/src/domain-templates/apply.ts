@@ -55,13 +55,6 @@ export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTem
   if (!parsed.success) throw new TemplateInvalidManifestError(templateKey, parsed.error);
   const manifest: DomainTemplateManifest = parsed.data;
 
-  // 1+2. Upsert agent + app_config inside one transaction with a row lock on
-  //      `projects.id`. The `agents` table only has an INDEX on (projectId,type)
-  //      — no UNIQUE — so a naked SELECT-then-INSERT race could double-insert
-  //      under concurrent apply calls (review finding). Locking the parent
-  //      project row serialises apply for the same project at low cost.
-  //      `enabled` is intentionally only written on insert so a manually
-  //      disabled agent is not silently re-enabled by a later apply.
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM ${projects} WHERE id = ${projectId} FOR UPDATE`);
 
@@ -154,7 +147,6 @@ export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTem
   const registeredSkillNames: string[] = [];
   const skippedSkillNames: string[] = [];
   for (const reg of manifest.skillRegistrations ?? []) {
-    // cm:guard a global is NEVER registered directly — only a project-owned clone is, so go through resolveOrAdoptProjectSkill and never insert reg.skillName's global id
     const skillId = await resolveOrAdoptProjectSkill(projectId, reg.skillName);
     if (!skillId) {
       logger.warn(

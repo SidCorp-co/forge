@@ -3,7 +3,6 @@
  * calls `escalate(question)`. Dedup, resolve a runner, dispatch a `system`
  * session; the reply is delivered later by `escalation-bridge.ts`.
  */
-// cm:guard this module never posts to the room itself — the bridge is the only path its output reaches a channel
 
 import { eq } from 'drizzle-orm';
 import {
@@ -28,7 +27,6 @@ export const ESCALATION_DEDUP_REPLY = (botName: string): string =>
 export const ESCALATION_NO_DEVICE_REPLY = (botName: string): string =>
   `Xin lỗi, hiện không có runner nào sẵn sàng để ${botName} tìm hiểu sâu câu hỏi này — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
-// cm:why ISS-818 — states WHY (figures unreconciled), not a bare "couldn't verify" that reads as "didn't understand you" and sends the user off to rephrase
 export const ESCALATION_FALLBACK_REPLY = (botName: string): string =>
   `Xin lỗi, ${botName} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
@@ -41,7 +39,6 @@ export interface StartEscalationArgs {
   botName: string;
   question: string;
   askedByUsername?: string | undefined;
-  // cm:edge contract -> packages/core/src/integrations/rocketchat/escalation-bridge.ts — the bridge fires from a terminal writer on any instance and cannot re-derive who spoke, so the shape and the resolved principal are STORED here and read back there; `askedByUsername` is not a substitute, because a display name is re-assignable and the speaker map refuses one as a key
   shape: 'direct' | 'group';
   principalUserId: string;
 }
@@ -50,7 +47,7 @@ export type StartEscalationResult =
   | { started: true; sessionId: string }
   | { started: false; reason: 'deduped' | 'no-device' | 'dispatch-failed' };
 
-// cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` lint pragma; deleting one to pay the drain would break the language gate instead of cleaning prose.
+// every frozen comment in this file is an `i18n-allow` lint pragma; deleting one to pay the drain would break the language gate instead of cleaning prose.
 export function hasInFlightEscalation(
   projectId: string,
   rid: string,
@@ -59,8 +56,6 @@ export function hasInFlightEscalation(
   return hasInFlightRoomSession(projectId, rid, 'escalation', tmid);
 }
 
-// cm:guard the knowledge-curation rules are spelled out IN the prompt because the runner's forge_knowledge access has no client-side guardrail — this text is the only enforcement
-// cm:guard ISS-687 — this session is an ADVISOR: it must never be told to post to the room or call forge_issues create, because Bao (escalation-bridge.ts) owns the user-facing reply and issue creation
 export function buildEscalationPrompt(question: string): string {
   return [
     'A teammate asked a question in Rocket.Chat that the fast assistant could not answer from existing project knowledge:',
@@ -77,7 +72,6 @@ export function buildEscalationPrompt(question: string): string {
   ].join('\n');
 }
 
-// cm:guard on a dispatch throw the session MUST be marked failed via applyKernelTransition — that fires the completion bridge like any other terminal writer, which is the only reason the room still gets one honest fallback
 export async function startEscalation(args: StartEscalationArgs): Promise<StartEscalationResult> {
   if (await hasInFlightEscalation(args.projectId, args.rid, args.tmid)) {
     return { started: false, reason: 'deduped' };

@@ -83,8 +83,6 @@ describe("AgentAccessChoice", () => {
     expect(screen.queryByText(/runner box/i)).not.toBeInTheDocument();
   });
 
-  // cm:guard core may grow a fourth `AgentPath` arm before the web knows its wording; the control
-  // must then offer nothing rather than a switch it cannot explain.
   it("renders nothing for a kind this build has no wording for", () => {
     const { container } = render(
       <AgentAccessChoice
@@ -155,9 +153,6 @@ describe("AgentAccessControl", () => {
     expect(theSwitch()).toBeDisabled();
   });
 
-  // cm:guard the request is held OPEN and then rejected, rather than rejected synchronously: an
-  // optimistic value that is never applied and one that is applied and rolled back are
-  // indistinguishable if the failure arrives before the first render.
   it("leaves the last confirmed state on the row when the write is refused, and says why inline", () => {
     render(<AgentAccessControl projectId="proj-1" binding={binding()} canEdit />);
     fireEvent.click(theSwitch());

@@ -88,7 +88,6 @@ describe('autonomous job liveness E2E', () => {
     expect(await killRequested()).toBe(true);
   });
 
-  // cm:guard the whole reason phase rows joined the quiet computation: this job is 3h old with zero job_events, which is exactly the shape the result hop was built to kill
   it('spares the same job when it declared a phase inside the quiet window', async () => {
     await declarePhase('code', 10);
 
@@ -105,7 +104,6 @@ describe('autonomous job liveness E2E', () => {
     expect(await killRequested()).toBe(true);
   });
 
-  // cm:guard phase rows must not become the ONLY term — a staged job declares no phases of its own, so a job whose events are recent has to survive on those alone
   it('spares a staged job on its job_events alone, with no phase rows anywhere', async () => {
     await harness.db.execute(sql`
       INSERT INTO job_events (id, job_id, kind, data, seq, ts)

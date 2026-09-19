@@ -110,7 +110,6 @@ export async function readPmGraph({ projectId, rootIssueId, depth }: PmGraphQuer
           inArray(issueDependencies.fromIssueId, frontierIds),
         ),
       );
-    // cm:why two queries, not one: an edge counts when EITHER end touches the frontier, and drizzle has no `OR(IN, IN)` builder — a single `inArray` on one column silently makes the BFS directional and drops every blocker reached from its far side
     const dependencyEdgesReverse = await db
       .select({
         from: issueDependencies.fromIssueId,

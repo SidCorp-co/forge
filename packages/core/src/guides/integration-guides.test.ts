@@ -50,7 +50,6 @@ describe('integration guide slug space', () => {
 });
 
 describe('resolveGuide — org override over code default', () => {
-  // cm:guard orgId null must never touch the DB — that is the unauthenticated public path, and a query here would both break it and leak tenant bytes
   it('with no org, returns the code guide and issues no query', async () => {
     queue();
     const target = FORGE_GUIDES[0];

@@ -81,7 +81,6 @@ export function registerActivitySubscribers(bus: HooksBus): void {
   });
 
   bus.on('transition', async (p) => {
-    // cm:why ISS-849 — a redelivery of the same outbox row must not write a second activity row; outboxId absent (any non-outbox emitter) skips this guard and leaves behavior unchanged
     const dedupeKey = p.outboxId ? `transition:${p.outboxId}` : undefined;
     if (dedupeKey && (await alreadyRecordedTransition(dedupeKey))) return;
 

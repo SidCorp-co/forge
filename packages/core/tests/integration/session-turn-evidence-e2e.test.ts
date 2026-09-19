@@ -171,9 +171,6 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     expect(after.started_at).toBeNull();
   });
 
-  // cm:guard the other half of the same batch, and the reason the flip could not simply be dropped:
-  // the box IS alive and the row has to say so, or the queue hop's never-claimed arm fails it at two
-  // minutes for a worker that is plainly holding it.
   it('refreshes last_heartbeat_at for that same beat', async () => {
     const { jobId, sessionId } = await seed('queued');
     expect(await session(sessionId).then((r) => r.last_heartbeat_at)).toBeNull();
@@ -191,9 +188,6 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     expect(await session(sessionId).then((r) => r.status)).toBe('queued');
   });
 
-  // cm:guard the pair of columns an operator reads TOGETHER, and the whole reason no new session
-  // status was added: `queued` alone cannot tell "nobody has it" from "a worker has it and nothing
-  // has been asked", and `runtime_state` already carries the second.
   it('records starting on the row while leaving it queued, so the two facts are both readable', async () => {
     const { jobId, sessionId } = await seed('queued');
 
@@ -212,8 +206,6 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     expect(after.started_at).not.toBeNull();
   });
 
-  // cm:guard the print-mode lane, which reports no runtime state ever — a rule written only on
-  // `runtimeState` leaves every one of its sessions queued for its whole life.
   it("moves a queued session to running on the agent's own output", async () => {
     const { jobId, sessionId } = await seed('queued');
 
@@ -241,9 +233,6 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     });
   });
 
-  // cm:guard THE assertion the unit lane cannot carry: `startedRunning` is computed in SQL, so only
-  // a real statement can answer it. Left as the bare `prev.status = 'queued'` this fires on a batch
-  // that wrote no status at all, and every listener shows `running` for a row that says `queued`.
   it('announces nothing for a batch that reported no turn', async () => {
     const { jobId } = await seed('queued');
 
@@ -252,8 +241,6 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     expect(statusBroadcastsByRoom()).toEqual({});
   });
 
-  // cm:guard the one-way-ness: narrowing the flip must never DEMOTE a session that already reported
-  // a turn, which is what a `status` written back unconditionally from the batch would do.
   it('leaves a running session running when a later batch reports nothing about the agent', async () => {
     const { jobId, sessionId } = await seed('running');
 
@@ -262,10 +249,6 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     expect(await session(sessionId).then((r) => r.status)).toBe('running');
   });
 
-  // cm:guard the ISS-1014 property this change had to preserve: ONE statement per batch on the
-  // heartbeat path, whichever branch it takes. The instrument is a FOR EACH STATEMENT trigger, which
-  // counts a statement that matched no row — so a second UPDATE reintroduced for the flip is caught
-  // even when it is a no-op.
   it('still costs exactly one agent_sessions statement, on either branch', async () => {
     await harness.db.execute(sql`
       CREATE TABLE IF NOT EXISTS iss1101_statements (table_name text NOT NULL)
@@ -304,9 +287,6 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     }
   });
 
-  // cm:guard the CTE's status predicate, which the change must not have widened: a batch arriving
-  // for a session some reaper already failed must not revive it, and `'running'` is not a terminal
-  // literal so `lifecycle/transition-guard.test.ts` cannot see this one.
   it('does not revive a terminal session', async () => {
     const { jobId, sessionId } = await seed('queued');
     await harness.db.execute(sql`
@@ -318,8 +298,6 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     expect(await session(sessionId).then((r) => r.status)).toBe('failed');
   });
 
-  // cm:guard the park rule this change sits beside and must not have absorbed: a park-only batch
-  // still writes no heartbeat at all, whatever the new evidence rule says about the flip.
   it('still writes no heartbeat for a park-only batch', async () => {
     const { jobId, sessionId } = await seed('queued');
 

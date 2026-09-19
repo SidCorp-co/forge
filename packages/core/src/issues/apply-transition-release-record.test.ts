@@ -18,7 +18,6 @@ const txSelectFrom = vi.fn(() => ({
   innerJoin: () => ({ where: txDependentsWhere }),
 }));
 
-// cm:why the builder is thenable AND carries `.limit` because drizzle's is — the rule reads issuesMissingReleaseRecord, which awaits `.where(...)` with no limit, while the transition's other reads still chain `.limit(1)`; a mock answering only one of the two shapes reports the rule as passing on a query it never made
 const selectRows = vi.fn(async () => [] as unknown[]);
 const dbSelect = vi.fn(() => ({
   from: vi.fn(() => ({
@@ -53,7 +52,6 @@ vi.mock('./transition-reason.js', async (importActual) => {
   const actual = await importActual<typeof import('./transition-reason.js')>();
   return { ...actual, postTransitionReasonComment: vi.fn(async () => undefined) };
 });
-// cm:guard stubbed for the same reason the park suite stubs it: this file's subject is the close record, the mint writes through a transaction handle this stub does not carry, and the mint's own behaviour is owned by `tests/integration/park-mints-a-question-e2e.test.ts` (ISS-996).
 vi.mock('./park-question.js', () => ({
   NEED_NOT_STATED: 'not stated',
   mintParkQuestion: vi.fn(async () => undefined),
@@ -67,7 +65,6 @@ vi.mock('./merged-at.js', () => ({
 vi.mock('./pipeline-health.js', () => ({
   publishPipelineHealthChanged: vi.fn(async () => undefined),
 }));
-// cm:why the two rewrites running before this rule are stubbed so `dbSelect` is a channel only the refusal reads — sharing it, a row queued for the refusal gets consumed by a project lookup instead, and the rule reads as passing on a query it never made
 vi.mock('./autonomous-reopen.js', () => ({
   resolveAutonomousReopenTarget: vi.fn(async (_p: string, s: string) => s),
 }));
@@ -97,7 +94,6 @@ function issueRow(releaseNotes: unknown) {
   selectRows.mockResolvedValueOnce([{ id: ISSUE_ID, releaseNotes }]);
 }
 
-// cm:why every select answers with the row the rule refuses, so an exemption test cannot pass by the rule simply failing to find an issue — the close has to be let through on the exemption itself
 function everyRowRefusable() {
   selectRows.mockResolvedValue([{ id: ISSUE_ID, releaseNotes: null }]);
 }
@@ -139,7 +135,6 @@ describe('an agent close', () => {
     expect((err as InstanceType<typeof TransitionError>).detail).toContain('dropped');
   });
 
-  // cm:guard the staged release close is `released -> closed`, and it is caught too — ISS-822 closed from there on 2026-08-11 with a note written but no changelog line, ISS-830 and ISS-810 with no note at all. A rule scoped to the drive path would leave all three possible.
   it('is refused from `released` as well, which is the staged path the release step closes on', async () => {
     issueRow(null);
 
@@ -155,14 +150,12 @@ describe('an agent close', () => {
     expect((await close(AGENT)).status).toBe('closed');
   });
 
-  // cm:guard `skip` must NOT exempt, and this is the case that proves it: `skip` is the wide flag every internal transition carries — the decompose cascade, the park rewrites, any future sweep — so exempting on it would let an unrecorded issue reach `closed` from any of them. Only `viaCloseCascade` is narrow enough to be an exemption.
   it('does NOT exempt a bare `skip`, which the orchestrator auto-skip chain also carries', async () => {
     issueRow(null);
 
     await expect(close(AGENT, { skip: true })).rejects.toThrow('RELEASE_RECORD_REQUIRED');
   });
 
-  // cm:guard `Skip` is the honest answer for a change with no user-facing half, and it MUST pass — a rule that only accepts a bullet would push an internal fix towards inventing one, which is a worse record than none
   it('accepts a `Skip` note, because what is refused is silence, not a decision not to publish', async () => {
     issueRow({ section: 'Skip', userFacing: '-' });
     queueUpdate('closed');

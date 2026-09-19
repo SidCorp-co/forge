@@ -23,8 +23,6 @@ vi.mock('../../knowledge/unified-search.js', () => ({
 }));
 
 const upsertKnowledgeEntryMock = vi.fn(async (_input: unknown) => ({ id: 'k', slug: 's' }));
-// cm:guard the functions are stubbed and `upsertKnowledgeInputSchema` is NOT — the handler parses
-// the tool's arguments through it, so a stand-in decides what this tool accepts (ISS-1095).
 vi.mock('../../knowledge/service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../knowledge/service.js')>()),
   deleteKnowledgeEntry: vi.fn(),
@@ -47,7 +45,6 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// cm:why the outage below is not hypothetical: `runUnifiedSearch` degrades the knowledge arm to keyword, and it is the memory arm at `strategy: semantic` that rejects, because `memory/search-service.ts` degrades `hybrid` only.
 describe('forge_knowledge maps an embeddings outage to UNAVAILABLE', () => {
   it('on search', async () => {
     runUnifiedSearchMock.mockRejectedValueOnce(new EmbeddingUnavailableError('provider down'));
@@ -75,8 +72,6 @@ describe('forge_knowledge maps an embeddings outage to UNAVAILABLE', () => {
   });
 });
 
-// cm:why the tool's own `inputSchema` is not the only gate on an upsert — it takes any 1..512 string
-// for `slug`, and `upsertKnowledgeInputSchema` in the handler is what holds kebab-case.
 describe('forge_knowledge upsert is validated by the knowledge service schema', () => {
   it('refuses a slug that is not kebab-case', async () => {
     await expect(

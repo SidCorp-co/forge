@@ -15,7 +15,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { clearIssueMerge, recordIssueMerge } from './merge-record.js';
 
 /** The SQL a drizzle predicate actually renders to, as Postgres would receive it. */
-// cm:guard the predicate is RENDERED rather than walked, and never inferred from a row the mock returned: a mock decides what comes back and cannot decide what was asked. An earlier version of this helper walked the fragment's object graph and reached every column of `issues` through a column's own `.table` back-reference, so it proved nothing. This is what makes criteria 14 and 16 provable without a database.
 function renderedSql(fragment: unknown): string {
   return new PgDialect().sqlToQuery(fragment as SQL).sql;
 }
@@ -102,7 +101,6 @@ describe('recordIssueMerge — an assertion', () => {
 });
 
 describe('recordIssueMerge — evidence', () => {
-  // cm:guard this is the planted violation for criteria 14 and 16. Change the evidence arm's gate to `merged_at IS NULL` — the obvious "make both predicates the same" edit — and this goes red naming `merged_commit_sha`, because an issue somebody marked by hand could then never receive the evidence of its own merge.
   it('gates on merged_commit_sha, so it replaces an assertion and not another evidence', async () => {
     const { executor, whereCall } = buildExecutor();
     await recordIssueMerge(executor, { issueId: 'iss-1', evidence: OBSERVED });

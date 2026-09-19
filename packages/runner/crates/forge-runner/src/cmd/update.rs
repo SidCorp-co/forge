@@ -58,8 +58,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     Ok(())
 }
 
-// cm:guard never name a unit literally here — a box set up with FORGE_RUNNER_MACHINE_ID runs `forge-runner-<id>.service`, and `systemctl --user restart forge-runner` bounces the DEFAULT unit instead, leaving the instance on its old in-memory build while re-downloading the same update every cycle
-// cm:edge naming -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — the daemon solves the same coupling with exit(0) + Restart=always; this one-shot CLI is not the daemon, so it must resolve the name rather than exit
 #[cfg(target_os = "linux")]
 fn restart_service() {
     let units = match list_forge_runner_units() {
@@ -153,7 +151,6 @@ fn list_forge_runner_units() -> anyhow::Result<Vec<String>> {
 fn parse_unit_names(stdout: &str) -> Vec<String> {
     stdout
         .lines()
-        // cm:why a failed unit still prints its `●` marker ahead of the name even under --plain, and it is exactly the unit an operator is trying to restart
         .filter_map(|line| {
             line.split_whitespace()
                 .find(|f| f.ends_with(".service"))

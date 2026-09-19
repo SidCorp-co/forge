@@ -1,10 +1,3 @@
-// web-v2 feature module: pipeline — REST surface. All calls go through the
-// shared `apiClient`/`apiClientList` (no raw fetch). Routes verified against
-// core for ISS-295:
-//   - `packages/core/src/pipeline/runs-read-routes.ts`  (list + detail)
-//   - `packages/core/src/pipeline/runs-routes.ts`       (pause/resume/cancel)
-//   - `packages/core/src/pipeline/analytics-routes.ts`  (throughput/durations)
-//   - `packages/core/src/issues/search` route           (kanban cards)
 import { apiClient, apiClientList } from "@/lib/api/client";
 import { BOARD_EXCLUDED_STATUSES } from "./types";
 import type {
@@ -30,11 +23,6 @@ function analyticsParams(opts: AnalyticsOpts): string {
 }
 
 export const pipelineApi = {
-  /**
-   * `GET /api/projects/:id/pipeline-runs?limit&offset&status&issueId` — the
-   * per-project run list (ordered by `startedAt` desc). Returns `{ items,
-   * totalCount }` (totalCount from `X-Total-Count`).
-   */
   runsForProject: (opts: ProjectRunsOpts) => {
     const params = new URLSearchParams({
       limit: String(opts.limit ?? 100),
@@ -59,8 +47,6 @@ export const pipelineApi = {
   /** `POST /api/pipeline-runs/:id/cancel`. */
   cancel: (id: string) => apiClient<unknown>(`/pipeline-runs/${id}/cancel`, { method: "POST" }),
 
-  /** `GET /api/pipeline/step-durations?days&projectId&step` — cross-project
-   *  per-step durations + cost from the `pipeline_run_step_durations` view. */
   stepDurations: (opts: AnalyticsOpts = {}) =>
     apiClient<StepDurationRow[]>(`/pipeline/step-durations?${analyticsParams(opts)}`),
 
@@ -71,14 +57,11 @@ export const pipelineApi = {
   /** `GET /api/issues/:id/tasks` — subtasks for the RunDetail Tasks tab. */
   tasksForIssue: (issueId: string) => apiClient<TaskRow[]>(`/issues/${issueId}/tasks`),
 
-  /** `GET /api/projects/:id/issues/search` — issues for the kanban cards,
-   *  hydrated with `agentStatus`. One page (board view, not paginated). */
   issuesForProject: (projectId: string) => {
     const params = new URLSearchParams({
       limit: String(PIPELINE_ISSUES_PAGE_SIZE),
       offset: "0",
       withAgentSessions: "true",
-      // cm:why the gate reason arrives only under this flag, and without it a queued step renders as a running card
       withPipelineHealth: "1",
       sort: "updatedAt:desc",
     });
