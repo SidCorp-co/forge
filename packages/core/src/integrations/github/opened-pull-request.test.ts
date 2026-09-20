@@ -156,7 +156,7 @@ describe('what the writer refusing to overwrite means', () => {
     const result = await project();
     expect(result.outcome).toBe('superseded');
     expect(result.issueId).toBe('issue-9');
-    expect(result.reason).toMatch(/newer/);
+    expect(result.reason).toMatch(/at least as new/);
   });
 
   it('reports not-recorded where nothing was written and no row is there', async () => {
@@ -195,7 +195,7 @@ describe('a readback that fails does not unsay a write that committed', () => {
     const result = await project();
     expect(result.outcome).toBe('superseded');
     expect(result.issueId).toBeNull();
-    expect(result.reason).toMatch(/newer/);
+    expect(result.reason).toMatch(/at least as new/);
     expect(result.reason).toMatch(/could not be read back/);
   });
 });
