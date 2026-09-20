@@ -20,7 +20,13 @@ const jobs = tagTable('jobs');
 const kernelTransitions = tagTable('kernel_transitions');
 
 const KINDS = ['master', 'run_session', 'pipeline', 'pm', 'chat'] as const;
-const TERMINAL = ['completed', 'failed', 'completed_via_recovery', 'cancelled_stale', 'cancelled'] as const;
+const TERMINAL = [
+  'completed',
+  'failed',
+  'completed_via_recovery',
+  'cancelled_stale',
+  'cancelled',
+] as const;
 vi.mock('../db/schema.js', () => ({
   agentSessions,
   issues,

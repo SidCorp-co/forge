@@ -15,7 +15,6 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
-import { AGENT_SESSION_KIND_LIST, isAgentSessionKind } from '../jobs/session-kinds.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -36,9 +35,9 @@ import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from 
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
-import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
+import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
@@ -339,7 +338,8 @@ agentSessionRoutes.get(
     }
 
     if (status) conditions.push(eq(agentSessions.status, status));
-    if (metadataType) conditions.push(eq(agentSessions.kind, kindFromQuery(metadataType, badRequest)));
+    if (metadataType)
+      conditions.push(eq(agentSessions.kind, kindFromQuery(metadataType, badRequest)));
     if (issueId) {
       conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
     }

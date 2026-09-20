@@ -6,11 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
-const VOCABULARY_FILE = 'packages/core/src/db/schema.ts';
 const VOCABULARIES = {
-  issue: 'issueStatuses',
-  job: 'jobStatuses',
-  session: 'agentSessionStatuses',
+  issue: { file: 'packages/core/src/db/schema.ts', symbol: 'issueStatuses' },
+  job: { file: 'packages/core/src/db/schema.ts', symbol: 'jobStatuses' },
+  session: { file: 'packages/core/src/db/session-vocabulary.ts', symbol: 'agentSessionStatuses' },
 };
 const DISCRIMINATOR = {
   issue: /\bissues?\b|IssueStatus/,
@@ -41,22 +40,25 @@ function config() {
 }
 
 function readVocabularies() {
-  const abs = join(ROOT, VOCABULARY_FILE);
-  if (!existsSync(abs)) {
-    die(
-      `${VOCABULARY_FILE} is not there, so the status vocabularies cannot be read and every\n` +
-        'tuple below would be measured against an empty list',
-    );
-  }
-  const source = readFileSync(abs, 'utf8');
   const read = {};
-  for (const [name, symbol] of Object.entries(VOCABULARIES)) {
-    const hit = source.match(
-      new RegExp(`export const ${symbol}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`),
-    );
+  const sources = new Map();
+  for (const [name, { file, symbol }] of Object.entries(VOCABULARIES)) {
+    if (!sources.has(file)) {
+      const abs = join(ROOT, file);
+      if (!existsSync(abs)) {
+        die(
+          `${file} is not there, so the status vocabularies cannot be read and every\n` +
+            'tuple below would be measured against an empty list',
+        );
+      }
+      sources.set(file, readFileSync(abs, 'utf8'));
+    }
+    const hit = sources
+      .get(file)
+      .match(new RegExp(`export const ${symbol}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`));
     if (!hit) {
       die(
-        `${VOCABULARY_FILE} no longer declares \`export const ${symbol} = [...] as const\`.\n` +
+        `${file} no longer declares \`export const ${symbol} = [...] as const\`.\n` +
           'The checker reads its vocabularies from that declaration rather than carrying a copy,\n' +
           'so a rename there stops the scan instead of quietly narrowing it. Point this checker at\n' +
           'the new name.',
