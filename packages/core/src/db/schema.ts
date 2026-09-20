@@ -604,7 +604,7 @@ export const pipelineRuns = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     metadata: jsonb('metadata').notNull().default({}),
-    /** The version this release cut (ISS-1120); NULL on every run that is not a release. */
+    /** A release's version and its ship (ISS-1120); both NULL on every other kind of run. */
     ...axes.releaseRunVersionColumns,
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
