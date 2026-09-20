@@ -12,3 +12,4 @@
 **/*.tsbuildinfo
 **/coverage
 packages/dev/src-tauri/target
+packages/runner/target

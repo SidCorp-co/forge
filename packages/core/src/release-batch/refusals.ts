@@ -11,7 +11,16 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
+import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
+import {
+  ClaimConflictError,
+  NoReleaseGateError,
+  ReleaseNotVerifiedError,
+  ReleaseProbesUndeclaredError,
+  ReleaseRecordMissingError,
+  ReleaseWorkUnmergedError,
+} from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
 import { MethodMismatchError, MethodNotAnnouncedError } from './method.js';
 import { RELEASE_BATCH_SKILL } from './plan.js';
@@ -24,8 +33,11 @@ export const badRequest = (details: unknown) =>
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-export const conflict = (code: string, message: string) =>
-  new HTTPException(409, { message, cause: { code } });
+export const conflict = (code: string, message: string, details?: unknown) =>
+  new HTTPException(409, {
+    message,
+    cause: details === undefined ? { code } : { code, details },
+  });
 
 export const serviceUnavailable = (code: string, message: string) =>
   new HTTPException(503, { message, cause: { code } });
@@ -94,4 +106,52 @@ export function methodRefusal(err: unknown): HTTPException | null {
     );
   }
   return null;
+}
+
+/**
+ * Each refusal under the name the batch route already gives it.
+ *
+ * One vocabulary across both doors: a caller that learns `RELEASE_PROBES_UNDECLARED`
+ * from a batch must not meet a second name for the same fact here.
+ */
+export function recordRefusal(err: unknown): HTTPException {
+  const declined = declarationRefusal(err);
+  if (declined) return declined;
+
+  if (err instanceof NoReleaseGateError) {
+    return conflict(
+      'NO_RELEASE_GATE',
+      'This project has no release gate configured, so there is no release to record — an agent `closed` here is already `closed`',
+    );
+  }
+  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes();
+  if (err instanceof ReleaseNotVerifiedError) {
+    return new HTTPException(409, {
+      message: err.reason,
+      cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
+    });
+  }
+  if (err instanceof ReleaseWorkUnmergedError) {
+    return conflict(
+      'RELEASE_WORK_UNMERGED',
+      `${err.issueIds.length} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.`,
+      { issueIds: err.issueIds },
+    );
+  }
+  if (err instanceof ClaimConflictError) {
+    return conflict(
+      'CLAIM_CONFLICT',
+      'One or more issues could not be recorded (wrong status, not on this project, or already claimed by a batch)',
+      { issueIds: err.issueIds },
+    );
+  }
+  if (err instanceof ReleaseRecordMissingError) {
+    return conflict(
+      'RELEASE_RECORD_MISSING',
+      `${err.issueIds.length} issue(s) named here have no release note, and closing them ` +
+        `would claim a ship nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
+      { issueIds: err.issueIds },
+    );
+  }
+  throw err;
 }

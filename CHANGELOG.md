@@ -124,6 +124,9 @@
   whether this box may keep a master at all — so a box deliberately not driving reads as that.
 - **`forge-runner master kill` says what actually happens next.** It claimed the next pane was
   fresh. It resumes the same conversation. Help and result now say so, and name what does stop it.
+- **A release that already happened can now be recorded, with no release batch.** Name the
+  commit production is serving and how it shipped; Forge reads the live probes itself, closes
+  what the release carried, and refuses a commit nothing serves.
 - **The build refuses two names for one answer.** Two constants holding the same set of statuses,
   or a status list written out where a named one already held it, went unnoticed. A check now
   names both and fails.

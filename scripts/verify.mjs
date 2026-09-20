@@ -164,6 +164,13 @@ const CHECKS = [
     scopeMayBeEmpty: true,
   },
   {
+    axis: 'comment',
+    label: 'comment-budget',
+    cmd: ['node', 'scripts/check-comment-budget.mjs', '--all'],
+    scanned: /^comment-budget: (\d+) file\(s\) scanned/m,
+    needs: ['deps'],
+  },
+  {
     axis: 'meta',
     label: 'lockfile-transport',
     cmd: ['node', 'scripts/check-lockfile-transport.mjs'],
@@ -202,6 +209,7 @@ const CI_COVERAGE = {
   'node scripts/check-integration-declarations.mjs --all': 'verify',
   'node scripts/check-lazy-module-init.mjs --all': 'verify',
   'node scripts/check-merged-at-writers.mjs --all': 'verify',
+  'node scripts/check-comment-budget.mjs --all': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',
@@ -223,6 +231,8 @@ const CI_COVERAGE = {
   'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
   'Lockfile sync + fmt + clippy + test':
     'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on all three platforms',
+  'node scripts/build-images.mjs':
+    'pnpm images, which verify does NOT run — it needs a docker daemon',
   'Check Markdown links': 'docs job, gaurav-nelson/github-action-markdown-link-check',
   'Whether a pull_request run already proved this exact tree':
     "nothing local — it reads the event and the commit's parent count, which exist only on CI",

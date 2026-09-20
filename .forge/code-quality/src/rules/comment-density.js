@@ -1,4 +1,4 @@
-import { getLineMetrics, longestConsecutiveRun } from "../line-metrics.js";
+import { directiveMatcher, getLineMetrics, longestConsecutiveRun } from "../line-metrics.js";
 
 export default {
   meta: {
@@ -10,6 +10,7 @@ export default {
         properties: {
           maxRatio: { type: "number", minimum: 0 },
           minCommentLines: { type: "integer", minimum: 0 },
+          additionalDirectives: { type: "array", items: { type: "string" } },
         },
         additionalProperties: false,
       },
@@ -20,10 +21,12 @@ export default {
     },
   },
   create(context) {
-    const { maxRatio = 0.15, minCommentLines = 0 } = context.options[0] ?? {};
+    const { maxRatio = 0.15, minCommentLines = 0, additionalDirectives = [] } =
+      context.options[0] ?? {};
+    const matcher = directiveMatcher(additionalDirectives);
     return {
       "Program:exit"(node) {
-        const metrics = getLineMetrics(context.sourceCode);
+        const metrics = getLineMetrics(context.sourceCode, matcher);
         if (metrics.commentLines.size < minCommentLines) return;
         const ratio = metrics.codeLines.size === 0 ? Number.POSITIVE_INFINITY : metrics.commentLines.size / metrics.codeLines.size;
         if (ratio <= maxRatio) return;

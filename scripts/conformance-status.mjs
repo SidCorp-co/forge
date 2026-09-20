@@ -56,6 +56,11 @@ const PROBES = {
     gate: 'check-release-record',
     probe: ['node', 'scripts/check-release-record.mjs'],
   },
+  comment: {
+    gate: 'check-comment-budget',
+    probe: ['node', 'scripts/check-comment-budget.mjs', '--all'],
+    needs: ['deps'],
+  },
 };
 
 const IMPROVES = ['down', 'shrink', 'tighten'];
