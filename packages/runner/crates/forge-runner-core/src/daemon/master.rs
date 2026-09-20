@@ -58,6 +58,7 @@ fn standing_prompt(
     master_policy: Option<&str>,
     dropped: &[String],
     servers_unreadable: bool,
+    reach: &crate::mcp::config::PaneReach,
 ) -> String {
     let mut out = format!(
         "Use the `forge-master` skill. You are the resident master for project `{project}` on \
@@ -68,6 +69,10 @@ this box, and you will be woken again in this same session rather than started f
             "\nYou are standing in this project's checkout, on its base branch `{base}`.\n"
         ));
     }
+    // The reach is what this pane HOLDS, read off the two files it will be
+    // started with. `dropped` and `servers_unreadable` below are what core
+    // ASKED for; a pane told only those two still cannot say what it has.
+    out.push_str(&reach.brief());
     if servers_unreadable {
         out.push_str(
             "\nThis box could NOT read this project's declared MCP servers from core, so this \
@@ -1568,12 +1573,25 @@ async fn ensure_master(
     remember(masters, project_id, &session);
     masters.clear_unplaced(project_id);
 
+    let reach = crate::mcp::config::pane_reach(&resolved.repo_path, mcp_config.as_deref());
+    match reach.forge() {
+        crate::mcp::config::ForgeReach::Declared => {
+            tracing::info!("[master] {}: pane {}", resolved.slug, reach.verdict())
+        }
+        _ => tracing::warn!(
+            "[master] {}: pane {} — the pane is told this in its own brief, which is the only \
+surface it reads",
+            resolved.slug,
+            reach.verdict()
+        ),
+    }
     let brief = standing_prompt(
         &resolved.slug,
         resolved.base_branch.as_deref(),
         resolved.master_policy.as_deref(),
         &declared.dropped_names,
         asked.is_none(),
+        &reach,
     );
     let brief = match resume.as_deref() {
         Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited)),
@@ -2073,7 +2091,14 @@ mod tests {
     #[test]
     fn the_owner_policy_reaches_the_brief_verbatim() {
         let policy = "Budget: 5 sessions.\nDrafts are eligible work.\nGroup related issues.";
-        let brief = standing_prompt("forge-dev", Some("main"), Some(policy), &[], false);
+        let brief = standing_prompt(
+            "forge-dev",
+            Some("main"),
+            Some(policy),
+            &[],
+            false,
+            &healthy_reach("the_owner_policy_reaches_the_brief_verbatim"),
+        );
         assert!(
             brief.contains(policy),
             "the policy must be spliced whole: {brief}"
@@ -2084,22 +2109,99 @@ mod tests {
         );
     }
 
+    /// A [`PaneReach`] over two real files, which is the only way one is built.
+    ///
+    /// The directory carries the test's own label and this process's id: two
+    /// `cargo test` runs on one box must not share a path (ISS-1073).
+    struct ReachFiles(std::path::PathBuf);
+
+    impl ReachFiles {
+        fn new(label: &str, repo: Option<&str>, session: Option<&str>) -> Self {
+            let dir =
+                std::env::temp_dir().join(format!("forge-reach-{label}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("temp reach dir");
+            if let Some(body) = repo {
+                std::fs::write(dir.join(".mcp.json"), body).expect("repo .mcp.json");
+            }
+            if let Some(body) = session {
+                std::fs::write(dir.join("session.json"), body).expect("session config");
+            }
+            Self(dir)
+        }
+
+        fn reach(&self, has_pat: bool) -> crate::mcp::config::PaneReach {
+            let session = self.0.join("session.json");
+            crate::mcp::config::pane_reach_in(
+                &self.0,
+                session.exists().then_some(session.as_path()),
+                has_pat,
+            )
+        }
+    }
+
+    impl Drop for ReachFiles {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn declares(names: &[&str]) -> String {
+        let body: Vec<String> = names
+            .iter()
+            .map(|n| format!("\"{n}\": {{ \"type\": \"http\", \"url\": \"https://x/mcp\" }}"))
+            .collect();
+        format!("{{ \"mcpServers\": {{ {} }} }}", body.join(", "))
+    }
+
+    fn reach_of(
+        label: &str,
+        repo: Option<&[&str]>,
+        session: Option<&[&str]>,
+        has_pat: bool,
+    ) -> crate::mcp::config::PaneReach {
+        ReachFiles::new(
+            label,
+            repo.map(declares).as_deref(),
+            session.map(declares).as_deref(),
+        )
+        .reach(has_pat)
+    }
+
+    /// The reach of a box that is provisioned: `forge` from the checkout,
+    /// `playwright` from the session config, an operator PAT stored.
+    fn healthy_reach(label: &str) -> crate::mcp::config::PaneReach {
+        reach_of(label, Some(&["forge"]), Some(&["playwright"]), true)
+    }
+
     const STANDING_BRIEF: &str = "Use the `forge-master` skill. You are the resident master for project `forge-dev` on this box, and you will be woken again in this same session rather than started fresh.\n\nYou are standing in this project's checkout, on its base branch `main`.\n";
 
     #[test]
     fn the_standing_brief_is_only_what_a_wave_cannot_know() {
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false);
+        let reach = healthy_reach("the_standing_brief_is_only_what_a_wave_cannot_know");
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
         assert_eq!(
-            brief, STANDING_BRIEF,
+            brief,
+            format!("{STANDING_BRIEF}{}", reach.brief()),
             "the standing brief may say only what the skill cannot: which project, which box, \
-             which branch. Every rule about how a run works belongs in forge-master-skill.md, and \
+             which branch, and which MCP servers this box's two config files put within this \
+             pane's reach. Every rule about how a run works belongs in forge-master-skill.md, and \
              a copy here is the pair ISS-1080 broke"
         );
     }
 
     #[test]
     fn the_brief_no_longer_carries_the_two_claims_that_stopped_masters_declaring() {
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false);
+        let brief = standing_prompt(
+            "forge-dev",
+            Some("main"),
+            None,
+            &[],
+            false,
+            &healthy_reach(
+                "the_brief_no_longer_carries_the_two_claims_that_stopped_masters_declaring",
+            ),
+        );
         assert!(
             !brief.contains("no job pool") && !brief.contains("second terminal"),
             "the job pool and its second terminal came back with ISS-1080 and are on every box: {brief}"
@@ -2118,6 +2220,7 @@ mod tests {
             None,
             &["playwright".into()],
             true,
+            &healthy_reach("the_brief_states_no_rule_the_skill_file_owns"),
         )
         .to_lowercase();
         for owned in [
@@ -2140,7 +2243,14 @@ mod tests {
     #[test]
     fn the_owner_policy_survives_words_the_brief_itself_may_not_use() {
         let policy = "Declare every run. Two subagents at a time, each in its own worktree.";
-        let brief = standing_prompt("forge-dev", Some("main"), Some(policy), &[], false);
+        let brief = standing_prompt(
+            "forge-dev",
+            Some("main"),
+            Some(policy),
+            &[],
+            false,
+            &healthy_reach("the_owner_policy_survives_words_the_brief_itself_may_not_use"),
+        );
         assert!(
             brief.contains(policy),
             "the owner is a courier's cargo, not this box's prose to police: {brief}"
@@ -2194,7 +2304,14 @@ mod tests {
 
     #[test]
     fn a_box_that_could_not_read_the_declaration_says_so_in_its_own_words() {
-        let unreadable = standing_prompt("mowment", Some("main"), None, &[], true);
+        let unreadable = standing_prompt(
+            "mowment",
+            Some("main"),
+            None,
+            &[],
+            true,
+            &healthy_reach("a_box_that_could_not_read_the_declaration_says_so_in_its_own_words"),
+        );
         assert!(
             unreadable.contains("could NOT read this project's declared MCP servers"),
             "{unreadable}"
@@ -2204,17 +2321,175 @@ mod tests {
             "an unreadable declaration must not be reported as a named shortfall: {unreadable}"
         );
 
-        let readable = standing_prompt("mowment", Some("main"), None, &[], false);
+        let readable = standing_prompt(
+            "mowment",
+            Some("main"),
+            None,
+            &[],
+            false,
+            &healthy_reach("a_box_that_could_not_read_the_declaration_says_so_in_its_own_words-b"),
+        );
         assert!(
             !readable.contains("could NOT read"),
             "a project core answered for must be told nothing about readability: {readable}"
         );
     }
 
+    /// ISS-1114, the measured state: a checkout with no `.mcp.json`, a session
+    /// config declaring `playwright` alone, and no operator PAT on the box.
+    ///
+    /// The assertions are on the EXPLANATION and not on the word `forge`, so a
+    /// brief that merely announced the server would fail this too.
+    #[test]
+    fn the_cold_pane_is_told_forge_is_absent_and_why() {
+        let reach = reach_of(
+            "the_cold_pane_is_told_forge_is_absent_and_why",
+            None,
+            Some(&["playwright"]),
+            false,
+        );
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        assert!(
+            brief.contains("The `forge` MCP server is in NEITHER half"),
+            "a pane whose union holds no `forge` is told nothing about it: {brief}"
+        );
+        assert!(
+            brief.contains("forge_github"),
+            "the pane is not told which capability went with it: {brief}"
+        );
+        assert!(
+            brief.contains("Absent is not refused"),
+            "the pane is not told absent and refused are different, which is the whole \
+             finding: {brief}"
+        );
+        assert!(
+            brief.contains("no operator PAT is stored on this box either")
+                && brief.contains("forge-runner login --pat"),
+            "the pane is not given the cause or the one command that ends it: {brief}"
+        );
+        assert!(
+            brief.contains("playwright"),
+            "the pane is not told what it DOES hold: {brief}"
+        );
+    }
+
+    /// The false alarm the issue body's own Rule would have shipped: this box,
+    /// on the day it was measured, had `forge` in its checkout and `playwright`
+    /// alone in its session config. A gate keyed to the session writer fires
+    /// here, where nothing is wrong.
+    #[test]
+    fn a_provisioned_pane_is_told_its_union_and_nothing_is_raised() {
+        let reach = healthy_reach("a_provisioned_pane_is_told_its_union_and_nothing_is_raised");
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        assert!(
+            brief.contains("forge, playwright"),
+            "a healthy pane is not told the union it holds: {brief}"
+        );
+        for alarm in [
+            "NEITHER half",
+            "ABSENT",
+            "forge-runner login",
+            "UNDETERMINED",
+            "could NOT be determined",
+        ] {
+            assert!(
+                !brief.contains(alarm),
+                "`{alarm}` is an alarm on a box where `forge` is present the whole time: {brief}"
+            );
+        }
+    }
+
+    /// Presence is a declaration and never a working route. A `forge` entry
+    /// carrying a credential that would answer 401 is still declared, and the
+    /// brief must claim nothing more than that about it.
+    #[test]
+    fn a_declared_forge_is_never_reported_as_a_working_one() {
+        let reach = healthy_reach("a_declared_forge_is_never_reported_as_a_working_one");
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        assert!(
+            brief.contains("That is what those two files DECLARE")
+                && brief.contains("Nothing here has checked that any of them answers"),
+            "the brief must say these servers are declared, not that they work: {brief}"
+        );
+    }
+
+    /// A stored PAT changes the cause and not the verdict: the entry should be
+    /// in the checkout and is not, so the checkout is what has to be fixed.
+    #[test]
+    fn a_stored_pat_with_no_forge_entry_names_the_unprovisioned_checkout() {
+        let reach = reach_of(
+            "a_stored_pat_with_no_forge_entry_names_the_unprovisioned_checkout",
+            Some(&["playwright"]),
+            None,
+            true,
+        );
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        assert!(
+            brief.contains("The `forge` MCP server is in NEITHER half"),
+            "{brief}"
+        );
+        assert!(
+            brief.contains("DOES hold an operator PAT")
+                && brief.contains("Re-provision this checkout on this box"),
+            "a box with a PAT must be sent to its checkout, not to `login`: {brief}"
+        );
+        assert!(
+            !brief.contains("forge-runner login"),
+            "a box that is already paired must not be told to pair: {brief}"
+        );
+    }
+
+    /// A half that could not be read is not a half that declares nothing, and
+    /// a diagnosis built on it would be the very substitution this issue is
+    /// about, one layer along.
+    #[test]
+    fn an_unreadable_half_is_undetermined_rather_than_absent() {
+        let files = ReachFiles::new(
+            "an_unreadable_half_is_undetermined_rather_than_absent",
+            Some("{ this is not json"),
+            Some(&declares(&["playwright"])),
+        );
+        for has_pat in [false, true] {
+            let brief = standing_prompt(
+                "forge-dev",
+                Some("main"),
+                None,
+                &[],
+                false,
+                &files.reach(has_pat),
+            );
+            assert!(
+                brief.contains("could NOT be determined"),
+                "an unreadable half must be reported as unknown: {brief}"
+            );
+            assert!(
+                !brief.contains("NEITHER half") && !brief.contains("is ABSENT from this pane"),
+                "an unreadable half must never be reported as an absence: {brief}"
+            );
+            for cause in [
+                "forge-runner login",
+                "Re-provision this checkout",
+                "What is observed",
+            ] {
+                assert!(
+                    !brief.contains(cause),
+                    "`{cause}` is a cause for an absence nobody established: {brief}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn a_declared_server_this_box_cannot_supply_is_named_in_the_brief() {
         let dropped = vec!["epodsystem".to_string(), "postman".to_string()];
-        let brief = standing_prompt("mowment", Some("main"), None, &dropped, false);
+        let brief = standing_prompt(
+            "mowment",
+            Some("main"),
+            None,
+            &dropped,
+            false,
+            &healthy_reach("a_declared_server_this_box_cannot_supply_is_named_in_the_brief"),
+        );
         assert!(brief.contains("epodsystem, postman"), "{brief}");
         assert!(
             brief.contains("could NOT supply"),
