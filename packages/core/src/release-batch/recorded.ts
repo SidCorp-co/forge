@@ -1,20 +1,14 @@
 // A release that already happened, written down from its evidence.
 //
-// `createReleaseBatch` is the normal path and stays the normal path. It was
-// also the ONLY path: `viaReleasePath: true` is what passes the agent close
-// gate in `issues/release-gate-hold.ts`, and every writer of it lived behind
-// batch creation. So a runner label nobody declared, a box that was offline and
-// a batch already in flight were each, silently, a reason a release that had
-// shipped could not be recorded (ISS-1129).
+// `createReleaseBatch` is the normal path and stays it. This one is gated on
+// evidence rather than machinery — the application answers, every probe agrees
+// on one commit, and that commit is the one the caller claims — so no runner,
+// label or job is needed to record a release that shipped (ISS-1129).
 //
-// The gate here is evidence and not machinery: the application answers, every
-// probe agrees on one commit, and that commit is the one the caller claims. No
-// runner, no label, no job. What this does NOT establish is per-issue ancestry
-// — that each named issue's merge is in the commit that is live — because
-// seeing that needs a git provider, and requiring one would put the coupling
-// straight back. `merged_at` is required instead, the per-issue merge evidence
-// is persisted beside the live identity, and the residual is priced on ISS-1129
-// rather than implied here.
+// It does NOT establish per-issue ancestry: seeing that each named issue's
+// merge is in the live commit needs a git provider, and requiring one would put
+// the coupling straight back. `merged_at` is required instead, the evidence is
+// persisted beside the live identity, and the residual is priced on ISS-1129.
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -75,12 +69,10 @@ export interface RecordPerformedReleaseResult {
 }
 
 /**
- * The one verification config this project's live channel declares.
- *
- * THROWS `ReleaseProbesUndeclaredError` where nothing could be read, and
- * `ReleaseMultiChannelUnsupportedError` where one reading would have to answer
- * for two endpoints — the same two refusals, by the same names, that a batch
- * meets at the same point.
+ * The one verification config this project's live channel declares. THROWS
+ * `ReleaseProbesUndeclaredError` where nothing could be read, and
+ * `ReleaseMultiChannelUnsupportedError` where one reading would answer for two
+ * endpoints — the same refusals, by the same names, a batch meets here.
  */
 async function soleVerifyConfig(projectId: string) {
   const channels = await resolveReleaseChannels(projectId);
@@ -91,11 +83,9 @@ async function soleVerifyConfig(projectId: string) {
 }
 
 /**
- * Every issue this record may close, read once and refused by name.
- *
- * The order is what a caller should learn first: an issue that is not at the
- * gate is a different mistake from one that has shipped nothing written about
- * it, and both are different from work nobody merged.
+ * Every issue this record may close, read once and refused by name. The order
+ * is what a caller should learn first: not at the gate, nothing written about
+ * what shipped, and work nobody merged are three different mistakes.
  */
 async function admissibleIssues(
   projectId: string,
@@ -150,10 +140,9 @@ function issueNote(args: {
 }
 
 /**
- * Record a release that has already happened, and close what it carried.
- *
- * The probes are read BEFORE anything is claimed, so a record that cannot be
- * earned leaves every issue exactly where it stood.
+ * Record a release that has already happened, and close what it carried. The
+ * probes are read BEFORE anything is claimed, so a record that cannot be earned
+ * leaves every issue where it stood.
  */
 export async function recordPerformedRelease(
   args: RecordPerformedReleaseArgs,
