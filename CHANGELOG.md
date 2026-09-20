@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A migration is now ordered against every open branch, not against `main` alone.** Picking a
+  number that beat numbers you could not see lost migrations silently. The build reads the set,
+  refuses a clash and prints the number to take.
 - **The build refuses two names for one answer.** Two constants holding the same set of statuses,
   or a status list written out where a named one already held it, went unnoticed. A check now
   names both and fails.

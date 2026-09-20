@@ -505,6 +505,84 @@ offending lines on the Dependabot pull request that caused this named by package
 
 ## check-branch-name.sh
 
+## check-migration-order.mjs — a migration is ordered against the set, not against `main`
+
+`packages/core/src/db/migrations-journal.test.ts` reads one journal: its own. Its head-entry
+assertion is that the head `when` clears the maximum in that same file. Every branch therefore
+passes alone, while the SET of open branches — the thing that actually has to be applicable — is
+measured by nothing.
+
+Drizzle's migrator reads the single highest `created_at` in `drizzle.__drizzle_migrations` once and
+then applies only entries whose `when` exceeds it
+(`drizzle-orm/pg-core/dialect.js`, the `Number(lastDbMigration.created_at) < migration.folderMillis`
+arm). An entry below that mark is not reordered — it is skipped, silently, for ever. ISS-807 is what
+that looks like afterwards: the container served new code against an old schema and the symptom was
+a live 500 on `GET /me/attention` for every signed-in user.
+
+**What it asserts, exactly one proposition:** the migrations THIS tree adds to `origin/main` can be
+applied in some order of whole-branch merges alongside every open branch's live ones. Five refusals,
+each naming the branches, the tags and the numbers:
+
+| rule | what it catches |
+|---|---|
+| `below-floor` | a `when` of ours at or under `origin/main`'s highest — the entry drizzle will skip |
+| `duplicate-when` | two branches on one number; whichever merges second is skipped |
+| `duplicate-idx` | two branches claiming one migration index |
+| `inverted` | an index above a sibling's whose `when` is below it, so the merged journal is not monotonic |
+| `interleaved` | `when` ranges that straddle — a branch merges whole, so no order applies both |
+
+`interleaved` is the one no per-entry rule finds. Branch A holding 289 and 291 while B holds 290 has
+every entry distinct and every index ascending with its `when`, and is still unorderable: whichever
+lands first raises the high-water past the other's remainder.
+
+**The unit is the branch.** A sibling already at or below the floor is STRANDED — it cannot land in
+any order until it renumbers — so it is reported on its own and counted against nobody. Refusing
+this tree for it would be refusing a branch for damage it cannot repair. Our own below-floor entries
+are never filtered that way: that entry is the subject.
+
+**Two OTHER branches that clash cost the claim, not the exit.** The five rules also run over every
+pair of live siblings. Pairwise compatibility with this tree is not the whole-set proposition — a
+tree at 292 conflicts with neither A={289,291} nor B={290} while A and B cannot both land — so a
+run that printed a merge order there would be naming an order nobody can execute. Such a pair is
+named, no order is printed, and this tree's own exit is unchanged, because it is not the tree that
+can repair them.
+
+**On CI the checkout is detached** on `refs/pull/N/merge`, where `git rev-parse --abbrev-ref HEAD`
+answers `HEAD`. Three readings say "this is us" and a ref matching any is not a sibling: the name
+HEAD is on, `GITHUB_HEAD_REF`, and any ref this tree already contains. Without them the PR's own
+branch is read as a sibling holding every one of its migrations, and every migration-bearing PR is
+refused against itself. The floor is re-read after the check's own fetch for the same reason in
+reverse: a cached `origin/main` is a floor the remote has already left behind.
+
+**Exit codes.** 0 applicable · 1 a refusal · 2 could not run. A tree that adds no migration exits 0
+without touching the remote and says so, which is a proposition proved from local data rather than a
+failure to reach anything. A tree that IS `origin/main` reads the set for the stranded report alone
+and exits 0 whatever it finds, because `main` is not the tree that can repair it. **A tree landing a
+migration that cannot enumerate the open branches is exit 2**, naming the migrations — a check that
+cannot see the set has proved nothing, and a pass there would be the silent substitution the whole
+gate is about.
+
+### What it cannot catch
+
+Two, and they are the same shape: the check runs before the merge, and the merge decides.
+
+- **A merge taken out of the derived order.** Landing a higher branch first is permitted — refusing
+  it would let one abandoned branch block every other. The cost is a renumber, not a loss: the
+  branch behind it goes `below-floor` on its next run rather than losing its migration on deploy,
+  and both sides are told — the lander is shown who it will strand, `main`'s own run after the merge
+  names who was stranded.
+- **A stale green carried through by a branch that never re-ran.** The refusal above only reaches
+  the stranded branch when that branch runs the check again before merging.
+  `.github/workflows/ci.yml` states that branch protection here has `strict: true`, which forces
+  exactly that run; the live ruleset is not readable from a checkout or from the Forge GitHub App's
+  verbs, so that is this repo's own claim and not a verified one. If `strict` is off, that one path
+  reaches the loss again, and `main`'s advisory is what still speaks.
+
+Neither is reachable by a branch-time check, which is why they are written here rather than left to
+be discovered. The rule it replaces was a CLAUDE.md instruction to a person — *read every unmerged
+sibling's journal immediately before the landing push* — which could not hold: it was checked at a
+moment a sibling could invalidate a minute later, and it scaled as N².
+
 ## check-release-record.mjs — the record of what shipped may not lose entries
 
 `CHANGELOG.md` is the external record of what shipped, and until 2026-08-28 nothing owned it.
