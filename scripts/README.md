@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Fourteen gates, six axes
+## Every gate, seven axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -20,7 +20,8 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
 `behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (honest
-costs · the mode-qualification of injected docs · the PAT permission surface).
+costs · the mode-qualification of injected docs · the PAT permission surface). `comment` is gated
+once, by `check-comment-budget`.
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -45,6 +46,7 @@ passed, because the external record of what shipped belonged to none of them.
 | flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
+| comment | `check-comment-budget` — `conformance` | what a comment SAYS: density against the code around it, the length of one run, historical narration, and one comment restating another — the four rules `eslint.config.mjs` enables out of `.forge/code-quality`, frozen per (file, rule) | file or function LENGTH, which biome owns at 500/150; and the other halves of `pnpm lint:code-quality` — raw elements, pass-through wrappers, crowded directories, the design-token sweep — which belong to axes nobody has declared |
 
 ### Why `core` lint prints every diagnostic
 
@@ -62,8 +64,9 @@ had no such guard. The two now agree.
 ### Conformance levels
 
 `.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
-block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 2 ·
-relations 2 · behaviour 2 · language 3 · record 3.
+block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 3 ·
+relations 2 · behaviour 2 · language 3 · record 3 · comment 2. `conformance-status.mjs` prints
+them beside what it measured, so this line is a convenience and that command is the answer.
 
 Level 2 is the claim *"old debt frozen, new debt blocked"*, so each such axis must also name where
 its debt is frozen and which direction improves it — `baseline: {path, keyBy, improves}`, where
@@ -130,14 +133,17 @@ meaning what its row says. Measured 2026-08-25.
 
 ### Do not add a rule to an axis another already owns
 
-- **No ESLint.** biome >= 2 covers `noExcessiveLinesPerFunction` and `noExcessiveLinesPerFile`,
-  which is the whole reason ESLint would have been added. A second linter on the same axis means two
-  configs drifting apart.
-- **No comment rules at all.** A density or run-length rule cannot tell documentation from noise:
-  the 19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation, and 19
-  comment lines to a counter are not. The comment-grammar gate that used to own this axis was
-  removed in ISS-1029 for that reason — it flagged prose that was right far more often than prose
-  that was wrong, and a checker at that noise level teaches the reader to skip it.
+- **No ESLint on the LENGTH axis.** biome >= 2 covers `noExcessiveLinesPerFunction` and
+  `noExcessiveLinesPerFile`, so `eslint.config.mjs` switches `max-lines` and
+  `max-lines-per-function` off. ESLint is here for comment content and nothing else; two linters
+  holding one axis means two configs drifting apart.
+- **No comment rules in biome.** A density or run-length rule cannot tell documentation from noise
+  on its own: the 19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation,
+  and 19 comment lines to a counter are not. The comment-grammar gate removed in ISS-1029 flagged
+  prose that was right more often than prose that was wrong, and a checker at that noise level
+  teaches the reader to skip it. What replaced it is baselined rather than absolute — a file may
+  keep what it has and may not gain — and it skips a comment that opens with a directive, because
+  `i18n-allow:` and `biome-ignore` are arguments other gates read and not writing (ISS-1105).
 - **No `biome.json` comments.** A comment inside it makes biome **silently ignore the whole
   enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
   commit message.

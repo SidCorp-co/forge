@@ -67,6 +67,18 @@
       "owns": "whether the external record of what shipped keeps the heading its readers parse for, whether an entry once published can be removed without saying so, and whether a NEW entry stays inside the word budget a reader can actually read",
       "$why": "The other five axes each own a property of the CODE. On 2026-08-28 commit 3df9a8e9 removed 1,034 lines from CHANGELOG.md inside a docs-pointer commit whose message never named the file; twelve gates ran and every one passed, because the record was nobody's. No baseline: it starts at zero debt, and a removal is declared per-instance in .forge/changelog-amnesty.json rather than frozen in bulk — a public record is edited one line at a time or not at all. Budget added 2026-09-16 (ENTRY_WORD_BUDGET, 40): unbounded, the record reached 443 entries and 86,206 words with a median of 173 — the second failure mode, opposite the raw-commit dump, where the detail is present but not findable. It measures only entries a change ADDS, for the same reason there is no baseline: the entries already published are rewritten one at a time, not frozen by declaring them once.",
       "baseline": null
+    },
+    "comment": {
+      "level": 2,
+      "gate": "check-comment-budget",
+      "owns": "what a comment SAYS: density against the code around it, the length of one run, historical narration, and one comment restating another. The rules are eslint-plugin-code-quality's, vendored at .forge/code-quality and enabled in eslint.config.mjs; this axis is the baseline ESLint has no concept of.",
+      "$why": "The codemap checker that used to own comment content was deleted with its annotations, which left prose in this repo measured by nothing. The plugin replacing it ran as `pnpm lint:code-quality` and sat in no row of verify, no job of ci-passed and no axis here — written and unmeasured, which is the failure this whole design exists to prevent (ISS-1111).",
+      "$amnesty": "54 findings across 51 files are frozen on 2026-09-20 at the ISS-1105 head: 48 comment-density, 4 no-duplicate-comment, 1 no-historical-narration, 1 max-consecutive-comment-lines. What it costs: those 51 files keep comments a reader was told to delete, and nothing dates them. Freezing was the price of the gate landing green rather than red on work nobody had scheduled. It ends when `original` in .forge/comment-baseline.json reaches 0 and this axis goes to level 3; `original` is the immutable starting number a re-freeze may not raise, so the percentage drained is readable on every run. The gate does NOT cover the other halves of `pnpm lint:code-quality` — raw elements, pass-through wrappers, crowded directories and the design-token sweep — which belong to axes nobody has declared and would have imported roughly 5,400 unjudged findings into this one.",
+      "baseline": {
+        "path": ".forge/comment-baseline.json",
+        "keyBy": "path|rule",
+        "improves": "down"
+      }
     }
   },
   "checkers": {
