@@ -375,9 +375,8 @@ describe('GET /me/run-sessions/:sessionId — core reads a run session back over
 /**
  * ISS-1109 — the lease read answers two questions, and says which is which.
  *
- * It used to answer one: "does a live run session ON THIS BOX hold it". A box
- * asking about an issue another box was running was told `false`, so it opened
- * its own run over it.
+ * The two answers stay apart: a box asking about an issue another box is
+ * running must not be told `false` and open its own run over it.
  */
 describe('GET /me/issue-leases/:issueKey', () => {
   const path = '/api/devices/me/issue-leases/ISS-357';

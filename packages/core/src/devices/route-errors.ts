@@ -9,13 +9,7 @@ export const badRequest = (details: unknown) =>
 export const notFound = (what: string) =>
   new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
 
-/**
- * A write refused because the world already holds what it asked for.
- *
- * `cause.code` is the machine-readable name and `message` carries the whole
- * refusal, holders and all: a box logs the body verbatim, so a refusal that
- * says only "conflict" sends an operator to the database.
- */
+/** Refused: the world already holds it. `message` carries the whole refusal. */
 export const conflict = (code: string, message: string, details?: unknown) =>
   new HTTPException(409, {
     message,

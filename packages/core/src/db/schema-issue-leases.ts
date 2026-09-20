@@ -1,15 +1,8 @@
 /**
- * Who is working one issue, as a row a constraint can refuse (ISS-1109).
- *
- * Held-ness used to be derived from `pipeline_runs.metadata -> 'runIssues'`, a
- * jsonb array. No index constrains an array element, so nothing refused the
- * second taker and two boxes could hold one issue at once. The primary key
- * below is what refuses it; `runIssues` stays as the run's membership record
- * and says nothing about who holds what.
- *
- * The holder is three foreign keys rather than a string, so nothing but a real
- * run session on a real box can be recorded as holding an issue: the wave id
- * that stranded ISS-1105 and ISS-1111 on 2026-09-20 has nowhere to go here.
+ * Who is working one issue, as a row a constraint can refuse (ISS-1109). The
+ * primary key refuses a second taker, which no jsonb array element can;
+ * `runIssues` remains the run's membership and says nothing about holders. The
+ * holder is three foreign keys, so only a real session on a real box fits.
  */
 
 import { relations } from 'drizzle-orm';

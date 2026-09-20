@@ -154,10 +154,8 @@ export function checkSet({ main, self, siblings }) {
     for (const sibling of live) refusals.push(...betweenBranches(self, sibling));
   }
 
-  // Two OTHER open branches that cannot both land is a fact about them. Refusing this tree for it
-  // would be refusing a branch for damage it cannot repair — the same reason a stranded sibling is
-  // reported rather than charged. What it does cost is the claim: a set holding such a pair has no
-  // whole merge order, so none is printed.
+  // What such a pair costs is the claim: a set holding one has no whole merge order, so none is
+  // printed.
   const betweenSiblings = [];
   for (let i = 0; i < live.length; i++) {
     for (let j = i + 1; j < live.length; j++) {

@@ -1,10 +1,9 @@
 /**
  * ISS-1109 — one issue, one holder, fleet-wide.
  *
- * Every case here is about a SECOND box. The lease used to be derived per
- * device from a jsonb array, so box B asking about an issue box A was running
- * was told `false` and opened its own run over it. These need a real Postgres
- * because the refusal is the primary key's, not a read's.
+ * Every case here is about a SECOND box: box B must not be told an issue box A
+ * is running is free. These need a real Postgres because the refusal is the
+ * primary key's, not a read's.
  *
  * The refusal's own text and the rows a refused open must not leave behind are
  * `issue-lease-refusal-e2e.test.ts`.

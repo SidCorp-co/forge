@@ -280,10 +280,9 @@ export async function readRunSessionTerminal(args: {
 /**
  * Is one issue held by a live run session on ANY box this device can see?
  *
- * The device filter this used to carry was the defect (ISS-1109): box B asking
- * about an issue box A was running was told `false` and opened its own run over
- * it. The device now bounds which projects may be asked about, never who counts
- * as a holder.
+ * The device bounds which projects may be asked about, never who counts as a
+ * holder: filtering holders by device is what let box B open a second run over
+ * an issue box A was running (ISS-1109).
  */
 export async function isIssueLeaseHeld(args: {
   deviceId: string;
