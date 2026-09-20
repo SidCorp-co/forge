@@ -1,6 +1,6 @@
 {
-  "id": "41daf9b6-5e45-4475-a242-dc40d954fe8b",
-  "prevId": "816154a4-9920-40f3-a79b-c6a95f8b0720",
+  "id": "816154a4-9920-40f3-a79b-c6a95f8b0720",
+  "prevId": "fd56c7fe-b8a9-4aba-9979-2b5ac90f6b63",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -334,18 +334,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "parent_session_id": {
-          "name": "parent_session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "diff": {
           "name": "diff",
           "type": "jsonb",
@@ -536,64 +524,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "agent_sessions_kind_status_idx": {
-          "name": "agent_sessions_kind_status_idx",
-          "columns": [
-            {
-              "expression": "kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "agent_sessions_one_live_master_uq": {
-          "name": "agent_sessions_one_live_master_uq",
-          "columns": [
-            {
-              "expression": "device_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "kind = 'master' AND status NOT IN ('completed', 'failed', 'completed_via_recovery', 'cancelled_stale', 'cancelled')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "agent_sessions_parent_idx": {
-          "name": "agent_sessions_parent_idx",
-          "columns": [
-            {
-              "expression": "parent_session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -647,19 +577,6 @@
             "id"
           ],
           "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "agent_sessions_parent_session_id_fkey": {
-          "name": "agent_sessions_parent_session_id_fkey",
-          "tableFrom": "agent_sessions",
-          "tableTo": "agent_sessions",
-          "columnsFrom": [
-            "parent_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -4048,6 +3965,148 @@
           "columns": [
             "issue_id",
             "label_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.issue_leases": {
+      "name": "issue_leases",
+      "schema": "",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue_key": {
+          "name": "issue_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acquired_at": {
+          "name": "acquired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "issue_leases_session_idx": {
+          "name": "issue_leases_session_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "issue_leases_device_idx": {
+          "name": "issue_leases_device_idx",
+          "columns": [
+            {
+              "expression": "device_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "issue_leases_project_id_projects_id_fk": {
+          "name": "issue_leases_project_id_projects_id_fk",
+          "tableFrom": "issue_leases",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_leases_device_id_devices_id_fk": {
+          "name": "issue_leases_device_id_devices_id_fk",
+          "tableFrom": "issue_leases",
+          "tableTo": "devices",
+          "columnsFrom": [
+            "device_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_leases_session_id_agent_sessions_id_fk": {
+          "name": "issue_leases_session_id_agent_sessions_id_fk",
+          "tableFrom": "issue_leases",
+          "tableTo": "agent_sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_leases_run_id_pipeline_runs_id_fk": {
+          "name": "issue_leases_run_id_pipeline_runs_id_fk",
+          "tableFrom": "issue_leases",
+          "tableTo": "pipeline_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "issue_leases_project_id_issue_key_pk": {
+          "name": "issue_leases_project_id_issue_key_pk",
+          "columns": [
+            "project_id",
+            "issue_key"
           ]
         }
       },
@@ -14840,148 +14899,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.issue_leases": {
-      "name": "issue_leases",
-      "schema": "",
-      "columns": {
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "issue_key": {
-          "name": "issue_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "device_id": {
-          "name": "device_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "acquired_at": {
-          "name": "acquired_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "issue_leases_session_idx": {
-          "name": "issue_leases_session_idx",
-          "columns": [
-            {
-              "expression": "session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "issue_leases_device_idx": {
-          "name": "issue_leases_device_idx",
-          "columns": [
-            {
-              "expression": "device_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "issue_leases_project_id_projects_id_fk": {
-          "name": "issue_leases_project_id_projects_id_fk",
-          "tableFrom": "issue_leases",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "issue_leases_device_id_devices_id_fk": {
-          "name": "issue_leases_device_id_devices_id_fk",
-          "tableFrom": "issue_leases",
-          "tableTo": "devices",
-          "columnsFrom": [
-            "device_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "issue_leases_session_id_agent_sessions_id_fk": {
-          "name": "issue_leases_session_id_agent_sessions_id_fk",
-          "tableFrom": "issue_leases",
-          "tableTo": "agent_sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "issue_leases_run_id_pipeline_runs_id_fk": {
-          "name": "issue_leases_run_id_pipeline_runs_id_fk",
-          "tableFrom": "issue_leases",
-          "tableTo": "pipeline_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "issue_leases_project_id_issue_key_pk": {
-          "name": "issue_leases_project_id_issue_key_pk",
-          "columns": [
-            "project_id",
-            "issue_key"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.device_run_ledger": {
       "name": "device_run_ledger",
       "schema": "",
@@ -15126,19 +15043,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "device_run_ledger_master_session_id_agent_sessions_id_fk": {
-          "name": "device_run_ledger_master_session_id_agent_sessions_id_fk",
-          "tableFrom": "device_run_ledger",
-          "tableTo": "agent_sessions",
-          "columnsFrom": [
-            "master_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

@@ -112,25 +112,30 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
-- **The sessions list is a tree, and every row says what kind of session it is.** A master, the
-  runs it started and the steps those ran were three unrelated lines in one flat list, and which
-  run belonged to which master was a fact only the machine held. Each session now sits under the
-  one that started it, and each carries its own name — Master, Run, Step, PM or Chat — where the
-  list previously had two words for five things and called a master somebody's conversation. The
-  kind tabs follow: five, one per species, instead of "Runs" and "Chats".
-
-- **A session that ends takes what it started with it.** Closing a master now closes the runs
-  beneath it and hands their issues back to where they were claimed from, instead of leaving work
-  that nothing is doing sitting as though somebody were doing it. The two clocks that decided when
-  a silent machine had really stopped answering were three minutes and ten and could not see one
-  another, so a master could be given up on while the work it started held its issues for another
-  seven; there is one clock now, at ten minutes. A master whose work is still reporting in is left
-  alone, because a machine that is plainly alive should not have its work taken away from it on
-  account of a broken heartbeat somewhere else.
-
+- **The sessions list is a tree, and every row says what kind it is.** Each session sits under
+  the one that started it, named Master, Run, Step, PM or Chat — five kind tabs where there were
+  two.
+- **A session that ends takes what it started with it.** Closing a master closes the runs beneath
+  it and returns their issues. One silence clock at ten minutes replaces two that could not see
+  each other.
+- **A box can be told to stop driving a project, and stay stopped.** `forge-runner master
+  stand-down <project>` places no master and sends no nudge until `stand-up`. Killing the pane
+  never held: it came back on the old conversation.
+- **Standing it up puts the project back on the same terms as any other** rather than starting a
+  master on the spot. The next pane is told how long it was down; `--fresh` starts it cold.
+- **A stand-down will not quietly take running work with it.** Where the master still holds open
+  runs, or where the box cannot establish what it holds, the pane is left running and each run is
+  named. `--force` ends it anyway.
+- **`forge-runner master status` answers two questions, not one.** Whether a pane exists, and
+  whether this box may keep a master at all — so a box deliberately not driving reads as that.
+- **`forge-runner master kill` says what actually happens next.** It claimed the next pane was
+  fresh. It resumes the same conversation. Help and result now say so, and name what does stop it.
 - **A release that already happened can now be recorded, with no release batch.** Name the
   commit production is serving and how it shipped; Forge reads the live probes itself, closes
   what the release carried, and refuses a commit nothing serves.
+- **A migration is now ordered against every open branch, not against `main` alone.** Picking a
+  number that beat numbers you could not see lost migrations silently. The build reads the set,
+  refuses a clash and prints the number to take.
 - **The build refuses two names for one answer.** Two constants holding the same set of statuses,
   or a status list written out where a named one already held it, went unnoticed. A check now
   names both and fails.
@@ -3034,11 +3039,12 @@
   set is now 59.
 
 ### Fixed
-- **Asking the session list for a kind it does not have now says so.** A filter naming something
-  that is not a kind of session used to answer an empty page, which reads exactly like having no
-  sessions at all. It now says which value was not understood and lists the ones that are. In the
-  same breath, a caller can no longer declare what kind of session it is creating: that is decided
-  where the session is opened, and a request that tries is told rather than quietly ignored.
+- **Asking the session list for a kind that does not exist now says so.** It names the valid
+  kinds instead of answering an empty page. A caller can also no longer declare what kind it is
+  creating.
+
+- **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
+  claim the database refuses, and the machine that loses is told which one holds it and since when.
 
 - **Naming the box a release should prefer no longer stops the release.** The label recommends a
   machine rather than forbidding the others, so a project whose boxes carry no matching label still

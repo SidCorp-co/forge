@@ -85,6 +85,15 @@ jobs:
       # an inline status array a named constant already holds. Reads TypeScript source text
       # and needs no node_modules, so it lives in this install-free job.
       - run: node scripts/check-status-tuples.mjs --all
+      # Migration order across the SET of open branches (ISS-1130). The journal test in
+      # packages/core reads one journal — its own — so every branch passes alone while the set is
+      # measured by nothing, and drizzle skips an entry below the high-water mark it reads once,
+      # silently and for ever (ISS-807). This reads every open branch's journal and refuses a
+      # `when` that collides with, straddles or falls below one of them. It lives HERE and not in
+      # lang-check's neighbours because `fetch-depth: 0` above is what puts every
+      # refs/remotes/origin/* on disk for it; with a depth-1 checkout it would have nothing to
+      # compare against, which it reports as exit 2 rather than as a pass.
+      - run: node scripts/check-migration-order.mjs
       # CI-parity: proves every step in this file is either run by `pnpm verify`
       # or declared as covered by another root script. Without it the local
       # command and this workflow drift, and a green `pnpm verify` stops meaning
