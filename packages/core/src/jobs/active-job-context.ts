@@ -1,10 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
-
-const IN_FLIGHT_JOB_STATUSES = ['dispatched', 'running'] as const;
-
-const ACTIVE_SESSION_STATUSES = ['queued', 'running', 'idle'] as const;
+import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
+import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
 
 export type ActiveJobContext = {
   /** Always present: the session IS the context, and a job is what it may be running. */
@@ -68,13 +66,16 @@ export async function resolvePipelineContext(
     .from(agentSessions)
     .leftJoin(
       jobs,
-      and(eq(jobs.agentSessionId, agentSessions.id), inArray(jobs.status, IN_FLIGHT_JOB_STATUSES)),
+      and(
+        eq(jobs.agentSessionId, agentSessions.id),
+        inArray(jobs.status, [...OCCUPYING_JOB_STATUSES]),
+      ),
     )
     .where(
       and(
         eq(agentSessions.deviceId, caller.deviceId),
         eq(agentSessions.projectId, caller.boundProjectId),
-        inArray(agentSessions.status, ACTIVE_SESSION_STATUSES),
+        inArray(agentSessions.status, LIVE_SESSION_STATUSES),
       ),
     )
     .limit(2);

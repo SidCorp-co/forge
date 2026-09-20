@@ -1,6 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 
@@ -45,10 +47,7 @@ export async function cascadeCancelChildJobs(
           failureKind: 'infra',
           failureReason: reason,
         },
-    where: and(
-      eq(jobs.pipelineRunId, runId),
-      inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
-    ),
+    where: and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, [...LIVE_JOB_STATUSES])),
     fromStatus: 'active',
     reason,
     actor: { type: 'system' },
@@ -100,7 +99,7 @@ export async function cascadeCancelChildJobs(
         : { failureReason: reason, updatedAt: now },
       where: and(
         inArray(agentSessions.id, abortedSessionIds),
-        inArray(agentSessions.status, ['queued', 'running', 'idle']),
+        inArray(agentSessions.status, [...LIVE_SESSION_STATUSES]),
       ),
       fromStatus: 'active',
       reason,

@@ -14,6 +14,7 @@ import {
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
@@ -273,10 +274,7 @@ agentSessionLifecycleRoutes.post(
         failureReason: 'user_cancelled',
         updatedAt: cancelNow,
       },
-      where: and(
-        eq(agentSessions.id, id),
-        inArray(agentSessions.status, ['queued', 'running', 'idle']),
-      ),
+      where: and(eq(agentSessions.id, id), inArray(agentSessions.status, LIVE_SESSION_STATUSES)),
       fromStatus: session.status,
       reason: 'user_cancelled',
       actor: { type: 'user', id: userId, agency: c.get('agency') ?? 'human' },

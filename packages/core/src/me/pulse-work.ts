@@ -1,20 +1,20 @@
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
-import {
-  PULSE_HUMAN_BLOCKED_STATUSES,
-  PULSE_LIVE_JOB_STATUSES,
-  type PulseIssueIdentity,
-  type PulseProjectIdentity,
-  type PulseProjectRow,
-  type PulseThresholds,
-  type PulseWork,
+import type {
+  PulseIssueIdentity,
+  PulseProjectIdentity,
+  PulseProjectRow,
+  PulseThresholds,
+  PulseWork,
 } from './pulse-types.js';
 
-const LIVE = [...PULSE_LIVE_JOB_STATUSES];
+const LIVE = [...LIVE_JOB_STATUSES];
 
 /**
  * Issues the tracker calls in flight that nothing is working.
@@ -152,10 +152,7 @@ async function selectHumanBlockedAges(
     .select({ updatedAt: issues.updatedAt })
     .from(issues)
     .where(
-      and(
-        inArray(issues.projectId, projectIds),
-        inArray(issues.status, [...PULSE_HUMAN_BLOCKED_STATUSES]),
-      ),
+      and(inArray(issues.projectId, projectIds), inArray(issues.status, [...HUMAN_PARK_STATUSES])),
     )
     .orderBy(sql`${issues.updatedAt} ASC`)
     .limit(cap * 10);

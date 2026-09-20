@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **The build refuses two names for one answer.** Two constants holding the same set of statuses,
+  or a status list written out where a named one already held it, went unnoticed. A check now
+  names both and fails.
 - **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
   credential core mints for that one checkout, writes its `.mcp.json`, and records the local
   binding — no pasted token, no `bind` by hand.
