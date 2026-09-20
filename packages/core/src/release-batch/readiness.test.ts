@@ -428,3 +428,38 @@ describe('loadReleaseReadiness — the live address, and the preview that is not
     expect((await loadReleaseReadiness(PROJECT_ID))?.verifySources).toEqual(['environments-live']);
   });
 });
+
+// ISS-1127 — the two reproductions, planted before the enumerator existed.
+//
+// The first is the evening the issue was filed: `gaps: []`, and the create still
+// refused, because the roster and the fleet are checked somewhere this answer has
+// never looked. The second is the other direction — a reason that cannot be
+// evaluated has to appear as its own answer, and today it takes the whole answer
+// with it.
+describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
+  const RELEASING = {
+    releaseModel: 'promote' as const,
+    liveBranch: 'production',
+    releaseStrategy: 'merge-branch',
+    facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
+  };
+
+  it('names the roster and fleet refusals a create would make, not only the declarations', async () => {
+    project({ ...RELEASING, environments: LIVE_DECLARED });
+    liveBinding({ releaseRunnerLabel: 'prod-box', verify: PROBES, rollback: { mode: 'coolify-image' } });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).toEqual([]);
+    expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_POOL_EMPTY');
+  });
+
+  it('answers with the reason it could not evaluate rather than throwing the whole report away', async () => {
+    project({ ...RELEASING, environments: LIVE_DECLARED });
+    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+});
