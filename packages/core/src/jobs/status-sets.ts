@@ -19,3 +19,6 @@ export const UNHELD_LIVE_JOB_STATUSES: readonly JobStatus[] = ['queued', 'dispat
 
 /** The job is out with a runner, so it occupies one of that runner's slots. */
 export const OCCUPYING_JOB_STATUSES: readonly JobStatus[] = ['dispatched', 'running'];
+
+/** The job is over. Nothing further will run for it, whichever exit it took. */
+export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = ['done', 'failed', 'cancelled'];
