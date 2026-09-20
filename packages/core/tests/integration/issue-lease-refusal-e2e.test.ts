@@ -414,3 +414,62 @@ describe('two boxes racing for one issue', () => {
     expect(lost?.reason?.message).toMatch(/ISS-88[01]/);
   });
 });
+
+/**
+ * ISS-1109 — a group whose middle key carries a dead holder is still refused
+ * by name.
+ *
+ * This is the reap and the take running under contention: two boxes over the
+ * same pair, one key of which has a lease left behind by a session that died.
+ * It exercises the per-key path `takeIssueLeases` acquires through, and pins
+ * that what a loser gets is `IssueLeaseHeldError` and not a driver error.
+ *
+ * What it does NOT prove, measured rather than assumed: it does not reproduce
+ * the lock inversion that per-key acquisition exists to remove. That schedule
+ * needs a session to go terminal BETWEEN two openers' reaps, which two racing
+ * `openRunSession` calls do not produce — run four times against the
+ * whole-group reap this replaced, it passed every time. The inversion is
+ * closed structurally, by never reaching a higher key before a lower one, and
+ * that property is not what this case measures.
+ */
+describe('a stale lease in the middle of a contended group', () => {
+  it('still ends in a named refusal rather than a database error', async () => {
+    const { project, boxA, boxB } = await twoBoxesOnOneProject();
+    // ISS-881 — the HIGHER key — carries a lease whose holder then dies, which
+    // is the row whose reap is conditional and so orders differently per box.
+    const stale = await mods.openRunSession({
+      deviceId: boxA.id,
+      projectId: project.id,
+      issueKeys: ['ISS-881'],
+      name: 'run-stale',
+    });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET status = 'failed' WHERE id = ${stale.sessionId}
+    `);
+
+    const outcomes = await Promise.allSettled([
+      mods.openRunSession({
+        deviceId: boxA.id,
+        projectId: project.id,
+        issueKeys: ['ISS-880', 'ISS-881'],
+        name: 'run-a',
+      }),
+      mods.openRunSession({
+        deviceId: boxB.id,
+        projectId: project.id,
+        issueKeys: ['ISS-881', 'ISS-880'],
+        name: 'run-b',
+      }),
+    ]);
+
+    const rejected = outcomes.filter((o) => o.status === 'rejected');
+    for (const r of rejected) {
+      expect(
+        (r as PromiseRejectedResult).reason?.constructor?.name,
+        'a box aborted for deadlock is told a SQLSTATE, not which box holds the issue',
+      ).toBe('IssueLeaseHeldError');
+    }
+    expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+  });
+});

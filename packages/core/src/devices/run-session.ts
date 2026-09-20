@@ -305,8 +305,15 @@ export async function releaseIssueLease(args: {
   deviceId: string;
   issueKey: string;
 }): Promise<void> {
-  await releaseIssueLeaseRow(args);
-  await db.execute(sql`
+  // One transaction, because they are two halves of one act. With the lease
+  // dropped and committed on its own, a replacement open on this same device
+  // can take the lease back before the UPDATE below runs — and that UPDATE
+  // matches every run on the device carrying the key, so it strips membership
+  // from the NEW run while leaving its lease standing. The run then holds an
+  // issue that `returnIssuesForRun` will not give back when the box dies.
+  await db.transaction(async (tx) => {
+    await releaseIssueLeaseRow(tx, args);
+    await tx.execute(sql`
     UPDATE pipeline_runs r
        SET metadata = jsonb_set(
              COALESCE(r.metadata, '{}'::jsonb),
@@ -324,6 +331,7 @@ export async function releaseIssueLease(args: {
        AND s.metadata->>'type' = ${RUN_SESSION_TYPE}
        AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)
   `);
+  });
 }
 
 /** Every live run session on one device, for the daemon's own reconcile. */

@@ -189,38 +189,42 @@ export async function takeIssueLeases(
 ): Promise<void> {
   const keys = [...new Set(args.issueKeys)].sort();
   if (keys.length === 0) return;
-  const keyList = sql.join(
-    keys.map((k) => sql`${k}`),
-    sql`, `,
-  );
 
-  // Only rows whose session is already terminal, and terminal is monotone, so
-  // this can never take a lease away from a run that is still working.
-  await executor.execute(sql`
-    DELETE FROM issue_leases l
-     USING agent_sessions ls
-     WHERE ls.id = l.session_id
-       AND l.project_id = ${args.projectId}
-       AND l.issue_key IN (${keyList})
-       AND ls.status IN (${terminalSessionList})
-  `);
+  const lost: string[] = [];
+  for (const key of keys) {
+    // Reap and take ONE key before touching the next, so every opener reaches
+    // the group's rows in key order and no two can invert.
+    //
+    // Sorting a whole-group DELETE and a whole-group INSERT is not enough: the
+    // reap only locks rows whose session is terminal, which differs between two
+    // openers when a session goes terminal between their two reaps. One opener
+    // can then hold a HIGHER key while waiting on a LOWER one, and Postgres
+    // aborts a deadlock instead of delivering the refusal this exists to give.
+    //
+    // The reap takes only rows whose session is already terminal, and terminal
+    // is monotone, so it can never take a lease from a run that is still
+    // working.
+    await executor.execute(sql`
+      DELETE FROM issue_leases l
+       USING agent_sessions ls
+       WHERE ls.id = l.session_id
+         AND l.project_id = ${args.projectId}
+         AND l.issue_key = ${key}
+         AND ls.status IN (${terminalSessionList})
+    `);
 
-  const taken = (await executor.execute(sql`
-    INSERT INTO issue_leases (project_id, issue_key, device_id, session_id, run_id)
-    SELECT ${args.projectId}, k, ${args.deviceId}, ${args.sessionId}, ${args.runId}
-      FROM (VALUES ${sql.join(
-        keys.map((k) => sql`(${k})`),
-        sql`, `,
-      )}) AS v(k)
-    ORDER BY k
-    ON CONFLICT (project_id, issue_key) DO NOTHING
-    RETURNING issue_key
-  `)) as unknown as Array<{ issue_key: string }>;
+    const taken = (await executor.execute(sql`
+      INSERT INTO issue_leases (project_id, issue_key, device_id, session_id, run_id)
+      VALUES (${args.projectId}, ${key}, ${args.deviceId}, ${args.sessionId}, ${args.runId})
+      ON CONFLICT (project_id, issue_key) DO NOTHING
+      RETURNING issue_key
+    `)) as unknown as Array<{ issue_key: string }>;
 
-  if (taken.length === keys.length) return;
+    if (taken.length === 0) lost.push(key);
+  }
 
-  const won = new Set(taken.map((r) => String(r.issue_key)));
-  const lost = keys.filter((k) => !won.has(k));
+  if (lost.length === 0) return;
+
   const holders = await holdersOf(executor, { projectId: args.projectId, issueKeys: lost });
   throw new IssueLeaseHeldError(
     holders.length > 0
@@ -302,12 +306,20 @@ export async function readDeviceIssueLease(args: {
  * Scoped to the asking device on purpose: a box that can release another box's
  * lease can take an issue out from under a running agent, which is the same
  * defect this module exists to close, arriving from the other side.
+ *
+ * Takes an executor rather than reaching for `db`, because the caller has to
+ * drop the lease and the run's membership together: between two autonomous
+ * writes, a replacement open on the same device can take the lease back and
+ * have its membership stripped by the second half of somebody else's release.
  */
-export async function releaseIssueLeaseRow(args: {
-  deviceId: string;
-  issueKey: string;
-}): Promise<void> {
-  await db.execute(sql`
+export async function releaseIssueLeaseRow(
+  executor: Tx,
+  args: {
+    deviceId: string;
+    issueKey: string;
+  },
+): Promise<void> {
+  await executor.execute(sql`
     DELETE FROM issue_leases
      WHERE device_id = ${args.deviceId}
        AND issue_key = ${args.issueKey}
