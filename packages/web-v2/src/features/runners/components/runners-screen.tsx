@@ -32,7 +32,7 @@ import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useDevices, useInitPairing, useSetDeviceDisabled } from "../hooks";
 import { RevokeDeviceControl } from "./revoke-device-control";
-import { deviceHealth, type DeviceRow } from "../types";
+import { deviceHealth, deviceVersionLabel, type DeviceRow } from "../types";
 import { DeviceDetail } from "./device-detail";
 
 function CopyButton({ value }: { value: string }) {
@@ -224,23 +224,24 @@ export function RunnersScreen() {
                       <TD>
                         <div className="flex flex-col">
                           <span className="font-semibold text-fg">{d.name}</span>
-                          {d.agentVersion && (
-                            <span className="fg-body-sm text-subtle">
-                              v{d.agentVersion}
-                              {d.agentOutdated && (
-                                <span
-                                  className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
-                                  title={
-                                    d.latestAgentVersion
-                                      ? `Update pending — latest is v${d.latestAgentVersion}`
-                                      : "Update pending"
-                                  }
-                                >
-                                  update pending
-                                </span>
-                              )}
-                            </span>
-                          )}
+                          {/* Always a version line: a device that has reported
+                              nothing says so, because a blank one reads as a
+                              device with nothing to say (ISS-1119). */}
+                          <span className="fg-body-sm text-subtle">
+                            {deviceVersionLabel(d.agentVersion)}
+                            {d.agentOutdated && (
+                              <span
+                                className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+                                title={
+                                  d.latestAgentVersion
+                                    ? `Update pending — latest is v${d.latestAgentVersion}`
+                                    : "Update pending"
+                                }
+                              >
+                                update pending
+                              </span>
+                            )}
+                          </span>
                         </div>
                       </TD>
                       <TD>

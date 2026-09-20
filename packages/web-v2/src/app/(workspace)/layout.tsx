@@ -28,6 +28,7 @@ import { ActiveOrgProvider } from "@/features/orgs/active-org";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
+import { ForgeVersion } from "@/features/version";
 import { useUnblockCascadeToasts } from "@/features/issues/use-unblock-cascade";
 import { useOpenCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
@@ -352,6 +353,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onWhatsNew={() => router.push("/whats-new")}
             whatsNewBadge={whatsNewUnseen ? 1 : 0}
             onDocs={() => router.push("/docs")}
+            version={<ForgeVersion className="text-9-5 leading-tight" />}
           />
         ) : (
           <>
@@ -372,6 +374,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               user={userInitials ? { initials: userInitials } : undefined}
               orgSwitcher={<OrgSwitcher variant="expanded" />}
               onToggleCollapsed={sidebar.toggleCollapsed}
+              version={<ForgeVersion className="fg-caption truncate" />}
             />
             {/* Searchable project switcher for the expanded rail. */}
             <ProjectFlyout
@@ -404,6 +407,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onOpenProject={(s) => router.push(`/projects/${s}`)}
         onCreateProject={() => router.push("/projects?new=1")}
         onViewAllProjects={() => router.push("/projects")}
+        version={<ForgeVersion className="fg-caption" />}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

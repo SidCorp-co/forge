@@ -112,6 +112,12 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Forge shows its own version**, once, in the sidebar footer. It is read from the deployment
+  answering you, so it names what is actually serving you rather than what this page was built
+  from.
+- **Every runner row shows that runner's own version**, beside the box it describes, labelled so
+  it cannot be read as Forge's. A runner that has never reported one now says so instead of
+  showing a blank where a number belongs.
 - **A box can be told to stop driving a project, and stay stopped.** `forge-runner master
   stand-down <project>` places no master and sends no nudge until `stand-up`. Killing the pane
   never held: it came back on the old conversation.

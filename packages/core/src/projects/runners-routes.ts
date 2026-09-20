@@ -64,6 +64,13 @@ projectRunnerRoutes.get(
         deviceName: devices.name,
         platform: devices.platform,
         deviceStatus: devices.status,
+        // The runner's own version. A runner is one (device x project) binding of
+        // the agent binary that device runs, so the version that binary reported
+        // on pair/heartbeat IS this runner's — read from the joined device rather
+        // than mirrored onto `runners`, where a missed heartbeat would leave two
+        // copies disagreeing. NULL where the device has never reported one, which
+        // the screen says in words rather than leaving blank (ISS-1119).
+        agentVersion: devices.agentVersion,
         // Operator "turn off" timestamp. A disabled device's runner can still
         // heartbeat (status stays 'online'), so the UI needs this to explain
         // why an "online"-looking runner receives no jobs (mirrors the

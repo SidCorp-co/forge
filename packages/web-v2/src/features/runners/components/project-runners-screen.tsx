@@ -67,6 +67,7 @@ import {
 	formatElapsed,
 	provisionHealth,
 	runnerLimitDisplay,
+	runnerVersionLabel,
 } from "../types";
 
 function CopyButton({
@@ -570,6 +571,12 @@ function RunnerRow({
 						</Badge>
 					)}
 					{runner.platform && <MonoTag>{runner.platform}</MonoTag>}
+					{/* This runner's own version, never Forge's — the two move on
+					    different clocks and a reader with one number on screen
+					    cannot tell which software a bug belongs to (ISS-1119). */}
+					<span className="fg-caption whitespace-nowrap text-muted">
+						{runnerVersionLabel(runner.agentVersion)}
+					</span>
 					<HealthDot
 						health={provisionHealth(runner.provisionStatus)}
 						withLabel={false}
