@@ -21,45 +21,24 @@ export const RECORD_RULE_IDS: readonly string[] = ['field-budget', 'record-in-co
 export const RECORD_GUIDE_SLUG = 'records-and-comments';
 
 /**
- * Where a record goes when it is not a comment: the route, by the kind that
- * names it — and ONLY where a store can hold the whole of that kind.
- *
- * `issue_step_contexts` types a verdict on `(issue, step, attempt)` and holds
- * the payload beside it, so a verdict and a review have a home. Nothing else
- * does: `issue_attributes` holds ten registered keys of issue assertions, and
- * a baseline's gate/result/commit or a decision's reading/assumption/undo is
- * not one of them — a write of either is refused UNREGISTERED_KEY. So those
- * kinds are sent to the guide, which says what core does and does not have a
- * store for, rather than to a route that would reject them. Naming a route the
- * caller cannot use is the silent substitution this rule exists to refuse.
- *
- * A `Map` and not an object literal: the fence's kind is caller-supplied, and a
- * plain lookup of `constructor` or `toString` answers with something off
- * `Object.prototype` instead of taking the unsupported-kind path.
+ * Where a record goes when it is not a comment, by the kind that names it — and ONLY where a store
+ * holds the whole of that kind. `issue_step_contexts` types a verdict on `(issue, step, attempt)`;
+ * nothing holds a baseline or a decision, so those go to the guide rather than to a route that
+ * would refuse them UNREGISTERED_KEY. A `Map` because the kind is caller-supplied: `constructor`
+ * on an object literal answers off the prototype instead of taking the unsupported-kind path.
  */
 export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map([
   ['verdict', 'POST /api/issue-step-contexts'],
   ['review', 'POST /api/issue-step-contexts'],
 ]);
 
-/** The route an issue assertion goes to, which the guide names for every other kind. */
 export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
 
-/**
- * The route this record's own kind goes to, or null where no store holds it
- * whole. An untagged fence carries no kind and lands here too: it is sent to
- * the guide rather than guessed at, because guessing a destination is how a
- * verdict ends up in the store that holds issue assertions.
- */
 export function destinationFor(kind: string | null): string | null {
   return kind ? (RECORD_DESTINATIONS.get(kind) ?? null) : null;
 }
 
-/**
- * One sentence, built once, served both as the refusal and as the warning —
- * so a caller told where to go and a caller refused for not going there can
- * never be told two different things.
- */
+/** One sentence, built once, served both as the refusal and as the warning, so the two cannot drift. */
 export function recordInCommentMessage(record: ForgeRecord): string {
   const route = destinationFor(record.kind);
   const named = record.kind ? `a \`${record.kind}\` record` : 'a record';
@@ -72,9 +51,6 @@ export function recordInCommentMessage(record: ForgeRecord): string {
 const RECORD_IN_COMMENT_SHAPE =
   'a comment body carries prose for a person; a structured record is written to the store its kind names';
 
-/**
- * The fence refused by name, for a caller that declared it can write elsewhere.
- */
 export function recordInCommentRefusal(record: ForgeRecord | null): MessageRefusal | null {
   if (!record) return null;
   return {
@@ -86,12 +62,7 @@ export function recordInCommentRefusal(record: ForgeRecord | null): MessageRefus
   };
 }
 
-/**
- * The same sentence as a warning, for a caller that declared nothing.
- *
- * It ships on the deploy the refusal is dormant on: the rule reaches the fleet
- * as guidance first and as a gate only once a caller says it can obey.
- */
+/** The same sentence as a warning, for a caller that declared nothing. */
 export function recordInCommentWarning(record: ForgeRecord | null): string | null {
   return record ? recordInCommentMessage(record) : null;
 }

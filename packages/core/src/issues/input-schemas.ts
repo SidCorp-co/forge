@@ -1,7 +1,6 @@
 /**
- * The two input shapes `issueCreateSchema` and `issuePatchSchema` are built
- * from, split out of `routes.ts` on size grounds. Definitions only — nothing
- * here reads a request or touches the database.
+ * The two input shapes `issueCreateSchema` and `issuePatchSchema` are built from, split out of
+ * `routes.ts` on size grounds. Definitions only — nothing here reads a request or the database.
  */
 
 import { z } from 'zod';

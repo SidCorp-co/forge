@@ -1,13 +1,9 @@
 /**
- * The record store, over REST.
- *
- * `issue_attributes` held typed assertions with a `source_comment_id` pointing
- * back at the comment that made them, and the only door onto it was the
- * `forge_issues action=setAttributes` MCP tool. The writer that serialises
- * records into comment bodies is a REST caller, so it had no destination to be
- * sent to — a refusal naming a route nobody can reach teaches nothing. This is
- * that route, over the same service the MCP tool calls, so there is one writer
- * and one set of refusals.
+ * The record store, over REST. `issue_attributes` holds typed assertions with a
+ * `source_comment_id` pointing back at the comment that made them, and the MCP
+ * `forge_issues action=setAttributes` tool was its only door — no destination a REST writer could
+ * be sent to, and a refusal naming a route nobody can reach teaches nothing. This route calls the
+ * same service, so there is one writer and one set of refusals.
  */
 
 import { zValidator } from '@hono/zod-validator';

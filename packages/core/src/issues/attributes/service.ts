@@ -2,16 +2,7 @@ import { db } from '../../db/client.js';
 import { loadIssueAttributes, type RenderedAttribute } from './read.js';
 import { type AttributeWrite, writeAttributes } from './write.js';
 
-/**
- * The whole batch in one transaction.
- *
- * `writeAttributes` deletes a cardinality-one key's existing row before
- * inserting the new one, so on the raw handle a later refusal in the same
- * batch — an unregistered key, a value the defs table has no row for — left
- * the old value deleted and nothing in its place. The caller was told no and
- * the issue had lost an assertion anyway (ISS-1113). One transaction makes the
- * refusal and the rows agree.
- */
+/** One transaction: `writeAttributes` deletes a cardinality-one row before inserting, so on the raw handle a later refusal in the same batch left the old value gone and nothing in its place. */
 export async function setIssueAttributes(
   writes: readonly AttributeWrite[],
 ): Promise<{ written: number; attributes: RenderedAttribute[] }> {

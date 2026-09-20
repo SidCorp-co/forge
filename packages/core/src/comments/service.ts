@@ -169,12 +169,8 @@ export type NewComment = {
   format?: BodyFormat | null | undefined;
   parentId: string | null;
   /**
-   * Whether the door's caller declared it can write a record to the store.
-   *
-   * Absent means no — a door that cannot read the declaration passes nothing
-   * and its callers are warned rather than refused. The default is the
-   * dormancy: `middleware/client-capabilities.ts` says why it is the caller's
-   * switch and not this server's.
+   * Whether the door's caller declared it can write a record to the store. Absent means no, which
+   * is the dormancy: a door that cannot read the declaration warns rather than refuses.
    */
   declaresRecordRoute?: boolean | undefined;
 };
