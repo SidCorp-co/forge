@@ -28,7 +28,8 @@ a{color:var(--acc)}
 
 <p class="crumb"><a href="index.html">Destination</a> › Session tree</p>
 <h1>The Session Tree</h1>
-<p class="lead">One noun for work. A master and a subagent are the same species at two depths.</p>
+<p class="lead">One table for work. Every row says which species it is and who owns it, and
+closure follows the owner edge rather than a timer per species.</p>
 
 <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
 <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--mut)"/></marker>
@@ -45,12 +46,12 @@ a{color:var(--acc)}
 <rect x="30" y="24" width="460" height="204" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="2"/>
 <text x="260" y="52" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">session</text>
 <text x="52" y="82" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">id</text>
-<text x="52" y="104" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">parent_id</text><text x="180" y="104" font-size="10.5" fill="var(--mut)">NULL at the root</text>
-<text x="52" y="126" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">root_id · depth</text><text x="210" y="126" font-size="10.5" fill="var(--mut)">denormalised, for the gates</text>
+<text x="52" y="104" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">species</text><text x="180" y="104" font-size="10.5" fill="var(--mut)">NOT NULL — a column, never a metadata key</text>
+<text x="52" y="126" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">parent_id</text><text x="180" y="126" font-size="10.5" fill="var(--mut)">FK · NULL at the root · written by core</text>
 <text x="52" y="148" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">principal_id</text><text x="180" y="148" font-size="10.5" fill="var(--mut)">who is doing this</text>
 <text x="52" y="170" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">intent_id</text><text x="180" y="170" font-size="10.5" fill="var(--mut)">what it is for</text>
 <text x="52" y="192" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">policy_version</text><text x="210" y="192" font-size="10.5" fill="var(--mut)">inherited from the root, never re-read</text>
-<text x="52" y="214" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">close_policy · blocks_owner_close</text>
+<text x="52" y="214" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">root_id · depth</text><text x="210" y="214" font-size="10.5" fill="var(--mut)">denormalised, for the gates</text>
 
 <rect x="530" y="24" width="440" height="96" rx="10" fill="var(--soft)" stroke="var(--ok)" stroke-width="1.7"/>
 <text x="552" y="50" font-size="12.5" font-weight="700" fill="var(--ok)">stamped at OPEN, never after</text>
@@ -62,7 +63,7 @@ a{color:var(--acc)}
 <text x="552" y="158" font-size="12.5" font-weight="700" fill="var(--bad)">NOT on the row</text>
 <text x="552" y="182" font-size="11.5" fill="var(--mut)">status — derived from facts</text>
 <text x="552" y="202" font-size="11.5" fill="var(--mut)">a heartbeat, unless this is the root</text>
-<text x="552" y="220" font-size="11.5" fill="var(--mut)">anything the pane happens to know</text>
+<text x="552" y="220" font-size="11.5" fill="var(--mut)">a close policy — see §3, there is one behaviour</text>
 </svg>
 </div>
 
@@ -102,40 +103,41 @@ the root means every node beneath it is already gone — no per-node heartbeat i
 kept.</p>
 </div>
 
-<h2>3 · Closing</h2>
+<h2>3 · Closing — one behaviour, and the rule for earning a second</h2>
 
 <div class="card">
-<svg viewBox="0 0 1000 330" role="img" aria-label="Three close policies and the blocking bit">
-<text x="30" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--mut)">DECLARED PER CHILD, NOT PER TREE</text>
+<svg viewBox="0 0 1000 300" role="img" aria-label="one closure decision following the owner edge">
+<text x="30" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--mut)">ONE DECISION, FOLLOWING THE EDGE</text>
 
-<rect x="30" y="40" width="300" height="94" rx="9" fill="var(--card)" stroke="var(--line)"/>
-<text x="52" y="66" font-size="12.5" font-weight="700" font-family="ui-monospace,monospace" fill="var(--fg)">terminate</text>
-<text x="52" y="90" font-size="11" fill="var(--mut)">parent dies → child dies now</text>
-<text x="52" y="112" font-size="11" fill="var(--mut)">a subagent running a build</text>
-<text x="52" y="128" font-size="10.5" fill="var(--ok)">free from inherited liveness</text>
+<rect x="30" y="42" width="250" height="70" rx="9" fill="var(--card)" stroke="var(--acc)" stroke-width="1.9"/>
+<text x="155" y="68" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">the root goes silent</text>
+<text x="155" y="90" font-size="10.5" text-anchor="middle" fill="var(--mut)">one threshold, on the root alone</text>
 
-<rect x="350" y="40" width="300" height="94" rx="9" fill="var(--card)" stroke="var(--warn)" stroke-width="1.9"/>
-<text x="372" y="66" font-size="12.5" font-weight="700" font-family="ui-monospace,monospace" fill="var(--warn)">request_cancel</text>
-<text x="372" y="90" font-size="11" fill="var(--mut)">child writes its fact, THEN dies</text>
-<text x="372" y="112" font-size="11" fill="var(--mut)">one that just pushed a deploy</text>
-<text x="372" y="128" font-size="10.5" fill="var(--warn)">must be declared in data</text>
+<path d="M284 77 L330 77" stroke="var(--acc)" stroke-width="1.7" marker-end="url(#c)"/>
 
-<rect x="670" y="40" width="300" height="94" rx="9" fill="var(--card)" stroke="var(--line)"/>
-<text x="692" y="66" font-size="12.5" font-weight="700" font-family="ui-monospace,monospace" fill="var(--fg)">abandon</text>
-<text x="692" y="90" font-size="11" fill="var(--mut)">child outlives the root</text>
-<text x="692" y="112" font-size="11" fill="var(--mut)">a long eval the master spawned</text>
-<text x="692" y="128" font-size="10.5" fill="var(--mut)">rare, and never the default</text>
+<rect x="334" y="42" width="290" height="70" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.9"/>
+<text x="479" y="68" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">the subtree closes with it</text>
+<text x="479" y="90" font-size="10.5" text-anchor="middle" fill="var(--mut)">through the one transition chokepoint, audited</text>
 
-<rect x="30" y="158" width="940" height="76" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.8"/>
-<text x="52" y="184" font-size="12.5" font-weight="700" font-family="ui-monospace,monospace" fill="var(--acc)">blocks_owner_close</text>
-<text x="230" y="184" font-size="12" fill="var(--fg)">— a bit on the CHILD, not a mode on the parent</text>
-<text x="52" y="208" font-size="11.5" fill="var(--mut)">true only where the child's unfinished work would LOSE A FACT. Everything else closes immediately.</text>
-<text x="52" y="226" font-size="11.5" fill="var(--mut)">Set it everywhere and every close becomes a foreground wait; set it nowhere and the deploy nobody recorded comes back.</text>
+<path d="M628 77 L674 77" stroke="var(--ok)" stroke-width="1.7" marker-end="url(#b)"/>
 
-<rect x="30" y="252" width="940" height="60" rx="9" fill="none" stroke="var(--bad)" stroke-width="1.7"/>
-<text x="52" y="276" font-size="12.5" font-weight="700" fill="var(--bad)">It is a finalizer, so it inherits every finalizer failure</text>
-<text x="52" y="298" font-size="11.5" fill="var(--mut)">A blocking child whose process is gone leaves the parent closing forever. Every blocking bit carries a TTL and a force path — and the force writes an audit fact naming what it overrode.</text>
+<rect x="678" y="42" width="292" height="70" rx="9" fill="var(--card)" stroke="var(--ok)" stroke-width="1.8"/>
+<text x="824" y="68" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--ok)">everything it held is given back</text>
+<text x="824" y="90" font-size="10.5" text-anchor="middle" fill="var(--mut)">leases, holds, worktrees — named in the close reason</text>
+
+<rect x="30" y="132" width="940" height="76" rx="9" fill="var(--card)" stroke="var(--warn)" stroke-width="1.7"/>
+<text x="52" y="157" font-size="12.5" font-weight="700" fill="var(--warn)">Why not three policies</text>
+<text x="52" y="180" font-size="11.5" fill="var(--fg)">An earlier revision of this page declared <tspan font-family="ui-monospace,monospace">terminate</tspan> / <tspan font-family="ui-monospace,monospace">request_cancel</tspan> / <tspan font-family="ui-monospace,monospace">abandon</tspan> per child, borrowed from Temporal. Forge has</text>
+<text x="52" y="198" font-size="11.5" fill="var(--fg)">exactly one closure cause today — the box stopped answering — and inventing three shapes before there are three behaviours is</text>
+<text x="52" y="214" font-size="11.5" fill="var(--fg)">the same over-generality as an arbitrary-depth tree in a system whose real depth is two.</text>
+
+<rect x="30" y="224" width="940" height="60" rx="9" fill="var(--soft)" stroke="var(--line)"/>
+<text x="52" y="248" font-size="12" font-weight="700" fill="var(--fg)">The rule for earning a second policy</text>
+<text x="52" y="270" font-size="11.5" fill="var(--mut)">A second closure cause exists in the field, someone can name the run it happened to, and the two causes genuinely need different treatment. Until all three hold, one behaviour and no field.</text>
 </svg>
+<p class="cap">The subtree closes because the edge exists, not because each species carries its own
+timer. That is the whole reason <code>parent_id</code> is a column with a foreign key rather than
+something the box reports.</p>
 </div>
 
 <h2>4 · Both directions, or it leaks</h2>
@@ -229,6 +231,46 @@ how a fresh master adopts corpses as live work.</div>
 <tr><td>the exclusion clause a sweeper needs so two sweeps don't reap the same row</td><td>there is one writer per direction, so there is nothing to exclude</td></tr>
 <tr><td>a per-node heartbeat and the staleness rules around it</td><td>only the root beats; silence means the subtree is gone</td></tr>
 <tr><td>work the kernel cannot see</td><td>a subagent has a row, so load counts it, the sweeper reaches it, and it can be held to account</td></tr>
+</tbody>
+</table>
+
+<h2>9 · Measured against the tree — 2026-09-20</h2>
+
+<p>Read on <code>main</code> at <code>ab8e2f136</code>. This page is the target; the column below
+is what exists, and two rows of the earlier revision were withdrawn because of it.</p>
+
+<table>
+<thead><tr><th style="width:26%">This page says</th><th style="width:37%">The tree does</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td><b>One row with <code>parent_id</code></b></td><td><code>agent_sessions</code> has 25 columns and none of them is <code>parent_id</code>. <code>parentId</code> exists in the schema — on <code>comments</code>, <code>labels</code> and <code>agent_session_turns</code> — but not on the session</td><td class="bad">missing</td></tr>
+<tr><td><b>Every row says its species</b></td><td>five call sites insert a session; <b>two</b> tag a type (<code>master</code>, <code>run_session</code>). The job-linked session and both chat sessions tag nothing, so a sweeper filtering on <code>metadata-&gt;&gt;'type'</code> cannot see them</td><td class="bad">missing — and the reason this page now asks for a column</td></tr>
+<tr><td><b>Core owns the owner edge</b></td><td>the only place a master id is stored is <code>device_run_ledger.master_session_id</code>: nullable, <b>no foreign key</b>, and accepted from the box over WS (<code>run-ledger-ws.ts:runSchema</code>). Nothing checks it names a session that exists</td><td class="bad">inverted — the box is the sole witness</td></tr>
+<tr><td><b>Liveness is inherited</b></td><td>two independent reapers on two clocks. <code>MASTER_HOLD_TIMEOUT_MS</code> is 3 minutes and returns job holds without closing any child; <code>RUN_SESSION_TIMEOUT_MS</code> is 10 minutes and returns issue leases. A master can be reaped while the runs it started hold their leases for another seven</td><td class="bad">not inherited</td></tr>
+<tr><td><b>Three close policies per child</b></td><td>none exists, and none is needed yet: one closure cause is in the field</td><td class="warn">withdrawn from this page — §3</td></tr>
+<tr><td><b>One species, any depth</b></td><td>the real depth is two. Subagents inside a Claude session are not Forge sessions and core never sees them</td><td class="warn">narrowed — §3</td></tr>
+<tr><td><b>Both directions, or it leaks</b></td><td><code>runs-cascade.ts</code> forward and <code>runs-concluded.ts</code> inverse, closing on the last job's outcome. Born from ISS-923: 98 of 114 live runs sat <code>running</code> with every job terminal, across 18 projects</td><td class="ok">built</td></tr>
+<tr><td><b>Liveness needs more than one witness</b></td><td>already right, and said in the source: <code>run-session-reaper.ts</code> opens with <em>"the local ledger on the box is the fast path and cannot be the only one: a runner that lost power releases nothing at all"</em></td><td class="ok">built</td></tr>
+<tr><td><b>A terminal write goes through one chokepoint</b></td><td><code>run-session-reaper</code> calls <code>applyKernelTransition</code>, so the reap is audited and a bypass is detected — what module 1 found missing for <code>issues</code> is already correct here</td><td class="ok">built</td></tr>
+<tr><td><b><code>held</code> is a fourth shape, not an orphan</b></td><td>a deliberate status, non-terminal to every sweep</td><td class="ok">built</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>Four missing, two withdrawn, four already built.</b><br>
+<span class="note">The order they must land in is forced: species first, because the other three
+all need to know which kind of row they are talking about. Then the owner edge with its foreign
+key, then one closure decision following it, then caps that finally have a subtree to scope to.</span>
+</div>
+
+<h2>Honest costs</h2>
+
+<table>
+<thead><tr><th style="width:34%">Cost</th><th>What it buys, and who pays</th></tr></thead>
+<tbody>
+<tr><td>A species column is five call sites and a backfill</td><td>Existing rows have no species, and two of the five kinds never declared one, so the backfill infers from joins — the same inference the sweepers do today, done once and frozen instead of re-derived per query</td></tr>
+<tr><td>A foreign key on <code>parent_id</code> can refuse a write that works today</td><td>That is the point, and it means the box's reported parent stops being accepted on trust. Any path that reports a parent core did not issue starts failing, and this audit did not enumerate those paths</td></tr>
+<tr><td>Merging two timeouts changes when work is reclaimed</td><td>3 minutes and 10 minutes were each chosen for their own reason. One threshold will be wrong for one of the two cases until someone measures which</td></tr>
+<tr><td>Withdrawing the three close policies loses a shape that was easy to write about</td><td>Temporal's vocabulary reads well and Forge does not have the behaviours behind it. The page is less impressive and more true</td></tr>
 </tbody>
 </table>
 

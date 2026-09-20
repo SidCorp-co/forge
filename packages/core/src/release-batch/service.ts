@@ -31,7 +31,12 @@ import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue
 import { cancelConcludedRun, closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
-import { resolveReleaseChannels, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
+import {
+  projectRunnerDeviceIds,
+  resolveReleaseChannels,
+  resolveReleaseDeviceIds,
+  resolveReleasePlan,
+} from './channel.js';
 import {
   BatchInFlightError,
   ClaimConflictError,
@@ -98,13 +103,26 @@ export async function createReleaseBatch(
   const plan = await resolveReleasePlan(projectId);
   if (!plan.releaseRunnerLabel) throw new ReleaseRunnerUndeclaredError();
   if (plan.channels.some((c) => !c.verify)) throw new ReleaseProbesUndeclaredError();
-  const allowDeviceIds = await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel);
-  if (allowDeviceIds.length === 0) {
-    throw new ReleasePoolEmptyError(plan.releaseRunnerLabel);
+  // ISS-1128 — the label RANKS this pool. Boxes carrying it go first; where
+  // none of them can take the release, the pool is the fleet rather than
+  // nobody, and the unmet preference is recorded rather than dropped.
+  const labelled = await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel);
+  const preferred =
+    labelled.length === 0
+      ? []
+      : await onlineCapableDeviceIds(projectId, {}, { allowDeviceIds: labelled });
+  const preferenceMet = preferred.length > 0;
+  const releasePool = preferenceMet ? preferred : await onlineCapableDeviceIds(projectId, {});
+  if (releasePool.length === 0) {
+    if ((await projectRunnerDeviceIds(projectId)).length === 0) throw new ReleasePoolEmptyError();
+    throw new NoRunnerOnlineError();
   }
-
-  const releasePool = await onlineCapableDeviceIds(projectId, {}, { allowDeviceIds });
-  if (releasePool.length === 0) throw new NoRunnerOnlineError();
+  if (!preferenceMet) {
+    logger.warn(
+      { projectId, releaseRunnerLabel: plan.releaseRunnerLabel, releasePool },
+      'release-batch: no box eligible to release carries the declared label, so this batch goes to the pool this project has',
+    );
+  }
 
   const project = (await readProjectBranches(projectId)) ?? {
     baseBranch: null,
@@ -129,6 +147,7 @@ export async function createReleaseBatch(
       deployPlanned,
       promotePlanned,
       commitBefore,
+      releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
     },
   });
 
@@ -179,6 +198,7 @@ export async function createReleaseBatch(
     releaseModel: project.releaseModel,
     releaseStrategy: project.releaseStrategy,
     plan,
+    releaseRunnerPreferenceMet: preferenceMet,
     issues: issueRows.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(batchPrefix, r.issSeq) : r.id,

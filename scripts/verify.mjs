@@ -72,6 +72,13 @@ const CHECKS = [
   },
   {
     axis: 'knowledge',
+    label: 'status-tuples',
+    cmd: ['node', 'scripts/check-status-tuples.mjs', '--all'],
+    scanned: /^status-tuples: (\d+) file\(s\) scanned/m,
+    unit: 'files',
+  },
+  {
+    axis: 'knowledge',
     label: 'honest-costs',
     cmd: ['node', 'scripts/check-honest-costs.mjs'],
     scanned: /^honest-costs: (\d+) document/m,
@@ -189,6 +196,7 @@ const CHECKS = [
 
 const CI_COVERAGE = {
   'node scripts/check-honest-costs.mjs': 'verify',
+  'node scripts/check-status-tuples.mjs --all': 'verify',
   'node scripts/check-release-record.mjs': 'verify',
   'node scripts/check-injected-doc-modes.mjs': 'verify',
   'node scripts/check-retired-model.mjs': 'verify',

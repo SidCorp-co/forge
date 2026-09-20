@@ -1,6 +1,7 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
+import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { openOneShotRun } from '../pipeline/runs.js';
@@ -123,7 +124,7 @@ export async function listMasterSessionsForDevice(
     .where(
       and(
         eq(agentSessions.deviceId, deviceId),
-        inArray(agentSessions.status, ['idle', 'queued', 'running']),
+        inArray(agentSessions.status, [...LIVE_SESSION_STATUSES]),
       ),
     );
   return rows

@@ -1,20 +1,20 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs, projects, runners } from '../db/schema.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { ageSeconds, fillHeartbeat } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
 import {
   PULSE_HEARTBEAT_DAYS,
-  PULSE_LIVE_JOB_STATUSES,
   type PulseJobIdentity,
   type PulseLiveness,
   type PulseRunIdentity,
   type PulseThresholds,
 } from './pulse-types.js';
 
-const LIVE = [...PULSE_LIVE_JOB_STATUSES];
+const LIVE = [...LIVE_JOB_STATUSES];
 
 /** One row per live-job status, and zero for a status nothing holds. */
 async function countJobsByStatus(projectIds: string[]): Promise<Record<string, number>> {

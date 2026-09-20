@@ -19,9 +19,9 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (honest
-costs · the mode-qualification of injected docs · the PAT permission surface). `comment` is gated
-once, by `check-comment-budget`.
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` four (honest
+costs · the mode-qualification of injected docs · the PAT permission surface · whether one question
+in the source has more than one answer). `comment` is gated once, by `check-comment-budget`.
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -39,6 +39,7 @@ passed, because the external record of what shipped belonged to none of them.
 | declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
 | PAT surface | `check-pat-surface` — `injected-docs` | whether every route a project-scoped token can reach is covered by the permission menu that claims to fence it | whether a given fence is correct — that is review's |
+| status tuples | `check-status-tuples` — `lang-check` | whether one question has more than one answer: two declarations holding the same status tuple, or a status-literal array written inline where a named constant for that tuple already exists. Compares by VALUE, not by name, and reads the three vocabularies out of `db/schema.ts` rather than carrying a copy | whether a tuple's MEMBERSHIP is right; SQL string literals, test files, type unions, and a tuple written as an object-literal value, which is a table row rather than a named question |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |

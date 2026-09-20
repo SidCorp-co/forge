@@ -36,6 +36,46 @@ pub mod skill_pull;
 pub mod terminal;
 pub mod turn_evidence;
 
+/// Make this test binary's `tracing` events survive long enough to be captured.
+///
+/// `tracing` keeps ONE process-wide max-level, recomputed from the CURRENT
+/// thread's dispatcher whenever a callsite is registered or the interest cache
+/// is rebuilt. A thread with no subscriber hints `OFF`, so any test that first
+/// reaches a new `info!`/`warn!` callsite drops that ceiling to `OFF` for every
+/// thread at once — including one sitting inside `with_default`, whose buffer
+/// then comes back empty. Single-threaded runs never see it; this crate's suite
+/// failed 20 times in 200 runs of `cargo test give_back_tests` before this.
+///
+/// Installing a permissive global subscriber once makes `OFF` unreachable: it
+/// answers `true` to everything and hints no ceiling, so the recomputation
+/// lands on `TRACE` whichever thread does it. It records nothing — a scoped
+/// subscriber still takes every event on the thread that installs one, and on
+/// every other thread the event is discarded here rather than printed.
+#[cfg(test)]
+pub(crate) fn keep_tracing_capturable() {
+    struct Permissive;
+    impl tracing::Subscriber for Permissive {
+        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+            true
+        }
+        fn max_level_hint(&self) -> Option<tracing::level_filters::LevelFilter> {
+            None
+        }
+        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::Id {
+            tracing::Id::from_u64(1)
+        }
+        fn record(&self, _: &tracing::Id, _: &tracing::span::Record<'_>) {}
+        fn record_follows_from(&self, _: &tracing::Id, _: &tracing::Id) {}
+        fn event(&self, _: &tracing::Event<'_>) {}
+        fn enter(&self, _: &tracing::Id) {}
+        fn exit(&self, _: &tracing::Id) {}
+    }
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let _ = tracing::subscriber::set_global_default(Permissive);
+    });
+}
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 

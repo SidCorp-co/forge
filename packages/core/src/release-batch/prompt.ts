@@ -22,6 +22,8 @@ interface BuildReleaseBatchPromptArgs {
   releaseStrategy: ReleaseStrategy | null;
   issues: IssueSummary[];
   plan: ReleasePlan;
+  /** False where no box eligible to release carries the declared label. */
+  releaseRunnerPreferenceMet: boolean;
 }
 
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
@@ -31,6 +33,16 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
   const liveLine = releaseModel === 'promote' ? `\nliveBranch: ${liveBranch}` : '';
+  // What was true when the batch was CUT, never where it ended up running: the
+  // job is claimed after this string is built, and a box carrying the label can
+  // come online in between. The box that took it is in the batch context.
+  const runnerLine = plan.releaseRunnerLabel
+    ? `\nrelease runner: this project prefers a box labelled \`${plan.releaseRunnerLabel}\`${
+        args.releaseRunnerPreferenceMet
+          ? ''
+          : ' — no box eligible to release carried it when this batch was cut. Read `releaseRunner` in the batch context for the box this job was claimed on, and say in what you record whether the preference was honoured.'
+      }`
+    : '';
   const channelLines =
     plan.channels.length === 0
       ? 'deploy channels: none — cut the version and stop; a human deploys'
@@ -43,7 +55,7 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
 projectId: ${projectId}
 runId: ${runId}
 releaseModel: ${releaseModel}
-baseBranch: ${baseBranch}${liveLine}
+baseBranch: ${baseBranch}${liveLine}${runnerLine}
 ${channelLines}
 
 ### Issues in this batch (${issues.length})

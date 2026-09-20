@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **The build refuses two names for one answer.** Two constants holding the same set of statuses,
+  or a status list written out where a named one already held it, went unnoticed. A check now
+  names both and fails.
 - **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
   credential core mints for that one checkout, writes its `.mcp.json`, and records the local
   binding — no pasted token, no `bind` by hand.
@@ -3012,6 +3015,22 @@
   set is now 59.
 
 ### Fixed
+- **Naming the box a release should prefer no longer stops the release.** The label recommends a
+  machine rather than forbidding the others, so a project whose boxes carry no matching label still
+  ships, and records the unmet preference.
+
+- **A pull request Forge opened is now one Forge can merge.** Forge knew only the pull requests
+  GitHub announced by webhook, so one Forge opened itself left no record and could not be merged.
+  Opening one now writes that record.
+
+- **A merge that finds nothing to merge says whether the record is empty or the number is wrong.**
+  The refusal now names an empty record as that, and counts the webhook deliveries that ever
+  arrived.
+
+- **A migration written but never registered in the journal can no longer reach a deploy.** Drizzle
+  runs only what `meta/_journal.json` names, so such a file silently did nothing at all. The build
+  now refuses it by name.
+
 - **A decision put to your chat room can no longer be asked twice, or stop being retried in
   silence.** Attempts are counted by the record itself, so retries end where they should and
   somebody is told when delivery fails.

@@ -93,7 +93,7 @@ releaseBatchRoutes.post(
       if (err instanceof ReleasePoolEmptyError) {
         throw serviceUnavailable(
           'RELEASE_POOL_EMPTY',
-          `No runner carries the release label \`${err.label}\`, so nothing here may deploy`,
+          'This project has no runner registered, so there is no box a release could run on — pair a box to this project first',
         );
       }
       if (err instanceof NoRunnerOnlineError) {

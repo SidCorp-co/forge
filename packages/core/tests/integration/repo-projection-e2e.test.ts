@@ -298,3 +298,149 @@ describe('a pull_request_review delivery', () => {
     ).toBe(0);
   });
 });
+
+/**
+ * ISS-1123 criteria 1 to 6 — the second route to this writer, against the real statement.
+ *
+ * The ordering case is here rather than in a unit file for the reason the header gives: the rule it
+ * turns on lives in the `ON CONFLICT` predicate, and a stubbed builder passes it with that
+ * predicate deleted. What it proves is that the creation answer cannot rewind a row a later
+ * delivery already moved — which it can, and silently, the moment its `updated_at` stops travelling.
+ */
+describe('a pull request the agent face opened', () => {
+  const opened = (over: Record<string, unknown> = {}) => ({
+    number: 77,
+    url: 'https://github.com/SidCorp-co/forge/pull/77',
+    title: 'a change under review',
+    state: 'open',
+    draft: false,
+    headRef: 'ISS-4242-projection',
+    headSha: H1,
+    baseRef: 'main',
+    baseSha: BASE,
+    updatedAt: '2026-09-17T01:00:00Z',
+    ...over,
+  });
+
+  const project = (over: Record<string, unknown> = {}) =>
+    g.mods.projectOpenedPullRequest({
+      projectId: g.projectId,
+      bindingId: g.bindingId,
+      repository: 'SidCorp-co/forge',
+      opened: opened(over) as Parameters<typeof g.mods.projectOpenedPullRequest>[0]['opened'],
+    });
+
+  it('leaves a row the merge route can resolve, linked to the issue its branch names', async () => {
+    const issueId = await g.seedIssue(g.projectId, 4242);
+    const result = await project();
+    expect(result).toMatchObject({ outcome: 'recorded', issueId });
+    expect(await g.row()).toMatchObject({
+      issue_id: issueId,
+      number: 77,
+      state: 'open',
+      head_ref: 'ISS-4242-projection',
+      head_sha: H1,
+      base_ref: 'main',
+      base_sha: BASE,
+      repo_full_name: 'SidCorp-co/forge',
+      merged_at: null,
+      merge_commit_sha: null,
+    });
+  });
+
+  it('links to no issue where the branch names none, which is an ordinary answer', async () => {
+    const result = await project({ headRef: 'dependabot/npm/hono-4' });
+    expect(result).toMatchObject({ outcome: 'recorded', issueId: null });
+    expect((await g.row())?.issue_id).toBeNull();
+  });
+
+  it('cannot rewind a row a newer delivery already moved, and says it did not', async () => {
+    await g.mods.applyPullRequestEvent(
+      g.ctx(),
+      g.prEvent({
+        state: 'closed',
+        merged: true,
+        merged_at: '2026-09-18T04:00:00Z',
+        merge_commit_sha: 'e'.repeat(40),
+        head: { ref: 'ISS-4242-projection', sha: H2 },
+        updated_at: '2026-09-18T04:00:00Z',
+      }),
+    );
+
+    const result = await project({ updatedAt: '2026-09-17T01:00:00Z' });
+
+    expect(result.outcome).toBe('superseded');
+    expect(await g.row()).toMatchObject({
+      state: 'merged',
+      head_sha: H2,
+      merge_commit_sha: 'e'.repeat(40),
+    });
+  });
+
+  it('refuses by name rather than writing a row without the head GitHub never sent', async () => {
+    await expect(project({ headSha: null })).rejects.toThrow(/head sha/);
+    expect(await g.row()).toBeUndefined();
+  });
+
+  /**
+   * The ordering rule has no effect at all on a payload carrying no `updated_at`: the `setWhere`
+   * clause reads a null incoming timestamp as always-wins, by design, so that a delivery GitHub
+   * sent without one still lands. A creation answer arriving that way does not merely land
+   * unordered — it lands ON TOP of a merged row and takes the merge commit with it. Which is why
+   * the timestamp is refused by name at the door rather than ordered against inside the statement.
+   */
+  /**
+   * The tie, which carrying the timestamp does NOT close.
+   *
+   * `updated_at` has second resolution, so a change landing in the same second the request was
+   * opened produces a delivery whose timestamp equals the creation answer's. The delivery rule
+   * wins on `>=`, deliberately, so a redelivery of one event still lands — and under that rule a
+   * creation write arriving late would take a merged row on the strength of the tie alone. The
+   * creation rule keeps the stored row instead: nothing a creation answer meets is older than it.
+   */
+  it('keeps a merged row against a creation answer whose updated_at ties it exactly', async () => {
+    const SAME = '2026-09-18T04:00:00Z';
+    await g.mods.applyPullRequestEvent(
+      g.ctx(),
+      g.prEvent({
+        state: 'closed',
+        merged: true,
+        merged_at: SAME,
+        merge_commit_sha: 'e'.repeat(40),
+        head: { ref: 'ISS-4242-projection', sha: H2 },
+        updated_at: SAME,
+      }),
+    );
+
+    const result = await project({ updatedAt: SAME });
+
+    expect(result.outcome).toBe('superseded');
+    expect(await g.row()).toMatchObject({
+      state: 'merged',
+      head_sha: H2,
+      merge_commit_sha: 'e'.repeat(40),
+    });
+  });
+
+  it('refuses a creation answer with no updated_at, which would erase a merged row', async () => {
+    await g.mods.applyPullRequestEvent(
+      g.ctx(),
+      g.prEvent({
+        state: 'closed',
+        merged: true,
+        merged_at: '2026-09-18T04:00:00Z',
+        merge_commit_sha: 'e'.repeat(40),
+        head: { ref: 'ISS-4242-projection', sha: H2 },
+        updated_at: '2026-09-18T04:00:00Z',
+      }),
+    );
+
+    await expect(project({ updatedAt: null })).rejects.toThrow(/updated at/);
+
+    expect(await g.row()).toMatchObject({
+      state: 'merged',
+      head_sha: H2,
+      merge_commit_sha: 'e'.repeat(40),
+    });
+  });
+});

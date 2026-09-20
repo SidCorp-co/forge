@@ -81,6 +81,10 @@ jobs:
       # not taken" while the constitution took its own unpriced. Reads markdown
       # only, so it lives in this install-free job.
       - run: node scripts/check-honest-costs.mjs
+      # One question, one answer (ISS-1106): two constants holding the same status tuple, or
+      # an inline status array a named constant already holds. Reads TypeScript source text
+      # and needs no node_modules, so it lives in this install-free job.
+      - run: node scripts/check-status-tuples.mjs --all
       # CI-parity: proves every step in this file is either run by `pnpm verify`
       # or declared as covered by another root script. Without it the local
       # command and this workflow drift, and a green `pnpm verify` stops meaning
