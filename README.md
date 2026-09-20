@@ -11,7 +11,7 @@
 
 ## Architecture
 
-<img src="docs/assets/architecture.svg" alt="Forge architecture: a browser and MCP clients reach the control plane over REST, MCP and WebSocket; a runner box on your machine runs the forge-runner daemon, which spawns a Claude agent session carrying the forge-plugin skills, CLI and hooks." width="100%">
+<img src="docs/assets/architecture.svg" alt="Forge architecture: a browser and MCP clients reach the control plane over REST, MCP and WebSocket. A runner box on your machine runs the forge-runner daemon, which pairs as a device and dials core; it opens a resident master session that decides order, and a run session where Claude works one issue in a git worktree under the issue-flow skill. The plugin&#39;s CLI reaches core over REST with its own PAT, separate from the daemon. Claude credentials never leave the box, and core neither pushes work nor ranks it." width="100%">
 
 Three boundaries hold the shape:
 
