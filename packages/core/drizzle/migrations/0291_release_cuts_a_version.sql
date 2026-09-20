@@ -18,7 +18,9 @@
 -- The unique index is partial so it constrains releases and ignores every other kind of run, and
 -- it is the refusal behind "two releases sharing one version". The CHECK is what makes the
 -- allocator's `string_to_array(release_version, '.')::int[]` ordering safe: without it a value the
--- shape would have refused throws at read time instead of at write time.
+-- shape would have refused throws at read time instead of at write time. Nine digits per component
+-- is the bound that makes that true rather than merely likely, 999999999 being the largest value an
+-- `int4` holds.
 --
 -- The way back: ALTER TABLE "pipeline_runs" DROP COLUMN "release_released_at", DROP COLUMN
 -- "release_version"; which takes the index and the CHECK with it and loses nothing that existed
@@ -26,4 +28,4 @@
 ALTER TABLE "pipeline_runs" ADD COLUMN "release_version" text;--> statement-breakpoint
 ALTER TABLE "pipeline_runs" ADD COLUMN "release_released_at" timestamp with time zone;--> statement-breakpoint
 CREATE UNIQUE INDEX "pipeline_runs_release_version_uq" ON "pipeline_runs" USING btree ("project_id","release_version") WHERE release_version IS NOT NULL;--> statement-breakpoint
-ALTER TABLE "pipeline_runs" ADD CONSTRAINT "pipeline_runs_release_version_chk" CHECK ("pipeline_runs"."release_version" IS NULL OR "pipeline_runs"."release_version" ~ '^[0-9]+[.][0-9]+[.][0-9]+$');
+ALTER TABLE "pipeline_runs" ADD CONSTRAINT "pipeline_runs_release_version_chk" CHECK ("pipeline_runs"."release_version" IS NULL OR "pipeline_runs"."release_version" ~ '^[0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}$');

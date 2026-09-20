@@ -7888,7 +7888,7 @@
       "checkConstraints": {
         "pipeline_runs_release_version_chk": {
           "name": "pipeline_runs_release_version_chk",
-          "value": "\"pipeline_runs\".\"release_version\" IS NULL OR \"pipeline_runs\".\"release_version\" ~ '^[0-9]+[.][0-9]+[.][0-9]+$'"
+          "value": "\"pipeline_runs\".\"release_version\" IS NULL OR \"pipeline_runs\".\"release_version\" ~ '^[0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}$'"
         }
       },
       "isRLSEnabled": false

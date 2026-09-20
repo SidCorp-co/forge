@@ -24,9 +24,14 @@
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { ReleaseRecutRefusedError, ReleaseVersionConflictError } from './errors.js';
+import {
+  ReleaseRecutRefusedError,
+  ReleaseVersionConflictError,
+  ReleaseVersionExhaustedError,
+} from './errors.js';
 import {
   formatReleaseVersion,
+  isStorableReleaseVersion,
   nextReleaseVersion,
   parseReleaseVersion,
   RELEASE_VERSION_SHAPE,
@@ -129,7 +134,10 @@ export async function currentReleaseVersion(projectId: string): Promise<string |
 export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null): ReleaseVersion {
   const asked = parseReleaseVersion(recutOf);
   if (!asked) {
-    throw new ReleaseRecutRefusedError(recutOf, `it is not a version. Send ${RELEASE_VERSION_SHAPE}`);
+    throw new ReleaseRecutRefusedError(
+      recutOf,
+      `it is not a version. Send ${RELEASE_VERSION_SHAPE}`,
+    );
   }
   if (!highest) {
     throw new ReleaseRecutRefusedError(
@@ -182,8 +190,18 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
   await lockProjectVersions(tx, projectId);
 
   const highest = await highestCutVersion(tx, projectId);
-  const recutFrom = recutOf ? ruleOnRecut(recutOf, highest) : null;
-  const version = formatReleaseVersion(nextReleaseVersion(highest?.version ?? null, recutFrom));
+  // `!== undefined` and not truthiness. A caller sending `recutOf: ''` asked for a re-cut with a
+  // value that is not a version, and truthiness would read that as "no re-cut asked for" and cut a
+  // fresh minor instead — the malformed input absorbed rather than refused, which is the one shape
+  // this whole file exists to make impossible.
+  const recutFrom = recutOf !== undefined ? ruleOnRecut(recutOf, highest) : null;
+  const next = nextReleaseVersion(highest?.version ?? null, recutFrom);
+  // The successor can leave the domain the shape admits, and it is refused here rather than sent to
+  // the column: the CHECK would refuse it too, but naming itself instead of naming the rule.
+  if (!isStorableReleaseVersion(next)) {
+    throw new ReleaseVersionExhaustedError(projectId, formatReleaseVersion(next));
+  }
+  const version = formatReleaseVersion(next);
 
   const written = await tx.execute<{ id: string }>(sql`
     UPDATE pipeline_runs

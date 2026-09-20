@@ -91,6 +91,16 @@ describe('ruleOnRecut — what it refuses, each by its own reason', () => {
     expect(reason).toContain('reserved for a re-cut after a FAILED release');
   });
 
+  it('refuses an empty or whitespace `recutOf` rather than reading it as none asked for', () => {
+    // A caller who sent the field meant to re-cut. Truthiness would read '' as an omission and cut
+    // a fresh minor instead, which is the malformed value absorbed rather than refused.
+    for (const blank of ['', ' ', '\t']) {
+      expect(refusalFor(blank, highestRow()), JSON.stringify(blank)).toContain(
+        'it is not a version',
+      );
+    }
+  });
+
   it('puts the version it refused in the message, so the caller can see what it sent', () => {
     expect(refusalFor('0.4.0', highestRow())).toContain('0.4.0');
     expect(refusalFor('not-a-version', highestRow())).toContain('not-a-version');

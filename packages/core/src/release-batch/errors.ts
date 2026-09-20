@@ -152,3 +152,23 @@ export class ReleaseRecutRefusedError extends Error {
     this.name = 'ReleaseRecutRefusedError';
   }
 }
+
+/**
+ * The next version would take a component past nine digits, which the column's CHECK refuses and
+ * the store's `int4` ordering could not compare. A project reaching this has cut a billion
+ * releases; it is refused by its own name anyway, because the alternative is a constraint naming
+ * itself and leaving the caller to work out which rule they hit.
+ */
+export class ReleaseVersionExhaustedError extends Error {
+  constructor(
+    public readonly projectId: string,
+    public readonly wanted: string,
+  ) {
+    super(
+      `RELEASE_VERSION_EXHAUSTED: the next version for project ${projectId} would be ${wanted}, ` +
+        'and a release version holds at most nine digits per component. Nothing was cut. Raise the ' +
+        'major digit by hand on the next release row to start a fresh sequence.',
+    );
+    this.name = 'ReleaseVersionExhaustedError';
+  }
+}

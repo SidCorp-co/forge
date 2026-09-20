@@ -25,10 +25,34 @@ export interface ReleaseVersion {
 export const FIRST_RELEASE_VERSION: ReleaseVersion = { major: 0, minor: 1, patch: 0 };
 
 /**
- * The one shape a release version may take, kept beside `releaseVersionText` in
- * `db/column-checks.ts` — that predicate is the same rule written where Postgres can enforce it.
+ * The largest value any component may hold: nine digits, which is the bound the shape below and
+ * the column's CHECK both enforce, and the largest value Postgres holds in the `int4` the store
+ * orders by. A successor past it is refused by name in `version-store.ts` rather than written and
+ * bounced off the constraint — the constraint would name itself, which tells the caller what broke
+ * but not which rule they hit.
  */
-const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)$/;
+export const MAX_VERSION_COMPONENT = 999_999_999;
+
+/** Whether every component of this version is one the shape and the column both admit. */
+export function isStorableReleaseVersion(v: ReleaseVersion): boolean {
+  return (
+    v.major >= 0 &&
+    v.minor >= 0 &&
+    v.patch >= 0 &&
+    v.major <= MAX_VERSION_COMPONENT &&
+    v.minor <= MAX_VERSION_COMPONENT &&
+    v.patch <= MAX_VERSION_COMPONENT
+  );
+}
+
+/**
+ * The one shape a release version may take, kept beside `releaseVersionText` in
+ * `db/column-checks.ts` — that predicate is the same rule written where Postgres can enforce it,
+ * nine digits per component and all. The bound is not decoration: the store orders releases by
+ * casting the column to an `int[]`, and a tenth digit is a value both sides have to refuse at the
+ * write or throw on at every later read.
+ */
+const VERSION_RE = /^(\d{1,9})\.(\d{1,9})\.(\d{1,9})$/;
 
 /** The shape a caller who got it wrong is told to send, carried in the refusals themselves. */
 export const RELEASE_VERSION_SHAPE = 'MAJOR.MINOR.PATCH, three dot-separated integers (e.g. 0.4.0)';
@@ -41,9 +65,8 @@ export function formatReleaseVersion(v: ReleaseVersion): string {
 export function parseReleaseVersion(text: string): ReleaseVersion | null {
   const m = VERSION_RE.exec(text);
   if (!m) return null;
+  // Nine digits at most, so each of these is an exact integer and fits an `int4` column.
   const [major, minor, patch] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  if (!Number.isSafeInteger(major) || !Number.isSafeInteger(minor) || !Number.isSafeInteger(patch))
-    return null;
   return { major, minor, patch };
 }
 

@@ -43,6 +43,7 @@ import {
   ReleaseRecutRefusedError,
   ReleaseRunnerUndeclaredError,
   ReleaseVersionConflictError,
+  ReleaseVersionExhaustedError,
   ReleaseVersionMissingError,
 } from './service.js';
 import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
@@ -133,6 +134,9 @@ releaseBatchRoutes.post(
       }
       if (err instanceof ReleaseVersionConflictError) {
         throw conflict('RELEASE_VERSION_CONFLICT', err.message);
+      }
+      if (err instanceof ReleaseVersionExhaustedError) {
+        throw conflict('RELEASE_VERSION_EXHAUSTED', err.message);
       }
       throw err;
     }
