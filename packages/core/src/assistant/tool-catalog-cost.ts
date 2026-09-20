@@ -4,7 +4,7 @@
  * Run it: `pnpm --filter @forge/core measure:catalog-cost` (`measure-catalog-cost.ts`); a census
  * additionally needs
  * `FORGE_CENSUS_DATABASE_URL`. The report it feeds is
- * `docs/modules/agent-execution/tool-catalog-cost.md`.
+ * the catalog cost note beside this module.
  *
  * The catalog is re-derived rather than quoted, because it moves whenever a factory joins
  * `CHAT_TOOL_ALLOWLIST` or a `forge_*` description is edited, and it is serialized by calling

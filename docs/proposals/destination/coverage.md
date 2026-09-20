@@ -135,3 +135,11 @@ as approval.
 The foundation areas — A identity and authority, B intent, C work — were written last, because the
 set was drawn from the middle outward. They are now closed by `authority.html` and
 `lifecycle.html`. The four rows still open are each a single mechanism, not a missing foundation.
+
+## Honest costs
+
+| Cost | What it buys, and who pays |
+|---|---|
+| The count measures vocabulary, not understanding | The grep block looks for words. A page naming `lease` once scores like one that models it, so a row marked answered can still be answered badly |
+| Maintaining it is manual | Every new page means re-judging 53 rows by hand. The first round that is skipped, the number becomes a claim rather than a measurement |
+| 49 of 53 reads as nearly finished | The four open rows are not four small ones — retention is a capacity decision, evidence-after-merge and outbound idempotency are each a mechanism, and forcing a policy upgrade touches the session tree |

@@ -101,3 +101,13 @@ dials out, `crates/forge-runner-core/src/transport/ws.rs:68`). Its `README.md` i
 
 ISS-894 and ISS-889 stay in the tracker. They record a decision that was genuinely made, and
 deleting them would rewrite history rather than correct it; this document is the correction.
+
+## Honest costs
+
+| Cost | What it buys, and who pays |
+|---|---|
+| One registry is a refactor of every route and tool | Each capability's filters, projection, ordering and pagination leave its handler. Structural parity is the payoff; the bill is most of `mcp/tools/` and a large share of the route modules, with nothing user-visible to show |
+| MCP loses hand-tuning | Several tools shape output for an agent's context budget in ways a REST client does not want. Those differences become declared projections or are given up, and some will be given up |
+| The parity suite blocks merges | That is the point. A drifting pair stops a release until someone fixes it or removes the pair with a written reason. Teams who prefer the drift will feel this as friction, correctly |
+| Dropping the lifecycle tools moves work to the plugin | `forge_step_handoff.*` and `forge_phase` have 1-to-1 REST routes so core pays nothing — but the plugin must change its calls on its own clock, and nothing here can gate that half |
+| `forge_step_start` has no REST route | The one drop that needs a route built first. Until it exists the old surface stays |

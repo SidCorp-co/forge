@@ -79,21 +79,6 @@ describe('the three surfaces that render the note', () => {
   });
 });
 
-describe('the surface that cannot interpolate it', () => {
-  const surfaces = ['docs/modules/issue-work/README.md'] as const;
-
-  for (const path of surfaces) {
-    it(`${path} names \`${WORK_EVIDENCE_WAIVER_KIND}\` as the kind that waives the gate`, () => {
-      const text = read(path);
-      const waiverSentences = text
-        .split('\n')
-        .filter((line) => /waives the ISS-786 work-evidence gate/.test(line));
-      expect(waiverSentences.length).toBeGreaterThan(0);
-      expect(waiverSentences.join('\n')).toContain(`\`${WORK_EVIDENCE_WAIVER_KIND}\``);
-    });
-  }
-});
-
 describe('the query the surfaces describe', () => {
   const source = read('packages/core/src/pipeline/work-evidence.ts');
 

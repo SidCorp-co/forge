@@ -75,3 +75,12 @@ provenance of its own.
 Not yet read: the order cluster (`issues/dependency-*`, `relations-service`, `cycle-detect`),
 the retry cluster (`jobs/retry`, `queue-hop`, `resume-policy`), and the terminal cluster
 (`issues/apply-transition` 540 lines, `pipeline/runs-cascade`, `runs-concluded`, `merge-marker`).
+
+## Honest costs
+
+| Cost | What it buys, and who pays |
+|---|---|
+| The transition chokepoint is the busiest write path | Every status move — pipeline, MCP, REST, CLI, sweeper — routes through one function and grows an audit row plus a trigger. Getting it wrong stalls every issue in the fleet, not one |
+| One held-predicate changes answers callers may depend on | `isIssueLeaseHeld` is device-scoped today; fleet-wide is the fix, but any caller quietly relying on "held only by me" starts seeing `true`. This audit did not enumerate them |
+| This document rots | Every row cites a file read on one day. Left a quarter, it will cite code that moved, and be wrong in the direction that flatters the tree |
+| Two rows are owner decisions | Until they are answered the module cannot close — not because the work is unclear, but because either answer is defensible and choosing one silently settles a product question |

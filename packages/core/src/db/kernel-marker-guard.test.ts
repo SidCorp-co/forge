@@ -9,7 +9,7 @@
  *
  * Why this is a SECOND guard rather than a widening of the first, and why an
  * opaque `.set()` argument counts as a violation:
- * `docs/modules/control-observability/README.md`.
+ * the kernel-transition chokepoint in `lifecycle/transition.ts`.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';

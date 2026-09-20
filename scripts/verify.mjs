@@ -50,13 +50,6 @@ const CHECKS = [
   },
   {
     axis: 'knowledge',
-    label: 'flow-map',
-    cmd: ['node', 'scripts/build-flow-map.mjs', '--check'],
-    scanned: /: (\d+) flow\(s\) across/,
-    unit: 'flows',
-  },
-  {
-    axis: 'knowledge',
     label: 'pat-surface',
     cmd: ['node', 'scripts/check-pat-surface.mjs'],
     scanned:

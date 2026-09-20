@@ -16,7 +16,7 @@
  * clone at `queued` BEFORE its delayed enqueue, so a backing-off retry always
  * leaves a non-terminal job and excludes the run here.
  *
- * The whole flow, both directions: docs/flows/lifecycle-pipeline.html
+ * The whole flow, both directions: the run/job invariant in CLAUDE.md.
  */
 
 import { sql } from 'drizzle-orm';

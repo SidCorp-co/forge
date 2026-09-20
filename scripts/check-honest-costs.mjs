@@ -50,7 +50,7 @@ function main() {
     );
     console.error(
       `Add a \`## Honest costs\` section saying what this takes from whoever adopts it — the price of the\n` +
-        `choices it makes, not the boundaries it draws. The convention is in ${PROPOSALS}/README.md.`,
+        `choices it makes, not the boundaries it draws. The convention is in docs/README.md.`,
     );
     return 1;
   }

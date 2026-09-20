@@ -60,13 +60,13 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 ## Documentation
 
 [Vision](docs/VISION.md) · [Quickstart](docs/quickstart.md) ·
-[Architecture](docs/proposals/destination/) · [Modules](docs/modules/) ·
-[RFCs](docs/rfcs/) · [Proposals](docs/proposals/) · [Changelog](CHANGELOG.md)
+[Architecture](docs/proposals/destination/) ·
+[Proposals](docs/proposals/destination/) · [Changelog](CHANGELOG.md)
 
 ## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md). Trunk-based: one `main`, branches under a day, feature flags
-absorb what is in flight. Significant changes need an [RFC](docs/rfcs/).
+absorb what is in flight. Significant changes are argued in [`docs/proposals/destination/`](docs/proposals/destination/).
 
 Security vulnerabilities: **never a public issue** — use
 [private reporting](https://github.com/SidCorp-co/forge/security/advisories/new).
