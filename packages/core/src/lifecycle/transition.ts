@@ -18,6 +18,7 @@ import {
   agentSessions,
   type JobStatus,
   jobs,
+  type KernelTransitionEntity,
   kernelTransitions,
   type PipelineRunStatus,
   pipelineRuns,
@@ -31,6 +32,14 @@ import { logger } from '../logger.js';
  *  when atomicity with a cascade or a sibling write is required. */
 export type { KernelExecutor };
 
+/**
+ * The entities this module's CAS write can drive. `issues` is audited too
+ * (ISS-1107) but is NOT one of them: its writer carries a compare-and-set on
+ * the prior status and columns no row type here has, so it writes its own
+ * UPDATE and calls `recordKernelTransition` for the audit row. Anything that
+ * reaches `applyKernelTransition` with `issue` is refused by name rather than
+ * falling through to `pipeline_runs`.
+ */
 export type KernelEntity = 'job' | 'session' | 'run';
 export type KernelActorType = 'user' | 'system' | 'runner' | 'sweeper';
 
@@ -215,13 +224,81 @@ function projectionFor(
   return projection;
 }
 
+/** What one audit row says, whoever wrote the UPDATE it belongs to. */
+export interface KernelTransitionRecord {
+  entity: KernelTransitionEntity;
+  entityId: string;
+  fromStatus?: string | null;
+  toStatus: string;
+  reason?: string | null;
+  actor: KernelActor;
+  source: string;
+}
+
+/**
+ * THE writer of `kernel_transitions`. `writeTransition` calls it for the three
+ * tables it owns; `issues/apply-transition.ts` calls it for the fourth, whose
+ * UPDATE it writes itself. Run it on the same executor as that UPDATE — a row
+ * that can be missing when the update succeeded reads as "nobody did this".
+ */
+export async function recordKernelTransition(
+  exec: KernelExecutor,
+  rows: readonly KernelTransitionRecord[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await exec.insert(kernelTransitions).values(
+    rows.map((row) => ({
+      entity: row.entity,
+      entityId: row.entityId,
+      fromStatus: row.fromStatus ?? null,
+      toStatus: row.toStatus,
+      reason: row.reason ?? null,
+      actorType: row.actor.type,
+      actorAgency: agencyOf(row.actor),
+      actorId: row.actor.id ?? null,
+      source: row.source,
+    })),
+  );
+}
+
+/**
+ * The table each entity this chokepoint drives writes to. An entity with no
+ * entry is refused where the gap is, rather than defaulting to the last arm of
+ * a ternary chain — which is what `issue` would have done.
+ */
+type KernelTable = typeof jobs | typeof agentSessions | typeof pipelineRuns;
+
+/**
+ * The table this chokepoint writes for an entity. Resolved here rather than by
+ * a ternary chain, because a chain has a last arm: an entity with no table of
+ * its own would have landed silently on `pipeline_runs`, which is how `issue`
+ * would have been absorbed. It is refused by name instead.
+ *
+ * Read lazily, never captured at module load — the tables are drizzle objects
+ * and a module-level map of them is evaluated before a caller's partial mock
+ * of the schema exists.
+ */
+function tableForEntity(entity: KernelEntity): KernelTable {
+  switch (entity) {
+    case 'job':
+      return jobs;
+    case 'session':
+      return agentSessions;
+    case 'run':
+      return pipelineRuns;
+    default:
+      throw new Error(
+        `applyKernelTransition drives job, session and run, and has no table for \`${entity}\`. An \`issue\` status write goes through \`issues/apply-transition.ts:transitionIssueStatus\`, which carries the compare-and-set this chokepoint cannot express and calls \`recordKernelTransition\` for its own audit row.`,
+      );
+  }
+}
+
 async function writeTransition(
   exec: KernelExecutor,
   args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,
 ): Promise<Array<Record<string, unknown> & { id: string }>> {
+  const table = tableForEntity(args.entity);
   await stampKernelTxn(exec);
-  const table =
-    args.entity === 'job' ? jobs : args.entity === 'session' ? agentSessions : pipelineRuns;
   const projection = projectionFor(table, args.entity, args.returning);
   const write = exec
     .update(table as typeof jobs)
@@ -230,21 +307,18 @@ async function writeTransition(
   const updated = ((projection ? await write.returning(projection) : await write.returning()) ??
     []) as Array<Record<string, unknown> & { id: string }>;
 
-  if (updated.length > 0) {
-    await exec.insert(kernelTransitions).values(
-      updated.map((row) => ({
-        entity: args.entity,
-        entityId: row.id,
-        fromStatus: args.fromStatus ?? null,
-        toStatus: args.to,
-        reason: args.reason ?? null,
-        actorType: args.actor.type,
-        actorAgency: agencyOf(args.actor),
-        actorId: args.actor.id ?? null,
-        source: args.source,
-      })),
-    );
-  }
+  await recordKernelTransition(
+    exec,
+    updated.map((row) => ({
+      entity: args.entity,
+      entityId: row.id,
+      fromStatus: args.fromStatus ?? null,
+      toStatus: args.to,
+      reason: args.reason ?? null,
+      actor: args.actor,
+      source: args.source,
+    })),
+  );
 
   return updated;
 }

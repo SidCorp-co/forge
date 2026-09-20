@@ -1919,6 +1919,13 @@
       "when": 1807315200000,
       "tag": "0288_issue_creator_agency",
       "breakpoints": true
+    },
+    {
+      "idx": 289,
+      "version": "7",
+      "when": 1807747200000,
+      "tag": "0289_issue_transition_audit",
+      "breakpoints": true
     }
   ]
 }

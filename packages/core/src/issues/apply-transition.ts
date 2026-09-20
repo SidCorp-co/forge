@@ -1,5 +1,6 @@
 import { and, count, eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
+import { stampKernelTxn } from '../db/kernel-marker.js';
 import {
   comments,
   type IssueStatus,
@@ -8,6 +9,7 @@ import {
   pipelineRuns,
   type WaitingKind,
 } from '../db/schema.js';
+import { type KernelActor, recordKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
@@ -440,6 +442,23 @@ type TransitionWriteResult = {
   unblockedDependents: UnblockedDependent[];
 };
 
+/**
+ * ISS-1107 — the transition actor as `kernel_transitions` stores one.
+ *
+ * The two vocabularies do not line up: `TransitionActor` has `device`, which
+ * `kernelTransitionActorTypes` has not, and a device IS a runner box, so that
+ * is the type it records under, carrying the device's own id rather than its
+ * owner's. `agency` is the third value of a three-valued input, so it goes
+ * through `actorAgency` rather than a spread — `null` there means an
+ * agent-driven user and `undefined` means a human.
+ */
+function kernelActorFor(actor: TransitionActor): KernelActor {
+  if (actor.type === 'user') {
+    return { type: 'user', id: actor.id, agency: actorAgency(actor) };
+  }
+  return { type: 'runner', id: actor.id };
+}
+
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, requestedStatus, toStatus, actor, options, reopening } = input;
   const { declaredCriteria } = input;
@@ -451,6 +470,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       : [];
   try {
     return await db.transaction(async (tx) => {
+      // ISS-1107 — stamped before anything writes, so `trg_issues_unaudited_transition`
+      // reads this transaction's marker whichever statement moves the status.
+      await stampKernelTxn(tx);
       await options.beforeStatusWrite?.(tx);
       if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
         await postTransitionReasonComment(
@@ -497,6 +519,17 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
               updatedAt: issues.updatedAt,
             });
           if (!row) return null;
+          await recordKernelTransition(t, [
+            {
+              entity: 'issue',
+              entityId: row.id,
+              fromStatus,
+              toStatus,
+              reason: options.transitionReason?.trim() || options.reason || null,
+              actor: kernelActorFor(actor),
+              source: 'issues',
+            },
+          ]);
           const closeStamp = await markMergedOnClose(t, {
             issueId: issue.id,
             toStatus: requestedStatus,

@@ -522,13 +522,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'and relations.blockedBy (they block this), each flagged expired when its validUntil has ' +
     'passed and it no longer gates dispatch.\n' +
     'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
-    'closed auto-stamps merged_at when still NULL (closed = done, for the blocks-gate), so a ' +
-    'close meaning "abandoned, code never landed" needs unmark after it.\n' +
+    'closed means the work shipped: a close with no merged_at is refused ' +
+    '(CLOSE_REQUIRES_SHIPPED), and work that is not work leaves by dropped.\n' +
     'MERGE MARK. mark_merged (data.issueId, data.target, optional data.commit / data.mergedAt ' +
     'ISO / data.note) idempotently stamps merged_at and merged_commit_sha together, defaulting ' +
-    "commit to the recorded implementation handoff's, and unblocks dependents. target is an " +
-    'audit label; every value stamps the same column. unmark (data.issueId + optional ' +
-    'data.note) clears merged_at to NULL, re-blocking children when a merge is rolled back.\n' +
+    "commit to the recorded implementation handoff's. It claims the code landed, which is what " +
+    'lets the issue close; target is an audit label and every value stamps the same column. ' +
+    'unmark clears it, re-blocking nothing: dependents are held by STATUS (ISS-1100).\n' +
     'TASKS. createTask needs data.issueId + data.taskTitle; listTasks needs filters.issue and ' +
     'accepts filters.taskStatus; updateTask/deleteTask take the task UUID as documentId. Tasks ' +
     'inherit project membership from their issue.\n' +

@@ -309,16 +309,16 @@ describe('POST /api/issues/:id/transition', () => {
     expect(envelope.event).toBe('issue.statusChanged');
   });
 
-  it('200 draft → closed discards the proposal', async () => {
+  it('200 draft → dropped discards the proposal', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'draft' });
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'closed', reopenCount: 0, updatedAt: new Date() },
+      { id: ISSUE_ID, status: 'dropped', reopenCount: 0, updatedAt: new Date() },
     ]);
-    const res = await req({ toStatus: 'closed', reason: 'draft discarded' }, token);
+    const res = await req({ toStatus: 'dropped', reason: 'draft discarded' }, token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { status: string };
-    expect(body.status).toBe('closed');
+    expect(body.status).toBe('dropped');
   });
 
   it('409 ILLEGAL_TRANSITION when draft attempts to skip into the pipeline', async () => {
@@ -340,6 +340,18 @@ describe('POST /api/issues/:id/transition', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('STALE_TRANSITION');
     expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/issues/:id/transition — `closed` means shipped (ISS-1108)', () => {
+  it('422 CLOSE_REQUIRES_SHIPPED for a close on an issue with no merged_at', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'draft' });
+    const res = await req({ toStatus: 'closed', reason: 'draft discarded' }, token);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('CLOSE_REQUIRES_SHIPPED');
+    expect(body.message).toContain('`dropped`');
   });
 });
 

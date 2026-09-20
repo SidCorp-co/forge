@@ -14,6 +14,7 @@ vi.mock('../db/client.js', () => {
     select: vi.fn(() => ({ from: selectFrom })),
     update: dbUpdate,
     execute: txExecute,
+    insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
   };
   return {
     db: {
@@ -66,6 +67,9 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
   });
 
   it('entering `closed` DOES close the open run', async () => {
+    // The row shows it shipped, or ISS-1108's rule refuses the close before
+    // this case reaches the question it is about.
+    selectLimit.mockResolvedValueOnce([{ mergedAt: new Date('2026-09-18T00:00:00Z') }]);
     queueUpdate('closed');
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'awaiting_release', reopenCount: 0 },
