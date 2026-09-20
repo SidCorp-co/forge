@@ -29,6 +29,7 @@ let mods: {
   releaseIssueLease: typeof import('../../src/devices/run-session.js').releaseIssueLease;
   readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
   detectOrphanedRunAssertions: typeof import('../../src/pipeline/issue-run-invariant.js').detectOrphanedRunAssertions;
+  readDeviceIssueLease: typeof import('../../src/issues/issue-lease.js').readDeviceIssueLease;
 };
 
 beforeAll(async () => {
@@ -40,6 +41,7 @@ beforeAll(async () => {
   const runSession = await import('../../src/devices/run-session.js');
   const admissible = await import('../../src/devices/admissible.js');
   const invariant = await import('../../src/pipeline/issue-run-invariant.js');
+  const lease = await import('../../src/issues/issue-lease.js');
   mods = {
     openRunSession: runSession.openRunSession,
     closeRunSession: runSession.closeRunSession,
@@ -47,6 +49,7 @@ beforeAll(async () => {
     releaseIssueLease: runSession.releaseIssueLease,
     readAdmissibleIssues: admissible.readAdmissibleIssues,
     detectOrphanedRunAssertions: invariant.detectOrphanedRunAssertions,
+    readDeviceIssueLease: lease.readDeviceIssueLease,
   };
 }, 60_000);
 
@@ -308,5 +311,102 @@ describe('giving a lease back', () => {
     await mods.releaseIssueLease({ deviceId: boxA.id, issueKey: 'ISS-880' });
 
     expect(await mods.isIssueLeaseHeld({ deviceId: boxA.id, issueKey: 'ISS-881' })).toBe(true);
+  });
+});
+
+describe('what one box is told about one issue lease', () => {
+  it('reports the holder to a box that is not holding it', async () => {
+    const { project, boxA, boxB } = await twoBoxesOnOneProject();
+    const opened = await mods.openRunSession({
+      deviceId: boxA.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880'],
+      name: 'run-a',
+    });
+
+    const seen = await mods.readDeviceIssueLease({ deviceId: boxB.id, issueKey: 'ISS-880' });
+
+    expect(seen.holder?.deviceId).toBe(boxA.id);
+    expect(seen.holder?.sessionId).toBe(opened.sessionId);
+    expect(seen.holder?.runId).toBe(opened.runId);
+    expect(
+      Number.isNaN(Date.parse(String(seen.holder?.acquiredAt))),
+      'an operator who cannot tell a lease taken four hours ago from one taken four seconds ago cannot tell a wedge from a race',
+    ).toBe(false);
+  });
+
+  it('calls a lease another box holds held', async () => {
+    const { project, boxA, boxB } = await twoBoxesOnOneProject();
+    await mods.openRunSession({
+      deviceId: boxA.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880'],
+      name: 'run-a',
+    });
+
+    expect(
+      (await mods.readDeviceIssueLease({ deviceId: boxB.id, issueKey: 'ISS-880' })).held,
+      'the device filter is the defect: a lease only its own holder can see refuses nobody',
+    ).toBe(true);
+  });
+
+  it('does not call a lease another box holds this box own', async () => {
+    const { project, boxA, boxB } = await twoBoxesOnOneProject();
+    await mods.openRunSession({
+      deviceId: boxA.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880'],
+      name: 'run-a',
+    });
+
+    expect(
+      (await mods.readDeviceIssueLease({ deviceId: boxB.id, issueKey: 'ISS-880' }))
+        .heldByThisDevice,
+      'a box that reads the fleet answer as its own opens no run it should and closes no run it must',
+    ).toBe(false);
+  });
+
+  it('separates the two answers for the box that is holding it', async () => {
+    const { project, boxA } = await twoBoxesOnOneProject();
+    await mods.openRunSession({
+      deviceId: boxA.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880'],
+      name: 'run-a',
+    });
+
+    const seen = await mods.readDeviceIssueLease({ deviceId: boxA.id, issueKey: 'ISS-880' });
+
+    expect(seen.held).toBe(true);
+    expect(
+      seen.heldByThisDevice,
+      'a box that never sees its own lease as its own never marks the run closed, and the close loop spins for ever',
+    ).toBe(true);
+  });
+
+  it('reports a free issue as held by nobody', async () => {
+    const { boxA } = await twoBoxesOnOneProject();
+
+    const seen = await mods.readDeviceIssueLease({ deviceId: boxA.id, issueKey: 'ISS-881' });
+
+    expect(seen).toEqual({ held: false, heldByThisDevice: false, holder: null });
+  });
+
+  it('stops reporting a lease once the holding session goes terminal', async () => {
+    const { project, boxA, boxB } = await twoBoxesOnOneProject();
+    const opened = await mods.openRunSession({
+      deviceId: boxA.id,
+      projectId: project.id,
+      issueKeys: ['ISS-880'],
+      name: 'run-a',
+    });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET status = 'failed' WHERE id = ${opened.sessionId}
+    `);
+
+    expect(
+      await mods.readDeviceIssueLease({ deviceId: boxB.id, issueKey: 'ISS-880' }),
+      'a lease row that outlives its session strands the issue where no box can take it',
+    ).toEqual({ held: false, heldByThisDevice: false, holder: null });
   });
 });
