@@ -50,7 +50,7 @@ async function pullOneTarget(
   report.push(`  target ${target.label}:`);
   if (listing.truncated) {
     report.push(
-      `    INCOMPLETE: this target holds more unresolved issues than one tick reads (${listing.pages} page(s) of ${SENTRY_LIST_DEFAULT_LIMIT}). Sentry orders by last seen, so the issues past that point are the SAME ones every tick and no later tick reaches them — this pull does not resume where it stopped, and that is recorded at docs/proposals/a-bounded-sentry-pull-does-not-resume.md. What helps today: give this target a narrower projectSlug, or resolve issues in Sentry so the list shortens.`,
+      `    INCOMPLETE: this target holds more unresolved issues than one tick reads (${listing.pages} page(s) of ${SENTRY_LIST_DEFAULT_LIMIT}). Sentry orders by last seen, so the issues past that point are the SAME ones every tick and no later tick reaches them — this pull does not resume where it stopped. What helps today: give this target a narrower projectSlug, or resolve issues in Sentry so the list shortens.`,
     );
   }
   for (const refusal of listing.refused) {

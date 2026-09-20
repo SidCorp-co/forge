@@ -230,8 +230,10 @@ describe('the path a refusal names', () => {
 /**
  * The granularity the menu actually has, pinned so it is a decision rather
  * than a surprise. Measured live on forge-beta at b32bdc2d while walking
- * ISS-973's criteria; the reasoning and the shape of a fix are in
- * `docs/proposals/pat-permission-granularity-is-mount-shaped.md`.
+ * ISS-973's criteria. The menu maps a resource to `/api/...` mount prefixes and
+ * `patResourceForPath` answers with the resource owning the matched prefix, so
+ * attribution is mount-shaped rather than subject-shaped: `projects:read` covers
+ * every project-scoped sub-route that no narrower prefix claims first.
  */
 describe('a permission is as coarse as its mount', () => {
   it('attributes a project-scoped sub-route to projects, not to its subject', () => {

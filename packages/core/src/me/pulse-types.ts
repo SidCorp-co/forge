@@ -138,9 +138,6 @@ export const PULSE_THRESHOLDS: PulseThresholds = {
   identityCap: 50,
 };
 
-/** Jobs that hold a runner slot: a run or an issue with one of these is live. */
-export const PULSE_LIVE_JOB_STATUSES = ['queued', 'dispatched', 'running', 'held'] as const;
-
 export const PULSE_OPEN_STATUSES = ['open', 'confirmed', 'clarified', 'approved'] as const;
 export const PULSE_IN_PROGRESS_STATUSES = [
   'in_progress',
@@ -150,8 +147,6 @@ export const PULSE_IN_PROGRESS_STATUSES = [
   'reopen',
 ] as const;
 export const PULSE_AWAITING_RELEASE_STATUSES = ['awaiting_release', 'releasing'] as const;
-export const PULSE_HUMAN_BLOCKED_STATUSES = ['waiting', 'needs_info', 'on_hold'] as const;
-export const PULSE_FINISHED_STATUSES = ['closed', 'dropped'] as const;
 
 export const PULSE_HEARTBEAT_DAYS = 30;
 export const PULSE_FLOW_WEEKS = 12;

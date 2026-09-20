@@ -96,7 +96,12 @@ impl LeaseKeeper for CoreRunState<'_> {
     }
 
     async fn is_returned(&self, issue_key: &str) -> Result<bool> {
-        Ok(!run_sessions::lease_held(self.client, issue_key).await?)
+        // THIS box's half, not the fleet's: the close loop is asking whether it
+        // gave the lease back, and an issue another box legitimately holds must
+        // not stop this one from ever marking its own run closed (ISS-1109).
+        Ok(!run_sessions::lease_state(self.client, issue_key)
+            .await?
+            .held_by_this_device)
     }
 }
 

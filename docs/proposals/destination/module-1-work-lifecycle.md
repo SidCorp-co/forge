@@ -48,13 +48,32 @@ provenance of its own.
 
 1. **Bring `issues` under the kernel transition plane.** Same chokepoint, same `kernel_transitions`
    row, same trigger. This is the module, and the rest are small beside it.
-2. **One held-predicate.** Four call sites answer "is this issue being worked" with three
-   different SQL shapes — `devices/admissible.ts` and `pipeline/issue-run-invariant.ts` (identical,
-   project-scoped), `devices/pool.ts` (job-level, excludes `queued`), and `isIssueLeaseHeld`
-   (device-scoped, and the only one named for the lease).
-3. **A real lease**, replacing the JSONB array with something a constraint can refuse.
-4. **Issue revision**, so a live attempt is not silently re-aimed.
-5. **Delete `POST /me/pool/claim`** — a live endpoint whose whole body returns
+2. ~~**One held-predicate.**~~ **Done, ISS-1109.** Four call sites answered "is this issue being
+   worked" with three different SQL shapes — `devices/admissible.ts` and
+   `pipeline/issue-run-invariant.ts` (identical, project-scoped), `devices/pool.ts` (job-level,
+   excludes `queued`), and `isIssueLeaseHeld` (device-scoped, and the only one named for the
+   lease). The first two and the fourth now call `issues/issue-lease.ts`. `devices/pool.ts` was
+   deliberately left: its predicate is over `jobs` for one issue, a different subject, and ISS-1110
+   removes the route.
+3. ~~**A real lease**, replacing the JSONB array with something a constraint can refuse.~~
+   **Done, ISS-1109.** `issue_leases`, primary key `(project_id, issue_key)`, taken by
+   `INSERT ... ON CONFLICT DO NOTHING` inside the transaction that opens the run session.
+   `runIssues` stays as the run's membership record and says nothing about who holds what.
+4. **Address a lease by its project, not by its key alone.** `issue_key` is unique only per
+   project — `issues_project_iss_seq_uq` is on `(project_id, iss_seq)`, so `ISS-9` exists in every
+   project — but `DELETE /api/devices/me/issue-leases/:issueKey` carries no project, and
+   `issue-lease.ts:releaseIssueLeaseRow` deletes on `(device_id, issue_key)`. A box bound to two
+   projects that holds `ISS-9` in both gives up both leases when one run closes, freeing an issue
+   the other run is still working — the double-hold ISS-1109 closed, arriving through the release.
+   `readDeviceIssueLease` has the same shape: it filters by key across every reachable project and
+   `LIMIT 1`s the tie-break, so `held` can answer about a project the caller did not mean.
+   ISS-1109 did not introduce this — the JSONB release it replaced was `WHERE s.device_id = $1`
+   and equally project-blind — and did not fix it, because the fix is a wire change: the route,
+   `transport/run_sessions.rs:release_lease` and the close loop all have to carry the project or
+   the session. Reachable today: `reachableProjects` exists precisely because a device serves more
+   than one project.
+5. **Issue revision**, so a live attempt is not silently re-aimed.
+6. **Delete `POST /me/pool/claim`** — a live endpoint whose whole body returns
    `{ ok: false, reason: 'runner_too_old' }`, false for most callers, superseded by `prepare`.
 
 ## Owner decisions this module is blocked on
@@ -81,6 +100,6 @@ the retry cluster (`jobs/retry`, `queue-hop`, `resume-policy`), and the terminal
 | Cost | What it buys, and who pays |
 |---|---|
 | The transition chokepoint is the busiest write path | Every status move — pipeline, MCP, REST, CLI, sweeper — routes through one function and grows an audit row plus a trigger. Getting it wrong stalls every issue in the fleet, not one |
-| One held-predicate changes answers callers may depend on | `isIssueLeaseHeld` is device-scoped today; fleet-wide is the fix, but any caller quietly relying on "held only by me" starts seeing `true`. This audit did not enumerate them |
+| One held-predicate changes answers callers may depend on | `isIssueLeaseHeld` was device-scoped; fleet-wide was the fix, and this audit did not enumerate the callers relying on "held only by me". ISS-1109 did: one, the runner's own close loop, through `daemon/recovery_ports.rs:is_returned`. It reads `heldByThisDevice` now, which is the question it was always asking |
 | This document rots | Every row cites a file read on one day. Left a quarter, it will cite code that moved, and be wrong in the direction that flatters the tree |
 | Two rows are owner decisions | Until they are answered the module cannot close — not because the work is unclear, but because either answer is defensible and choosing one silently settles a product question |

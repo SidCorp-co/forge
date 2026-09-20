@@ -6,7 +6,13 @@ export const releaseVerifyProbeSchema = z.object({
 });
 
 export const releaseChannelFields = {
-  /** Matched against `runners.labels`; only those boxes may run the release. */
+  /**
+   * Which box a release should PREFER, matched against `runners.labels`.
+   *
+   * A recommendation and not a restriction: a project whose boxes carry no
+   * matching label still releases, on the pool it has, and records that the
+   * preference went unmet (ISS-1128).
+   */
   releaseRunnerLabel: z.string().min(1).max(60).optional(),
   verify: z
     .object({

@@ -29,7 +29,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
-import { createIssue, IssueCreateError } from './create-service.js';
+import { CREATE_ENTRY_STATUSES, createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
@@ -79,7 +79,7 @@ export const issueCreateSchema = z
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    status: z.enum(['open', 'on_hold', 'draft']).optional(),
+    status: z.enum(CREATE_ENTRY_STATUSES).optional(),
   })
   .strict();
 

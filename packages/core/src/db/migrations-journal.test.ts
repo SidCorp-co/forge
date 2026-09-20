@@ -41,6 +41,43 @@ function containsSchemaDdl(sql: string): boolean {
   return SCHEMA_DDL.test(stripNonCode(sql));
 }
 
+/** Where the two sides live, as a reader of a failure has to type them. */
+const MIGRATIONS_REL = 'packages/core/drizzle/migrations';
+
+/**
+ * Every migration the directory and the journal disagree about, as the sentence that sends a reader
+ * to the fix rather than to a search.
+ *
+ * Drizzle reads `meta/_journal.json` and never scans the directory, so the two can name different
+ * sets and the deploy will not say so. A file no entry names is the silent half: it is present,
+ * reviewable and in the diff, and it does not run. Where it only moves rows, no crash, query or log
+ * line reveals that afterwards either. An entry whose file is gone is the loud half — the migrator
+ * opens every tag it reads — but nothing here looks for it before the container does.
+ *
+ * `dirEntries` is the raw listing, so what counts as a migration is decided in one place.
+ */
+function journalDisagreements(dirEntries: string[], tags: string[]): string[] {
+  const files = dirEntries.filter((f) => f.endsWith('.sql')).map((f) => f.slice(0, -'.sql'.length));
+  const registered = new Set(tags);
+  const present = new Set(files);
+  return [
+    ...files
+      .filter((tag) => !registered.has(tag))
+      .sort()
+      .map(
+        (tag) =>
+          `${tag}.sql is in ${MIGRATIONS_REL}/ and in no meta/_journal.json entry — drizzle applies only what the journal names, so this file will never run: nothing fails on deploy, and where it only moves rows nothing ever will. Register it with a journal entry and a meta/<idx>_snapshot.json, or delete it.`,
+      ),
+    ...tags
+      .filter((tag) => !present.has(tag))
+      .sort()
+      .map(
+        (tag) =>
+          `meta/_journal.json names ${tag} and ${MIGRATIONS_REL}/${tag}.sql does not exist — drizzle opens every file the journal names, so the migrator throws on container start when it reaches this entry. Restore the file, or remove the entry.`,
+      ),
+  ];
+}
+
 /**
  * How far above the journal's maximum a new head `when` may sit, in days.
  *
@@ -154,6 +191,58 @@ describe('drizzle migration journal', () => {
           `${e.tag}.sql changes the schema but sits after snapshot ${headIdx} — run \`pnpm db:generate\` on the merged tree, keep meta/<idx>_snapshot.json and discard the .sql it emits`,
       );
     expect(lagging).toEqual([]);
+  });
+
+  it('has a journal and a directory that name the same set of migrations', () => {
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
+      entries: Array<{ tag: string }>;
+    };
+    expect(
+      journalDisagreements(
+        readdirSync(migrationsDir),
+        journal.entries.map((e) => e.tag),
+      ),
+    ).toEqual([]);
+  });
+
+  describe('journalDisagreements', () => {
+    it('reports a .sql file no journal entry names, by the file name it carries', () => {
+      const messages = journalDisagreements(
+        ['0289_issue_transition_audit.sql', '0290_closed_means_shipped.sql'],
+        ['0289_issue_transition_audit'],
+      );
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toContain('0290_closed_means_shipped.sql');
+    });
+
+    it('says why an unregistered file is silent rather than counting it', () => {
+      const [message] = journalDisagreements(['0290_closed_means_shipped.sql'], []);
+      expect(message).toContain('drizzle applies only what the journal names');
+      expect(message).toContain('this file will never run');
+      expect(message).toContain('where it only moves rows nothing ever will');
+    });
+
+    it('reports a journal entry whose file is absent, by its tag', () => {
+      const messages = journalDisagreements(['0289_a.sql'], ['0289_a', '0290_ghost']);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toContain('0290_ghost');
+    });
+
+    it('reports both directions at once when both are broken', () => {
+      expect(journalDisagreements(['0289_a.sql'], ['0290_ghost'])).toHaveLength(2);
+    });
+
+    it('reports nothing when the two sides name the same set', () => {
+      expect(journalDisagreements(['0288_b.sql', '0289_a.sql'], ['0289_a', '0288_b'])).toEqual([]);
+    });
+
+    it('does not report README.md, which is not a migration', () => {
+      expect(journalDisagreements(['0289_a.sql', 'README.md'], ['0289_a'])).toEqual([]);
+    });
+
+    it('does not report the meta directory, which is not a migration', () => {
+      expect(journalDisagreements(['0289_a.sql', 'meta'], ['0289_a'])).toEqual([]);
+    });
   });
 
   it.each([

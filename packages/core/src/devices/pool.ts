@@ -9,7 +9,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ADMITTED_RUNNER } from './pool-admission.js';
-import { RUNNER_MAY_TAKE_JOB } from './release-label.js';
+import { runnerMayTakeJob } from './release-label.js';
 
 export type PoolRelation = {
   kind: string;
@@ -76,7 +76,7 @@ export async function readPool(args: {
     JOIN projects ipj ON ipj.id = j.project_id
     WHERE j.status = 'queued'
       AND ${ADMITTED_RUNNER}
-      AND ${RUNNER_MAY_TAKE_JOB}
+      AND ${runnerMayTakeJob()}
       AND pr.status IN ('running', 'paused')
       AND j.held_by IS NULL
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())

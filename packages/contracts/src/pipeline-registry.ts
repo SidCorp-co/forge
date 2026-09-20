@@ -11,6 +11,10 @@
 
 import { z } from 'zod';
 
+// status-tuple: differs — this is the browser-side copy of core's `issueStatuses`,
+// and it is a second declaration on purpose: neither package may import a runtime
+// value from the other, so the tuple is mirrored and held in lockstep by the parity
+// test in `packages/core/src/pipeline/registry.test.ts` rather than by an import.
 export const REGISTRY_ISSUE_STATUSES = [
   'open',
   'confirmed',

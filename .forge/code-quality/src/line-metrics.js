@@ -1,6 +1,27 @@
-export function isIgnoredComment(comment) {
-  const text = comment.value.trim();
-  return /^(?:eslint-(?:disable|enable)|@ts-(?:ignore|expect-error))/i.test(text);
+/**
+ * Directives this plugin knows without being told. A comment opening with one of these is an
+ * argument the toolchain reads, not prose about the code, so no comment rule may measure it.
+ */
+export const DEFAULT_DIRECTIVES = ["eslint-disable", "eslint-enable", "@ts-ignore", "@ts-expect-error"];
+
+const escape = (name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A project's toolchain has directive vocabularies this plugin cannot guess — `i18n-allow:` read
+ * by one checker, `biome-ignore` by another — and their wording belongs to the tool consuming
+ * them, which is why two sites waiving the same rule carry the same words. `additional` names
+ * them; the built-in set always applies, because a comment rule that could be told to measure
+ * `eslint-disable` as prose would be configured into a defect.
+ */
+export function directiveMatcher(additional = []) {
+  const names = [...DEFAULT_DIRECTIVES, ...additional];
+  return new RegExp(`^(?:${names.map(escape).join("|")})`, "i");
+}
+
+const DEFAULT_MATCHER = directiveMatcher();
+
+export function isIgnoredComment(comment, matcher = DEFAULT_MATCHER) {
+  return matcher.test(comment.value.trim());
 }
 
 /**
@@ -61,11 +82,13 @@ function lineHasCode(sourceCode, lineNumber, commentsOnLine) {
 }
 
 // Both comment rules ask for the same metrics on the same file, and the walk
-// below touches every line twice.
+// below touches every line twice. Keyed by the directive vocabulary as well as the file:
+// two rules configured with different vocabularies do not see the same comment lines.
 const metricsCache = new WeakMap();
 
-export function getLineMetrics(sourceCode) {
-  const cached = metricsCache.get(sourceCode);
+export function getLineMetrics(sourceCode, matcher = DEFAULT_MATCHER) {
+  const perFile = metricsCache.get(sourceCode) ?? new Map();
+  const cached = perFile.get(matcher.source);
   if (cached) return cached;
 
   const commentsByLine = new Map();
@@ -86,7 +109,7 @@ export function getLineMetrics(sourceCode) {
       comments.some(
         (comment) =>
           comment.type !== "Shebang" &&
-          !isIgnoredComment(comment) &&
+          !isIgnoredComment(comment, matcher) &&
           // A waiver is the answer to a rule, not prose about the code: charging it to the density
           // budget makes the escape cost a comment line and pushes a file at the budget over it.
           !isWaiver(comment) &&
@@ -99,7 +122,8 @@ export function getLineMetrics(sourceCode) {
   }
 
   const metrics = { codeLines, commentLines };
-  metricsCache.set(sourceCode, metrics);
+  perFile.set(matcher.source, metrics);
+  metricsCache.set(sourceCode, perFile);
   return metrics;
 }
 

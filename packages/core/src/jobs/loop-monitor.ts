@@ -1,5 +1,4 @@
-import type { SQL } from 'drizzle-orm';
-import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
@@ -22,6 +21,7 @@ import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './qu
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
+import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
 
 type RedispatchFn = (
   sessionId: string,
@@ -512,7 +512,7 @@ export async function reapSessionLostJobs(
     try {
       const cfg: KillGateReapConfig = {
         hop: 'heartbeat',
-        where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
+        where: and(eq(jobs.id, row.id), inArray(jobs.status, OCCUPYING_JOB_STATUSES)),
         fromStatus: 'active',
         ...sessionLostCause(row.failure_reason),
       };
@@ -568,7 +568,7 @@ export async function reapResultMisses(
     try {
       const cfg: KillGateReapConfig = {
         hop: 'result',
-        where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
+        where: and(eq(jobs.id, row.id), inArray(jobs.status, OCCUPYING_JOB_STATUSES)),
         fromStatus: 'active',
         error: 'stale',
         finalizeError: STALE_REASON,

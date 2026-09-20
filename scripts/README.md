@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Fourteen gates, six axes
+## Every gate, seven axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -19,8 +19,9 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (honest
-costs · the mode-qualification of injected docs · the PAT permission surface).
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` four (honest
+costs · the mode-qualification of injected docs · the PAT permission surface · whether one question
+in the source has more than one answer). `comment` is gated once, by `check-comment-budget`.
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -38,6 +39,7 @@ passed, because the external record of what shipped belonged to none of them.
 | declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
 | PAT surface | `check-pat-surface` — `injected-docs` | whether every route a project-scoped token can reach is covered by the permission menu that claims to fence it | whether a given fence is correct — that is review's |
+| status tuples | `check-status-tuples` — `lang-check` | whether one question has more than one answer: two declarations holding the same status tuple, or a status-literal array written inline where a named constant for that tuple already exists. Compares by VALUE, not by name, and reads the three vocabularies out of `db/schema.ts` rather than carrying a copy | whether a tuple's MEMBERSHIP is right; SQL string literals, test files, type unions, and a tuple written as an object-literal value, which is a table row rather than a named question |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
@@ -45,6 +47,7 @@ passed, because the external record of what shipped belonged to none of them.
 | flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
+| comment | `check-comment-budget` — `conformance` | what a comment SAYS: density against the code around it, the length of one run, historical narration, and one comment restating another — the four rules `eslint.config.mjs` enables out of `.forge/code-quality`, frozen per (file, rule) | file or function LENGTH, which biome owns at 500/150; and the other halves of `pnpm lint:code-quality` — raw elements, pass-through wrappers, crowded directories, the design-token sweep — which belong to axes nobody has declared |
 
 ### Why `core` lint prints every diagnostic
 
@@ -62,8 +65,9 @@ had no such guard. The two now agree.
 ### Conformance levels
 
 `.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
-block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 2 ·
-relations 2 · behaviour 2 · language 3 · record 3.
+block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 3 ·
+relations 2 · behaviour 2 · language 3 · record 3 · comment 2. `conformance-status.mjs` prints
+them beside what it measured, so this line is a convenience and that command is the answer.
 
 Level 2 is the claim *"old debt frozen, new debt blocked"*, so each such axis must also name where
 its debt is frozen and which direction improves it — `baseline: {path, keyBy, improves}`, where
@@ -130,14 +134,17 @@ meaning what its row says. Measured 2026-08-25.
 
 ### Do not add a rule to an axis another already owns
 
-- **No ESLint.** biome >= 2 covers `noExcessiveLinesPerFunction` and `noExcessiveLinesPerFile`,
-  which is the whole reason ESLint would have been added. A second linter on the same axis means two
-  configs drifting apart.
-- **No comment rules at all.** A density or run-length rule cannot tell documentation from noise:
-  the 19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation, and 19
-  comment lines to a counter are not. The comment-grammar gate that used to own this axis was
-  removed in ISS-1029 for that reason — it flagged prose that was right far more often than prose
-  that was wrong, and a checker at that noise level teaches the reader to skip it.
+- **No ESLint on the LENGTH axis.** biome >= 2 covers `noExcessiveLinesPerFunction` and
+  `noExcessiveLinesPerFile`, so `eslint.config.mjs` switches `max-lines` and
+  `max-lines-per-function` off. ESLint is here for comment content and nothing else; two linters
+  holding one axis means two configs drifting apart.
+- **No comment rules in biome.** A density or run-length rule cannot tell documentation from noise
+  on its own: the 19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation,
+  and 19 comment lines to a counter are not. The comment-grammar gate removed in ISS-1029 flagged
+  prose that was right more often than prose that was wrong, and a checker at that noise level
+  teaches the reader to skip it. What replaced it is baselined rather than absolute — a file may
+  keep what it has and may not gain — and it skips a comment that opens with a directive, because
+  `i18n-allow:` and `biome-ignore` are arguments other gates read and not writing (ISS-1105).
 - **No `biome.json` comments.** A comment inside it makes biome **silently ignore the whole
   enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
   commit message.
@@ -502,6 +509,93 @@ Both real lockfiles this was measured against agree: 948 resolutions on `main` c
 offending lines on the Dependabot pull request that caused this named by package.
 
 ## check-branch-name.sh
+
+## check-migration-order.mjs — a migration is ordered against the set, not against `main`
+
+`packages/core/src/db/migrations-journal.test.ts` reads one journal: its own. Its head-entry
+assertion is that the head `when` clears the maximum in that same file. Every branch therefore
+passes alone, while the SET of open branches — the thing that actually has to be applicable — is
+measured by nothing.
+
+Drizzle's migrator reads the single highest `created_at` in `drizzle.__drizzle_migrations` once and
+then applies only entries whose `when` exceeds it
+(`drizzle-orm/pg-core/dialect.js`, the `Number(lastDbMigration.created_at) < migration.folderMillis`
+arm). An entry below that mark is not reordered — it is skipped, silently, for ever. ISS-807 is what
+that looks like afterwards: the container served new code against an old schema and the symptom was
+a live 500 on `GET /me/attention` for every signed-in user.
+
+**What it asserts, exactly one proposition:** the migrations THIS tree adds to `origin/main` can be
+applied in some order of whole-branch merges alongside every open branch's live ones. Five refusals,
+each naming the branches, the tags and the numbers:
+
+| rule | what it catches |
+|---|---|
+| `below-floor` | a `when` of ours at or under `origin/main`'s highest — the entry drizzle will skip |
+| `duplicate-when` | two branches on one number; whichever merges second is skipped |
+| `duplicate-idx` | two branches claiming one migration index |
+| `inverted` | an index above a sibling's whose `when` is below it, so the merged journal is not monotonic |
+| `interleaved` | `when` ranges that straddle — a branch merges whole, so no order applies both |
+
+`interleaved` is the one no per-entry rule finds. Branch A holding 289 and 291 while B holds 290 has
+every entry distinct and every index ascending with its `when`, and is still unorderable: whichever
+lands first raises the high-water past the other's remainder.
+
+**The unit is the branch.** A sibling already at or below the floor is STRANDED — it cannot land in
+any order until it renumbers — so it is reported on its own and counted against nobody. Refusing
+this tree for it would be refusing a branch for damage it cannot repair. Our own below-floor entries
+are never filtered that way: that entry is the subject.
+
+**Two OTHER branches that clash cost the claim, not the exit.** The five rules also run over every
+pair of live siblings. Pairwise compatibility with this tree is not the whole-set proposition — a
+tree at 292 conflicts with neither A={289,291} nor B={290} while A and B cannot both land — so a
+run that printed a merge order there would be naming an order nobody can execute. Such a pair is
+named, no order is printed, and this tree's own exit is unchanged, because it is not the tree that
+can repair them.
+
+**On CI the checkout is detached** on `refs/pull/N/merge`, where `git rev-parse --abbrev-ref HEAD`
+answers `HEAD`. Three readings say "this is us" and a ref matching any is not a sibling: the name
+HEAD is on, `GITHUB_HEAD_REF`, and any ref this tree already contains. Without them the PR's own
+branch is read as a sibling holding every one of its migrations, and every migration-bearing PR is
+refused against itself. The floor is re-read after the check's own fetch for the same reason in
+reverse: a cached `origin/main` is a floor the remote has already left behind.
+
+**Exit codes.** 0 applicable · 1 a refusal · 2 could not run. A tree that adds no migration exits 0
+without touching the remote and says so, which is a proposition proved from local data rather than a
+failure to reach anything. A tree that IS `origin/main` reads the set for the stranded report alone
+and exits 0 whatever it finds, because `main` is not the tree that can repair it. **A tree landing a
+migration that cannot enumerate the open branches is exit 2**, naming the migrations — a check that
+cannot see the set has proved nothing, and a pass there would be the silent substitution the whole
+gate is about.
+
+**A branch git cannot read is an unknown, and an unknown is not an absence.** A branch carrying no
+journal carries no migration and is nothing to order against, so it is passed over — but that
+absence is established POSITIVELY, by listing the ref's tree. Probing the path with `git cat-file
+-e` instead answers non-zero for "not in this tree" and for "git could not inspect the object"
+alike, and reading that one number as absence drops the branch from the measured set and exits 0 on
+a merge order derived from what was left. A tree that will not list, and a journal that lists and
+will not read, are each exit 2 naming the ref. The reds for it are planted against the object store
+rather than the parser, because the parser is a different failure with the same exit code.
+
+### What it cannot catch
+
+Two, and they are the same shape: the check runs before the merge, and the merge decides.
+
+- **A merge taken out of the derived order.** Landing a higher branch first is permitted — refusing
+  it would let one abandoned branch block every other. The cost is a renumber, not a loss: the
+  branch behind it goes `below-floor` on its next run rather than losing its migration on deploy,
+  and both sides are told — the lander is shown who it will strand, `main`'s own run after the merge
+  names who was stranded.
+- **A stale green carried through by a branch that never re-ran.** The refusal above only reaches
+  the stranded branch when that branch runs the check again before merging.
+  `.github/workflows/ci.yml` states that branch protection here has `strict: true`, which forces
+  exactly that run; the live ruleset is not readable from a checkout or from the Forge GitHub App's
+  verbs, so that is this repo's own claim and not a verified one. If `strict` is off, that one path
+  reaches the loss again, and `main`'s advisory is what still speaks.
+
+Neither is reachable by a branch-time check, which is why they are written here rather than left to
+be discovered. The rule it replaces was a CLAUDE.md instruction to a person — *read every unmerged
+sibling's journal immediately before the landing push* — which could not hold: it was checked at a
+moment a sibling could invalidate a minute later, and it scaled as N².
 
 ## check-release-record.mjs — the record of what shipped may not lose entries
 

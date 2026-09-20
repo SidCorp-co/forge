@@ -1,19 +1,15 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type RunnerType, runners } from '../db/schema.js';
-import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { CLAIM_CAPABLE_DEVICE } from './device-cap.js';
+import {
+  deviceNotDisabled,
+  livenessSeconds,
+  runnerFresh,
+  runnerUnlimited,
+  runnerWorkspaceReady,
+} from './liveness-sql.js';
 import type { RequiredCapabilities } from './types.js';
-
-const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
-  SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
-)`;
-
-const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
-
-const NOT_AUTH_LIMITED = sql`AND limit_reason IS DISTINCT FROM 'auth'`;
-
-const WORKSPACE_READY = sql`AND (provision_status IS NULL OR provision_status = 'ready')`;
 
 /**
  * Per-state runner pool (`pipelineConfig.states[x].deviceIds`) as a candidate
@@ -121,24 +117,19 @@ export async function onlineCapableDeviceIds(
   },
 ): Promise<string[]> {
   const required = JSON.stringify(requiredCapabilities ?? {});
-  const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const floorClause = opts?.includeBelowFloor ? sql`` : CLAIM_CAPABLE_DEVICE;
-  const limitClause = opts?.includeLimited
-    ? sql``
-    : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now()) ${NOT_QUARANTINED} ${NOT_AUTH_LIMITED}`;
+  const limitClause = opts?.includeLimited ? sql`` : sql`AND ${runnerUnlimited('runners')}`;
   const rows = await db.execute<{ device_id: string }>(
     sql`
       SELECT DISTINCT device_id
       FROM runners
       WHERE project_id = ${projectId}
         AND device_id IS NOT NULL
-        AND status = 'online'
         AND capabilities @> ${required}::jsonb
-        AND last_seen_at IS NOT NULL
-        AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+        AND ${runnerFresh('runners', livenessSeconds())}
         ${limitClause}
-        ${WORKSPACE_READY}
-        ${NOT_DISABLED_DEVICE}
+        AND ${runnerWorkspaceReady('runners')}
+        AND ${deviceNotDisabled('runners')}
         ${floorClause}
         ${poolClause(opts?.allowDeviceIds)}
       ORDER BY device_id ASC

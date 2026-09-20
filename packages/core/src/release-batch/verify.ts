@@ -44,12 +44,9 @@ function pluck(body: unknown, path: string | undefined): string | null {
 }
 
 /**
- * One probe's answer, kept as the shape it actually had.
- *
- * `unreachable` and `http-error` are the application failing to answer;
- * `unparseable` and `no-commit` are the application answering and the probe
- * declaration not finding a commit in what it said. Collapsing the four is what
- * made a `commitPath` typo indistinguishable from an outage.
+ * One probe's answer, kept as the shape it had: `unreachable` and `http-error`
+ * are a failure to answer, `unparseable` and `no-commit` are an answer with no
+ * commit. The four stay apart so a `commitPath` typo is not read as an outage.
  */
 export type ProbeReading =
   | { kind: 'commit'; commit: string }
@@ -121,11 +118,9 @@ export interface LiveState {
 }
 
 /**
- * One read of every probe, kept as two answers.
- *
- * Health is every probe answering; identity is every probe agreeing on one
- * commit. A fleet half on the new build is healthy and has no identity — which
- * is the state the old single-value read reported as "nothing answered".
+ * One read of every probe, kept as two answers: health is every probe
+ * answering, identity is every probe agreeing on one commit. A fleet half on
+ * the new build is healthy and has no identity, so the two stay apart.
  */
 export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
   const reads = await Promise.all(cfg.probes.map(readProbe));
@@ -159,12 +154,7 @@ export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
   };
 }
 
-/**
- * One read of every probe, as the single commit the fleet agrees on.
- *
- * Kept because the pre-release baseline in `createReleaseBatch` wants exactly
- * this and nothing else: what was serving before anything moved.
- */
+/** One read of every probe, as the single commit the fleet agrees on. */
 export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> {
   return (await readLiveState(cfg)).identity;
 }
@@ -226,9 +216,7 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
   return { ...failureFor(state, commitBefore, expected), readings: state.readings };
 }
 
-/**
- * Why the window closed red, health first and identity second.
- */
+/** Why the window closed red, health first and identity second. */
 function failureFor(
   state: LiveState,
   commitBefore: string | null,
@@ -271,4 +259,93 @@ function failureFor(
     };
   }
   return { ...base, health: 'up', reason: 'the live commit never held still' };
+}
+
+/** What a commit identity may look like: a git object name, whole or abbreviated. */
+const COMMIT_SHAPE = /^[0-9a-f]{7,40}$/;
+
+/**
+ * One commit identity, or `null` where the value is not one. Seven is git's own
+ * floor on an abbreviation and the floor here, so no four-character value can
+ * agree with a fleet by accident.
+ */
+function normalizeCommit(raw: string): string | null {
+  const text = raw.trim().toLowerCase();
+  return COMMIT_SHAPE.test(text) ? text : null;
+}
+
+/**
+ * Whether two commit identities name the same commit: one is a prefix of the
+ * other, because production reports an abbreviation and a caller holds the
+ * whole sha. A value that is not a commit agrees with nothing, so `HEAD`, a tag
+ * and an empty string are refused rather than compared.
+ */
+export function commitsAgree(a: string, b: string): boolean {
+  const left = normalizeCommit(a);
+  const right = normalizeCommit(b);
+  if (left === null || right === null) return false;
+  return left.startsWith(right) || right.startsWith(left);
+}
+
+export interface ServingNowArgs {
+  cfg: VerifyConfig;
+  /** The commit the caller says production is serving. */
+  expected: string;
+}
+
+/**
+ * Like {@link VerifyOutcome}, except that the probe readings survive a GREEN.
+ *
+ * `verifyDeployed` drops them on its ok arm because the deploy it watched is
+ * its own evidence. A recorded release has no such act to point at: the
+ * readings ARE the record, so they travel on both arms.
+ */
+export type ServingNowOutcome =
+  | { ok: true; identity: string; health: 'up'; readings: string[] }
+  | {
+      ok: false;
+      reason: string;
+      live: string | null;
+      health: 'up' | 'down';
+      identity: string | null;
+      readings: string[];
+    };
+
+/**
+ * Whether the application is serving this commit RIGHT NOW, in one read.
+ *
+ * {@link verifyDeployed} answers a different question — did the deploy this run
+ * started arrive — so it polls, and it refuses an identity equal to what was
+ * serving before. A release that already happened has no before and nothing to
+ * wait for: it either is live at the moment of the call or the record is not
+ * earned. Polling here would turn a false claim into a five-minute wait and
+ * then the same refusal.
+ */
+export async function verifyServingNow(args: ServingNowArgs): Promise<ServingNowOutcome> {
+  const state = await readLiveState(args.cfg);
+  const claimed = normalizeCommit(args.expected);
+  if (claimed === null) {
+    return {
+      ok: false,
+      reason: `\`${args.expected}\` is not a commit — a release record names the commit production is serving, as 7 to 40 hexadecimal characters`,
+      live: state.identity,
+      health: state.health,
+      identity: state.identity,
+      readings: state.readings,
+    };
+  }
+  if (state.health === 'up' && state.identity !== null) {
+    if (commitsAgree(claimed, state.identity)) {
+      return { ok: true, health: 'up', identity: state.identity, readings: state.readings };
+    }
+    return {
+      ok: false,
+      reason: `the application is healthy and serving ${state.identity}; this record claims ${claimed}`,
+      live: state.identity,
+      health: 'up',
+      identity: state.identity,
+      readings: state.readings,
+    };
+  }
+  return { ...failureFor(state, null, null), readings: state.readings };
 }

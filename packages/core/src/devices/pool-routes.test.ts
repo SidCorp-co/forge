@@ -36,6 +36,24 @@ vi.mock('./pool.js', () => ({ readPool: (a: unknown) => readPool(a) }));
 vi.mock('./admissible.js', () => ({
   readAdmissibleIssues: (a: unknown) => readAdmissibleIssues(a),
 }));
+type LeaseHolder = {
+  issueKey: string;
+  deviceId: string;
+  sessionId: string;
+  runId: string;
+  acquiredAt: string;
+};
+const readDeviceIssueLease = vi.fn(
+  async (_args: unknown) =>
+    ({ held: false, heldByThisDevice: false, holder: null }) as {
+      held: boolean;
+      heldByThisDevice: boolean;
+      holder: LeaseHolder | null;
+    },
+);
+vi.mock('../issues/issue-lease.js', () => ({
+  readDeviceIssueLease: (a: unknown) => readDeviceIssueLease(a),
+}));
 vi.mock('./run-session.js', () => ({
   openRunSession: (a: unknown) => openRunSession(a),
   closeRunSession: vi.fn(),
@@ -346,6 +364,82 @@ describe('GET /me/run-sessions/:sessionId — core reads a run session back over
     readRunSessionTerminal.mockResolvedValue(null);
     const res = await app.request(path, { headers: AUTH });
     expect(res.status).toBe(404);
+  });
+
+  it('refuses a caller with no device credential', async () => {
+    const res = await app.request(path);
+    expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * ISS-1109 — the lease read answers two questions, and says which is which.
+ *
+ * The two answers stay apart: a box asking about an issue another box is
+ * running must not be told `false` and open its own run over it.
+ */
+describe('GET /me/issue-leases/:issueKey', () => {
+  const path = '/api/devices/me/issue-leases/ISS-357';
+
+  it('carries the fleet answer and this box answer separately', async () => {
+    readDeviceIssueLease.mockResolvedValue({
+      held: true,
+      heldByThisDevice: false,
+      holder: null,
+    });
+
+    const res = await app.request(path, { headers: AUTH });
+
+    expect(await res.json()).toMatchObject({ held: true, heldByThisDevice: false });
+  });
+
+  it('names the holder so a refused box knows which one to ask', async () => {
+    readDeviceIssueLease.mockResolvedValue({
+      held: true,
+      heldByThisDevice: false,
+      holder: {
+        issueKey: 'ISS-357',
+        deviceId: 'dev-9',
+        sessionId: 'sess-9',
+        runId: 'run-9',
+        acquiredAt: '2026-09-20T09:37:00.000Z',
+      },
+    });
+
+    const res = await app.request(path, { headers: AUTH });
+
+    const body = (await res.json()) as { holder: LeaseHolder | null };
+    expect(body.holder).toMatchObject({
+      deviceId: 'dev-9',
+      acquiredAt: '2026-09-20T09:37:00.000Z',
+    });
+  });
+
+  it('answers a free issue with no holder at all', async () => {
+    readDeviceIssueLease.mockResolvedValue({
+      held: false,
+      heldByThisDevice: false,
+      holder: null,
+    });
+
+    const res = await app.request(path, { headers: AUTH });
+
+    expect(await res.json()).toEqual({ held: false, heldByThisDevice: false, holder: null });
+  });
+
+  it('asks on behalf of the calling device and the key in the path', async () => {
+    readDeviceIssueLease.mockResolvedValue({
+      held: false,
+      heldByThisDevice: false,
+      holder: null,
+    });
+
+    await app.request(path, { headers: AUTH });
+
+    expect(readDeviceIssueLease).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      issueKey: 'ISS-357',
+    });
   });
 
   it('refuses a caller with no device credential', async () => {

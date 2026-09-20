@@ -5,8 +5,16 @@ export class NoReleaseGateError extends Error {
   }
 }
 
+/**
+ * The project has no runner registered at all, so there is no box a release
+ * could run on.
+ *
+ * ISS-1128 re-aimed this at the situation its name describes. It used to mean
+ * "the fleet is non-empty and a declared preference excluded every box in it",
+ * which is a ranking rather than a reason not to deploy.
+ */
 export class ReleasePoolEmptyError extends Error {
-  constructor(public readonly label: string) {
+  constructor() {
     super('RELEASE_POOL_EMPTY');
     this.name = 'ReleasePoolEmptyError';
   }
@@ -97,5 +105,20 @@ export class BatchInFlightError extends Error {
   constructor(public readonly existingJobId: string | null) {
     super('BATCH_IN_FLIGHT');
     this.name = 'BatchInFlightError';
+  }
+}
+
+/**
+ * One or more issues named by a release record have no `merged_at`, so Forge
+ * never watched their work land.
+ *
+ * The probes prove what production is serving. They prove nothing about an
+ * issue whose branch nobody merged, and closing it would claim a ship for work
+ * that is not on the base branch at all.
+ */
+export class ReleaseWorkUnmergedError extends Error {
+  constructor(public readonly issueIds: string[]) {
+    super(`RELEASE_WORK_UNMERGED: ${issueIds.length} issue(s) have no merge Forge watched land`);
+    this.name = 'ReleaseWorkUnmergedError';
   }
 }

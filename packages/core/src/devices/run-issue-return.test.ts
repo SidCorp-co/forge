@@ -25,7 +25,8 @@ vi.mock('../issues/apply-transition.js', () => ({
   },
 }));
 
-import { HUMAN_PARK_STATUSES, RETURNABLE_FROM, returnIssuesForRun } from './run-issue-return.js';
+import { ASSERTS_WORK_IN_PROGRESS, HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
+import { returnIssuesForRun } from './run-issue-return.js';
 
 const RUN = 'run-1';
 
@@ -117,7 +118,7 @@ describe('returnIssuesForRun', () => {
   );
 
   it('never lists a human park as a status to take an issue back from', () => {
-    expect(RETURNABLE_FROM.filter((s) => HUMAN_PARK_STATUSES.includes(s))).toEqual([]);
+    expect(ASSERTS_WORK_IN_PROGRESS.filter((s) => HUMAN_PARK_STATUSES.includes(s))).toEqual([]);
   });
 
   it('leaves an issue whose run stamped a merge before dying', async () => {
