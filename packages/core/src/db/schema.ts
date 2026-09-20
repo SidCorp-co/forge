@@ -20,7 +20,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { canonicalUuidText, orgHandleText, releaseVersionText } from './column-checks.js';
+import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
@@ -605,9 +605,7 @@ export const pipelineRuns = pgTable(
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     metadata: jsonb('metadata').notNull().default({}),
     /** The version this release cut (ISS-1120); NULL on every run that is not a release. */
-    releaseVersion: text('release_version'),
-    /** When this release shipped. Why it is not read off `status`: `release-batch/version-store.ts`. */
-    releaseReleasedAt: timestamp('release_released_at', { withTimezone: true }),
+    ...axes.releaseRunVersionColumns,
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -619,13 +617,7 @@ export const pipelineRuns = pgTable(
     issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
       .on(t.issueId)
       .where(sql`kind = 'issue' AND status IN ('running','paused')`),
-    releaseVersionUq: uniqueIndex('pipeline_runs_release_version_uq')
-      .on(t.projectId, t.releaseVersion)
-      .where(sql`release_version IS NOT NULL`),
-    releaseVersionChk: check(
-      'pipeline_runs_release_version_chk',
-      releaseVersionText(t.releaseVersion),
-    ),
+    ...axes.releaseRunIdentity(t),
   }),
 );
 
@@ -2485,8 +2477,6 @@ export const integrationDeliveries = pgTable(
   'integration_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // Connection/Binding model: the dispatch/read key after the ISS-399 cutover.
-    // The legacy project-integration link column was dropped by ISS-410 (epic F5).
     bindingId: uuid('binding_id').references(() => integrationBindings.id, {
       onDelete: 'cascade',
     }),
@@ -2506,8 +2496,7 @@ export const integrationDeliveries = pgTable(
       t.bindingId,
       sql`${t.createdAt} DESC`,
     ),
-    // Post-cutover idempotency key (mirrors requestIdUq on the legacy column):
-    // a dispatch keyed by (binding, requestId) is deduped at the DB level.
+    // A dispatch keyed by (binding, requestId) is deduped at the database.
     bindingRequestIdUq: uniqueIndex('integration_deliveries_binding_request_id_uq')
       .on(t.bindingId, t.requestId)
       .where(sql`request_id IS NOT NULL`),
