@@ -27,7 +27,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 let projectId: string;
@@ -108,11 +108,15 @@ const stillWaiting = () => deadlineMinutes() - 5;
 describe('a release batch whose job no box ever took', () => {
   it('cancels the job, hands the roster back and takes the run terminal', async () => {
     const a = await insertIssue();
-    const b = await insertIssue();
+    // One roster issue carries the claim and one does not, so "neither writes a
+    // stamp nor clears one" is proved in both directions rather than only where
+    // there was already something to preserve.
+    const b = await insertIssue('awaiting_release', SKIP_NOTE, false);
     const before = new Map([
       [a, (await stored(a)).mergedAt],
       [b, (await stored(b)).mergedAt],
     ]);
+    expect(before.get(b)).toBeNull();
     const { runId, jobId } = await claim([a, b]);
     expect((await stored(a)).status).toBe('releasing');
     await ageJob(jobId, overdue());

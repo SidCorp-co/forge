@@ -162,11 +162,14 @@ describe('release batch finish E2E', () => {
         '../../src/release-batch/service.js'
       );
       const a = await insertIssue();
-      const b = await insertIssue();
+      // One carries the claim and one does not: a refused finish must leave both
+      // exactly as it found them.
+      const b = await insertIssue('awaiting_release', SKIP_NOTE, false);
       const before = new Map([
         [a, (await stored(a)).mergedAt],
         [b, (await stored(b)).mergedAt],
       ]);
+      expect(before.get(b)).toBeNull();
       const { runId } = await claim([a, b]);
 
       const err = await finishReleaseBatch(runId, actor()).catch((e: unknown) => e);
@@ -205,11 +208,14 @@ describe('release batch finish E2E', () => {
     it('releases every claim, closes nothing, and comments once on each issue', async () => {
       const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();
-      const b = await insertIssue();
+      // One carries the claim and one does not, so an abort is shown to write no
+      // stamp as well as to clear none.
+      const b = await insertIssue('awaiting_release', SKIP_NOTE, false);
       const before = new Map([
         [a, (await stored(a)).mergedAt],
         [b, (await stored(b)).mergedAt],
       ]);
+      expect(before.get(b)).toBeNull();
       const { runId } = await claim([a, b]);
 
       const released = await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
