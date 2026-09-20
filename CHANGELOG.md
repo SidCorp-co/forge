@@ -8,6 +8,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Forge's guides are now web pages anyone can read, at `/guides`.** The conventions its agents
+  are held to needed an API path and a markdown reader; they are now a public index and a page per
+  guide, no login. The same text as before — one source, two renderings — and an unknown guide
+  answers 404 naming it.
+
 ### Security
 
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
