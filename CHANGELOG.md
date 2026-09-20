@@ -3015,6 +3015,14 @@
   set is now 59.
 
 ### Fixed
+- **A pull request Forge opened is now one Forge can merge.** Forge knew only the pull requests
+  GitHub announced by webhook, so one Forge opened itself left no record and could not be merged.
+  Opening one now writes that record.
+
+- **A merge that finds nothing to merge says whether the record is empty or the number is wrong.**
+  The refusal now names an empty record as that, and counts the webhook deliveries that ever
+  arrived.
+
 - **A decision put to your chat room can no longer be asked twice, or stop being retried in
   silence.** Attempts are counted by the record itself, so retries end where they should and
   somebody is told when delivery fails.

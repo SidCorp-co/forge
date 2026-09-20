@@ -37,7 +37,10 @@ export function kernelVerbRefusal(action: string): string {
     '`merged_at` and the commit it landed at — one writer for one truth — so it happens without an ' +
     'agent present and is recorded whether or not one was. It is served there as the outbound verb ' +
     '`pull_request.merge`, not here. What this face carries is the judgement: read the diff, read a ' +
-    "failing check run's log, comment, open a pull request, request a review, submit a verdict."
+    "failing check run's log, comment, open a pull request, request a review, submit a verdict. " +
+    'Opening one does reach a writer, and the same one a webhook delivery reaches: the request is ' +
+    "stored on Forge's projection of the repository as it is created, which is what leaves the " +
+    'kernel a pull request it can be asked to merge later.'
   );
 }
 
@@ -212,10 +215,22 @@ export async function writePullRequestComment(
 export interface OpenedPullRequest {
   number: number;
   url: string | null;
+  title: string;
   state: string;
   draft: boolean;
   headRef: string;
+  /** The commit the branch stood at when GitHub opened the request. */
+  headSha: string | null;
   baseRef: string;
+  baseSha: string | null;
+  /**
+   * GitHub's own `updated_at` for the request it just created.
+   *
+   * Carried because the projection's upsert orders deliveries on it and treats an ABSENT one as
+   * always-wins: a creation write reaching the row after a later `pull_request` delivery would
+   * overwrite that delivery's state, head and merge evidence without it.
+   */
+  updatedAt: string | null;
 }
 
 /** Open a pull request as the App. Opening is not merging, and nothing here lands anything. */
@@ -226,10 +241,12 @@ export async function openPullRequest(
   const made = await client.json<{
     number?: number;
     html_url?: string;
+    title?: string;
     state?: string;
     draft?: boolean;
-    head?: { ref?: string };
-    base?: { ref?: string };
+    updated_at?: string | null;
+    head?: { ref?: string; sha?: string };
+    base?: { ref?: string; sha?: string };
   }>({
     method: 'POST',
     path: `/repos/${client.owner}/${client.repo}/pulls`,
@@ -244,10 +261,14 @@ export async function openPullRequest(
   return {
     number: made.number ?? 0,
     url: made.html_url ?? null,
+    title: made.title ?? args.title,
     state: made.state ?? 'open',
     draft: made.draft === true,
     headRef: made.head?.ref ?? args.head,
+    headSha: made.head?.sha ?? null,
     baseRef: made.base?.ref ?? args.base,
+    baseSha: made.base?.sha ?? null,
+    updatedAt: made.updated_at ?? null,
   };
 }
 

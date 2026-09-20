@@ -9,6 +9,7 @@ import {
 } from '../store.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { buildRepoClient, GitHubClientError } from './client.js';
+import { inboundDeliveriesForBinding } from './projection-health.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const AGENT_TIMEOUT_MS = 12_000;
@@ -61,6 +62,17 @@ export interface GitHubAgentBindingReport {
   /** Whether an agent on this project may use it — the binding's own `agent_access`. */
   agentGranted: boolean;
   lastHealthStatus: string | null;
+  /**
+   * How many webhook deliveries have arrived on this binding, and when the last one did.
+   *
+   * ISS-1123: a binding can be installed, active, granted and healthy and still have received
+   * nothing, because `lastHealthStatus` answers whether the App can call OUT. Zero here with a null
+   * time is the door nobody has knocked on, and it is reported beside the four flags an operator
+   * already reads rather than left to be inferred from a deliveries page that lists outbound calls
+   * in the same column.
+   */
+  inboundDeliveries: number;
+  lastInboundDeliveryAt: string | null;
 }
 
 export interface GitHubAgentClient {
@@ -96,9 +108,11 @@ async function githubPairs(projectId: string): Promise<BindingWithConnection[]> 
 
 export async function githubAgentBindings(projectId: string): Promise<GitHubAgentBindingReport[]> {
   const decl = getIntegration('github');
-  return githubPairs(projectId).then((pairs) =>
-    pairs.map((pair) => {
+  const pairs = await githubPairs(projectId);
+  return Promise.all(
+    pairs.map(async (pair) => {
       const config = effectiveConfig<GitHubConfig>(pair);
+      const inbound = await inboundDeliveriesForBinding(pair.binding.id);
       return {
         bindingId: pair.binding.id,
         repository: config.owner && config.repo ? `${config.owner}/${config.repo}` : null,
@@ -107,6 +121,8 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
         connectionActive: pair.connection.active,
         agentGranted: grantHolds(decl, pair.binding),
         lastHealthStatus: pair.connection.lastHealthStatus ?? null,
+        inboundDeliveries: inbound.count,
+        lastInboundDeliveryAt: inbound.lastAt ? inbound.lastAt.toISOString() : null,
       };
     }),
   );

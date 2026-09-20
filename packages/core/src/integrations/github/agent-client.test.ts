@@ -34,6 +34,13 @@ vi.mock('../store.js', () => ({
     binding: { config?: Record<string, unknown> };
   }) => ({ ...(pair.connection.config ?? {}), ...(pair.binding.config ?? {}) }),
 }));
+// ISS-1123. The inbound count is a database reading and `db/client` is a stub here, so the reading
+// is mocked and what is asserted is that the report CARRIES it: a binding installed, active,
+// granted and healthy that has received nothing says so on the same row as the four flags.
+const inboundMock = vi.fn(async () => ({ count: 0, lastAt: null as Date | null }));
+vi.mock('./projection-health.js', () => ({
+  inboundDeliveriesForBinding: (...a: unknown[]) => inboundMock(...(a as [])),
+}));
 vi.mock('./app-auth.js', async () => {
   const real = await vi.importActual<typeof import('./app-auth.js')>('./app-auth.js');
   return { ...real, installationToken: (...a: unknown[]) => installationTokenMock(...(a as [])) };
@@ -180,6 +187,8 @@ describe('list reports what exists, whatever the grant says', () => {
         connectionActive: true,
         agentGranted: false,
         lastHealthStatus: 'ok',
+        inboundDeliveries: 0,
+        lastInboundDeliveryAt: null,
       },
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -189,6 +198,27 @@ describe('list reports what exists, whatever the grant says', () => {
   it('answers an empty list for a project that has bound nothing, rather than refusing', async () => {
     listBindingsForProjectMock.mockResolvedValue([]);
     await expect(githubAgentBindings(PROJECT)).resolves.toEqual([]);
+  });
+
+  // ISS-1123. `lastHealthStatus` answers whether the App can call OUT; a binding can be ok on every
+  // flag above and have been called in to exactly never, which is the state that left this
+  // project's projection empty for a year with nothing on any surface saying so.
+  it('reports the webhook door beside the flags, so a binding nobody has called says so', async () => {
+    inboundMock.mockResolvedValue({ count: 0, lastAt: null });
+    listBindingsForProjectMock.mockResolvedValue([row({ id: 'bind-silent' })]);
+    await expect(githubAgentBindings(PROJECT)).resolves.toMatchObject([
+      {
+        bindingId: 'bind-silent',
+        lastHealthStatus: 'ok',
+        inboundDeliveries: 0,
+        lastInboundDeliveryAt: null,
+      },
+    ]);
+
+    inboundMock.mockResolvedValue({ count: 12, lastAt: new Date('2026-09-19T08:00:00.000Z') });
+    await expect(githubAgentBindings(PROJECT)).resolves.toMatchObject([
+      { inboundDeliveries: 12, lastInboundDeliveryAt: '2026-09-19T08:00:00.000Z' },
+    ]);
   });
 });
 
