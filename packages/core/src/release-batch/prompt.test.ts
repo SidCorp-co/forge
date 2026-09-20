@@ -205,7 +205,20 @@ describe('the release runner preference the agent is told about', () => {
       releaseRunnerPreferenceMet: false,
     });
 
-    expect(out).toContain('no box eligible to release carries it');
-    expect(out).toContain('Say so in what you record.');
+    expect(out).toContain('no box eligible to release carried it when this batch was cut');
+    expect(out).toContain('whether the preference was honoured');
+  });
+
+  // The job is claimed after this string is built, so a labelled box coming
+  // online in between would make any claim about where it ran a guess.
+  it('says where the box that took it is read, rather than asserting where it ran', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: false,
+    });
+
+    expect(out).toContain('Read `releaseRunner` in the batch context');
+    expect(out).not.toContain('is running somewhere else');
   });
 });

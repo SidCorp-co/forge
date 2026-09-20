@@ -33,11 +33,14 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
   const liveLine = releaseModel === 'promote' ? `\nliveBranch: ${liveBranch}` : '';
+  // What was true when the batch was CUT, never where it ended up running: the
+  // job is claimed after this string is built, and a box carrying the label can
+  // come online in between. The box that took it is in the batch context.
   const runnerLine = plan.releaseRunnerLabel
     ? `\nrelease runner: this project prefers a box labelled \`${plan.releaseRunnerLabel}\`${
         args.releaseRunnerPreferenceMet
           ? ''
-          : ' — no box eligible to release carries it, so this batch is running somewhere else. Say so in what you record.'
+          : ' — no box eligible to release carried it when this batch was cut. Read `releaseRunner` in the batch context for the box this job was claimed on, and say in what you record whether the preference was honoured.'
       }`
     : '';
   const channelLines =
