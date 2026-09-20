@@ -40,21 +40,30 @@ was also tried; the status is ignored and the response is 200.
 
 `src/middleware.ts`, because it is the only layer that can set a status and a
 body together. Its `/guides` branch gates nobody; it refuses a slug
-`isGuideSlug` rejects without asking core, asks core about the rest, and answers
+`GUIDE_SLUG` rejects without asking core, asks core about the rest, and answers
 a 404 with `missingGuideDocument` — a styleless HTML page naming the slug and
-linking the index, with the slug escaped because it comes off the URL.
+linking the index, with the slug escaped because it comes off the URL. The price
+of that shape is one extra core request per guide view on the happy path, paid so
+that a reader without JavaScript gets the refusal instead of a blank document. It
+ends when Next server-renders a `notFound()` body.
 
 A client-side navigation is left alone: the router refetches the same URL with an
 `RSC` header and would choke on an HTML document, and it has JavaScript by
 definition, so `app/guides/[slug]/not-found.tsx` serves it. Both renderers read
 one set of strings from `features/guides/missing.ts`.
 
-`isGuideSlug` lives in `features/guides/requested-path.ts` and is read by the
+`GUIDE_SLUG` lives in `features/guides/requested-path.ts` and is read by the
 middleware and by `features/guides/api.ts`. One test of what a slug is, because
 two that disagree is a slug one passes and the other refuses:
 `/guides/what-is-an-issue.md` was exactly that — core answers 200 for it, having
 stripped the suffix, so it cleared the middleware and was then refused by the
 page, landing back on the blank body.
+
+`slugFromGuidePath` returns the slug exactly as the page's own route param will
+hold it, for the same reason: it does not trim, because `/guides/%20what-is-an-issue%20`
+trimmed looks like a real guide to the middleware and does not to the page. A
+suffix that will not decode is kept raw for `GUIDE_SLUG` to refuse, rather than
+thrown over — `/guides/%ZZ` was a 500 from edge middleware before that.
 
 The requested path reaches `not-found.tsx` on the `x-forge-guide-path` header the
 middleware sets, because Next hands a not-found boundary no params and `headers()`
