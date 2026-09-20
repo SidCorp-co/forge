@@ -3018,6 +3018,9 @@
   set is now 59.
 
 ### Fixed
+- **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
+  claim the database refuses, and the machine that loses is told which one holds it and since when.
+
 - **Naming the box a release should prefer no longer stops the release.** The label recommends a
   machine rather than forbidding the others, so a project whose boxes carry no matching label still
   ships, and records the unmet preference.
