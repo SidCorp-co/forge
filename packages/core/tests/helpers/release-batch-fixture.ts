@@ -10,6 +10,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { afterAll } from 'vitest';
+import type { CreateReleaseBatchResult } from '../../src/release-batch/service.js';
 import { createTestDevice, type TestDatabase } from './index.js';
 
 export const RELEASE_LABEL = 'release-box';
@@ -38,7 +39,11 @@ export interface ReleaseBatchFixture {
   runStatus(runId: string): Promise<string>;
   storedJob(jobId: string): Promise<StoredJob>;
   commentCount(issueId: string): Promise<number>;
-  claim(ids: string[]): Promise<{ runId: string; jobId: string; issueIds: string[] }>;
+  /**
+   * Whatever `createReleaseBatch` returns, named by its own type rather than copied. The copy
+   * this replaced went stale the moment ISS-1120 put `version` on the result.
+   */
+  claim(ids: string[]): Promise<CreateReleaseBatchResult>;
   waitFor(cond: () => Promise<boolean>): Promise<void>;
 }
 
