@@ -20,7 +20,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { canonicalUuidText, orgHandleText } from './column-checks.js';
+import { canonicalUuidText, orgHandleText, releaseVersionText } from './column-checks.js';
 import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
@@ -604,6 +604,21 @@ export const pipelineRuns = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     metadata: jsonb('metadata').notNull().default({}),
+    /**
+     * The version this release cut, and NULL on every run that is not a release. ISS-1120: a
+     * release is a `system` run carrying `metadata.source = 'release-batch'`, and it is the only
+     * row that IS a release, so this is the column the owner's answer names. Written once, at the
+     * instant the row is inserted, and never rewritten or cleared — a failed release keeps its
+     * number, which is what burns it.
+     */
+    releaseVersion: text('release_version'),
+    /**
+     * When this release shipped: stamped by `finishReleaseBatch` and by nothing else. It exists
+     * because `cancelConcludedRun` deliberately flips a `completed` run to `cancelled`, so the
+     * run's status cannot answer *did this release ship* and a reader that asks it loses a release
+     * whose bytes are still serving.
+     */
+    releaseReleasedAt: timestamp('release_released_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -615,6 +630,10 @@ export const pipelineRuns = pgTable(
     issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
       .on(t.issueId)
       .where(sql`kind = 'issue' AND status IN ('running','paused')`),
+    releaseVersionUq: uniqueIndex('pipeline_runs_release_version_uq')
+      .on(t.projectId, t.releaseVersion)
+      .where(sql`release_version IS NOT NULL`),
+    releaseVersionChk: check('pipeline_runs_release_version_chk', releaseVersionText(t.releaseVersion)),
   }),
 );
 
