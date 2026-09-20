@@ -1,4 +1,4 @@
-import { isIgnoredComment } from "../line-metrics.js";
+import { directiveMatcher, isIgnoredComment } from "../line-metrics.js";
 
 export const NARRATION_PATTERNS = [
   /\b(?:used to|formerly|previously)\b/i,
@@ -59,6 +59,7 @@ export default {
           handoffNarration: { type: "boolean" },
           additionalPatterns: { type: "array", items: { type: "string" } },
           allowPatterns: { type: "array", items: { type: "string" } },
+          additionalDirectives: { type: "array", items: { type: "string" } },
         },
         additionalProperties: false,
       },
@@ -73,7 +74,9 @@ export default {
       handoffNarration = true,
       additionalPatterns = [],
       allowPatterns = [],
+      additionalDirectives = [],
     } = context.options[0] ?? {};
+    const matcher = directiveMatcher(additionalDirectives);
     const patterns = [
       ...NARRATION_PATTERNS,
       ...(handoffNarration ? HANDOFF_PATTERNS : []),
@@ -84,7 +87,7 @@ export default {
     return {
       "Program:exit"() {
         for (const comment of context.sourceCode.getAllComments()) {
-          if (comment.type === "Shebang" || isIgnoredComment(comment)) continue;
+          if (comment.type === "Shebang" || isIgnoredComment(comment, matcher)) continue;
           const text = normaliseComment(comment);
           if (allowed.some((pattern) => pattern.test(text))) continue;
           const match = findNarration(text, patterns);

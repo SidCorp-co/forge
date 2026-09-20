@@ -16,6 +16,7 @@
     "check:memory": "node scripts/check-memory-anchors.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "images": "node scripts/build-images.mjs",
     "lint:code-quality": "node .forge/code-quality/bin/code-quality-gate.mjs"
   },
   "devDependencies": {

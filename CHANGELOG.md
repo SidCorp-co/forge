@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A release that already happened can now be recorded, with no release batch.** Name the
+  commit production is serving and how it shipped; Forge reads the live probes itself, closes
+  what the release carried, and refuses a commit nothing serves.
 - **The build refuses two names for one answer.** Two constants holding the same set of statuses,
   or a status list written out where a named one already held it, went unnoticed. A check now
   names both and fails.
