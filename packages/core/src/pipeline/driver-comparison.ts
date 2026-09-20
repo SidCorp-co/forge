@@ -16,8 +16,6 @@
 // project that switches drivers would otherwise relabel its whole history,
 // and the switch is exactly when someone wants to read this. Grouping by
 // driver ACROSS projects would compare repositories, not drivers.
-//
-// Design: docs/proposals/agent-driven-pipeline.md
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';

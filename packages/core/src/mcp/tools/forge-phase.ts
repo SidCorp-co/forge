@@ -8,8 +8,6 @@
 // Verdicts are deliberately absent from this tool. A review verdict may only
 // be written by the runner (`db/schema-journal.ts` enforces it as a CHECK),
 // and a tool the agent can call is by definition agent-written.
-//
-// Design: docs/proposals/agent-driven-pipeline.md
 
 import { z } from 'zod';
 import { phaseJournalOutcomes } from '../../db/schema-journal.js';
