@@ -14,8 +14,9 @@ import { useMergeMarker } from "../hooks";
 
 const BLURB =
   "For work finished outside the pipeline. This is a claim that the code shipped, not a date " +
-  "field: it is what counts the issue as shipped rather than closed-with-no-evidence, and it " +
-  "releases every issue that was blocked on this one. Unmark reverses both.";
+  "field: it is what lets the issue close, because `closed` means the work shipped and a close " +
+  "without it is refused. It does not release the issues blocked on this one — a status does " +
+  "that. Unmark withdraws a claim made wrongly.";
 
 interface MergeMarkerControlProps {
   issueId: string;

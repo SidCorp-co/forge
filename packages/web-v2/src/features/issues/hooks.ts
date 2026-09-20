@@ -237,9 +237,10 @@ export function useTransitionIssue() {
 /**
  * ISS-791 — the shipped-work claim for an issue finished by hand, outside the pipeline.
  *
- * `merged_at` is what `issues/progress.ts` reads to count an issue as shipped rather than "closed
- * with no evidence it shipped", and what releases every `blocks` dependent, so both directions
- * refresh the single-issue and activity caches: the server writes an audit comment on each call.
+ * `merged_at` is what lets an issue close at all: `closed` means the work shipped (ISS-1108) and a
+ * close on an issue without it is refused by name. It releases no `blocks` dependent — those are
+ * held by the issue's STATUS (ISS-1100). Both directions refresh the single-issue and activity
+ * caches, because the server writes an audit comment on each call.
  */
 export function useMergeMarker(issueId: string) {
   const qc = useQueryClient();

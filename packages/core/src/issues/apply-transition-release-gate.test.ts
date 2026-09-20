@@ -30,6 +30,7 @@ vi.mock('../db/client.js', () => {
     select: vi.fn(() => ({ from: txSelectFrom })),
     update: dbUpdate,
     execute: txExecute,
+    insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
   };
   return {
     db: {
@@ -60,10 +61,10 @@ vi.mock('./transition-reason.js', async (importActual) => {
 });
 vi.mock('./transition-evidence.js', () => ({ checkTransitionEvidence: vi.fn(async () => null) }));
 
-const markMergedOnCloseMock = vi.fn(async (..._a: unknown[]) => ({ stamped: false }));
+const refuseUnshippedCloseMock = vi.fn(async (..._a: unknown[]) => null);
 vi.mock('./merged-at.js', () => ({
-  markMergedIfLeavingBase: vi.fn(async () => undefined),
-  markMergedOnClose: (...a: unknown[]) => markMergedOnCloseMock(...a),
+  BASE_MERGE_STATE: 'awaiting_release',
+  refuseUnshippedClose: (...a: unknown[]) => refuseUnshippedCloseMock(...a),
 }));
 vi.mock('./pipeline-health.js', () => ({
   publishPipelineHealthChanged: vi.fn(async () => undefined),
@@ -147,15 +148,15 @@ describe('an agent closing on a project that declared a release gate', () => {
     expect(result.status).toBe('awaiting_release');
   });
 
-  it('still stamps `merged_at`, because the branch did land', async () => {
+  it('is judged on where it lands, so the shipped-work rule never fires (ISS-1108)', async () => {
     gated();
     queueUpdate('awaiting_release');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
-    expect(markMergedOnCloseMock).toHaveBeenCalledWith(
+    expect(refuseUnshippedCloseMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ toStatus: 'closed' }),
+      expect.objectContaining({ toStatus: 'awaiting_release' }),
     );
     expect(result.terminal).toBe(true);
   });

@@ -146,7 +146,8 @@ export const issuesApi = {
       body: JSON.stringify(body),
     }),
 
-  /** `DELETE /api/issues/:id/merge` — retract the claim, which re-blocks every `blocks` dependent. */
+  /** `DELETE /api/issues/:id/merge` — withdraw the claim. It re-blocks nothing: `blocks`
+   * dependents are held by the issue's STATUS and not by this column (ISS-1100). */
   unmarkMerged: (id: string, body: { note?: string } = {}) =>
     apiClient<{ id: string; action: "merged" | "unmarked" }>(`/issues/${id}/merge`, {
       method: "DELETE",

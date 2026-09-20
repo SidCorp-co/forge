@@ -18,6 +18,8 @@
 //!     is what happened on forge-dev, where the committed copy carried two table
 //!     rows the generator does not. A hand edit to this file is lost at the next
 //!     provision; the generator is the only place its content can be changed.
+//!     The test `this_repo_committed_orientation_matches_the_generator` is what
+//!     makes that true rather than merely intended (ISS-1108).
 //!
 //!   - `CLAUDE.md` — gets ONE fixed, marker-delimited block prepended IFF the
 //!     file does not already reach orientation. We never rewrite the rest of the
@@ -84,12 +86,12 @@ instead: guide `what-is-an-issue`.\n\
 | To write or change the project's own prose (build commands, a rule, a guide) | `forge_knowledge` write, one entry per slug, `injection` deciding whether it reaches every prompt or is fetched on demand | Sending it to `forge_config` as `projectFacts` — retired in ISS-1048, and the call is refused by name |\n\
 | Before you design / fix | `forge_memory_search` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |\n\
 | To park work that never started | leave it at `draft` | `on_hold` from `draft` — `on_hold` is a deliberate pause for ACTIVE work only |\n\
-| To finish a fix made by hand, outside the pipeline | drive it through `status` and/or capture a `forge_memory` learning | Fixing it and forgetting — no status move, no learning recorded |\n\
-| An issue you are working turns out NOT to be work (a note, a question, a duplicate, already done) | Act on it yourself — comment saying which gate it fails and where the content went, THEN `needs_info` if a human owes you requirements, or `closed` + `forge_issues action=unmark` if it is not work at all | Leaving it filed for someone else to find · `closed` WITHOUT `unmark` — closing auto-stamps `merged_at`, which unblocks every `blocks` dependent as if the work had shipped · moving status with no comment, so the next reader cannot tell why |\n\
+| To finish a fix made by hand, outside the pipeline | claim it shipped FIRST — `forge_issues action=mark` (or Mark merged on the issue's Properties rail), naming where it landed — then drive it through `status` and capture a `forge_memory` learning | Fixing it and forgetting — no status move, no learning recorded · reaching for `closed` without the mark: `closed` means the work shipped, and a close with no `merged_at` is refused by name |\n\
+| An issue you are working turns out NOT to be work (a note, a question, a duplicate, already done) | Act on it yourself — comment saying which gate it fails and where the content went, THEN `needs_info` if a human owes you requirements, or `dropped` if it is not work at all | Leaving it filed for someone else to find · reaching for `closed` — that says the work shipped, and a close with no `merged_at` is refused by name (`CLOSE_REQUIRES_SHIPPED`) · moving status with no comment, so the next reader cannot tell why |\n\
 | A bug, gap or defect you find WHILE working an issue | **Fix it now, in this issue**, and DECLARE it in your comment under `Extra fixes:` — extra work is REPORTED, never filed | Filing it instead of fixing it. A new `draft` is not a hand-off: nobody owns it, nothing ages it, and a two-minute fix becomes backlog nobody reads |\n\
 | A residual genuinely out of reach (needs a human decision, or work no diff here can carry) | ONE of: a `blocks` edge onto the issue that would ship without it · a line in `docs/proposals/` · `waiting` + `reason` when it blocks THIS issue | Filing a new issue to carry it — that is not one of the options. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |\n\
 \n\
-**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork · file-instead-of-fix.\n",
+**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-as-drop · silent-nonwork · file-instead-of-fix.\n",
     )
 }
 
@@ -146,6 +148,43 @@ pub fn write_orientation(repo_path: &Path, project_id: &str, slug: &str) -> Resu
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// This repository IS the `forge-dev` project, and `.forge/orientation.md`
+    /// at its root is a committed artifact of the generator below. Nothing else
+    /// compares the two: a provision overwrites the file in silence, so an edit
+    /// made to one side alone is reverted on the next daemon run and reads in
+    /// git as noise somebody else introduced.
+    const FORGE_DEV_PROJECT_ID: &str = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
+    const FORGE_DEV_SLUG: &str = "forge-dev";
+
+    fn repo_root() -> PathBuf {
+        // crates/forge-runner-core -> crates -> packages/runner -> packages -> root
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../..")
+    }
+
+    #[test]
+    fn this_repo_committed_orientation_matches_the_generator() {
+        let path = repo_root().join(".forge/orientation.md");
+        let committed = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!("cannot read {}: {err}", path.display());
+        });
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+
+        if committed != generated {
+            let first_difference = committed
+                .lines()
+                .zip(generated.lines())
+                .enumerate()
+                .find(|(_, (a, b))| a != b)
+                .map(|(n, (a, b))| format!("line {}:\n  committed: {a}\n  generated: {b}", n + 1))
+                .unwrap_or_else(|| "the two differ in length only".to_string());
+            panic!(
+                "`.forge/orientation.md` has drifted from `orientation_body`, so the next \
+                 provision of this repo will overwrite the committed file and dirty the tree. \
+                 Edit the generator, then regenerate the file — never the file alone.\n{first_difference}"
+            );
+        }
+    }
 
     fn tmp_repo(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("forge-orient-{tag}-{}", std::process::id()));
