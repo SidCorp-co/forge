@@ -5,7 +5,7 @@ import { db, type Tx } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
-import { screenAgentComment } from './screen.js';
+import { screenAgentComment, screenRecordFence } from './screen.js';
 
 export type CommentThreadRow = {
   id: string;
@@ -168,6 +168,15 @@ export type NewComment = {
   body: string;
   format?: BodyFormat | null | undefined;
   parentId: string | null;
+  /**
+   * Whether the door's caller declared it can write a record to the store.
+   *
+   * Absent means no — a door that cannot read the declaration passes nothing
+   * and its callers are warned rather than refused. The default is the
+   * dormancy: `middleware/client-capabilities.ts` says why it is the caller's
+   * switch and not this server's.
+   */
+  declaresRecordRoute?: boolean | undefined;
 };
 
 /** A written comment plus whatever the sanitizer removed on the way in. */
@@ -192,12 +201,13 @@ async function loadStageContext(
 
 export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
+  const fence = screenRecordFence(input.body, input.declaresRecordRoute === true);
   const context = await loadStageContext(input.issueId, tx);
   if (input.authorAgency === 'agent' && context) {
     await screenAgentComment(context.projectId, input.body, tx);
   }
 
-  const { format: _ignored, ...rest } = input;
+  const { format: _ignored, declaresRecordRoute: _declared, ...rest } = input;
   const [row] = await tx
     .insert(comments)
     .values({
@@ -208,7 +218,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
     })
     .returning(commentThreadColumns);
   if (!row) throw new Error('comment insert returned no row');
-  return { row, warnings: prepared.warnings };
+  return { row, warnings: [...prepared.warnings, ...fence] };
 }
 
 /**
@@ -221,9 +231,14 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
  */
 export async function updateCommentBody(
   commentId: string,
-  input: { body: string; format?: BodyFormat | null | undefined },
+  input: {
+    body: string;
+    format?: BodyFormat | null | undefined;
+    declaresRecordRoute?: boolean | undefined;
+  },
 ): Promise<WrittenComment | null> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
+  const fence = screenRecordFence(input.body, input.declaresRecordRoute === true);
   const [existing] = await db
     .select({ issueId: comments.issueId, authorAgency: comments.authorAgency })
     .from(comments)
@@ -244,7 +259,7 @@ export async function updateCommentBody(
     })
     .where(eq(comments.id, commentId))
     .returning(commentThreadColumns);
-  return row ? { row, warnings: prepared.warnings } : null;
+  return row ? { row, warnings: [...prepared.warnings, ...fence] } : null;
 }
 
 /** Remove one comment. Emitting `commentDeleted` belongs to the caller. */

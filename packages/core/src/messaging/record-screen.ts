@@ -15,7 +15,74 @@ import {
 import { screenMessage } from './screen.js';
 
 /** The rules this module owns, for the document that has to name them all. */
-export const RECORD_RULE_IDS: readonly string[] = ['field-budget'];
+export const RECORD_RULE_IDS: readonly string[] = ['field-budget', 'record-in-comment'];
+
+/** The guide that holds the whole table, named by every record-in-comment message. */
+export const RECORD_GUIDE_SLUG = 'records-and-comments';
+
+/** Where a record goes when it is not a comment: the route, by the kind that names it. */
+export const RECORD_DESTINATIONS: Readonly<Record<string, string>> = {
+  verdict: 'POST /api/issue-step-contexts',
+  review: 'POST /api/issue-step-contexts',
+  confirmation: 'POST /api/issues/:id/attributes',
+  decision: 'POST /api/issues/:id/attributes',
+  baseline: 'POST /api/issues/:id/attributes',
+  merged: 'POST /api/issues/:id/attributes',
+  verification: 'POST /api/issues/:id/attributes',
+  triage: 'POST /api/issues/:id/attributes',
+  park: 'POST /api/issues/:id/attributes',
+};
+
+/**
+ * The route this record's own kind goes to, or null where the table does not
+ * name it. An untagged fence carries no kind and lands here too: it is sent to
+ * the guide rather than guessed at, because guessing a destination is how a
+ * verdict ends up in the store that holds issue assertions.
+ */
+export function destinationFor(kind: string | null): string | null {
+  return kind ? (RECORD_DESTINATIONS[kind] ?? null) : null;
+}
+
+/**
+ * One sentence, built once, served both as the refusal and as the warning —
+ * so a caller told where to go and a caller refused for not going there can
+ * never be told two different things.
+ */
+export function recordInCommentMessage(record: ForgeRecord): string {
+  const route = destinationFor(record.kind);
+  const named = record.kind ? `a \`${record.kind}\` record` : 'a record';
+  const where = route
+    ? `${named} goes to \`${route}\`, and the comment keeps your summary line`
+    : `${named} goes to the record store rather than into a comment body, and the comment keeps your summary line`;
+  return `a \`forge-record\` fence is not comment content — ${where}. The store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``;
+}
+
+const RECORD_IN_COMMENT_SHAPE =
+  'a comment body carries prose for a person; a structured record is written to the store its kind names';
+
+/**
+ * The fence refused by name, for a caller that declared it can write elsewhere.
+ */
+export function recordInCommentRefusal(record: ForgeRecord | null): MessageRefusal | null {
+  if (!record) return null;
+  return {
+    rule: 'record-in-comment',
+    why: recordInCommentMessage(record),
+    quote: '```forge-record',
+    shape: RECORD_IN_COMMENT_SHAPE,
+    example: destinationFor(record.kind) ?? `guide \`${RECORD_GUIDE_SLUG}\``,
+  };
+}
+
+/**
+ * The same sentence as a warning, for a caller that declared nothing.
+ *
+ * It ships on the deploy the refusal is dormant on: the rule reaches the fleet
+ * as guidance first and as a gate only once a caller says it can obey.
+ */
+export function recordInCommentWarning(record: ForgeRecord | null): string | null {
+  return record ? recordInCommentMessage(record) : null;
+}
 
 const SHAPE = `every field of a \`forge-record\` block is at most ${FORGE_RECORD_FIELD_BUDGET} characters`;
 const EXAMPLE = 'finding: holds';

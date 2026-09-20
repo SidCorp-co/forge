@@ -7,10 +7,8 @@ import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
 import { resolveActors } from '../issues/actor-resolution.js';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
-import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { logger } from '../logger.js';
 import { projectLens } from '../messaging/record-screen.js';
 import {
@@ -21,10 +19,13 @@ import {
   restAuthored,
   restEstablishedAgency,
 } from '../middleware/auth.js';
-import { requireAnyAuth } from '../middleware/require-any-auth.js';
+import {
+  clientCapabilities,
+  declares,
+  RECORD_ROUTE_CAPABILITY,
+} from '../middleware/client-capabilities.js';
 import { hooks } from '../pipeline/hooks.js';
-import { getStorage, isEnoent } from '../storage/index.js';
-import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
+import { commentAttachmentRoutes } from './attachment-routes.js';
 import {
   bodyRefusalHttp,
   commentBodySchema,
@@ -50,9 +51,6 @@ const threadQuerySchema = paginationSchema.extend({ cursor: z.string().min(1).op
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const attachmentBadRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
-  new HTTPException(400, { message, cause: { code, details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -130,6 +128,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           body,
           format,
           parentId: parentId ?? null,
+          declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
         });
       } catch (err) {
         const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
@@ -275,32 +274,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
   );
 }
 
-function attachmentErrorToHttp(err: AttachmentError): HTTPException {
-  switch (err.code) {
-    case 'FILE_TOO_LARGE':
-      return new HTTPException(400, {
-        message: 'file too large',
-        cause: { code: 'FILE_TOO_LARGE' },
-      });
-    case 'MIME_NOT_ALLOWED':
-      return new HTTPException(400, {
-        message: err.message,
-        cause: { code: 'MIME_NOT_ALLOWED', details: err.details },
-      });
-    case 'EMPTY_FILE':
-      return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });
-    case 'INVALID_NAME':
-      return new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
-    case 'ATTACHMENT_NAME_TAKEN':
-      return new HTTPException(400, {
-        message: err.message,
-        cause: { code: 'ATTACHMENT_NAME_TAKEN', details: err.details },
-      });
-  }
-}
-
-const commentIdParamSchema = z.object({ commentId: z.uuid() });
-
 export const commentRoutes = new Hono<{ Variables: AuthVars }>();
 
 commentRoutes.get(
@@ -364,7 +337,11 @@ commentRoutes.patch(
 
     let written: Awaited<ReturnType<typeof updateCommentBody>>;
     try {
-      written = await updateCommentBody(id, { body, format });
+      written = await updateCommentBody(id, {
+        body,
+        format,
+        declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
+      });
     } catch (err) {
       const refusal = messageRefusalHttp(err);
       if (refusal) throw refusal;
@@ -415,106 +392,4 @@ commentRoutes.delete(
   },
 );
 
-/**
- * Comment attachment endpoints. Accept user JWT (web upload), PAT, or device
- * token (MCP runners post screenshots from forge-clarify / forge-test /
- * forge-review) via `requireAnyAuth()` — deliberately per-route, NOT a
- * router-wide wildcard (see the comment above `commentRoutes`).
- */
-commentRoutes.post(
-  '/:commentId/attachments',
-  requireAnyAuth(),
-  // Reject the request before parseBody buffers the entire payload — this
-  // caps memory regardless of file size.
-  uploadBodyLimit(() => {
-    throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
-  }),
-  zValidator('param', commentIdParamSchema, (r) => {
-    if (!r.success)
-      throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { commentId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const [comment] = await db
-      .select({ id: comments.id, issueId: comments.issueId, projectId: issues.projectId })
-      .from(comments)
-      .innerJoin(issues, eq(issues.id, comments.issueId))
-      .where(eq(comments.id, commentId))
-      .limit(1);
-    if (!comment) throw notFound('comment not found');
-
-    const access = await loadProjectAccess(comment.projectId, userId);
-    assertProjectRole(access, 'member');
-
-    const body = await c.req.parseBody();
-    const file = body.file;
-    if (!(file instanceof File)) throw attachmentBadRequest('missing "file" field');
-    const mime = file.type || 'application/octet-stream';
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    let persisted: Awaited<ReturnType<typeof persistCommentAttachment>>;
-    try {
-      persisted = await persistCommentAttachment({
-        commentId: comment.id,
-        name: file.name || 'file',
-        mime,
-        bytes: buffer,
-        uploaderId: userId,
-        uploaderDeviceId: null,
-      });
-    } catch (err) {
-      if (err instanceof AttachmentError) throw attachmentErrorToHttp(err);
-      throw err;
-    }
-
-    return c.json(persisted, 201);
-  },
-);
-
-commentRoutes.get(
-  '/attachments/:id',
-  requireAnyAuth(),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success)
-      throw attachmentBadRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const [row] = await db
-      .select({
-        id: commentAttachments.id,
-        path: commentAttachments.path,
-        mime: commentAttachments.mime,
-        name: commentAttachments.name,
-        projectId: issues.projectId,
-      })
-      .from(commentAttachments)
-      .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
-      .innerJoin(issues, eq(issues.id, comments.issueId))
-      .where(eq(commentAttachments.id, id))
-      .limit(1);
-    if (!row) throw notFound('attachment not found');
-
-    const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
-
-    let buffer: Buffer;
-    try {
-      buffer = await getStorage().get(row.path);
-    } catch (err) {
-      if (isEnoent(err)) {
-        throw new HTTPException(410, {
-          message: 'attachment file missing on disk',
-          cause: { code: 'ATTACHMENT_FILE_MISSING' },
-        });
-      }
-      throw err;
-    }
-    setInertAttachmentHeaders(c, row.mime, row.name);
-    return c.body(new Uint8Array(buffer));
-  },
-);
+commentRoutes.route('/', commentAttachmentRoutes);
