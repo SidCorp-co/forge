@@ -1,4 +1,4 @@
-import { getLineMetrics, longestConsecutiveRun } from "../line-metrics.js";
+import { directiveMatcher, getLineMetrics, longestConsecutiveRun } from "../line-metrics.js";
 
 export default {
   meta: {
@@ -7,7 +7,10 @@ export default {
     schema: [
       {
         type: "object",
-        properties: { max: { type: "integer", minimum: 0 } },
+        properties: {
+          max: { type: "integer", minimum: 0 },
+          additionalDirectives: { type: "array", items: { type: "string" } },
+        },
         additionalProperties: false,
       },
     ],
@@ -17,10 +20,12 @@ export default {
     },
   },
   create(context) {
-    const { max = 8 } = context.options[0] ?? {};
+    const { max = 8, additionalDirectives = [] } = context.options[0] ?? {};
+    const matcher = directiveMatcher(additionalDirectives);
     return {
       "Program:exit"() {
-        const run = longestConsecutiveRun(getLineMetrics(context.sourceCode).commentLines);
+        const { commentLines } = getLineMetrics(context.sourceCode, matcher);
+        const run = longestConsecutiveRun(commentLines);
         if (run.length <= max) return;
         context.report({
           loc: {

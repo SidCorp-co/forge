@@ -64,6 +64,10 @@ export {
 } from "./walk.js";
 export { HANDOFF_PATTERNS, NARRATION_PATTERNS } from "./rules/no-historical-narration.js";
 export {
+  DEFAULT_DIRECTIVES,
+  directiveMatcher,
+} from "./line-metrics.js";
+export {
   contentWords,
   DEFAULT_MIN_SENTENCE_LENGTH,
   DEFAULT_OVERLAP_FLOOR,
@@ -138,6 +142,19 @@ const TOKEN_RULES = new Set(["no-raw-colors", "no-arbitrary-sizes"]);
 /** Colour and size keep separate homes, so only the colour rule is told where colour lives. */
 const COLOR_RULES = new Set(["no-raw-colors"]);
 
+/**
+ * The rules that measure prose, and so the rules a directive vocabulary reaches. A directive is
+ * configuration written in comment syntax: its wording belongs to the tool that reads it, which
+ * is why two sites waiving one rule for one reason carry the same words. `additionalDirectives`
+ * names the project's own vocabularies; the plugin's built-in set applies regardless.
+ */
+const COMMENT_RULES = new Set([
+  "comment-density",
+  "max-consecutive-comment-lines",
+  "no-duplicate-comment",
+  "no-historical-narration",
+]);
+
 /** Nothing to point a report at without a design system. Off until `primitives` names one. */
 const PRIMITIVE_RULES = new Set(["no-raw-elements"]);
 
@@ -164,11 +181,14 @@ export const ESLINT_CONFIG_FILES = ["js", "mjs", "cjs", "ts", "mts", "cts"].map(
  * The whole flat config, from one severity per rule. `"error"`, `"warn"` and `"off"`, or
  * `["warn", { …options }]` to tune one; anything unnamed is `"error"`, the rules waiting for a
  * project noun excepted. `tokens` names the file colours and sizes belong in and exempts it from
- * both; `primitives` names the design system product code may not reach past.
+ * both; `primitives` names the design system product code may not reach past;
+ * `additionalDirectives` names the comment prefixes this project's other tools read as arguments,
+ * which the comment rules therefore skip rather than measure as writing.
  */
 export function configure({
   tokens,
   primitives,
+  additionalDirectives,
   testGlobs = DEFAULT_TEST_GLOBS,
   ignores,
   ...asked
@@ -194,6 +214,9 @@ export function configure({
     if (severity === "off" || severity === 0) continue;
 
     const merged = { ...defaults, ...options };
+    if (additionalDirectives !== undefined && COMMENT_RULES.has(name)) {
+      merged.additionalDirectives ??= additionalDirectives;
+    }
     if (system) {
       // The section is the project's answer; options beside the severity tune it.
       for (const [key, value] of Object.entries(primitives)) merged[key] ??= value;
