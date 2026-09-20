@@ -14,10 +14,10 @@ number.
 
 | Package | What |
 |---|---|
-| `packages/core` | Hono backend. Single app (`src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the job pool a master agent claims from. |
+| `packages/core` | Hono backend. Single app (`packages/core/src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the job pool a master agent claims from. |
 | `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
 | `packages/runner` | Headless Rust `forge-runner` CLI daemon (crates `forge-runner` / `forge-runner-core`) for servers/CI; pairs as a device. |
-| `packages/contracts` | Shared cross-app TS types & registries (`issues.ts`, `pipeline-registry.ts`, `requests.ts`, `responses.ts`, `rows.ts`, `domain-templates.ts`). |
+| `packages/contracts` | Shared cross-app TS types & registries, all under `packages/contracts/src/`: `packages/contracts/src/issues.ts`, `packages/contracts/src/pipeline-registry.ts`, `packages/contracts/src/requests.ts`, `packages/contracts/src/responses.ts`, `packages/contracts/src/rows.ts`, `packages/contracts/src/domain-templates.ts`. |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
 
 **The driver skill lives in a second repo.** `github.com/SidCorp-co/forge-plugin` is Forge's own
@@ -73,7 +73,7 @@ Six axes — form (gated 5×), knowledge (gated 3×), relations, behaviour (gate
 Five of them own a property of the code; `record` owns `CHANGELOG.md`, the external record of what
 shipped, which was nobody's until 1,034 lines of it left in silence. An axis measures
 at its weakest gate. `.forge/conformance.json` declares each axis's level and the repo's profile
-(today: hardened); `conformance-status.mjs` **runs** every checker and fails when what it does
+(today: hardened); `scripts/conformance-status.mjs` **runs** every checker and fails when what it does
 disagrees with what the manifest claims.
 
 Thresholds live in one place per axis: `.arch.json` for architecture contracts, and
@@ -256,7 +256,7 @@ line number — a line number is stale the moment anything above it moves, and s
     LAST job's outcome so a run whose last job failed never closes `completed`.
   - New code that flips `pipeline_runs.status` terminal MUST route through a cascade-calling
     helper — on either axis, there is exactly one writer.
-- **A migration's `when` in `drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
+- **A migration's `when` in `packages/core/drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
   already in the target DB** — drizzle reads the single highest `created_at` once and skips lower
   entries **silently, forever**, so the container starts and serves new code against an old schema
   (ISS-807: a live 500 on `GET /me/attention` for every signed-in user). Take `max(when)` across the
@@ -265,7 +265,7 @@ line number — a line number is stale the moment anything above it moves, and s
   highest `when` you find there**: branches each deriving `+86400000` from one `main` all land on
   the SAME number, and whichever merges first silently kills the rest — measured twice on
   2026-09-17, four open migrations, three of them holding `1796083200000`. Never a real
-  timestamp. Gated by `db/migrations-journal.test.ts`, which reads only your own journal and so
+  timestamp. Gated by `packages/core/src/db/migrations-journal.test.ts`, which reads only your own journal and so
   cannot see a sibling; the looking is yours.
 
 
