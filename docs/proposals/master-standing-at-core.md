@@ -52,6 +52,16 @@ exactly where it is now — `placement_under` in `daemon/master.rs`, off the led
 - `forge-runner master status`, which already prints the pane answer and the standing answer as
   separate lines. A web surface has the same two questions to answer.
 
+## Honest costs
+
+| Cost | What it buys, and who pays |
+|---|---|
+| Two writers for one decision | Today one place holds a stand-down and one command writes it, so there is nothing to reconcile. Putting the same decision at core means a box and a server can each hold an answer, and every reader from then on has to know which it is looking at — including paths with nothing to do with masters |
+| A migration, a contracts change and a screen | A column, a serialized field on the runner-serving payload, a control in `packages/web-v2`, and the tests for all three. It buys exactly one thing: reaching the decision without a terminal on the box. An owner who already has one pays the whole price for nothing |
+| A round trip between the act and the effect | A stand-down set at core takes effect on the next sweep that reads `me/runners`, so an owner who clicks it watches the master keep running for up to a poll interval. The local verb is immediate. Whatever the UI says while that gap is open is a promise somebody has to keep, and "stopping…" is a state this product does not otherwise have |
+| The precedence question arrives unanswered | This page states which answer should win and does not settle it. A change that ships the field without settling it ships two answers and a reader who cannot tell which is running — which is the defect ISS-1118 existed to close, arriving from the other direction |
+| A local stand-up can be silently re-imposed | If core's answer is a default the box re-reads every pass, an operator who stands a project up on the box gets it stood down again thirty seconds later by a field nobody remembers setting. Whoever builds this owes that operator a line saying where the decision came from |
+
 ## What this does not ask for
 
 Changing the daemon's residency model. One master per served project, parented by tmux so it

@@ -373,6 +373,17 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at
  FROM runs";
 
+fn map_standing(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterStanding> {
+    Ok(MasterStanding {
+        project_id: row.get(0)?,
+        slug: row.get(1)?,
+        stood_down_at: row.get(2)?,
+        stood_down_by: row.get(3)?,
+        why: row.get(4)?,
+        stood_up_at: row.get(5)?,
+    })
+}
+
 fn map_master(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterRow> {
     Ok(MasterRow {
         project_id: row.get(0)?,
@@ -897,19 +908,41 @@ impl Ledger {
                 "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
                  FROM master_standing WHERE project_id = ?1",
                 params![project_id],
-                |row| {
-                    Ok(MasterStanding {
-                        project_id: row.get(0)?,
-                        slug: row.get(1)?,
-                        stood_down_at: row.get(2)?,
-                        stood_down_by: row.get(3)?,
-                        why: row.get(4)?,
-                        stood_up_at: row.get(5)?,
-                    })
-                },
+                map_standing,
             )
             .optional()
             .map_err(sql_err)
+    }
+
+    /// The standing for the project this box knows by this slug.
+    ///
+    /// Keyed by slug and not by project id because a command, and `status`,
+    /// may hold only the slug — and a stand-down can be recorded for a project
+    /// this box has never placed a master for, which is exactly the case a
+    /// lookup going through the `masters` row cannot see.
+    pub fn master_standing_for_slug(&self, slug: &str) -> Result<Option<MasterStanding>> {
+        self.conn
+            .query_row(
+                "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
+                 FROM master_standing WHERE slug = ?1",
+                params![slug],
+                map_standing,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    /// Every project this box is holding a standing decision about.
+    pub fn standings(&self) -> Result<Vec<MasterStanding>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
+                 FROM master_standing ORDER BY slug",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt.query_map([], map_standing).map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 
     /// Drop a lifted stand-down, once the pane it was kept for has been told
@@ -2354,6 +2387,50 @@ mod tests {
             "and the upgraded row takes the session id the next report carries"
         );
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// F4 from the ISS-1118 review. A project can be stood down before this
+    /// box has ever placed a master for it, and a lookup that needs a pane row
+    /// would report "nothing is standing it down" about a project standing
+    /// down right there in the ledger.
+    #[test]
+    fn a_standing_is_readable_for_a_project_that_has_no_master_row_at_all() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+            .unwrap();
+        assert!(
+            led.master_for_pane("forge-master-forge-dev")
+                .unwrap()
+                .is_none(),
+            "the case is exactly a stand-down with no pane row behind it"
+        );
+        let by_slug = led
+            .master_standing_for_slug("forge-dev")
+            .unwrap()
+            .expect("the standing is reachable by the only thing a command holds — the slug");
+        assert!(by_slug.stands());
+        assert_eq!(by_slug.project_id, "proj-1");
+        assert!(led.master_standing_for_slug("other").unwrap().is_none());
+    }
+
+    #[test]
+    fn every_project_this_box_holds_a_decision_about_is_listable() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "b-project", "owner", None)
+            .unwrap();
+        led.stand_down_master("proj-2", "a-project", "owner", None)
+            .unwrap();
+        let slugs: Vec<String> = led
+            .standings()
+            .unwrap()
+            .into_iter()
+            .map(|s| s.slug)
+            .collect();
+        assert_eq!(
+            slugs,
+            vec!["a-project".to_string(), "b-project".to_string()],
+            "a bare `status` that enumerated transcript directories alone would list neither, and a stood-down project with no transcript is the one an owner is most likely looking for"
+        );
     }
 
     #[test]

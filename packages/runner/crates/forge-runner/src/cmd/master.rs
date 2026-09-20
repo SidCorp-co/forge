@@ -272,6 +272,14 @@ this pane goes. `forge-runner master stand-down {} --force` ends it anyway.",
 async fn stand_up(ctx: &Ctx, a: StandUpArgs) -> anyhow::Result<()> {
     let led = open_ledger()?;
     let project_id = project_for_slug(ctx, &led, &a.slug).await?;
+    // Clear the conversation BEFORE lifting, never after. While the
+    // stand-down stands no pane is placed, so a sweep that sees the lift
+    // already sees the cleared conversation; the other order leaves a window
+    // in which a pane is placed resuming exactly the conversation the operator
+    // asked not to resume — and leaves the veto lifted if the clear fails.
+    if a.fresh {
+        led.forget_master_conversation(&project_id)?;
+    }
     let lifted = led.stand_up_master(&project_id)?;
     if lifted {
         println!(
@@ -283,7 +291,6 @@ admissible work, a runner that accepts work, a repo path and tmux — rather tha
         println!("{} was not stood down; nothing changed.", a.slug);
     }
     if a.fresh {
-        led.forget_master_conversation(&project_id)?;
         println!("Its stored conversation is forgotten, so the next pane cold-starts.");
     } else if let Some(conv) = led
         .master_for_project(&project_id)?
@@ -305,21 +312,15 @@ fn whoami() -> String {
 
 async fn status(slug: Option<&str>) -> anyhow::Result<()> {
     let base = Config::path()?.with_file_name("master");
+    let led = open_ledger().ok();
     let slugs: Vec<String> = match slug {
         Some(s) => vec![s.to_string()],
-        None => std::fs::read_dir(&base)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|e| e.path().is_dir())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect(),
+        None => listed(&base, led.as_ref()),
     };
     if slugs.is_empty() {
         println!("no master transcripts under {}", base.display());
         return Ok(());
     }
-    let led = open_ledger().ok();
     for s in slugs {
         let name = terminal::session_name(terminal::MASTER_PREFIX, &s);
         let alive = terminal::alive(&name).await;
@@ -331,11 +332,7 @@ async fn status(slug: Option<&str>) -> anyhow::Result<()> {
             size / 1024,
             path.display()
         );
-        println!(
-            "{:<20} standing  {}",
-            "",
-            standing_line(led.as_ref(), &name, &s)
-        );
+        println!("{:<20} standing  {}", "", standing_line(led.as_ref(), &s));
         if alive {
             println!("{:<20} attach: tmux attach -t {name}", "");
         }
@@ -343,28 +340,47 @@ async fn status(slug: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Which projects a bare `status` answers for.
+///
+/// Transcript directories alone would miss a project stood down before this
+/// box ever placed a master for it — which is a project whose standing is the
+/// only thing there is to say about it, and the one an owner is most likely to
+/// be looking for.
+fn listed(base: &std::path::Path, led: Option<&Ledger>) -> Vec<String> {
+    let mut slugs: Vec<String> = std::fs::read_dir(base)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    if let Some(led) = led {
+        for standing in led.standings().unwrap_or_default() {
+            if !slugs.contains(&standing.slug) {
+                slugs.push(standing.slug);
+            }
+        }
+    }
+    slugs.sort();
+    slugs
+}
+
 /// The second answer, which `alive` cannot give.
 ///
 /// A pane is a fact about tmux. Whether this box may keep a master for the
 /// project is a fact about what its owner decided, and on 2026-09-20 those two
 /// answers differed for nine hours with nothing here able to report it.
-fn standing_line(led: Option<&Ledger>, pane: &str, slug: &str) -> String {
+/// Read by slug rather than through the `masters` row: a project can be stood
+/// down before this box has ever placed a master for it, and a lookup that
+/// needs a pane row would answer "nothing is standing it down" about a project
+/// that is standing down right there in the ledger.
+fn standing_line(led: Option<&Ledger>, slug: &str) -> String {
     let Some(led) = led else {
         return "unknown — this box's ledger could not be opened, so what its owner decided about \
 this project cannot be read here"
             .into();
     };
-    let row = match led.master_for_pane(pane) {
-        Ok(r) => r,
-        Err(e) => return format!("unknown — the ledger row for {pane} could not be read: {e}"),
-    };
-    let Some(row) = row else {
-        return format!(
-            "this box has no ledger row for {pane}, so it has never reported a master for {slug}; \
-nothing is standing it down"
-        );
-    };
-    match led.master_standing(&row.project_id) {
+    match led.master_standing_for_slug(slug) {
         Err(e) => format!("unknown — the standing for {slug} could not be read: {e}"),
         Ok(Some(s)) if s.stood_up_at.is_none() => format!(
             "STOOD DOWN by {}{} — this box places no master for it and nudges none. \
@@ -427,6 +443,51 @@ mod tests {
         assert!(
             help.contains("stand-down"),
             "and names the control that keeps it stopped: {help}"
+        );
+    }
+
+    /// F2 from the ISS-1118 review. While the stand-down stands, no pane is
+    /// placed; so clearing the conversation FIRST means any sweep that can see
+    /// the lift already sees the cleared conversation. The other order leaves
+    /// a window in which a pane resumes exactly what `--fresh` asked it not to.
+    #[test]
+    fn stand_up_fresh_clears_the_conversation_before_it_lifts_the_veto() {
+        const SOURCE: &str = include_str!("master.rs");
+        let body = SOURCE
+            .split("async fn stand_up(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .and_then(|r| r.split("\nfn ").next())
+            .expect("stand_up must be findable");
+        let clears = body
+            .find("forget_master_conversation(")
+            .expect("--fresh must clear the stored conversation");
+        let lifts = body
+            .find("stand_up_master(")
+            .expect("stand-up must lift the stand-down");
+        assert!(
+            clears < lifts,
+            "lifting first opens a window in which a sweep places a pane resuming the conversation `--fresh` asked it not to, and leaves the veto lifted if the clear then fails"
+        );
+    }
+
+    /// F4 from the review. A project can be stood down before this box has
+    /// ever placed a master for it.
+    #[test]
+    fn the_standing_is_read_by_slug_and_not_through_a_pane_row() {
+        const SOURCE: &str = include_str!("master.rs");
+        let body = SOURCE
+            .split("fn standing_line(")
+            .nth(1)
+            .and_then(|r| r.split("\nfn ").next())
+            .expect("standing_line must be findable");
+        assert!(
+            body.contains("master_standing_for_slug("),
+            "reading the standing through the `masters` row answers `nothing is standing it down` about a project whose stand-down is right there in the ledger, which is this issue's own defect in miniature"
+        );
+        assert!(
+            !body.contains("master_for_pane("),
+            "and it needs no pane row to answer, because a stood-down project may never have had one"
         );
     }
 

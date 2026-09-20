@@ -153,6 +153,11 @@ pub(crate) enum Unplaced {
         why: Option<String>,
         slug: String,
     },
+    /// This box could not read whether its owner stood this project down, so
+    /// it placed nothing rather than deciding it was driving.
+    StandingUnreadable {
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for Unplaced {
@@ -192,7 +197,35 @@ impl std::fmt::Display for Unplaced {
                     " — this box places none for it and nudges none. `forge-runner master stand-up {slug}` is the one act that lets it be placed again"
                 )
             }
+            Self::StandingUnreadable { detail } => write!(
+                f,
+                "this box cannot read whether its owner stood this project down ({detail}), so it places no master rather than deciding it is driving"
+            ),
         }
+    }
+}
+
+/// What this sweep could establish about one project's standing.
+///
+/// Three values and not two. Folding "the ledger could not be asked" into "no
+/// stand-down" is what would let a box whose ledger is unreadable place the
+/// very pane its owner withheld, and it would do it in silence.
+enum StandingRead {
+    /// The ledger answered, with a row or with nothing.
+    Known(Option<MasterStanding>),
+    /// It could not be asked, or it refused, and this is what to say.
+    Unreadable(String),
+}
+
+fn read_standing(ledger: Option<&Ledger>, project_id: &str) -> StandingRead {
+    let Some(led) = ledger else {
+        return StandingRead::Unreadable(
+            "this box's ledger could not be opened at all, so nothing here can say what its owner decided about this project".into(),
+        );
+    };
+    match led.master_standing(project_id) {
+        Ok(row) => StandingRead::Known(row),
+        Err(e) => StandingRead::Unreadable(format!("the standing could not be read: {e}")),
     }
 }
 
@@ -701,9 +734,24 @@ async fn sweep(
         // `take_pool_job`: the box goes on taking pool jobs for a project whose
         // master is stood down (ISS-1118).
         let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
-        let standing = ledger
-            .as_ref()
-            .and_then(|led| led.master_standing(&runner.project_id).ok().flatten());
+        let standing = match read_standing(ledger.as_ref(), &runner.project_id) {
+            StandingRead::Known(s) => s,
+            StandingRead::Unreadable(detail) => {
+                if masters.note_capability(&runner.project_id, "standing-unreadable") {
+                    tracing::error!(
+                        "[master] {}: {detail} — placing no master for it and nudging none. A box that cannot tell a stood-down project from a driving one must not decide it is driving.",
+                        runner.slug
+                    );
+                }
+                say_unplaced(
+                    masters,
+                    &runner.project_id,
+                    &runner.slug,
+                    Unplaced::StandingUnreadable { detail },
+                );
+                continue;
+            }
+        };
         let stands = standing.as_ref().is_some_and(MasterStanding::stands);
         // The pane is only looked for where something might contradict it: a
         // project nobody stood down answers `Proceed` either way, and asking
@@ -786,6 +834,7 @@ async fn sweep(
                     .map(|led| inherited_runs(led, &sid, &runner.project_id))
             })
             .unwrap_or_default();
+        let told = std::sync::atomic::AtomicBool::new(false);
         let pane = ensure_master(
             client,
             masters,
@@ -795,6 +844,7 @@ async fn sweep(
                 conversation: stored_conversation.as_deref(),
                 inherited: &inherited,
                 stood_down_for: lifted_interval,
+                stood_down_told: &told,
             },
             placement,
             tokens,
@@ -803,11 +853,11 @@ async fn sweep(
         if pane == PaneState::Absent {
             continue;
         }
-        if lifted_interval.is_some() {
+        if told.load(std::sync::atomic::Ordering::Relaxed) {
             if let Some(led) = ledger.as_ref() {
                 if let Err(e) = led.forget_lifted_standing(&runner.project_id) {
                     tracing::warn!(
-                        "[master] {}: cannot clear the lifted stand-down it was just told about: {e} — the next pane will be told the same interval again",
+                        "[master] {}: cannot clear the lifted stand-down a pane has now been told about: {e} — the next pane placed will be told the same interval again",
                         resolved.slug
                     );
                 }
@@ -820,9 +870,20 @@ async fn sweep(
         // here: that one is somebody else's and ISS-933 took this daemon out of
         // the business of killing panes it did not start.
         if matches!(pane, PaneState::ColdStarted | PaneState::Resumed) {
-            let since = ledger
-                .as_ref()
-                .and_then(|led| led.master_standing(&runner.project_id).ok().flatten());
+            // An unreadable standing withholds a placement but never withdraws
+            // one: withholding places nothing, and withdrawing ends a pane
+            // nobody may have stood down. The next sweep meets the same
+            // unreadable ledger at the gate above and withholds there.
+            let since = match read_standing(ledger.as_ref(), &runner.project_id) {
+                StandingRead::Known(s) => s,
+                StandingRead::Unreadable(detail) => {
+                    tracing::error!(
+                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end. If it was stood down, `tmux kill-session -t {pane_name}`.",
+                        runner.slug
+                    );
+                    None
+                }
+            };
             if since.as_ref().is_some_and(MasterStanding::stands) {
                 tracing::error!(
                     "[master] {}: {pane_name} was stood down while this sweep was starting it — withdrawing the pane this sweep placed. `forge-runner master stand-up {}` puts the project back under this box's authority.",
@@ -1628,6 +1689,12 @@ pub(crate) struct Carryover<'a> {
     /// Set only for a pane placed after a stand-down was lifted, so a resumed
     /// conversation is not told merely that it is master again (ISS-1118).
     stood_down_for: Option<Duration>,
+    /// Raised when the brief carrying `stood_down_for` actually reached a
+    /// pane. The sweep forgets the lifted record only on this, because a pane
+    /// that was adopted rather than started was sent no brief at all, and one
+    /// whose brief failed to land was told nothing — forgetting on either
+    /// would drop the interval undelivered.
+    stood_down_told: &'a std::sync::atomic::AtomicBool,
 }
 
 async fn ensure_master(
@@ -1863,8 +1930,12 @@ surface it reads",
         Some(down) => format!("{brief}{}", stood_up_brief(down)),
         None => brief,
     };
-    if let Err(e) = terminal::brief_new_pane(&name, &brief).await {
-        tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug);
+    match terminal::brief_new_pane(&name, &brief).await {
+        Ok(()) => carry.stood_down_told.store(
+            carry.stood_down_for.is_some(),
+            std::sync::atomic::Ordering::Relaxed,
+        ),
+        Err(e) => tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug),
     }
     match resume {
         Some(_) => PaneState::Resumed,
@@ -4983,6 +5054,14 @@ mod stand_down_tests {
             .expect("sweep must be findable")
     }
 
+    fn ensure_master_body() -> &'static str {
+        let rest = production()
+            .split("\nasync fn ensure_master(")
+            .nth(1)
+            .expect("ensure_master must be findable");
+        &rest[..rest.find("\n}").expect("ensure_master must close")]
+    }
+
     fn stood_down() -> MasterStanding {
         MasterStanding {
             project_id: "proj-1".into(),
@@ -5042,7 +5121,7 @@ mod stand_down_tests {
     #[test]
     fn the_sweep_reads_the_stand_down_before_it_places_a_pane() {
         let body = sweep_body();
-        let reads = body.find("master_standing(").expect(
+        let reads = body.find("read_standing(").expect(
             "the sweep places a pane for every project it serves and consults no record of one \
              being stood down, so the kill and the restart are the same lever: `master kill` \
              removes the pane, touches no ledger row, and the next sweep hands the stored \
@@ -5064,15 +5143,23 @@ mod stand_down_tests {
     fn the_stand_down_is_read_off_the_ledger_and_decided_before_core_is_asked_anything() {
         let body = sweep_body();
         let reads = body
-            .find("master_standing(")
+            .find("read_standing(")
             .expect("the sweep must consult the standing");
         let window = &body[..reads];
         let per_project = &window[window
             .rfind("for runner in &served {")
             .expect("the sweep still walks this box's projects")..];
         assert!(
-            body[..reads].contains("ledger\n            .as_ref()"),
+            body[reads..].starts_with("read_standing(ledger.as_ref()"),
             "the standing is read off the same ledger handle the sweep already reads the conversation id from, never off a field on the runner row or a fresh core call"
+        );
+        let reader = production()
+            .split("fn read_standing(")
+            .nth(1)
+            .expect("read_standing must be findable");
+        assert!(
+            reader[..reader.find("\n}").unwrap_or(reader.len())].contains("led.master_standing("),
+            "and `read_standing` asks the ledger and nothing else"
         );
         for gating in [
             "admissible::admissible(",
@@ -5120,17 +5207,104 @@ mod stand_down_tests {
     fn a_pane_this_sweep_placed_under_a_stand_down_written_since_is_withdrawn_by_it() {
         let body = sweep_body();
         let first = body
-            .find("master_standing(")
+            .find("read_standing(")
             .expect("the sweep must consult the standing before it places");
         let after_place = body
             .find("ensure_master(")
             .expect("the sweep must still place a pane");
         let second = body[after_place..]
-            .find("master_standing(")
+            .find("read_standing(")
             .map(|i| i + after_place);
         assert!(
             second.is_some_and(|s| s > first),
             "a stand-down written while this sweep was starting a pane leaves the pane running until the NEXT sweep, and an owner watching for it to stop sees it not stop (ISS-1118 criterion 16)"
+        );
+    }
+
+    /// F1 from the ISS-1118 review. Folding "could not ask" into "no
+    /// stand-down" is a fail-open: a box whose ledger is unreadable would
+    /// place the pane its owner withheld, and would do it in silence.
+    #[test]
+    fn a_standing_that_cannot_be_read_is_not_read_as_no_stand_down() {
+        assert!(
+            matches!(read_standing(None, "proj-1"), StandingRead::Unreadable(_)),
+            "a box with no ledger at all cannot say what its owner decided, and must not answer that nothing was decided"
+        );
+        let led = Ledger::open_in_memory().expect("an in-memory ledger opens");
+        assert!(
+            matches!(
+                read_standing(Some(&led), "proj-1"),
+                StandingRead::Known(None)
+            ),
+            "a ledger that answers `no row` is a real answer and stays one"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_standing_withholds_the_pane_and_says_which_it_could_not_read() {
+        let body = sweep_body();
+        let at = body
+            .find("StandingRead::Unreadable(detail)")
+            .expect("the sweep must handle the unreadable case by name");
+        let branch = &body[at..at + 900.min(body.len() - at)];
+        assert!(
+            branch.contains("tracing::error!") && branch.contains("continue;"),
+            "an unreadable standing is reported loudly and places nothing; carrying on to `ensure_master` would place the pane an owner may have withheld"
+        );
+        let why = Unplaced::StandingUnreadable {
+            detail: "the standing could not be read: disk is gone".into(),
+        }
+        .to_string();
+        assert!(
+            why.contains("disk is gone"),
+            "and the reason a pane is absent names what could not be read, not merely that something could not be: {why}"
+        );
+    }
+
+    /// The same unreadable answer must NOT withdraw. Withholding places
+    /// nothing; withdrawing ends a pane nobody may have stood down.
+    #[test]
+    fn an_unreadable_read_back_reports_and_never_withdraws() {
+        let body = sweep_body();
+        let after = body
+            .find("ensure_master(")
+            .expect("the sweep must still place a pane");
+        let recheck = &body[after..];
+        let at = recheck
+            .find("StandingRead::Unreadable(detail)")
+            .expect("the read-back must handle the unreadable case by name");
+        let branch = &recheck[at..at + 900.min(recheck.len() - at)];
+        assert!(
+            branch.contains("NOT being withdrawn"),
+            "the two directions are not symmetric and the log has to say which one this is: {branch}"
+        );
+        assert!(
+            !branch[..branch.find("=> ").map_or(branch.len(), |i| i + 400)].contains("terminal::kill"),
+            "ending a pane on a record this box could not read would take work nobody decided to end"
+        );
+    }
+
+    /// F3 from the review. The interval is spent when a pane is TOLD it, not
+    /// when a pane exists: an adopted pane was sent no brief at all.
+    #[test]
+    fn the_lifted_interval_is_forgotten_only_once_a_pane_has_been_told_it() {
+        let body = sweep_body();
+        assert!(
+            body.contains("if told.load("),
+            "forgetting on `lifted_interval.is_some()` drops the interval undelivered whenever the pane was adopted rather than started, or its brief failed to land"
+        );
+        let brief = ensure_master_body();
+        assert!(
+            brief.contains("stood_down_told.store("),
+            "and the acknowledgement is raised where the brief is actually delivered, not where one was assembled"
+        );
+        let at = brief
+            .find("stood_down_told.store(")
+            .expect("the acknowledgement must be findable");
+        let window = &brief[at.saturating_sub(200)..at];
+        assert!(
+            window.contains("Ok(()) =>"),
+            "it is raised on a delivered brief only — a failed one told the pane nothing: {window}"
         );
     }
 
