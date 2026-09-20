@@ -4,7 +4,7 @@ ISS-1111 put comment content behind a gate: `check-comment-budget` freezes the f
 `eslint.config.mjs` enables out of `.forge/code-quality`, and `conformance-status.mjs` holds the
 manifest to it. ISS-1105 stopped those rules measuring a machine directive as prose.
 
-Two things were met on the way and neither fits inside either issue. Both need a decision rather
+Three things were met on the way and none fits inside either issue. Each needs a decision rather
 than a diff.
 
 ## 1. The vendored plugin has no recorded upstream
@@ -57,6 +57,24 @@ findings like `text-embedding-3-small — unknown token --color-embedding-3-smal
 is debt or noise is not established, and freezing it before it is established would freeze the
 noise.
 
+## 3. The checkers' own tests run, and the behaviour axis never judges them
+
+Found while adding one. `scripts/lib/` holds 16 `*.test.mjs` files. `check-test-reachability`
+sees them — 551 tracked test files, all collected by four runners — because
+`packages/core/vitest.config.ts` includes `../../scripts/**/*.test.mjs` and nothing else does.
+`check-test-signal` does not: `checkers.test-signal` in `.forge/conformance.json` scans six roots
+under `packages/`, none of them `scripts/`, and matches `.test.ts` and `.test.tsx`, neither of
+which is `.mjs`.
+
+So the suites that hold every other gate are collected and run, and whether they assert behaviour
+or restate a declaration is measured by nothing. That is one half of the shape ISS-1111 was filed
+about, in the directory that implements the fix.
+
+Widening the scan is two lines in the manifest. It is not a two-line change: `check-test-signal`
+carries a frozen baseline under `improves: down`, so 16 previously unmeasured files arrive at
+once and whatever they carry has to be either paid or frozen — and freezing is an amnesty, which
+is a decision rather than an edit.
+
 ## Honest costs
 
 | Choosing this | Costs |
@@ -66,9 +84,12 @@ noise.
 | Declaring the fork (3) | Every upstream fix to these rules becomes this repo's to port by hand, forever. |
 | Declaring a design axis for the ungated halves | A baseline over roughly 5,400 findings, most of them from one sweep whose token source disagrees with ESLint's — so the freeze would record noise as debt and a reader would learn to skip the report. |
 | Leaving all of it as it stands | The comment gate holds, and the other four halves keep reporting to nobody — the same shape ISS-1111 was filed to end, one axis over. |
+| Widening test-signal to `scripts/` and `.test.mjs` | 16 files arrive at a level-2 axis at once: each one either pays what it carries or is frozen, and a freeze here is an amnesty over the suites that hold every other gate. |
 
 ## What would settle it
 
 For 1: the upstream's name. Nothing in this repo has it, and no commit message names it.
 For 2: one reading of the unknown-token sweep against a single token source, to learn whether that
 5,370 is debt or a misconfiguration.
+For 3: one run of `check-test-signal` widened to those 16 files, to learn whether the answer is a
+payment or an amnesty.
