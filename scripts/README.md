@@ -19,8 +19,9 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (honest
-costs · the mode-qualification of injected docs · the PAT permission surface).
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` four (honest
+costs · the mode-qualification of injected docs · the PAT permission surface · whether a document's
+citations of this repo's own files are still true).
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -38,6 +39,7 @@ passed, because the external record of what shipped belonged to none of them.
 | declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
 | PAT surface | `check-pat-surface` — `injected-docs` | whether every route a project-scoped token can reach is covered by the permission menu that claims to fence it | whether a given fence is correct — that is review's |
+| doc citations | `check-doc-citations` — `lang-check` | whether a document's citation of a file in this repo is still true: a path no tracked file carries and an anchor whose file does not hold that symbol each fail, a line-number citation fails because `CLAUDE.md` already forbids one, and a live citation whose target was changed after the document was comes back on the worklist without failing. Resolves inside the document's nearest package, so a namesake elsewhere cannot stand in for a deleted file | a document's PROSE, which no machine can check; a count or a number in a document; whether a symbol that still exists still means what the sentence says; `CHANGELOG.md` and `docs/proposals/`, each excluded with its reason in `.forge/conformance.json` |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
@@ -250,7 +252,9 @@ once that sentence exists nothing downstream can unsay it.
 
 **A prerequisite is only as good as the thing it resolves.** Measured 2026-09-18: `deps` resolves
 three `node_modules` directories, all three were present, and `archmap` still printed `scope matched
-no files (.)` and exited 2 in 0.117s. dependency-cruiser 18.3.0 had renamed the CLI entry point
+no files (.)` and exited 2 in 0.117s.
+<!-- doc-citation: unchecked — both paths are inside the dependency-cruiser package, not in this repo; the whole point of the sentence is that one of them stopped existing THERE. -->
+dependency-cruiser 18.3.0 had renamed the CLI entry point
 `bin/dependency-cruise.mjs` to `bin/dependency-cruiser.mjs`, and the vendored archmap walks
 `node_modules` for the old name alone — so the package was installed, complete and runnable, and the
 resolver was missing. `^18` in `packages/core/package.json` admits 18.3.x, so every npm
@@ -573,7 +577,9 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 to do it at module scope, so importing anything whose graph reached either did that work — and on a
 missing variable, threw inside the import.
 
-That failure has no test in it. CI on PR #457 reported `1 file failed` with the file itself reading
+That failure has no test in it.
+<!-- doc-citation: unchecked — the three frames below are quoted verbatim from a CI log. A stack frame records where a process was at one moment; it is evidence, not a citation, and rewriting it would falsify the quote. -->
+CI on PR #457 reported `1 file failed` with the file itself reading
 `3 tests | 3 skipped`, no assertion anywhere in the job, and a three-frame stack: `env.ts:137` →
 `db/client.ts:3` → `knowledge/service.ts:3`. The unit suite is floored by `vitest.setup.ts`;
 `vitest.integration.config.ts` carries no `setupFiles`, which is where it bit.
@@ -685,7 +691,7 @@ sources marked `authoritative` in `.forge/conformance.json` (today: the integrat
 step.
 
 The step list and the step **count** both come from one `git grep -n -I -- cm:flow` over the
-checkout (`check-flow-coverage.mjs:collectSteps`). There is no second source, and so no
+checkout (`check-flow-coverage.mjs:stepSites`). There is no second source, and so no
 disagreement to detect — what `.forge/conformance.json` declares for a flow is a name and a
 description, never a count. This paragraph claimed the count came from `cm flow <name>` and that a
 disagreement between the two exits `2`, which described a cross-check the file does not perform.

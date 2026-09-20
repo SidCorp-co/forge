@@ -81,6 +81,13 @@ jobs:
       # not taken" while the constitution took its own unpriced. Reads markdown
       # only, so it lives in this install-free job.
       - run: node scripts/check-honest-costs.mjs
+      # Doc citations: a document that names a file in this repo makes a claim a machine
+      # can check, and nothing checked it — 93 documents had drifted far enough to be
+      # deleted rather than corrected before this landed. Reads markdown and `git ls-files`
+      # only, so it lives in this install-free job; the `fetch-depth: 0` above is what lets
+      # it date a document against the file it cites, and it says so rather than reporting
+      # no drift when the checkout is shallow.
+      - run: node scripts/check-doc-citations.mjs --all
       # CI-parity: proves every step in this file is either run by `pnpm verify`
       # or declared as covered by another root script. Without it the local
       # command and this workflow drift, and a green `pnpm verify` stops meaning

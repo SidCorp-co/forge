@@ -72,6 +72,13 @@ const CHECKS = [
   },
   {
     axis: 'knowledge',
+    label: 'doc-citations',
+    cmd: ['node', 'scripts/check-doc-citations.mjs', '--all'],
+    scanned: /^doc-citations: (\d+) document\(s\) scanned/m,
+    unit: 'documents',
+  },
+  {
+    axis: 'knowledge',
     label: 'honest-costs',
     cmd: ['node', 'scripts/check-honest-costs.mjs'],
     scanned: /^honest-costs: (\d+) document/m,
@@ -182,6 +189,7 @@ const CHECKS = [
 
 const CI_COVERAGE = {
   'node scripts/check-honest-costs.mjs': 'verify',
+  'node scripts/check-doc-citations.mjs --all': 'verify',
   'node scripts/check-release-record.mjs': 'verify',
   'node scripts/check-injected-doc-modes.mjs': 'verify',
   'node scripts/check-retired-model.mjs': 'verify',

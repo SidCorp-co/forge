@@ -21,8 +21,8 @@
     },
     "knowledge": {
       "level": 3,
-      "gate": "check-honest-costs + check-injected-doc-modes + check-pat-surface + build-flow-map",
-      "owns": "whether a document asking to be adopted prices what adopting it costs; whether a doc injected into every session names the pipeline mode its status transitions belong to; whether the PAT permission menu covers every route it claims; whether the flow map is generated rather than hand-kept"
+      "gate": "check-honest-costs + check-injected-doc-modes + check-pat-surface + check-doc-citations + build-flow-map",
+      "owns": "whether a document asking to be adopted prices what adopting it costs; whether a doc injected into every session names the pipeline mode its status transitions belong to; whether the PAT permission menu covers every route it claims; whether a document's citations of this repo's own files are still true; whether the flow map is generated rather than hand-kept"
     },
     "relations": {
       "level": 2,
@@ -73,6 +73,31 @@
     "archmap": {
       "maxUnresolvableEdges": 50,
       "$comment": "Ceiling on edges `arch check` cannot resolve. Measured 2026-08-23: 171, all of them node_modules subpath exports (hono/http-exception and friends), which belong to no module and so cannot violate a contract. It was 997 until `.arch.json` declared a tsConfig — 841 of those were web-v2's `@/*` alias, and an unresolvable edge is DROPPED, so three locked contracts over that package were being checked against an empty graph. It had drifted back to 201 by 2026-09-16, 167 of them `hono/http-exception`; a `hono/*` entry in `.arch-tsconfig.json` took it to 33 with `archmap check` still reporting 0 blocking and the same 10 frozen, so nothing was being hidden by the drop. The ceiling came down 200 -> 50 in the same change (ISS-1046): a ceiling four times the measurement is not a ratchet. What remains is the MCP SDK's subpath exports and mermaid. Audit rule R7 fails if it climbs back."
+    },
+    "doc-citations": {
+      "$comment": "ISS-1112 — a document that names a file makes a claim a machine can check, and nothing checked it: 93 documents had drifted far enough to be deleted rather than corrected before this landed, one of them crediting an invariant to a test file not in the tree. The unit is a CITATION, never a document — prose is not checkable and this does not try. A citation is resolved inside its HOME, the nearest ancestor holding a package manifest or the repository root, and nowhere else, so deleting the file a document cites cannot be concealed by a namesake in another package. Three shapes fail: a path no tracked file carries, a line-number citation (which CLAUDE.md already forbids by name), and a file.ts:symbol anchor whose file does not hold that symbol. One shape only reports: a citation whose target was changed after the document was, which is the still-true/edited/deleted worklist entry and not a build failure. What it cannot see, each stated where it is skipped: prose, fenced and indented code blocks, a path in another repository (which carries no extension here and so is not read as a citation at all), a symbol that still exists but has changed meaning, and whether a count or a number in a document is right. A token that is not a claim about this repository says so at the citation, in an HTML comment reading `doc-citation: unchecked — <why>`, so the reason sits where a reader of the document will find it rather than in this file.",
+      "skipDocs": [
+        {
+          "glob": "CHANGELOG.md",
+          "why": "The external record of what shipped. It records what was true on the day it shipped and is MEANT to age — a citation in a released entry going stale is the record working, not rotting. Named out of scope by ISS-1112 and owned by the `record` axis instead."
+        },
+        {
+          "glob": "docs/proposals/**",
+          "why": "A proposal names the tree it WANTS, not the tree there is, so a forward reference and a dead citation are the same text and this checker cannot tell them apart. `check-honest-costs` already owns these documents on the axis they can be measured on: whether they price what adopting them costs."
+        },
+        {
+          "glob": ".forge/archmap/**",
+          "why": "A vendored third-party plugin's own documents, shipped with its source. Its citations are about its own tree and land here only because `pnpm install` needs no path outside the repo."
+        },
+        {
+          "glob": ".forge/code-quality/**",
+          "why": "The same: `eslint-plugin-code-quality` vendored at a path inside the repo so installation needs no path outside it. Its documents are its author's."
+        },
+        {
+          "glob": ".forge/backups/**",
+          "why": "Snapshots kept for recovery. A citation in a backup describes the tree AT THE TIME IT WAS TAKEN, which is the whole point of keeping it, so measuring it against today's tree would report the backup working as a fault."
+        }
+      ]
     },
     "provider-literals": {
       "$comment": "ISS-1071 — an integration provider's name is written in the places that describe a provider, and nowhere else. The rule is about LOCATION, not about the value: `IntegrationProvider` makes 'coolify' legal everywhere the union is in scope, which is what a union is for, so no type can hold this and the check has to be a scan. What it matches, and the two bounds it carries, are stated at the top of scripts/lib/provider-literals.mjs.",

@@ -231,8 +231,12 @@ lost the time the doc was written to save.
 
 **The files you read are your doc-review worklist.** Finishing an issue means every `.md` you
 opened while working it comes back marked *still true* / *edited* / *deleted*. "Did not touch" is
-not one of the three. Enforced in the pipeline by `forge-code`.
+not one of the three. The pipeline's `forge-code` step decides which of the three a document gets,
+and `check-doc-citations` decides whether it was entitled to say *still true*: every citation of a
+file in this repo is resolved against the tree, a dead one fails the build, and one whose target
+moved after the document did comes back on the worklist. Prose is still the step's alone.
 
+<!-- doc-citation: unchecked — `file.ts:symbol` here is the NOTATION being defined, not a file this repo holds. -->
 Cite a doc claim so it can be checked: name the identifier or the `file.ts:symbol` anchor, never a
 line number — a line number is stale the moment anything above it moves, and stale in silence.
 
