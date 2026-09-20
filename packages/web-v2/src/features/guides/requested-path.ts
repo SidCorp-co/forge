@@ -14,3 +14,13 @@ export function slugFromGuidePath(path: string | null | undefined): string {
   const rest = /^\/guides\/(.*)$/.exec(path.split("?")[0])?.[1] ?? "";
   return decodeURIComponent(rest.replace(/\/+$/, "")).trim();
 }
+
+/** Slugs are registry keys, not paths and not filenames. This is the ONE test of
+ *  that: the middleware and the page fetcher both read it, because two tests
+ *  that disagree is a slug one of them refuses and the other passes — measured
+ *  on `/guides/what-is-an-issue.md`, which core answers 200 for (it strips the
+ *  suffix) while the page rejects it, so the refusal fell back to the blank
+ *  body the middleware exists to prevent. */
+export function isGuideSlug(slug: string): boolean {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+}

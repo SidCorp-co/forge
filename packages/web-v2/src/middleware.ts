@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { missingGuideDocument } from "@/features/guides/missing-document";
-import { GUIDE_PATH_HEADER, slugFromGuidePath } from "@/features/guides/requested-path";
+import { GUIDE_PATH_HEADER, isGuideSlug, slugFromGuidePath } from "@/features/guides/requested-path";
 import { operatorGate } from "@/features/operator/server/operator-gate";
 import { resolveServerApiBase } from "@/lib/utils/server-api-base";
 
@@ -26,6 +26,18 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
   const slug = slugFromGuidePath(pathname);
   if (!slug || request.headers.has("RSC")) return pass();
 
+  const missing = () =>
+    new NextResponse(missingGuideDocument(slug), {
+      status: 404,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+
+  // Anything the page's own fetcher would reject is refused here, before core is
+  // asked. Core answers 200 for `<slug>.md` — it strips the suffix — which would
+  // pass this gate and then be refused by the page, which is the blank body
+  // again. One test of what a slug is, read by both.
+  if (!isGuideSlug(slug)) return missing();
+
   let status: number;
   try {
     const res = await fetch(`${resolveServerApiBase()}/guides/${encodeURIComponent(slug)}`, {
@@ -37,12 +49,7 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
     // rather than telling a reader the guide does not exist on this evidence.
     return pass();
   }
-  if (status !== 404) return pass();
-
-  return new NextResponse(missingGuideDocument(slug), {
-    status: 404,
-    headers: { "content-type": "text/html; charset=utf-8" },
-  });
+  return status === 404 ? missing() : pass();
 }
 
 export function middleware(request: NextRequest) {

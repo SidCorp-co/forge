@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { resolveServerApiBase } from "@/lib/utils/server-api-base";
+import { isGuideSlug } from "./requested-path";
 
 /** One guide as the core registry defines it (`packages/core/src/guides/types.ts`).
  *  `body` is the guide markdown core serves. */
@@ -12,10 +13,6 @@ export interface Guide {
 }
 
 export type GuideSummary = Omit<Guide, "body">;
-
-/** Slugs are registry keys, not paths. Anything else is refused here rather
- *  than sent on, so a crafted slug cannot reach a different core route. */
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 class GuideFetchError extends Error {
   constructor(what: string, url: string, detail: string) {
@@ -55,7 +52,9 @@ export const fetchGuideIndex = cache(async (): Promise<GuideSummary[]> => {
 
 /** One guide, or `null` when Forge publishes no guide under that slug. */
 export const fetchGuide = cache(async (slug: string): Promise<Guide | null> => {
-  if (!SLUG.test(slug)) return null;
+  // Refused here rather than sent on, so a crafted slug cannot reach a
+  // different core route. The same test gates the middleware's refusal.
+  if (!isGuideSlug(slug)) return null;
   const url = `${resolveServerApiBase()}/guides/${slug}`;
   const body = await readJson(url, `reading the guide '${slug}'`);
   if (body === null) return null;
