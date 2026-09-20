@@ -13,7 +13,7 @@ export function parseLabels(raw: string): string[] {
 	return [...seen];
 }
 
-/** Pool labels on one runner. A production binding's `releaseRunnerLabel` names one of these. */
+/** Pool labels on one runner. A production binding's `releaseRunnerLabel` prefers one of these. */
 export function RunnerLabels({
 	projectId,
 	runnerId,

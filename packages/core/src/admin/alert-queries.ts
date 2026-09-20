@@ -12,7 +12,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { RELEASE_LABEL_FOR_JOB } from '../devices/release-label.js';
+import { runnerMayTakeJob } from '../devices/release-label.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { readThresholds } from './thresholds.js';
@@ -267,7 +267,7 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
           SELECT 1 FROM fresh_capable_runners fcr
           JOIN runners rr ON rr.id = fcr.id
           WHERE fcr.claim_capable
-            AND (j.type <> 'release_batch' OR rr.labels ? ${RELEASE_LABEL_FOR_JOB})
+            AND ${runnerMayTakeJob(sql`rr.labels`)}
             AND rr.capabilities @> coalesce(nullif(j.payload -> 'requiredCapabilities', 'null'::jsonb), '{}'::jsonb)
             AND (
               pool.device_ids IS NULL
