@@ -34,26 +34,6 @@ async function audited(): Promise<Audited[]> {
 
 const USER = (id: string) => ({ type: 'user' as const, id, agency: 'human' as const });
 
-/**
- * The Postgres message, not drizzle's wrapper. A failed `db.execute` throws
- * `Failed query: <sql>` and hangs the server's own message off `cause`, so
- * asserting on the outer message would pass for any failure at all.
- */
-async function refusalFrom(run: () => Promise<unknown>): Promise<string> {
-  try {
-    await run();
-  } catch (err) {
-    const parts: string[] = [];
-    let cursor: unknown = err;
-    while (cursor instanceof Error) {
-      parts.push(cursor.message);
-      cursor = (cursor as { cause?: unknown }).cause;
-    }
-    return parts.join('\n');
-  }
-  throw new Error('expected the write to be refused, and it was not');
-}
-
 beforeEach(async () => {
   await fx.reset();
 });

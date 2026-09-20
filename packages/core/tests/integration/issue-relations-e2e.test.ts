@@ -62,8 +62,9 @@ describe('ISS-868 issue relations read', () => {
   async function insertIssue(seq: number, status = 'open'): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-      VALUES (${id}, ${projectId}, ${seq}, ${`Issue ${seq}`}, ${status}, ${ownerId})
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
+      VALUES (${id}, ${projectId}, ${seq}, ${`Issue ${seq}`}, ${status}, ${ownerId},
+              CASE WHEN ${status} = 'closed' THEN now() END)
     `);
     return id;
   }
@@ -158,8 +159,11 @@ describe('ISS-868 issue relations read', () => {
     expect(edge?.otherMergedAt).not.toBeNull();
   });
 
-  it('reports a closed blocker whose code never landed with a null stamp', async () => {
-    const blocker = await insertIssue(621, 'closed');
+  // ISS-1108 moved this case off `closed`: `closed` now means the work shipped and the
+  // database refuses a closed row with no `merged_at`, so a terminal blocker whose code
+  // never landed is a `dropped` one. The projection is what is under test either way.
+  it('reports a terminal blocker whose code never landed with a null stamp', async () => {
+    const blocker = await insertIssue(621, 'dropped');
     const dependent = await insertIssue(622);
     await insertEdge(blocker, dependent, 'blocks');
 

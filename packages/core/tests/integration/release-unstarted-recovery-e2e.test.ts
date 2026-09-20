@@ -109,6 +109,10 @@ describe('a release batch whose job no box ever took', () => {
   it('cancels the job, hands the roster back and takes the run terminal', async () => {
     const a = await insertIssue();
     const b = await insertIssue();
+    const before = new Map([
+      [a, (await stored(a)).mergedAt],
+      [b, (await stored(b)).mergedAt],
+    ]);
     const { runId, jobId } = await claim([a, b]);
     expect((await stored(a)).status).toBe('releasing');
     await ageJob(jobId, overdue());
@@ -120,7 +124,10 @@ describe('a release batch whose job no box ever took', () => {
       const after = await stored(id);
       expect(after.status).toBe('awaiting_release');
       expect(after.claim).toBeNull();
-      expect(after.mergedAt).toBeNull();
+      // ISS-1108 — the stamp is the merge mark's and says nothing about whether a
+      // batch closed anything; the STATUS above carries that. What is still worth
+      // pinning is that a rescue neither writes a stamp nor clears one.
+      expect(after.mergedAt).toEqual(before.get(id));
     }
     expect(await runStatus(runId)).toBe('cancelled');
   });
