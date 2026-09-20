@@ -6,8 +6,7 @@
  * per terminal flip, and a cycle in the parent edge cannot spin.
  *
  * `transition.ts` imports this file at call time from inside the chokepoint, so
- * every import here is at call time too — a static edge back to it, directly or
- * through `run-session.ts` or `pipeline/runs.ts`, leaves this module's own
+ * every import here is too — a static edge back leaves this module's own
  * top-level constants in their temporal dead zone while the walk runs.
  */
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
@@ -28,9 +27,7 @@ export interface DescentResult {
 
 /**
  * Close every non-terminal session owned, transitively, by one of `parentIds`.
- *
- * A run session goes back through the path its own reaper uses: leases returned,
- * one-shot run closed failed. Anything else is flipped and holds no lease.
+ * A run session's leases are returned and its one-shot run closed failed.
  */
 export async function closeSessionsOwnedBy(
   parentIds: readonly string[],
@@ -61,15 +58,8 @@ export async function closeSessionsOwnedBy(
       seen.add(child.id);
       next.push(child.id);
 
-      // The issues go back BEFORE the flip, and the order is the whole point.
-      // The flip is irreversible and nothing revisits a terminal run session —
-      // the run reaper selects running ones — so a lease return that threw
-      // after it stranded that issue at `in_progress` for good, silently, which
-      // is the ISS-457 stall with a log line in front of it. Returning first
-      // means a throw leaves the row non-terminal and plainly unfinished, for
-      // the next sweep to pick up. `returnIssuesForRun` restores each issue to
-      // the status recorded when the run opened, so running it twice lands on
-      // the same floor.
+      // Issues go back BEFORE the flip: nothing revisits a terminal run
+      // session, so a return that threw after one stranded its issue for good.
       let returnedCount = 0;
       if (child.kind === RUN_SESSION_KIND) {
         try {

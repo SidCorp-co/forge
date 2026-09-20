@@ -11,23 +11,14 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
 /**
  * Close the master sessions whose box has stopped answering, and say how many.
  *
- * Flipping the row terminal is what invokes the descent in
- * `applyKernelTransition`, which is what returns the children's issue leases.
+ * Flipping the row terminal invokes the descent in `applyKernelTransition`,
+ * which returns the children's issue leases.
  *
  * A master is silent only if the sessions it OWNS are: a child that beat inside
- * the window means the box is alive with a broken heartbeat on the master, and
- * reaping there would return a lease under a run still working. The child's
- * life keeps the parent; the parent's death closes the child.
- *
- * "Owns" is the immediate edge, not the whole subtree. A master's children are
- * the runs it started; a chat forked under one of those is somebody reading, and
- * it is not evidence that this box is still dispatching.
- *
- * A child counts only once it has REPORTED — `last_heartbeat_at` or
- * `started_at`, with no fall back to `created_at`. `prepareClaimedJob` mints a
- * queued child the instant a job is prepared, so reading creation time as life
- * would let a master that prepared one job and died immediately keep its hold
- * for the whole window on the strength of a row that never ran.
+ * the window means a live box with a broken master heartbeat. "Owns" is the
+ * immediate edge, and a child counts only once it has REPORTED — `created_at`
+ * is not a fall back, because `prepareClaimedJob` mints a queued child the
+ * instant a job is prepared.
  */
 export async function reapSilentMasters(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
@@ -83,18 +74,12 @@ export async function reapSilentMasters(): Promise<number> {
 }
 
 /**
- * Release holds belonging to master sessions that are terminal or silent.
- *
- * Returns the number of jobs handed back, and logs each holder so an operator
- * reading the pool can tell "nobody wanted this" from "its holder died".
+ * Release holds belonging to master sessions that are terminal or silent, and
+ * log each holder so the pool tells "nobody wanted this" from "its holder died".
  *
  * The silence arm carries the SAME child-liveness guard as
- * {@link reapSilentMasters}, and it has to: without it, a box that is plainly
- * alive with a broken master heartbeat keeps its master row — because that
- * function protected it — and loses every job it was holding one statement
- * later, which is the protection undone by the sweep that runs beside it. A
- * TERMINAL master is not guarded: it is dead whatever its children are doing,
- * and the descent has already closed them.
+ * {@link reapSilentMasters}: without it the box that function spares loses every
+ * job it held one statement later. A TERMINAL master is not guarded.
  */
 export async function reapDeadMasterHolds(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
