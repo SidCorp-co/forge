@@ -1,7 +1,7 @@
 // A `NO_OP` names the rewrite that moved the caller's target, and the way out.
-// `transitionIssueStatus` compares `final`, which two resolvers may have moved
-// away from `requested`; a refusal naming only `final` reads as false to the
-// caller that named something else, and leaves it no next move (ISS-1129).
+// `resolveAutonomousParkTarget` makes `parked` from `requested`, and
+// `resolveAgentCloseTarget` makes `final` from `parked`, so `final !== parked`
+// is the release gate's rewrite and equality is the driver's (ISS-1129).
 
 import type { IssueStatus } from '../db/schema.js';
 
