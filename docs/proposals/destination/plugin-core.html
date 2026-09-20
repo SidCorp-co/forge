@@ -1,0 +1,175 @@
+<title>Plugin, Core, Runner</title>
+<style>:root{--bg:#fbfaf8;--fg:#1c1a17;--mut:#6b6559;--line:#ddd7cc;--card:#fff;--ok:#2f7a4f;--bad:#b3452c;--warn:#a8761f;--acc:#2c5c8f;--new:#7a3f9d;--soft:#f3f0ea}
+@media(prefers-color-scheme:dark){:root{--bg:#16150f;--fg:#ece7dd;--mut:#9a9280;--line:#332f26;--card:#1e1c16;--ok:#6fbf8f;--bad:#e08a70;--warn:#d6a851;--acc:#7aa9d8;--new:#c18ce0;--soft:#232019}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:44px 28px 100px}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.025em}
+h2{font-size:18px;margin:52px 0 10px;letter-spacing:-.015em;padding-top:12px;border-top:1px solid var(--line)}
+p{margin:8px 0;max-width:74ch}
+.lead{color:var(--mut);max-width:74ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:16px 0;overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.cap{color:var(--mut);font-size:13px;margin-top:10px;max-width:none}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:color-mix(in oklab,var(--fg) 8%,transparent);padding:1px 5px;border-radius:4px}
+a{color:var(--acc)}
+.rule{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:16px 20px;margin:18px 0;font-size:16px}
+.price{border-left:3px solid var(--bad);padding-left:15px;margin:18px 0}
+.price b{display:block;margin-bottom:2px}
+.note{color:var(--mut);font-size:13.5px}
+.bad{color:var(--bad)} .ok{color:var(--ok)} .warn{color:var(--warn)} .acc{color:var(--acc)} .new{color:var(--new)}
+.crumb{font-size:13px;color:var(--mut);margin-bottom:18px}</style>
+<svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+<marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--mut)"/></marker>
+<marker id="b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ok)"/></marker>
+<marker id="c" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--acc)"/></marker>
+<marker id="d" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--bad)"/></marker>
+<marker id="w" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--warn)"/></marker>
+</defs></svg><main>
+<p class="crumb"><a href="index.html">Destination</a> › Plugin ⇄ core ⇄ runner</p>
+<h1>Plugin, Core, Runner</h1>
+<p class="lead">The driver skill lives in a second repository. This is the surface it reaches core
+through, what versions that surface today, and where the version is dropped.</p>
+
+<h2>1 · Three transports, one database</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="MCP, REST and the device API over one database">
+<rect x="26" y="26" width="250" height="62" rx="9" fill="var(--card)" stroke="var(--new)" stroke-width="1.8"/>
+<text x="151" y="50" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--new)">forge-plugin · repo #2</text>
+<text x="151" y="70" font-size="10.5" text-anchor="middle" fill="var(--mut)">the `forge` CLI · hooks · issue-flow</text>
+
+<rect x="300" y="26" width="200" height="62" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="400" y="50" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">web-v2</text>
+<text x="400" y="70" font-size="10.5" text-anchor="middle" fill="var(--mut)">people</text>
+
+<rect x="524" y="26" width="200" height="62" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="624" y="50" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">forge-runner</text>
+<text x="624" y="70" font-size="10.5" text-anchor="middle" fill="var(--mut)">Rust daemon, your machine</text>
+
+<path d="M120 92 L120 126" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M230 92 L300 126" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M400 92 L400 126" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M624 92 L640 126" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="40" y="130" width="200" height="66" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="140" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">MCP · 37 tools</text>
+<text x="140" y="174" font-size="10.5" text-anchor="middle" fill="var(--mut)">holds no DB handle —</text>
+<text x="140" y="189" font-size="10.5" text-anchor="middle" fill="var(--bad)">true today, guarded by nothing</text>
+
+<rect x="300" y="130" width="200" height="66" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="400" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">REST · 130 mounts</text>
+<text x="400" y="176" font-size="10.5" text-anchor="middle" fill="var(--mut)">the wide plane</text>
+
+<rect x="560" y="130" width="200" height="66" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="660" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">device API · 23</text>
+<text x="660" y="176" font-size="10.5" text-anchor="middle" fill="var(--mut)">`/me/…`, device-credentialled</text>
+
+<path d="M140 200 L300 238" stroke="var(--mut)" stroke-width="1.4" marker-end="url(#a)"/>
+<path d="M400 200 L430 238" stroke="var(--mut)" stroke-width="1.4" marker-end="url(#a)"/>
+<path d="M660 200 L520 238" stroke="var(--mut)" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="300" y="242" width="250" height="44" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="425" y="269" font-size="12" text-anchor="middle" fill="var(--fg)">Postgres</text>
+
+<rect x="790" y="130" width="184" height="156" rx="9" fill="var(--card)" stroke="var(--ok)" stroke-width="1.7"/>
+<text x="882" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--ok)">already fixed</text>
+<text x="812" y="178" font-size="10.5" fill="var(--mut)">No MCP tool reaches</text>
+<text x="812" y="194" font-size="10.5" fill="var(--mut)">drizzle any more. Every</text>
+<text x="812" y="210" font-size="10.5" fill="var(--mut)">query went down to a</text>
+<text x="812" y="226" font-size="10.5" fill="var(--mut)">service under its own</text>
+<text x="812" y="242" font-size="10.5" fill="var(--mut)">domain, so the two</text>
+<text x="812" y="258" font-size="10.5" fill="var(--mut)">transports stopped</text>
+<text x="812" y="274" font-size="10.5" fill="var(--mut)">drifting apart.</text>
+</svg>
+<p class="cap">Measured on <code>main</code>, 2026-09-20. The invariant that keeps MCP off the
+database holds by fact and by nothing else: <code>.arch.json</code> declares eight contracts and
+none of them mentions <code>core-mcp</code>. An unguarded invariant is one careless import from
+being untrue, and nothing will say so.</p>
+</div>
+
+<h2>2 · What the two repos actually agree on</h2>
+
+<table>
+<thead><tr><th style="width:30%">The contract</th><th style="width:34%">Where core states it</th><th>How it is versioned</th></tr></thead>
+<tbody>
+<tr><td>the driver skill's name</td><td><code>AUTONOMOUS_SKILL_NAME = 'issue-flow'</code></td><td class="bad">a string literal naming a directory in another repo. Core cannot check it exists</td></tr>
+<tr><td>the five driver statuses</td><td><code>AUTONOMOUS_DRIVER_STATUSES</code> — open · in_progress · needs_info · closed · dropped</td><td class="bad">nothing</td></tr>
+<tr><td>the phase endpoints</td><td><code>POST /:id/phases</code> · <code>/phases/end</code> · <code>/resume-point</code></td><td class="bad">nothing</td></tr>
+<tr><td>which plugins a box installs</td><td><code>GET /api/devices/me/plugins</code></td><td class="ok"><code>pinnedRef</code>, a commit SHA — the only version in the list</td></tr>
+<tr><td>the data surface</td><td>37 MCP tools</td><td class="bad">nothing; a removed tool is discovered at call time</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>One of five carries a version, and §3 is where that one is dropped.</b>
+</div>
+
+<h2>3 · The pin, and the case that removes it</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 270" role="img" aria-label="Designation per project, install per device, pin dropped on conflict">
+<rect x="26" y="30" width="200" height="54" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="126" y="52" font-size="12" text-anchor="middle" fill="var(--fg)">project A</text>
+<text x="126" y="72" font-size="10.5" text-anchor="middle" fill="var(--ok)">pinnedRef = a1b2c3</text>
+<rect x="26" y="96" width="200" height="54" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="126" y="118" font-size="12" text-anchor="middle" fill="var(--fg)">project B</text>
+<text x="126" y="138" font-size="10.5" text-anchor="middle" fill="var(--ok)">pinnedRef = d4e5f6</text>
+
+<path d="M230 60 L300 86" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M230 120 L300 96" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="304" y="60" width="270" height="62" rx="9" fill="var(--soft)" stroke="var(--warn)" stroke-width="1.8"/>
+<text x="439" y="84" font-size="12" font-weight="700" text-anchor="middle" fill="var(--warn)">union, per DEVICE</text>
+<text x="439" y="104" font-size="10.5" text-anchor="middle" fill="var(--mut)">designation is per project, install is not</text>
+
+<path d="M578 91 L648 91" stroke="var(--bad)" stroke-width="1.8" marker-end="url(#d)"/>
+
+<rect x="652" y="52" width="322" height="78" rx="9" fill="var(--card)" stroke="var(--bad)" stroke-width="1.9"/>
+<text x="674" y="76" font-size="12" font-weight="700" fill="var(--bad)">two pins disagree → the pin is set to null</text>
+<text x="674" y="98" font-size="10.5" fill="var(--mut)">the conflicting SHAs are kept in a side field;</text>
+<text x="674" y="114" font-size="10.5" fill="var(--mut)">the field the daemon reads is emptied</text>
+
+<path d="M813 134 L813 168" stroke="var(--bad)" stroke-width="1.6" marker-end="url(#d)"/>
+<rect x="600" y="172" width="374" height="76" rx="9" fill="var(--card)" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="622" y="196" font-size="12" font-weight="700" fill="var(--bad)">the daemon logs a warning and proceeds</text>
+<text x="622" y="218" font-size="10.5" fill="var(--mut)">unpinned — so the box installs whatever the</text>
+<text x="622" y="234" font-size="10.5" fill="var(--mut)">plugin's HEAD is at that moment</text>
+
+<rect x="26" y="172" width="540" height="76" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="48" y="196" font-size="12.5" font-weight="700" fill="var(--acc)">The shape of the defect</text>
+<text x="48" y="220" font-size="11.5" fill="var(--fg)">The only version in the whole contract is discarded in exactly the one</text>
+<text x="48" y="238" font-size="11.5" fill="var(--fg)">situation where it is doing work — two owners disagreeing.</text>
+</svg>
+<p class="cap">A conflict is a question for a human — which SHA does this box run? Answering it by
+removing the constraint turns a stated disagreement into an unstated one, and the box then runs a
+driver nobody chose against a core that declares five statuses and three endpoints with no
+handshake.</p>
+</div>
+
+<h2>4 · Destination</h2>
+
+<table>
+<thead><tr><th style="width:24%">Today</th><th style="width:38%">Destination</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>five contract items, one versioned</td><td><b>one declared contract version</b> the plugin sends and core admits or refuses by name</td><td>the three-clock rule needs somewhere to stand; this is it</td></tr>
+<tr><td>a pin dropped on conflict</td><td><b>a conflict refuses the install and names both SHAs</b></td><td>a loud break beats a silent substitution — the repo's own rule, not applied here</td></tr>
+<tr><td>phase names are shared vocabulary</td><td><b>phases are opaque strings to core</b>; meaning belongs to the pinned policy</td><td>removes the largest class of two-repo change</td></tr>
+<tr><td>MCP is a second wide plane</td><td><b>REST is the only plane</b>; MCP is a thin adapter over it, and shrinks to what the CLI cannot do</td><td>a business rule written twice is a bug on whichever path has no test</td></tr>
+<tr><td>an unguarded invariant</td><td><b>a contract in <code>.arch.json</code></b> fencing <code>core-mcp</code> off <code>core-db</code></td><td>it is already true; make it stay true for free</td></tr>
+</tbody>
+</table>
+
+<h2>5 · What this page replaced</h2>
+
+<p><code>docs/proposals/cli-data-surface.html</code> made the same argument and was deleted rather
+than carried. It was written in Vietnamese in a tracked file, and every number in it had drifted:
+45 MCP tool modules against today's 37, 107 route mounts against 130, and four named REST gaps
+(<code>forge_divergence_charters</code>, <code>forge_ux_improver</code>, <code>forge_ops_health</code>,
+<code>forge_version</code>) that no longer exist as tools at all. It also credited the
+MCP-off-the-database invariant to a test file, <code>no-transport-db.test.ts</code>, which is not
+in the tree. Its one surviving idea — REST as the single plane, MCP as a thin adapter — is row 4
+above.</p>
+</main>
