@@ -231,6 +231,8 @@ const CI_COVERAGE = {
   'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
   'Lockfile sync + fmt + clippy + test':
     'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on all three platforms',
+  'node scripts/build-images.mjs':
+    'pnpm images, which verify does NOT run — it needs a docker daemon',
   'Check Markdown links': 'docs job, gaurav-nelson/github-action-markdown-link-check',
   'Whether a pull_request run already proved this exact tree':
     "nothing local — it reads the event and the commit's parent count, which exist only on CI",
