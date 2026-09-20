@@ -1919,6 +1919,13 @@
       "when": 1807315200000,
       "tag": "0288_issue_creator_agency",
       "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1808438400000,
+      "tag": "0293_a_session_says_what_it_is",
+      "breakpoints": true
     }
   ]
 }
