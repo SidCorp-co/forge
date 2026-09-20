@@ -108,15 +108,22 @@ pub fn take_down(ledger_path: &Path, run_id: &str) -> Result<()> {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::fd::AsFd;
     use std::time::{Duration, Instant};
 
     fn led_path() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("door-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir.join("ledger.sqlite")
+    }
+
+    fn is_cloexec(fd: std::os::fd::BorrowedFd<'_>) -> bool {
+        let bits = nix::fcntl::fcntl(fd, nix::fcntl::F_GETFD).unwrap();
+        nix::fcntl::FdFlag::from_bits_truncate(bits).contains(nix::fcntl::FdFlag::FD_CLOEXEC)
     }
 
     #[test]
@@ -154,6 +161,89 @@ mod tests {
         assert_eq!(ring(&p, "run-1").unwrap(), Ring::Heard);
         drop(ear);
         assert_eq!(ring(&p, "run-1").unwrap(), Ring::NoListener);
+    }
+
+    /// The defect ISS-1131 was filed for: a child forked while the door was
+    /// armed inherits the read end, and the kernel then counts it as a reader
+    /// long after the ear that armed the door has gone.
+    #[test]
+    fn a_child_that_inherited_the_door_is_not_a_listener() {
+        let p = led_path();
+        let dir = p.parent().unwrap().to_path_buf();
+        let ear = listen(&p, "run-1").unwrap();
+        assert_eq!(ring(&p, "run-1").unwrap(), Ring::Heard);
+
+        // The child must have reached its own image before the ear goes, or
+        // this would prove only the fork-to-exec window rather than the leak.
+        let ready = dir.join("child-ready");
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("echo ready > {}; sleep 30", ready.display()))
+            .spawn()
+            .expect("sh");
+        let waited = Instant::now();
+        while !ready.exists() {
+            assert!(
+                waited.elapsed() < Duration::from_secs(10),
+                "the child never reached its own image, so this proves nothing"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        drop(ear);
+        let answer = ring(&p, "run-1").unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert_eq!(
+            answer, Ring::NoListener,
+            "`Heard` is a claim that a listener will receive the ring. A child \
+             that inherited the read end is not that listener: it never reads \
+             the door, and the question is dropped on the floor"
+        );
+    }
+
+    /// The half of the same defect that close-on-exec cannot reach: a child
+    /// that has forked and not yet executed holds every descriptor whatever
+    /// flags they carry, so only the registration can answer this one.
+    #[test]
+    fn a_child_that_never_executed_is_not_a_listener_either() {
+        let p = led_path();
+        let ear = listen(&p, "run-1").unwrap();
+        assert_eq!(ring(&p, "run-1").unwrap(), Ring::Heard);
+
+        // SAFETY: the child sleeps and `_exit`s, both async-signal-safe, and
+        // touches nothing this process's other threads could hold a lock on.
+        let forked = unsafe { nix::unistd::fork() }.expect("fork");
+        let child = match forked {
+            nix::unistd::ForkResult::Child => {
+                std::thread::sleep(Duration::from_secs(30));
+                unsafe { nix::libc::_exit(0) }
+            }
+            nix::unistd::ForkResult::Parent { child } => child,
+        };
+
+        drop(ear);
+        let answer = ring(&p, "run-1").unwrap();
+        let _ = nix::sys::signal::kill(child, nix::sys::signal::Signal::SIGKILL);
+        let _ = nix::sys::wait::waitpid(child, None);
+
+        assert_eq!(
+            answer, Ring::NoListener,
+            "`Heard` is a claim that a listener will receive the ring. A child \
+             caught between fork and exec holds the read end whatever flags it \
+             carries, and it is not the ear that armed this door"
+        );
+    }
+
+    #[test]
+    fn the_read_end_is_not_carried_through_an_exec() {
+        let p = led_path();
+        let ear = listen(&p, "run-1").unwrap();
+        assert!(
+            is_cloexec(ear._read.as_fd()),
+            "the door a run listens at must not outlive this process into a child"
+        );
     }
 
     #[test]
