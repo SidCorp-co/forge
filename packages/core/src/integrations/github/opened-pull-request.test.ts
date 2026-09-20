@@ -26,9 +26,20 @@ vi.mock('./projection.js', async (importOriginal) => {
 });
 
 let storedRows: Array<{ issueId: string | null }> = [{ issueId: 'issue-9' }];
+/** Set to make the READBACK fail, which says nothing about the write that already committed. */
+let readbackError: Error | null = null;
 vi.mock('../../db/client.js', () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => ({ limit: async () => storedRows }) }) }),
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => {
+            if (readbackError) throw readbackError;
+            return storedRows;
+          },
+        }),
+      }),
+    }),
   },
 }));
 
@@ -71,6 +82,7 @@ beforeEach(() => {
   applied.length = 0;
   written = 1;
   storedRows = [{ issueId: 'issue-9' }];
+  readbackError = null;
 });
 
 describe('a pull request the agent face opened reaches the projection writer', () => {
@@ -153,5 +165,44 @@ describe('what the writer refusing to overwrite means', () => {
     const result = await project();
     expect(result.outcome).toBe('not-recorded');
     expect(result.reason).toMatch(/EXISTS/);
+  });
+});
+
+/**
+ * F1 — the readback happens AFTER the write has committed, so its failure is not the write's.
+ *
+ * Letting it escape reported `not-recorded` and logged that the projection row never landed, for a
+ * row that was there and mergeable: the one claim known to be false. The linkage it could not read
+ * is reported as unread instead.
+ */
+describe('a readback that fails does not unsay a write that committed', () => {
+  it('still reports recorded, and says the issue link is what it could not read', async () => {
+    readbackError = new Error('connection terminated');
+    const result = await project();
+    expect(result.outcome).toBe('recorded');
+    expect(result.issueId).toBeNull();
+    expect(result.reason).toMatch(/could not be read back/);
+    expect(result.reason).toMatch(/The row itself was written/);
+  });
+
+  it('says it cannot tell superseded from unwritten where nothing was written either', async () => {
+    written = 0;
+    readbackError = new Error('connection terminated');
+    const result = await project();
+    expect(result.outcome).toBe('not-recorded');
+    expect(result.reason).toMatch(/could not be read/);
+  });
+});
+
+/**
+ * F3 — one recovery instruction, not two that contradict.
+ *
+ * The refusal used to suggest opening the pull request again while `forge_github`'s own wrapper
+ * appended "Do NOT open it again", so a caller met both sentences in one reason string.
+ */
+describe('what the refusal tells a caller to do next', () => {
+  it('never tells a caller to open the pull request again', async () => {
+    await expect(project({ headSha: null })).rejects.toThrow(/Do NOT open it again/);
+    await expect(project({ headSha: null })).rejects.not.toThrow(/opening it again after/);
   });
 });

@@ -30,7 +30,10 @@ describe('describeEmptyProjection', () => {
   it('names the door nobody has knocked on where no delivery has ever arrived', () => {
     const said = describeEmptyProjection(report()) ?? '';
     expect(said).toContain('holds no pull request at all');
-    expect(said).toContain('no webhook delivery has ever reached its GitHub binding');
+    expect(said).toContain('Forge has recorded no webhook delivery at all on its GitHub binding');
+    // F2: the count is of deliveries RECORDED. A call turned away at the signature check never
+    // reaches the recorder, so this must not tell an operator GitHub never called.
+    expect(said).toContain('turned away before they are recorded');
     expect(said).toContain('forge_github open-pull-request');
     expect(said).toContain('/api/webhooks/in/');
   });
@@ -47,7 +50,7 @@ describe('describeEmptyProjection', () => {
         report({ inbound: { count: 4, lastAt: new Date('2026-09-19T08:00:00.000Z') } }),
       ) ?? '';
     expect(said).toContain('holds no pull request at all');
-    expect(said).toContain('4 inbound deliveries have reached');
+    expect(said).toContain('Forge has recorded 4 inbound deliveries');
     expect(said).toContain('2026-09-19T08:00:00.000Z');
     expect(said).toContain('none of them wrote a pull request');
   });
@@ -61,6 +64,6 @@ describe('describeEmptyProjection', () => {
   it('reads one delivery as singular, because a sentence an operator distrusts gets read twice', () => {
     expect(
       describeEmptyProjection(report({ inbound: { count: 1, lastAt: new Date(0) } })) ?? '',
-    ).toContain('1 inbound delivery has reached');
+    ).toContain('Forge has recorded 1 inbound delivery on');
   });
 });

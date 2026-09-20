@@ -114,8 +114,10 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     "list: the project's GitHub bindings — { bindingId, repository, installed, bindingActive, " +
     'connectionActive, agentGranted, lastHealthStatus, inboundDeliveries, lastInboundDeliveryAt }. ' +
     'The last two are the webhook door: `inboundDeliveries: 0` with a null time on a binding that ' +
-    'is installed, active and granted means GitHub has never called in, so anything Forge knows ' +
-    'about this repository it learned by acting rather than by being told. It contacts GitHub not ' +
+    'is installed, active and granted means Forge has RECORDED no call — GitHub never called, or ' +
+    'its calls are turned away before they are recorded, which is what a wrong webhook secret ' +
+    'looks like from here. Either way, anything Forge knows about this repository it learned by ' +
+    'acting rather than by being told. It contacts GitHub not ' +
     'at all and answers ' +
     'the same whether or not agents are granted, so it is where you find out WHY another action was ' +
     'refused. An empty array means this project has bound no repository; that is the answer, not an ' +

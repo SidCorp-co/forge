@@ -173,7 +173,7 @@ describe('POST /api/issues/:id/merge-pull-request', () => {
     const said = JSON.stringify(await res.json());
     expect(said).toContain('PROJECTION_EMPTY');
     expect(said).toContain('holds no pull request at all');
-    expect(said).toContain('no webhook delivery has ever reached');
+    expect(said).toContain('Forge has recorded no webhook delivery at all');
     expect(said).not.toContain('NO_PULL_REQUEST');
     expect(mergeStoredPullRequest).not.toHaveBeenCalled();
   });
@@ -189,7 +189,7 @@ describe('POST /api/issues/:id/merge-pull-request', () => {
     const res = await post({});
     const said = JSON.stringify(await res.json());
     expect(said).toContain('PROJECTION_EMPTY');
-    expect(said).toContain('7 inbound deliveries have reached');
+    expect(said).toContain('Forge has recorded 7 inbound deliveries');
     expect(said).toContain('2026-09-19T08:00:00.000Z');
   });
 

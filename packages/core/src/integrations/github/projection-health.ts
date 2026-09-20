@@ -83,13 +83,19 @@ export async function projectionPipeReport(projectId: string): Promise<Projectio
  * The condition is the empty projection ALONE. A project that has received deliveries and still
  * holds no row is the same broken pipe wearing a different cause, so it gets this refusal with that
  * cause in it rather than falling back to a sentence about a pull request number.
+ *
+ * The count is of deliveries RECORDED, and the sentence says so rather than saying GitHub never
+ * called. `POST /api/webhooks/in/:slug` turns away a request whose signature does not verify before
+ * anything records it, so a wrong or rotated webhook secret produces a zero here that is
+ * indistinguishable from a door nobody knocked on. Telling an operator GitHub never called would
+ * send them to the wrong half of the pipe.
  */
 export function describeEmptyProjection(report: ProjectionPipeReport): string | null {
   if (report.rows > 0) return null;
   const door =
     report.inbound.count === 0
-      ? `no webhook delivery has ever reached ${report.bindings === 1 ? 'its GitHub binding' : `any of its ${report.bindings} GitHub bindings`}`
-      : `${report.inbound.count} inbound deliver${report.inbound.count === 1 ? 'y has' : 'ies have'} reached its GitHub bindings, the last at ${report.inbound.lastAt?.toISOString() ?? 'a time nothing recorded'}, and none of them wrote a pull request`;
+      ? `Forge has recorded no webhook delivery at all on ${report.bindings === 1 ? 'its GitHub binding' : `any of its ${report.bindings} GitHub bindings`} — either GitHub has never called, or its calls are being turned away before they are recorded, which is what a wrong or rotated webhook secret looks like from here`
+      : `Forge has recorded ${report.inbound.count} inbound deliver${report.inbound.count === 1 ? 'y' : 'ies'} on its GitHub bindings, the last at ${report.inbound.lastAt?.toISOString() ?? 'a time nothing recorded'}, and none of them wrote a pull request`;
   const bound =
     report.bindings === 0
       ? 'this project has bound no GitHub repository, so nothing could write one'

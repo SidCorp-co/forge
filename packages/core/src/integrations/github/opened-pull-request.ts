@@ -30,7 +30,10 @@ export interface OpenedProjectionResult {
   outcome: OpenedProjectionOutcome;
   /** The Forge issue the row is linked to, where the head branch names one. */
   issueId: string | null;
-  /** Why there is no row. Null where there is one. */
+  /**
+   * Why there is no row — or, under `recorded`, what could not be read back after there was one.
+   * Null where the row was written and read.
+   */
   reason: string | null;
 }
 
@@ -48,8 +51,8 @@ export class OpenedPullRequestIncomplete extends Error {
     super(
       `github: the answer to opening a pull request on ${repository} carried no ${missing.join(', no ')}, ` +
         'so Forge cannot write the projection row the merge route resolves on. The pull request EXISTS on ' +
-        'GitHub and nothing here is retried; a `pull_request` delivery for it, or opening it again after ' +
-        'GitHub answers completely, writes the same row.',
+        'GitHub and nothing here is retried. Do NOT open it again — that would put a second pull request ' +
+        'on the repository. A `pull_request` delivery for the one that exists writes the same row.',
     );
     this.name = 'OpenedPullRequestIncomplete';
     this.missing = missing;
@@ -164,10 +167,38 @@ export async function projectOpenedPullRequest(args: {
     { projectId: args.projectId, bindingId: args.bindingId },
     payloadFor({ repository: args.repository, opened: args.opened, identity }),
   );
-  const row = await storedRow(args.bindingId, identity.number);
+
+  // The write has COMMITTED by here. Reading the row back is how this call reports which issue the
+  // branch resolved to, and a read that fails says nothing about the write that preceded it — so it
+  // is caught rather than thrown. Letting it escape turned a committed row into `not-recorded` and a
+  // log line saying the projection row never landed, which is the one thing known to be false.
+  let row: { issueId: string | null } | undefined;
+  let unread: string | null = null;
+  try {
+    row = await storedRow(args.bindingId, identity.number);
+  } catch (err) {
+    unread =
+      `the row for #${identity.number} on ${args.repository} could not be read back (${String(err)}), ` +
+      'so the issue it links to is not reported here.';
+  }
   const issueId = row?.issueId ?? null;
 
-  if (written > 0) return { outcome: 'recorded', issueId, reason: null };
+  if (written > 0) {
+    return {
+      outcome: 'recorded',
+      issueId,
+      reason: unread === null ? null : `${unread} The row itself was written.`,
+    };
+  }
+  if (unread !== null) {
+    return {
+      outcome: 'not-recorded',
+      issueId: null,
+      reason:
+        `the projection writer wrote no row for #${identity.number} on ${args.repository} this call, and ` +
+        `whether one already stands could not be read: ${unread} The pull request EXISTS on GitHub.`,
+    };
+  }
   if (row) {
     return {
       outcome: 'superseded',
