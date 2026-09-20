@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +76,21 @@ function pushBranch(world_, name, text) {
 function run(cwd) {
   const r = spawnSync('node', [CHECKER], { cwd, encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
+}
+
+/**
+ * The file in `repo`'s own object store backing `rev`, asserted to be there before it is removed.
+ *
+ * A local clone of these worlds hardlinks the loose objects it finds, so removing this name costs
+ * `repo` the object and costs `origin` nothing. The assertion is the test's own guard: were git
+ * ever to hand these back packed, the removal would be a no-op and the run would be judging a
+ * store nothing had been taken from.
+ */
+function dropObject(repo, rev) {
+  const sha = git(repo, 'rev-parse', rev);
+  const path = join(repo, '.git', 'objects', sha.slice(0, 2), sha.slice(2));
+  expect(existsSync(path)).toBe(true);
+  rmSync(path);
 }
 
 describe('check-migration-order, against real repositories', () => {
@@ -257,5 +272,55 @@ describe('check-migration-order, on the checkouts CI actually produces', () => {
     const { code, out } = run(work);
     expect(code).toBe(0);
     expect(out).toContain('Merge order');
+  });
+});
+
+describe('a sibling git cannot read is an unknown, and an unknown is not an absence', () => {
+  /** main, a sibling landing 289, and this tree landing 290 — a set with no quarrel in it. */
+  function setWithASibling() {
+    const w = world(journal([288, 1000, '0288_main']));
+    pushBranch(w, 'iss-sibling', journal([288, 1000, '0288_main'], [289, 2000, '0289_sibling']));
+    const work = pushBranch(w, 'iss-ok', journal([288, 1000, '0288_main'], [290, 3000, '0290_ok']));
+    return { w, work };
+  }
+
+  it('passes that set while every branch in it can be read', () => {
+    // Without this, the two refusals below could be produced by a world that was broken to begin
+    // with, and neither would be evidence about the object that was removed.
+    const { code, out } = run(setWithASibling().work);
+    expect(code).toBe(0);
+    expect(out).toContain('origin/iss-sibling');
+  });
+
+  it('refuses a journal that is in the tree and will not read, rather than reading it as absent', () => {
+    const { work } = setWithASibling();
+    dropObject(work, `origin/iss-sibling:${JOURNAL}`);
+
+    // The path IS in that branch's tree: `ls-tree` reads the tree object and lists it without
+    // touching the blob. So this branch has a journal, and the store cannot produce it.
+    expect(git(work, 'ls-tree', '--name-only', 'origin/iss-sibling', '--', JOURNAL)).toBe(JOURNAL);
+
+    // `git cat-file -e` — the probe this replaced — exits non-zero here AND on a path that was
+    // never in the tree, so it answered both with one number. Reading that number as absence
+    // dropped this branch from the set and printed a merge order over what was left: exit 0, `0
+    // open branch(es) read`, on a landing nothing had measured. That is the silent substitution
+    // this whole check exists to refuse, reached from inside the check itself.
+    const { code, out } = run(work);
+    expect(code).toBe(2);
+    expect(out).toContain('origin/iss-sibling');
+    expect(out).toContain('will not read');
+    expect(out).toContain('0290_ok');
+    expect(out).not.toContain('Merge order');
+  });
+
+  it('refuses a tree it cannot read at all, where absence cannot even be put to the question', () => {
+    const { work } = setWithASibling();
+    dropObject(work, 'origin/iss-sibling^{tree}');
+
+    const { code, out } = run(work);
+    expect(code).toBe(2);
+    expect(out).toContain('origin/iss-sibling');
+    expect(out).toContain('could not be read');
+    expect(out).not.toContain('Merge order');
   });
 });
