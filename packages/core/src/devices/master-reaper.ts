@@ -14,10 +14,14 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
  * Flipping the row terminal is what invokes the descent in
  * `applyKernelTransition`, which is what returns the children's issue leases.
  *
- * A master is silent only if its whole tree is: a child that beat inside the
- * window means the box is alive with a broken heartbeat on the master, and
+ * A master is silent only if the sessions it OWNS are: a child that beat inside
+ * the window means the box is alive with a broken heartbeat on the master, and
  * reaping there would return a lease under a run still working. The child's
  * life keeps the parent; the parent's death closes the child.
+ *
+ * "Owns" is the immediate edge, not the whole subtree. A master's children are
+ * the runs it started; a chat forked under one of those is somebody reading, and
+ * it is not evidence that this box is still dispatching.
  */
 export async function reapSilentMasters(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
@@ -77,6 +81,14 @@ export async function reapSilentMasters(): Promise<number> {
  *
  * Returns the number of jobs handed back, and logs each holder so an operator
  * reading the pool can tell "nobody wanted this" from "its holder died".
+ *
+ * The silence arm carries the SAME child-liveness guard as
+ * {@link reapSilentMasters}, and it has to: without it, a box that is plainly
+ * alive with a broken master heartbeat keeps its master row — because that
+ * function protected it — and loses every job it was holding one statement
+ * later, which is the protection undone by the sweep that runs beside it. A
+ * TERMINAL master is not guarded: it is dead whatever its children are doing,
+ * and the descent has already closed them.
  */
 export async function reapDeadMasterHolds(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
@@ -90,8 +102,17 @@ export async function reapDeadMasterHolds(): Promise<number> {
       WHERE j.held_by IS NOT NULL
         AND (
           s.status IN (${TERMINAL})
-          OR COALESCE(s.last_heartbeat_at, s.started_at)
-             < now() - make_interval(secs => ${staleSeconds})
+          OR (
+            COALESCE(s.last_heartbeat_at, s.started_at)
+              < now() - make_interval(secs => ${staleSeconds})
+            AND NOT EXISTS (
+              SELECT 1 FROM agent_sessions c
+              WHERE c.parent_session_id = s.id
+                AND c.status NOT IN (${TERMINAL})
+                AND COALESCE(c.last_heartbeat_at, c.started_at, c.created_at)
+                    >= now() - make_interval(secs => ${staleSeconds})
+            )
+          )
           OR (s.id IS NULL AND j.held_at < now() - make_interval(secs => ${staleSeconds}))
         )
     )
@@ -127,8 +148,9 @@ export async function registerMasterReaper(): Promise<void> {
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(MASTER_REAPER_QUEUE, async () => {
     // Masters first: closing one returns its own holds and, through the
-    // descent, its children's leases. The hold sweep that follows is for a
-    // hold whose session row is gone entirely, which no transition can reach.
+    // descent, its children's leases. The hold sweep that follows catches what
+    // no transition can reach — a hold whose session row is gone entirely, and
+    // one whose master this pass declined to close.
     const closed = await reapSilentMasters();
     if (closed > 0) logger.info({ closed }, 'master-reaper: sweep closed silent masters');
     const released = await reapDeadMasterHolds();

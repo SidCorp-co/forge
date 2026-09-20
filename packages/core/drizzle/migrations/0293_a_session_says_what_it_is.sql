@@ -13,10 +13,18 @@ ALTER TABLE "agent_sessions" ADD COLUMN "kind" text;--> statement-breakpoint
 ALTER TABLE "agent_sessions" ADD COLUMN "parent_session_id" uuid;--> statement-breakpoint
 
 -- 1. The three writers that already declared a species on the SESSION row.
+--    A fork and a rerun copy the SOURCE session's metadata wholesale
+--    (`turns-routes.ts`, `...prevMeta` and `...session.metadata`), so an inherited
+--    `type` here describes the session this one was cut from, not this one. Both are
+--    interactive chats and branch 4 says so positively; trusting the copy would freeze
+--    a pipeline or pm kind onto a chat, and no later branch can correct it because
+--    they all require `kind IS NULL`.
 UPDATE "agent_sessions" s
    SET "kind" = s."metadata"->>'type'
  WHERE s."kind" IS NULL
-   AND s."metadata"->>'type' IN ('master','run_session','pipeline','pm');--> statement-breakpoint
+   AND s."metadata"->>'type' IN ('master','run_session','pipeline','pm')
+   AND NOT (s."metadata" ? 'forkedFromTurnId')
+   AND NOT (s."metadata" ? 'rerunOfSessionId');--> statement-breakpoint
 
 -- 2. A session a job points at is that job's session, and `jobs.type` says which of
 --    the two job-driven kinds it is. This is the same read `agent-session-link.ts`

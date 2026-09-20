@@ -167,6 +167,7 @@ export async function listMasterSessionsForDevice(
     .where(
       and(
         eq(agentSessions.deviceId, deviceId),
+        eq(agentSessions.kind, MASTER_SESSION_KIND),
         inArray(agentSessions.status, [...LIVE_SESSION_STATUSES]),
       ),
     );

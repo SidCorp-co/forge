@@ -155,8 +155,9 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
   it('leaves a long-offline runner whose device still holds a live session', async () => {
     const { runnerId, deviceId } = await seedRunner({ lastSeenDaysAgo: 90 });
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, status)
-      VALUES (${randomUUID()}, ${projectId}, ${await seedRun()}, ${deviceId}, 'running')
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, kind, status)
+      VALUES (${randomUUID()}, ${projectId}, ${await seedRun()}, ${deviceId}, 'run_session',
+              'running')
     `);
 
     const res = await reapGhostRunners();

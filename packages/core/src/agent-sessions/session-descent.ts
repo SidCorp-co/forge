@@ -50,17 +50,46 @@ export async function closeSessionsOwnedBy(
         pipelineRunId: agentSessions.pipelineRunId,
       })
       .from(agentSessions)
-      .where(
-        and(
-          inArray(agentSessions.parentSessionId, frontier),
-          notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-        ),
-      );
+      // Terminal children are selected too. They need no flip, but a live
+      // grandchild under one is still owned by the root, and stopping at the
+      // terminal row is how the closure silently stops being transitive.
+      .where(inArray(agentSessions.parentSessionId, frontier));
 
     const next: string[] = [];
     for (const child of children) {
       if (seen.has(child.id)) continue;
       seen.add(child.id);
+      next.push(child.id);
+
+      // The issues go back BEFORE the flip, and the order is the whole point.
+      // The flip is irreversible and nothing revisits a terminal run session —
+      // the run reaper selects running ones — so a lease return that threw
+      // after it stranded that issue at `in_progress` for good, silently, which
+      // is the ISS-457 stall with a log line in front of it. Returning first
+      // means a throw leaves the row non-terminal and plainly unfinished, for
+      // the next sweep to pick up. `returnIssuesForRun` restores each issue to
+      // the status recorded when the run opened, so running it twice lands on
+      // the same floor.
+      let returnedCount = 0;
+      if (child.kind === RUN_SESSION_KIND) {
+        try {
+          const { returnIssuesForRun } = await import('../devices/run-issue-return.js');
+          const { closeRunIfOneShot } = await import('../pipeline/runs.js');
+          returnedCount = (
+            await returnIssuesForRun(child.pipelineRunId, {
+              reason: 'the session that started this run closed',
+            })
+          ).length;
+          await closeRunIfOneShot(child.pipelineRunId, 'failed');
+        } catch (err) {
+          logger.error(
+            { err, sessionId: child.id, runId: child.pipelineRunId, reason: cause.reason },
+            'session-descent: a run session kept its issues because the return failed, so it was left open rather than closed over them',
+          );
+          continue;
+        }
+      }
+
       const { applyKernelTransition } = await import('../lifecycle/transition.js');
       const flipped = await applyKernelTransition(db, {
         entity: 'session',
@@ -81,21 +110,14 @@ export async function closeSessionsOwnedBy(
       });
       if (flipped.length === 0) continue;
       result.closed.push(child.id);
-      next.push(child.id);
 
       if (child.kind === RUN_SESSION_KIND) {
-        const { returnIssuesForRun } = await import('../devices/run-issue-return.js');
-        const { closeRunIfOneShot } = await import('../pipeline/runs.js');
-        const returned = await returnIssuesForRun(child.pipelineRunId, {
-          reason: 'the session that started this run closed',
-        });
-        await closeRunIfOneShot(child.pipelineRunId, 'failed');
         result.runsReturned.push(child.pipelineRunId);
         logger.warn(
           {
             sessionId: child.id,
             runId: child.pipelineRunId,
-            returned: returned.length,
+            returned: returnedCount,
             reason: cause.reason,
           },
           'session-descent: a run session closed with its owner, and its issues went back',
@@ -108,7 +130,7 @@ export async function closeSessionsOwnedBy(
   if (frontier.length > 0) {
     logger.error(
       { roots: [...parentIds], depth: MAX_DEPTH, stillOpen: frontier },
-      'session-descent: the owner edge is deeper than a session tree can be, or it has a cycle — the walk stopped and rows below this point are still open',
+      'session-descent: the owner edge is deeper than a session tree can be, or it has a cycle — the walk stopped and anything owned below this point was never looked at',
     );
   }
 

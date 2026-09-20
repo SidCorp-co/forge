@@ -76,8 +76,9 @@ describe('step-duration view parity E2E', () => {
 
     if (sessionId) {
       await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
-        VALUES (${sessionId}, ${projectId}, ${runId}, 'completed',
+        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, started_at,
+                                    metadata)
+        VALUES (${sessionId}, ${projectId}, ${runId}, 'pipeline', 'completed',
                 now() - make_interval(mins => ${startMinutesAgo}), '{}'::jsonb)
       `);
     }

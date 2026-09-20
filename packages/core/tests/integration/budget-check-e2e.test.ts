@@ -165,8 +165,10 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     // finished_at IS NOT NULL). The job status MUST be 'done' — ISS-516 scoped
     // the view to jobs.status='done', so a non-`done` span rolls up no cost.
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
-      VALUES (${sessionId}, ${projectId}, ${runId}, 'completed', now() - interval '10 minutes', '{}'::jsonb)
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, started_at,
+                                  metadata)
+      VALUES (${sessionId}, ${projectId}, ${runId}, 'pipeline', 'completed',
+              now() - interval '10 minutes', '{}'::jsonb)
     `);
     await harness.db.execute(sql`
       INSERT INTO jobs (
