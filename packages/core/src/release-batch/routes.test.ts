@@ -258,3 +258,38 @@ describe('POST /:projectId/release-batches — every reason at once', () => {
     );
   });
 });
+
+/**
+ * The whole-set review's F1 and F3, at the door: a refusal whose class the
+ * enumerator lost reaches `errorHandler` as a 500, and a refusal routed around
+ * `releaseBlockerHttp` drops every reason standing with it.
+ */
+describe('POST /:projectId/release-batches — the refusals that go through their own sentence', () => {
+  it('still answers 409 for an undeclared target, rather than the 500 an unmapped class gets', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockRejectedValueOnce(
+      new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish'),
+    );
+
+    const res = await createReq();
+
+    expect(res.status).toBe(409);
+  });
+
+  it('carries the rest of the list on a declaration refusal too', async () => {
+    mockAdmin();
+    const err = new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish');
+    Object.assign(err, {
+      releaseBlockers: [
+        { code: 'RELEASE_TARGET_UNDECLARED', message: 'thrown', evaluated: true, httpStatus: 409 },
+        { code: 'RELEASE_ROSTER_EMPTY', message: 'nothing waiting', evaluated: true, httpStatus: 409 },
+      ],
+    });
+    createReleaseBatchMock.mockRejectedValueOnce(err);
+
+    const res = await createReq();
+    const body = (await res.json()) as { details?: { alsoBlocking?: Array<{ code: string }> } };
+
+    expect(body.details?.alsoBlocking?.map((b) => b.code)).toEqual(['RELEASE_ROSTER_EMPTY']);
+  });
+});

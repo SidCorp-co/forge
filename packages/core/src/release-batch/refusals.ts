@@ -17,6 +17,11 @@ import {
   type ReleaseBlockerCode,
   releaseBlockerSentence,
 } from './blocker-sentences.js';
+import {
+  ReleaseCheckUnevaluatedError,
+  ReleaseProbesUnreadableError,
+  ReleaseRosterUnusableError,
+} from './blockers.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   ClaimConflictError,
@@ -71,28 +76,42 @@ export function releaseBlockerHttp(
 }
 
 export function declarationRefusal(err: unknown): HTTPException | null {
+  // These keep their own long sentences, which name the project and the labels;
+  // what they gain is the rest of the list standing with them (ISS-1127).
   if (err instanceof ReleaseTargetUndeclaredError) {
-    return conflict('RELEASE_TARGET_UNDECLARED', err.message);
+    return carrying(err, 'RELEASE_TARGET_UNDECLARED', err.message);
   }
   if (err instanceof ReleaseRunnerAmbiguousError) {
-    return conflict('RELEASE_RUNNER_AMBIGUOUS', err.message);
+    return carrying(err, 'RELEASE_RUNNER_AMBIGUOUS', err.message);
   }
   if (err instanceof ReleaseMultiChannelUnsupportedError) {
-    return conflict('RELEASE_MULTI_CHANNEL_UNSUPPORTED', err.message);
+    return carrying(err, 'RELEASE_MULTI_CHANNEL_UNSUPPORTED', err.message);
   }
   return null;
 }
-export function undeclaredProbes(): HTTPException {
-  return conflict(
+
+/** One refusal, its own sentence, and every reason standing beside it. */
+function carrying(err: unknown, code: ReleaseBlockerCode, message: string): HTTPException {
+  const standing = alsoBlocking(err, code);
+  return new HTTPException(blockerHttpStatus(code), {
+    message,
+    cause: standing.length > 0 ? { code, details: { alsoBlocking: standing } } : { code },
+  });
+}
+
+export function undeclaredProbes(err?: unknown): HTTPException {
+  return carrying(
+    err,
     'RELEASE_PROBES_UNDECLARED',
-    'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Two ways out. Either record where this project is deployed — `environments.live.commitUrl`, the endpoint that reports the running commit, and `environments.live.commitPath`, the dot path to it inside that endpoint\'s JSON body (`commit`, or `data.commit`; leave it empty where the whole body is the commit) — which answers this for every live binding at once. Or declare probes on the binding itself, which overrides the project\'s: `verify` = `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`. A binding that declares a `verify` Forge cannot read takes NO project default: correct it or remove it.',
+    releaseBlockerSentence('RELEASE_PROBES_UNDECLARED'),
   );
 }
 
-export function undeclaredBranches(): HTTPException {
-  return conflict(
+export function undeclaredBranches(err?: unknown): HTTPException {
+  return carrying(
+    err,
     'RELEASE_BRANCHES_UNDECLARED',
-    'This project declares no baseBranch, so there is nothing a release could promote from',
+    releaseBlockerSentence('RELEASE_BRANCHES_UNDECLARED'),
   );
 }
 // so the refusal has to say where the verdict actually comes from, or the next caller sends it
@@ -152,7 +171,16 @@ export function recordRefusal(err: unknown): HTTPException {
       'This project has no release gate configured, so there is no release to record — an agent `closed` here is already `closed`',
     );
   }
-  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes();
+  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes(err);
+  if (err instanceof ReleaseProbesUnreadableError) {
+    return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { urls: err.urls });
+  }
+  if (err instanceof ReleaseCheckUnevaluatedError) {
+    return releaseBlockerHttp(err, 'RELEASE_CHECK_UNEVALUATED', { check: err.check });
+  }
+  if (err instanceof ReleaseRosterUnusableError) {
+    return releaseBlockerHttp(err, err.code, { waiting: err.waiting });
+  }
   if (err instanceof ReleaseNotVerifiedError) {
     return new HTTPException(409, {
       message: err.reason,

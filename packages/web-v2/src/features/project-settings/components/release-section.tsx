@@ -48,6 +48,10 @@ const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, strin
   unrepresentable: "free text — not executed, abort and comment",
 };
 
+/** What a field says when the read behind it failed. Never its default, which
+ *  would show an unreadable binding as a binding that declares nothing. */
+const UNREAD = "could not be read";
+
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
 
 /** What the badge says for each declared model — the words a reader of the screen uses. */
@@ -159,22 +163,30 @@ export function ReleaseSection({
         <div>
           <dt className="fg-caption text-subtle">Live targets</dt>
           <dd className="fg-body-sm text-fg">
-            {r.providers.length > 0 ? r.providers.join(", ") : "—"}
+            {!r.channelsRead ? UNREAD : r.providers.length > 0 ? r.providers.join(", ") : "—"}
           </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Release runner label</dt>
-          <dd className="fg-body-sm font-mono text-fg">{r.releaseRunnerLabel ?? "—"}</dd>
+          <dd className="fg-body-sm font-mono text-fg">
+            {!r.channelsRead ? UNREAD : (r.releaseRunnerLabel ?? "—")}
+          </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Rollback</dt>
           <dd className="fg-body-sm text-fg">
-            {r.rollbackMode ? ROLLBACK_TEXT[r.rollbackMode] : "abort and comment"}
+            {!r.channelsRead
+              ? UNREAD
+              : r.rollbackMode
+                ? ROLLBACK_TEXT[r.rollbackMode]
+                : "abort and comment"}
           </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Deploy verified by</dt>
-          <dd className="fg-body-sm text-fg">{r.hasVerify ? "a probe" : "nothing"}</dd>
+          <dd className="fg-body-sm text-fg">
+            {!r.channelsRead ? UNREAD : r.hasVerify ? "a probe" : "nothing"}
+          </dd>
         </div>
       </dl>
       )}

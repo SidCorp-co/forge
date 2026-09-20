@@ -58,7 +58,11 @@ import {
   ReleaseRunnerUndeclaredError,
   ReleaseWorkUnmergedError,
 } from './errors.js';
-import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
+import {
+  RELEASE_GATE_STATUS,
+  ReleaseTargetUndeclaredError,
+  resolveReleaseDeclaration,
+} from './gate.js';
 import { ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { invalidProbeUrls } from './verify.js';
@@ -245,6 +249,20 @@ async function poolBlockers(
   }
 }
 
+/** Is there a branch a release could promote from. */
+async function branchBlockers(projectId: string, out: ReleaseBlocker[]): Promise<void> {
+  const branches = await evaluate('branches', async () => await readProjectBranches(projectId), out);
+  if (branches === undefined) return;
+  try {
+    releaseBranches(
+      branches ?? { baseBranch: null, liveBranch: null },
+      branches?.releaseModel ?? 'none',
+    );
+  } catch {
+    out.push(blocker('RELEASE_BRANCHES_UNDECLARED'));
+  }
+}
+
 /**
  * Every reason this project's release will not start, in the order the doors
  * refuse in. Never throws, and reaches no network.
@@ -305,30 +323,16 @@ export async function collectReleaseBlockers(
   }
   await rosterBlockers(door, roster ?? [], blockers);
 
-  if (channels) {
-    const label = channelBlockers(projectId, channels, door, blockers);
-    if (door === 'batch') await poolBlockers(projectId, label, blockers, warnings);
-    if (channels.length > 1) {
-      blockers.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
-    }
+  const label = channels ? channelBlockers(projectId, channels, door, blockers) : null;
+  if (channels && door === 'batch') await poolBlockers(projectId, label, blockers, warnings);
+  // Branches BEFORE channel count, which is `createReleaseBatch`'s own order —
+  // a project missing both produced `RELEASE_BRANCHES_UNDECLARED` before
+  // ISS-1127 and has to go on producing it.
+  if (door === 'batch') await branchBlockers(projectId, blockers);
+  if (channels && channels.length > 1) {
+    blockers.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
   }
-
   if (door === 'batch') {
-    const branches = await evaluate(
-      'branches',
-      async () => await readProjectBranches(projectId),
-      blockers,
-    );
-    if (branches !== undefined) {
-      try {
-        releaseBranches(
-          branches ?? { baseBranch: null, liveBranch: null },
-          branches?.releaseModel ?? 'none',
-        );
-      } catch {
-        blockers.push(blocker('RELEASE_BRANCHES_UNDECLARED'));
-      }
-    }
     const active = await evaluate(
       'in-flight',
       async () => await getActiveReleaseBatch(projectId),
@@ -392,7 +396,10 @@ function errorFor(
     case 'NO_RELEASE_GATE':
       return new NoReleaseGateError();
     case 'RELEASE_TARGET_UNDECLARED':
-      return new Error(first.message);
+      return new ReleaseTargetUndeclaredError(
+        report.projectId,
+        (first.details?.releaseModel as 'promote' | 'publish') ?? 'publish',
+      );
     case 'CLAIM_CONFLICT':
       return new ClaimConflictError(ids);
     case 'RELEASE_ROSTER_EMPTY':

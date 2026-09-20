@@ -105,7 +105,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_RUNNER_UNDECLARED:
     'This project declares a release model and no live deploy binding names a release runner. Set `releaseRunnerLabel` on one — it recommends a box, it does not stop the others releasing when that box is unavailable. Send `null` for that key to withdraw it again.',
   RELEASE_PROBES_UNDECLARED:
-    "One of this project's live deploy bindings declares no verification probes, so nothing but the agent's own word could say the release happened. Record `environments.live.commitUrl` and `commitPath` for the project, or declare `verify` on the binding itself.",
+    'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Two ways out. Either record where this project is deployed — `environments.live.commitUrl`, the endpoint that reports the running commit, and `environments.live.commitPath`, the dot path to it inside that endpoint\'s JSON body (`commit`, or `data.commit`; leave it empty where the whole body is the commit) — which answers this for every live binding at once. Or declare probes on the binding itself, which overrides the project\'s: `verify` = `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`. A binding that declares a `verify` Forge cannot read takes NO project default: correct it or remove it.',
   RELEASE_PROBES_UNREADABLE:
     'A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
   RELEASE_POOL_EMPTY:

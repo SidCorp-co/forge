@@ -45,12 +45,12 @@ export interface ReleaseReadiness {
   hasVerify: boolean;
   /** Where each live channel's probes came from, in the same order as `providers`. */
   verifySources: Array<'binding' | 'environments-live' | 'none'>;
-  /**
-   * False where the declaration could not be READ. Every field below it is then
-   * a fallback and not a reading, so a caller must not present `releaseModel:
-   * 'none'` as this project declaring no release (ISS-1127).
-   */
+  /** False where the declaration could not be READ, which makes `releaseModel`,
+   *  the branches and `hasReleaseGate` fallbacks rather than readings. */
   declarationRead: boolean;
+  /** False where the live bindings could not be READ, which makes `providers`,
+   *  the rollback, `hasVerify` and the label fallbacks too (ISS-1127). */
+  channelsRead: boolean;
   /** Everything still undeclared. Empty means settings has nothing to say. */
   gaps: ReleaseGapKey[];
   /**
@@ -65,10 +65,8 @@ export interface ReleaseReadiness {
 }
 
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
-  // ONE pass. Reading the declaration and the channels a second time here is
-  // what made this answer 500 on an unreadable binding: the enumerator already
-  // guards those reads, and a second unguarded copy would throw away the report
-  // it just produced (ISS-1127).
+  // ONE pass: the enumerator already guards these reads, and a second unguarded
+  // copy would throw away the report it just produced (ISS-1127).
   const report = await collectReleaseBlockers(projectId);
   if (!report.projectExists) return null;
   const decl = report.declaration;
@@ -101,6 +99,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
 
   return {
     declarationRead: decl !== null,
+    channelsRead: report.channels !== null,
     hasReleaseGate: decl?.kind === 'gated',
     releaseModel: !decl || decl.kind === 'no-release' ? 'none' : decl.releaseModel,
     releaseStrategy: decl?.kind === 'gated' ? decl.releaseStrategy : null,

@@ -89,11 +89,11 @@ releaseBatchRoutes.post(
       if (err instanceof ReleaseRunnerUndeclaredError) {
         throw releaseBlockerHttp(err, 'RELEASE_RUNNER_UNDECLARED');
       }
-      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
+      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes(err);
       if (err instanceof ReleaseProbesUnreadableError) {
         throw releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { urls: err.urls });
       }
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
+      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
       if (err instanceof ReleasePoolEmptyError) throw releaseBlockerHttp(err, 'RELEASE_POOL_EMPTY');
       if (err instanceof NoRunnerOnlineError) throw releaseBlockerHttp(err, 'NO_RUNNER_ONLINE');
       if (err instanceof ReleaseRosterUnusableError) {
@@ -213,7 +213,7 @@ releaseBatchRoutes.get(
     try {
       return c.json(await loadReleaseBatchContext(runId));
     } catch (err) {
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
+      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
       throw err;
     }
   },
@@ -243,7 +243,7 @@ releaseBatchRoutes.post(
           cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
         });
       }
-      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
+      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes(err);
       if (err instanceof ReleaseBatchAbortedError) {
         throw conflict(
           'RELEASE_BATCH_ABORTED',

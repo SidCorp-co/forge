@@ -296,3 +296,44 @@ describe('collectReleaseBlockers', () => {
     expect(report.projectExists).toBe(false);
   });
 });
+
+/**
+ * The whole-set review's F1, F2 and F4: three ways the enumerator could change
+ * what a caller already got for a state that has not moved.
+ */
+describe('collectReleaseBlockers — nothing a caller already got may move', () => {
+  it('throws the target refusal under its own class, which is what keeps it a 409', async () => {
+    projectRow({ releaseModel: 'publish' });
+    listBindings.mockResolvedValue([]);
+
+    const err = releaseBlockerError(await collectReleaseBlockers(PROJECT_ID));
+
+    expect(err?.name).toBe('ReleaseTargetUndeclaredError');
+  });
+
+  it('refuses a project missing BOTH a branch and one binding by the branch, as create did', async () => {
+    ready();
+    projectRow({ baseBranch: null, releaseModel: 'publish' });
+    listBindings.mockResolvedValue([
+      { binding: { id: 'b-1', provider: 'coolify', config: DECLARED, instructions: null, label: '', role: 'deploy', stages: ['live'] }, connection: { config: {} } },
+      { binding: { id: 'b-2', provider: 'coolify', config: DECLARED, instructions: null, label: 'two', role: 'deploy', stages: ['live'] }, connection: { config: {} } },
+    ]);
+    selectRows.mockResolvedValue([{ id: ISSUE_A, status: 'awaiting_release', claimed: null }]);
+
+    const codes = (await collectReleaseBlockers(PROJECT_ID)).blockers.map((b) => b.code);
+
+    expect(codes.indexOf('RELEASE_BRANCHES_UNDECLARED')).toBeLessThan(
+      codes.indexOf('RELEASE_MULTI_CHANNEL_UNSUPPORTED'),
+    );
+  });
+
+  it('says the channels were not read, rather than answering as though none were declared', async () => {
+    projectRow();
+    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+
+    expect(report.channels).toBeNull();
+    expect(report.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+});

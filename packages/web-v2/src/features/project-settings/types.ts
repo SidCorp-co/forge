@@ -199,6 +199,9 @@ export interface ReleaseReadiness {
 	/** False where the declaration could not be READ, which makes every field
 	 *  below a fallback rather than a reading (ISS-1127). */
 	declarationRead: boolean;
+	/** False where the live bindings could not be READ, which makes providers,
+	 *  rollback, hasVerify and the runner label fallbacks (ISS-1127). */
+	channelsRead: boolean;
 	/** Every reason a release would be refused RIGHT NOW — the declarations, and
 	 *  also the roster and the fleet, which `gaps` never looked at. Empty here
 	 *  means a release over this roster starts (ISS-1127). */
