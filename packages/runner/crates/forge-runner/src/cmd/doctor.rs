@@ -75,6 +75,26 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
 
+    // The `forge` entry in each bound checkout's `.mcp.json` — what a human
+    // running `claude` in that folder gets. Provisioning skips it silently when
+    // no PAT is stored, and the folder looks finished either way.
+    for (slug, b) in &cfg.bindings {
+        match repo_mcp_state(&b.repo_path) {
+            RepoMcp::HasForge => println!("✔ repo mcp     {slug}: .mcp.json has the forge server"),
+            RepoMcp::NoForgeEntry => println!(
+                "• repo mcp     {slug}: .mcp.json has no `forge` server — `forge-runner login --pat <token>`, then re-provision"
+            ),
+            RepoMcp::Missing => println!(
+                "• repo mcp     {slug}: no .mcp.json in {} — `claude` run there reaches no Forge tools",
+                b.repo_path.display()
+            ),
+            RepoMcp::Unreadable(why) => {
+                println!("✖ repo mcp     {slug}: {why}");
+                failed = true;
+            }
+        }
+    }
+
     // Which plugin a job spawned here would find installed. `enabled = false`
     // is a legitimate device state, not a failure, so it reports as a note.
     if cfg.plugins.enabled {
@@ -150,6 +170,27 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     }
     println!("\n✔ VERDICT      PASS");
     Ok(())
+}
+
+/// What a human opening `claude` in a bound checkout would find.
+enum RepoMcp {
+    HasForge,
+    NoForgeEntry,
+    Missing,
+    Unreadable(String),
+}
+
+fn repo_mcp_state(repo_path: &std::path::Path) -> RepoMcp {
+    let path = repo_path.join(".mcp.json");
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(_) => return RepoMcp::Missing,
+    };
+    match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(doc) if doc.pointer("/mcpServers/forge").is_some() => RepoMcp::HasForge,
+        Ok(_) => RepoMcp::NoForgeEntry,
+        Err(e) => RepoMcp::Unreadable(format!("{} is not valid JSON ({e})", path.display())),
+    }
 }
 
 /// Run the network section. Returns `true` if any check failed. Missing

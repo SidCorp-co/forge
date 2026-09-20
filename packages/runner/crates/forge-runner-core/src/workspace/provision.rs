@@ -202,15 +202,32 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
     }
 
     report(client, &p.runner_id, "writing_mcp", None).await;
-    if let Err(e) = mcp::config::write_persistent(repo_path, client.base(), &p.slug) {
-        tracing::warn!("[provision] write .mcp.json failed: {e}");
+    let mut ready_detail: Option<String> = None;
+    match mcp::config::write_persistent(repo_path, client.base(), &p.slug) {
+        Ok(mcp::config::PersistentMcp::Written) => {}
+        // Jobs reach Forge through the credential the daemon writes per run, so
+        // this does not hold the workspace back — but a human opening `claude`
+        // here would find no `forge` server and no reason why. The reason rides
+        // the `ready` report instead of living only in this box's log.
+        Ok(mcp::config::PersistentMcp::SkippedNoPat) => {
+            ready_detail = Some(
+                "no PAT stored on this device — .mcp.json has no `forge` entry, so `claude` run \
+                 by hand in this folder cannot reach Forge. Fix: `forge-runner login --pat <token>` \
+                 (mint one under Settings → Access tokens), then re-provision."
+                    .into(),
+            );
+        }
+        Err(e) => {
+            tracing::warn!("[provision] write .mcp.json failed: {e}");
+            ready_detail = Some(format!(".mcp.json was not written: {e}"));
+        }
     }
     if let Err(e) = orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
         tracing::warn!("[provision] write orientation failed: {e}");
     }
     trust::pre_trust_logged(repo_path, &p.slug);
 
-    report(client, &p.runner_id, "ready", None).await;
+    report(client, &p.runner_id, "ready", ready_detail.as_deref()).await;
     tracing::info!(
         "[provision] project={} ready at {}",
         p.slug,

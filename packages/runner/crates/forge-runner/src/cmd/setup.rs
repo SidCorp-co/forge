@@ -42,6 +42,9 @@ pub struct Args {
     /// Do not install the OS service.
     #[arg(long, conflicts_with = "service")]
     pub no_service: bool,
+    /// Personal access token for the `forge` CLI and the provisioned `.mcp.json`.
+    #[arg(long)]
+    pub pat: Option<String>,
     /// Never prompt; take the defaults and the flags as given.
     #[arg(long)]
     pub yes: bool,
@@ -54,6 +57,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     require_tools()?;
     let core_url = resolve_core_url(&ctx)?;
     ensure_paired(&core_url, &args).await?;
+
+    ensure_pat(&core_url, &args, interactive)?;
 
     let cfg = Config::load()?;
     let client = super::bind::client_for(&ctx, &cfg)?;
@@ -132,6 +137,45 @@ async fn ensure_paired(core_url: &str, args: &Args) -> anyhow::Result<()> {
         .clone()
         .unwrap_or_else(pairing::default_device_name);
     super::login::pair_device(core_url, &name, args.code.clone(), args.open).await
+}
+
+/// The device token names this box; a PAT names the human. The provisioned
+/// `.mcp.json` and the `forge` CLI both speak with the second, so a box with
+/// only the first pairs, binds and provisions perfectly and then hands a human
+/// a checkout whose `claude` cannot see Forge. Setup asks for it here rather
+/// than letting that turn up later as an empty tool list.
+fn ensure_pat(core_url: &str, args: &Args, interactive: bool) -> anyhow::Result<()> {
+    if let Some(pat) = args.pat.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        cred_store::store_pat(pat)?;
+        println!("✔ rest token   stored ({})", cred_store::active_backend());
+        return Ok(());
+    }
+    if cred_store::load_pat().ok().flatten().is_some() {
+        println!("✔ rest token   already stored");
+        return Ok(());
+    }
+
+    let mint = format!("{}/settings", core_url.trim_end_matches('/'));
+    if !interactive {
+        println!(
+            "• rest token   none — pass `--pat <token>` (mint one at {mint} → Access tokens). \
+             Without it the provisioned .mcp.json gets no `forge` entry and the `forge` CLI \
+             cannot reach the tracker; jobs still run."
+        );
+        return Ok(());
+    }
+    println!("\nA personal access token lets `claude` and the `forge` CLI in your checkout reach");
+    println!("Forge. Mint one at {mint} → Access tokens (Enter to skip).");
+    let pat = ask("Paste the token:")?;
+    if pat.is_empty() {
+        println!(
+            "• rest token   skipped — `forge-runner login --pat <token>` later, then re-run setup"
+        );
+        return Ok(());
+    }
+    cred_store::store_pat(&pat)?;
+    println!("✔ rest token   stored ({})", cred_store::active_backend());
+    Ok(())
 }
 
 /// Assignments are the server's answer, not a question for this box. When there

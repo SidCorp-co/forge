@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A checkout provisioned with no PAT says so.** It got no `forge` server in `.mcp.json` and was
+  still reported `ready`. The reason now rides that report, `doctor` shows it per checkout, and
+  `setup` asks for the token.
 - **`forge-runner setup` takes a box from installed to running work.** It checks `claude`/`git`/`tmux`
   before pairing, waits for the project assignment, provisions the checkout, installs the service
   and ends on `doctor` — non-zero when that fails. Every question has a flag.

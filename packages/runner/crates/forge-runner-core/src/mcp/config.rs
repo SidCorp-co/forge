@@ -327,7 +327,21 @@ fn write_owner_only(path: &Path, body: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn write_persistent(repo_path: &Path, core_url: &str, project_slug: &str) -> Result<()> {
+/// What `write_persistent` did. The skip is a real outcome, not a success: a
+/// provisioned folder with no `forge` entry looks finished and is not, and the
+/// caller has to be able to say so rather than log it and report `ready`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PersistentMcp {
+    Written,
+    /// No PAT is stored on this box, so there is no credential to write.
+    SkippedNoPat,
+}
+
+pub fn write_persistent(
+    repo_path: &Path,
+    core_url: &str,
+    project_slug: &str,
+) -> Result<PersistentMcp> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
     let Some(pat) = load_pat().ok().flatten() else {
         tracing::warn!(
@@ -336,7 +350,7 @@ pub fn write_persistent(repo_path: &Path, core_url: &str, project_slug: &str) ->
              .mcp.json alone. Run `forge-runner login --pat <token>` so a human running \
              `claude` in this folder reaches Forge."
         );
-        return Ok(());
+        return Ok(PersistentMcp::SkippedNoPat);
     };
     let forge_server = serde_json::json!({
         "type": "http",
@@ -380,7 +394,7 @@ pub fn write_persistent(repo_path: &Path, core_url: &str, project_slug: &str) ->
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
     std::fs::write(&path, body)?;
     ensure_git_excluded(repo_path, ".mcp.json");
-    Ok(())
+    Ok(PersistentMcp::Written)
 }
 
 /// Append `entry` to `<repo>/.git/info/exclude` if not already present. Touches
@@ -576,6 +590,28 @@ mod tests {
         assert!(doc["mcpServers"]["chrome-devtools-mcp"].is_null());
         assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn with_no_pat_the_provisioned_file_is_not_written_and_the_skip_is_returned() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let cleared = ScopedVar::set("FORGE_PAT", "");
+        // Narrower than HOME: the file store resolves through the config dir,
+        // and HOME is read by tests that do not take this lock.
+        let xdg = ScopedVar::set("XDG_CONFIG_HOME", "/nonexistent-forge-config");
+        let repo = tmp_repo("no-pat");
+        assert_eq!(
+            write_persistent(&repo, "https://core.example", "proj").unwrap(),
+            PersistentMcp::SkippedNoPat
+        );
+        assert!(
+            !repo.join(".mcp.json").exists(),
+            "no credential to write, so no file claiming a `forge` server"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        drop((cleared, xdg));
     }
 
     #[test]
