@@ -64,6 +64,15 @@ function branchPair(r: ReleaseReadiness): string {
 }
 
 function stateLine(r: ReleaseReadiness) {
+  // An unreadable declaration is not a project that declares nothing. Saying so
+  // would be the substitution this whole section exists to stop (ISS-1127).
+  if (!r.declarationRead)
+    return (
+      <>
+        This project's release declaration could not be read just now, so nothing below it is a
+        reading. What could not be evaluated is named underneath.
+      </>
+    );
   if (r.hasReleaseGate)
     return (
       <>
@@ -133,6 +142,7 @@ export function ReleaseSection({
     <div className="mt-6 border-t border-line pt-5">
       {headingFor(r)}
 
+      {r.declarationRead && (
       <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
         <div>
           <dt className="fg-caption text-subtle">Release</dt>
@@ -167,8 +177,9 @@ export function ReleaseSection({
           <dd className="fg-body-sm text-fg">{r.hasVerify ? "a probe" : "nothing"}</dd>
         </div>
       </dl>
+      )}
 
-      {!r.hasReleaseGate && (
+      {r.declarationRead && !r.hasReleaseGate && (
         <p className="fg-caption mt-3 text-muted">
           {r.targetUndeclared ? (
             <>

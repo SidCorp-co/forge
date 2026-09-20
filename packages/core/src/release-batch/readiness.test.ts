@@ -484,3 +484,25 @@ describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
     expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
   });
 });
+
+// ISS-1127, from the whole-set review — F6. Answering 200 with fallback fields
+// where the declaration could not be READ makes the screen say "this project
+// declares no release", which is a confirmed absence standing in for an
+// unreadable one. `declarationRead` is what stops a caller doing that.
+describe('loadReleaseReadiness — a declaration that could not be read', () => {
+  it('says the declaration was not read rather than answering as though it were', async () => {
+    project({ releaseModel: 'publish' });
+    selectLimit.mockRejectedValue(new Error('projects table unreadable'));
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.declarationRead).toBe(false);
+    expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+
+  it('says it WAS read for every project whose declaration answered', async () => {
+    project({ releaseModel: 'none' });
+
+    expect((await loadReleaseReadiness(PROJECT_ID))?.declarationRead).toBe(true);
+  });
+});

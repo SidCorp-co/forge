@@ -45,6 +45,12 @@ export interface ReleaseReadiness {
   hasVerify: boolean;
   /** Where each live channel's probes came from, in the same order as `providers`. */
   verifySources: Array<'binding' | 'environments-live' | 'none'>;
+  /**
+   * False where the declaration could not be READ. Every field below it is then
+   * a fallback and not a reading, so a caller must not present `releaseModel:
+   * 'none'` as this project declaring no release (ISS-1127).
+   */
+  declarationRead: boolean;
   /** Everything still undeclared. Empty means settings has nothing to say. */
   gaps: ReleaseGapKey[];
   /**
@@ -94,6 +100,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   }
 
   return {
+    declarationRead: decl !== null,
     hasReleaseGate: decl?.kind === 'gated',
     releaseModel: !decl || decl.kind === 'no-release' ? 'none' : decl.releaseModel,
     releaseStrategy: decl?.kind === 'gated' ? decl.releaseStrategy : null,
