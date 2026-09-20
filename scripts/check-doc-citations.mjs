@@ -157,6 +157,19 @@ export function originOf(citation) {
  * cannot report the disappearance. More than one match inside those scopes is ambiguous
  * rather than resolved. The cost is that a document at the repository root writes the
  * full path or is told it cites nothing.
+ *
+ * ONE RESIDUAL, stated rather than left to be found: a document inside a scope can cite a
+ * root-level file whose NAME is also taken inside that scope — `scripts/README.md` naming
+ * a root `eslint.config.mjs` while a `scripts/eslint.config.mjs` exists. The exact match
+ * wins while the root file is there; delete it and the scoped namesake answers instead,
+ * silently. Closing it takes a syntactic root notation and a rewrite of every rooted
+ * citation in the repository, which is a larger change than the one this checker is, and
+ * it is priced on ISS-1112 with the condition that ends it. Nothing here detects the
+ * collision while both files exist either — the exact match returns before any scoped
+ * candidate is looked for, so the pair is never seen as two answers. What bounds it is
+ * only that it needs one name taken twice, at the root and inside the citing document's
+ * own scope, which this repository does not do today. A green over such a pair means
+ * less than a green everywhere else, and that is what this paragraph is for.
  */
 export function resolveCitation(citation, home, world) {
   const isDir = citation.target.endsWith('/');
@@ -380,10 +393,16 @@ function main() {
     process.exit(1);
   }
 
-  const checked = citations.length - verdict.ambiguous.length - verdict.unverifiable.length;
+  const unmeasured = verdict.ambiguous.length + verdict.unverifiable.length;
   console.log(
     `\ndoc-citations: ${docs.length} document(s) scanned, ${citations.length} citation(s), ` +
-      `${checked} checked, ${verdict.drift.length} on the worklist`,
+      `${citations.length - unmeasured} checked`,
+  );
+  // One line a passing run carries out of here: `pnpm verify` prints a checker's output
+  // only when it fails, so a worklist reported nowhere else is a worklist nobody reads.
+  console.log(
+    `doc-citations worklist: ${verdict.drift.length} citation(s) whose file moved after the ` +
+      `document, ${unmeasured} unmeasured — node scripts/check-doc-citations.mjs --all --drift`,
   );
 }
 
