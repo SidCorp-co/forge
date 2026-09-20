@@ -162,6 +162,9 @@
 - **A comment carrying a machine record is told where that record belongs.** The answer names the
   route for its kind, and a guide. Guidance today; a refusal only for a client that says it can
   comply.
+- **A document that names a file in this repo is now checked against it.** A path the tree no
+  longer carries fails the build, and a citation whose file changed after the document did comes
+  back on the doc-review worklist.
 - **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
   credential core mints for that one checkout, writes its `.mcp.json`, and records the local
   binding — no pasted token, no `bind` by hand.
