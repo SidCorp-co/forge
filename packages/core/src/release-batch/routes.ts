@@ -40,7 +40,10 @@ import {
   ReleasePoolEmptyError,
   ReleaseProbesUndeclaredError,
   ReleaseRecordMissingError,
+  ReleaseRecutRefusedError,
   ReleaseRunnerUndeclaredError,
+  ReleaseVersionConflictError,
+  ReleaseVersionMissingError,
 } from './service.js';
 import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
 import { readLiveState } from './verify.js';
@@ -50,6 +53,13 @@ const projectParamSchema = z.object({ projectId: z.uuid() });
 const createBodySchema = z
   .object({
     issueIds: z.array(z.uuid()).min(1).max(50),
+    /**
+     * The version of a FAILED release being cut again, which raises the patch digit instead of the
+     * minor. Not validated for shape here: `cutReleaseVersion` refuses a value that is not a
+     * version with the same named refusal that rules on the four other ways a re-cut can be wrong,
+     * and one refusal carrying the whole rule beats a zod message carrying half of it.
+     */
+    recutOf: z.string().trim().max(100).optional(),
   })
   .strict();
 
@@ -66,7 +76,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const { issueIds } = c.req.valid('json');
+    const { issueIds, recutOf } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
@@ -74,7 +84,7 @@ releaseBatchRoutes.post(
     assertProjectRole(access, 'admin');
 
     try {
-      const result = await createReleaseBatch({ projectId, issueIds, userId });
+      const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf });
       return c.json(result, 201);
     } catch (err) {
       const declined = declarationRefusal(err);
@@ -117,6 +127,12 @@ releaseBatchRoutes.post(
           'BATCH_IN_FLIGHT',
           'A batch release is already in progress for this project',
         );
+      }
+      if (err instanceof ReleaseRecutRefusedError) {
+        throw conflict('RELEASE_RECUT_REFUSED', err.message);
+      }
+      if (err instanceof ReleaseVersionConflictError) {
+        throw conflict('RELEASE_VERSION_CONFLICT', err.message);
       }
       throw err;
     }
@@ -237,6 +253,9 @@ releaseBatchRoutes.post(
         });
       }
       if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
+      if (err instanceof ReleaseVersionMissingError) {
+        throw conflict('RELEASE_VERSION_MISSING', err.message);
+      }
       if (err instanceof ReleaseBatchAbortedError) {
         throw conflict(
           'RELEASE_BATCH_ABORTED',

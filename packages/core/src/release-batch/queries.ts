@@ -20,6 +20,7 @@ import { nextRunFor } from '../schedules/cron.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
+import { currentReleaseVersion } from './version-store.js';
 
 export interface ReleaseRosterEntry {
   id: string;
@@ -42,6 +43,12 @@ export interface ReleaseRoster {
   baseBranch: string | null;
   /** When the next scheduled cut fires. `null` = nobody scheduled one. */
   nextCutAt: string | null;
+  /**
+   * The version the project is serving: what the last release to SHIP cut. `null` when no release
+   * here has ever shipped. Read off the ship stamp rather than the run's status, because
+   * `cancelConcludedRun` flips a `completed` run to `cancelled` without taking the bytes down.
+   */
+  currentVersion: string | null;
   issues: ReleaseRosterEntry[];
 }
 
@@ -82,10 +89,12 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       releaseRunnerLabel: null,
       baseBranch: null,
       nextCutAt: null,
+      currentVersion: null,
       issues: [],
     };
   }
   const nextCutAt = await nextScheduledCutAt(projectId);
+  const currentVersion = await currentReleaseVersion(projectId);
   const branches = await readProjectBranches(projectId);
 
   const rows = await db
@@ -108,6 +117,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     releaseRunnerLabel: releaseRunnerLabelOf(projectId, channels),
     baseBranch: branches?.baseBranch ?? null,
     nextCutAt,
+    currentVersion,
     issues: rows.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(prefix, r.issSeq) : r.id,
@@ -163,13 +173,20 @@ export interface ActiveReleaseBatchInfo {
   runId: string;
   issueIds: string[];
   startedAt: string;
+  /** The version this release cut. `null` only on a release row nothing versioned. */
+  version: string | null;
 }
 
 export async function getActiveReleaseBatch(
   projectId: string,
 ): Promise<ActiveReleaseBatchInfo | null> {
-  const [run] = await db.execute<{ id: string; metadata: unknown; started_at: Date }>(sql`
-    SELECT r.id, r.metadata, r.started_at
+  const [run] = await db.execute<{
+    id: string;
+    metadata: unknown;
+    started_at: Date;
+    release_version: string | null;
+  }>(sql`
+    SELECT r.id, r.metadata, r.started_at, r.release_version
     FROM pipeline_runs r
     WHERE r.project_id = ${projectId}
       AND r.kind = 'system'
@@ -190,6 +207,7 @@ export async function getActiveReleaseBatch(
     issueIds: claimedIssues.map((r) => r.id),
     startedAt:
       run.started_at instanceof Date ? run.started_at.toISOString() : String(run.started_at),
+    version: run.release_version,
   };
 }
 
@@ -205,6 +223,8 @@ export interface ReleaseBatchContext {
   runId: string;
   projectId: string;
   gateStatus: IssueStatus;
+  /** The version this release cut, which the release agent writes into the tag it pushes. */
+  version: string | null;
   baseBranch: string;
   /** Where a `promote` release lands; equals `baseBranch` under every other model. */
   liveBranch: string;
@@ -219,6 +239,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
       id: pipelineRuns.id,
       projectId: pipelineRuns.projectId,
       metadata: pipelineRuns.metadata,
+      releaseVersion: pipelineRuns.releaseVersion,
     })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
@@ -256,6 +277,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     runId,
     projectId: run.projectId,
     gateStatus,
+    version: run.releaseVersion,
     baseBranch,
     liveBranch,
     deployPlanned,
