@@ -196,6 +196,8 @@ mod tests {
             .with_writer(move || made.clone())
             .with_ansi(false)
             .finish();
+        // Why a capture needs this: `crate::daemon::keep_tracing_capturable`.
+        crate::daemon::keep_tracing_capturable();
         tracing::subscriber::with_default(sub, f);
         let out = buf.0.lock().unwrap().clone();
         String::from_utf8_lossy(&out).into_owned()
