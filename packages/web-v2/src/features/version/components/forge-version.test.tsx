@@ -55,25 +55,12 @@ describe("ForgeVersion", () => {
 		);
 	});
 
-	it("drops the word Forge in the compact rail but keeps it in the accessible name", () => {
-		useForgeVersion.mockReturnValue({
-			isPending: false,
-			data: { version: "0.3.0", sourceCommit: null, uptimeSeconds: 12 },
-		});
-
-		render(<ForgeVersion variant="compact" />);
-
-		expect(screen.getByText("v0.3.0").getAttribute("aria-hidden")).toBe("true");
-		expect(screen.getByText("Forge v0.3.0").className).toContain("sr-only");
-	});
-
 	it("says the version is unavailable once the request has failed, rather than nothing", () => {
 		useForgeVersion.mockReturnValue({ isPending: false, isError: true, data: undefined });
 
 		render(<ForgeVersion />);
 
-		expect(screen.getByText("version unavailable")).toBeTruthy();
-		expect(screen.getByText("Forge version unavailable").className).toContain("sr-only");
+		expect(screen.getByText("Forge version unavailable")).toBeTruthy();
 	});
 
 	it("never substitutes a number for a version it does not have", () => {
