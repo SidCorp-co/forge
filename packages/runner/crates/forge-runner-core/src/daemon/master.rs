@@ -38,7 +38,7 @@ use crate::daemon::run_record;
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::close_loop;
-use crate::runner::ledger::{Ledger, Run};
+use crate::runner::ledger::{Ledger, MasterStanding, Run};
 use crate::runner::terminate;
 use crate::transport::admissible::{self, AdmissibleIssue, DISPATCH_GATING_KIND};
 use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
@@ -146,6 +146,13 @@ pub(crate) enum Unplaced {
         detail: String,
     },
     NothingAdmissible,
+    /// An owner stood this project's master down, so this box places none
+    /// until somebody stands it up again (ISS-1118).
+    StoodDown {
+        by: String,
+        why: Option<String>,
+        slug: String,
+    },
 }
 
 impl std::fmt::Display for Unplaced {
@@ -175,7 +182,62 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "it has nothing claimable and no pane of its own running, so this box started none"
             ),
+            Self::StoodDown { by, why, slug } => {
+                write!(f, "its master was stood down by {by}")?;
+                if let Some(w) = why {
+                    write!(f, " ({w})")?;
+                }
+                write!(
+                    f,
+                    " — this box places none for it and nudges none. `forge-runner master stand-up {slug}` is the one act that lets it be placed again"
+                )
+            }
         }
+    }
+}
+
+/// What a project's recorded standing says this sweep may do about its pane
+/// (ISS-1118).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Placed {
+    /// Nothing withholds a pane: place it on the same terms as always.
+    Proceed,
+    /// Stood down and no pane is up. This sweep places none.
+    Withheld,
+    /// Stood down and a pane is up anyway. This sweep reports it and neither
+    /// adopts it as a driving master nor nudges it; it does not end it either,
+    /// because the daemon stopped killing master panes (ISS-933).
+    Contradicted,
+}
+
+/// The whole of the stand-down decision, as a function of the two facts it
+/// turns on.
+///
+/// A lifted stand-down proceeds: `stand-up` restores a project to the gates
+/// every other project answers to rather than to a guaranteed pane.
+fn stood_down_reason(standing: Option<&MasterStanding>, slug: &str) -> Unplaced {
+    Unplaced::StoodDown {
+        by: standing.map_or_else(|| "somebody".to_string(), |s| s.stood_down_by.clone()),
+        why: standing.and_then(|s| s.why.clone()),
+        slug: slug.to_string(),
+    }
+}
+
+/// How long a lifted stand-down held, for the pane placed after it. `None`
+/// while it still stands, and `None` on a row whose two stamps cannot make an
+/// interval — a clock that went backwards is not a fact to tell a master.
+fn stood_down_interval(standing: &MasterStanding) -> Option<Duration> {
+    let up = standing.stood_up_at?;
+    u64::try_from(up - standing.stood_down_at)
+        .ok()
+        .map(Duration::from_secs)
+}
+
+fn placement_under(standing: Option<&MasterStanding>, pane_alive: bool) -> Placed {
+    match standing {
+        Some(s) if s.stands() && pane_alive => Placed::Contradicted,
+        Some(s) if s.stands() => Placed::Withheld,
+        _ => Placed::Proceed,
     }
 }
 
@@ -633,6 +695,50 @@ async fn sweep(
         )
         .await;
 
+        // The owner's veto, read off the ledger this sweep already holds and
+        // decided before anything is asked of core. A stand-down governs the
+        // resident master and nothing else, which is why it sits AFTER
+        // `take_pool_job`: the box goes on taking pool jobs for a project whose
+        // master is stood down (ISS-1118).
+        let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
+        let standing = ledger
+            .as_ref()
+            .and_then(|led| led.master_standing(&runner.project_id).ok().flatten());
+        let stands = standing.as_ref().is_some_and(MasterStanding::stands);
+        // The pane is only looked for where something might contradict it: a
+        // project nobody stood down answers `Proceed` either way, and asking
+        // tmux about every project on every sweep buys that answer nothing.
+        let pane_alive = stands && terminal::alive(&pane_name).await;
+        match placement_under(standing.as_ref(), pane_alive) {
+            Placed::Proceed => {}
+            Placed::Withheld => {
+                say_unplaced(
+                    masters,
+                    &runner.project_id,
+                    &runner.slug,
+                    stood_down_reason(standing.as_ref(), &runner.slug),
+                );
+                continue;
+            }
+            Placed::Contradicted => {
+                if masters.note_capability(&runner.project_id, "stood-down-contradicted") {
+                    tracing::error!(
+                        "[master] {}: {pane_name} is running while this project is stood down — nothing here adopts it as this box's master, nudges it or ends it. Either `tmux kill-session -t {pane_name}` to make the box's two answers agree, or `forge-runner master stand-up {}` to put the project back under this box's authority.",
+                        runner.slug,
+                        runner.slug
+                    );
+                }
+                say_unplaced(
+                    masters,
+                    &runner.project_id,
+                    &runner.slug,
+                    stood_down_reason(standing.as_ref(), &runner.slug),
+                );
+                continue;
+            }
+        }
+        let lifted_interval = standing.as_ref().and_then(stood_down_interval);
+
         let admissible = admissible::admissible(client, Some(&runner.project_id))
             .await
             .unwrap_or_default();
@@ -685,14 +791,69 @@ async fn sweep(
             masters,
             &runner.project_id,
             &resolved,
-            stored_conversation.as_deref(),
-            &inherited,
+            &Carryover {
+                conversation: stored_conversation.as_deref(),
+                inherited: &inherited,
+                stood_down_for: lifted_interval,
+            },
             placement,
             tokens,
         )
         .await;
         if pane == PaneState::Absent {
             continue;
+        }
+        if lifted_interval.is_some() {
+            if let Some(led) = ledger.as_ref() {
+                if let Err(e) = led.forget_lifted_standing(&runner.project_id) {
+                    tracing::warn!(
+                        "[master] {}: cannot clear the lifted stand-down it was just told about: {e} — the next pane will be told the same interval again",
+                        resolved.slug
+                    );
+                }
+            }
+        }
+        // A stand-down can be written while this sweep is starting a pane. The
+        // owner's act was already on the record when the placement finished, so
+        // this sweep withdraws the pane IT placed rather than leaving one
+        // running until the next pass. A pane it merely adopted is never ended
+        // here: that one is somebody else's and ISS-933 took this daemon out of
+        // the business of killing panes it did not start.
+        if matches!(pane, PaneState::ColdStarted | PaneState::Resumed) {
+            let since = ledger
+                .as_ref()
+                .and_then(|led| led.master_standing(&runner.project_id).ok().flatten());
+            if since.as_ref().is_some_and(MasterStanding::stands) {
+                tracing::error!(
+                    "[master] {}: {pane_name} was stood down while this sweep was starting it — withdrawing the pane this sweep placed. `forge-runner master stand-up {}` puts the project back under this box's authority.",
+                    resolved.slug,
+                    resolved.slug
+                );
+                if let Err(e) = terminal::kill(&pane_name).await {
+                    tracing::error!(
+                        "[master] {}: could not withdraw {pane_name}: {e} — it is running against a stand-down and `tmux kill-session -t {pane_name}` is what ends it",
+                        resolved.slug
+                    );
+                }
+                if let Some((session_id, _)) = masters.get(&runner.project_id) {
+                    end_master(
+                        client,
+                        masters,
+                        tokens,
+                        &runner.project_id,
+                        &session_id,
+                        "stood down while this sweep was placing it",
+                    )
+                    .await;
+                }
+                say_unplaced(
+                    masters,
+                    &runner.project_id,
+                    &resolved.slug,
+                    stood_down_reason(since.as_ref(), &resolved.slug),
+                );
+                continue;
+            }
         }
         if let Some(said) = account_verdict(
             &resolved.repo_path,
@@ -1223,6 +1384,30 @@ pub(crate) struct InheritedRun {
     pub ended_by: Option<String>,
 }
 
+/// What a pane placed after a stand-down was lifted is told about the gap.
+///
+/// The brief's first line asserts the reader is this project's master, and a
+/// resumed conversation carries a transcript that ends mid-work. Without this,
+/// a master stood down for nine hours wakes believing it was driving the whole
+/// time (ISS-1118).
+pub(crate) fn stood_up_brief(stood_down_for: Duration) -> String {
+    let mins = stood_down_for.as_secs() / 60;
+    let span = if mins >= 120 {
+        format!("{} hours", mins / 60)
+    } else if mins >= 1 {
+        format!("{mins} minutes")
+    } else {
+        format!("{} seconds", stood_down_for.as_secs())
+    };
+    format!(
+        "\nThis project was STOOD DOWN for {span} and has just been stood up again. This box \
+placed no master for it over that interval and nudged none, so nothing you remember doing \
+happened during it — whatever was decided about this project in that time was decided by \
+somebody else, and the tracker is where it is written rather than in anything you recall. Read \
+the board before you act on any intention you are carrying from before the gap.\n"
+    )
+}
+
 pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun]) -> String {
     let mut out = format!(
         "\nThis pane was RESUMED, not started fresh: it is continuing conversation `{conversation}`, \
@@ -1434,16 +1619,28 @@ pub(crate) fn placement_for(admissible: &[AdmissibleIssue]) -> Placement {
     }
 }
 
+/// What a pane this sweep places carries over from whatever stood before it:
+/// the conversation it resumes, the runs that conversation holds, and the
+/// interval its project spent stood down.
+pub(crate) struct Carryover<'a> {
+    conversation: Option<&'a str>,
+    inherited: &'a [InheritedRun],
+    /// Set only for a pane placed after a stand-down was lifted, so a resumed
+    /// conversation is not told merely that it is master again (ISS-1118).
+    stood_down_for: Option<Duration>,
+}
+
 async fn ensure_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
     project_id: &str,
     resolved: &crate::daemon::dispatch::Resolved,
-    stored_conversation: Option<&str>,
-    inherited: &[InheritedRun],
+    carry: &Carryover<'_>,
     placement: Placement,
     tokens: Option<&session_tokens::SessionTokens>,
 ) -> PaneState {
+    let stored_conversation = carry.conversation;
+    let inherited = carry.inherited;
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
     if !terminal::available() {
         tracing::error!(
@@ -1660,6 +1857,10 @@ surface it reads",
     );
     let brief = match resume.as_deref() {
         Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited)),
+        None => brief,
+    };
+    let brief = match carry.stood_down_for {
+        Some(down) => format!("{brief}{}", stood_up_brief(down)),
         None => brief,
     };
     if let Err(e) = terminal::brief_new_pane(&name, &brief).await {
@@ -4730,6 +4931,206 @@ mod unplaced_tests {
             changed.contains("WARN") && changed.contains("checkout"),
             "a DIFFERENT reason is a different thing for an operator to do, so it is reported \
              again; log was: {changed}"
+        );
+    }
+}
+
+/// A master an owner stood down stays down, and the box tells its two answers
+/// apart (ISS-1118).
+#[cfg(test)]
+mod stand_down_tests {
+    use super::*;
+
+    const SOURCE: &str = include_str!("master.rs");
+
+    fn production() -> &'static str {
+        SOURCE.split("\n#[cfg(test)]").next().unwrap()
+    }
+
+    fn sweep_body() -> &'static str {
+        production()
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("sweep must be findable")
+    }
+
+    fn stood_down() -> MasterStanding {
+        MasterStanding {
+            project_id: "proj-1".into(),
+            slug: "forge-dev".into(),
+            stood_down_at: 1_000,
+            stood_down_by: "owner".into(),
+            why: Some("a human is driving it".into()),
+            stood_up_at: None,
+        }
+    }
+
+    fn lifted() -> MasterStanding {
+        MasterStanding {
+            stood_up_at: Some(5_000),
+            ..stood_down()
+        }
+    }
+
+    #[test]
+    fn a_project_nobody_stood_down_is_placed_exactly_as_it_is_today() {
+        assert_eq!(placement_under(None, false), Placed::Proceed);
+        assert_eq!(
+            placement_under(None, true),
+            Placed::Proceed,
+            "a live pane under no stand-down is the ordinary case and this decision must not touch it"
+        );
+    }
+
+    #[test]
+    fn a_stood_down_project_gets_no_pane_placed() {
+        assert_eq!(
+            placement_under(Some(&stood_down()), false),
+            Placed::Withheld,
+            "an owner who stood a master down and killed its pane gets it back on the next sweep, resuming the same conversation, because nothing between the ledger and ensure_master reads the stand-down (ISS-1118)"
+        );
+    }
+
+    #[test]
+    fn a_pane_alive_under_a_stand_down_is_a_contradiction_and_not_a_placement() {
+        assert_eq!(
+            placement_under(Some(&stood_down()), true),
+            Placed::Contradicted,
+            "a pane running against a stand-down is reported, never adopted as a driving master and never nudged"
+        );
+    }
+
+    #[test]
+    fn standing_a_master_up_restores_it_to_the_gates_and_not_to_a_pane() {
+        assert_eq!(
+            placement_under(Some(&lifted()), false),
+            Placed::Proceed,
+            "a lifted stand-down withholds nothing; whether a pane is placed is then the usual question of admissible work and a runner that accepts it"
+        );
+        assert_eq!(placement_under(Some(&lifted()), true), Placed::Proceed);
+    }
+
+    #[test]
+    fn the_sweep_reads_the_stand_down_before_it_places_a_pane() {
+        let body = sweep_body();
+        let reads = body.find("master_standing(").expect(
+            "the sweep places a pane for every project it serves and consults no record of one \
+             being stood down, so the kill and the restart are the same lever: `master kill` \
+             removes the pane, touches no ledger row, and the next sweep hands the stored \
+             conversation id back to --resume (ISS-1118)",
+        );
+        let places = body
+            .find("ensure_master(")
+            .expect("the sweep must still be the one thing that places a pane");
+        assert!(
+            reads < places,
+            "the standing is read AFTER the pane is placed, which places the very pane it exists to withhold"
+        );
+    }
+
+    /// Criterion 15. The owner's act is a ledger write and the sweep's answer
+    /// to it must not depend on anything off this box — otherwise a box that
+    /// cannot reach core replaces the pane its owner withheld.
+    #[test]
+    fn the_stand_down_is_read_off_the_ledger_and_decided_before_core_is_asked_anything() {
+        let body = sweep_body();
+        let reads = body
+            .find("master_standing(")
+            .expect("the sweep must consult the standing");
+        let window = &body[..reads];
+        let per_project = &window[window
+            .rfind("for runner in &served {")
+            .expect("the sweep still walks this box's projects")..];
+        assert!(
+            body[..reads].contains("ledger\n            .as_ref()"),
+            "the standing is read off the same ledger handle the sweep already reads the conversation id from, never off a field on the runner row or a fresh core call"
+        );
+        for gating in [
+            "admissible::admissible(",
+            "master_api::register(",
+            "resolve_repo(",
+        ] {
+            assert!(
+                !per_project.contains(gating),
+                "`{gating}` is reached before the standing is, so a project whose owner stood its master down still pays for it — and a box that cannot reach core decides nothing (ISS-1118 criterion 15)"
+            );
+        }
+        assert!(
+            per_project.contains("take_pool_job("),
+            "`take_pool_job` is deliberately still reached first: a stand-down governs the resident master only, and the box goes on taking pool jobs for that project"
+        );
+    }
+
+    #[test]
+    fn the_sweep_does_not_end_a_pane_it_found_rather_than_placed() {
+        let body = sweep_body();
+        let start = body
+            .find("Placed::Contradicted")
+            .expect("the contradicted branch must be findable");
+        let branch = &body[start..start + 600.min(body.len() - start)];
+        assert!(
+            !branch.contains("terminal::kill"),
+            "the daemon deliberately stopped killing master panes (ISS-933); a pane alive under a stand-down is reported, never terminated by the sweep"
+        );
+    }
+
+    #[test]
+    fn a_pane_alive_under_a_stand_down_is_named_at_error_level() {
+        let body = sweep_body();
+        let start = body
+            .find("Placed::Contradicted")
+            .expect("the contradicted branch must be findable");
+        let branch = &body[start..start + 900.min(body.len() - start)];
+        assert!(
+            branch.contains("tracing::error!"),
+            "a master driving a project its owner stood down is the one state this change exists to make impossible to miss, so it is not an info line (ISS-1118 criterion 4)"
+        );
+    }
+
+    #[test]
+    fn a_pane_this_sweep_placed_under_a_stand_down_written_since_is_withdrawn_by_it() {
+        let body = sweep_body();
+        let first = body
+            .find("master_standing(")
+            .expect("the sweep must consult the standing before it places");
+        let after_place = body
+            .find("ensure_master(")
+            .expect("the sweep must still place a pane");
+        let second = body[after_place..]
+            .find("master_standing(")
+            .map(|i| i + after_place);
+        assert!(
+            second.is_some_and(|s| s > first),
+            "a stand-down written while this sweep was starting a pane leaves the pane running until the NEXT sweep, and an owner watching for it to stop sees it not stop (ISS-1118 criterion 16)"
+        );
+    }
+
+    #[test]
+    fn the_unplaced_reason_names_the_act_that_reverses_it() {
+        let why = Unplaced::StoodDown {
+            by: "owner".into(),
+            why: Some("a human is driving it".into()),
+            slug: "forge-dev".into(),
+        }
+        .to_string();
+        assert!(
+            why.contains("stand-up forge-dev"),
+            "whatever stops a master reads as reversible from the same surface; the reason a pane is absent names the one command that brings it back: {why}"
+        );
+        assert!(
+            why.contains("owner") && why.contains("a human is driving it"),
+            "who stood it down and why are what tell a deliberate stand-down from a fault: {why}"
+        );
+        let bare = Unplaced::StoodDown {
+            by: "owner".into(),
+            why: None,
+            slug: "forge-dev".into(),
+        }
+        .to_string();
+        assert!(
+            bare.contains("stand-up forge-dev") && !bare.contains("()"),
+            "a stand-down with no reason given still names the way back, and does not print an empty one: {bare}"
         );
     }
 }
