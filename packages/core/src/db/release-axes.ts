@@ -47,33 +47,14 @@ export const bindingShapeChecks = {
   agentAccessChk: check('integration_bindings_agent_access_chk', AGENT_ACCESS_CHK),
 } as const;
 
-/**
- * A release's identity, spread into `pipelineRuns`' columns in `schema.ts`. ISS-1120, the owner's
- * third answer: the number lives on the release row, and a release is the `pipeline_runs` row
- * carrying `metadata.source = 'release-batch'`. Both are NULL on every run that is not a release.
- *
- * `releaseVersion` is written once, inside the transaction that inserts the row, and never
- * rewritten or cleared — a failed release keeps its number, which is what burns it.
- * `releaseReleasedAt` is stamped by `finishReleaseBatch` and by nothing else, and it exists because
- * `cancelConcludedRun` deliberately flips a `completed` run to `cancelled`: the run's status cannot
- * answer *did this release ship*, and a reader that asks it loses a release still serving. The
- * whole of it is in `release-batch/version-store.ts`.
- */
+/** A release's number and its ship stamp; both NULL on every run that is not a release. */
 export const releaseRunVersionColumns = {
   releaseVersion: text('release_version'),
   releaseReleasedAt: timestamp('release_released_at', { withTimezone: true }),
 } as const;
 
-/**
- * A release's identity, spread into `pipelineRuns`' extras in `schema.ts`. ISS-1120: a release is
- * the `pipeline_runs` row carrying `metadata.source = 'release-batch'`, and these two rules are
- * what make its version an identity — unique per project, and a shape the allocator's `int[]`
- * ordering can always compare. They live here rather than in `schema.ts` for the same reason
- * `releaseProjectChecks` does: release-shaped constraints are read together, and the table file is
- * six times its line budget and frozen against growth.
- *
- * The index is PARTIAL, so it constrains releases and says nothing about every other kind of run.
- */
+/** Unique per project and `int[]`-comparable: what makes that number an identity. Partial, so it
+ *  says nothing about a run that is not a release. The rules: `release-batch/version-store.ts`. */
 export function releaseRunIdentity(t: { projectId: AnyPgColumn; releaseVersion: AnyPgColumn }) {
   return {
     releaseVersionUq: uniqueIndex('pipeline_runs_release_version_uq')

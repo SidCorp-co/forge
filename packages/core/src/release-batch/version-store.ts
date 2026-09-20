@@ -1,26 +1,10 @@
 // Where a release's version lives, and the only writer of it.
 //
-// ISS-1120, the owner's third answer: the number lives in a COLUMN on the release row. A release is
-// the `pipeline_runs` row carrying `metadata.source = 'release-batch'`, so the column is
-// `pipeline_runs.release_version` and the release row is the row that wears it.
-//
-// TWO READERS, and they are not interchangeable:
-//
-//   `highestCutVersion` spans every release row that ever cut a number, whatever became of the
-//   release. That is the whole of the burn — a failed 0.5.0 is still the highest, so the next new
-//   release is 0.6.0 and nothing can ever wear 0.5.0 again. Narrow this read to completed releases
-//   and burned numbers come back, which `version.test.ts` and `release-version-e2e.test.ts` both
-//   watch for.
-//
-//   `currentReleaseVersion` answers what the project is SERVING, and reads the ship stamp rather
-//   than the run's status. `cancelConcludedRun` deliberately flips a `completed` run to
-//   `cancelled`, so a release that shipped and was aborted afterwards has a status that says it
-//   never happened while its bytes are still live. The stamp is written once and nothing clears it.
-//
-// The cut takes a per-project advisory lock for the length of the transaction, so two releases
-// cutting at the same moment queue rather than race. The partial unique index behind it is the
-// backstop, not the mechanism: reaching it means a writer other than this file set the column, and
-// that is refused by name rather than retried.
+// TWO READERS, not interchangeable. `highestCutVersion` spans every release row that ever cut a
+// number, whatever became of it: a failed 0.5.0 stays the highest, so nothing wears it again, and
+// narrowing it to completed releases brings burned numbers back. `currentReleaseVersion` answers
+// what is SERVING and reads the ship stamp, because `cancelConcludedRun` flips a `completed` run
+// to `cancelled` while its bytes are still live. The partial unique index is only the backstop.
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -41,11 +25,7 @@ import {
 /** Statuses a release run is still open at, which `queries.ts` reads the same way. */
 const OPEN_RUN_STATUSES = ['running', 'paused'] as const;
 
-/**
- * Serialize version allocation for one project for the rest of this transaction. Two integers
- * because `pg_advisory_xact_lock` takes a pair: a namespace nothing else in this schema uses, and
- * the project's own hash.
- */
+/** Serialize allocation per project for the transaction, so two cuts queue rather than race. */
 const VERSION_LOCK_NAMESPACE = 1120;
 
 async function lockProjectVersions(tx: Tx, projectId: string): Promise<void> {
@@ -54,7 +34,6 @@ async function lockProjectVersions(tx: Tx, projectId: string): Promise<void> {
   );
 }
 
-/** One release row, as the cut has to see it to rule on a re-cut. */
 export interface ReleaseRowReading {
   runId: string;
   version: ReleaseVersion;
@@ -62,12 +41,8 @@ export interface ReleaseRowReading {
   shipped: boolean;
 }
 
-/**
- * The highest version ever cut on this project and the row wearing it, or `null` when the project
- * has never cut one. Ordered by the digits — `string_to_array(...)::int[]` compares element by
- * element — because `'0.10.0' < '0.9.0'` as text and is not as a version. The shape CHECK on the
- * column is what makes that cast safe.
- */
+// Ordered by the digits, because `'0.10.0' < '0.9.0'` as text and is not as a version; the shape
+// CHECK on the column is what makes the `int[]` cast safe.
 export async function highestCutVersion(
   executor: Tx,
   projectId: string,
@@ -89,9 +64,7 @@ export async function highestCutVersion(
   if (!row) return null;
   const version = parseReleaseVersion(row.release_version);
   if (!version) {
-    // The CHECK constraint makes this unreachable through the database. It is not silently
-    // repaired: a value the shape refuses means the constraint is gone, and guessing past it is
-    // how the next cut collides with a number nobody can read.
+    // Unreachable while the CHECK stands, and not silently repaired if it ever is.
     throw new ReleaseVersionConflictError(
       projectId,
       `${row.release_version} (stored on run ${row.id}, which is not ${RELEASE_VERSION_SHAPE})`,
@@ -105,10 +78,7 @@ export async function highestCutVersion(
   };
 }
 
-/**
- * The version the project is serving: the one the last release to SHIP cut. `null` when no release
- * on this project has ever shipped.
- */
+/** The version the last release to SHIP cut. `null` when no release here has ever shipped. */
 export async function currentReleaseVersion(projectId: string): Promise<string | null> {
   const rows = await db.execute<{ release_version: string }>(sql`
     SELECT r.release_version
@@ -123,13 +93,8 @@ export async function currentReleaseVersion(projectId: string): Promise<string |
 }
 
 /**
- * Rule on a `recutOf` against the project's highest release, and answer with the version it may be
- * re-cut from. Each of the four ways a caller can be wrong is refused by its own reason, because a
- * re-cut silently turned into a fresh minor is the burn rule failing in the one direction nobody
- * would notice.
- *
- * Takes plain data and touches no database, so `version-store.test.ts` plants each refusal with the
- * one value it exists to refuse rather than reaching one through a Postgres.
+ * Each of the four ways a caller can be wrong is refused by its own reason: a re-cut silently
+ * turned into a fresh minor is the burn rule failing in the one direction nobody would notice.
  */
 export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null): ReleaseVersion {
   const asked = parseReleaseVersion(recutOf);
@@ -180,24 +145,19 @@ export interface CutReleaseVersionArgs {
 }
 
 /**
- * Cut this release's version onto its row. The only writer of `pipeline_runs.release_version`.
- *
- * Called on the executor that inserted the release row, inside the same transaction, so there is
- * never a committed release row without a version and no subscriber ever sees one.
+ * The only writer of `pipeline_runs.release_version`. Called on the executor that inserted the
+ * release row, so no committed release row ever exists without a version.
  */
 export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Promise<string> {
   const { runId, projectId, recutOf } = args;
   await lockProjectVersions(tx, projectId);
 
   const highest = await highestCutVersion(tx, projectId);
-  // `!== undefined` and not truthiness. A caller sending `recutOf: ''` asked for a re-cut with a
-  // value that is not a version, and truthiness would read that as "no re-cut asked for" and cut a
-  // fresh minor instead — the malformed input absorbed rather than refused, which is the one shape
-  // this whole file exists to make impossible.
+  // `!== undefined`, not truthiness: `recutOf: ''` asked for a re-cut with a value that is not a
+  // version, and truthiness would absorb it as "no re-cut asked for" and cut a fresh minor.
   const recutFrom = recutOf !== undefined ? ruleOnRecut(recutOf, highest) : null;
   const next = nextReleaseVersion(highest?.version ?? null, recutFrom);
-  // The successor can leave the domain the shape admits, and it is refused here rather than sent to
-  // the column: the CHECK would refuse it too, but naming itself instead of naming the rule.
+  // Refused here rather than at the column, which would name itself instead of the rule.
   if (!isStorableReleaseVersion(next)) {
     throw new ReleaseVersionExhaustedError(projectId, formatReleaseVersion(next));
   }
@@ -215,11 +175,8 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
 }
 
 /**
- * Stamp the ship onto the release row. Called by `finishReleaseBatch` once the probes have agreed
- * the release is live, and by nothing else.
- *
- * Idempotent by the `IS NULL` guard: a finish replayed against an already-stamped release leaves
- * the first stamp standing, because the moment a release shipped is not a thing a retry may move.
+ * Called by `finishReleaseBatch` once the probes agree the release is live, and by nothing else.
+ * Idempotent by the `IS NULL` guard: the moment a release shipped is not a thing a retry may move.
  */
 export async function markReleaseShipped(runId: string): Promise<void> {
   await db.execute(sql`
@@ -231,7 +188,6 @@ export async function markReleaseShipped(runId: string): Promise<void> {
   `);
 }
 
-/** The version on one release row, or `null` when the row is not a release or carries none. */
 export async function readReleaseVersion(runId: string): Promise<string | null> {
   const rows = await db.execute<{ release_version: string | null }>(sql`
     SELECT release_version FROM pipeline_runs WHERE id = ${runId} LIMIT 1

@@ -35,9 +35,8 @@ import {
 } from '../helpers/index.js';
 import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
-// The outer `describe` these blocks used to share is gone: its callback was one 267-line function
-// and the size budget is 150. The setup below is module-level, which vitest runs the same way,
-// and each block that follows names the rule it stands on.
+// Setup is module-level rather than inside one outer `describe`, whose callback would be a single
+// function past the 150-line budget. Each block below names the rule it stands on.
 
 let harness: TestDatabase;
 let projectId: string;
@@ -479,9 +478,8 @@ describe('the release path itself', () => {
     );
     await finishReleaseBatch(runId, { type: 'user', id: ownerId });
 
-    // `abortReleaseBatch` on a completed run goes through `cancelConcludedRun`, which flips the
-    // status to `cancelled` and takes nothing off the deploy. Read the status and this answers
-    // null; read the stamp and it answers what is live.
+    // `abortReleaseBatch` on a completed run reaches `cancelConcludedRun`, which takes nothing off
+    // the deploy — so only the stamp still answers what is live.
     await abortReleaseBatch(runId, 'aborted after the fact', ownerId);
     expect(await fx.runStatus(runId)).toBe('cancelled');
     expect(await currentReleaseVersion(projectId)).toBe('0.1.0');

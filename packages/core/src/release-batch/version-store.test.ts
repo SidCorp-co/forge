@@ -1,12 +1,8 @@
 /**
- * ISS-1120 — the four ways a re-cut can be wrong, each planted with the one value it exists to
- * refuse and each asserted on its OWN reason. Asserting only that it threw would pass after the
- * rule under test had been deleted and a different one had refused the same call, which is the
- * shape of a green that proves nothing.
- *
- * `ruleOnRecut` takes plain data and touches no database. What the database itself refuses — a
- * duplicate version, a malformed one — is in `tests/integration/release-version-e2e.test.ts`,
- * because a CHECK and a unique index are not rules TypeScript can be asked about.
+ * The four ways a re-cut can be wrong, each planted with the one value it exists to refuse and each
+ * asserted on its OWN reason: asserting only that it threw would pass after the rule under test had
+ * been deleted and a different one had refused the same call. What the database refuses is in
+ * `tests/integration/release-version-e2e.test.ts`.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -83,9 +79,8 @@ describe('ruleOnRecut — what it refuses, each by its own reason', () => {
   });
 
   it('refuses a release that shipped, which is the case a run status cannot see', () => {
-    // The status here is `cancelled`, which is exactly what `cancelConcludedRun` leaves on a
-    // release that COMPLETED and was aborted afterwards. Rule on status alone and this re-cut is
-    // allowed, handing a second artefact a number an already-serving release wears.
+    // `cancelled` is what `cancelConcludedRun` leaves on a release that COMPLETED and was aborted
+    // afterwards, so ruling on status alone would hand a serving release's number out again.
     const reason = refusalFor('0.5.0', highestRow({ status: 'cancelled', shipped: true }));
     expect(reason).toContain('SHIPPED');
     expect(reason).toContain('reserved for a re-cut after a FAILED release');

@@ -1,6 +1,6 @@
 {
-  "id": "3b50ef4b-076b-41a3-a7e5-abe4c6140c14",
-  "prevId": "fd56c7fe-b8a9-4aba-9979-2b5ac90f6b63",
+  "id": "8f6e604b-819b-4016-b2b8-7eeb9214c517",
+  "prevId": "816154a4-9920-40f3-a79b-c6a95f8b0720",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14791,6 +14791,148 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.issue_leases": {
+      "name": "issue_leases",
+      "schema": "",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue_key": {
+          "name": "issue_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acquired_at": {
+          "name": "acquired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "issue_leases_session_idx": {
+          "name": "issue_leases_session_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "issue_leases_device_idx": {
+          "name": "issue_leases_device_idx",
+          "columns": [
+            {
+              "expression": "device_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "issue_leases_project_id_projects_id_fk": {
+          "name": "issue_leases_project_id_projects_id_fk",
+          "tableFrom": "issue_leases",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_leases_device_id_devices_id_fk": {
+          "name": "issue_leases_device_id_devices_id_fk",
+          "tableFrom": "issue_leases",
+          "tableTo": "devices",
+          "columnsFrom": [
+            "device_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_leases_session_id_agent_sessions_id_fk": {
+          "name": "issue_leases_session_id_agent_sessions_id_fk",
+          "tableFrom": "issue_leases",
+          "tableTo": "agent_sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_leases_run_id_pipeline_runs_id_fk": {
+          "name": "issue_leases_run_id_pipeline_runs_id_fk",
+          "tableFrom": "issue_leases",
+          "tableTo": "pipeline_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "issue_leases_project_id_issue_key_pk": {
+          "name": "issue_leases_project_id_issue_key_pk",
+          "columns": [
+            "project_id",
+            "issue_key"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
