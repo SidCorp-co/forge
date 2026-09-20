@@ -1,11 +1,14 @@
 {
-  "generatedAt": "2026-09-20T09:56:29.273Z",
+  "generatedAt": "2026-09-20T17:44:22.672Z",
   "original": 54,
   "files": {
     "packages/contracts/src/failure-causes.ts": {
       "code-quality/comment-density": 1
     },
     "packages/contracts/src/integrations.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/contracts/src/pipeline-registry.ts": {
       "code-quality/comment-density": 1
     },
     "packages/contracts/vitest.config.ts": {
@@ -29,6 +32,11 @@
     "packages/core/src/db/schema-release-ledger.ts": {
       "code-quality/comment-density": 1
     },
+    "packages/core/src/devices/release-label.ts": {
+      "code-quality/comment-density": 1,
+      "code-quality/no-duplicate-comment": 1,
+      "code-quality/no-historical-narration": 1
+    },
     "packages/core/src/devices/workspace-credential.ts": {
       "code-quality/comment-density": 1
     },
@@ -38,7 +46,25 @@
     "packages/core/src/integrations/epodsystem/types.ts": {
       "code-quality/comment-density": 1
     },
+    "packages/core/src/integrations/github/agent-client.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/integrations/github/opened-pull-request.test.ts": {
+      "code-quality/no-historical-narration": 1
+    },
+    "packages/core/src/integrations/github/opened-pull-request.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/integrations/github/projection-health.test.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/integrations/github/projection-health.ts": {
+      "code-quality/comment-density": 1
+    },
     "packages/core/src/integrations/postman/types.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/integrations/release-channel-schema.ts": {
       "code-quality/comment-density": 1
     },
     "packages/core/src/integrations/sentry/types.ts": {
@@ -50,6 +76,9 @@
     "packages/core/src/issues/pipeline-health-types.ts": {
       "code-quality/comment-density": 1
     },
+    "packages/core/src/issues/status-sets.ts": {
+      "code-quality/comment-density": 1
+    },
     "packages/core/src/jobs/lifecycle-routes.test.ts": {
       "code-quality/no-duplicate-comment": 2
     },
@@ -57,6 +86,12 @@
       "code-quality/comment-density": 1
     },
     "packages/core/src/jobs/stage-overrides.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/jobs/status-sets.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/lifecycle/status-sets.ts": {
       "code-quality/comment-density": 1
     },
     "packages/core/src/mcp/tools/lib.ts": {
@@ -82,10 +117,26 @@
       "code-quality/max-consecutive-comment-lines": 1,
       "code-quality/no-duplicate-comment": 1
     },
+    "packages/core/src/release-batch/channel.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/release-batch/errors.ts": {
+      "code-quality/comment-density": 1,
+      "code-quality/no-historical-narration": 1
+    },
     "packages/core/src/release-batch/plan.ts": {
       "code-quality/comment-density": 1
     },
+    "packages/core/src/release-batch/prompt.ts": {
+      "code-quality/comment-density": 1
+    },
     "packages/core/src/runners/limit-detect.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/runners/liveness-sql.ts": {
+      "code-quality/comment-density": 1
+    },
+    "packages/core/src/runners/select.ts": {
       "code-quality/comment-density": 1
     },
     "packages/core/src/security/config-policy.ts": {

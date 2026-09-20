@@ -139,7 +139,7 @@ jobs:
       # Comment budget: the third freeze, over comment CONTENT. The codemap checker that owned
       # this axis was deleted with its annotations, and eslint-plugin-code-quality replaced the
       # rules but reached no gate — `pnpm lint:code-quality` sat in no row of verify and no job
-      # here, so the axis was written and unmeasured (ISS-1111). Frozen at 54 findings over 51
+      # here, so the axis was written and unmeasured (ISS-1111). Frozen at 73 findings over 67
       # files; .forge/conformance.json's comment axis prices that amnesty and says what ends it.
       # Four rules only: the other halves of that command belong to axes nobody has declared.
       # Lives in this job because it drives ESLint, which needs node_modules.

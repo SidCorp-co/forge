@@ -71,7 +71,7 @@ a CI step: a `- run:` in `.github/workflows/ci.yml` that `verify`
 neither runs nor declares fails the build, so the local command and the workflow cannot drift
 apart.
 
-Seven axes — form (gated 5×), knowledge (gated 3×), relations, behaviour (gated 3×), language,
+Seven axes — form (gated 5×), knowledge (gated 4×), relations, behaviour (gated 3×), language,
 record, comment. Five of them own a property of the code; `record` owns `CHANGELOG.md`, the
 external record of what shipped, which was nobody's until 1,034 lines of it left in silence, and
 `comment` owns what a comment SAYS. An axis measures at its weakest gate. `.forge/conformance.json` declares each axis's level and the repo's profile
@@ -92,7 +92,7 @@ duplicated comments and comment-run length, and nothing else here may.
 
 Those four rules — and no other half of that command — are gated by `check-comment-budget`, a
 per-file per-rule freeze in the shape `check-lint-budget` already had, run from `verify` and from
-the `conformance` job. It landed green over an amnesty of 54 findings across 51 files, priced in
+the `conformance` job. It landed green over an amnesty of 73 findings across 67 files, priced in
 `.forge/conformance.json`'s `comment` axis with the condition that ends it. What that command
 reports BESIDE the four — raw elements, pass-through wrappers, crowded directories, the
 design-token sweep — belongs to axes nobody has declared and is measured by nothing.
@@ -190,7 +190,7 @@ comment under `Extra fixes:` as **reported**, not fixed.
 
 This is the single exception to *fix-it-now*, and it is a boundary rather than an amnesty: the two
 repos ship on different clocks, and a change landing there from here is a change none of this
-repo's thirteen gates has seen and none of that repo's reviewers asked for. The defect still leaves
+repo's gates has seen and none of that repo's reviewers asked for. The defect still leaves
 your hands owned — it leaves owned by a row somebody can open, which is exactly what
 `file-instead-of-fix` refuses everywhere else and requires here.
 
