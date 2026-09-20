@@ -112,6 +112,22 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **The sessions list is a tree, and every row says what kind of session it is.** A master, the
+  runs it started and the steps those ran were three unrelated lines in one flat list, and which
+  run belonged to which master was a fact only the machine held. Each session now sits under the
+  one that started it, and each carries its own name — Master, Run, Step, PM or Chat — where the
+  list previously had two words for five things and called a master somebody's conversation. The
+  kind tabs follow: five, one per species, instead of "Runs" and "Chats".
+
+- **A session that ends takes what it started with it.** Closing a master now closes the runs
+  beneath it and hands their issues back to where they were claimed from, instead of leaving work
+  that nothing is doing sitting as though somebody were doing it. The two clocks that decided when
+  a silent machine had really stopped answering were three minutes and ten and could not see one
+  another, so a master could be given up on while the work it started held its issues for another
+  seven; there is one clock now, at ten minutes. A master whose work is still reporting in is left
+  alone, because a machine that is plainly alive should not have its work taken away from it on
+  account of a broken heartbeat somewhere else.
+
 - **A release that already happened can now be recorded, with no release batch.** Name the
   commit production is serving and how it shipped; Forge reads the live probes itself, closes
   what the release carried, and refuses a commit nothing serves.
@@ -3018,6 +3034,12 @@
   set is now 59.
 
 ### Fixed
+- **Asking the session list for a kind it does not have now says so.** A filter naming something
+  that is not a kind of session used to answer an empty page, which reads exactly like having no
+  sessions at all. It now says which value was not understood and lists the ones that are. In the
+  same breath, a caller can no longer declare what kind of session it is creating: that is decided
+  where the session is opened, and a request that tries is told rather than quietly ignored.
+
 - **Naming the box a release should prefer no longer stops the release.** The label recommends a
   machine rather than forbidding the others, so a project whose boxes carry no matching label still
   ships, and records the unmet preference.
