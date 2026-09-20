@@ -25,6 +25,24 @@ pub struct InstallArgs {
     pub no_linger: bool,
 }
 
+/// Install the OS service for this platform, the same way `service install`
+/// does. `setup` calls it rather than telling the operator to run a second
+/// command, and rather than growing a second unit writer beside this one.
+pub fn install_now() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        install_systemd(false)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        install_launchd()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        anyhow::bail!("no OS service is supported on this platform yet — run `forge-runner start`")
+    }
+}
+
 pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     {

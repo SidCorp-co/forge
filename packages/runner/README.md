@@ -34,6 +34,7 @@ lines below. They were listed here as deferred long after they landed.)
 | Command | What |
 |---|---|
 | `api` | Call any Forge REST endpoint with a personal access token (`gh api` shaped) |
+| `setup` | Installed → running work: check tools, pair, pick projects, get checkouts, install the service, end on `doctor` |
 | `login` | Pair this device: prints an approval URL (`--open` launches a browser); `--pat` stores a REST token instead |
 | `bind` | Bind a project slug to a local repo path |
 | `start` | Run the daemon — connect, register, accept jobs |
@@ -107,10 +108,23 @@ mean the pushed body is the body that runs.
 
 ```bash
 cargo build --release
-./target/release/forge-runner doctor
 ./target/release/forge-runner config set core-url <url>   # the installer does this for you
+./target/release/forge-runner setup                       # pair + bind + service + doctor
+```
+
+`setup` is the order the steps below go in, not a second implementation of
+them: pairing is `login`'s, the checkout is the server's provisioning path
+(`workspace/provision.rs`, the same one a web-UI assignment triggers), the
+service is `service install`'s and the verdict is `doctor`'s. Every question it
+asks has a flag, and with `--yes` or no tty it asks none — `--code`,
+`--project`, `--path`, `--projects-root`, `--service` / `--no-service`. It ends
+non-zero when doctor fails, so an unattended install fails where the gap is.
+
+The steps by hand, when you want them one at a time:
+
+```bash
 ./target/release/forge-runner login                       # prints the approval URL; --open for a browser
-./target/release/forge-runner bind <slug> --path <dir>
+./target/release/forge-runner bind <slug> --path <dir>    # or --clone to have one provisioned
 ./target/release/forge-runner start
 ```
 

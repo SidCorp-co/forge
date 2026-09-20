@@ -86,7 +86,7 @@ case ":$PATH:" in
   *":$dest:"*) ;;
   *) echo "Add to PATH:  export PATH=\\"$dest:\\$PATH\\"";;
 esac
-echo "Next:  forge-runner login"
+echo "Next:  forge-runner setup"
 `;
 
 // Served when RUNNER_RELEASE_DIR is unset: the download script above would

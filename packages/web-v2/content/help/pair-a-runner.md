@@ -34,7 +34,16 @@ your repo. There is no desktop app — pairing is done from the command line.
    The agent installs to `~/.local/bin`. If that isn't on your `PATH`, the
    installer prints the line to add — run it, or open a new shell.
 
-2. **Pair the machine**
+2. **Run setup** (does the rest of this page for you)
+
+   ```bash
+   forge-runner setup
+   ```
+
+   It checks the Claude CLI, git and tmux; pairs the machine; waits for step 3
+   below; gets a checkout; installs the service; and finishes with `doctor`.
+   The steps after this one are what it does — read on if you would rather do
+   them by hand, or if setup stopped and told you to.
 
    ```bash
    forge-runner login

@@ -44,7 +44,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let mut cfg = Config::load()?;
+    let cfg = Config::load()?;
     let core_url = ctx
         .resolve_core_url(&cfg)
         .ok_or_else(|| {
@@ -58,10 +58,26 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         .name
         .clone()
         .unwrap_or_else(pairing::default_device_name);
+    pair_device(&core_url, &name, args.code.clone(), args.open).await?;
+    println!("  next: forge-runner setup");
+    Ok(())
+}
+
+/// Pair this box and persist the device token. Shared with `setup`, which runs
+/// it as its second step rather than making the operator remember the order.
+/// A device already paired is re-paired: the server rotates the token in place.
+pub async fn pair_device(
+    core_url: &str,
+    name: &str,
+    code: Option<String>,
+    open: bool,
+) -> anyhow::Result<()> {
+    let core_url = core_url.to_string();
+    let mut cfg = Config::load()?;
 
     // Back-compat: explicit --code keeps the paste-code project-pairing flow.
-    if let Some(code) = args.code {
-        let resp = pairing::pair(&core_url, &code, &name).await?;
+    if let Some(code) = code {
+        let resp = pairing::pair(&core_url, &code, name).await?;
         cred_store::store_device_token(&resp.device_token)?;
         cfg.core_url = Some(core_url);
         cfg.device_id = Some(resp.device_id.clone());
@@ -73,19 +89,18 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         );
         if let Some(pid) = resp.project_id {
             println!("  project hint: {pid}");
-            println!("  next: forge-runner bind <slug> --path <dir> --project-id {pid}");
         }
         return Ok(());
     }
 
     // Browser-approve device login (OAuth device-authorization flow).
-    let init = pairing::login_init(&core_url, &name).await?;
+    let init = pairing::login_init(&core_url, name).await?;
     let verify_url = format!("{}{}", core_url.trim_end_matches('/'), init.verify_url);
 
     println!("Pairing code: {}", init.pairing_code);
     println!("Approve this device in your browser:");
     println!("  {verify_url}");
-    if args.open && webbrowser::open(&verify_url).is_err() {
+    if open && webbrowser::open(&verify_url).is_err() {
         println!("(could not open a browser automatically — open the URL above)");
     }
     println!("Waiting for approval (expires {})…", init.expires_at);
@@ -136,6 +151,5 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
 
-    println!("  next: forge-runner bind <slug> --path <dir>");
     Ok(())
 }

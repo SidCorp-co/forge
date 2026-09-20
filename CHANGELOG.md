@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **`forge-runner setup` takes a box from installed to running work.** It checks `claude`/`git`/`tmux`
+  before pairing, waits for the project assignment, provisions the checkout, installs the service
+  and ends on `doctor` — non-zero when that fails. Every question has a flag.
 - **Setting up a runner is install, `login`, `bind`.** The installer records the core URL it came
   from, `login` prints the approval URL instead of opening a browser (`--open` still does), and
   every device installs the `forge` plugin unless told otherwise.

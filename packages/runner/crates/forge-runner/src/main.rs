@@ -47,6 +47,8 @@ enum Command {
     Gate(cmd::gate::Args),
     /// Install/uninstall the OS service (systemd/launchd).
     Service(cmd::service::Args),
+    /// Take this box from installed to running work: pair, bind, service, doctor.
+    Setup(cmd::setup::Args),
     /// Declare what a master is about to hand a subagent, and close it after.
     Run(cmd::run::Args),
     /// List runners registered for this device.
@@ -92,6 +94,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Service(a) => cmd::service::run(ctx, a).await,
+        Command::Setup(a) => cmd::setup::run(ctx, a).await,
         Command::Run(a) => cmd::run::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Master(a) => cmd::master::run(ctx, a).await,
