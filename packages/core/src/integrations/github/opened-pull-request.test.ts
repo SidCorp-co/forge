@@ -185,12 +185,18 @@ describe('a readback that fails does not unsay a write that committed', () => {
     expect(result.reason).toMatch(/The row itself was written/);
   });
 
-  it('says it cannot tell superseded from unwritten where nothing was written either', async () => {
+  // Zero writes is the WRITER's answer and the readback cannot revise it: `identityOf` has already
+  // enforced every field the writer's early return checks, so the only zero reachable here is its
+  // conflict predicate declining an older creation answer. Reading `not-recorded` off a failed
+  // SELECT would deny a record Forge is known to hold.
+  it('still reports superseded where nothing was written and the readback failed too', async () => {
     written = 0;
     readbackError = new Error('connection terminated');
     const result = await project();
-    expect(result.outcome).toBe('not-recorded');
-    expect(result.reason).toMatch(/could not be read/);
+    expect(result.outcome).toBe('superseded');
+    expect(result.issueId).toBeNull();
+    expect(result.reason).toMatch(/newer/);
+    expect(result.reason).toMatch(/could not be read back/);
   });
 });
 

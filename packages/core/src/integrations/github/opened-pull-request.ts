@@ -190,13 +190,20 @@ export async function projectOpenedPullRequest(args: {
       reason: unread === null ? null : `${unread} The row itself was written.`,
     };
   }
+  // Zero writes here is `superseded` and nothing else, and it is the WRITER that says so rather
+  // than the readback. `applyPullRequestEvent` returns 0 for exactly two reasons: its early guard
+  // on the five payload fields, which `identityOf` has already enforced above, or its `ON CONFLICT`
+  // predicate declining to let this older creation answer overwrite a newer row. Only the second is
+  // reachable from here. A readback that then fails leaves the row's LINKAGE unknown, never the
+  // outcome — reading `not-recorded` off it would tell a caller the pull request has no record at
+  // the one moment Forge knows it has a newer one.
   if (unread !== null) {
     return {
-      outcome: 'not-recorded',
+      outcome: 'superseded',
       issueId: null,
       reason:
-        `the projection writer wrote no row for #${identity.number} on ${args.repository} this call, and ` +
-        `whether one already stands could not be read: ${unread} The pull request EXISTS on GitHub.`,
+        `Forge already holds a record of #${identity.number} on ${args.repository} that is newer than ` +
+        `this creation answer, so the newer one stands and nothing was overwritten. ${unread}`,
     };
   }
   if (row) {
