@@ -5,7 +5,7 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { LoopScope } from './loop-monitor.js';
-import { NEVER_PARKED_METADATA_TYPES } from './session-kinds.js';
+import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
 
 const DEFAULT_RESIDENCY_SECONDS = 10 * 60;
 
@@ -83,7 +83,7 @@ async function unansweredParks(now: Date, scope: LoopScope): Promise<UnansweredP
        AND q.park_deadline_at IS NOT NULL
        AND q.park_deadline_at < ${at}::timestamptz
        AND s.status = 'running'
-       AND COALESCE(s.metadata->>'type', '') NOT IN ${NEVER_PARKED_METADATA_TYPES}
+       AND s.kind NOT IN ${kindTuple(NEVER_PARKED_SESSION_KINDS)}
        ${scope.projectId ? sql`AND q.project_id = ${scope.projectId}` : sql``}
   `);
   return rows.map((r) => ({

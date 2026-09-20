@@ -1,12 +1,82 @@
-import { sql } from 'drizzle-orm';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { terminalAgentSessionStatuses } from '../db/schema.js';
+import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { MASTER_SESSION_KIND } from './master-session.js';
+import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 
-/** How long a master session may go silent before its holds are given back. */
-export const MASTER_HOLD_TIMEOUT_MS = 3 * 60 * 1000;
+/**
+ * Close the master sessions whose box has stopped answering, and say how many.
+ *
+ * This used to be the half of the sweep that did not exist. The reaper released
+ * a silent master's job holds and left the row `running`, so `master status`
+ * answered `alive` for a pane that had dispatched nothing for hours, and the
+ * runs that master had started kept their issue leases because nothing could
+ * name them as its children. Flipping the row terminal is what invokes the
+ * descent in `applyKernelTransition`, which is what gives those leases back.
+ *
+ * A master is only silent if its whole tree is. A child that beat inside the
+ * window is a box that is alive with a master whose own heartbeat path is
+ * broken; reaping there would return a lease under a run that is still working,
+ * which is the failure the single ten-minute clock exists to avoid. So the
+ * child's life keeps the parent, while the parent's death closes the child —
+ * the two directions are deliberately not the same.
+ */
+export async function reapSilentMasters(): Promise<number> {
+  const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
+  const silent = (await db.execute(sql`
+    SELECT s.id, s.device_id, s.project_id
+    FROM agent_sessions s
+    WHERE s.kind = ${MASTER_SESSION_KIND}
+      AND s.status NOT IN (${TERMINAL})
+      AND COALESCE(s.last_heartbeat_at, s.started_at, s.created_at)
+          < now() - make_interval(secs => ${staleSeconds})
+      AND NOT EXISTS (
+        SELECT 1 FROM agent_sessions c
+        WHERE c.parent_session_id = s.id
+          AND c.status NOT IN (${TERMINAL})
+          AND COALESCE(c.last_heartbeat_at, c.started_at, c.created_at)
+              >= now() - make_interval(secs => ${staleSeconds})
+      )
+  `)) as unknown as Array<Record<string, unknown>>;
+
+  let closed = 0;
+  for (const row of silent) {
+    const sessionId = String(row.id);
+    const flipped = await applyKernelTransition(db, {
+      entity: 'session',
+      to: 'failed',
+      set: {
+        failureReason: 'runner_unreachable',
+        failureDetail: 'master-reaper: heartbeat stopped',
+        updatedAt: new Date(),
+      },
+      where: and(
+        eq(agentSessions.id, sessionId),
+        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+      ),
+      returning: ['id'],
+      reason: 'master_session_box_silent',
+      actor: { type: 'system' },
+      source: 'master-reaper',
+    });
+    if (flipped.length === 0) continue;
+    closed += 1;
+    await releaseHoldsForSession(sessionId);
+    logger.warn(
+      {
+        masterSessionId: sessionId,
+        deviceId: row.device_id ? String(row.device_id) : null,
+        projectId: row.project_id ? String(row.project_id) : null,
+      },
+      'master-reaper: a master and everything it owned went silent, so it was closed',
+    );
+  }
+  return closed;
+}
 
 /**
  * Release holds belonging to master sessions that are terminal or silent.
@@ -15,7 +85,7 @@ export const MASTER_HOLD_TIMEOUT_MS = 3 * 60 * 1000;
  * reading the pool can tell "nobody wanted this" from "its holder died".
  */
 export async function reapDeadMasterHolds(): Promise<number> {
-  const staleSeconds = Math.floor(MASTER_HOLD_TIMEOUT_MS / 1000);
+  const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
 
   const rows = (await db.execute(sql`
     WITH doomed AS (
@@ -62,6 +132,11 @@ export async function registerMasterReaper(): Promise<void> {
   await (boss as any).createQueue(MASTER_REAPER_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(MASTER_REAPER_QUEUE, async () => {
+    // Masters first: closing one returns its own holds and, through the
+    // descent, its children's leases. The hold sweep that follows is for a
+    // hold whose session row is gone entirely, which no transition can reach.
+    const closed = await reapSilentMasters();
+    if (closed > 0) logger.info({ closed }, 'master-reaper: sweep closed silent masters');
     const released = await reapDeadMasterHolds();
     if (released > 0) logger.info({ released }, 'master-reaper: sweep returned holds to the pool');
   });

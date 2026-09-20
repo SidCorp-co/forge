@@ -19,7 +19,7 @@ import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
 import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './queue-hop.js';
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
-import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
+import { CLIENT_SESSION_KINDS, PIPELINE_SESSION_KINDS } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
 import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
 
@@ -362,7 +362,7 @@ export async function reapZombieSessions(
         ),
       ),
       or(
-        sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+        inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
         sql`${agentSessions.metadata} -> 'escalation' IS NOT NULL`,
         sql`${agentSessions.metadata} -> 'agentChat' IS NOT NULL`,
       ),
@@ -400,7 +400,7 @@ export async function reapZombieSessions(
     where: and(
       eq(agentSessions.status, 'running'),
       sql`${agentSessions.claudeSessionId} IS NULL`,
-      sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}`,
+      inArray(agentSessions.kind, CLIENT_SESSION_KINDS),
       or(
         and(
           sql`${agentSessions.metadata}->>'acked' = 'true'`,

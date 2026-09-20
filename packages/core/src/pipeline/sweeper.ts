@@ -12,7 +12,11 @@ import {
 } from '../jobs/loop-monitor.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
-import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from '../jobs/session-kinds.js';
+import {
+  CLIENT_SESSION_KINDS,
+  kindTuple,
+  PIPELINE_SESSION_KINDS,
+} from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -308,7 +312,7 @@ export async function alarmZombieSessions(
       AND s.last_heartbeat_at IS NULL
       AND ((s.dispatched_at IS NOT NULL AND s.dispatched_at < ${queueCutoffIso})
         OR (s.dispatched_at IS NULL AND s.created_at < ${queueCutoffIso}))
-      AND s.metadata->>'type' IN ${PIPELINE_METADATA_TYPES}
+      AND s.kind IN ${kindTuple(PIPELINE_SESSION_KINDS)}
       ${projectClause}
   `);
 
@@ -318,7 +322,7 @@ export async function alarmZombieSessions(
     WHERE s.status = 'queued'
       AND s.last_heartbeat_at IS NOT NULL
       AND s.last_heartbeat_at < ${heartbeatCutoffIso}
-      AND s.metadata->>'type' IN ${PIPELINE_METADATA_TYPES}
+      AND s.kind IN ${kindTuple(PIPELINE_SESSION_KINDS)}
       ${projectClause}
   `);
 
@@ -331,7 +335,7 @@ export async function alarmZombieSessions(
             AND s.started_at < ${heartbeatCutoffIso} AND s.updated_at < ${heartbeatCutoffIso})
         OR (s.last_heartbeat_at IS NULL AND s.started_at IS NULL
             AND s.updated_at < ${heartbeatCutoffIso} AND s.created_at < ${heartbeatCutoffIso}))
-      AND s.metadata->>'type' IN ${PIPELINE_METADATA_TYPES}
+      AND s.kind IN ${kindTuple(PIPELINE_SESSION_KINDS)}
       ${projectClause}
   `);
 
@@ -340,7 +344,7 @@ export async function alarmZombieSessions(
     FROM agent_sessions s
     WHERE s.status = 'running'
       AND s.claude_session_id IS NULL
-      AND COALESCE(s.metadata->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}
+      AND s.kind IN ${kindTuple(CLIENT_SESSION_KINDS)}
       AND ((s.last_heartbeat_at IS NOT NULL AND s.last_heartbeat_at < ${heartbeatCutoffIso})
         OR (s.last_heartbeat_at IS NULL AND s.created_at < ${heartbeatCutoffIso}))
       ${projectClause}

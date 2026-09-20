@@ -9,9 +9,10 @@
 
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, runners } from '../db/schema.js';
+import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { logger } from '../logger.js';
+import { MASTER_SESSION_KIND } from './master-session.js';
 
 export interface RunLedgerIssue {
   issueKey: string;
@@ -64,6 +65,43 @@ export async function applyRunLedgerSnapshot(args: {
     }
   }
 
+  // A box reporting its parent is corroboration, never the record: the record
+  // is `agent_sessions.parent_session_id`, which core writes when it opens the
+  // child. A reported master core never issued — or one that is a master of
+  // another box — is refused here and named, and the run itself is still stored,
+  // because losing the observation would cost an operator the whole row rather
+  // than one edge of it (ISS-1136).
+  const reported = [...new Set(entries.map((e) => e.masterSessionId).filter((id) => id != null))];
+  const issued = new Set(
+    reported.length === 0
+      ? []
+      : (
+          await db
+            .select({ id: agentSessions.id })
+            .from(agentSessions)
+            .where(
+              and(
+                inArray(agentSessions.id, reported),
+                eq(agentSessions.kind, MASTER_SESSION_KIND),
+                eq(agentSessions.deviceId, args.deviceId),
+              ),
+            )
+        ).map((r) => r.id),
+  );
+  for (const e of entries) {
+    if (e.masterSessionId != null && !issued.has(e.masterSessionId)) {
+      logger.warn(
+        {
+          deviceId: args.deviceId,
+          runId: e.runId,
+          projectId: e.projectId,
+          reportedMasterSessionId: e.masterSessionId,
+        },
+        'run-ledger: this box reported a master core did not issue on it — the owner edge was refused, the run is still recorded',
+      );
+    }
+  }
+
   const observedAt = new Date();
   await db.transaction(async (tx) => {
     const keep = entries.map((e) => e.runId);
@@ -81,7 +119,8 @@ export async function applyRunLedgerSnapshot(args: {
       const values = {
         projectId: e.projectId,
         sessionId: e.sessionId,
-        masterSessionId: e.masterSessionId,
+        masterSessionId:
+          e.masterSessionId != null && issued.has(e.masterSessionId) ? e.masterSessionId : null,
         pid: e.pid,
         worktreePath: e.worktreePath,
         bootId: e.bootId,

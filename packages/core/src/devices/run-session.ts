@@ -9,7 +9,13 @@
 
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import {
+  type AgentSessionKind,
+  agentSessions,
+  issues,
+  pipelineRuns,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -20,10 +26,11 @@ import {
   insertOneShotRun,
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
+import { liveMasterSessionId } from './master-session.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
-/** What `metadata.type` a run session carries. */
-export const RUN_SESSION_TYPE = 'run_session';
+/** What `agent_sessions.kind` a run session carries. */
+export const RUN_SESSION_KIND: AgentSessionKind = 'run_session';
 
 /** Where a run's issue group lives on its one-shot run. */
 export const RUN_ISSUES_METADATA_KEY = 'runIssues';
@@ -103,7 +110,7 @@ async function openSessionForBoxRun(
     .where(
       and(
         eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
         notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
         sql`${pipelineRuns.metadata}->>${BOX_RUN_ID_METADATA_KEY} = ${args.boxRunId}`,
       ),
@@ -162,13 +169,26 @@ export async function openRunSession(args: {
       return { sessionId: existing.sessionId, runId: existing.runId };
     }
   }
+  // Core issues the owner edge. The box is authenticated as a device and says
+  // which project it is running for; which master that is, core already knows.
+  // No master registered yet leaves a root rather than a guess.
+  const masterSessionId = await liveMasterSessionId({
+    deviceId: args.deviceId,
+    projectId: args.projectId,
+  });
+  if (!masterSessionId) {
+    logger.warn(
+      { deviceId: args.deviceId, projectId: args.projectId, name: args.name },
+      'run-session: no live master registered for this device and project, so this run opens as a root',
+    );
+  }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {
     projectId: args.projectId,
     kind: 'system',
     metadata: {
-      type: RUN_SESSION_TYPE,
+      type: RUN_SESSION_KIND,
       deviceId: args.deviceId,
       [RUN_ISSUES_METADATA_KEY]: canonical.keys,
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
@@ -192,10 +212,12 @@ export async function openRunSession(args: {
         deviceId: args.deviceId,
         pipelineRunId: run.id,
         title: `run: ${args.name}`,
+        kind: RUN_SESSION_KIND,
+        parentSessionId: masterSessionId,
         status: 'running',
         startedAt: new Date(),
         lastHeartbeatAt: new Date(),
-        metadata: { type: RUN_SESSION_TYPE, terminalName: args.name, deviceId: args.deviceId },
+        metadata: { terminalName: args.name, deviceId: args.deviceId },
       })
       .returning({ id: agentSessions.id });
     if (!row) throw new Error('openRunSession: insert returned no row');
@@ -250,7 +272,7 @@ export async function readRunSessionTerminal(args: {
       and(
         eq(agentSessions.id, args.sessionId),
         eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
       ),
     );
   if (!row) return null;
@@ -271,7 +293,7 @@ export async function isIssueLeaseHeld(args: {
     .where(
       and(
         eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
         notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
         sql`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)`,
       ),
@@ -301,7 +323,7 @@ export async function releaseIssueLease(args: {
       FROM agent_sessions s
      WHERE s.pipeline_run_id = r.id
        AND s.device_id = ${args.deviceId}
-       AND s.metadata->>'type' = ${RUN_SESSION_TYPE}
+       AND s.kind = ${RUN_SESSION_KIND}
        AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)
   `);
 }
@@ -321,7 +343,7 @@ export async function listRunSessionsForDevice(
     .where(
       and(
         eq(agentSessions.deviceId, deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
         notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
       ),
     );
@@ -380,7 +402,7 @@ export async function closeRunSession(args: {
       and(
         eq(agentSessions.id, args.sessionId),
         eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
       ),
     );
   if (!row) return null;

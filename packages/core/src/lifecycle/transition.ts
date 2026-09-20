@@ -139,10 +139,44 @@ export async function applyKernelTransition(
   if (updated.length > 0) {
     if (args.entity === 'session') {
       await fireSessionBridges(exec, updated, args.returning === undefined);
+      await descendFrom(updated, args);
     }
   }
 
   return updated;
+}
+
+/**
+ * A session that just went terminal closes what it owns.
+ *
+ * Here rather than at each call site because there are twenty-three of those
+ * and a leaked subtree is invisible from every one of them. A flip the descent
+ * itself wrote is skipped: the walk is iterative and owns its own depth bound,
+ * so letting it re-enter here would run one walk per row instead of one per
+ * terminal flip.
+ */
+async function descendFrom(
+  rows: Array<Record<string, unknown> & { id: string }>,
+  args: SessionTransitionArgs,
+): Promise<void> {
+  const { closeSessionsOwnedBy, DESCENT_SOURCE } = await import(
+    '../agent-sessions/session-descent.js'
+  );
+  if (args.source === DESCENT_SOURCE) return;
+  try {
+    await closeSessionsOwnedBy(
+      rows.map((r) => r.id),
+      {
+        reason: 'owner_session_closed',
+        detail: `session-descent: the session that owned this one went ${args.to} (${args.reason ?? args.source})`,
+      },
+    );
+  } catch (err) {
+    logger.error(
+      { err, sessionIds: rows.map((r) => r.id), source: args.source },
+      'lifecycle.transition: a terminal session could not close what it owned; rows beneath it are still open',
+    );
+  }
 }
 
 async function fireSessionBridges(

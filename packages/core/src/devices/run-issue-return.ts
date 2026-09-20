@@ -27,7 +27,7 @@ import { logger } from '../logger.js';
 import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
-  RUN_SESSION_TYPE,
+  RUN_SESSION_KIND,
 } from './run-session.js';
 
 export interface ReturnedIssue {
@@ -78,7 +78,7 @@ async function keysHeldByAnotherLiveRun(runId: string, projectId: string): Promi
              COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb)) AS k
      WHERE r.project_id = ${projectId}
        AND r.id <> ${runId}
-       AND s.metadata->>'type' = ${RUN_SESSION_TYPE}
+       AND s.kind = ${RUN_SESSION_KIND}
        AND s.status NOT IN (${sql.join(
          terminalAgentSessionStatuses.map((v) => sql`${v}`),
          sql`, `,

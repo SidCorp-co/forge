@@ -15,6 +15,10 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
+import {
+  AGENT_SESSION_KIND_LIST,
+  isAgentSessionKind,
+} from '../jobs/session-kinds.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -338,15 +342,18 @@ agentSessionRoutes.get(
 
     if (status) conditions.push(eq(agentSessions.status, status));
     if (metadataType) {
-      conditions.push(sql`${agentSessions.metadata}->>'type' = ${metadataType}`);
+      // `metadataType` is the query parameter's name and stays, because clients
+      // send it; what it now filters is the `kind` column. An unrecognised value
+      // used to answer an empty page, which reads exactly like "no sessions" —
+      // so it is refused, naming what is valid (ISS-1136).
+      if (!isAgentSessionKind(metadataType)) {
+        throw badRequest(
+          `metadataType=${metadataType} names no session kind. A session's kind is one of: ${AGENT_SESSION_KIND_LIST}.`,
+        );
+      }
+      conditions.push(eq(agentSessions.kind, metadataType));
     }
-    // ISS-522 — interactive `agent` chats are private to their owner. Scope the
-    // "My conversations" listing to the caller; this also drops legacy
-    // userId=NULL rows (NULL never equals). Pipeline/pm/Agents-overview calls
-    // (no metadataType=agent) stay project-shared.
-    if (metadataType === 'agent') {
-      conditions.push(eq(agentSessions.userId, userId));
-    }
+
     if (issueId) {
       conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
     }
@@ -452,6 +459,18 @@ agentSessionRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     assertProjectRole(access, 'member');
 
+    // A caller used to be able to declare its own species here, by putting a
+    // `type` in `metadata`. Species is core's now — it is a column, written by
+    // whichever of the five paths opened the row — so a caller sending one is
+    // refused by name rather than having it silently ignored, which would leave
+    // it believing a filter that no longer reads the key (ISS-1136).
+    const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
+    if (clientMetadata && 'type' in clientMetadata) {
+      throw badRequest(
+        `metadata.type is not a caller's to set. A session's species is the \`kind\` column, written by core when it opens the row, and it is one of: ${AGENT_SESSION_KIND_LIST}. Send the rest of your metadata without \`type\`; a session opened here is a chat.`,
+      );
+    }
+
     // Chat bootstrap: an EMPTY session row. The first turn is dispatched later
     // through `POST /send` → the shared chat-turn dispatcher (which picks the
     // device), so this path deliberately does NOT pin a device or dispatch.
@@ -462,7 +481,7 @@ agentSessionRoutes.post(
       title: input.title ?? null,
       repoPath: input.repoPath ?? null,
       claudeSessionId: input.claudeSessionId ?? null,
-      metadata: (input.metadata as Record<string, unknown> | null | undefined) ?? null,
+      metadata: clientMetadata ?? null,
     });
 
     broadcastSession(inserted, 'agent-session.created');

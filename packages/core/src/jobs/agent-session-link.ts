@@ -1,6 +1,7 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, issues, jobs } from '../db/schema.js';
+import { type AgentSessionKind, agentSessions, issues, jobs } from '../db/schema.js';
+import { masterSessionIfOwned } from '../devices/master-session.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
@@ -30,6 +31,31 @@ function buildTitle(skillName: string | null, jobType: string, issueTitle: strin
   const head = skillName ?? jobType;
   const tail = issueTitle && issueTitle.length > 0 ? `: ${issueTitle}` : '';
   return `${head}${tail}`.slice(0, TITLE_MAX);
+}
+
+/**
+ * The master session holding this job, where it holds one core can stand behind.
+ *
+ * `jobs.held_by` is a session id core wrote itself when a master claimed the
+ * job, so this is core's own record rather than the box's report. It is still
+ * checked: a hold released since, or one naming a session that is not a master
+ * of this project, leaves the child a root rather than pointing at the wrong
+ * parent.
+ */
+async function resolveHoldingMaster(job: JobRow): Promise<string | null> {
+  if (!job.heldBy) return null;
+  const owned = await masterSessionIfOwned({
+    sessionId: job.heldBy,
+    projectId: job.projectId,
+    deviceId: job.deviceId,
+  });
+  if (!owned) {
+    logger.warn(
+      { jobId: job.id, heldBy: job.heldBy, projectId: job.projectId },
+      'agent-session-link: held_by does not name a master of this project, so the session opens as a root',
+    );
+  }
+  return owned;
 }
 
 export async function ensureAgentSessionForJob(
@@ -85,8 +111,8 @@ export async function ensureAgentSessionForJob(
     const skillName = deriveSkillName(job.payload);
     const title = buildTitle(skillName, job.type, issueTitle);
 
+    const kind: AgentSessionKind = job.type === 'pm' ? 'pm' : 'pipeline';
     const metadata: Record<string, unknown> = {
-      type: job.type === 'pm' ? 'pm' : 'pipeline',
       jobId: job.id,
       jobType: job.type,
     };
@@ -127,6 +153,12 @@ export async function ensureAgentSessionForJob(
         deviceId: job.deviceId,
         pipelineRunId: job.pipelineRunId,
         title,
+        kind,
+        // The master holding this job is the session that owns the one it opens.
+        // Core has had this edge all along in `jobs.held_by` and never wrote it
+        // down; a hold that has since been released leaves a root, which is what
+        // an unowned job-linked session truthfully is.
+        parentSessionId: await resolveHoldingMaster(job),
         status: 'queued',
         dispatchedAt: new Date(),
         repoPath: context.repoPath,
