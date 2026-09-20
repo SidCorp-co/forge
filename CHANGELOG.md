@@ -112,6 +112,35 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A box can be told to stop driving a project, and it stays stopped.** Ending a resident master's
+  pane was the only lever there was, and it did not hold: the box keeps the conversation the master
+  was running, so the next time it places a master for that project the pane comes back on the same
+  conversation, carrying the whole transcript and the whole cost — and its opening brief tells it,
+  again, that it is in charge here. `forge-runner master stand-down <project>` records the decision
+  instead: no master is placed for that project and none is nudged, on every pass, across a restart
+  of the daemon, until `forge-runner master stand-up <project>`. Standing it up puts the project
+  back on the same terms as any other rather than starting a master on the spot, and the pane placed
+  afterwards is told how long the project was stood down, so it does not carry on from an intention
+  formed before the gap. `--fresh` on the way back up starts the next one cold instead of resuming.
+  A stand-down does not stop the box taking pool jobs for that project — it governs the resident
+  master and nothing else.
+- **A stand-down will not quietly take running work with it.** Where the master still holds open
+  runs, the decision is recorded, the pane is left running, and each run is named with the master
+  session holding it, so nothing is lost by a command meant to stop a session that was doing
+  nothing. `--force` ends it anyway. Where the box cannot establish what the pane holds at all — a
+  box upgraded while a master was running — that reads as unknown rather than as nothing, and the
+  pane is left alone for the same reason.
+- **`forge-runner master status` answers the two questions separately.** It printed one word,
+  `alive` or `gone`, which is a fact about a terminal session and not about whether the project is
+  being driven. On one box those two answers differed for nine hours and nothing could report it. It
+  now prints whether a pane exists and, beneath it, whether this box may keep a master for that
+  project at all — so a box whose runner is online and whose pane is alive while a person is driving
+  the project reads as exactly that, and not as a fault.
+- **`forge-runner master kill` says what actually happens next.** Its help read "the next sweep
+  starts a fresh one". The replacement is not fresh, and an owner who read that, killed the pane and
+  watched the same master come back reasonably concluded the command was broken. Both the help and
+  what it prints now say that the pane is replaced by one resuming the same conversation, and both
+  name the control that keeps a master stopped.
 - **The build refuses two names for one answer.** Two constants holding the same set of statuses,
   or a status list written out where a named one already held it, went unnoticed. A check now
   names both and fails.

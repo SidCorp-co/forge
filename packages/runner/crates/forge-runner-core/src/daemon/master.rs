@@ -2356,6 +2356,34 @@ mod tests {
         );
     }
 
+    /// Criterion 12. Until this change a master that had been taken over by a
+    /// person could only say so in prose, in a pane nothing reads, and went on
+    /// answering nudges for nine hours (ISS-1118 comment 3d208f73).
+    #[test]
+    fn the_skill_tells_a_master_somebody_else_is_driving_to_stand_itself_down() {
+        assert!(
+            MASTER_SKILL.contains("forge-runner master stand-down"),
+            "a master whose project a person has taken over has no verb to reach for, so it keeps being nudged and keeps writing `Holding.` into a transcript nobody reads"
+        );
+        assert!(
+            MASTER_SKILL.contains("forge-runner master stand-up"),
+            "and the way back is named beside it, or the verb reads as one-way and is not taken"
+        );
+        let section = MASTER_SKILL
+            .split("## When the project is not yours to drive")
+            .nth(1)
+            .expect("the skill carries the section that names the verb")
+            .split("\n## ")
+            .next()
+            .unwrap();
+        for flag in ["--why", "--force", "--fresh"] {
+            assert!(
+                !section.contains(flag),
+                "this file states no command's flags: it and the CLI answering it ship on different clocks, so `{flag}` written here is a flag that will be wrong on some box on some day"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_quotes_the_refusal_it_will_meet() {
         let first_sentence = crate::daemon::dispatch_gate::REFUSAL
