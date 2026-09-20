@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
+import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
@@ -66,23 +67,15 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
        sql`, `,
      )})
        AND i.updated_at < ${cutoff}
-       AND NOT EXISTS (
-         SELECT 1 FROM jobs j
-          WHERE j.issue_id = i.id AND j.status NOT IN ('done', 'failed', 'cancelled')
-       )
-       AND NOT EXISTS (
-         SELECT 1 FROM pipeline_runs pr
-          WHERE pr.issue_id = i.id AND pr.status IN ('running', 'paused')
-       )
-       AND NOT EXISTS (
-         SELECT 1 FROM pipeline_runs rs
-          WHERE rs.project_id = i.project_id
-            AND rs.kind = 'system'
-            AND rs.status IN ('running', 'paused')
-            -- prefix: matching on issue_prefix here makes a live run's issues invisible to
-            -- this pass and every one of them is reported as an orphan (ISS-992)
-            AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq) -- ISS-992:canonical
-       )
+       -- the same predicate the admissible read uses (ISS-1109). This pass and that one
+       -- were verbatim twins, and a sweep that drifts from the pool reports as orphaned
+       -- exactly the issues a box is working. Matching on issue_prefix here would make a
+       -- live run's issues invisible to this pass and report every one (ISS-992).
+       AND NOT ${issueWorkInFlightSql({
+         issueId: sql`i.id`,
+         projectId: sql`i.project_id`,
+         issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+       })}
   `)) as unknown as OrphanRow[];
 }
 

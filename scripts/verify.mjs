@@ -179,6 +179,16 @@ const CHECKS = [
   },
   {
     axis: 'meta',
+    label: 'migration-order',
+    cmd: ['node', 'scripts/check-migration-order.mjs'],
+    scanned: /^migration-order: (\d+) migration\(s\) landing/m,
+    unit: 'migrations landing',
+    // 0 is the ordinary reading: most trees land no migration, and the checker says so rather
+    // than reading a set it has nothing to compare against.
+    scopeMayBeEmpty: true,
+  },
+  {
+    axis: 'meta',
     label: 'conformance levels',
     cmd: ['node', 'scripts/conformance-status.mjs'],
     scanned: /^conformance-status: (\d+) axes measured/m,
@@ -210,6 +220,7 @@ const CI_COVERAGE = {
   'node scripts/check-lazy-module-init.mjs --all': 'verify',
   'node scripts/check-merged-at-writers.mjs --all': 'verify',
   'node scripts/check-comment-budget.mjs --all': 'verify',
+  'node scripts/check-migration-order.mjs': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',

@@ -154,9 +154,36 @@ pub struct MasterRow {
     pub project_id: String,
     pub pane_name: String,
     pub conversation_id: Option<String>,
+    /// The core session id this pane registered under, which is the key its
+    /// `runs` rows carry. `None` on a row an older binary wrote, where the
+    /// runs this master holds cannot be established at all.
+    pub session_id: Option<String>,
     pub boot_id: String,
     pub cold_started_at: i64,
     pub last_seen_at: i64,
+}
+
+/// An owner's standing decision about one project's resident master on this
+/// box: stood down until stood up again (ISS-1118).
+///
+/// A lifted row outlives the lifting so the next pane placed can be told the
+/// interval, and is removed once it has been.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MasterStanding {
+    pub project_id: String,
+    pub slug: String,
+    pub stood_down_at: i64,
+    pub stood_down_by: String,
+    pub why: Option<String>,
+    /// `None` while the stand-down stands.
+    pub stood_up_at: Option<i64>,
+}
+
+impl MasterStanding {
+    /// Whether this row withholds a pane right now.
+    pub fn stands(&self) -> bool {
+        self.stood_up_at.is_none()
+    }
 }
 
 /// One issue's membership in a run, and whether its lease came back.
@@ -213,9 +240,20 @@ const MASTER_COLUMNS: &[&str] = &[
     "project_id",
     "pane_name",
     "conversation_id",
+    "session_id",
     "boot_id",
     "cold_started_at",
     "last_seen_at",
+];
+
+#[cfg(test)]
+const MASTER_STANDING_COLUMNS: &[&str] = &[
+    "project_id",
+    "slug",
+    "stood_down_at",
+    "stood_down_by",
+    "why",
+    "stood_up_at",
 ];
 
 #[cfg(test)]
@@ -279,25 +317,38 @@ CREATE TABLE IF NOT EXISTS masters (
   project_id      TEXT PRIMARY KEY,
   pane_name       TEXT NOT NULL,
   conversation_id TEXT,
+  session_id      TEXT,
   boot_id         TEXT NOT NULL,
   cold_started_at INTEGER NOT NULL,
   last_seen_at    INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS master_standing (
+  project_id    TEXT PRIMARY KEY,
+  slug          TEXT NOT NULL,
+  stood_down_at INTEGER NOT NULL,
+  stood_down_by TEXT NOT NULL,
+  why           TEXT,
+  stood_up_at   INTEGER
+);
 ";
 
-const ADDED_COLUMNS: &[(&str, &str)] = &[
-    ("project_id", "TEXT"),
-    ("claim_owner", "TEXT"),
-    ("claim_generation", "INTEGER NOT NULL DEFAULT 0"),
-    ("claim_expires_at", "INTEGER"),
-    ("revival_token", "TEXT"),
-    ("revival_deadline_at", "INTEGER"),
-    ("ended_by", "TEXT"),
-    ("ended_reason", "TEXT"),
-    ("agent_id", "TEXT"),
-    ("resume_choice", "TEXT"),
-    ("resume_choice_why", "TEXT"),
-    ("resume_owed_at", "INTEGER"),
+/// Columns a build added after the table shipped, by table. A ledger written by
+/// an older binary gains them on open, so an upgraded box reads rather than
+/// fails.
+const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
+    ("runs", "project_id", "TEXT"),
+    ("runs", "claim_owner", "TEXT"),
+    ("runs", "claim_generation", "INTEGER NOT NULL DEFAULT 0"),
+    ("runs", "claim_expires_at", "INTEGER"),
+    ("runs", "revival_token", "TEXT"),
+    ("runs", "revival_deadline_at", "INTEGER"),
+    ("runs", "ended_by", "TEXT"),
+    ("runs", "ended_reason", "TEXT"),
+    ("runs", "agent_id", "TEXT"),
+    ("runs", "resume_choice", "TEXT"),
+    ("runs", "resume_choice_why", "TEXT"),
+    ("runs", "resume_owed_at", "INTEGER"),
+    ("masters", "session_id", "TEXT"),
 ];
 
 /// The ledger, open on one box.
@@ -321,6 +372,29 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
         ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at
  FROM runs";
+
+fn map_standing(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterStanding> {
+    Ok(MasterStanding {
+        project_id: row.get(0)?,
+        slug: row.get(1)?,
+        stood_down_at: row.get(2)?,
+        stood_down_by: row.get(3)?,
+        why: row.get(4)?,
+        stood_up_at: row.get(5)?,
+    })
+}
+
+fn map_master(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterRow> {
+    Ok(MasterRow {
+        project_id: row.get(0)?,
+        pane_name: row.get(1)?,
+        conversation_id: row.get(2)?,
+        session_id: row.get(3)?,
+        boot_id: row.get(4)?,
+        cold_started_at: row.get(5)?,
+        last_seen_at: row.get(6)?,
+    })
+}
 
 fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
     Ok(Run {
@@ -738,18 +812,20 @@ impl Ledger {
         project_id: &str,
         pane_name: &str,
         conversation_id: Option<&str>,
+        session_id: Option<&str>,
         boot_id: &str,
     ) -> Result<()> {
         self.conn
             .execute(
-                "INSERT INTO masters (project_id, pane_name, conversation_id, boot_id, cold_started_at, last_seen_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+                "INSERT INTO masters (project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
                  ON CONFLICT(project_id) DO UPDATE SET
                    pane_name       = excluded.pane_name,
                    conversation_id = COALESCE(excluded.conversation_id, masters.conversation_id),
+                   session_id      = COALESCE(excluded.session_id, masters.session_id),
                    boot_id         = excluded.boot_id,
                    last_seen_at    = excluded.last_seen_at",
-                params![project_id, pane_name, conversation_id, boot_id, now()],
+                params![project_id, pane_name, conversation_id, session_id, boot_id, now()],
             )
             .map_err(sql_err)?;
         Ok(())
@@ -759,22 +835,138 @@ impl Ledger {
     pub fn master_for_project(&self, project_id: &str) -> Result<Option<MasterRow>> {
         self.conn
             .query_row(
-                "SELECT project_id, pane_name, conversation_id, boot_id, cold_started_at, last_seen_at
+                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at
                  FROM masters WHERE project_id = ?1",
                 params![project_id],
-                |row| {
-                    Ok(MasterRow {
-                        project_id: row.get(0)?,
-                        pane_name: row.get(1)?,
-                        conversation_id: row.get(2)?,
-                        boot_id: row.get(3)?,
-                        cold_started_at: row.get(4)?,
-                        last_seen_at: row.get(5)?,
-                    })
-                },
+                map_master,
             )
             .optional()
             .map_err(sql_err)
+    }
+
+    /// The master row whose pane carries this name, which is how a command
+    /// holding only a slug reaches the project id.
+    pub fn master_for_pane(&self, pane_name: &str) -> Result<Option<MasterRow>> {
+        self.conn
+            .query_row(
+                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at
+                 FROM masters WHERE pane_name = ?1",
+                params![pane_name],
+                map_master,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    /// Record that this project's resident master is stood down until somebody
+    /// stands it up again. Re-recording an already-standing stand-down keeps
+    /// the original timestamp, so the interval a pane is later told is the
+    /// whole of it.
+    pub fn stand_down_master(
+        &self,
+        project_id: &str,
+        slug: &str,
+        by: &str,
+        why: Option<&str>,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO master_standing (project_id, slug, stood_down_at, stood_down_by, why, stood_up_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, NULL)
+                 ON CONFLICT(project_id) DO UPDATE SET
+                   slug          = excluded.slug,
+                   stood_down_at = CASE WHEN master_standing.stood_up_at IS NULL
+                                        THEN master_standing.stood_down_at
+                                        ELSE excluded.stood_down_at END,
+                   stood_down_by = excluded.stood_down_by,
+                   why           = excluded.why,
+                   stood_up_at   = NULL",
+                params![project_id, slug, now(), by, why],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Lift a stand-down. The row stays, carrying the interval, until a pane
+    /// has been told it. Answers whether a standing stand-down was lifted.
+    pub fn stand_up_master(&self, project_id: &str) -> Result<bool> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE master_standing SET stood_up_at = ?2
+                 WHERE project_id = ?1 AND stood_up_at IS NULL",
+                params![project_id, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(changed > 0)
+    }
+
+    /// The standing decision about this project's master, standing or lifted.
+    pub fn master_standing(&self, project_id: &str) -> Result<Option<MasterStanding>> {
+        self.conn
+            .query_row(
+                "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
+                 FROM master_standing WHERE project_id = ?1",
+                params![project_id],
+                map_standing,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    /// The standing for the project this box knows by this slug.
+    ///
+    /// Keyed by slug and not by project id because a command, and `status`,
+    /// may hold only the slug — and a stand-down can be recorded for a project
+    /// this box has never placed a master for, which is exactly the case a
+    /// lookup going through the `masters` row cannot see.
+    pub fn master_standing_for_slug(&self, slug: &str) -> Result<Option<MasterStanding>> {
+        self.conn
+            .query_row(
+                "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
+                 FROM master_standing WHERE slug = ?1",
+                params![slug],
+                map_standing,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    /// Every project this box is holding a standing decision about.
+    pub fn standings(&self) -> Result<Vec<MasterStanding>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
+                 FROM master_standing ORDER BY slug",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt.query_map([], map_standing).map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// Drop a lifted stand-down, once the pane it was kept for has been told
+    /// the interval. A standing one is never dropped by this.
+    pub fn forget_lifted_standing(&self, project_id: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "DELETE FROM master_standing WHERE project_id = ?1 AND stood_up_at IS NOT NULL",
+                params![project_id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Clear the conversation this project's next pane would resume, so it
+    /// cold-starts instead.
+    pub fn forget_master_conversation(&self, project_id: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE masters SET conversation_id = NULL WHERE project_id = ?1",
+                params![project_id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
     }
 
     #[cfg(test)]
@@ -825,22 +1017,40 @@ impl Ledger {
         self.conn.execute_batch(sql).unwrap();
     }
 
-    /// Bring a ledger written by an earlier build up to this build's shape.
-    fn add_missing_columns(conn: &Connection) -> Result<()> {
-        let mut have: Vec<String> = Vec::new();
-        {
-            let mut stmt = conn.prepare("PRAGMA table_info(runs)").map_err(sql_err)?;
-            let rows = stmt
-                .query_map([], |r| r.get::<_, String>(1))
-                .map_err(sql_err)?;
-            for r in rows {
-                have.push(r.map_err(sql_err)?);
-            }
+    fn column_names(conn: &Connection, table: &str) -> Result<Vec<String>> {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .map_err(sql_err)?;
+        let mut have = Vec::new();
+        for r in rows {
+            have.push(r.map_err(sql_err)?);
         }
-        for (name, ty) in ADDED_COLUMNS {
+        Ok(have)
+    }
+
+    /// Bring a ledger written by an earlier build up to this build's shape.
+    ///
+    /// Named by table rather than assuming `runs`: `masters` gained a column
+    /// too, and a migration that can only reach one table would have left an
+    /// upgraded box unable to say which runs its resident master holds.
+    fn add_missing_columns(conn: &Connection) -> Result<()> {
+        let mut known: Vec<(&str, Vec<String>)> = Vec::new();
+        for (table, name, ty) in ADDED_COLUMNS {
+            if !known.iter().any(|(t, _)| t == table) {
+                known.push((table, Self::column_names(conn, table)?));
+            }
+            let have = known
+                .iter_mut()
+                .find(|(t, _)| t == table)
+                .map(|(_, c)| c)
+                .expect("the table's columns were just read");
             if !have.iter().any(|c| c == name) {
-                conn.execute_batch(&format!("ALTER TABLE runs ADD COLUMN {name} {ty};"))
+                conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {name} {ty};"))
                     .map_err(sql_err)?;
+                have.push((*name).to_string());
             }
         }
         Ok(())
@@ -1230,6 +1440,16 @@ mod tests {
             columns(&led, "masters"),
             declared_masters,
             "the `masters` table has a column the declared registry does not name — this table holds what a box knows about a pane, and a column beyond that is the ledger growing a second purpose (ISS-933 criterion 10, ISS-1050)"
+        );
+        let mut declared_standing: Vec<String> = MASTER_STANDING_COLUMNS
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        declared_standing.sort();
+        assert_eq!(
+            columns(&led, "master_standing"),
+            declared_standing,
+            "the `master_standing` table holds one owner decision per project and nothing about what a pane is doing (ISS-1118)"
         );
 
         for banned in ["cursor", "last_event", "offset", "wake", "processed", "seq"] {
@@ -1890,8 +2110,14 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         {
             let led = Ledger::open(&path).unwrap();
-            led.note_master("proj-1", "forge-proj-1", Some("conv-abc"), "boot-a")
-                .unwrap();
+            led.note_master(
+                "proj-1",
+                "forge-proj-1",
+                Some("conv-abc"),
+                Some("sess-1"),
+                "boot-a",
+            )
+            .unwrap();
         }
         let led = Ledger::open(&path).unwrap();
         let row = led.master_for_project("proj-1").unwrap().unwrap();
@@ -1904,9 +2130,15 @@ mod tests {
     #[test]
     fn a_report_carrying_no_conversation_leaves_the_stored_one_alone() {
         let led = Ledger::open_in_memory().unwrap();
-        led.note_master("proj-1", "forge-proj-1", Some("conv-abc"), "boot-a")
-            .unwrap();
-        led.note_master("proj-1", "forge-proj-1", None, "boot-a")
+        led.note_master(
+            "proj-1",
+            "forge-proj-1",
+            Some("conv-abc"),
+            Some("sess-1"),
+            "boot-a",
+        )
+        .unwrap();
+        led.note_master("proj-1", "forge-proj-1", None, None, "boot-a")
             .unwrap();
         assert_eq!(
             led.master_for_project("proj-1")
@@ -1971,8 +2203,14 @@ mod tests {
         })
         .expect("a ledger an earlier build wrote must accept a write under this build");
         assert!(led.bind_agent("new-run", "child-a").unwrap());
-        led.note_master("proj-1", "forge-proj-1", Some("conv-abc"), "boot-a")
-            .unwrap();
+        led.note_master(
+            "proj-1",
+            "forge-proj-1",
+            Some("conv-abc"),
+            Some("sess-1"),
+            "boot-a",
+        )
+        .unwrap();
 
         assert_eq!(
             led.run_for_agent("child-a").unwrap().unwrap().run_id,
@@ -1991,6 +2229,254 @@ mod tests {
             "the row the earlier build wrote is still there after this build has written its own"
         );
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The whole point of putting the stand-down in the ledger rather than in
+    /// the daemon's memory: the sweep that would replace the pane runs in a
+    /// process the owner's act outlives (ISS-1118 criterion 2).
+    #[test]
+    fn a_stand_down_outlives_the_process_that_recorded_it() {
+        let dir = std::env::temp_dir().join(format!("forge-ledger-1118-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let led = Ledger::open(&path).unwrap();
+            led.stand_down_master(
+                "proj-1",
+                "forge-dev",
+                "owner",
+                Some("a human is driving it"),
+            )
+            .unwrap();
+        }
+        let led = Ledger::open(&path).unwrap();
+        let standing = led
+            .master_standing("proj-1")
+            .unwrap()
+            .expect("a stand-down written by one process is read by the next");
+        assert!(standing.stands());
+        assert_eq!(standing.slug, "forge-dev");
+        assert_eq!(standing.why.as_deref(), Some("a human is driving it"));
+        assert!(
+            led.master_standing("proj-2").unwrap().is_none(),
+            "one project's stand-down says nothing about another's"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn standing_a_master_up_leaves_the_interval_behind_until_a_pane_has_been_told_it() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+            .unwrap();
+        assert!(
+            led.stand_up_master("proj-1").unwrap(),
+            "lifting a standing stand-down reports that it lifted one"
+        );
+        let lifted = led
+            .master_standing("proj-1")
+            .unwrap()
+            .expect("the row stays so the next pane can be told how long it was down");
+        assert!(!lifted.stands());
+        assert!(lifted.stood_up_at.is_some());
+        assert!(
+            !led.stand_up_master("proj-1").unwrap(),
+            "standing up a project that is not stood down lifts nothing and says so"
+        );
+        led.forget_lifted_standing("proj-1").unwrap();
+        assert!(
+            led.master_standing("proj-1").unwrap().is_none(),
+            "once the interval has been delivered the row has no reader left"
+        );
+    }
+
+    #[test]
+    fn a_standing_stand_down_is_never_forgotten_by_the_delivery_path() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+            .unwrap();
+        led.forget_lifted_standing("proj-1").unwrap();
+        assert!(
+            led.master_standing("proj-1")
+                .unwrap()
+                .is_some_and(|s| s.stands()),
+            "the call that clears a delivered interval must not be able to clear a live stand-down — that would place the pane the owner withheld"
+        );
+    }
+
+    #[test]
+    fn standing_a_master_down_twice_keeps_the_moment_it_first_went_down() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+            .unwrap();
+        let first = led
+            .master_standing("proj-1")
+            .unwrap()
+            .unwrap()
+            .stood_down_at;
+        led.stand_down_master("proj-1", "forge-dev", "someone-else", Some("again"))
+            .unwrap();
+        let again = led.master_standing("proj-1").unwrap().unwrap();
+        assert_eq!(
+            again.stood_down_at, first,
+            "a second stand-down over a standing one must not restart the clock the interval is measured from"
+        );
+        assert_eq!(again.stood_down_by, "someone-else");
+        led.stand_up_master("proj-1").unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+            .unwrap();
+        let fresh = led.master_standing("proj-1").unwrap().unwrap();
+        assert!(fresh.stands() && fresh.stood_up_at.is_none());
+        assert!(
+            fresh.stood_down_at >= first,
+            "a stand-down after a stand-up is a new one and takes its own moment"
+        );
+    }
+
+    /// Criterion 14 asks a stand-down to name the runs the master holds, and
+    /// the key those rows carry is the master's core session id. A box that
+    /// upgraded with a pane running has a `masters` row written without it
+    /// (ISS-1118 criterion 18).
+    #[test]
+    fn a_masters_table_written_before_session_id_gains_the_column_on_open() {
+        let dir = std::env::temp_dir().join(format!("forge-ledger-1118m-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE masters (
+                   project_id TEXT PRIMARY KEY, pane_name TEXT NOT NULL, conversation_id TEXT,
+                   boot_id TEXT NOT NULL, cold_started_at INTEGER NOT NULL,
+                   last_seen_at INTEGER NOT NULL);
+                 INSERT INTO masters (project_id, pane_name, conversation_id, boot_id,
+                                      cold_started_at, last_seen_at)
+                 VALUES ('proj-1', 'forge-master-forge-dev', 'conv-old', 'boot-old', 1, 1);",
+            )
+            .unwrap();
+        }
+        let led = Ledger::open(&path).expect(
+            "a ledger whose masters table predates session_id must still open — the alternative is a box that upgraded with a pane running and can no longer read its own ledger",
+        );
+        let row = led
+            .master_for_project("proj-1")
+            .unwrap()
+            .expect("the row the earlier build wrote survives");
+        assert_eq!(row.conversation_id.as_deref(), Some("conv-old"));
+        assert!(
+            row.session_id.is_none(),
+            "a row written before the column existed reads as unknown, never as bound to a session nothing minted"
+        );
+        led.note_master(
+            "proj-1",
+            "forge-master-forge-dev",
+            None,
+            Some("sess-new"),
+            "boot-new",
+        )
+        .unwrap();
+        assert_eq!(
+            led.master_for_project("proj-1")
+                .unwrap()
+                .unwrap()
+                .session_id
+                .as_deref(),
+            Some("sess-new"),
+            "and the upgraded row takes the session id the next report carries"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// F4 from the ISS-1118 review. A project can be stood down before this
+    /// box has ever placed a master for it, and a lookup that needs a pane row
+    /// would report "nothing is standing it down" about a project standing
+    /// down right there in the ledger.
+    #[test]
+    fn a_standing_is_readable_for_a_project_that_has_no_master_row_at_all() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+            .unwrap();
+        assert!(
+            led.master_for_pane("forge-master-forge-dev")
+                .unwrap()
+                .is_none(),
+            "the case is exactly a stand-down with no pane row behind it"
+        );
+        let by_slug = led
+            .master_standing_for_slug("forge-dev")
+            .unwrap()
+            .expect("the standing is reachable by the only thing a command holds — the slug");
+        assert!(by_slug.stands());
+        assert_eq!(by_slug.project_id, "proj-1");
+        assert!(led.master_standing_for_slug("other").unwrap().is_none());
+    }
+
+    #[test]
+    fn every_project_this_box_holds_a_decision_about_is_listable() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "b-project", "owner", None)
+            .unwrap();
+        led.stand_down_master("proj-2", "a-project", "owner", None)
+            .unwrap();
+        let slugs: Vec<String> = led
+            .standings()
+            .unwrap()
+            .into_iter()
+            .map(|s| s.slug)
+            .collect();
+        assert_eq!(
+            slugs,
+            vec!["a-project".to_string(), "b-project".to_string()],
+            "a bare `status` that enumerated transcript directories alone would list neither, and a stood-down project with no transcript is the one an owner is most likely looking for"
+        );
+    }
+
+    #[test]
+    fn a_pane_name_reaches_the_project_it_belongs_to() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master(
+            "proj-1",
+            "forge-master-forge-dev",
+            Some("conv-abc"),
+            Some("sess-1"),
+            "boot-a",
+        )
+        .unwrap();
+        assert_eq!(
+            led.master_for_pane("forge-master-forge-dev")
+                .unwrap()
+                .unwrap()
+                .project_id,
+            "proj-1",
+            "a command holding a slug and nothing else reaches the project id through the pane name it can build"
+        );
+        assert!(led.master_for_pane("forge-master-other").unwrap().is_none());
+    }
+
+    #[test]
+    fn clearing_the_conversation_leaves_the_pane_row_otherwise_intact() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master(
+            "proj-1",
+            "forge-master-forge-dev",
+            Some("conv-abc"),
+            Some("sess-1"),
+            "boot-a",
+        )
+        .unwrap();
+        led.forget_master_conversation("proj-1").unwrap();
+        let row = led.master_for_project("proj-1").unwrap().unwrap();
+        assert!(
+            row.conversation_id.is_none(),
+            "--fresh means the next pane cold-starts, so the handle a resume would use is gone"
+        );
+        assert_eq!(
+            row.session_id.as_deref(),
+            Some("sess-1"),
+            "and nothing else about the pane is forgotten with it"
+        );
     }
 
     #[test]

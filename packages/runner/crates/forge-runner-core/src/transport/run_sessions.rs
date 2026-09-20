@@ -208,11 +208,20 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
     Ok(parsed.session_terminal)
 }
 
-pub async fn lease_held(client: &CoreClient, issue_key: &str) -> Result<bool> {
-    #[derive(Deserialize)]
-    struct Reply {
-        held: bool,
-    }
+/// What core says about one issue's lease, as this box sees it.
+///
+/// Two booleans because they are two questions (ISS-1109). `held` is the
+/// fleet-wide fact — any box, not only this one. `held_by_this_device` is what
+/// a close loop asking "have I given this back" means, and reading the first
+/// under the second's name is what let two boxes hold one issue.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaseState {
+    pub held: bool,
+    pub held_by_this_device: bool,
+}
+
+pub async fn lease_state(client: &CoreClient, issue_key: &str) -> Result<LeaseState> {
     let url = client.url(&format!("/api/devices/me/issue-leases/{issue_key}"));
     let resp = client
         .http()
@@ -229,11 +238,11 @@ pub async fn lease_held(client: &CoreClient, issue_key: &str) -> Result<bool> {
         let text = resp.text().await.unwrap_or_default();
         return Err(Error::Other(format!("issue-lease read: {status}: {text}")));
     }
-    let parsed: Reply = resp
+    let parsed: LeaseState = resp
         .json()
         .await
         .map_err(|e| Error::Other(format!("issue-lease decode: {e}")))?;
-    Ok(parsed.held)
+    Ok(parsed)
 }
 
 pub async fn release_lease(client: &CoreClient, issue_key: &str) -> Result<()> {
@@ -256,4 +265,46 @@ pub async fn release_lease(client: &CoreClient, issue_key: &str) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RECOVERY_PORTS: &str = include_str!("../daemon/recovery_ports.rs");
+
+    #[test]
+    fn a_lease_carries_the_fleet_answer_and_this_box_answer_separately() {
+        let state: LeaseState = serde_json::from_str(
+            r#"{"held":true,"heldByThisDevice":false,"holder":{"deviceId":"d1"}}"#,
+        )
+        .expect("core sends camelCase and an extra holder object the runner does not read");
+
+        assert!(
+            state.held,
+            "another box holding the issue is the fleet answer"
+        );
+        assert!(
+            !state.held_by_this_device,
+            "a box that reads the fleet answer as its own never marks its lease returned, and the run never closes"
+        );
+    }
+
+    #[test]
+    fn a_free_lease_reads_free_on_both_questions() {
+        let state: LeaseState =
+            serde_json::from_str(r#"{"held":false,"heldByThisDevice":false,"holder":null}"#)
+                .expect("a free lease decodes with a null holder");
+
+        assert!(!state.held);
+        assert!(!state.held_by_this_device);
+    }
+
+    #[test]
+    fn the_close_loop_asks_whether_this_box_gave_it_back() {
+        assert!(
+            RECOVERY_PORTS.contains("held_by_this_device"),
+            "is_returned reading `held` would wedge this box's close loop on an issue another box legitimately holds (ISS-1109)"
+        );
+    }
 }
