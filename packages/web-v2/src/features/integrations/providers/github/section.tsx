@@ -27,6 +27,7 @@ import {
   useGitHubConnect,
   useGitHubRepositories,
   useIntegrationsList,
+  useUpdateProviderIntegration,
 } from "../../hooks";
 import type { GitHubConnectStart, IntegrationSummary } from "../../types";
 import {
@@ -35,6 +36,7 @@ import {
   AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { text } from "../config-read";
 import { github } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 import { scopeLabel } from "../../components/status-pill";
@@ -58,16 +60,30 @@ function permissionRows(manifest: Record<string, unknown>): [string, string][] {
   return Object.entries(perms as Record<string, unknown>).map(([k, v]) => [k, String(v)]);
 }
 
+/**
+ * The repository a binding records, or null. A binding ROW existing is a
+ * different fact from a repository being recorded on it, and reading the first
+ * as the second is what put the picker out of reach (ISS-1115).
+ */
+function repositoryOf(config: Record<string, unknown>): { owner: string; repo: string } | null {
+  const owner = text(config, "owner");
+  const repo = text(config, "repo");
+  return owner && repo ? { owner, repo } : null;
+}
+
 function ConnectedState({
   projectId,
   binding,
+  repository,
+  onChangeRepository,
 }: {
   projectId: string;
   binding: IntegrationSummary;
+  repository: { owner: string; repo: string };
+  onChangeRepository: () => void;
 }) {
   const remove = useDeleteProviderIntegration(projectId);
-  const owner = typeof binding.config.owner === "string" ? binding.config.owner : null;
-  const repo = typeof binding.config.repo === "string" ? binding.config.repo : null;
+  const { owner, repo } = repository;
 
   return (
     <Card>
@@ -77,20 +93,17 @@ function ConnectedState({
       <CardContent className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <Badge>{scopeLabel(binding.role, binding.stages)}</Badge>
-          {owner && repo ? (
-            <a
-              href={`https://github.com/${owner}/${repo}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-13 font-semibold text-accent hover:underline"
-            >
-              {owner}/{repo}
-            </a>
-          ) : (
-            <span className="fg-body-sm text-muted">
-              no repository recorded yet — pick one by reconnecting this project
-            </span>
-          )}
+          <a
+            href={`https://github.com/${owner}/${repo}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-13 font-semibold text-accent hover:underline"
+          >
+            {owner}/{repo}
+          </a>
+          <Button variant="ghost" size="sm" onClick={onChangeRepository}>
+            Change repository
+          </Button>
         </div>
 
         <IntegrationEnabledControl projectId={projectId} binding={binding} />
@@ -114,9 +127,140 @@ function ConnectedState({
 }
 
 /**
+ * The list of repositories the App actually granted, with its own loading,
+ * failure and empty states. One field, two submit paths: a project with no
+ * binding row creates one, a project with a row writes onto it.
+ */
+function RepositoryField({
+  repos,
+  value,
+  onChange,
+}: {
+  repos: ReturnType<typeof useGitHubRepositories>;
+  value: string;
+  onChange: (fullName: string) => void;
+}) {
+  const options = useMemo(
+    () => (repos.data?.repositories ?? []).map((r) => ({ value: r.fullName, label: r.fullName })),
+    [repos.data],
+  );
+
+  if (repos.isLoading) return <Spinner />;
+  if (repos.isError) return <Banner tone="danger">{formatApiError(repos.error)}</Banner>;
+  if (options.length === 0) {
+    return (
+      <Banner tone="attention">
+        This App has no repositories yet. Grant it some on GitHub, then reload.
+      </Banner>
+    );
+  }
+
+  return (
+    <>
+      <Field label="Repository">
+        <NativeSelect
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label="Repository"
+          options={[{ value: "", label: "Choose a repository…" }, ...options]}
+        />
+      </Field>
+      {repos.data?.truncated && (
+        <p className="fg-body-sm text-subtle">
+          Showing the first pages of a large installation — not every repository is listed.
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * Write a repository onto a binding this project ALREADY holds.
+ *
+ * Not the bind route: `integration_bindings_service_uq` is on
+ * (project, provider, label) with no `active` predicate, so a row left behind by
+ * a Disconnect still holds the slot and a create against it is refused 409. The
+ * PATCH merges binding-tier config onto the surviving row instead, and sends
+ * `active` only when the row is switched off — a project admin changing
+ * repositories must not be made to clear the org-admin bar that field carries.
+ */
+function SetRepository({
+  projectId,
+  binding,
+  connectionLabel,
+  onDone,
+}: {
+  projectId: string;
+  binding: IntegrationSummary;
+  connectionLabel: string;
+  onDone: (() => void) | null;
+}) {
+  const repos = useGitHubRepositories(projectId, binding.connectionId);
+  const update = useUpdateProviderIntegration(projectId);
+  const current = repositoryOf(binding.config);
+  const [fullName, setFullName] = useState(current ? `${current.owner}/${current.repo}` : "");
+
+  const chosen = (repos.data?.repositories ?? []).find((r) => r.fullName === fullName);
+
+  const submit = () => {
+    if (!chosen) return;
+    update.mutate(
+      {
+        id: binding.id,
+        body: {
+          config: {
+            owner: chosen.owner,
+            repo: chosen.repo,
+            installationId: chosen.installationId,
+          },
+          ...(binding.bindingActive ? {} : { active: true }),
+        },
+      },
+      { onSuccess: () => onDone?.() },
+    );
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{current ? "Change repository" : "Connect a repository"}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <p className="fg-body-sm text-muted">
+          Using <span className="font-semibold">{connectionLabel}</span>. This project already has a
+          GitHub binding; picking here points that same binding at a repository.
+        </p>
+
+        <RepositoryField repos={repos} value={fullName} onChange={setFullName} />
+
+        {!binding.bindingActive && (
+          <p className="fg-body-sm text-muted">
+            This binding is switched off. Saving a repository switches it back on.
+          </p>
+        )}
+
+        {update.isError && <Banner tone="danger">{formatApiError(update.error)}</Banner>}
+
+        <div className="flex items-center gap-3">
+          <Button onClick={submit} disabled={!chosen || update.isPending}>
+            {update.isPending ? "Saving…" : "Save repository"}
+          </Button>
+          {onDone && (
+            <Button variant="ghost" size="sm" onClick={onDone}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
  * Bind a project to a repository the App can already see. The picker lists what
  * each installation actually granted, so a project can only point at a
- * repository the credential reaches.
+ * repository the credential reaches. This is the no-binding-row path; a project
+ * that already has a row goes through `SetRepository` above.
  */
 function UseExistingApp({
   projectId,
@@ -133,11 +277,6 @@ function UseExistingApp({
   const bind = useBindExistingConnection();
   const [fullName, setFullName] = useState("");
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
-
-  const options = useMemo(
-    () => (repos.data?.repositories ?? []).map((r) => ({ value: r.fullName, label: r.fullName })),
-    [repos.data],
-  );
 
   const chosen = (repos.data?.repositories ?? []).find((r) => r.fullName === fullName);
 
@@ -171,30 +310,7 @@ function UseExistingApp({
           project; this project just points at one of its repositories.
         </p>
 
-        {repos.isLoading ? (
-          <Spinner />
-        ) : repos.isError ? (
-          <Banner tone="danger">{formatApiError(repos.error)}</Banner>
-        ) : options.length === 0 ? (
-          <Banner tone="attention">
-            This App has no repositories yet. Grant it some on GitHub, then reload.
-          </Banner>
-        ) : (
-          <Field label="Repository">
-            <NativeSelect
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              aria-label="Repository"
-              options={[{ value: "", label: "Choose a repository…" }, ...options]}
-            />
-          </Field>
-        )}
-
-        {repos.data?.truncated && (
-          <p className="fg-body-sm text-subtle">
-            Showing the first pages of a large installation — not every repository is listed.
-          </p>
-        )}
+        <RepositoryField repos={repos} value={fullName} onChange={setFullName} />
 
         <AgentAccessChoice
           value={agentAccess}
@@ -286,8 +402,9 @@ export function GitHubSection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const connections = useConnections();
   const [forceCreate, setForceCreate] = useState(false);
+  const [changing, setChanging] = useState(false);
 
-  const existing = useMemo(
+  const binding = useMemo(
     () => (list.data?.items ?? []).find((i) => i.provider === "github"),
     [list.data],
   );
@@ -297,7 +414,38 @@ export function GitHubSection({ projectId }: { projectId: string }) {
     [connections.data],
   );
 
-  if (existing) return <ConnectedState projectId={projectId} binding={existing} />;
+  // A row existing and a repository being recorded are two facts, and this used
+  // to ask only the first. Nothing removes the row — Disconnect sets
+  // `active: false` and `listBindingsForProject` filters on the project alone —
+  // so the early return below fired for the life of the row and the picker was
+  // unreachable (ISS-1115).
+  const repository = binding ? repositoryOf(binding.config) : null;
+  const connectionLabel =
+    (binding
+      ? (connections.data?.items ?? []).find((c) => c.id === binding.connectionId)?.displayName
+      : null) ?? "the existing GitHub App";
+
+  if (binding && repository && !changing) {
+    return (
+      <ConnectedState
+        projectId={projectId}
+        binding={binding}
+        repository={repository}
+        onChangeRepository={() => setChanging(true)}
+      />
+    );
+  }
+
+  if (binding) {
+    return (
+      <SetRepository
+        projectId={projectId}
+        binding={binding}
+        connectionLabel={connectionLabel}
+        onDone={repository ? () => setChanging(false) : null}
+      />
+    );
+  }
 
   const first = reusable[0];
   if (first && !forceCreate) {
