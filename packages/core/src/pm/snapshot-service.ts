@@ -9,10 +9,10 @@ import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readRunnerLoad } from './runner-load-service.js';
 
-const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
 const ACTIVE_PIPELINE_STATUSES = ['approved', 'in_progress', 'developed', 'testing'] as const;
 
 const FAILURE_REASON_TRUNC = 200;
@@ -43,7 +43,7 @@ export async function readPmSnapshot(projectId: string) {
       queuedAt: jobs.queuedAt,
     })
     .from(jobs)
-    .where(and(eq(jobs.projectId, projectId), inArray(jobs.status, [...ACTIVE_JOB_STATUSES])))
+    .where(and(eq(jobs.projectId, projectId), inArray(jobs.status, [...UNHELD_LIVE_JOB_STATUSES])))
     .orderBy(desc(jobs.queuedAt))
     .limit(20);
 

@@ -33,9 +33,8 @@ vi.mock('../pipeline/runs.js', () => ({
   setCurrentStepForOpenIssueRun: (...args: unknown[]) => setCurrentStepForOpenIssueRunMock(...args),
 }));
 
-const { transitionIssueStatus, TERMINAL_FOR_DISPATCH, RUN_CLOSING_STATUSES } = await import(
-  './apply-transition.js'
-);
+const { transitionIssueStatus, TERMINAL_FOR_DISPATCH } = await import('./apply-transition.js');
+const { ISSUE_TERMINAL_STATUSES } = await import('./status-sets.js');
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -82,8 +81,8 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
     expect(TERMINAL_FOR_DISPATCH.has('closed')).toBe(true);
   });
 
-  it('RUN_CLOSING_STATUSES contains only closed', () => {
-    expect(RUN_CLOSING_STATUSES.has('closed')).toBe(true);
-    expect(RUN_CLOSING_STATUSES.has('awaiting_release')).toBe(false);
+  it('ISSUE_TERMINAL_STATUSES, which closes the run, holds closed and not awaiting_release', () => {
+    expect(ISSUE_TERMINAL_STATUSES).toContain('closed');
+    expect(ISSUE_TERMINAL_STATUSES).not.toContain('awaiting_release');
   });
 });

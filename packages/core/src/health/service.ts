@@ -12,10 +12,9 @@ import pkg from '../../package.json' with { type: 'json' };
 import { db } from '../db/client.js';
 import { agentSessions, jobs, projects, runners } from '../db/schema.js';
 import { countInFlightByRunner } from '../jobs/in-flight.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { isBossStarted } from '../queue/boss.js';
 import { isWsListening } from '../ws/server.js';
-
-const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running', 'held'] as const;
 
 export type LivenessSnapshot = {
   ok: boolean;
@@ -45,7 +44,7 @@ export async function countActiveJobs(): Promise<number> {
     const [row] = await db
       .select({ n: count() })
       .from(jobs)
-      .where(inArray(jobs.status, [...ACTIVE_JOB_STATUSES]));
+      .where(inArray(jobs.status, [...LIVE_JOB_STATUSES]));
     return Number(row?.n ?? 0);
   } catch {
     return 0;

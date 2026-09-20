@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
+import type { JobStatus } from '../db/schema.js';
 import {
   agentSessions,
   jobEventKinds,
@@ -23,6 +24,7 @@ import { roomManager } from '../ws/server.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
 import { maybeDeriveIncremental } from './session-transcript.js';
+import { TERMINAL_JOB_STATUSES } from './status-sets.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -50,7 +52,7 @@ const eventBatchSchema = z
   })
   .strict();
 
-const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled'] as const);
+const TERMINAL_STATUSES = new Set<JobStatus>(TERMINAL_JOB_STATUSES);
 
 const eventsListQuerySchema = z
   .object({
