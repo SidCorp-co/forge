@@ -3015,6 +3015,9 @@
   set is now 59.
 
 ### Fixed
+- **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
+  claim the database refuses, and the machine that loses is told which one holds it and since when.
+
 - **A pull request Forge opened is now one Forge can merge.** Forge knew only the pull requests
   GitHub announced by webhook, so one Forge opened itself left no record and could not be merged.
   Opening one now writes that record.

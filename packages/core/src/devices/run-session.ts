@@ -2,14 +2,24 @@
  * A run session as core knows it: one box, one worktree, a GROUP of issues.
  *
  * Membership lives in `pipeline_runs.metadata.runIssues` because
- * `pipeline_runs.issue_id` is one column and a run carries many. Core only
- * ever reads it by run id — to say which issues came back when a box is lost —
- * so a jsonb array serves the access pattern and no migration ships for it.
+ * `pipeline_runs.issue_id` is one column and a run carries many. Core reads it
+ * by run id, to say which issues came back when a box is lost, and a jsonb
+ * array serves that.
+ *
+ * It is no longer what says who HOLDS an issue (ISS-1109). No index can
+ * constrain an array element, so nothing refused the second taker and every
+ * reader wrote its own predicate; the lease is a row in `issue_leases` and
+ * `issues/issue-lease.ts` is the only thing that writes or reads it.
  */
 
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import {
+  readDeviceIssueLease,
+  releaseIssueLeaseRow,
+  takeIssueLeases,
+} from '../issues/issue-lease.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -199,6 +209,16 @@ export async function openRunSession(args: {
       })
       .returning({ id: agentSessions.id });
     if (!row) throw new Error('openRunSession: insert returned no row');
+    // Inside the transaction on purpose: a key somebody live already holds
+    // rolls the run and the session back with it, so a refused open leaves a
+    // box with nothing rather than with half a group.
+    await takeIssueLeases(tx, {
+      projectId: args.projectId,
+      deviceId: args.deviceId,
+      sessionId: row.id,
+      runId: run.id,
+      issueKeys: canonical.keys,
+    });
     return { opened: { sessionId: row.id, runId: run.id } };
   });
   if (claimed.existing) {
@@ -258,34 +278,34 @@ export async function readRunSessionTerminal(args: {
 }
 
 /**
- * Is one issue still held by a live run session on this box?
+ * Is one issue held by a live run session on ANY box this device can see?
+ *
+ * The device filter this used to carry was the defect (ISS-1109): box B asking
+ * about an issue box A was running was told `false` and opened its own run over
+ * it. The device now bounds which projects may be asked about, never who counts
+ * as a holder.
  */
 export async function isIssueLeaseHeld(args: {
   deviceId: string;
   issueKey: string;
 }): Promise<boolean> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(agentSessions)
-    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
-    .where(
-      and(
-        eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
-        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-        sql`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)`,
-      ),
-    );
-  return (row?.n ?? 0) > 0;
+  return (await readDeviceIssueLease(args)).held;
 }
 
 /**
  * Give one issue's lease back, per ISSUE and never per run.
+ *
+ * Two writes, because there are two records: the lease row, which says who is
+ * holding the issue, and the run's membership array, which says what this run
+ * was carrying and is what `returnIssuesForRun` reads to give statuses back.
+ * Dropping the key from membership without dropping the lease would leave the
+ * issue held by a run that no longer claims it.
  */
 export async function releaseIssueLease(args: {
   deviceId: string;
   issueKey: string;
 }): Promise<void> {
+  await releaseIssueLeaseRow(args);
   await db.execute(sql`
     UPDATE pipeline_runs r
        SET metadata = jsonb_set(
