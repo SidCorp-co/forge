@@ -421,6 +421,33 @@ jobs:
           use-quiet-mode: yes
           config-file: .github/mlc-config.json
 
+  # The only gate that builds what actually ships. Every other job measures the
+  # source tree; the images COPY `.npmrc pnpm-workspace.yaml package.json
+  # pnpm-lock.yaml` and `packages` and nothing else, so a dependency the repo
+  # grows OUTSIDE that set is invisible to all of them and surfaces first on the
+  # deploy. That is not hypothetical: at `fd3230e93` the whole gate was green and
+  # Coolify failed twice — a root devDependency declared `file:.forge/code-quality`
+  # (pnpm exit 254) and a `scripts/lib/test-workers.mjs` import (TS2307), neither
+  # path reaching the image. Both fixed in `259ba7657`; this job is what would
+  # have caught them.
+  #
+  # The build runs against `git archive`, not the checkout. A working-tree build
+  # succeeds on any file the runner happens to hold and the image does not, which
+  # is precisely the defect class this job exists for.
+  #
+  # NOT path-filtered on purpose. A filter would have to enumerate "files outside
+  # the COPY set", which is the reasoning that fails here by construction — and a
+  # skipped job passes `ci-passed`, a trap this workflow has already been caught
+  # by twice (see the `web` and `scripts` filters). It rides `proved` alone, so a
+  # merge commit whose tree a pull_request run already built does not pay twice.
+  images:
+    needs: changes
+    if: needs.changes.outputs.proved != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: node scripts/build-images.mjs
+
   # ───────────────────────────────────────────────────────────────────────
   # Single aggregate gate. Branch protection should require ONLY this check
   # (drop the lone `changes` requirement). Requiring the individual jobs
@@ -453,6 +480,7 @@ jobs:
         injected-docs,
         archmap,
         conformance,
+        images,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -469,7 +497,8 @@ jobs:
             "docs:${{ needs.docs.result }}" \
             "injected-docs:${{ needs.injected-docs.result }}" \
             "archmap:${{ needs.archmap.result }}" \
-            "conformance:${{ needs.conformance.result }}"; do
+            "conformance:${{ needs.conformance.result }}" \
+            "images:${{ needs.images.result }}"; do
             echo "$r"
             result="${r##*:}"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
