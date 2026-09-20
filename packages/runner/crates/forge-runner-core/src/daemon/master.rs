@@ -3310,11 +3310,11 @@ mod give_back_tests {
     struct Leases(Mutex<Vec<String>>);
     #[async_trait::async_trait]
     impl LeaseKeeper for Leases {
-        async fn release(&self, issue_key: &str) -> R<()> {
+        async fn release(&self, _project_id: Option<&str>, issue_key: &str) -> R<()> {
             self.0.lock().unwrap().push(issue_key.to_string());
             Ok(())
         }
-        async fn is_returned(&self, issue_key: &str) -> R<bool> {
+        async fn is_returned(&self, _project_id: Option<&str>, issue_key: &str) -> R<bool> {
             Ok(self.0.lock().unwrap().iter().any(|k| k == issue_key))
         }
     }

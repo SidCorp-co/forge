@@ -221,8 +221,25 @@ pub struct LeaseState {
     pub held_by_this_device: bool,
 }
 
-pub async fn lease_state(client: &CoreClient, issue_key: &str) -> Result<LeaseState> {
-    let url = client.url(&format!("/api/devices/me/issue-leases/{issue_key}"));
+/// Where one lease lives, named by the project it was taken for.
+///
+/// `issue_leases` is keyed `(project_id, issue_key)` and `iss_seq` restarts per
+/// project, so a box serving two of them holds two rows under one key. Core
+/// refuses a give-back it cannot narrow to one, and this is how the run says
+/// which it means (ISS-1139).
+pub(crate) fn lease_path(project_id: Option<&str>, issue_key: &str) -> String {
+    match project_id {
+        Some(p) => format!("/api/devices/me/issue-leases/{issue_key}?projectId={p}"),
+        None => format!("/api/devices/me/issue-leases/{issue_key}"),
+    }
+}
+
+pub async fn lease_state(
+    client: &CoreClient,
+    project_id: Option<&str>,
+    issue_key: &str,
+) -> Result<LeaseState> {
+    let url = client.url(&lease_path(project_id, issue_key));
     let resp = client
         .http()
         .get(&url)
@@ -245,8 +262,12 @@ pub async fn lease_state(client: &CoreClient, issue_key: &str) -> Result<LeaseSt
     Ok(parsed)
 }
 
-pub async fn release_lease(client: &CoreClient, issue_key: &str) -> Result<()> {
-    let url = client.url(&format!("/api/devices/me/issue-leases/{issue_key}"));
+pub async fn release_lease(
+    client: &CoreClient,
+    project_id: Option<&str>,
+    issue_key: &str,
+) -> Result<()> {
+    let url = client.url(&lease_path(project_id, issue_key));
     let resp = client
         .http()
         .delete(&url)
@@ -257,6 +278,10 @@ pub async fn release_lease(client: &CoreClient, issue_key: &str) -> Result<()> {
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
+    // A 404 is core saying this box holds no such lease, which is the state the
+    // release was asking for; `is_returned` reads it back either way. Anything
+    // else — a 409 core could not narrow to one project among them — is an
+    // error, because retrying it unchanged never resolves (ISS-1139).
     if !resp.status().is_success() && resp.status().as_u16() != 404 {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
@@ -287,6 +312,20 @@ mod tests {
         assert!(
             !state.held_by_this_device,
             "a box that reads the fleet answer as its own never marks its lease returned, and the run never closes"
+        );
+    }
+
+    #[test]
+    fn a_lease_call_names_the_project_the_lease_was_taken_for() {
+        assert_eq!(
+            lease_path(Some("proj-1"), "ISS-880"),
+            "/api/devices/me/issue-leases/ISS-880?projectId=proj-1",
+            "a box serving two projects holds two rows under one key, and core refuses a give-back that names neither"
+        );
+        assert_eq!(
+            lease_path(None, "ISS-880"),
+            "/api/devices/me/issue-leases/ISS-880",
+            "a run whose ledger row carries no project still asks, and core narrows by the device alone"
         );
     }
 

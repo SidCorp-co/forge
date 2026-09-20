@@ -35,10 +35,14 @@ pub trait RunCloser: Send + Sync {
 }
 
 /// Returns a lease, and separately reads back whether it is actually returned.
+///
+/// Both carry the project the run belongs to: a lease is keyed by project and
+/// issue, and a box serving two projects holds two rows under one key, so a
+/// call naming only the key is a question core cannot answer (ISS-1139).
 #[async_trait::async_trait]
 pub trait LeaseKeeper: Send + Sync {
-    async fn release(&self, issue_key: &str) -> Result<()>;
-    async fn is_returned(&self, issue_key: &str) -> Result<bool>;
+    async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()>;
+    async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool>;
 }
 
 /// What the ledger says, with no process inspected.
@@ -95,14 +99,21 @@ pub async fn close(
         ledger.mark_worktree_gone_observed(run_id)?;
     }
 
+    let project = run.project_id.clone();
     for m in ledger.issues(run_id)? {
         if m.lease_returned_at.is_some() {
             continue;
         }
-        if !matches!(leases.is_returned(&m.issue_key).await, Ok(true)) {
-            let _ = leases.release(&m.issue_key).await;
+        if !matches!(
+            leases.is_returned(project.as_deref(), &m.issue_key).await,
+            Ok(true)
+        ) {
+            let _ = leases.release(project.as_deref(), &m.issue_key).await;
         }
-        if matches!(leases.is_returned(&m.issue_key).await, Ok(true)) {
+        if matches!(
+            leases.is_returned(project.as_deref(), &m.issue_key).await,
+            Ok(true)
+        ) {
             ledger.mark_lease_returned_observed(run_id, &m.issue_key)?;
         }
     }
@@ -138,6 +149,10 @@ mod tests {
         lands: HashSet<String>,
         returned: Mutex<HashSet<String>>,
         releases: Mutex<usize>,
+        /// Every (project, issue) the loop asked to release, in order.
+        asked_for: Mutex<Vec<(Option<String>, String)>>,
+        /// Every (project, issue) the loop read back, in order.
+        read_for: Mutex<Vec<(Option<String>, String)>>,
     }
 
     impl Leases {
@@ -147,6 +162,8 @@ mod tests {
                 lands: lands.iter().map(|s| (*s).to_string()).collect(),
                 returned: Mutex::new(HashSet::new()),
                 releases: Mutex::new(0),
+                asked_for: Mutex::new(Vec::new()),
+                read_for: Mutex::new(Vec::new()),
             }
         }
 
@@ -158,7 +175,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl LeaseKeeper for Leases {
-        async fn release(&self, issue_key: &str) -> Result<()> {
+        async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()> {
+            self.asked_for
+                .lock()
+                .unwrap()
+                .push((project_id.map(str::to_string), issue_key.to_string()));
             *self.releases.lock().unwrap() += 1;
             if self.lands.contains(issue_key) {
                 self.returned.lock().unwrap().insert(issue_key.to_string());
@@ -169,7 +190,11 @@ mod tests {
                 Ok(())
             }
         }
-        async fn is_returned(&self, issue_key: &str) -> Result<bool> {
+        async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool> {
+            self.read_for
+                .lock()
+                .unwrap()
+                .push((project_id.map(str::to_string), issue_key.to_string()));
             Ok(self.returned.lock().unwrap().contains(issue_key))
         }
     }
@@ -398,6 +423,34 @@ mod tests {
             led.issues("run-1").unwrap()[0].lease_returned_at,
             at,
             "and its timestamp is not rewritten"
+        );
+    }
+
+    /// ISS-1139 — a lease is keyed by project and issue, so both calls carry the
+    /// run's project. Without it core cannot tell which of two projects sharing
+    /// a key this box means, and answers about neither.
+    #[tokio::test]
+    async fn both_lease_calls_name_the_run_project() {
+        let mut led = seeded(&["ISS-880"], gone());
+        let leases = Leases::new(false, &["ISS-880"]);
+
+        close(&mut led, "run-1", &Sessions(true), &leases)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            leases.asked_for.lock().unwrap().as_slice(),
+            [(Some("proj-1".to_string()), "ISS-880".to_string())],
+            "a release that names no project is refused by core, and the run never closes"
+        );
+        assert!(
+            leases
+                .read_for
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(p, _)| p.as_deref() == Some("proj-1")),
+            "a read-back against another project answers about a lease this run never held"
         );
     }
 }

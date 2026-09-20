@@ -18,7 +18,7 @@ import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
 import { type AskAnswer, askQuestion, QuestionRefused } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
-import { badRequest, notFound, sessionParamsSchema } from './route-errors.js';
+import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
 
 type AskBody = {
   id?: string;
@@ -37,7 +37,11 @@ type AskBody = {
   sensitive?: boolean;
 };
 
-import { readDeviceIssueLease } from '../issues/issue-lease.js';
+import {
+  type ResolvedLeaseKey,
+  readDeviceIssueLease,
+  resolveLeaseKey,
+} from '../issues/issue-lease.js';
 import { readAdmissibleIssues } from './admissible.js';
 import {
   prepareJobForMaster,
@@ -91,6 +95,21 @@ devicePoolRoutes.get(
 );
 
 const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
+const leaseQuerySchema = z.object({ projectId: z.string().uuid().optional() });
+
+/**
+ * The lease this request is about, or the refusal that says why there is none.
+ *
+ * Both endpoints go through it, because the pool hands a box the project's own
+ * prefixed key while the store keeps the canonical one, and an endpoint that
+ * skips the mapping answers about a lease that does not exist (ISS-1139).
+ */
+async function leaseKeyOf(rawKey: string, projectId?: string): Promise<ResolvedLeaseKey> {
+  const resolved = await resolveLeaseKey({ rawKey, projectId: projectId ?? null });
+  if (resolved.ok) return resolved.key;
+  const { status, code, message } = resolved.refusal;
+  throw new HTTPException(status, { message, cause: { code } });
+}
 
 devicePoolRoutes.get(
   '/me/run-sessions/:sessionId',
@@ -112,13 +131,22 @@ devicePoolRoutes.get(
   zValidator('param', leaseParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('query', leaseQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
-    const { issueKey } = c.req.valid('param');
+    const key = await leaseKeyOf(c.req.valid('param').issueKey, c.req.valid('query').projectId);
     // Two questions, both answered, because they are different ones: `held` is
     // the fleet-wide fact, `heldByThisDevice` is what a close loop asking
     // "have I given this back" means. Answering the second under the first
     // name is the defect ISS-1109 closed.
-    return c.json(await readDeviceIssueLease({ deviceId: c.get('device').id, issueKey }));
+    return c.json(
+      await readDeviceIssueLease({
+        deviceId: c.get('device').id,
+        issueKey: key.issueKey,
+        projectId: key.projectId,
+      }),
+    );
   },
 );
 
@@ -128,10 +156,37 @@ devicePoolRoutes.delete(
   zValidator('param', leaseParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('query', leaseQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
-    const { issueKey } = c.req.valid('param');
-    await releaseIssueLease({ deviceId: c.get('device').id, issueKey });
-    return c.json({ ok: true });
+    const rawKey = c.req.valid('param').issueKey;
+    const key = await leaseKeyOf(rawKey, c.req.valid('query').projectId);
+    const outcome = await releaseIssueLease({
+      deviceId: c.get('device').id,
+      issueKey: key.issueKey,
+      projectId: key.projectId,
+    });
+    if (outcome.released) {
+      return c.json({ ok: true, issueKey: key.issueKey, projectId: outcome.projectId });
+    }
+    // A delete that matched nothing is not a success: the box reads the ack as
+    // the issue handed back and stops watching it (ISS-1139).
+    if (outcome.reason === 'ambiguous') {
+      throw conflict(
+        'ISSUE_LEASE_AMBIGUOUS',
+        [
+          `this box holds ${outcome.projectIds.length} leases on ${key.issueKey}, one per project, and nothing was given back.`,
+          ...outcome.projectIds.map((id) => `  ${key.issueKey} in project ${id}`),
+          "A lease is given back for the project it was taken for, so name one: send `?projectId=<id>`, or that project's own issue prefix in the key.",
+        ].join('\n'),
+        { issueKey: key.issueKey, projectIds: outcome.projectIds },
+      );
+    }
+    throw new HTTPException(404, {
+      message: `no lease on ${key.issueKey}${key.projectId ? ` in project ${key.projectId}` : ''} is held by this box, so nothing was given back. \`${rawKey}\` resolved to the canonical \`${key.issueKey}\`, which is the form the lease store keeps.`,
+      cause: { code: 'ISSUE_LEASE_NOT_HELD', details: { issueKey: key.issueKey } },
+    });
   },
 );
 

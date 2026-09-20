@@ -91,6 +91,44 @@ async function twoBoxesOnOneProject(seqs: number[] = [880, 881]) {
   return { user, project, boxA, boxB };
 }
 
+/** One box bound to two projects, each holding an issue of the SAME sequence number. */
+async function oneBoxOnTwoProjects(seq = 880) {
+  const user = await createTestUser(harness.db);
+  const box = await createTestDevice(harness.db, user.id);
+  const made: Array<{ id: string }> = [];
+  for (const name of ['left', 'right']) {
+    const project = await createTestProject(harness.db, user.id);
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, device_id, name, type, status)
+      VALUES (gen_random_uuid(), ${project.id}, ${box.id}, ${`r-${name}`}, 'claude-code', 'online')
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      VALUES (gen_random_uuid(), ${project.id}, ${seq}, ${`issue ${seq} of ${name}`}, 'draft', ${user.id})
+    `);
+    made.push(project);
+  }
+  const [left, right] = made;
+  if (!left || !right) throw new Error('two projects were asked for');
+  return { user, box, left, right };
+}
+
+/** Which projects hold a lease row on this key, whoever the holder is. */
+async function leaseProjectsFor(issueKey: string): Promise<string[]> {
+  const rows = (await harness.db.execute(sql`
+    SELECT project_id FROM issue_leases WHERE issue_key = ${issueKey} ORDER BY project_id
+  `)) as unknown as Array<{ project_id: string }>;
+  return rows.map((r) => String(r.project_id)).sort();
+}
+
+/** The issue keys one run still claims as its membership. */
+async function membershipOf(runId: string): Promise<string[]> {
+  const rows = (await harness.db.execute(sql`
+    SELECT metadata -> 'runIssues' AS keys FROM pipeline_runs WHERE id = ${runId}
+  `)) as unknown as Array<{ keys: string[] | null }>;
+  return rows[0]?.keys ?? [];
+}
+
 /** The error a call threw, or null where it returned. */
 async function refusalOf(call: Promise<unknown>): Promise<Error | null> {
   try {
@@ -407,5 +445,63 @@ describe('what one box is told about one issue lease', () => {
       await mods.readDeviceIssueLease({ deviceId: boxB.id, issueKey: 'ISS-880' }),
       'a lease row that outlives its session strands the issue where no box can take it',
     ).toEqual({ held: false, heldByThisDevice: false, holder: null });
+  });
+});
+
+/**
+ * ISS-1139 — the identity that releases a lease is the identity that holds it.
+ *
+ * `issue_leases` is keyed `(project_id, issue_key)` and `iss_seq` restarts per
+ * project, so one box serving two projects can hold two rows under one key.
+ * A release keyed on the device alone answers a different question and takes
+ * both.
+ */
+describe('a lease is given back for the project it was taken for', () => {
+  it('leaves the other project lease standing', async () => {
+    const { box, left, right } = await oneBoxOnTwoProjects();
+    for (const project of [left, right]) {
+      await mods.openRunSession({
+        deviceId: box.id,
+        projectId: project.id,
+        issueKeys: ['ISS-880'],
+        name: `run-${project.id}`,
+      });
+    }
+
+    await mods.releaseIssueLease({
+      deviceId: box.id,
+      issueKey: 'ISS-880',
+      projectId: left.id,
+    });
+
+    expect(
+      await leaseProjectsFor('ISS-880'),
+      'a release keyed on the device frees every project that box serves, so the other project issue goes free while its run is still working it',
+    ).toEqual([right.id]);
+  });
+
+  it('leaves the other project run still claiming the key', async () => {
+    const { box, left, right } = await oneBoxOnTwoProjects();
+    const opened: Record<string, string> = {};
+    for (const project of [left, right]) {
+      const run = await mods.openRunSession({
+        deviceId: box.id,
+        projectId: project.id,
+        issueKeys: ['ISS-880'],
+        name: `run-${project.id}`,
+      });
+      opened[project.id] = run.runId;
+    }
+
+    await mods.releaseIssueLease({
+      deviceId: box.id,
+      issueKey: 'ISS-880',
+      projectId: left.id,
+    });
+
+    expect(
+      await membershipOf(String(opened[right.id])),
+      'membership stripped from a run nobody asked about is an issue that will not be given back when that box dies',
+    ).toEqual(['ISS-880']);
   });
 });
