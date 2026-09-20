@@ -1,9 +1,9 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
+import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));

@@ -10,8 +10,8 @@
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
-import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
+import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';

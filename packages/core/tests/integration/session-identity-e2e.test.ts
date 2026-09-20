@@ -340,9 +340,10 @@ describe('liveness descends', () => {
     const [issue] = (await harness.db.execute(sql`
       SELECT status FROM issues WHERE project_id = ${project.id} AND iss_seq = 7001
     `)) as unknown as Array<{ status: string }>;
-    expect(issue?.status, 'the issue the run was carrying went back to where it was claimed from').toBe(
-      'open',
-    );
+    expect(
+      issue?.status,
+      'the issue the run was carrying went back to where it was claimed from',
+    ).toBe('open');
   });
 
   it('stops at its depth bound rather than walking a cycle forever', async () => {
@@ -428,7 +429,7 @@ describe('a master is only silent when its whole tree is', () => {
   });
 });
 
-describe("the backfill infers once and says so when it cannot", () => {
+describe('the backfill infers once and says so when it cannot', () => {
   /**
    * The migration's own statements, from the first inference to the abort.
    *
@@ -445,7 +446,9 @@ describe("the backfill infers once and says so when it cannot", () => {
       .map((s) => s.trim())
       .filter(Boolean);
     const abort = all.findIndex((s) => s.includes('five session kinds'));
-    expect(abort, 'the migration no longer carries the abort this test is about').toBeGreaterThan(0);
+    expect(abort, 'the migration no longer carries the abort this test is about').toBeGreaterThan(
+      0,
+    );
     return all
       .slice(0, abort + 1)
       .filter((s) => !/ALTER TABLE "agent_sessions"\s+ADD COLUMN/.test(s));
@@ -490,7 +493,9 @@ describe("the backfill infers once and says so when it cannot", () => {
       issueKeys: ['ISS-7001'],
       name: 'run-a',
     });
-    await harness.db.execute(sql`UPDATE agent_sessions SET kind = NULL WHERE id = ${run.sessionId}`);
+    await harness.db.execute(
+      sql`UPDATE agent_sessions SET kind = NULL WHERE id = ${run.sessionId}`,
+    );
     await runInference();
     const [after] = (await harness.db.execute(sql`
       SELECT kind FROM agent_sessions WHERE id = ${run.sessionId}

@@ -5,11 +5,7 @@ import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import {
-  announceOneShotRun,
-  insertOneShotRun,
-  type OneShotRunSpec,
-} from '../pipeline/runs.js';
+import { announceOneShotRun, insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
 
 export { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
@@ -179,10 +175,9 @@ export async function listMasterSessionsForDevice(
         inArray(agentSessions.status, [...LIVE_SESSION_STATUSES]),
       ),
     );
-  return rows
-    .map((r) => ({
-      sessionId: r.id,
-      projectId: r.projectId,
-      name: String((r.metadata as { terminalName?: unknown } | null)?.terminalName ?? ''),
-    }));
+  return rows.map((r) => ({
+    sessionId: r.id,
+    projectId: r.projectId,
+    name: String((r.metadata as { terminalName?: unknown } | null)?.terminalName ?? ''),
+  }));
 }

@@ -15,10 +15,7 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
-import {
-  AGENT_SESSION_KIND_LIST,
-  isAgentSessionKind,
-} from '../jobs/session-kinds.js';
+import { AGENT_SESSION_KIND_LIST, isAgentSessionKind } from '../jobs/session-kinds.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -39,6 +36,7 @@ import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from 
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
+import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
@@ -341,19 +339,7 @@ agentSessionRoutes.get(
     }
 
     if (status) conditions.push(eq(agentSessions.status, status));
-    if (metadataType) {
-      // `metadataType` is the query parameter's name and stays, because clients
-      // send it; what it now filters is the `kind` column. An unrecognised value
-      // used to answer an empty page, which reads exactly like "no sessions" —
-      // so it is refused, naming what is valid (ISS-1136).
-      if (!isAgentSessionKind(metadataType)) {
-        throw badRequest(
-          `metadataType=${metadataType} names no session kind. A session's kind is one of: ${AGENT_SESSION_KIND_LIST}.`,
-        );
-      }
-      conditions.push(eq(agentSessions.kind, metadataType));
-    }
-
+    if (metadataType) conditions.push(eq(agentSessions.kind, kindFromQuery(metadataType, badRequest)));
     if (issueId) {
       conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
     }
@@ -459,17 +445,8 @@ agentSessionRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     assertProjectRole(access, 'member');
 
-    // A caller used to be able to declare its own species here, by putting a
-    // `type` in `metadata`. Species is core's now — it is a column, written by
-    // whichever of the five paths opened the row — so a caller sending one is
-    // refused by name rather than having it silently ignored, which would leave
-    // it believing a filter that no longer reads the key (ISS-1136).
     const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
-    if (clientMetadata && 'type' in clientMetadata) {
-      throw badRequest(
-        `metadata.type is not a caller's to set. A session's species is the \`kind\` column, written by core when it opens the row, and it is one of: ${AGENT_SESSION_KIND_LIST}. Send the rest of your metadata without \`type\`; a session opened here is a chat.`,
-      );
-    }
+    assertCallerDeclaresNoKind(clientMetadata, badRequest);
 
     // Chat bootstrap: an EMPTY session row. The first turn is dispatched later
     // through `POST /send` → the shared chat-turn dispatcher (which picks the

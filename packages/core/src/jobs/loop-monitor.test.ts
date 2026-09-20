@@ -238,7 +238,6 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
     expect(sweepWhereArgs.length).toBe(4);
     const [pass1, pass2, pass3, pass4] = sweepWhereArgs.map(sqlText);
 
-    // ISS-1136 — the species is a column now; the scoping rule is unchanged.
     expect(pass1).toMatch(/\bin\s+pipeline\s+pm\b/i);
     expect(pass2).toMatch(/\bin\s+pipeline\s+pm\b/i);
     expect(pass3).toMatch(/\bin\s+pipeline\s+pm\b/i);
@@ -246,8 +245,7 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
       pass4,
       "the no-client hop must see ONLY the kind that reports a `claude_session_id`. It used to say so by excluding the other four; it now names the one. A master is a tmux pane and matches this hop's every other predicate; it survives only on the daemon re-registering it, and a rate-limited box stretches that to 5 minutes against a 3-minute heartbeat — core then fails a healthy master, mints it a second session row, and the pane goes on claiming under an id core calls dead (ISS-933 criterion 21)",
     ).toMatch(/\bin\s+chat\b/i);
-    expect(pass4).not.toMatch(/\bmaster\b/);
-    expect(pass4).not.toMatch(/\brun_session\b/);
+    expect(pass4).not.toMatch(/\bmaster\b|\brun_session\b/);
     expect(pass4).toMatch(/IS\s+NULL/i);
     expect(pass1).not.toMatch(/\bchat\b/);
     expect(pass3).not.toMatch(/\bchat\b/);

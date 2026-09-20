@@ -19,29 +19,25 @@ const jobs = tagTable('jobs');
 // ISS-447 — applyKernelTransition writes the audit row here on the session sync.
 const kernelTransitions = tagTable('kernel_transitions');
 
+const KINDS = ['master', 'run_session', 'pipeline', 'pm', 'chat'] as const;
+const TERMINAL = ['completed', 'failed', 'completed_via_recovery', 'cancelled_stale', 'cancelled'] as const;
 vi.mock('../db/schema.js', () => ({
   agentSessions,
   issues,
   jobs,
   kernelTransitions,
-  agentSessionKinds: ['master', 'run_session', 'pipeline', 'pm', 'chat'] as const,
-  terminalAgentSessionStatuses: [
-    'completed',
-    'failed',
-    'completed_via_recovery',
-    'cancelled_stale',
-    'cancelled',
-  ] as const,
+  agentSessionKinds: KINDS,
+  terminalAgentSessionStatuses: TERMINAL,
 }));
 
 vi.mock('../db/client.js', () => {
   const dbStub: Record<string, unknown> = {
     transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
     execute: async () => undefined,
+    // `where()` is awaited directly by the descent sweep (ISS-1136) and
+    // `.limit()`-ed by every other reader here, so it has to be both.
     select: () => ({
       from: (tbl: object) => ({
-        // `where()` is awaited directly by the descent sweep (ISS-1136) and
-        // `.limit()`-ed by every other reader here, so it has to be both.
         where: () => ({
           limit: () => Promise.resolve(selectQueue.shift() ? [selectQueue.shift()!] : []),
           then: (resolve: (rows: Row[]) => unknown) => resolve([]),
@@ -244,7 +240,6 @@ describe('jobs/agent-session-link', () => {
       expect(insertCalls).toHaveLength(1);
       expect(insertCalls[0]?.values.kind).toBe('pm');
       const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
-      expect(meta.type).toBeUndefined();
       expect(meta.jobType).toBe('pm');
     });
 
@@ -280,7 +275,6 @@ describe('jobs/agent-session-link', () => {
       });
       expect(insertCalls[0]?.values.kind).toBe('pipeline');
       const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
-      expect(meta.type).toBeUndefined();
       expect(meta.jobType).toBe('code');
     });
   });

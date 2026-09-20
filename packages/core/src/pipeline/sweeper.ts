@@ -12,11 +12,7 @@ import {
 } from '../jobs/loop-monitor.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
-import {
-  CLIENT_SESSION_KINDS,
-  kindTuple,
-  PIPELINE_SESSION_KINDS,
-} from '../jobs/session-kinds.js';
+import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';

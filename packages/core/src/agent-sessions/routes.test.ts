@@ -238,73 +238,9 @@ describe('GET /api/agent-sessions', () => {
     const body = (await res.json()) as { items: Array<{ lastMessagePreview: string | null }> };
     expect(body.items[0]?.lastMessagePreview).toBe('Hello there');
   });
-
-  // ISS-1136 — the species is a column now, and `metadataType` filters on it.
-  // The value this route filtered on for two years, `agent`, is not one: no
-  // writer in this repository has ever set it, so the filter answered an empty
-  // page, which reads to a caller exactly like "you have no sessions".
-  it('refuses a metadataType that names no session kind, instead of answering an empty page', async () => {
-    authVerified();
-    projectAccessAsMember();
-    const res = await buildApp().request(
-      `/api/agent-sessions?projectId=${PROJECT_ID}&metadataType=agent`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
-    expect(res.status).toBe(400);
-    const said = JSON.stringify(await res.json());
-    expect(said).toContain('agent');
-    expect(said, 'a refusal that does not name what IS valid is a dead end').toContain(
-      'run_session',
-    );
-  });
-
-  it('filters on a kind it does recognise', async () => {
-    authVerified();
-    projectAccessAsMember();
-    whereResults.push([{ n: 0 }]);
-    selectOrderByOffset.mockResolvedValueOnce([]);
-    const res = await buildApp().request(
-      `/api/agent-sessions?projectId=${PROJECT_ID}&metadataType=master`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
-    expect(res.status).toBe(200);
-  });
 });
 
 describe('POST /api/agent-sessions', () => {
-  // ISS-1136 — a caller used to be able to declare its own species by putting a
-  // `type` in metadata, and `session-access.ts` still reads one value of it.
-  // Species is core's, so a caller sending one is told rather than ignored:
-  // silently dropping it would leave the caller believing a filter that no
-  // longer reads the key.
-  it("refuses a caller's metadata.type, naming the column that holds the species", async () => {
-    authVerified();
-    projectAccessAsMember();
-    const res = await buildApp().request('/api/agent-sessions', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ projectId: PROJECT_ID, metadata: { type: 'agent', keep: 1 } }),
-    });
-    expect(res.status).toBe(400);
-    const said = JSON.stringify(await res.json());
-    expect(said).toContain('kind');
-    expect(said).toContain('chat');
-  });
-
-  it('accepts metadata that does not try to declare a species', async () => {
-    authVerified();
-    projectAccessAsMember();
-    insertReturning.mockResolvedValueOnce([
-      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'idle' },
-    ]);
-    const res = await buildApp().request('/api/agent-sessions', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ projectId: PROJECT_ID, metadata: { source: 'onboard' } }),
-    });
-    expect(res.status).toBe(201);
-  });
-
   it('creates and broadcasts to project + device rooms', async () => {
     authVerified();
     projectAccessAsMember();

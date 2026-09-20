@@ -18,7 +18,10 @@ export const MASTER_SESSION_KIND: AgentSessionKind = 'master';
 export const RUN_SESSION_KIND: AgentSessionKind = 'run_session';
 
 /** Job-driven sessions: the ones a pipeline sweep is about. */
-export const PIPELINE_SESSION_KINDS = ['pipeline', 'pm'] as const satisfies readonly AgentSessionKind[];
+export const PIPELINE_SESSION_KINDS = [
+  'pipeline',
+  'pm',
+] as const satisfies readonly AgentSessionKind[];
 
 /** Everything that is NOT a person's conversation — the sweeps' "not a client" arm. */
 export const NON_CLIENT_SESSION_KINDS = [

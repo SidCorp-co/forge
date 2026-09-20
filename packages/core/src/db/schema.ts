@@ -21,6 +21,9 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
+import { agentSessionKinds } from './session-kind-vocabulary.js';
+
+export { type AgentSessionKind, agentSessionKinds } from './session-kind-vocabulary.js';
 import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
@@ -1952,24 +1955,6 @@ export const terminalAgentSessionStatuses = [
   'cancelled',
 ] as const satisfies readonly AgentSessionStatus[];
 
-/**
- * What species of session a row is — the fact five writers used to leave in a
- * jsonb key that two of them forgot.
- *
- * `pipeline` and `pm` are job-driven; `master` is a box's resident dispatcher;
- * `run_session` is one dispatch of work on a box; `chat` is everything a person
- * or a schedule starts by talking. A sixth species is one migration and one
- * entry here, and nothing else.
- */
-export const agentSessionKinds = [
-  'master',
-  'run_session',
-  'pipeline',
-  'pm',
-  'chat',
-] as const;
-export type AgentSessionKind = (typeof agentSessionKinds)[number];
-
 export const sessionRuntimeStates = [
   'starting',
   'working',
@@ -2005,8 +1990,7 @@ export const agentSessions = pgTable(
     usage: jsonb('usage'),
     metadata: jsonb('metadata'),
     kind: text('kind', { enum: agentSessionKinds }).notNull(),
-    /** The session that owns this one, as CORE issued it — never as a box
-     *  reported it. NULL is a root: a master, or a chat nobody forked. */
+    /** Who owns this session, as CORE issued it — never as a box reported it. */
     parentSessionId: uuid('parent_session_id'),
     diff: jsonb('diff'),
     pipelineControl: jsonb('pipeline_control').$type<
@@ -2038,12 +2022,13 @@ export const agentSessions = pgTable(
     pipelineRunIdx: index('agent_sessions_pipeline_run_idx').on(t.pipelineRunId),
     kindStatusIdx: index('agent_sessions_kind_status_idx').on(t.kind, t.status),
     // One live master per (device, project) was an intention held by a select
-    // that ran before an insert with nothing in between. This is what makes it
-    // a fact — `ensureMasterSession` still takes an advisory lock so the loser
-    // waits rather than raising.
+    // running before an insert. This makes it a fact; `ensureMasterSession`
+    // keeps an advisory lock so the loser waits rather than raising.
     oneLiveMasterUq: uniqueIndex('agent_sessions_one_live_master_uq')
       .on(t.deviceId, t.projectId)
-      .where(sql`kind = 'master' AND status NOT IN ('completed', 'failed', 'completed_via_recovery', 'cancelled_stale', 'cancelled')`),
+      .where(
+        sql`kind = 'master' AND status NOT IN ('completed', 'failed', 'completed_via_recovery', 'cancelled_stale', 'cancelled')`,
+      ),
     parentIdx: index('agent_sessions_parent_idx').on(t.parentSessionId),
     parentFk: foreignKey({
       columns: [t.parentSessionId],

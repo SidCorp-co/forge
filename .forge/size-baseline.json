@@ -34,7 +34,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/db/schema.ts": {
-      "fileLines": 3012,
+      "fileLines": 3033,
       "maxFunctionLines": 0
     },
     "packages/core/src/devices/routes.test.ts": {
