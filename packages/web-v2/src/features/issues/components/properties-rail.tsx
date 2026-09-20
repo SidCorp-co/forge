@@ -1,9 +1,10 @@
 "use client";
 
 // Issue-detail properties rail. Read + inline-edit of the core fields, plus a
-// cost rollup, merge date (no merge-commit SHA is stored — `mergedAt` is the
-// signal), the ISS-<seq> branch convention, and dependency edges (rendered as
-// clickable `ISS-X` badges linking to the related issue — ISS-331).
+// cost rollup, the merge mark (its date, and whether Forge observed the merge or
+// only recorded somebody's claim of it — ISS-1126), the ISS-<seq> branch
+// convention, and dependency edges (rendered as clickable `ISS-X` badges linking
+// to the related issue — ISS-331).
 
 import { Avatar, Badge, Button, MonoTag, Stat } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
@@ -56,6 +57,41 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <div className="min-w-0 text-right">{children}</div>
     </div>
   );
+}
+
+/**
+ * ISS-1126 — which kind of merge mark this is, beside the date.
+ *
+ * `mergedAt` alone reads as "shipped" whichever it is. An `asserted` mark means Forge holds no
+ * record of the merge and took somebody's word for it; an `observed` one carries the commit Forge
+ * read off its own record of the pull request. Shown apart from the date because a reader deciding
+ * whether the work is really out there is asking this question and not the other one.
+ *
+ * The kind is core's reading (`merge-record.ts`), never re-derived here. An older server that sends
+ * no `mergeMark` renders nothing rather than guessing.
+ */
+function MergeMarkBadge({
+  mark,
+  commitSha,
+}: {
+  mark?: "unmarked" | "asserted" | "observed";
+  commitSha?: string | null;
+}) {
+  if (mark === "observed") {
+    return (
+      <span title={`Forge observed this merge at ${commitSha ?? "a commit it recorded"}`}>
+        <Badge tone="green">observed</Badge>
+      </span>
+    );
+  }
+  if (mark === "asserted") {
+    return (
+      <span title="Forge holds no merged pull request for this issue — this mark is a claim it recorded, not a merge it witnessed">
+        <Badge tone="amber">claimed</Badge>
+      </span>
+    );
+  }
+  return null;
 }
 
 /** A relation section (Blocked by / Blocks / Parent / Subtasks / Duplicates /
@@ -228,6 +264,7 @@ export function PropertiesRail({
       <Row label="Merged">
         <div className="flex items-center justify-end gap-2">
           <span className="fg-body-sm font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
+          <MergeMarkBadge mark={issue.mergeMark} commitSha={issue.mergedCommitSha} />
           {canMarkMerged && (
             <MergeMarkerControl
               issueId={issue.id}

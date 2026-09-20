@@ -6,8 +6,6 @@ import { z } from 'zod';
 import { BodyInvalidError } from '../body/errors.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
-import type { BodyNode } from '../body/parse.js';
-import { bodyNodes } from '../body/prepare.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
@@ -19,7 +17,7 @@ import {
   projectMembers,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
+import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { logger } from '../logger.js';
@@ -30,6 +28,7 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
 import { CREATE_ENTRY_STATUSES, createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
+import { serializeIssue } from './detail-projection.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
   LabelResolutionError,
@@ -169,22 +168,6 @@ const sessionContextMoved = (err: SessionContextExpectMismatch) =>
       'Re-read it from `details.current`, decide whether your claim still stands, and send the write again with the new `expect`.',
     cause: { code: 'SESSION_CONTEXT_MISMATCH', details: { current: err.current } },
   });
-
-interface IssueBodyColumns {
-  description?: string | null;
-  descriptionFormat?: string | null;
-}
-
-function serializeIssue<T extends { issSeq: number } & IssueBodyColumns>(
-  row: T,
-  prefix: string | null,
-): T & { displayId: string; descriptionNodes: BodyNode[] | null } {
-  return {
-    ...row,
-    displayId: formatIssueRef(prefix, row.issSeq),
-    descriptionNodes: bodyNodes(row.description ?? '', row.descriptionFormat),
-  };
-}
 
 async function assertAssigneeIsMember(projectId: string, assigneeId: string): Promise<void> {
   const [row] = await db
