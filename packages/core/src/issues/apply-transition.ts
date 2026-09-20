@@ -17,6 +17,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { resolveAutonomousParkTarget } from './autonomous-park.js';
+import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
@@ -324,10 +325,16 @@ export async function transitionIssueStatus(
     viaReleasePath: options.viaReleasePath === true,
   });
   if (fromStatus === toStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
-      status: fromStatus,
-      requested: requestedStatus,
-    });
+    throw new TransitionError(
+      'NO_OP',
+      noOpSentence({
+        projectId: issue.projectId,
+        requested: requestedStatus,
+        parked: parkTarget,
+        final: toStatus,
+      }),
+      { status: fromStatus, requested: requestedStatus, substituted: toStatus },
+    );
   }
 
   const unrecorded = await refuseUnrecordedClose(issue.id, toStatus, actor, options);
