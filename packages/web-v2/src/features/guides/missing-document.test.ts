@@ -41,6 +41,16 @@ describe("slugFromGuidePath", () => {
     expect(slugFromGuidePath("/guides")).toBe("");
     expect(slugFromGuidePath(null)).toBe("");
   });
+
+  it("keeps the padding a page's route param would see, so neither trims what the other does not", () => {
+    expect(slugFromGuidePath("/guides/%20what-is-an-issue%20")).toBe(" what-is-an-issue ");
+    expect(GUIDE_SLUG.test(slugFromGuidePath("/guides/%20what-is-an-issue%20"))).toBe(false);
+  });
+
+  it("keeps a suffix that will not decode instead of throwing over it", () => {
+    expect(() => slugFromGuidePath("/guides/%ZZ")).not.toThrow();
+    expect(GUIDE_SLUG.test(slugFromGuidePath("/guides/%ZZ"))).toBe(false);
+  });
 });
 
 describe("GUIDE_SLUG", () => {
