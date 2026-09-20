@@ -16,7 +16,7 @@ vi.mock('../../src/pipeline/wedge.js', async (importOriginal) => ({
 }));
 
 /**
- * `reapOrphanedIssueRuns` covers every member of `RUN_CLOSING_STATUSES`.
+ * `reapOrphanedIssueRuns` covers every member of `ISSUE_TERMINAL_STATUSES`.
  *
  * The pass is the only backstop for `apply-transition.ts`'s close block, and it
  * filtered `i.status = 'closed'` while that set has been `{closed, dropped}` —
