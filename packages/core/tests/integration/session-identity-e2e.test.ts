@@ -443,7 +443,7 @@ describe('the backfill infers once and says so when it cannot', () => {
    */
   function inferenceStatements(): string[] {
     const file = fileURLToPath(
-      new URL('../../drizzle/migrations/0293_a_session_says_what_it_is.sql', import.meta.url),
+      new URL('../../drizzle/migrations/0295_a_session_says_what_it_is.sql', import.meta.url),
     );
     const all = readFileSync(file, 'utf8')
       .split('--> statement-breakpoint')

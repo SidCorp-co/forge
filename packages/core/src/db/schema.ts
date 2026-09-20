@@ -622,6 +622,8 @@ export const pipelineRuns = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     metadata: jsonb('metadata').notNull().default({}),
+    /** A release's version and its ship (ISS-1120); both NULL on every other kind of run. */
+    ...axes.releaseRunVersionColumns,
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -633,6 +635,7 @@ export const pipelineRuns = pgTable(
     issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
       .on(t.issueId)
       .where(sql`kind = 'issue' AND status IN ('running','paused')`),
+    ...axes.releaseRunIdentity(t),
   }),
 );
 
@@ -2474,8 +2477,6 @@ export const integrationDeliveries = pgTable(
   'integration_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // Connection/Binding model: the dispatch/read key after the ISS-399 cutover.
-    // The legacy project-integration link column was dropped by ISS-410 (epic F5).
     bindingId: uuid('binding_id').references(() => integrationBindings.id, {
       onDelete: 'cascade',
     }),
@@ -2495,8 +2496,7 @@ export const integrationDeliveries = pgTable(
       t.bindingId,
       sql`${t.createdAt} DESC`,
     ),
-    // Post-cutover idempotency key (mirrors requestIdUq on the legacy column):
-    // a dispatch keyed by (binding, requestId) is deduped at the DB level.
+    // A dispatch keyed by (binding, requestId) is deduped at the database.
     bindingRequestIdUq: uniqueIndex('integration_deliveries_binding_request_id_uq')
       .on(t.bindingId, t.requestId)
       .where(sql`request_id IS NOT NULL`),

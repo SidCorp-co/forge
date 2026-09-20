@@ -104,10 +104,14 @@ async function seed(opts: { probes?: boolean } = {}): Promise<World> {
     )}::jsonb)
   `);
   const runId = randomUUID();
+  // The version is part of the row the real path produces (ISS-1120): `createReleaseBatch` cuts it
+  // inside the transaction that inserts the release, and `finishReleaseBatch` refuses a release row
+  // without one before it reaches the method gate. A seed that left it NULL would be testing that
+  // refusal instead of this file's subject.
   await harness.db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, metadata)
+    INSERT INTO pipeline_runs (id, project_id, kind, status, metadata, release_version)
     VALUES (${runId}, ${project.id}, 'system', 'running',
-            ${JSON.stringify({ source: 'release-batch' })}::jsonb)
+            ${JSON.stringify({ source: 'release-batch' })}::jsonb, '0.1.0')
   `);
   return { projectId: project.id, userId: user.id, token: await signUserToken(user.id), runId };
 }

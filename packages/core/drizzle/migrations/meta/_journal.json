@@ -1928,10 +1928,17 @@
       "breakpoints": true
     },
     {
-      "idx": 293,
+      "idx": 294,
       "version": "7",
-      "when": 1808438400000,
-      "tag": "0293_a_session_says_what_it_is",
+      "when": 1808524800000,
+      "tag": "0294_release_cuts_a_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1808611200000,
+      "tag": "0295_a_session_says_what_it_is",
       "breakpoints": true
     }
   ]

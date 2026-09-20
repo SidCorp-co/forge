@@ -1,6 +1,6 @@
 {
-  "id": "41daf9b6-5e45-4475-a242-dc40d954fe8b",
-  "prevId": "816154a4-9920-40f3-a79b-c6a95f8b0720",
+  "id": "666761ea-dbc2-4f5e-9a42-ac10fd704dfe",
+  "prevId": "8f6e604b-819b-4016-b2b8-7eeb9214c517",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7798,6 +7798,18 @@
           "notNull": true,
           "default": "'{}'::jsonb"
         },
+        "release_version": {
+          "name": "release_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "release_released_at": {
+          "name": "release_released_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7901,6 +7913,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "pipeline_runs_release_version_uq": {
+          "name": "pipeline_runs_release_version_uq",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "release_version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "release_version IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -7934,7 +7968,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "pipeline_runs_release_version_chk": {
+          "name": "pipeline_runs_release_version_chk",
+          "value": "\"pipeline_runs\".\"release_version\" IS NULL OR \"pipeline_runs\".\"release_version\" ~ '^[0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}$'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.pm_config": {
