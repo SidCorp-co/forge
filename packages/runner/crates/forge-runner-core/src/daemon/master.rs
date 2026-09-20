@@ -869,18 +869,23 @@ async fn sweep(
         // running until the next pass. A pane it merely adopted is never ended
         // here: that one is somebody else's and ISS-933 took this daemon out of
         // the business of killing panes it did not start.
+        let mut standing_unknown = false;
         if matches!(pane, PaneState::ColdStarted | PaneState::Resumed) {
             // An unreadable standing withholds a placement but never withdraws
             // one: withholding places nothing, and withdrawing ends a pane
             // nobody may have stood down. The next sweep meets the same
-            // unreadable ledger at the gate above and withholds there.
+            // unreadable ledger at the gate above and withholds there. What it
+            // does forfeit is the nudge, below — driving a pane while unable to
+            // say whether the project is stood down is the fail-open this whole
+            // read exists to close, one step later.
             let since = match read_standing(ledger.as_ref(), &runner.project_id) {
                 StandingRead::Known(s) => s,
                 StandingRead::Unreadable(detail) => {
                     tracing::error!(
-                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end. If it was stood down, `tmux kill-session -t {pane_name}`.",
+                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end — and it is NOT being nudged either. If it was stood down, `tmux kill-session -t {pane_name}`.",
                         runner.slug
                     );
+                    standing_unknown = true;
                     None
                 }
             };
@@ -947,6 +952,10 @@ async fn sweep(
         }
 
         if pane == PaneState::StaleCapability {
+            continue;
+        }
+
+        if standing_unknown {
             continue;
         }
 
@@ -5281,6 +5290,33 @@ mod stand_down_tests {
         assert!(
             !branch[..branch.find("=> ").map_or(branch.len(), |i| i + 400)].contains("terminal::kill"),
             "ending a pane on a record this box could not read would take work nobody decided to end"
+        );
+    }
+
+    /// The remainder of F1, found by the recheck. Refusing to withdraw on an
+    /// unreadable record is right; going on to NUDGE the pane is the same
+    /// fail-open one step later — driving a master while unable to say whether
+    /// its project is stood down.
+    #[test]
+    fn a_pane_whose_standing_could_not_be_read_back_is_not_nudged_either() {
+        let body = sweep_body();
+        let sets = body
+            .find("standing_unknown = true;")
+            .expect("the unreadable read-back must mark what it could not establish");
+        let skips = body
+            .find("if standing_unknown {")
+            .expect("and something must act on that mark");
+        let nudges = body
+            .find("nudge_master(masters,")
+            .expect("the sweep still nudges");
+        assert!(
+            sets < skips && skips < nudges,
+            "the mark is set on the unreadable read-back and consumed before the nudge, or a pane is driven under a standing this box could not read"
+        );
+        let branch = &body[skips..nudges];
+        assert!(
+            branch.contains("continue;"),
+            "and it leaves the iteration rather than falling through: {branch}"
         );
     }
 
