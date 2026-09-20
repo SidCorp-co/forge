@@ -3139,11 +3139,16 @@ mod give_back_tests {
     }
 
     /// The reporting path's own source, bounded to it.
+    ///
+    /// The closing boundary is the function's own brace at column zero. It used
+    /// to be the next doc comment, which put this slice's end in prose: delete
+    /// or move a comment and the slice widens into the next function, silently
+    /// changing what every assertion below counts.
     fn reporting_path() -> &'static str {
         THIS_SOURCE
             .split("async fn report_account_limit(")
             .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
+            .and_then(|r| r.split("\n}").next())
             .expect("the reporting path is gone")
     }
 
@@ -3749,12 +3754,19 @@ mod unplaced_tests {
             .expect("sweep must be findable")
     }
 
+    /// `ensure_master`'s own source, bounded by its own closing brace.
+    ///
+    /// Not by the next `async fn`: the item after `ensure_master` is a plain
+    /// `fn`, so that token would widen this by two hundred lines. Not by the
+    /// next doc comment either — that put the boundary in prose, where a lint
+    /// pass free to delete comments can move it.
     fn ensure_master_body() -> &'static str {
-        production()
+        let rest = production()
             .split("\nasync fn ensure_master(")
             .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
-            .expect("ensure_master must be findable")
+            .expect("ensure_master must be findable");
+        let end = block_end(rest, 0).expect("ensure_master must close");
+        &rest[..end]
     }
 
     fn block_end(rest: &str, indent: usize) -> Option<usize> {
@@ -3791,6 +3803,26 @@ mod unplaced_tests {
         let rest = &body[start..];
         let end = block_end(rest, 12).expect("the session.created report must close");
         &rest[..end]
+    }
+
+    #[test]
+    fn ensure_masters_source_stops_at_its_own_closing_brace() {
+        let body = ensure_master_body();
+        for beyond in [
+            "async fn supervise(",
+            "async fn retire_if_idle(",
+            "async fn nudge_master(",
+            "async fn end_master(",
+        ] {
+            assert!(
+                !body.contains(beyond),
+                "`{beyond}` is a later function, and a slice carrying it lets one of its tokens satisfy an assertion written about `ensure_master`"
+            );
+        }
+        assert!(
+            body.contains("adopting the resident session"),
+            "the slice still has to carry the adopt branch it exists to measure"
+        );
     }
 
     fn issue(id: &str) -> AdmissibleIssue {
