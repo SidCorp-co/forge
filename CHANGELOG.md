@@ -3012,6 +3012,10 @@
   set is now 59.
 
 ### Fixed
+- **A migration written but never registered in the journal can no longer reach a deploy.** Drizzle
+  runs only what `meta/_journal.json` names, so such a file silently did nothing at all. The build
+  now refuses it by name.
+
 - **A decision put to your chat room can no longer be asked twice, or stop being retried in
   silence.** Attempts are counted by the record itself, so retries end where they should and
   somebody is told when delivery fails.
