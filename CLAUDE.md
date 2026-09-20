@@ -266,5 +266,5 @@ line number — a line number is stale the moment anything above it moves, and s
 | | |
 |---|---|
 | Every gate, its baseline, its origin | `scripts/README.md` |
-| Architecture, orphan hygiene, observability | `docs/architecture/` |
+| Architecture, the data plane, and where both are going | `docs/proposals/destination/` |
 | Per-domain deep detail | `docs/modules/<domain>/` |

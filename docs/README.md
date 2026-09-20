@@ -27,9 +27,9 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 | I want to | Go here |
 |-----------|---------|
 | Run Forge for the first time | [quickstart.md](quickstart.md) |
-| Understand the overall system | [architecture/](architecture/) |
-| Know which CLI is mine — I write skills, or I write the daemon | [architecture/agent-surface.md](architecture/agent-surface.md) |
-| Know which REST route replaces which MCP tool | [architecture/data-plane-surface.md](architecture/data-plane-surface.md) |
+| Understand the overall system | [proposals/destination/](proposals/destination/) |
+| Know which CLI is mine — I write skills, or I write the daemon | [proposals/destination/plugin-core.html](proposals/destination/plugin-core.html) |
+| Know which surface answers which question | [proposals/destination/one-question-one-answer.md](proposals/destination/one-question-one-answer.md) |
 | Know why a mechanism was decided this way | [decisions/](decisions/) |
 | Understand a specific feature | [modules/](modules/) — seven domains, mapped in its README |
 | Follow what happens across processes | [flows/](flows/index.html) — one diagram per flow, backfilled by the work that touches it |
@@ -41,7 +41,7 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 
 | Folder | Answers | Changes |
 |--------|---------|---------|
-| `architecture/` | What planes exist, what runs where, what carries data between them | Rarely — a new one means the system grew a plane or a transport |
+| `proposals/destination/` | What planes exist, what runs where, what carries data between them, and what the tree does instead | Each audit round; it carries its own coverage measurement |
 | `decisions/` | Why was this decided, and what invariant does it hold? | Append-only, one per decision; never edited, only superseded |
 | `integrations/` | How does external platform Y work with Forge? | When platform API changes |
 | `modules/` | How does feature Z work? Where does its data come from? | When feature changes |

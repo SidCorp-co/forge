@@ -52,5 +52,5 @@ The price of each way out, for whoever adopts it — not of the residual it clos
 | Doing nothing | Two enum actions on a live tool that refuse every caller, and ~90 lines of service code with no caller, both of which every future reader of `forge_project_pm` has to be told about. This file is that telling, and it is a cost that recurs. |
 
 Whoever takes one of these rewrites the `forge_project_pm` row in
-[`../architecture/data-plane-surface.md`](../architecture/data-plane-surface.md) and the
+[`destination/one-question-one-answer.md`](destination/one-question-one-answer.md) and the
 `assertPmActor` guard in `mcp/tools/project-authz.ts` in the same commit, and deletes this file.

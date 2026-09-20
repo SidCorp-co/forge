@@ -33,7 +33,7 @@ one thing in it that carries a version, and the place an agent can pick the wron
 
 <img src="docs/assets/plugin-core.svg" alt="forge-plugin and forge core: three callers with three credentials reach core - the agent session over MCP, the plugin’s own forge CLI over REST with a Bearer PAT and its own declared route table, and the forge-runner daemon over the device API. All nine CLI capability families carry the same names as core MCP tools, so the agent has two routes to the same data under one name. Of five contract items only pinnedRef carries a version, and it is set to null when two projects designate different SHAs, after which the box installs plugin HEAD." width="100%">
 
-The agent's surface and where it is going: [`docs/architecture/agent-surface.md`](docs/architecture/agent-surface.md).
+The agent's surface, the data plane and where both are going: [`docs/proposals/destination/`](docs/proposals/destination/) — one set, measured, with its own coverage stated.
 
 ## Quickstart
 
@@ -60,7 +60,7 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 ## Documentation
 
 [Vision](docs/VISION.md) · [Quickstart](docs/quickstart.md) ·
-[Architecture](docs/architecture/) · [Modules](docs/modules/) ·
+[Architecture](docs/proposals/destination/) · [Modules](docs/modules/) ·
 [RFCs](docs/rfcs/) · [Proposals](docs/proposals/) · [Changelog](CHANGELOG.md)
 
 ## Contributing

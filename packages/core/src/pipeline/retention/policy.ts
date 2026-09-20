@@ -60,7 +60,7 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     days: null,
     env: null,
     floorDays: 0,
-    why: 'Not swept. The MCP tool-deletion rule in docs/architecture/agent-surface.md reads a count over the whole table as a lifetime count, so a time window would silently license deleting a tool that is called quarterly. Ends when a per-tool lifetime aggregate exists that survives deletion.',
+    why: 'Not swept. The MCP tool-deletion rule in docs/proposals/destination/one-question-one-answer.md reads a count over the whole table as a lifetime count, so a time window would silently license deleting a tool that is called quarterly. Ends when a per-tool lifetime aggregate exists that survives deletion.',
   },
   {
     table: 'agent_session_turns',
