@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Markdown } from "@/design";
+import { Markdown, PageTitle } from "@/design";
 import { fetchGuide } from "@/features/guides/api";
 import { GuideShell } from "@/features/guides/components/guide-shell";
 
@@ -15,12 +15,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function GuidePage({ params }: Params) {
   const { slug } = await params;
-  // `fetchGuide` is `cache`d, so this reuses generateMetadata's lookup.
   const guide = await fetchGuide(slug);
   if (!guide) notFound();
   return (
     <GuideShell back>
-      <h1 className="fg-h2 text-fg">{guide.title}</h1>
+      <PageTitle className="fg-h2 text-fg">{guide.title}</PageTitle>
       <p className="fg-body-sm mt-1.5 mb-7 text-muted">{guide.summary}</p>
       <Markdown variant="prose">{guide.body}</Markdown>
     </GuideShell>

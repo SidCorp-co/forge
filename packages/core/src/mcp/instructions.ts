@@ -1,16 +1,11 @@
 import { env } from '../config/env.js';
 
-/** The public, credential-free address of the guide corpus, on the web host.
- *  Named in the MCP instruction block so an agent that holds nothing but this
- *  server learns the corpus exists and that it can read it without a token —
- *  the discovery gap ISS-1124 was filed for. */
+/** The public, credential-free address of the guide corpus, on the web host. */
 export function publicGuidesUrl(): string {
   return `${env.APP_BASE_URL.replace(/\/+$/, '')}/guides`;
 }
 
-/** Built per call rather than frozen at import: `env` is read lazily here so
- *  this module stays side-effect free, and a deploy that changes APP_BASE_URL
- *  changes what agents are told. */
+/** Built per call so `env` is read lazily and this module stays side-effect free. */
 export function forgeMcpInstructions(): string {
   return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. Prefer Forge MCP tools over guessing:
 

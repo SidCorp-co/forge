@@ -1,11 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { PageTitle } from "@/design";
 import { fetchGuideIndex } from "@/features/guides/api";
 import { GuideShell } from "@/features/guides/components/guide-shell";
 
-/** Rendered per request, never prerendered. The corpus lives in a separate
- *  process, and a build-time prerender would both bake a copy of the index into
- *  the image and fail the image build on any machine that cannot reach core. */
+/** Per request, never prerendered: a prerender bakes the index into the image
+ *  and fails the build wherever core is unreachable. */
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -17,7 +17,7 @@ export default async function GuidesIndexPage() {
   const guides = await fetchGuideIndex();
   return (
     <GuideShell>
-      <h1 className="fg-h2 mb-6 text-fg">Forge guides</h1>
+      <PageTitle className="fg-h2 mb-6 text-fg">Forge guides</PageTitle>
       <ul className="flex flex-col gap-1">
         {guides.map((guide) => (
           <li key={guide.slug}>

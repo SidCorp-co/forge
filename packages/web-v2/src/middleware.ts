@@ -1,23 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { missingGuideDocument } from "@/features/guides/missing-document";
-import { GUIDE_PATH_HEADER, isGuideSlug, slugFromGuidePath } from "@/features/guides/requested-path";
+import {
+  GUIDE_PATH_HEADER,
+  GUIDE_SLUG,
+  slugFromGuidePath,
+} from "@/features/guides/requested-path";
 import { operatorGate } from "@/features/operator/server/operator-gate";
 import { resolveServerApiBase } from "@/lib/utils/server-api-base";
 
 export const config = { matcher: ["/admin", "/admin/:path*", "/guides/:path*"] };
 
-/** Answers a `/guides/<slug>` that names no guide, and does nothing else on
- *  those routes — they are public and this pass gates nobody.
- *
- *  The refusal is here rather than in the page because `notFound()` raised in a
- *  dynamic route makes Next emit its bare error document and stream the
- *  not-found body as flight data: measured on the standalone server (ISS-1124),
- *  a reader without JavaScript got the 404 status and an empty <body>. This is
- *  the only layer that can set a status and a body together.
- *
- *  A client-side navigation is left alone. The router fetches the same URL with
- *  an `RSC` header and would choke on an HTML document; it also has JavaScript
- *  by definition, so the page's own `notFound()` and `not-found.tsx` serve it. */
+/** Answers a `/guides/<slug>` naming no guide, and gates nobody on those routes
+ *  — why it is here and not in the page: docs/modules/guides/public-pages.md. */
 async function guides(request: NextRequest, pathname: string): Promise<NextResponse> {
   const headers = new Headers(request.headers);
   headers.set(GUIDE_PATH_HEADER, pathname);
@@ -32,11 +26,7 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
       headers: { "content-type": "text/html; charset=utf-8" },
     });
 
-  // Anything the page's own fetcher would reject is refused here, before core is
-  // asked. Core answers 200 for `<slug>.md` — it strips the suffix — which would
-  // pass this gate and then be refused by the page, which is the blank body
-  // again. One test of what a slug is, read by both.
-  if (!isGuideSlug(slug)) return missing();
+  if (!GUIDE_SLUG.test(slug)) return missing();
 
   let status: number;
   try {

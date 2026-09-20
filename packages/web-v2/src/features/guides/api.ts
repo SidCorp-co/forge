@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { resolveServerApiBase } from "@/lib/utils/server-api-base";
-import { isGuideSlug } from "./requested-path";
+import { GUIDE_SLUG } from "./requested-path";
 
 /** One guide as the core registry defines it (`packages/core/src/guides/types.ts`).
  *  `body` is the guide markdown core serves. */
@@ -38,8 +38,7 @@ async function readJson(url: string, what: string): Promise<unknown> {
 }
 
 /** Every guide Forge publishes, in registry order. Throws by name when core is
- *  unreachable or answers wrongly: an empty index would read as "Forge has no
- *  guides", which is a different and false statement. */
+ *  unreachable: an empty index would read as "Forge has no guides". */
 export const fetchGuideIndex = cache(async (): Promise<GuideSummary[]> => {
   const url = `${resolveServerApiBase()}/guides`;
   const body = await readJson(url, "reading the guide index");
@@ -52,9 +51,8 @@ export const fetchGuideIndex = cache(async (): Promise<GuideSummary[]> => {
 
 /** One guide, or `null` when Forge publishes no guide under that slug. */
 export const fetchGuide = cache(async (slug: string): Promise<Guide | null> => {
-  // Refused here rather than sent on, so a crafted slug cannot reach a
-  // different core route. The same test gates the middleware's refusal.
-  if (!isGuideSlug(slug)) return null;
+  // Refused here, so a crafted slug cannot reach a different core route.
+  if (!GUIDE_SLUG.test(slug)) return null;
   const url = `${resolveServerApiBase()}/guides/${slug}`;
   const body = await readJson(url, `reading the guide '${slug}'`);
   if (body === null) return null;

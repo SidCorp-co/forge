@@ -2,8 +2,8 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
 import { env } from '../config/env.js';
+import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import {
@@ -112,9 +112,7 @@ orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
 
 guideRoutes.route('/orgs', orgGuideRoutes);
 
-/** The readable rendering of this same corpus, on the web host. Emitted beside
- *  the markdown pointers so a person who lands on a raw `.md` has somewhere to
- *  go, and an agent has an address to hand a person. */
+/** The readable rendering of this same corpus, on the web host. */
 function humanGuidesUrl(): string {
   return `${env.APP_BASE_URL.replace(/\/+$/, '')}/guides`;
 }

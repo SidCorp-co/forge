@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { missingGuideDocument } from "./missing-document";
-import { isGuideSlug, slugFromGuidePath } from "./requested-path";
+import { GUIDE_SLUG, slugFromGuidePath } from "./requested-path";
 
 describe("the HTML the middleware serves for an unknown guide", () => {
   it("names the slug that was asked for", () => {
@@ -43,17 +43,17 @@ describe("slugFromGuidePath", () => {
   });
 });
 
-describe("isGuideSlug", () => {
+describe("GUIDE_SLUG", () => {
   it("accepts a registry key", () => {
-    expect(isGuideSlug("what-is-an-issue")).toBe(true);
+    expect(GUIDE_SLUG.test("what-is-an-issue")).toBe(true);
   });
 
   it("refuses the .md form core answers 200 for, which the page would reject", () => {
-    expect(isGuideSlug("what-is-an-issue.md")).toBe(false);
+    expect(GUIDE_SLUG.test("what-is-an-issue.md")).toBe(false);
   });
 
   it("refuses a path and anything carrying markup", () => {
-    expect(isGuideSlug("../admin/whoami")).toBe(false);
-    expect(isGuideSlug("<img src=x>")).toBe(false);
+    expect(GUIDE_SLUG.test("../admin/whoami")).toBe(false);
+    expect(GUIDE_SLUG.test("<img src=x>")).toBe(false);
   });
 });
