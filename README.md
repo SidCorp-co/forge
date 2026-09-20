@@ -27,9 +27,11 @@ Three boundaries hold the shape:
 ### The plugin boundary, close up
 
 The driver skill, the `forge` CLI and the session hooks live in a second repository on its own
-clock. This is the surface they reach core through, and the one thing in it that carries a version:
+clock. The CLI is not `forge-runner` — it carries its own HTTP client and its own declared route
+table, and reaches REST with a Bearer PAT. This is the surface those three reach core through, the
+one thing in it that carries a version, and the place an agent can pick the wrong tool:
 
-<img src="docs/assets/plugin-core.svg" alt="forge-plugin and forge core: three callers (agent session over MCP, the forge CLI over REST with a PAT, and the forge-runner daemon over the device API) reach three surfaces; the two repos agree on five contract items of which only pinnedRef carries a version, and that pin is set to null when two projects designate different SHAs, so the box installs plugin HEAD." width="100%">
+<img src="docs/assets/plugin-core.svg" alt="forge-plugin and forge core: three callers with three credentials reach core - the agent session over MCP, the plugin’s own forge CLI over REST with a Bearer PAT and its own declared route table, and the forge-runner daemon over the device API. All nine CLI capability families carry the same names as core MCP tools, so the agent has two routes to the same data under one name. Of five contract items only pinnedRef carries a version, and it is set to null when two projects designate different SHAs, after which the box installs plugin HEAD." width="100%">
 
 The agent's surface and where it is going: [`docs/architecture/agent-surface.md`](docs/architecture/agent-surface.md).
 

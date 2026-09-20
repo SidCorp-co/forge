@@ -1,146 +1,142 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 660" width="1120" height="660" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 720" width="1120" height="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
   <defs>
     <marker id="p1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8250df"/></marker>
     <marker id="p2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1a7f37"/></marker>
-    <marker id="p3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#bc4c00"/></marker>
     <marker id="p4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#cf222e"/></marker>
   </defs>
 
-  <rect x="0" y="0" width="1120" height="660" rx="14" fill="#ffffff"/>
-  <rect x="0.5" y="0.5" width="1119" height="659" rx="14" fill="none" stroke="#d1d9e0"/>
+  <rect x="0" y="0" width="1120" height="720" rx="14" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="1119" height="719" rx="14" fill="none" stroke="#d1d9e0"/>
 
   <text x="34" y="36" fill="#1f2328" font-size="15" font-weight="700">forge-plugin ⇄ forge — two repositories, three callers, one contract</text>
-  <text x="34" y="55" fill="#8c959f" font-size="11.5">measured on main, 2026-09-20</text>
+  <text x="34" y="55" fill="#8c959f" font-size="11.5">measured on main and on the plugin checkout, 2026-09-20</text>
 
   <!-- ══ PLUGIN REPO ══ -->
-  <rect x="34" y="74" width="386" height="330" rx="10" fill="#faf7ff" stroke="#8250df" stroke-opacity=".45"/>
+  <rect x="34" y="74" width="410" height="356" rx="10" fill="#faf7ff" stroke="#8250df" stroke-opacity=".45"/>
   <text x="54" y="100" fill="#8250df" font-size="14.5" font-weight="700">SidCorp-co/forge-plugin</text>
   <text x="54" y="119" fill="#8c959f" font-size="11.5">separate repo · ships on a plugin push</text>
 
-  <rect x="54" y="134" width="346" height="58" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <rect x="54" y="134" width="370" height="52" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
   <text x="72" y="156" fill="#1f2328" font-size="13" font-weight="700">SKILL</text>
-  <text x="130" y="156" fill="#59636e" font-size="12.5">issue-flow</text>
-  <text x="72" y="175" fill="#8c959f" font-size="11.5">the method — how an issue becomes shipped code</text>
+  <text x="134" y="156" fill="#59636e" font-size="12.5">plugin/skills/issue-flow</text>
+  <text x="72" y="174" fill="#8c959f" font-size="11.5">the method — how an issue becomes shipped code</text>
 
-  <rect x="54" y="202" width="346" height="58" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="72" y="224" fill="#1f2328" font-size="13" font-weight="700">CLI</text>
-  <text x="130" y="224" fill="#59636e" font-size="12.5">bin/forge</text>
-  <text x="72" y="243" fill="#8c959f" font-size="11.5">the verbs an agent types</text>
+  <rect x="54" y="196" width="370" height="86" rx="7" fill="#ffffff" stroke="#8250df" stroke-opacity=".6"/>
+  <text x="72" y="218" fill="#1f2328" font-size="13" font-weight="700">CLI</text>
+  <text x="134" y="218" fill="#59636e" font-size="12.5">plugin/bin/forge</text>
+  <text x="72" y="238" fill="#8c959f" font-size="11.5">its OWN http client — plugin/src/tracker/rest.mjs</text>
+  <text x="72" y="256" fill="#8c959f" font-size="11.5">not forge-runner · Bearer PAT from `forge doctor`</text>
+  <text x="72" y="274" fill="#8250df" font-size="11.5">36 capabilities in 9 families, declared in routes.mjs</text>
 
-  <rect x="54" y="270" width="346" height="58" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="72" y="292" fill="#1f2328" font-size="13" font-weight="700">HOOKS</text>
-  <text x="130" y="292" fill="#59636e" font-size="12.5">session gates</text>
-  <text x="72" y="311" fill="#8c959f" font-size="11.5">fire inside the agent's own session</text>
+  <rect x="54" y="292" width="370" height="52" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="72" y="314" fill="#1f2328" font-size="13" font-weight="700">HOOKS</text>
+  <text x="134" y="314" fill="#59636e" font-size="12.5">session gates</text>
+  <text x="72" y="332" fill="#8c959f" font-size="11.5">fire inside the agent's own session</text>
 
-  <rect x="54" y="338" width="346" height="48" rx="7" fill="#fff8f0" stroke="#bc4c00" stroke-opacity=".5"/>
-  <text x="72" y="359" fill="#bc4c00" font-size="12" font-weight="700">owns HOW</text>
-  <text x="72" y="377" fill="#8c959f" font-size="11.5">method · phase meaning · verbs. Never core's status set.</text>
+  <rect x="54" y="354" width="370" height="56" rx="7" fill="#fff8f0" stroke="#bc4c00" stroke-opacity=".5"/>
+  <text x="72" y="376" fill="#bc4c00" font-size="12" font-weight="700">owns HOW</text>
+  <text x="72" y="394" fill="#8c959f" font-size="11.5">method · phase meaning · verbs.</text>
+  <text x="72" y="410" fill="#8c959f" font-size="11.5">Never core's status set.</text>
 
   <!-- ══ CORE ══ -->
-  <rect x="700" y="74" width="386" height="330" rx="10" fill="#f6f8fa" stroke="#0969da" stroke-opacity=".45"/>
-  <text x="720" y="100" fill="#0969da" font-size="14.5" font-weight="700">forge · control plane</text>
-  <text x="720" y="119" fill="#8c959f" font-size="11.5">packages/core — ships on a core deploy</text>
+  <rect x="676" y="74" width="410" height="356" rx="10" fill="#f6f8fa" stroke="#0969da" stroke-opacity=".45"/>
+  <text x="696" y="100" fill="#0969da" font-size="14.5" font-weight="700">forge · control plane</text>
+  <text x="696" y="119" fill="#8c959f" font-size="11.5">packages/core — ships on a core deploy</text>
 
-  <rect x="720" y="134" width="346" height="58" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="738" y="156" fill="#1f2328" font-size="13" font-weight="700">MCP</text>
-  <text x="790" y="156" fill="#59636e" font-size="12.5">/mcp</text>
-  <text x="852" y="156" fill="#8c959f" font-size="12.5">37 tools</text>
-  <text x="738" y="175" fill="#8c959f" font-size="11.5">holds no DB handle — true, guarded by nothing</text>
+  <rect x="696" y="134" width="370" height="52" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="714" y="156" fill="#1f2328" font-size="13" font-weight="700">MCP</text>
+  <text x="772" y="156" fill="#59636e" font-size="12.5">/mcp</text>
+  <text x="836" y="156" fill="#8c959f" font-size="12.5">37 tools</text>
+  <text x="714" y="174" fill="#8c959f" font-size="11.5">holds no DB handle — true, guarded by nothing</text>
 
-  <rect x="720" y="202" width="346" height="58" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="738" y="224" fill="#1f2328" font-size="13" font-weight="700">REST</text>
-  <text x="790" y="224" fill="#59636e" font-size="12.5">/api/*</text>
-  <text x="852" y="224" fill="#8c959f" font-size="12.5">130 mounts</text>
-  <text x="738" y="243" fill="#8c959f" font-size="11.5">the wide plane · the destination's single surface</text>
+  <rect x="696" y="196" width="370" height="52" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="714" y="218" fill="#1f2328" font-size="13" font-weight="700">REST</text>
+  <text x="772" y="218" fill="#59636e" font-size="12.5">/api/*</text>
+  <text x="836" y="218" fill="#8c959f" font-size="12.5">130 mounts</text>
+  <text x="714" y="236" fill="#8c959f" font-size="11.5">the wide plane · the destination's single surface</text>
 
-  <rect x="720" y="270" width="346" height="58" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="738" y="292" fill="#1f2328" font-size="13" font-weight="700">DEVICE</text>
-  <text x="800" y="292" fill="#59636e" font-size="12.5">/api/devices/me/*</text>
-  <text x="962" y="292" fill="#8c959f" font-size="12.5">23</text>
-  <text x="738" y="311" fill="#8c959f" font-size="11.5">pool · lease · phases · plugins · skills</text>
+  <rect x="696" y="258" width="370" height="52" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="714" y="280" fill="#1f2328" font-size="13" font-weight="700">DEVICE</text>
+  <text x="780" y="280" fill="#59636e" font-size="12.5">/api/devices/me/*</text>
+  <text x="946" y="280" fill="#8c959f" font-size="12.5">23</text>
+  <text x="714" y="298" fill="#8c959f" font-size="11.5">pool · lease · phases · plugins · skills</text>
 
-  <rect x="720" y="338" width="346" height="48" rx="7" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".5"/>
-  <text x="738" y="359" fill="#1a7f37" font-size="12" font-weight="700">owns WHAT IS TRUE</text>
-  <text x="738" y="377" fill="#8c959f" font-size="11.5">state · evidence · admission · policy version. Refuses by name.</text>
+  <rect x="696" y="322" width="370" height="56" rx="7" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".5"/>
+  <text x="714" y="344" fill="#1a7f37" font-size="12" font-weight="700">owns WHAT IS TRUE</text>
+  <text x="714" y="362" fill="#8c959f" font-size="11.5">state · evidence · admission · policy version.</text>
+  <text x="714" y="378" fill="#8c959f" font-size="11.5">Refuses by name.</text>
 
   <!-- ══ THREE CALLERS ══ -->
-  <rect x="440" y="74" width="240" height="330" rx="10" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="460" y="100" fill="#1f2328" font-size="13" font-weight="700">three callers</text>
-  <text x="460" y="118" fill="#8c959f" font-size="11">three credentials — the reason</text>
-  <text x="460" y="133" fill="#8c959f" font-size="11">a wrong tool is reachable at all</text>
+  <rect x="464" y="74" width="192" height="356" rx="10" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="482" y="100" fill="#1f2328" font-size="12.5" font-weight="700">three callers</text>
+  <text x="482" y="117" fill="#8c959f" font-size="10.5">three credentials — why a</text>
+  <text x="482" y="131" fill="#8c959f" font-size="10.5">wrong tool is reachable</text>
 
-  <rect x="460" y="146" width="200" height="66" rx="7" fill="#faf7ff" stroke="#8250df" stroke-opacity=".5"/>
-  <text x="476" y="167" fill="#8250df" font-size="12" font-weight="700">agent session</text>
-  <text x="476" y="185" fill="#8c959f" font-size="11">claude + plugin installed</text>
-  <text x="476" y="202" fill="#59636e" font-size="11">MCP · session or PAT</text>
+  <rect x="478" y="144" width="164" height="76" rx="7" fill="#faf7ff" stroke="#8250df" stroke-opacity=".5"/>
+  <text x="492" y="164" fill="#8250df" font-size="11.5" font-weight="700">agent session</text>
+  <text x="492" y="181" fill="#8c959f" font-size="10.5">claude, plugin installed</text>
+  <text x="492" y="198" fill="#59636e" font-size="10.5">MCP tool call</text>
+  <text x="492" y="213" fill="#8c959f" font-size="10.5">session or PAT</text>
 
-  <rect x="460" y="220" width="200" height="66" rx="7" fill="#faf7ff" stroke="#8250df" stroke-opacity=".5"/>
-  <text x="476" y="241" fill="#8250df" font-size="12" font-weight="700">forge CLI</text>
-  <text x="476" y="259" fill="#8c959f" font-size="11">via `forge-runner api`</text>
-  <text x="476" y="276" fill="#59636e" font-size="11">REST · $FORGE_PAT</text>
+  <rect x="478" y="230" width="164" height="76" rx="7" fill="#faf7ff" stroke="#8250df" stroke-opacity=".5"/>
+  <text x="492" y="250" fill="#8250df" font-size="11.5" font-weight="700">`forge` CLI</text>
+  <text x="492" y="267" fill="#8c959f" font-size="10.5">the SAME agent, shell</text>
+  <text x="492" y="284" fill="#59636e" font-size="10.5">REST · Bearer PAT</text>
+  <text x="492" y="299" fill="#8c959f" font-size="10.5">its own route table</text>
 
-  <rect x="460" y="294" width="200" height="66" rx="7" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".5"/>
-  <text x="476" y="315" fill="#1a7f37" font-size="12" font-weight="700">forge-runner</text>
-  <text x="476" y="333" fill="#8c959f" font-size="11">Rust daemon, your machine</text>
-  <text x="476" y="350" fill="#59636e" font-size="11">device token</text>
+  <rect x="478" y="316" width="164" height="76" rx="7" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".5"/>
+  <text x="492" y="336" fill="#1a7f37" font-size="11.5" font-weight="700">forge-runner</text>
+  <text x="492" y="353" fill="#8c959f" font-size="10.5">Rust daemon, your box</text>
+  <text x="492" y="370" fill="#59636e" font-size="10.5">device API</text>
+  <text x="492" y="385" fill="#8c959f" font-size="10.5">device token</text>
 
-  <path d="M404 179 L456 179" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
-  <path d="M404 247 L456 253" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
-  <path d="M664 179 L716 163" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
-  <path d="M664 253 L716 231" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
-  <path d="M664 327 L716 299" stroke="#1a7f37" stroke-width="1.6" marker-end="url(#p2)"/>
+  <path d="M428 176 L474 178" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
+  <path d="M428 250 L474 258" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
+  <path d="M646 178 L692 162" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
+  <path d="M646 258 L692 224" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
+  <path d="M646 350 L692 290" stroke="#1a7f37" stroke-width="1.6" marker-end="url(#p2)"/>
 
-  <!-- ══ CONTRACT ══ -->
-  <rect x="34" y="420" width="1052" height="106" rx="10" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="54" y="445" fill="#1f2328" font-size="13" font-weight="700">what the two repos agree on — five items, one carries a version</text>
+  <!-- ══ DEFECT 1 — NAME COLLISION ══ -->
+  <rect x="34" y="446" width="1052" height="98" rx="10" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".5"/>
+  <text x="54" y="471" fill="#cf222e" font-size="13" font-weight="700">the agent has two routes to the same data, under the same name</text>
+  <text x="54" y="492" fill="#8c959f" font-size="11.5">All 9 CLI capability families carry the identical name as a core MCP tool. There are no CLI-only names, and nothing says which is authoritative.</text>
 
-  <rect x="54" y="458" width="196" height="52" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".4"/>
-  <text x="68" y="478" fill="#1f2328" font-size="11.5" font-weight="700">skill name</text>
-  <text x="68" y="496" fill="#8c959f" font-size="10.5">a literal in core: 'issue-flow'</text>
+  <rect x="54" y="502" width="480" height="30" rx="6" fill="#ffffff" stroke="#8250df" stroke-opacity=".4"/>
+  <text x="68" y="522" fill="#8250df" font-size="11">CLI → REST&#160;&#160;&#160;forge_issues · forge_projects · forge_knowledge · forge_config</text>
 
-  <rect x="258" y="458" width="196" height="52" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".4"/>
-  <text x="272" y="478" fill="#1f2328" font-size="11.5" font-weight="700">five driver statuses</text>
-  <text x="272" y="496" fill="#8c959f" font-size="10.5">open in_progress needs_info</text>
+  <rect x="546" y="502" width="520" height="30" rx="6" fill="#ffffff" stroke="#0969da" stroke-opacity=".4"/>
+  <text x="560" y="522" fill="#0969da" font-size="11">MCP → /mcp&#160;&#160;&#160;forge_project_pm · forge_comments · forge_guide · forge_memory · forge_uploads</text>
 
-  <rect x="462" y="458" width="196" height="52" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".4"/>
-  <text x="476" y="478" fill="#1f2328" font-size="11.5" font-weight="700">phase endpoints</text>
-  <text x="476" y="496" fill="#8c959f" font-size="10.5">/phases · /end · /resume-point</text>
+  <!-- ══ DEFECT 2 — THE PIN ══ -->
+  <rect x="34" y="558" width="1052" height="140" rx="10" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="54" y="583" fill="#1f2328" font-size="13" font-weight="700">five contract items · one carries a version · and it is dropped in the one case it is load-bearing</text>
 
-  <rect x="666" y="458" width="196" height="52" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".4"/>
-  <text x="680" y="478" fill="#1f2328" font-size="11.5" font-weight="700">37 MCP tools</text>
-  <text x="680" y="496" fill="#8c959f" font-size="10.5">a removed tool surfaces at call time</text>
+  <rect x="54" y="596" width="150" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".35"/>
+  <text x="66" y="613" fill="#1f2328" font-size="10.5" font-weight="700">skill name</text>
+  <text x="66" y="628" fill="#8c959f" font-size="10">a literal in core</text>
 
-  <rect x="870" y="458" width="196" height="52" rx="6" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".6"/>
-  <text x="884" y="478" fill="#1a7f37" font-size="11.5" font-weight="700">pinnedRef ✓</text>
-  <text x="884" y="496" fill="#8c959f" font-size="10.5">a commit SHA — the only version</text>
+  <rect x="212" y="596" width="150" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".35"/>
+  <text x="224" y="613" fill="#1f2328" font-size="10.5" font-weight="700">5 driver statuses</text>
+  <text x="224" y="628" fill="#8c959f" font-size="10">no version</text>
 
-  <!-- ══ THE PIN DEFECT ══ -->
-  <rect x="34" y="540" width="1052" height="100" rx="10" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".5"/>
-  <text x="54" y="565" fill="#cf222e" font-size="13" font-weight="700">and the one version is dropped in the one case it is load-bearing</text>
+  <rect x="370" y="596" width="150" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".35"/>
+  <text x="382" y="613" fill="#1f2328" font-size="10.5" font-weight="700">3 phase endpoints</text>
+  <text x="382" y="628" fill="#8c959f" font-size="10">no version</text>
 
-  <rect x="54" y="578" width="150" height="46" rx="6" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="68" y="598" fill="#1f2328" font-size="11.5">project A</text>
-  <text x="68" y="614" fill="#1a7f37" font-size="10.5">pinnedRef a1b2c3</text>
+  <rect x="528" y="596" width="196" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".35"/>
+  <text x="540" y="613" fill="#1f2328" font-size="10.5" font-weight="700">the data surface</text>
+  <text x="540" y="628" fill="#8c959f" font-size="10">declared plugin-side only, never compared</text>
 
-  <rect x="212" y="578" width="150" height="46" rx="6" fill="#ffffff" stroke="#d1d9e0"/>
-  <text x="226" y="598" fill="#1f2328" font-size="11.5">project B</text>
-  <text x="226" y="614" fill="#1a7f37" font-size="10.5">pinnedRef d4e5f6</text>
+  <rect x="732" y="596" width="150" height="40" rx="6" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".6"/>
+  <text x="744" y="613" fill="#1a7f37" font-size="10.5" font-weight="700">pinnedRef ✓</text>
+  <text x="744" y="628" fill="#8c959f" font-size="10">a commit SHA</text>
 
-  <path d="M368 601 L414 601" stroke="#8c959f" stroke-width="1.5" marker-end="url(#p4)"/>
+  <path d="M886 616 L916 616" stroke="#cf222e" stroke-width="1.5" marker-end="url(#p4)"/>
+  <rect x="922" y="596" width="144" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".6"/>
+  <text x="934" y="613" fill="#cf222e" font-size="10.5" font-weight="700">nulled on conflict</text>
+  <text x="934" y="628" fill="#8c959f" font-size="10">box then runs HEAD</text>
 
-  <rect x="420" y="578" width="196" height="46" rx="6" fill="#ffffff" stroke="#bc4c00" stroke-opacity=".5"/>
-  <text x="434" y="598" fill="#bc4c00" font-size="11.5" font-weight="700">union, per DEVICE</text>
-  <text x="434" y="614" fill="#8c959f" font-size="10.5">designated per project, installed per box</text>
-
-  <path d="M622 601 L668 601" stroke="#cf222e" stroke-width="1.6" marker-end="url(#p4)"/>
-
-  <rect x="674" y="578" width="186" height="46" rx="6" fill="#ffffff" stroke="#cf222e" stroke-opacity=".6"/>
-  <text x="688" y="598" fill="#cf222e" font-size="11.5" font-weight="700">pinnedRef := null</text>
-  <text x="688" y="614" fill="#8c959f" font-size="10.5">the SHAs move to a side field</text>
-
-  <path d="M866 601 L912 601" stroke="#cf222e" stroke-width="1.6" marker-end="url(#p4)"/>
-
-  <rect x="918" y="578" width="148" height="46" rx="6" fill="#ffffff" stroke="#cf222e" stroke-opacity=".6"/>
-  <text x="932" y="598" fill="#cf222e" font-size="11.5" font-weight="700">box runs HEAD</text>
-  <text x="932" y="614" fill="#8c959f" font-size="10.5">daemon warns, proceeds</text>
+  <rect x="54" y="648" width="1012" height="36" rx="6" fill="#f6f8fa" stroke="#d1d9e0"/>
+  <text x="68" y="663" fill="#8c959f" font-size="10.5">pinnedRef is designated per PROJECT and installed per DEVICE. Two projects naming different SHAs merge to null — the SHAs move to a side field, the</text>
+  <text x="68" y="677" fill="#8c959f" font-size="10.5">daemon logs a warning and installs plugin HEAD. A stated disagreement becomes an unstated one, in the only situation where the pin was doing work.</text>
 </svg>
