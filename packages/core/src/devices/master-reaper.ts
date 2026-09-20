@@ -22,6 +22,12 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
  * "Owns" is the immediate edge, not the whole subtree. A master's children are
  * the runs it started; a chat forked under one of those is somebody reading, and
  * it is not evidence that this box is still dispatching.
+ *
+ * A child counts only once it has REPORTED — `last_heartbeat_at` or
+ * `started_at`, with no fall back to `created_at`. `prepareClaimedJob` mints a
+ * queued child the instant a job is prepared, so reading creation time as life
+ * would let a master that prepared one job and died immediately keep its hold
+ * for the whole window on the strength of a row that never ran.
  */
 export async function reapSilentMasters(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
@@ -36,7 +42,7 @@ export async function reapSilentMasters(): Promise<number> {
         SELECT 1 FROM agent_sessions c
         WHERE c.parent_session_id = s.id
           AND c.status NOT IN (${TERMINAL})
-          AND COALESCE(c.last_heartbeat_at, c.started_at, c.created_at)
+          AND COALESCE(c.last_heartbeat_at, c.started_at)
               >= now() - make_interval(secs => ${staleSeconds})
       )
   `)) as unknown as Array<Record<string, unknown>>;
@@ -109,7 +115,7 @@ export async function reapDeadMasterHolds(): Promise<number> {
               SELECT 1 FROM agent_sessions c
               WHERE c.parent_session_id = s.id
                 AND c.status NOT IN (${TERMINAL})
-                AND COALESCE(c.last_heartbeat_at, c.started_at, c.created_at)
+                AND COALESCE(c.last_heartbeat_at, c.started_at)
                     >= now() - make_interval(secs => ${staleSeconds})
             )
           )
