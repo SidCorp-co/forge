@@ -562,6 +562,15 @@ migration that cannot enumerate the open branches is exit 2**, naming the migrat
 cannot see the set has proved nothing, and a pass there would be the silent substitution the whole
 gate is about.
 
+**A branch git cannot read is an unknown, and an unknown is not an absence.** A branch carrying no
+journal carries no migration and is nothing to order against, so it is passed over — but that
+absence is established POSITIVELY, by listing the ref's tree. Probing the path with `git cat-file
+-e` instead answers non-zero for "not in this tree" and for "git could not inspect the object"
+alike, and reading that one number as absence drops the branch from the measured set and exits 0 on
+a merge order derived from what was left. A tree that will not list, and a journal that lists and
+will not read, are each exit 2 naming the ref. The reds for it are planted against the object store
+rather than the parser, because the parser is a different failure with the same exit code.
+
 ### What it cannot catch
 
 Two, and they are the same shape: the check runs before the merge, and the merge decides.
