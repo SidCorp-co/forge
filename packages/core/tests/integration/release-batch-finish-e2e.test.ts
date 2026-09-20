@@ -26,7 +26,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
 
 describe('release batch finish E2E', () => {
   let harness: TestDatabase;
@@ -68,21 +68,38 @@ describe('release batch finish E2E', () => {
       await seedReleaseRunner();
     });
 
-    it('closes every claimed issue out of the gate status and stamps merged_at', async () => {
+    it('closes every claimed issue out of the gate status, on the claim it already carried', async () => {
       const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();
       const b = await insertIssue();
+      const before = await Promise.all([stored(a), stored(b)]);
       const { runId } = await claim([a, b]);
 
       const result = await finishReleaseBatch(runId, actor());
 
       expect(result.closed.sort()).toEqual([a, b].sort());
       expect(result.failed).toEqual([]);
-      for (const id of [a, b]) {
+      for (const [i, id] of [a, b].entries()) {
         const after = await stored(id);
         expect(after.status).toBe('closed');
-        expect(after.mergedAt).not.toBeNull();
+        // ISS-1108 — the close writes no stamp of its own, so the claim is the
+        // one the merge mark made, to the microsecond.
+        expect(after.mergedAt).toEqual(before[i]?.mergedAt);
       }
+    });
+
+    it('refuses to close a roster issue that cannot show it shipped, and names it', async () => {
+      const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+      const unshipped = await insertIssue('awaiting_release', SKIP_NOTE, false);
+      const { runId } = await claim([unshipped]);
+
+      const result = await finishReleaseBatch(runId, actor());
+
+      expect(result.closed).toEqual([]);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0]?.id).toBe(unshipped);
+      expect(result.failed[0]?.reason).toContain('CLOSE_REQUIRES_SHIPPED');
+      expect((await stored(unshipped)).status).not.toBe('closed');
     });
 
     it('marks every claimed issue `releasing`, so a batch in flight is readable from the status', async () => {
@@ -101,6 +118,7 @@ describe('release batch finish E2E', () => {
     it('returns an aborted batch that never promoted to the project’s release gate', async () => {
       const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();
+      const before = await stored(a);
       const { runId } = await claim([a]);
       expect((await stored(a)).status).toBe('releasing');
 
@@ -114,7 +132,10 @@ describe('release batch finish E2E', () => {
       const after = await stored(a);
       expect(after.status).toBe('awaiting_release');
       expect(after.claim).toBeNull();
-      expect(after.mergedAt).toBeNull();
+      // ISS-1108 — the stamp is the merge mark's and no longer says anything about
+      // whether this batch closed anything; the STATUS above is what says that. What
+      // is still worth pinning is that an abort neither writes one nor clears one.
+      expect(after.mergedAt).toEqual(before.mergedAt);
     });
 
     it('releases the claim on every issue it touched', async () => {
@@ -142,6 +163,10 @@ describe('release batch finish E2E', () => {
       );
       const a = await insertIssue();
       const b = await insertIssue();
+      const before = new Map([
+        [a, (await stored(a)).mergedAt],
+        [b, (await stored(b)).mergedAt],
+      ]);
       const { runId } = await claim([a, b]);
 
       const err = await finishReleaseBatch(runId, actor()).catch((e: unknown) => e);
@@ -151,7 +176,7 @@ describe('release batch finish E2E', () => {
       for (const id of [a, b]) {
         const after = await stored(id);
         expect(after.status).toBe('releasing');
-        expect(after.mergedAt).toBeNull();
+        expect(after.mergedAt).toEqual(before.get(id));
         expect(after.claim).toBe(runId);
       }
     });
@@ -161,7 +186,7 @@ describe('release batch finish E2E', () => {
       const a = await insertIssue();
       const { runId } = await claim([a]);
       await harness.db.execute(sql`
-        UPDATE issues SET status = 'closed' WHERE id = ${a}
+        UPDATE issues SET status = 'closed', merged_at = COALESCE(merged_at, now()) WHERE id = ${a}
       `);
 
       const result = await finishReleaseBatch(runId, actor());
@@ -181,6 +206,10 @@ describe('release batch finish E2E', () => {
       const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();
       const b = await insertIssue();
+      const before = new Map([
+        [a, (await stored(a)).mergedAt],
+        [b, (await stored(b)).mergedAt],
+      ]);
       const { runId } = await claim([a, b]);
 
       const released = await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
@@ -190,7 +219,7 @@ describe('release batch finish E2E', () => {
         const after = await stored(id);
         expect(after.status).toBe('awaiting_release');
         expect(after.claim).toBeNull();
-        expect(after.mergedAt).toBeNull();
+        expect(after.mergedAt).toEqual(before.get(id));
         expect(await commentCount(id)).toBe(1);
       }
     });

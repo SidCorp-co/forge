@@ -224,6 +224,22 @@ describe('who may still write `closed`', () => {
     // can make a declared non-releasing project release.
     expect(listBindings).not.toHaveBeenCalled();
   });
+
+  /**
+   * ISS-1108 — the close used to post an audit comment telling the reader to run
+   * `unmark` if the code had never landed, because it had just stamped `merged_at`
+   * on their behalf. It stamps nothing now, so there is nothing to withdraw and no
+   * comment to write. A close that lands must be silent, or the instruction
+   * outlives the stamp that made it necessary.
+   */
+  it('and a close that lands writes no audit comment at all', async () => {
+    ungated();
+    queueUpdate('closed');
+
+    await transitionIssueStatus(AT_WORK, 'closed', HUMAN);
+
+    expect(insertValues).not.toHaveBeenCalled();
+  });
 });
 
 describe('a project that declares a release it cannot land', () => {

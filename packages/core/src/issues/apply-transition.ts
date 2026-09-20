@@ -14,7 +14,6 @@ import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipeline/state-machine.js';
-import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
@@ -266,12 +265,12 @@ async function explainDraftRace(
  * THE issue state-machine writer. Every surface — REST `/transition`,
  * REST `PATCH /batch`, MCP `forge_issues`, orchestrator soft-skip,
  * reconciler, finalize-failure — routes through here so
- * guard semantics, the conditional UPDATE, `merged_at` stamping, WS
- * broadcast, pipeline-health refresh and run close cannot drift apart.
+ * guard semantics, the conditional UPDATE, the shipped-work rule on `closed`,
+ * WS broadcast, pipeline-health refresh and run close cannot drift apart.
  *
  * Throws `TransitionError` (NO_OP / ILLEGAL_TRANSITION /
- * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED); callers map it
- * onto their own error surface.
+ * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED /
+ * CLOSE_REQUIRES_SHIPPED); callers map it onto their own error surface.
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
@@ -371,7 +370,7 @@ export async function transitionIssueStatus(
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-        body: `Held at the release gate — merged, not shipped. \`merged_at\` is stamped, so every \`blocks\`-dependent can dispatch now; the issue closes when a release ships it.`,
+        body: `Held at the release gate — merged, not shipped. Every \`blocks\`-dependent can dispatch now, because a dependent is held by this issue's STATUS and \`awaiting_release\` is one that releases it; nothing here writes \`merged_at\`. The issue closes when a release ships it, and that close is refused until the shipped-work claim is on the row — \`forge_issues\` \`mark_merged\` naming where it landed.`,
         parentId: null,
       });
     } catch (err) {
@@ -475,6 +474,13 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         executor: tx,
       });
       if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);
+      // The shipped-work rule is judged on the status the issue LANDS at and asked before the
+      // UPDATE: a close diverted to the release gate lands at `awaiting_release` and is not a
+      // close, and a refusal raised after the conditional UPDATE is indistinguishable from the
+      // lost race that UPDATE reports, which answers `STALE_TRANSITION` instead of naming the rule.
+      const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
+      if (unshipped)
+        throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
       // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
       const result = await withActorContext(
         tx,
@@ -508,16 +514,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
               source: 'issues',
             },
           ]);
-          const unshipped = await refuseUnshippedClose(t, {
-            issueId: issue.id,
-            toStatus: requestedStatus,
-          });
-          if (unshipped)
-            throw new TransitionError(
-              'CLOSE_REQUIRES_SHIPPED',
-              unshipped.detail,
-              unshipped.details,
-            );
           const unblockedDependents =
             toStatus === 'dropped'
               ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id)

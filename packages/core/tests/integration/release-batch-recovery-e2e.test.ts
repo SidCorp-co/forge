@@ -88,6 +88,10 @@ describe('a release batch that ends without an outcome', () => {
     const { HooksBus } = await import('../../src/pipeline/hooks.js');
     const a = await insertIssue();
     const b = await insertIssue();
+    const before = new Map([
+      [a, (await stored(a)).mergedAt],
+      [b, (await stored(b)).mergedAt],
+    ]);
     const { runId } = await claim([a, b]);
     expect((await stored(a)).status).toBe('releasing');
 
@@ -108,7 +112,10 @@ describe('a release batch that ends without an outcome', () => {
       const after = await stored(id);
       expect(after.status).toBe('awaiting_release');
       expect(after.claim).toBeNull();
-      expect(after.mergedAt).toBeNull();
+      // ISS-1108 — the stamp is the merge mark's and says nothing about whether a
+      // batch closed anything; the STATUS above carries that. What is still worth
+      // pinning is that a rescue neither writes a stamp nor clears one.
+      expect(after.mergedAt).toEqual(before.get(id));
     }
   });
 
@@ -118,6 +125,7 @@ describe('a release batch that ends without an outcome', () => {
     );
     const a = await insertIssue();
     const b = await insertIssue();
+    const before = (await stored(b)).mergedAt;
     await claim([a]);
 
     await expect(
@@ -127,7 +135,7 @@ describe('a release batch that ends without an outcome', () => {
     const after = await stored(b);
     expect(after.status).toBe('awaiting_release');
     expect(after.claim).toBeNull();
-    expect(after.mergedAt).toBeNull();
+    expect(after.mergedAt).toEqual(before);
   });
 });
 

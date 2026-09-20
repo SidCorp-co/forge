@@ -84,10 +84,11 @@ describe('ISS-164 pipelineHealth E2E', () => {
     const status = overrides.status ?? 'open';
     const issSeq = overrides.issSeq ?? Math.floor(Math.random() * 100000);
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, merged_at)
       VALUES (
         ${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, ${status}, 'medium',
-        (SELECT created_by FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId}),
+        CASE WHEN ${status} = 'closed' THEN now() END
       )
     `);
     return id;
@@ -223,7 +224,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(map.get(child)?.waitingOn).toBeUndefined();
   });
 
-  it('does not report a closed-but-unmerged blocker as a wait either', async () => {
+  it('does not report a closed blocker as a wait either', async () => {
     const { project } = await seedProject();
     const blocker = await insertIssue(project.id, { status: 'closed' });
     const child = await insertIssue(project.id);

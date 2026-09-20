@@ -45,17 +45,18 @@ function stripComments(src: string): string {
 
 const lineOf = (text: string, index: number): number => text.slice(0, index).split('\n').length;
 
-export interface StatusWrite {
+interface StatusWrite {
   file: string;
   line: number;
   how: string;
 }
 
 /**
- * Exported so the fixture below can measure the same function the scan runs,
- * rather than a copy of it that can drift.
+ * The scan itself. The planted cases below measure this same function rather
+ * than a copy of it, so a scan that stops catching a write fails here before it
+ * fails as a silent green over the tree.
  */
-export function statusWritesIn(rel: string, source: string): StatusWrite[] {
+function statusWritesIn(rel: string, source: string): StatusWrite[] {
   const text = stripComments(source);
   const found: StatusWrite[] = [];
 
@@ -110,7 +111,11 @@ describe('one writer of issues.status (ISS-1107)', () => {
       "await db.update(issues).set({ status: 'closed' }).where(eq(issues.id, id));",
     ],
     ['a multi-column set', 'await tx.update(issues).set({ updatedAt: now, status: s }).where(w);'],
-    ['raw SQL', "await db.execute(sql`update issues set status = 'closed' where id = ${id}`);"],
+    [
+      'raw SQL',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: a planted source line, not a string this test interpolates — the scan is what reads it
+      "await db.execute(sql`update issues set status = 'closed' where id = ${id}`);",
+    ],
   ])('catches %s', (_name, planted) => {
     expect(statusWritesIn('planted.ts', planted)).toHaveLength(1);
   });
@@ -121,6 +126,7 @@ describe('one writer of issues.status (ISS-1107)', () => {
     ['a comment quoting one', "// await db.update(issues).set({ status: 'closed' })"],
     [
       'status read in a WHERE beside another column being set',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: a planted source line, not a string this test interpolates — the scan is what reads it
       'await db.execute(sql`UPDATE issues SET release_batch_run_id = ${r} WHERE status = ${g}`);',
     ],
   ])('does not catch %s', (_name, planted) => {

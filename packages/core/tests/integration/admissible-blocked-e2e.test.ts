@@ -81,8 +81,9 @@ beforeEach(async () => {
 async function issue(seq: number, status = 'open'): Promise<string> {
   const id = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${userId})
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
+    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${userId},
+            CASE WHEN ${status} = 'closed' THEN now() END)
   `);
   return id;
 }

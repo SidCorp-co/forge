@@ -84,9 +84,10 @@ describe('GET /api/projects/:id/issues — the `key` filter (ISS-991)', () => {
     status?: string;
   }) {
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
       VALUES (${randomUUID()}, ${args.projectId}, ${args.issSeq}, ${args.title},
-              ${args.status ?? 'open'}, ${args.createdById})
+              ${args.status ?? 'open'}, ${args.createdById},
+              CASE WHEN ${args.status ?? 'open'} = 'closed' THEN now() END)
     `);
   }
 

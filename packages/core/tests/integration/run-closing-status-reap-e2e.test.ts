@@ -66,8 +66,9 @@ describe('reapOrphanedIssueRuns status coverage E2E (ISS-879)', () => {
   async function runUnderIssueAt(status: string): Promise<string> {
     const issueId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
-      VALUES (${issueId}, ${projectId}, ${s++}, 'terminal issue', ${status}, 'medium', ${ownerId})
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, merged_at)
+      VALUES (${issueId}, ${projectId}, ${s++}, 'terminal issue', ${status}, 'medium', ${ownerId},
+              CASE WHEN ${status} = 'closed' THEN now() END)
     `);
     const runId = randomUUID();
     await harness.db.execute(sql`
