@@ -389,6 +389,39 @@ describe('a pull request the agent face opened', () => {
    * unordered — it lands ON TOP of a merged row and takes the merge commit with it. Which is why
    * the timestamp is refused by name at the door rather than ordered against inside the statement.
    */
+  /**
+   * The tie, which carrying the timestamp does NOT close.
+   *
+   * `updated_at` has second resolution, so a change landing in the same second the request was
+   * opened produces a delivery whose timestamp equals the creation answer's. The delivery rule
+   * wins on `>=`, deliberately, so a redelivery of one event still lands — and under that rule a
+   * creation write arriving late would take a merged row on the strength of the tie alone. The
+   * creation rule keeps the stored row instead: nothing a creation answer meets is older than it.
+   */
+  it('keeps a merged row against a creation answer whose updated_at ties it exactly', async () => {
+    const SAME = '2026-09-18T04:00:00Z';
+    await g.mods.applyPullRequestEvent(
+      g.ctx(),
+      g.prEvent({
+        state: 'closed',
+        merged: true,
+        merged_at: SAME,
+        merge_commit_sha: 'e'.repeat(40),
+        head: { ref: 'ISS-4242-projection', sha: H2 },
+        updated_at: SAME,
+      }),
+    );
+
+    const result = await project({ updatedAt: SAME });
+
+    expect(result.outcome).toBe('superseded');
+    expect(await g.row()).toMatchObject({
+      state: 'merged',
+      head_sha: H2,
+      merge_commit_sha: 'e'.repeat(40),
+    });
+  });
+
   it('refuses a creation answer with no updated_at, which would erase a merged row', async () => {
     await g.mods.applyPullRequestEvent(
       g.ctx(),

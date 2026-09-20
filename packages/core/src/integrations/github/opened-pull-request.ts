@@ -21,7 +21,12 @@ import { applyPullRequestEvent, type PullRequestPayload } from './projection.js'
 export type OpenedProjectionOutcome =
   /** This call wrote the row. */
   | 'recorded'
-  /** A newer record of this number already stood, so the writer kept it. Not a failure. */
+  /**
+   * A record of this number already stood, so the writer kept it. Not a failure.
+   *
+   * Every stored row supersedes a creation answer, including one whose timestamp ties it: the
+   * answer describes the request at the instant it began, so nothing it could overwrite is older.
+   */
   | 'superseded'
   /** Nothing was written, and `reason` says what stopped it. The pull request still exists. */
   | 'not-recorded';
@@ -166,6 +171,7 @@ export async function projectOpenedPullRequest(args: {
   const written = await applyPullRequestEvent(
     { projectId: args.projectId, bindingId: args.bindingId },
     payloadFor({ repository: args.repository, opened: args.opened, identity }),
+    'creation',
   );
 
   // The write has COMMITTED by here. Reading the row back is how this call reports which issue the
@@ -193,17 +199,17 @@ export async function projectOpenedPullRequest(args: {
   // Zero writes here is `superseded` and nothing else, and it is the WRITER that says so rather
   // than the readback. `applyPullRequestEvent` returns 0 for exactly two reasons: its early guard
   // on the five payload fields, which `identityOf` has already enforced above, or its `ON CONFLICT`
-  // predicate declining to let this older creation answer overwrite a newer row. Only the second is
-  // reachable from here. A readback that then fails leaves the row's LINKAGE unknown, never the
-  // outcome — reading `not-recorded` off it would tell a caller the pull request has no record at
-  // the one moment Forge knows it has a newer one.
+  // predicate declining to overwrite a row that already stands, which under `creation` is every
+  // such row. Only the second is reachable from here. A readback that then fails leaves the row's
+  // LINKAGE unknown, never the outcome — reading `not-recorded` off it would tell a caller the pull
+  // request has no record at the one moment Forge is known to hold one.
   if (unread !== null) {
     return {
       outcome: 'superseded',
       issueId: null,
       reason:
-        `Forge already holds a record of #${identity.number} on ${args.repository} that is newer than ` +
-        `this creation answer, so the newer one stands and nothing was overwritten. ${unread}`,
+        `Forge already holds a record of #${identity.number} on ${args.repository}, which is at least as ` +
+        `new as this creation answer, so the stored one stands and nothing was overwritten. ${unread}`,
     };
   }
   if (row) {
@@ -211,8 +217,8 @@ export async function projectOpenedPullRequest(args: {
       outcome: 'superseded',
       issueId,
       reason:
-        `Forge already holds a record of #${args.opened.number} on ${args.repository} that is newer than ` +
-        'this creation answer, so the newer one stands. Nothing was overwritten.',
+        `Forge already holds a record of #${args.opened.number} on ${args.repository}, which is at least ` +
+        'as new as this creation answer, so the stored one stands. Nothing was overwritten.',
     };
   }
   return {

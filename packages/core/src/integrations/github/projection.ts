@@ -87,15 +87,34 @@ export function stateOf(pr: NonNullable<PullRequestPayload['pull_request']>) {
 }
 
 /**
+ * Which of the two routes to this writer a payload came down.
+ *
+ * `delivery` is a `pull_request` webhook, ordered against what is stored on GitHub's `updated_at`.
+ * `creation` is the answer to `POST /pulls` — the FIRST state that pull request ever had, which is
+ * why it has an ordering rule of its own rather than the same one.
+ */
+export type PullRequestWriteMode = 'delivery' | 'creation';
+
+/**
  * Store what a `pull_request` delivery said.
  *
  * One statement, because the head-change rule and the out-of-order rule are two
  * conditions over the same row and splitting them into a read and a write opens
  * a window where a second delivery lands between the two.
+ *
+ * ISS-1123 — `mode` picks the conflict rule and nothing else; there is still one statement and one
+ * writer. A delivery wins on `>=` because a redelivery of the SAME event carries the same timestamp
+ * and must still land. A creation answer must not: `updated_at` has second resolution, so any
+ * change to the request inside the second it was opened produces a delivery whose timestamp TIES
+ * the creation answer's, and a creation write arriving after it would overwrite that delivery's
+ * state, head and merge evidence on the strength of the tie. There is no stored row a creation
+ * answer is newer than — it describes the request at the instant it began — so it never overwrites
+ * one, and the caller reads the zero rows back as `superseded`.
  */
 export async function applyPullRequestEvent(
   ctx: ProjectionContext,
   payload: PullRequestPayload,
+  mode: PullRequestWriteMode = 'delivery',
 ): Promise<number> {
   const pr = payload.pull_request;
   const number = pr?.number;
@@ -153,7 +172,10 @@ export async function applyPullRequestEvent(
         refreshError: sql`CASE WHEN ${sameTarget} THEN ${repoPullRequests.refreshError} END`,
         updatedAt: new Date(),
       },
-      setWhere: sql`${repoPullRequests.payloadUpdatedAt} IS NULL OR excluded.payload_updated_at IS NULL OR excluded.payload_updated_at >= ${repoPullRequests.payloadUpdatedAt}`,
+      setWhere:
+        mode === 'creation'
+          ? sql`false`
+          : sql`${repoPullRequests.payloadUpdatedAt} IS NULL OR excluded.payload_updated_at IS NULL OR excluded.payload_updated_at >= ${repoPullRequests.payloadUpdatedAt}`,
     })
     .returning({ id: repoPullRequests.id });
   return rows.length;
