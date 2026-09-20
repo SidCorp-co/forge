@@ -29,6 +29,8 @@ let mods: {
   closeMasterSession: typeof import('../../src/devices/master-session.js').closeMasterSession;
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
   reapSilentMasters: typeof import('../../src/devices/master-reaper.js').reapSilentMasters;
+  reapDeadMasterHolds: typeof import('../../src/devices/master-reaper.js').reapDeadMasterHolds;
+  listMasterSessionsForDevice: typeof import('../../src/devices/master-session.js').listMasterSessionsForDevice;
   applyRunLedgerSnapshot: typeof import('../../src/devices/run-ledger.js').applyRunLedgerSnapshot;
   closeSessionsOwnedBy: typeof import('../../src/agent-sessions/session-descent.js').closeSessionsOwnedBy;
   createChatSessionRow: typeof import('../../src/agent-sessions/chat-turn.js').createChatSessionRow;
@@ -54,6 +56,8 @@ beforeAll(async () => {
     closeMasterSession: masterSession.closeMasterSession,
     openRunSession: runSession.openRunSession,
     reapSilentMasters: reaper.reapSilentMasters,
+    reapDeadMasterHolds: reaper.reapDeadMasterHolds,
+    listMasterSessionsForDevice: masterSession.listMasterSessionsForDevice,
     applyRunLedgerSnapshot: ledger.applyRunLedgerSnapshot,
     closeSessionsOwnedBy: descent.closeSessionsOwnedBy,
     createChatSessionRow: chat.createChatSessionRow,
@@ -473,6 +477,28 @@ describe('the backfill infers once and says so when it cannot', () => {
     await harness.db.execute(sql`ALTER TABLE agent_sessions ALTER COLUMN kind SET NOT NULL`);
   });
 
+  it('does not let a fork inherit the species of the session it was cut from', async () => {
+    const { project, owner } = await seed();
+    const row = await mods.createChatSessionRow({ projectId: project.id, userId: owner.id });
+    // What `turns-routes.ts` actually writes: `...prevMeta` copies the SOURCE's
+    // metadata whole, so a chat forked from a pipeline session carries that
+    // session's `type`. Trusting it freezes `pipeline` onto a chat, and no
+    // later branch can correct it because they all require `kind IS NULL`.
+    await harness.db.execute(sql`
+      UPDATE agent_sessions
+         SET kind = NULL,
+             metadata = COALESCE(metadata, '{}'::jsonb) || '{"type":"pipeline","forkedFromTurnId":"t-1"}'::jsonb
+       WHERE id = ${row.id}
+    `);
+
+    await runInference();
+
+    const [got] = (await harness.db.execute(
+      sql`SELECT kind FROM agent_sessions WHERE id = ${row.id}`,
+    )) as unknown as Array<{ kind: string }>;
+    expect(got.kind, 'a fork is an interactive chat, whatever its source was').toBe('chat');
+  });
+
   it('classifies a chat session from its interactive run', async () => {
     const { project, owner } = await seed();
     const row = await mods.createChatSessionRow({ projectId: project.id, userId: owner.id });
@@ -526,5 +552,157 @@ describe('the backfill infers once and says so when it cannot', () => {
       orphan,
     );
     expect(said).toMatch(/do not give them a default/i);
+  });
+});
+
+/**
+ * The five the review found, each reproduced before it was fixed.
+ *
+ * Every one of these went red first on the code as written, naming the rule it
+ * is about — a green here is only worth what the red before it was.
+ */
+describe('what the review found', () => {
+  it('lists only masters for a device, not every live session on the box', async () => {
+    const { project, device } = await seed();
+    const master = await mods.ensureMasterSession({
+      deviceId: device.id,
+      projectId: project.id,
+      name: 'the-master-pane',
+    });
+    // A live run session and a live chat on the SAME box. Before the kind
+    // predicate this query was device + live-status alone, so the daemon's
+    // reconcile was handed all three and told they were masters.
+    await rawSession({ projectId: project.id, deviceId: device.id, kind: 'run_session' });
+    await rawSession({ projectId: project.id, deviceId: device.id, kind: 'chat' });
+
+    const listed = await mods.listMasterSessionsForDevice(device.id);
+
+    expect(listed.map((r) => r.sessionId)).toEqual([master.sessionId]);
+  });
+
+  it('walks through a terminal session to close the live one underneath it', async () => {
+    const { project, device } = await seed();
+    const master = await mods.ensureMasterSession({
+      deviceId: device.id,
+      projectId: project.id,
+      name: 'the-master-pane',
+    });
+    // The ordinary shape: a fork or a rerun names a source that has finished.
+    const finished = await rawSession({
+      projectId: project.id,
+      deviceId: device.id,
+      kind: 'chat',
+      parent: master.sessionId,
+      status: 'completed',
+    });
+    const live = await rawSession({
+      projectId: project.id,
+      deviceId: device.id,
+      kind: 'chat',
+      parent: finished,
+      status: 'running',
+    });
+
+    await mods.closeSessionsOwnedBy([master.sessionId], {
+      reason: 'owner_session_closed',
+      detail: 'the test closed the owner',
+    });
+
+    const [row] = (await harness.db.execute(
+      sql`SELECT status FROM agent_sessions WHERE id = ${live}`,
+    )) as unknown as Array<{ status: string }>;
+    expect(
+      row.status,
+      'a live session under a terminal one is still owned by the root, and the closure claims to be transitive',
+    ).toBe('failed');
+  });
+
+  it('leaves a run session open when its issues could not be given back', async () => {
+    const { project, device, issue } = await seed();
+    const master = await mods.ensureMasterSession({
+      deviceId: device.id,
+      projectId: project.id,
+      name: 'the-master-pane',
+    });
+    const opened = await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-7001'],
+    });
+    await harness.db.execute(
+      sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issue}`,
+    );
+    // `runIssues` is read as an array on both sides of the return. An object
+    // there makes the read raise rather than answer nothing, which is the shape
+    // of any failure in this path: it happens BEFORE the flip, or not at all.
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET metadata = jsonb_set(metadata, '{runIssues}', '{"not":"an array"}'::jsonb)
+       WHERE id = ${opened.runId}
+    `);
+
+    await mods.closeSessionsOwnedBy([master.sessionId], {
+      reason: 'owner_session_closed',
+      detail: 'the test closed the owner',
+    });
+
+    const [session] = (await harness.db.execute(
+      sql`SELECT status FROM agent_sessions WHERE id = ${opened.sessionId}`,
+    )) as unknown as Array<{ status: string }>;
+    expect(
+      session.status,
+      'a run session flipped terminal over issues it never returned is never looked at again',
+    ).not.toBe('failed');
+    const [row] = (await harness.db.execute(
+      sql`SELECT status FROM issues WHERE id = ${issue}`,
+    )) as unknown as Array<{ status: string }>;
+    expect(row.status).toBe('in_progress');
+  });
+
+  it('keeps a stale master holding its jobs while a run it owns is still beating', async () => {
+    const { project, device, owner, issue } = await seed();
+    const master = await mods.ensureMasterSession({
+      deviceId: device.id,
+      projectId: project.id,
+      name: 'the-master-pane',
+    });
+    const child = await rawSession({
+      projectId: project.id,
+      deviceId: device.id,
+      kind: 'run_session',
+      parent: master.sessionId,
+    });
+    const job = randomUUID();
+    const jobRun = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status)
+      VALUES (${jobRun}, ${project.id}, 'system', 'running')
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by,
+                        queued_at, held_by, held_at)
+      VALUES (${job}, ${project.id}, ${issue}, ${jobRun}, 'code', 'queued', ${owner.id}, now(),
+              ${master.sessionId}, now())
+    `);
+    const staleSecs = Math.floor(mods.SESSION_SILENCE_TIMEOUT_MS / 1000) + 60;
+    await harness.db.execute(sql`
+      UPDATE agent_sessions
+         SET last_heartbeat_at = now() - make_interval(secs => ${staleSecs}),
+             started_at = now() - make_interval(secs => ${staleSecs})
+       WHERE id = ${master.sessionId}
+    `);
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = now() WHERE id = ${child}
+    `);
+
+    const released = await mods.reapDeadMasterHolds();
+
+    expect(
+      released,
+      'the hold sweep undid the protection reapSilentMasters had just given this box',
+    ).toBe(0);
+    const [row] = (await harness.db.execute(
+      sql`SELECT held_by FROM jobs WHERE id = ${job}`,
+    )) as unknown as Array<{ held_by: string | null }>;
+    expect(row.held_by).toBe(master.sessionId);
   });
 });
