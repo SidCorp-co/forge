@@ -350,6 +350,7 @@ function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 	}
 	const activeIdx = PROVISION_STEPS.indexOf(status);
 	return (
+		<div className="flex flex-col gap-1.5">
 		<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 			{PROVISION_STEPS.map((step, i) => {
 				const done = i < activeIdx || status === "ready";
@@ -377,6 +378,14 @@ function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 					</span>
 				);
 			})}
+		</div>
+		{/* A workspace can be ready AND incomplete — the runner reports why on
+		    the same status (e.g. no PAT on the box, so the checkout's .mcp.json
+		    has no `forge` server). Dropping it here is how that reason went back
+		    to living only in the device's log. */}
+		{status === "ready" && runner.provisionDetail && (
+			<Banner tone="info">{runner.provisionDetail}</Banner>
+		)}
 		</div>
 	);
 }
@@ -766,10 +775,12 @@ function AssignDevice({
 	projectId,
 	defaultRepoPath,
 	assignedDeviceIds,
+	hasRepoUrl,
 }: {
 	projectId: string;
 	defaultRepoPath: string | null;
 	assignedDeviceIds: Set<string>;
+	hasRepoUrl: boolean;
 }) {
 	const devices = useDevices();
 	const assign = useAssignDeviceToProject(projectId);
@@ -789,9 +800,12 @@ function AssignDevice({
 		{ value: "", label: "Select a paired device…" },
 		...available.map((d) => ({
 			value: d.id,
-			label: `${d.name} (${d.platform})`,
+			// Online-ness decides whether provisioning starts now or on the
+			// device's next reconnect, so it belongs in the choice, not after it.
+			label: `${d.name} (${d.platform}) — ${d.status === "online" ? "online" : "offline"}`,
 		})),
 	];
+	const picked = available.find((d) => d.id === deviceId) ?? null;
 
 	return (
 		<Card>
@@ -810,7 +824,7 @@ function AssignDevice({
 						</Field>
 						<Field
 							label="Repo path"
-							hint="Absolute path on that device — typed manually."
+							hint="Absolute path on that device. Leave it empty and the device provisions a checkout under its own projects_root."
 						>
 							<Input
 								value={repoPath}
@@ -820,6 +834,24 @@ function AssignDevice({
 							/>
 						</Field>
 					</div>
+
+					{/* Both conditions are decided elsewhere (the card above, and
+					    the device itself), and both change what "Assign &
+					    provision" actually does. */}
+					{!hasRepoUrl && (
+						<Banner tone="info">
+							This project has no repo URL, so a device assigned now gets an empty
+							workspace instead of a checkout. Set Git access above first, or point
+							Repo path at a checkout that already exists on the device.
+						</Banner>
+					)}
+					{picked && picked.status !== "online" && (
+						<Banner tone="info">
+							{picked.name} is offline. The assignment is saved now and the device
+							provisions the workspace on its next reconnect.
+						</Banner>
+					)}
+
 					<div className="flex justify-end">
 						<Button
 							variant="primary"
@@ -948,6 +980,7 @@ export function ProjectRunnersScreen({
 					projectId={projectId}
 					defaultRepoPath={project.data?.repoPath ?? null}
 					assignedDeviceIds={assignedDeviceIds}
+					hasRepoUrl={!!project.data?.repoUrl}
 				/>
 			)}
 
