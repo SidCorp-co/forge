@@ -62,6 +62,10 @@ export interface NavRailCompactProps {
   whatsNewBadge?: number;
   /** Footer: jump to the Docs hub. */
   onDocs?: () => void;
+  /** The product's own version, pinned to the footer. Presentational slot; the
+   *  layout supplies the wired node, and only one rail is on screen at a time
+   *  so it is never rendered twice (ISS-1119). */
+  version?: React.ReactNode;
 }
 
 /** Tiny centered tier label for the 76px rail (ISS-359). The faint hairline
@@ -150,6 +154,7 @@ export function NavRailCompact({
   onWhatsNew,
   whatsNewBadge,
   onDocs,
+  version,
 }: NavRailCompactProps) {
   const [flyOpen, setFlyOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -369,7 +374,7 @@ export function NavRailCompact({
         ))}
       </div>
 
-      {/* Footer — What's New + Docs, then the account menu. */}
+      {/* Footer — What's New + Docs, then the account menu, then the version. */}
       <div className="mt-auto flex flex-col items-center gap-1.5">
         {onWhatsNew && (
           <button
@@ -418,6 +423,7 @@ export function NavRailCompact({
           align="left"
           triggerClassName="rounded-pill p-1 hover:bg-hover transition-colors"
         />
+        {version && <div className="w-full px-0.5 text-center">{version}</div>}
       </div>
     </nav>
   );

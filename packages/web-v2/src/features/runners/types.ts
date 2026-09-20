@@ -62,6 +62,10 @@ export interface ProjectRunner {
 	deviceName: string | null;
 	platform: "macos" | "linux" | "windows" | null;
 	deviceStatus: "online" | "offline" | "revoked" | null;
+	/** The version this runner's device last reported, or null where it has
+	 *  reported none. Read from the joined device — a runner is one binding of
+	 *  the agent binary that device runs (ISS-1119). */
+	agentVersion: string | null;
 	deviceDisabledAt: string | null;
 	runnerStatus: string;
 	lastError: string | null;
@@ -79,6 +83,24 @@ export interface ProjectRunner {
 	provisionStatus: ProvisionStatus | null;
 	provisionDetail: string | null;
 	provisionedAt: string | null;
+}
+
+/** What every surface says for a version nobody reported. Blank would read as a
+ *  device with nothing to say, and the newest published version would be a guess
+ *  presented as a fact. */
+export const VERSION_NOT_REPORTED = "version not reported";
+
+/** The version chip on a project runner row, labelled as the runner's so it is
+ *  never taken for Forge's own. */
+export function runnerVersionLabel(agentVersion: string | null | undefined): string {
+	const reported = agentVersion?.trim();
+	return reported ? `Runner v${reported}` : VERSION_NOT_REPORTED;
+}
+
+/** The version line under a device's name in the fleet list. */
+export function deviceVersionLabel(agentVersion: string | null | undefined): string {
+	const reported = agentVersion?.trim();
+	return reported ? `v${reported}` : VERSION_NOT_REPORTED;
 }
 
 /** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */

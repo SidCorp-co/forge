@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatElapsed, runnerLimitDisplay } from "./types";
+import {
+	deviceVersionLabel,
+	formatElapsed,
+	runnerLimitDisplay,
+	runnerVersionLabel,
+} from "./types";
 
 const NOW = Date.parse("2026-06-22T08:00:00.000Z");
 
@@ -89,5 +94,28 @@ describe("runnerLimitDisplay", () => {
 		expect(out!.health).toBe("down");
 		expect(out!.active).toBe(true);
 		expect(out!.resetText).toBeNull();
+	});
+});
+
+describe("runnerVersionLabel", () => {
+	it("labels a reported version as the runner's, so it cannot read as Forge's", () => {
+		expect(runnerVersionLabel("0.17.0")).toBe("Runner v0.17.0");
+	});
+
+	it("says a version was not reported rather than rendering nothing", () => {
+		expect(runnerVersionLabel(null)).toBe("version not reported");
+		expect(runnerVersionLabel(undefined)).toBe("version not reported");
+		expect(runnerVersionLabel("   ")).toBe("version not reported");
+	});
+});
+
+describe("deviceVersionLabel", () => {
+	it("prefixes a reported version with v", () => {
+		expect(deviceVersionLabel("0.17.0")).toBe("v0.17.0");
+	});
+
+	it("says a version was not reported rather than rendering nothing", () => {
+		expect(deviceVersionLabel(null)).toBe("version not reported");
+		expect(deviceVersionLabel("")).toBe("version not reported");
 	});
 });

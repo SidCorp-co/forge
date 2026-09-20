@@ -42,6 +42,9 @@ publicHealthRoutes.get('/health', async (c) => {
   );
 });
 
+// Mounted at `/` and at `/api` both. Only the second carries CORS — `app.use('/api/*',
+// corsMiddleware)` covers that prefix and nothing else — and only the second is where the
+// web app's client points, so the root copy alone left the page unable to read this.
 publicHealthRoutes.get('/version', (c) =>
   c.json({
     version: pkg.version,
