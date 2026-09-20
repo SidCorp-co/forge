@@ -5199,6 +5199,53 @@ mod stand_down_tests {
         );
     }
 
+    /// Criterion 5. `Contradicted` reports and leaves; anything after it in
+    /// the loop would adopt the pane as this box's master or nudge it.
+    #[test]
+    fn a_pane_alive_under_a_stand_down_is_neither_adopted_nor_nudged() {
+        let body = sweep_body();
+        let at = body
+            .find("Placed::Contradicted => {")
+            .expect("the contradicted branch must be findable");
+        let rest = &body[at..];
+        let end = rest.find("\n            }").expect("the branch must close");
+        let branch = &rest[..end];
+        assert!(
+            branch.contains("continue;"),
+            "the branch has to leave the iteration: falling through reaches `ensure_master`, which adopts a live pane as this box's master, and then the nudge: {branch}"
+        );
+        for reached in ["ensure_master(", "nudge_master(", "masters.note_work("] {
+            assert!(
+                !branch.contains(reached),
+                "`{reached}` inside the contradicted branch drives a pane its owner stood down"
+            );
+        }
+    }
+
+    /// Criterion 17. A pane this sweep started and then ended is two acts an
+    /// operator did not see; the log is the only place either of them exists.
+    #[test]
+    fn the_withdrawal_of_a_pane_this_sweep_placed_is_named_in_the_log() {
+        let body = sweep_body();
+        let at = body
+            .find("was stood down while this sweep was starting it")
+            .expect("the withdrawal must say what it is doing");
+        let before = &body[at.saturating_sub(120)..at];
+        assert!(
+            before.contains("tracing::error!"),
+            "a pane started and then withdrawn inside one sweep is not an info line: {before}"
+        );
+        let after = &body[at..at + 900.min(body.len() - at)];
+        assert!(
+            after.contains("stand-up"),
+            "and it names the act that stops the withdrawal happening again: {after}"
+        );
+        assert!(
+            after.contains("could not withdraw"),
+            "a withdrawal that FAILS is louder still — the pane is up, running against a stand-down, and only the log can say so"
+        );
+    }
+
     #[test]
     fn a_pane_alive_under_a_stand_down_is_named_at_error_level() {
         let body = sweep_body();
