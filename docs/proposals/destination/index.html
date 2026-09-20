@@ -138,11 +138,11 @@ lives on your machine — wipe a box and lose time, not facts.</p>
 </table>
 
 <h2>Coverage</h2>
-<p><b>36 of 53 core-logic questions answered.</b> The other 17 are listed in
+<p><b>49 of 53 core-logic questions answered.</b> The other 4 are listed in
 <a href="coverage.md"><code>coverage.md</code></a>, with the command that re-derives the count.</p>
 <table>
 <tbody>
-<tr><td style="width:30%"><b>Do not audit against this set</b></td><td>tenancy and cross-project access · human roles and permissions · revocation · retry and attempt · exclusivity between boxes · dependency and priority between Intents · cancellation</td></tr>
+<tr><td style="width:30%"><b>Do not audit against this set</b></td><td>retention and volume · evidence arriving after a merge · idempotency of an outbound act as a stated rule · forcing a policy upgrade onto an in-flight session</td></tr>
 <tr><td><b>Why it matters</b></td><td>a reference is silent on what it never modelled, and an audit reads silence as approval</td></tr>
 </tbody>
 </table>
@@ -155,6 +155,8 @@ lives on your machine — wipe a box and lose time, not facts.</p>
 <tr><td><a href="fact-projection.html"><b>Fact &amp; projection</b></a></td><td>the fact row, the two clocks, the insert-time gates, how a projection is swapped</td></tr>
 <tr><td><a href="question.html"><b>Question</b></a></td><td>the row, the timers, routing, dedup, delivery through a channel, promotion</td></tr>
 <tr><td><a href="core-runner.html"><b>Core ⇄ runner</b></a></td><td>the broker, the control socket, what a pane is, what survives a daemon restart</td></tr>
+<tr><td><a href="lifecycle.html"><b>Intent lifecycle</b></a></td><td>admit · order · rank · lease · attempt and retry · cancel · the starvation bound</td></tr>
+<tr><td><a href="authority.html"><b>Authority</b></a></td><td>the tenancy fence · the five grants · delegation · revocation · why authority is a fact</td></tr>
 <tr><td><a href="floor.html"><b>The floor</b></a></td><td>held-out suite, mutation on the diff, RED-cause, oracle isolation — and who runs each</td></tr>
 </tbody>
 </table>

@@ -4,7 +4,7 @@ What this set answers, and what it is silent about. **Silence is the dangerous h
 used to audit existing logic does not flag the areas it never modelled — it approves them by saying
 nothing.
 
-53 questions, 10 areas. **36 answered · 17 open.**
+53 questions, 10 areas. **49 answered · 4 open.**
 
 ## The rule for this table
 
@@ -22,37 +22,37 @@ done
 Every term above returning 0–1 hits is an open row below. The count was taken at `2026-09-19`; a row
 whose status is not re-derived is a claim, not a status.
 
-## A · Identity and authority — 1 / 6
+## A · Identity and authority — 6 / 6
 
 | | Question | Answered in |
 |---|---|---|
 | A1 | What principals exist and how one is minted | `vision.html` §2 |
-| A2 | What roles a human holds, and who grants them | **open** |
-| A3 | Delegation — an agent acting for a human, as a record | **open** |
-| A4 | Revoking a principal's authority | **open** |
-| A5 | The project / organisation boundary | **open** |
-| A6 | How a cross-project read or write is refused | **open** |
+| A2 | What roles a human holds, and who grants them | `authority.html` §2 |
+| A3 | Delegation — an agent acting for a human, as a record | `authority.html` §3 |
+| A4 | Revoking a principal's authority | `authority.html` §4 |
+| A5 | The project / organisation boundary | `authority.html` §1 |
+| A6 | How a cross-project read or write is refused | `authority.html` §1 |
 
-## B · Intent — 2 / 6
+## B · Intent — 6 / 6
 
 | | Question | Answered in |
 |---|---|---|
 | B1 | Who may create an Intent | `integrations.html` §7 |
-| B2 | Is an Intent mutable, and is it versioned | **open** |
-| B3 | Ordering and dependency between Intents | **open** |
-| B4 | Priority — the ranking rule behind "what next" | **open** |
-| B5 | Deliberate cancellation by a human | **open** |
+| B2 | Is an Intent mutable, and is it versioned | `lifecycle.html` §2 |
+| B3 | Ordering and dependency between Intents | `lifecycle.html` §3 |
+| B4 | Priority — the ranking rule behind "what next" | `lifecycle.html` §4 |
+| B5 | Deliberate cancellation by a human | `lifecycle.html` §1, §7 |
 | B6 | What makes an Intent done | `vision.html` §0, `floor.html` |
 
-## C · Work — 4 / 7
+## C · Work — 7 / 7
 
 | | Question | Answered in |
 |---|---|---|
 | C1 | The unit of work | `session-tree.html` §1 |
-| C2 | Exclusivity — who holds an Intent right now, across boxes | **open** |
-| C3 | Attempt and retry | **open** |
+| C2 | Exclusivity — who holds an Intent right now, across boxes | `lifecycle.html` §5 |
+| C3 | Attempt and retry | `lifecycle.html` §6 |
 | C4 | Caps: depth, concurrency, budget | `session-tree.html` §6 |
-| C5 | Fairness across projects sharing a pool | **open** |
+| C5 | Fairness across projects sharing a pool | `lifecycle.html` §8 |
 | C6 | Close policies and subtree closure | `session-tree.html` §3–4 |
 | C7 | Held / parked, and why it is not an orphan | `session-tree.html` §5 |
 
@@ -67,7 +67,7 @@ whose status is not re-derived is a claim, not a status.
 | D5 | Insert-time gates, and the write-skew hole | `fact-projection.html` §4 |
 | D6 | Retention and volume | **open** — deferrable; a capacity question, not a correctness one |
 
-## E · Not knowing — 4 / 5
+## E · Not knowing — 5 / 5
 
 | | Question | Answered in |
 |---|---|---|
@@ -75,7 +75,7 @@ whose status is not re-derived is a claim, not a status.
 | E2 | Timers, routing, and who may answer | `question.html` §3–4 |
 | E3 | Dedup, coalescing, answering from memory | `question.html` §5 |
 | E4 | Promotion of an answer to policy | `question.html` §7 |
-| E5 | An open question whose Intent is cancelled | **open** — depends on B5 |
+| E5 | An open question whose Intent is cancelled | `lifecycle.html` §7 — voided with a reason, never answered |
 
 ## F · Evidence — 4 / 5
 
@@ -127,10 +127,11 @@ whose status is not re-derived is a claim, not a status.
 
 ## What this means for using the set
 
-**Do not** use it to judge existing logic in: tenancy and cross-project access · human roles and
-permissions · revocation · retry and attempt semantics · exclusivity between boxes · dependency and
-priority between Intents · cancellation. On those it has no opinion, and an audit run against it
-will read that silence as approval.
+**Do not** use it to judge existing logic in: retention and volume · evidence that arrives after a
+merge · idempotency of an outbound act as a stated rule · forcing a policy upgrade onto an
+in-flight session. On those it has no opinion, and an audit run against it will read that silence
+as approval.
 
-The first three areas — A, B, C — hold 12 of the 17 open rows. They are the foundation, and they are
-the part that was written last, because the set was drawn from the middle outward.
+The foundation areas — A identity and authority, B intent, C work — were written last, because the
+set was drawn from the middle outward. They are now closed by `authority.html` and
+`lifecycle.html`. The four rows still open are each a single mechanism, not a missing foundation.
