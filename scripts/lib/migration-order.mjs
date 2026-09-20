@@ -1,15 +1,6 @@
 /**
- * Whether the migrations one tree is landing can be applied alongside every other open branch's.
- *
- * drizzle's migrator reads the single highest `created_at` in `drizzle.__drizzle_migrations` once
- * and then applies only journal entries whose `when` exceeds it (`pg-core/dialect.js`, the
- * `!lastDbMigration || Number(lastDbMigration.created_at) < migration.folderMillis` arm). An entry
- * below that high-water mark is not reordered — it is skipped, silently, for ever. So the property
- * is about the SET of unmerged branches and not about any one journal, which is the half
- * `migrations-journal.test.ts` cannot see.
- *
- * Nothing here reads git or the filesystem: it takes journal entries and returns verdicts, so every
- * rule can be planted as data. `check-migration-order.mjs` is the half that fetches.
+ * Whether one tree's migrations can be applied alongside every other open branch's: a property of
+ * the SET, not of any one journal. Origin and rules: `scripts/README.md`.
  */
 
 const DAY = 86_400_000;
@@ -38,11 +29,9 @@ function name(entry) {
 }
 
 /**
- * Refusals against this tree's own entries, which are never filtered by the floor.
- *
- * A below-floor entry of ours is exactly the damage this check exists to refuse — it is what a
- * merged sibling leaves behind, and what drizzle will skip on the next deploy — so removing it from
- * the set before measuring would be the check deleting its own subject.
+ * Refusals against this tree's own entries, never filtered by the floor: a below-floor entry of
+ * ours is the damage this check exists to refuse, so dropping it before measuring would be the
+ * check deleting its own subject.
  */
 function floorRefusals(self, floor, nextWhen) {
   return self.entries
@@ -56,13 +45,7 @@ function floorRefusals(self, floor, nextWhen) {
     }));
 }
 
-/**
- * Refusals between two branches' live entries.
- *
- * Used both ways: this tree against a sibling, and one sibling against another. The second reading
- * is why nothing here says "yours" — a pair of open branches that cannot both land is a fact about
- * them, reported to whoever reads it, and not a charge against the tree that noticed.
- */
+/** Refusals between two branches' live entries. Used both ways, so nothing here says "yours". */
 export function betweenBranches(self, sibling) {
   const refusals = [];
   const shared = [];
@@ -104,8 +87,7 @@ export function betweenBranches(self, sibling) {
   const [mineLow, mineHigh] = rangeOf(self.entries);
   const [theirLow, theirHigh] = rangeOf(sibling.entries);
   const overlaps = mineLow <= theirHigh && theirLow <= mineHigh;
-  // A shared `when` overlaps trivially and `duplicate-when` has already named it; reporting the
-  // straddle as well would charge one wrong number to two rules.
+  // `duplicate-when` already named a shared `when`; reporting the straddle too double-charges it.
   const onlyShared = shared.length > 0 && mineLow === mineHigh && theirLow === theirHigh;
   if (overlaps && !onlyShared) {
     refusals.push({
@@ -123,13 +105,8 @@ export function betweenBranches(self, sibling) {
 }
 
 /**
- * Judge one tree's new migrations against the open set.
- *
- * `self` and each of `siblings` carry the entries that branch adds to `main`. Sibling entries at or
- * below `main`'s floor are STRANDED: they cannot be applied in any order until they renumber, so
- * they are reported on their own and are counted against nobody — refusing this tree for them would
- * be refusing a branch for damage it cannot repair.
- *
+ * Judge one tree's new migrations against the open set. Sibling entries at or below `main`'s floor
+ * are STRANDED: reported on their own, counted against nobody.
  * @param {{ main: Entry[], self: Branch, siblings: Branch[] }} set
  */
 export function checkSet({ main, self, siblings }) {

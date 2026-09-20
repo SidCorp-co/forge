@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-20T19:05:21.444Z",
+  "generatedAt": "2026-09-20T17:44:22.672Z",
   "original": 54,
   "files": {
     "packages/contracts/src/failure-causes.ts": {
@@ -71,9 +71,6 @@
       "code-quality/comment-density": 1
     },
     "packages/core/src/integrations/types.ts": {
-      "code-quality/comment-density": 1
-    },
-    "packages/core/src/issues/issue-lease.ts": {
       "code-quality/comment-density": 1
     },
     "packages/core/src/issues/pipeline-health-types.ts": {
@@ -202,9 +199,6 @@
     "packages/web-v2/vitest.config.ts": {
       "code-quality/comment-density": 1
     },
-    "scripts/check-migration-order.mjs": {
-      "code-quality/comment-density": 1
-    },
     "scripts/lib/changed-selection.mjs": {
       "code-quality/comment-density": 1
     },
@@ -212,9 +206,6 @@
       "code-quality/comment-density": 1
     },
     "scripts/lib/lint-budget.mjs": {
-      "code-quality/comment-density": 1
-    },
-    "scripts/lib/migration-order.mjs": {
       "code-quality/comment-density": 1
     }
   }

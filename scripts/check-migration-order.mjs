@@ -2,16 +2,11 @@
 
 /**
  * Whether the migrations this tree is landing can be applied alongside every open branch's.
+ * `migrations-journal.test.ts` reads only its own journal, so the set is measured by nothing;
+ * this reads the set. Origin and rules: `scripts/README.md`.
  *
- * `packages/core/src/db/migrations-journal.test.ts` owns the properties of ONE journal and reads
- * only its own, so every branch passes alone while the set of open branches is measured by nothing.
- * That is how a migration is lost: drizzle applies entries above the single high-water mark it
- * reads once, so a branch merging second with a lower `when` is skipped silently and for ever
- * (ISS-807 — a live 500 on `GET /me/attention` for every signed-in user). This reads the set.
- *
- * Exit 0 the set is applicable · 1 a refusal, naming the branches and the numbers · 2 the check
- * could not run, which is never a pass: a check that cannot see the set while a migration is being
- * landed has proved nothing, and saying so is the whole point.
+ * Exit 0 applicable · 1 a refusal naming the branches and numbers · 2 could not run, which is
+ * never a pass.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -80,14 +75,9 @@ function journalAt(ref) {
 let main = journalAt(mainRef);
 
 /**
- * What to call this tree, and which remote refs are it rather than a sibling.
- *
- * On a `pull_request` run `actions/checkout` leaves HEAD detached on the merge ref, so
- * `--abbrev-ref HEAD` answers `HEAD` and the PR's own branch would be read as a sibling holding
- * every one of this tree's migrations — a duplicate-`when` and duplicate-index refusal against
- * itself, on every migration-bearing PR. Three readings say "this is us", and a ref matching any
- * of them is not a sibling: the name HEAD is on, the branch GitHub says the PR came from, and any
- * ref this tree already contains.
+ * What to call this tree, and which remote refs are it rather than a sibling. Three readings say
+ * "this is us" — the name HEAD is on, the branch GitHub says the PR came from, and any ref this
+ * tree contains — because a detached merge ref would otherwise refuse the PR against itself.
  */
 const headName = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
 const prBranch = process.env.GITHUB_HEAD_REF?.trim();
