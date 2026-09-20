@@ -90,12 +90,21 @@ async function evaluate<T>(
   read: () => Promise<T>,
   out: ReleaseBlocker[],
 ): Promise<T | undefined> {
+  const { value, failure } = await attempt(check, read);
+  if (failure) out.push(failure);
+  return value;
+}
+
+/** The same read, with its failure handed back rather than appended. */
+async function attempt<T>(
+  check: string,
+  read: () => Promise<T>,
+): Promise<{ value: T | undefined; failure: ReleaseBlocker | null }> {
   try {
-    return await read();
+    return { value: await read(), failure: null };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    out.push(blocker('RELEASE_CHECK_UNEVALUATED', { check, detail }));
-    return undefined;
+    return { value: undefined, failure: blocker('RELEASE_CHECK_UNEVALUATED', { check, detail }) };
   }
 }
 
@@ -194,6 +203,11 @@ function channelBlockers(
   out: ReleaseBlocker[],
 ): string | null {
   let label: string | null = null;
+  // `soleVerifyConfig` checks the channel COUNT before the probes; the batch
+  // path checks it last. Each door keeps its own order (ISS-1127).
+  if (door === 'record' && channels.length > 1) {
+    out.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
+  }
   try {
     label = releaseRunnerLabelOf(projectId, channels);
     if (door === 'batch' && !label) out.push(blocker('RELEASE_RUNNER_UNDECLARED'));
@@ -251,7 +265,11 @@ async function poolBlockers(
 
 /** Is there a branch a release could promote from. */
 async function branchBlockers(projectId: string, out: ReleaseBlocker[]): Promise<void> {
-  const branches = await evaluate('branches', async () => await readProjectBranches(projectId), out);
+  const branches = await evaluate(
+    'branches',
+    async () => await readProjectBranches(projectId),
+    out,
+  );
   if (branches === undefined) return;
   try {
     releaseBranches(
@@ -305,33 +323,41 @@ export async function collectReleaseBlockers(
     blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { releaseModel: read.releaseModel }));
   }
 
-  const channels =
-    read.kind === 'gated'
-      ? ((await evaluate(
-          'channels',
-          async () => await resolveReleaseChannels(projectId),
-          blockers,
-        )) ?? null)
-      : [];
   if (read.kind !== 'gated') {
-    return { projectId, projectExists: true, declaration: read, channels, blockers, warnings };
+    return { projectId, projectExists: true, declaration: read, channels: [], blockers, warnings };
   }
 
-  const roster = await resolveRoster(projectId, RELEASE_GATE_STATUS, options.issueIds, blockers);
+  // Both groups are READ here and REPORTED in the order the door refuses in.
+  // A channel read that failed must not outrank a roster reason the batch door
+  // reached first, or a 409 an operator already knows becomes a 503.
+  const ch = await attempt('channels', async () => await resolveReleaseChannels(projectId));
+  const channels = ch.value ?? null;
+
+  const roster: ReleaseBlocker[] = [];
+  const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, options.issueIds, roster);
   if (options.issueIds && options.issueIds.length > 0) {
-    await claimBlockers(projectId, RELEASE_GATE_STATUS, options.issueIds, blockers);
+    await claimBlockers(projectId, RELEASE_GATE_STATUS, options.issueIds, roster);
   }
-  await rosterBlockers(door, roster ?? [], blockers);
+  await rosterBlockers(door, found ?? [], roster);
 
-  const label = channels ? channelBlockers(projectId, channels, door, blockers) : null;
-  if (channels && door === 'batch') await poolBlockers(projectId, label, blockers, warnings);
-  // Branches BEFORE channel count, which is `createReleaseBatch`'s own order —
-  // a project missing both produced `RELEASE_BRANCHES_UNDECLARED` before
-  // ISS-1127 and has to go on producing it.
-  if (door === 'batch') await branchBlockers(projectId, blockers);
-  if (channels && channels.length > 1) {
-    blockers.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
+  const machinery: ReleaseBlocker[] = [];
+  if (ch.failure) machinery.push(ch.failure);
+  if (channels) {
+    const label = channelBlockers(projectId, channels, door, machinery);
+    if (door === 'batch') {
+      await poolBlockers(projectId, label, machinery, warnings);
+      await branchBlockers(projectId, machinery);
+      if (channels.length > 1) {
+        machinery.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
+      }
+    }
+  } else if (door === 'batch') {
+    await poolBlockers(projectId, null, machinery, warnings);
+    await branchBlockers(projectId, machinery);
   }
+
+  blockers.push(...(door === 'batch' ? [...roster, ...machinery] : [...machinery, ...roster]));
+
   if (door === 'batch') {
     const active = await evaluate(
       'in-flight',

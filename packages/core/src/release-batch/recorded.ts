@@ -17,15 +17,14 @@ import { TransitionError, transitionIssueStatus } from '../issues/apply-transiti
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
-import { resolveReleaseChannels } from './channel.js';
+import type { ReleaseChannel } from './channel.js';
 import {
   ClaimConflictError,
   NoReleaseGateError,
-  ReleaseMultiChannelUnsupportedError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
 } from './errors.js';
-import { resolveReleaseGate } from './gate.js';
+import { RELEASE_GATE_STATUS } from './gate.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
 
 /** What `metadata.source` reads on the run a recorded release writes. */
@@ -65,33 +64,18 @@ export interface RecordPerformedReleaseResult {
   issues: RecordedIssue[];
 }
 
-/**
- * The one verification config this project's live channel declares. THROWS
- * `ReleaseProbesUndeclaredError` where nothing could be read, and
- * `ReleaseMultiChannelUnsupportedError` where one reading would answer for two
- * endpoints — the same refusals, by the same names, a batch meets here.
- */
-async function soleVerifyConfig(projectId: string) {
-  const channels = await resolveReleaseChannels(projectId);
-  if (channels.length > 1) throw new ReleaseMultiChannelUnsupportedError(channels.length);
-  const verify = channels[0]?.verify ?? null;
+/** The one verification config, taken from the report rather than read again:
+ *  a second read would refuse in its own order (ISS-1127). */
+function soleVerifyConfig(channels: ReleaseChannel[] | null) {
+  const verify = channels?.[0]?.verify ?? null;
   if (!verify) throw new ReleaseProbesUndeclaredError();
   return verify;
 }
 
-/** Every issue this record may close, enumerated in ONE pass so the refusal
- *  carries the reasons standing beside it (ISS-1127). */
+/** Every issue this record may close, read once and refused by name. */
 async function admissibleIssues(projectId: string, issueIds: string[]): Promise<RecordedIssue[]> {
-  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'record' });
-  const refusal = releaseBlockerError(report);
-  if (refusal) throw refusal;
-
   const rows = await db
-    .select({
-      id: issues.id,
-      mergedAt: issues.mergedAt,
-      mergedCommitSha: issues.mergedCommitSha,
-    })
+    .select({ id: issues.id, mergedAt: issues.mergedAt, mergedCommitSha: issues.mergedCommitSha })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds)));
 
@@ -129,10 +113,15 @@ export async function recordPerformedRelease(
   const { projectId, issueIds, commit, account, userId } = args;
   const providerRef = args.providerRef ?? null;
 
-  const gateStatus = await resolveReleaseGate(projectId);
-  if (!gateStatus) throw new NoReleaseGateError();
+  // ONE pass before anything refuses, so probes AND notes AND merges arrive
+  // together rather than one per call (ISS-1127).
+  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'record' });
+  if (!report.projectExists) throw new NoReleaseGateError();
+  const refusal = releaseBlockerError(report);
+  if (refusal) throw refusal;
 
-  const verify = await soleVerifyConfig(projectId);
+  const gateStatus = RELEASE_GATE_STATUS;
+  const verify = soleVerifyConfig(report.channels);
   const roster = await admissibleIssues(projectId, issueIds);
 
   const outcome = await verifyServingNow({ cfg: verify, expected: commit });

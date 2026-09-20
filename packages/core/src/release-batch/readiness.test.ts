@@ -506,3 +506,41 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
     expect((await loadReleaseReadiness(PROJECT_ID))?.declarationRead).toBe(true);
   });
 });
+
+// The second whole-set read's F4. `declarationGaps` inferred `release-runner`
+// from `channels: []` where the channel READ had failed, so the screen showed a
+// confirmed missing declaration next to a field saying it could not be read.
+describe('loadReleaseReadiness — a gap is never inferred from a read that failed', () => {
+  const RELEASING = {
+    releaseModel: 'promote' as const,
+    liveBranch: 'production',
+    releaseStrategy: 'merge-branch',
+    facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
+  };
+
+  it('reports no channel gap where the channels could not be read', async () => {
+    project({ ...RELEASING, environments: LIVE_DECLARED });
+    liveBinding({ releaseRunnerLabel: 'prod-box', verify: PROBES, rollback: { mode: 'coolify-image' } });
+    const declared = await listBindings();
+    listBindings.mockReset();
+    listBindings.mockResolvedValueOnce(declared);
+    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.channelsRead).toBe(false);
+    expect(out?.gaps).not.toContain('release-runner');
+    expect(out?.gaps).not.toContain('verify-probes');
+    expect(out?.gaps).not.toContain('rollback');
+  });
+
+  it('reports no knowledge gap where the project row could not be read', async () => {
+    project({ ...RELEASING, environments: LIVE_DECLARED });
+    selectLimit.mockRejectedValue(new Error('projects table unreadable'));
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).not.toContain('build-commands');
+    expect(out?.gaps).not.toContain('live-commit-endpoint');
+  });
+});

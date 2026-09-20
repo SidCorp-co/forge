@@ -282,7 +282,12 @@ describe('POST /:projectId/release-batches — the refusals that go through thei
     Object.assign(err, {
       releaseBlockers: [
         { code: 'RELEASE_TARGET_UNDECLARED', message: 'thrown', evaluated: true, httpStatus: 409 },
-        { code: 'RELEASE_ROSTER_EMPTY', message: 'nothing waiting', evaluated: true, httpStatus: 409 },
+        {
+          code: 'RELEASE_ROSTER_EMPTY',
+          message: 'nothing waiting',
+          evaluated: true,
+          httpStatus: 409,
+        },
       ],
     });
     createReleaseBatchMock.mockRejectedValueOnce(err);

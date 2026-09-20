@@ -59,7 +59,6 @@ export interface ReleaseBlockerReport {
   warnings: ReleaseWarning[];
 }
 
-/** `batch` needs a box to cut on; `record` needs none and asks for a merge. */
 export type ReleaseDoor = 'batch' | 'record';
 
 export interface CollectReleaseBlockersOptions {
@@ -82,7 +81,11 @@ export function blockersOf(err: unknown): ReleaseBlocker[] {
 
 /** The reasons standing beside the one being thrown, for a refusal body. */
 export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseBlocker[] {
-  return blockersOf(err).filter((b) => b.code !== thrown);
+  // Only the FIRST match goes: two checks can fail to evaluate.
+  const rest = [...blockersOf(err)];
+  const at = rest.findIndex((b) => b.code === thrown);
+  if (at >= 0) rest.splice(at, 1);
+  return rest;
 }
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {

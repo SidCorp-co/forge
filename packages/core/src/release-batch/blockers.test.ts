@@ -47,7 +47,9 @@ vi.mock('../issues/release-record-required.js', async (importActual) => {
   return { ...actual, issuesMissingReleaseRecord: () => missingNotes() };
 });
 
-const { collectReleaseBlockers, releaseBlockerError } = await import('./blockers.js');
+const { alsoBlocking, collectReleaseBlockers, releaseBlockerError } = await import(
+  './blockers.js'
+);
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
@@ -315,8 +317,30 @@ describe('collectReleaseBlockers — nothing a caller already got may move', () 
     ready();
     projectRow({ baseBranch: null, releaseModel: 'publish' });
     listBindings.mockResolvedValue([
-      { binding: { id: 'b-1', provider: 'coolify', config: DECLARED, instructions: null, label: '', role: 'deploy', stages: ['live'] }, connection: { config: {} } },
-      { binding: { id: 'b-2', provider: 'coolify', config: DECLARED, instructions: null, label: 'two', role: 'deploy', stages: ['live'] }, connection: { config: {} } },
+      {
+        binding: {
+          id: 'b-1',
+          provider: 'coolify',
+          config: DECLARED,
+          instructions: null,
+          label: '',
+          role: 'deploy',
+          stages: ['live'],
+        },
+        connection: { config: {} },
+      },
+      {
+        binding: {
+          id: 'b-2',
+          provider: 'coolify',
+          config: DECLARED,
+          instructions: null,
+          label: 'two',
+          role: 'deploy',
+          stages: ['live'],
+        },
+        connection: { config: {} },
+      },
     ]);
     selectRows.mockResolvedValue([{ id: ISSUE_A, status: 'awaiting_release', claimed: null }]);
 
@@ -335,5 +359,60 @@ describe('collectReleaseBlockers — nothing a caller already got may move', () 
 
     expect(report.channels).toBeNull();
     expect(report.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+});
+
+/**
+ * The second whole-set read's F1, F2 and F3: three more ways an answer could
+ * be less than every reason, or a different one than a caller already got.
+ */
+describe('collectReleaseBlockers — each door in its own refusal order', () => {
+  it('does not let a failed channel read outrank a roster reason the batch door reached first', async () => {
+    ready();
+    missingNotes.mockResolvedValue([ISSUE_A]);
+    // The declaration reads the bindings too, so only the SECOND read fails —
+    // a channel resolution that broke under a declaration that answered.
+    const bindings = await listBindings();
+    listBindings.mockReset();
+    listBindings.mockResolvedValueOnce(bindings);
+    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+
+    expect(report.blockers[0]?.code).toBe('RELEASE_RECORD_MISSING');
+    expect(report.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+
+  it('refuses a record by the probes, as that door did, and carries the roster with it', async () => {
+    ready();
+    // No binding probe AND no project-level live endpoint, or the channel takes
+    // the project's fallback and declares probes after all.
+    projectRow({ environments: {} });
+    liveBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
+    missingNotes.mockResolvedValue([ISSUE_A]);
+    selectRows.mockResolvedValue([
+      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: null },
+    ]);
+
+    const err = releaseBlockerError(
+      await collectReleaseBlockers(PROJECT_ID, { issueIds: [ISSUE_A], door: 'record' }),
+    );
+
+    expect(err?.name).toBe('ReleaseProbesUndeclaredError');
+    const rest = err?.releaseBlockers?.map((b) => b.code) ?? [];
+    expect(rest).toContain('RELEASE_RECORD_MISSING');
+    expect(rest).toContain('RELEASE_WORK_UNMERGED');
+  });
+
+  it('keeps a second unevaluated check when the first is the one being thrown', async () => {
+    ready();
+    onlineIds.mockRejectedValue(new Error('pool table unreadable'));
+    activeBatch.mockRejectedValue(new Error('runs table unreadable'));
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+    const err = releaseBlockerError(report);
+    const standing = alsoBlocking(err, 'RELEASE_CHECK_UNEVALUATED');
+
+    expect(standing.filter((b) => b.code === 'RELEASE_CHECK_UNEVALUATED')).toHaveLength(1);
   });
 });

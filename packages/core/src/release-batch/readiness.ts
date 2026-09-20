@@ -45,11 +45,10 @@ export interface ReleaseReadiness {
   hasVerify: boolean;
   /** Where each live channel's probes came from, in the same order as `providers`. */
   verifySources: Array<'binding' | 'environments-live' | 'none'>;
-  /** False where the declaration could not be READ, which makes `releaseModel`,
-   *  the branches and `hasReleaseGate` fallbacks rather than readings. */
+  /** False where the declaration could not be READ, so `releaseModel`, the
+   *  branches and `hasReleaseGate` are fallbacks rather than readings. */
   declarationRead: boolean;
-  /** False where the live bindings could not be READ, which makes `providers`,
-   *  the rollback, `hasVerify` and the label fallbacks too (ISS-1127). */
+  /** The same, for `providers`, the rollback, `hasVerify` and the label. */
   channelsRead: boolean;
   /** Everything still undeclared. Empty means settings has nothing to say. */
   gaps: ReleaseGapKey[];
@@ -88,7 +87,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   });
   const held = await guarded('knowledge', blockers, () => selectAllSlugsFromKnowledge(projectId));
 
-  const gaps = declarationGaps({ decl, channels, row: row ?? null, held: held ?? [] });
+  const gaps = declarationGaps({ decl, channels: report.channels, row, held });
   const first = channels[0] ?? null;
   let releaseRunnerLabel: string | null = null;
   try {
@@ -139,32 +138,40 @@ async function guarded<T>(
   }
 }
 
+/** In every field, the unset value means the read FAILED — never an absence. */
 interface GapInput {
   decl: ReleaseDeclarationRead;
-  channels: ReleaseChannelRead[];
-  row: ProjectRow | null;
-  held: string[];
+  channels: ReleaseChannelRead[] | null;
+  row: ProjectRow | null | undefined;
+  held: string[] | undefined;
 }
 
 /** What settings still has to say. Unchanged by ISS-1127, and still not the blocker list. */
 function declarationGaps(input: GapInput): ReleaseGapKey[] {
   const { decl, channels, row, held } = input;
-  const declarations = {
-    repoPath: row?.repoPath ?? null,
-    repoUrl: row?.repoUrl ?? null,
-    releaseModel: row?.releaseModel ?? 'none',
-  };
-  const gaps: ReleaseGapKey[] = missingProjectKnowledge(declarations, held).map((o) => o.slug);
+  const gaps: ReleaseGapKey[] = [];
+  // A gap is an ABSENCE somebody can act on, never a read nobody managed to
+  // make (ISS-1127).
+  if (row !== undefined && held !== undefined) {
+    const declarations = {
+      repoPath: row?.repoPath ?? null,
+      repoUrl: row?.repoUrl ?? null,
+      releaseModel: row?.releaseModel ?? 'none',
+    };
+    gaps.push(...missingProjectKnowledge(declarations, held).map((o) => o.slug));
+  }
   if (decl?.kind === 'undeclared-target') gaps.push('release-target');
   if (decl?.kind !== 'gated') return gaps;
+
+  if (row !== undefined && normalizeEnvironments(row?.environments).live.commitUrl === null) {
+    gaps.push('live-commit-endpoint');
+  }
+  if (channels === null) return gaps;
 
   const labels = [...new Set(channels.map((c) => c.releaseRunnerLabel).filter((l) => l !== null))];
   if (labels.length > 1) gaps.push('release-runner-ambiguous');
   else if (labels.length === 0) gaps.push('release-runner');
   if (channels.some((c) => !c.verify)) gaps.push('verify-probes');
-  if (normalizeEnvironments(row?.environments).live.commitUrl === null) {
-    gaps.push('live-commit-endpoint');
-  }
   if (channels.length > 1) gaps.push('release-multi-channel');
   if (channels.some((c) => !c.rollback)) gaps.push('rollback');
   else if (channels.some((c) => c.rollback?.kind === 'unrepresentable'))
