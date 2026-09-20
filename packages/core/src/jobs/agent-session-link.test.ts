@@ -19,7 +19,20 @@ const jobs = tagTable('jobs');
 // ISS-447 — applyKernelTransition writes the audit row here on the session sync.
 const kernelTransitions = tagTable('kernel_transitions');
 
-vi.mock('../db/schema.js', () => ({ agentSessions, issues, jobs, kernelTransitions }));
+vi.mock('../db/schema.js', () => ({
+  agentSessions,
+  issues,
+  jobs,
+  kernelTransitions,
+  agentSessionKinds: ['master', 'run_session', 'pipeline', 'pm', 'chat'] as const,
+  terminalAgentSessionStatuses: [
+    'completed',
+    'failed',
+    'completed_via_recovery',
+    'cancelled_stale',
+    'cancelled',
+  ] as const,
+}));
 
 vi.mock('../db/client.js', () => {
   const dbStub: Record<string, unknown> = {
@@ -27,8 +40,11 @@ vi.mock('../db/client.js', () => {
     execute: async () => undefined,
     select: () => ({
       from: (tbl: object) => ({
+        // `where()` is awaited directly by the descent sweep (ISS-1136) and
+        // `.limit()`-ed by every other reader here, so it has to be both.
         where: () => ({
           limit: () => Promise.resolve(selectQueue.shift() ? [selectQueue.shift()!] : []),
+          then: (resolve: (rows: Row[]) => unknown) => resolve([]),
         }),
       }),
     }),
@@ -66,6 +82,8 @@ vi.mock('drizzle-orm', () => ({
   eq: () => ({ _sql: 'eq' }),
   ne: (_col: unknown, v: unknown) => ({ _sql: 'ne', value: v }),
   and: (...parts: unknown[]) => ({ _sql: 'and', parts: parts.filter(Boolean) }),
+  inArray: (_col: unknown, v: unknown) => ({ _sql: 'inArray', value: v }),
+  notInArray: (_col: unknown, v: unknown) => ({ _sql: 'notInArray', value: v }),
 }));
 
 // ISS-101 — agent-session-link now closes one-shot pipeline_runs on terminal
@@ -203,8 +221,9 @@ describe('jobs/agent-session-link', () => {
       expect(inserted?.values.dispatchedAt).toBeInstanceOf(Date);
       expect(inserted?.values.title).toContain('forge-plan');
       expect(inserted?.values.title).toContain('Fix login bug');
+      expect(inserted?.values.kind).toBe('pipeline');
       const meta = inserted?.values.metadata as Record<string, unknown>;
-      expect(meta.type).toBe('pipeline');
+      expect(meta.type).toBeUndefined();
       expect(meta.jobId).toBe('job-1');
       expect(meta.issueId).toBe('iss-1');
       expect(meta.skillName).toBe('forge-plan');
@@ -215,7 +234,7 @@ describe('jobs/agent-session-link', () => {
       expect(publishMock).toHaveBeenCalled();
     });
 
-    it("tags pm jobs with metadata.type='pm' so the pm session filter scopes them", async () => {
+    it('writes kind=pm on a pm job, so the pm session filter scopes it off the column', async () => {
       // No issue lookup for project-scoped pm jobs (issueId stays null).
       const result = await ensureAgentSessionForJob(
         { ...baseJob, type: 'pm', payload: {}, issueId: null } as never,
@@ -223,8 +242,9 @@ describe('jobs/agent-session-link', () => {
       );
       expect(result).toBe('sess-new');
       expect(insertCalls).toHaveLength(1);
+      expect(insertCalls[0]?.values.kind).toBe('pm');
       const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
-      expect(meta.type).toBe('pm');
+      expect(meta.type).toBeUndefined();
       expect(meta.jobType).toBe('pm');
     });
 
@@ -252,14 +272,15 @@ describe('jobs/agent-session-link', () => {
       });
     });
 
-    it("keeps metadata.type='pipeline' for non-pm job types", async () => {
+    it('writes kind=pipeline for non-pm job types', async () => {
       pushSelect({ title: 'Bug', createdById: 'user-1' });
       await ensureAgentSessionForJob({ ...baseJob, type: 'code', issueId: 'iss-2' } as never, {
         repoPath: '/r',
         resume: FRESH_RESUME,
       });
+      expect(insertCalls[0]?.values.kind).toBe('pipeline');
       const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
-      expect(meta.type).toBe('pipeline');
+      expect(meta.type).toBeUndefined();
       expect(meta.jobType).toBe('code');
     });
   });

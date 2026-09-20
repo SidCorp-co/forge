@@ -123,6 +123,10 @@ describe('POST /:id/rerun', () => {
       projectId: PROJECT_ID,
       userId: original.userId,
       title: 'Original chat (rerun)',
+      // ISS-1136 — a rerun is cut from the session it reran, and core writes
+      // that edge in a column rather than leaving it to be read back out of
+      // the metadata key the row also happens to carry.
+      parentSessionId: SESSION_ID,
       metadata: { model: 'default', rerunOfSessionId: SESSION_ID },
     });
     expect(dispatchChatTurn).toHaveBeenCalledWith({

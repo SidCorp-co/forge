@@ -9,13 +9,8 @@
 
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import {
-  type AgentSessionKind,
-  agentSessions,
-  issues,
-  pipelineRuns,
-  terminalAgentSessionStatuses,
-} from '../db/schema.js';
+import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -26,11 +21,10 @@ import {
   insertOneShotRun,
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
-import { liveMasterSessionId } from './master-session.js';
+import { liveMasterSessionId } from './master-owner.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
-/** What `agent_sessions.kind` a run session carries. */
-export const RUN_SESSION_KIND: AgentSessionKind = 'run_session';
+export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 
 /** Where a run's issue group lives on its one-shot run. */
 export const RUN_ISSUES_METADATA_KEY = 'runIssues';

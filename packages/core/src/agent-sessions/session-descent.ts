@@ -13,15 +13,21 @@
  * `lifecycle/transition.ts` that starts a descent skips a flip that already came
  * from one. That is what keeps one walk per terminal flip instead of a walk per
  * row, and it is why a cycle in the parent edge cannot spin.
+ *
+ * Everything this module reaches for at call time is imported at call time.
+ * `transition.ts` imports this file dynamically from inside the chokepoint, so a
+ * static edge back to it — directly, or through `run-session.ts` or
+ * `pipeline/runs.ts` — leaves this module's own top-level constants in their
+ * temporal dead zone while the walk is already running. That failed exactly
+ * once, as `Cannot access 'MAX_DEPTH' before initialization` swallowed by the
+ * hook's own error path, which is a live path that never runs.
  */
 
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
-import { RUN_SESSION_KIND } from '../devices/run-session.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
-import { closeRunIfOneShot } from '../pipeline/runs.js';
 
 /** The `source` every flip a descent writes carries. */
 export const DESCENT_SOURCE = 'session-descent';
@@ -81,6 +87,7 @@ export async function closeSessionsOwnedBy(
     for (const child of children) {
       if (seen.has(child.id)) continue;
       seen.add(child.id);
+      const { applyKernelTransition } = await import('../lifecycle/transition.js');
       const flipped = await applyKernelTransition(db, {
         entity: 'session',
         to: 'failed',
@@ -103,10 +110,8 @@ export async function closeSessionsOwnedBy(
       next.push(child.id);
 
       if (child.kind === RUN_SESSION_KIND) {
-        // Imported here rather than at the top: run-issue-return reaches back
-        // into the devices module, and a static edge from here would close a
-        // cycle through `run-session.ts`.
         const { returnIssuesForRun } = await import('../devices/run-issue-return.js');
+        const { closeRunIfOneShot } = await import('../pipeline/runs.js');
         const returned = await returnIssuesForRun(child.pipelineRunId, {
           reason: 'the session that started this run closed',
         });

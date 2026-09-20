@@ -11,6 +11,12 @@
 import { sql } from 'drizzle-orm';
 import { type AgentSessionKind, agentSessionKinds } from '../db/schema.js';
 
+/** What `agent_sessions.kind` a box's resident dispatcher carries. */
+export const MASTER_SESSION_KIND: AgentSessionKind = 'master';
+
+/** What `agent_sessions.kind` one dispatch of work on a box carries. */
+export const RUN_SESSION_KIND: AgentSessionKind = 'run_session';
+
 /** Job-driven sessions: the ones a pipeline sweep is about. */
 export const PIPELINE_SESSION_KINDS = ['pipeline', 'pm'] as const satisfies readonly AgentSessionKind[];
 

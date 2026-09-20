@@ -1,7 +1,7 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AgentSessionKind, agentSessions, issues, jobs } from '../db/schema.js';
-import { masterSessionIfOwned } from '../devices/master-session.js';
+import { masterSessionIfOwned } from '../devices/master-owner.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';

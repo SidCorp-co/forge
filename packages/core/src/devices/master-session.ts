@@ -1,10 +1,7 @@
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import {
-  type AgentSessionKind,
-  agentSessions,
-  terminalAgentSessionStatuses,
-} from '../db/schema.js';
+import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
+import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -14,8 +11,8 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 
-/** What `agent_sessions.kind` a master session carries. */
-export const MASTER_SESSION_KIND: AgentSessionKind = 'master';
+export { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
+export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
 
 export interface MasterSession {
   sessionId: string;
@@ -163,62 +160,6 @@ export async function closeMasterSession(args: {
     source: 'master-session',
   });
   return rows.length > 0;
-}
-
-/**
- * The live master session for one (device, project), or `null`.
- *
- * This is how core issues the owner edge for a run session: the box does not
- * get to say who its parent is, because core already knows which master it
- * registered for that pair and `agent_sessions_one_live_master_uq` makes that
- * answer single-valued.
- */
-export async function liveMasterSessionId(args: {
-  deviceId: string;
-  projectId: string;
-}): Promise<string | null> {
-  const [row] = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.deviceId, args.deviceId),
-        eq(agentSessions.projectId, args.projectId),
-        eq(agentSessions.kind, MASTER_SESSION_KIND),
-        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-      ),
-    )
-    .limit(1);
-  return row?.id ?? null;
-}
-
-/**
- * The named session, but only if it is a master of this project.
- *
- * A caller hands this an id it read off somewhere else — `jobs.held_by`, a box's
- * ledger frame — and gets back either a parent core can stand behind or `null`.
- * It never trusts the id's shape: a uuid that resolves to a chat session is as
- * wrong as one that resolves to nothing.
- */
-export async function masterSessionIfOwned(args: {
-  sessionId: string;
-  projectId: string;
-  deviceId?: string | null;
-}): Promise<string | null> {
-  const [row] = await db
-    .select({ id: agentSessions.id, deviceId: agentSessions.deviceId })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.id, args.sessionId),
-        eq(agentSessions.projectId, args.projectId),
-        eq(agentSessions.kind, MASTER_SESSION_KIND),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
-  if (args.deviceId != null && row.deviceId !== args.deviceId) return null;
-  return row.id;
 }
 
 /** Every live master session on one device, for the daemon's own reconcile. */
