@@ -298,3 +298,87 @@ describe('a pull_request_review delivery', () => {
     ).toBe(0);
   });
 });
+
+/**
+ * ISS-1123 criteria 1 to 6 — the second route to this writer, against the real statement.
+ *
+ * The ordering case is here rather than in a unit file for the reason the header gives: the rule it
+ * turns on lives in the `ON CONFLICT` predicate, and a stubbed builder passes it with that
+ * predicate deleted. What it proves is that the creation answer cannot rewind a row a later
+ * delivery already moved — which it can, and silently, the moment its `updated_at` stops travelling.
+ */
+describe('a pull request the agent face opened', () => {
+  const opened = (over: Record<string, unknown> = {}) => ({
+    number: 77,
+    url: 'https://github.com/SidCorp-co/forge/pull/77',
+    title: 'a change under review',
+    state: 'open',
+    draft: false,
+    headRef: 'ISS-4242-projection',
+    headSha: H1,
+    baseRef: 'main',
+    baseSha: BASE,
+    updatedAt: '2026-09-17T01:00:00Z',
+    ...over,
+  });
+
+  const project = (over: Record<string, unknown> = {}) =>
+    g.mods.projectOpenedPullRequest({
+      projectId: g.projectId,
+      bindingId: g.bindingId,
+      repository: 'SidCorp-co/forge',
+      opened: opened(over) as Parameters<typeof g.mods.projectOpenedPullRequest>[0]['opened'],
+    });
+
+  it('leaves a row the merge route can resolve, linked to the issue its branch names', async () => {
+    const issueId = await g.seedIssue(g.projectId, 4242);
+    const result = await project();
+    expect(result).toMatchObject({ outcome: 'recorded', issueId });
+    expect(await g.row()).toMatchObject({
+      issue_id: issueId,
+      number: 77,
+      state: 'open',
+      head_ref: 'ISS-4242-projection',
+      head_sha: H1,
+      base_ref: 'main',
+      base_sha: BASE,
+      repo_full_name: 'SidCorp-co/forge',
+      merged_at: null,
+      merge_commit_sha: null,
+    });
+  });
+
+  it('links to no issue where the branch names none, which is an ordinary answer', async () => {
+    const result = await project({ headRef: 'dependabot/npm/hono-4' });
+    expect(result).toMatchObject({ outcome: 'recorded', issueId: null });
+    expect((await g.row())?.issue_id).toBeNull();
+  });
+
+  it('cannot rewind a row a newer delivery already moved, and says it did not', async () => {
+    await g.mods.applyPullRequestEvent(
+      g.ctx(),
+      g.prEvent({
+        state: 'closed',
+        merged: true,
+        merged_at: '2026-09-18T04:00:00Z',
+        merge_commit_sha: 'e'.repeat(40),
+        head: { ref: 'ISS-4242-projection', sha: H2 },
+        updated_at: '2026-09-18T04:00:00Z',
+      }),
+    );
+
+    const result = await project({ updatedAt: '2026-09-17T01:00:00Z' });
+
+    expect(result.outcome).toBe('superseded');
+    expect(await g.row()).toMatchObject({
+      state: 'merged',
+      head_sha: H2,
+      merge_commit_sha: 'e'.repeat(40),
+    });
+  });
+
+  it('refuses by name rather than writing a row without the head GitHub never sent', async () => {
+    await expect(project({ headSha: null })).rejects.toThrow(/head sha/);
+    expect(await g.row()).toBeUndefined();
+  });
+});

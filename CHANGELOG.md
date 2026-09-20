@@ -3012,6 +3012,20 @@
   set is now 59.
 
 ### Fixed
+- **A pull request Forge opened is now one Forge can merge.** Forge kept its record of a
+  repository's pull requests entirely from what GitHub told it by webhook, so a pull request Forge
+  itself opened left nothing behind: asking Forge to merge it came back saying there was no such
+  pull request, for every pull request on the project. Opening one now writes that record as it is
+  created, through the same place a webhook writes it, so the request Forge is surest about — the
+  one it just made — is one it can be asked to land.
+
+- **A merge that finds nothing to merge says whether the record is empty or the number is wrong.**
+  Those are different problems and they used to share a sentence, which sent people to check a
+  number when the thing to check was whether anything had ever reached Forge's record at all. The
+  refusal now names an empty record as that, and says how many webhook deliveries have arrived. The
+  list of a project's GitHub connections reports the same count beside the health flags, so a
+  connection that is installed, switched on and healthy and has never once been called says so.
+
 - **A decision put to your chat room can no longer be asked twice, or stop being retried in
   silence.** Attempts are counted by the record itself, so retries end where they should and
   somebody is told when delivery fails.
