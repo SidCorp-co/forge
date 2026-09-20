@@ -188,6 +188,10 @@ struct MasterState {
     /// had reported by then.
     last_nudge: Option<Nudge>,
     mcp_stale_reported: bool,
+    /// The last thing this box said about the capability the pane holds, so a
+    /// pane stuck in one state is reported on the sweep that finds it and not
+    /// on all forty-five after it.
+    capability_said: Option<&'static str>,
 }
 
 /// One nudge, and the evidence a later sweep judges it by.
@@ -339,6 +343,18 @@ impl Masters {
         }
     }
 
+    /// Record what this box now says about a pane's capability, and answer
+    /// whether that is a change from what it last said.
+    fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some(m) = reg.live.get_mut(project_id) else {
+            return false;
+        };
+        let changed = m.capability_said != Some(said);
+        m.capability_said = Some(said);
+        changed
+    }
+
     fn claim_nudge(
         &self,
         project_id: &str,
@@ -487,10 +503,16 @@ pub async fn run(
             None
         }
     };
+    let tokens = session_tokens::default_path().map(session_tokens::SessionTokens::at);
+    if tokens.is_none() {
+        tracing::error!(
+            "[master] the control capability map cannot be resolved on this box — no master pane can be minted a capability, and none will be started"
+        );
+    }
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -500,7 +522,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -538,6 +560,7 @@ async fn sweep(
     job_records: &dyn Records,
     adopted: &tokio::sync::watch::Receiver<bool>,
     ledger: &mut Option<Ledger>,
+    tokens: Option<&session_tokens::SessionTokens>,
     account_limit_said: &mut Option<String>,
 ) -> Duration {
     let now_unix = master_limit::now_unix();
@@ -594,10 +617,10 @@ async fn sweep(
                     status: runner.status.clone(),
                 },
             );
-            supervise(client, masters, &runner.project_id, &runner.slug).await;
+            supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
             continue;
         }
-        supervise(client, masters, &runner.project_id, &runner.slug).await;
+        supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
         take_pool_job(
             client,
             cfg,
@@ -605,6 +628,7 @@ async fn sweep(
             job_panes,
             job_records,
             adopted,
+            tokens,
             runner,
         )
         .await;
@@ -614,7 +638,16 @@ async fn sweep(
             .unwrap_or_default();
         let placement = placement_for(&admissible);
         if placement == Placement::AdoptOnly {
-            if retire_if_idle(client, masters, ledger, &runner.project_id, &runner.slug).await {
+            if retire_if_idle(
+                client,
+                masters,
+                ledger,
+                tokens,
+                &runner.project_id,
+                &runner.slug,
+            )
+            .await
+            {
                 continue;
             }
         } else {
@@ -655,6 +688,7 @@ async fn sweep(
             stored_conversation.as_deref(),
             &inherited,
             placement,
+            tokens,
         )
         .await;
         if pane == PaneState::Absent {
@@ -687,6 +721,10 @@ async fn sweep(
         }
 
         if admissible.is_empty() {
+            continue;
+        }
+
+        if pane == PaneState::StaleCapability {
             continue;
         }
 
@@ -829,6 +867,7 @@ async fn take_pool_job(
     job_panes: &Arc<JobPanes>,
     job_records: &dyn Records,
     adopted: &tokio::sync::watch::Receiver<bool>,
+    tokens: Option<&session_tokens::SessionTokens>,
     runner: &runners::MeRunner,
 ) {
     if !*adopted.borrow() {
@@ -838,7 +877,6 @@ async fn take_pool_job(
     let fallback = resolve_repo(served, cfg, &runner.project_id)
         .ok()
         .map(|r| r.repo_path);
-    let tokens = session_tokens::default_path().map(session_tokens::SessionTokens::at);
     let took = pool_jobs::take_one(
         &pool_jobs::CorePool { client, limit: 20 },
         &pool_jobs::TmuxPanes,
@@ -849,7 +887,7 @@ async fn take_pool_job(
         job_panes.session_id(),
         fallback.as_deref(),
         bound,
-        tokens.as_ref(),
+        tokens,
     )
     .await;
     if let pool_jobs::Took::AtBound = took {
@@ -1235,6 +1273,10 @@ pub(crate) enum PaneState {
     ColdStarted,
     /// A pane was started on the conversation its predecessor had.
     Resumed,
+    /// A pane was already running and this daemon adopted it, but the
+    /// capability it holds names a session this box no longer has. It is up and
+    /// it is refused, so it is not worth a nudge.
+    StaleCapability,
 }
 
 pub(crate) fn conversation_transcript(
@@ -1261,7 +1303,12 @@ pub(crate) fn resume_for(
     stored: Option<&str>,
 ) -> Option<String> {
     let id = stored.filter(|s| !s.is_empty())?;
-    let path = conversation_transcript(repo, id)?;
+    let Some(path) = conversation_transcript(repo, id) else {
+        tracing::warn!(
+            "[master] {slug}: conversation {id} is recorded for this project but this box cannot say where a transcript for it would live — it has no home directory to look under. Starting cold, so this pane begins with no memory of what its predecessor was doing"
+        );
+        return None;
+    };
     if path.is_file() {
         tracing::info!("[master] {slug}: resuming conversation {id}");
         return Some(id.to_string());
@@ -1395,6 +1442,7 @@ async fn ensure_master(
     stored_conversation: Option<&str>,
     inherited: &[InheritedRun],
     placement: Placement,
+    tokens: Option<&session_tokens::SessionTokens>,
 ) -> PaneState {
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
     if !terminal::available() {
@@ -1442,17 +1490,34 @@ async fn ensure_master(
                 "[master] {}: adopting the resident session {name}",
                 resolved.slug
             );
-            if session.created {
-                tracing::error!(
-                    "[master] {}: adopted the resident session {name} onto a master session core created fresh ({}) — whatever capability that pane was started with names a session this box no longer holds, so its declarations are refused until it is replaced. A pane cannot be handed a new capability: `tmux kill-session -t {name}` and the next sweep starts one that carries the current session.",
-                    resolved.slug,
-                    session.session_id
-                );
-            }
             remember(masters, project_id, &session);
         }
         masters.clear_unplaced(project_id);
-        return PaneState::Adopted;
+        return match capability_of(tokens, &session.session_id) {
+            Capability::Current => {
+                masters.note_capability(project_id, "current");
+                PaneState::Adopted
+            }
+            Capability::Stale => {
+                if masters.note_capability(project_id, "stale") {
+                    tracing::error!(
+                        "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `tmux kill-session -t {name}`, and a master carrying the current capability starts in its place. It is not being nudged while it stands like this.",
+                        resolved.slug,
+                        session.session_id
+                    );
+                }
+                PaneState::StaleCapability
+            }
+            Capability::Unknown(why) => {
+                if masters.note_capability(project_id, "unknown") {
+                    tracing::warn!(
+                        "[master] {}: cannot tell whether {name}'s capability is current: {why}. Saying nothing about it rather than calling it stale — an unreadable map is not evidence about any pane.",
+                        resolved.slug
+                    );
+                }
+                PaneState::Adopted
+            }
+        };
     }
 
     if placement == Placement::AdoptOnly {
@@ -1488,7 +1553,7 @@ async fn ensure_master(
 
     let transcript = transcript_path(&resolved.slug);
     let mut env = terminal::pane_env();
-    match session_tokens::default_path().map(session_tokens::SessionTokens::at) {
+    match tokens {
         Some(store) => match store.mint(&session.session_id) {
             Ok(token) => env.push((session_tokens::TOKEN_ENV.to_string(), token)),
             Err(e) => {
@@ -1606,6 +1671,44 @@ surface it reads",
     }
 }
 
+/// What this box can say about the capability the resident master pane holds.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Capability {
+    /// Some capability this box minted names the session it now holds.
+    Current,
+    /// None does, so the pane is running on a token for a session that is gone
+    /// and every frame it sends will be refused.
+    Stale,
+    /// This box cannot read its own map, so it says nothing about any pane.
+    Unknown(String),
+}
+
+/// Judge a resident pane's capability from this box's own record of what it
+/// minted.
+///
+/// The pane's token lives in its environment and is out of reach here, but the
+/// map is not: `mint` leaves exactly one entry naming the session it was called
+/// for, and `retire` removes by session. So a map holding nothing for the
+/// session core now gives us is a map that was never minted for it — which is
+/// precisely a pane adopted onto a session row core replaced, whether it was
+/// replaced at this call or at one three restarts ago.
+///
+/// `session.created` answers only the first of those, which is why one project
+/// of seven was reported on 2026-09-18 and the one that was actually stuck was
+/// not (ISS-1099).
+fn capability_of(tokens: Option<&session_tokens::SessionTokens>, session_id: &str) -> Capability {
+    let Some(store) = tokens else {
+        return Capability::Unknown(
+            "this box could not resolve where its capability map lives".to_string(),
+        );
+    };
+    match store.holds_session(session_id) {
+        Ok(true) => Capability::Current,
+        Ok(false) => Capability::Stale,
+        Err(e) => Capability::Unknown(e.to_string()),
+    }
+}
+
 fn say_unplaced(masters: &Arc<Masters>, project_id: &str, slug: &str, why: Unplaced) {
     if masters.note_unplaced(project_id, why.clone()) {
         tracing::warn!("[master] {slug}: no master pane placed — {why}");
@@ -1621,6 +1724,7 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
             last_work: Instant::now(),
             last_nudge: None,
             mcp_stale_reported: false,
+            capability_said: None,
         },
     );
 }
@@ -1639,7 +1743,13 @@ async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
     }
 }
 
-async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str, slug: &str) {
+async fn supervise(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    tokens: Option<&session_tokens::SessionTokens>,
+    project_id: &str,
+    slug: &str,
+) {
     let Some((session_id, name)) = masters.get(project_id) else {
         return;
     };
@@ -1649,6 +1759,7 @@ async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str
         end_master(
             client,
             masters,
+            tokens,
             project_id,
             &session_id,
             "terminal session vanished",
@@ -1661,6 +1772,7 @@ async fn retire_if_idle(
     client: &CoreClient,
     masters: &Arc<Masters>,
     ledger: &mut Option<Ledger>,
+    tokens: Option<&session_tokens::SessionTokens>,
     project_id: &str,
     slug: &str,
 ) -> bool {
@@ -1689,6 +1801,7 @@ async fn retire_if_idle(
             end_master(
                 client,
                 masters,
+                tokens,
                 project_id,
                 &session_id,
                 "idle, children done",
@@ -1702,6 +1815,7 @@ async fn retire_if_idle(
 async fn end_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
+    tokens: Option<&session_tokens::SessionTokens>,
     project_id: &str,
     session_id: &str,
     reason: &str,
@@ -1709,7 +1823,7 @@ async fn end_master(
     if let Err(e) = master_api::close(client, session_id, reason).await {
         tracing::warn!("[master] could not close session {session_id}: {e}");
     }
-    if let Some(store) = session_tokens::default_path().map(session_tokens::SessionTokens::at) {
+    if let Some(store) = tokens {
         store.retire(session_id);
     }
     masters.forget(project_id);
@@ -2691,6 +2805,24 @@ mod give_back_tests {
     }
 
     #[test]
+    fn no_path_out_of_resume_for_starts_a_pane_cold_in_silence() {
+        let body = THIS_SOURCE
+            .split("pub(crate) fn resume_for(")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .expect("resume_for is gone");
+        assert!(
+            !body.contains("conversation_transcript(repo, id)?"),
+            "`?` here returns None with nothing logged when this box has no home directory, so a pane that lost its predecessor's memory looks exactly like one that never had a conversation — and the test that reads this log answers with an empty string rather than a failure it can name: {body}"
+        );
+        assert_eq!(
+            body.matches("tracing::warn!").count(),
+            2,
+            "there are two ways to start a pane cold while a conversation IS recorded — no home directory to look under, and no transcript at the path — and each one says so; a count below this is a path that goes quiet: {body}"
+        );
+    }
+
+    #[test]
     fn a_conversation_this_box_cannot_reach_is_named_in_the_log_it_starts_cold_from() {
         let repo = std::env::temp_dir().join(format!("forge-resume-log-{}", std::process::id()));
         let out = logged_while(|| {
@@ -3416,11 +3548,16 @@ mod give_back_tests {
     }
 
     /// The reporting path's own source, bounded to it.
+    ///
+    /// The closing boundary is the function's own brace at column zero. It used
+    /// to be the next doc comment, which put this slice's end in prose: delete
+    /// or move a comment and the slice widens into the next function, silently
+    /// changing what every assertion below counts.
     fn reporting_path() -> &'static str {
         THIS_SOURCE
             .split("async fn report_account_limit(")
             .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
+            .and_then(|r| r.split("\n}").next())
             .expect("the reporting path is gone")
     }
 
@@ -4001,6 +4138,7 @@ impl Masters {
                 last_work: Instant::now(),
                 last_nudge: None,
                 mcp_stale_reported: false,
+                capability_said: None,
             },
         );
     }
@@ -4026,12 +4164,19 @@ mod unplaced_tests {
             .expect("sweep must be findable")
     }
 
+    /// `ensure_master`'s own source, bounded by its own closing brace.
+    ///
+    /// Not by the next `async fn`: the item after `ensure_master` is a plain
+    /// `fn`, so that token would widen this by two hundred lines. Not by the
+    /// next doc comment either — that put the boundary in prose, where a lint
+    /// pass free to delete comments can move it.
     fn ensure_master_body() -> &'static str {
-        production()
+        let rest = production()
             .split("\nasync fn ensure_master(")
             .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
-            .expect("ensure_master must be findable")
+            .expect("ensure_master must be findable");
+        let end = block_end(rest, 0).expect("ensure_master must close");
+        &rest[..end]
     }
 
     fn block_end(rest: &str, indent: usize) -> Option<usize> {
@@ -4053,21 +4198,183 @@ mod unplaced_tests {
         &rest[..end]
     }
 
-    /// The `session.created` report inside `ensure_master`'s adopt branch, on
-    /// its own.
+    /// The stale-capability report in `ensure_master`'s adopt branch, on its
+    /// own.
     ///
-    /// Scoped to the one `if` block. `ensure_master` holds eight further
+    /// Scoped to the one match arm. `ensure_master` holds eight further
     /// `tracing::error!` calls, and both `{name}` and `session.session_id`
     /// appear again further down it — so an assertion over the rest of the
     /// function body holds whatever this report is written as.
     fn adopt_report() -> &'static str {
         let body = ensure_master_body();
         let start = body
-            .find("if session.created {")
-            .expect("the adopt branch must gate its report on session.created");
+            .find("Capability::Stale => {")
+            .expect("the adopt branch must have an arm for a stale capability");
         let rest = &body[start..];
-        let end = block_end(rest, 12).expect("the session.created report must close");
+        let end = block_end(rest, 12).expect("the stale-capability arm must close");
         &rest[..end]
+    }
+
+    /// A capability map of this run's own, never this box's.
+    fn temp_map(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-cap-{tag}-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir.join("control-tokens.json")
+    }
+
+    #[test]
+    fn a_capability_minted_for_the_session_this_box_holds_reads_current() {
+        let path = temp_map("current");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        store.mint("sess-A").expect("mint");
+        assert_eq!(capability_of(Some(&store), "sess-A"), Capability::Current);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_map_that_names_only_other_sessions_reads_stale() {
+        let path = temp_map("stale");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        store.mint("sess-OLD").expect("mint");
+        assert_eq!(
+            capability_of(Some(&store), "sess-NEW"),
+            Capability::Stale,
+            "this is the whole defect: the pane is up on a token for sess-OLD while core has replaced it with sess-NEW, and `session.created` is false because the replacement happened in an earlier sweep"
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_map_that_was_never_written_reads_stale_rather_than_current() {
+        let path = temp_map("absent");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        assert_eq!(
+            capability_of(Some(&store), "sess-A"),
+            Capability::Stale,
+            "a box that has minted nothing can resolve nothing, so a pane running on it is refused; an absent map is an answer, unlike an unreadable one"
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_map_this_box_cannot_read_is_never_reported_as_a_stale_capability() {
+        let path = temp_map("torn");
+        std::fs::write(&path, b"{\"07ccaad6\": ").expect("plant a half-written map");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        match capability_of(Some(&store), "sess-A") {
+            Capability::Unknown(why) => assert!(
+                !why.is_empty(),
+                "the verdict has to carry why this box could not tell"
+            ),
+            other => panic!(
+                "an unreadable map is not evidence about any pane; calling it {other:?} would report every master on the box as unplaceable at once"
+            ),
+        }
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_box_that_cannot_resolve_its_map_at_all_says_unknown() {
+        match capability_of(None, "sess-A") {
+            Capability::Unknown(_) => {}
+            other => panic!("no map to ask is not an answer about the pane: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_pane_that_stays_stale_is_reported_on_the_sweep_that_finds_it_and_not_after() {
+        let masters = Masters::new();
+        masters.remember_for_test("proj-1", "sess-NEW", "pane-1");
+        assert!(
+            masters.note_capability("proj-1", "stale"),
+            "the sweep that first finds it has to report it"
+        );
+        for _ in 0..45 {
+            assert!(
+                !masters.note_capability("proj-1", "stale"),
+                "45 passes against a pane in one unchanged state is the cost this defect charged for four hours on 2026-09-18"
+            );
+        }
+        assert!(
+            masters.note_capability("proj-1", "current"),
+            "a state that changes is reported again, or a pane that recovers is never heard from"
+        );
+    }
+
+    #[test]
+    fn a_pane_whose_capability_is_stale_is_not_nudged() {
+        let body = sweep_body();
+        let guard = body
+            .find("if pane == PaneState::StaleCapability {")
+            .expect("the sweep has to notice a pane it already knows will be refused");
+        let nudge = body
+            .find("nudge_master(")
+            .expect("the sweep must still nudge the panes that can act");
+        assert!(
+            guard < nudge,
+            "the guard is only a guard if it is reached first"
+        );
+        assert!(
+            body[guard..nudge].contains("continue;"),
+            "the guard has to leave the iteration; a nudge to a pane whose declarations are refused spends a full master pass to produce a report nobody can act on"
+        );
+    }
+
+    #[test]
+    fn nothing_under_the_sweep_resolves_this_boxs_real_capability_map() {
+        let production = production();
+        assert_eq!(
+            production.matches("session_tokens::default_path()").count(),
+            1,
+            "`default_path()` resolves the operator's live map, so every call under `sweep` is one `cargo test` away from minting into it. It is resolved once and passed down"
+        );
+        let rest = production
+            .split("\npub async fn run(")
+            .nth(1)
+            .expect("the daemon loop must be findable");
+        let run_body = &rest[..block_end(rest, 0).expect("run must close")];
+        assert!(
+            run_body.contains("session_tokens::default_path()"),
+            "the one site is the daemon loop's own, beside the ledger it already resolves there — not anything a test can reach"
+        );
+        for reached in [
+            "async fn sweep(",
+            "async fn ensure_master(",
+            "async fn take_pool_job(",
+        ] {
+            let f = production
+                .split(reached)
+                .nth(1)
+                .expect("the function must be findable");
+            assert!(
+                !f[..f.find("\n}").unwrap_or(f.len())].contains("session_tokens::default_path()"),
+                "`{reached}` runs on every sweep, so it takes the store it was given"
+            );
+        }
+    }
+
+    #[test]
+    fn ensure_masters_source_stops_at_its_own_closing_brace() {
+        let body = ensure_master_body();
+        for beyond in [
+            "async fn supervise(",
+            "async fn retire_if_idle(",
+            "async fn nudge_master(",
+            "async fn end_master(",
+        ] {
+            assert!(
+                !body.contains(beyond),
+                "`{beyond}` is a later function, and a slice carrying it lets one of its tokens satisfy an assertion written about `ensure_master`"
+            );
+        }
+        assert!(
+            body.contains("adopting the resident session"),
+            "the slice still has to carry the adopt branch it exists to measure"
+        );
     }
 
     fn issue(id: &str) -> AdmissibleIssue {
@@ -4287,8 +4594,8 @@ mod unplaced_tests {
     fn adopt_only_cannot_fall_through_to_the_spawn_when_the_pane_dies_mid_registration() {
         let body = ensure_master_body();
         let adopted = body
-            .find("return PaneState::Adopted;")
-            .expect("the adopt branch must return");
+            .find("return match capability_of(")
+            .expect("the adopt branch must return on the capability verdict");
         let spawn = body
             .find("install_skill(&resolved.repo_path)")
             .expect("the spawn path must start with the skill install");
@@ -4300,14 +4607,19 @@ mod unplaced_tests {
     }
 
     #[test]
-    fn adopting_a_pane_onto_a_freshly_created_session_is_reported() {
+    fn every_adopted_pane_is_judged_against_this_boxs_own_capability_map() {
         let body = ensure_master_body();
         let adopt = body
             .find("adopting the resident session")
             .expect("the adopt branch must be findable");
+        let after = &body[adopt..];
         assert!(
-            body[adopt..].contains("if session.created {"),
-            "a pane adopted onto a session core created fresh holds a capability for the session that one replaced, and nothing else on this box can notice it"
+            after.contains("capability_of(tokens, &session.session_id)"),
+            "every adopt asks the map what this box actually minted; that is the only question whose answer is the same for all seven panes on a box"
+        );
+        assert!(
+            !after.contains("session.created"),
+            "`session.created` is true only when core minted the row at this very call, so a pane whose row was replaced in an earlier sweep is adopted in silence and refused forever — one project of seven was reported on 2026-09-18 and the stuck one was not (ISS-1099)"
         );
         let report = adopt_report();
         assert!(
