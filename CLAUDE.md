@@ -225,6 +225,10 @@ rule itself. Which axes a given step owes, and the evidence it must show: the `f
 that discovers it — no deprecation note, no "may be stale" header. Both are a second copy of a
 status the code already holds.
 
+**Where a doc and the code disagree, the code is right.** Fix the doc in the same change rather
+than re-deriving around it — a reader who has to decide which of the two to believe has already
+lost the time the doc was written to save.
+
 **The files you read are your doc-review worklist.** Finishing an issue means every `.md` you
 opened while working it comes back marked *still true* / *edited* / *deleted*. "Did not touch" is
 not one of the three. Enforced in the pipeline by `forge-code`.

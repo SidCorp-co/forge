@@ -27,8 +27,8 @@ answered the same question in several places at once. Better no document than a 
 - **One place per round.** A finding goes into the destination set, not into a new folder that
   will be forgotten.
 - **Every claim is measured, with the date and the command.** An unmeasured number rots silently.
-- **A doc that cannot be verified is deleted in the change that discovers it** — no deprecation
-  note, no "may be stale" header.
-- **If a doc disagrees with the code, the code is right.** Fix the doc in the same change.
+- **Deleting a wrong doc is `CLAUDE.md` §"Documentation is deleted, not carried", not a rule of
+  this folder.** It is stated once, there, and restating it here would be the second copy that
+  rule exists to forbid.
 - **The set states its own coverage.** It is silent on plenty, and an audit run against it must
   not read that silence as approval.
