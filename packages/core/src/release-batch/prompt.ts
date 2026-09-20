@@ -22,6 +22,8 @@ interface BuildReleaseBatchPromptArgs {
   releaseStrategy: ReleaseStrategy | null;
   issues: IssueSummary[];
   plan: ReleasePlan;
+  /** False where no box eligible to release carries the declared label. */
+  releaseRunnerPreferenceMet: boolean;
 }
 
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
@@ -31,6 +33,13 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
   const liveLine = releaseModel === 'promote' ? `\nliveBranch: ${liveBranch}` : '';
+  const runnerLine = plan.releaseRunnerLabel
+    ? `\nrelease runner: this project prefers a box labelled \`${plan.releaseRunnerLabel}\`${
+        args.releaseRunnerPreferenceMet
+          ? ''
+          : ' — no box eligible to release carries it, so this batch is running somewhere else. Say so in what you record.'
+      }`
+    : '';
   const channelLines =
     plan.channels.length === 0
       ? 'deploy channels: none — cut the version and stop; a human deploys'
@@ -43,7 +52,7 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
 projectId: ${projectId}
 runId: ${runId}
 releaseModel: ${releaseModel}
-baseBranch: ${baseBranch}${liveLine}
+baseBranch: ${baseBranch}${liveLine}${runnerLine}
 ${channelLines}
 
 ### Issues in this batch (${issues.length})

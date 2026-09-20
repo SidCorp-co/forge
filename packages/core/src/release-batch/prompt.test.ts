@@ -22,6 +22,7 @@ const BASE = {
   releaseModel: 'promote' as const,
   releaseStrategy: 'merge-branch' as const,
   issues: [{ id: 'i1', displayId: 'ISS-9', title: 'checkout 500s' }],
+  releaseRunnerPreferenceMet: true,
 };
 
 const channel = (over: Partial<ReleaseChannel> = {}): ReleaseChannel => ({
@@ -176,5 +177,35 @@ describe('buildReleaseBatchPrompt', () => {
     });
 
     expect(out).toContain('issue.title');
+  });
+});
+
+describe('the release runner preference the agent is told about', () => {
+  it('says nothing where the project declares no release runner label', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+
+    expect(out).not.toContain('release runner:');
+  });
+
+  it('names the preferred box where one is declared and a box carries it', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: true,
+    });
+
+    expect(out).toContain('release runner: this project prefers a box labelled `prod-box`');
+    expect(out).not.toContain('running somewhere else');
+  });
+
+  it('tells the agent to record a preference no eligible box could honour', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: false,
+    });
+
+    expect(out).toContain('no box eligible to release carries it');
+    expect(out).toContain('Say so in what you record.');
   });
 });
