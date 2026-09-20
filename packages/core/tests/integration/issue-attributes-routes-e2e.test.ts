@@ -204,6 +204,24 @@ describe('POST /api/issues/:id/attributes', () => {
     expect(refused.message).toContain('drifted');
   });
 
+  it('keeps the value a batch that fails mid-write would otherwise have deleted', async () => {
+    const { issueId, otherIssueId, jwt } = await seed();
+    await write(issueId, jwt, [{ key: 'human_required', value: true }]);
+    // `supersedes` still validates in code, so the batch reaches the delete of
+    // the cardinality-one row and then fails on the defs FK on the insert.
+    await harness.db.execute(sql`DELETE FROM issue_attribute_defs WHERE key = 'supersedes'`);
+    const res = await write(issueId, jwt, [
+      { key: 'human_required', value: false },
+      { key: 'supersedes', value: otherIssueId },
+    ]);
+    expect(res.status).toBe(409);
+    const rows = await harness.db.execute<{ value_bool: boolean }>(
+      sql`SELECT value_bool FROM issue_attributes WHERE issue_id = ${issueId} AND key = 'human_required'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect((rows[0] as { value_bool: boolean }).value_bool).toBe(true);
+  });
+
   it('answers 404 for an issue that is not there', async () => {
     const { jwt } = await seed();
     const res = await write('00000000-0000-4000-8000-000000000000', jwt, [

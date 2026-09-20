@@ -12,7 +12,7 @@ import {
 } from '../messaging/record-screen.js';
 import type { ForgeGuide } from './types.js';
 
-const route = (kind: string): string => `\`${RECORD_DESTINATIONS[kind] ?? ''}\``;
+const route = (kind: string): string => `\`${RECORD_DESTINATIONS.get(kind) ?? ''}\``;
 
 export const RECORDS_GUIDE: ForgeGuide = {
   slug: RECORD_GUIDE_SLUG,

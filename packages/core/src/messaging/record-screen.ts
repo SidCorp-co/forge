@@ -32,11 +32,15 @@ export const RECORD_GUIDE_SLUG = 'records-and-comments';
  * kinds are sent to the guide, which says what core does and does not have a
  * store for, rather than to a route that would reject them. Naming a route the
  * caller cannot use is the silent substitution this rule exists to refuse.
+ *
+ * A `Map` and not an object literal: the fence's kind is caller-supplied, and a
+ * plain lookup of `constructor` or `toString` answers with something off
+ * `Object.prototype` instead of taking the unsupported-kind path.
  */
-export const RECORD_DESTINATIONS: Readonly<Record<string, string>> = {
-  verdict: 'POST /api/issue-step-contexts',
-  review: 'POST /api/issue-step-contexts',
-};
+export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map([
+  ['verdict', 'POST /api/issue-step-contexts'],
+  ['review', 'POST /api/issue-step-contexts'],
+]);
 
 /** The route an issue assertion goes to, which the guide names for every other kind. */
 export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
@@ -48,7 +52,7 @@ export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
  * verdict ends up in the store that holds issue assertions.
  */
 export function destinationFor(kind: string | null): string | null {
-  return kind ? (RECORD_DESTINATIONS[kind] ?? null) : null;
+  return kind ? (RECORD_DESTINATIONS.get(kind) ?? null) : null;
 }
 
 /**

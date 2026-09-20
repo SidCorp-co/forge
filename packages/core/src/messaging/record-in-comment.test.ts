@@ -54,6 +54,15 @@ describe('record-in-comment', () => {
     }
   });
 
+  it('takes the unsupported path for a kind that names something on Object.prototype', () => {
+    for (const kind of ['constructor', 'tostring', 'valueof']) {
+      expect(destinationFor(kind)).toBeNull();
+      const why = recordInCommentRefusal(parseForgeRecord(bodyOf(kind)))?.why ?? '';
+      expect(why).toContain('no store here holds');
+      expect(why).not.toContain('function');
+    }
+  });
+
   it('sends an untagged fence to the assertion route and the guide, never a guess', () => {
     const why = recordInCommentRefusal(parseForgeRecord(bodyOf(null)))?.why ?? '';
     expect(why).toContain('no store here holds');

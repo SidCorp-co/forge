@@ -27,7 +27,7 @@ describe('the records-and-comments guide', () => {
   });
 
   it('names a store for every destination the rule routes to', () => {
-    for (const route of new Set(Object.values(RECORD_DESTINATIONS))) {
+    for (const route of new Set(RECORD_DESTINATIONS.values())) {
       expect(body).toContain(route);
     }
   });
