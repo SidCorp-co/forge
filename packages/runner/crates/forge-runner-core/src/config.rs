@@ -38,8 +38,10 @@ pub struct Config {
 
     /// Shared-skill delivery via a Claude Code plugin marketplace (ISS-739),
     /// the 3rd channel alongside per-project disk sync (ISS-737) and
-    /// MCP-served meta prompts. Defaults to fully disabled — canary rollout
-    /// opts in one device at a time.
+    /// MCP-served meta prompts. Defaults to the first-party `forge` plugin,
+    /// installed on every device — the driver skill every `drive` job runs
+    /// lives there, so a runner without it cannot do the work it was paired
+    /// for. An explicit `enabled = false` still opts a device out.
     #[serde(default)]
     pub plugins: PluginSettings,
 
@@ -79,18 +81,22 @@ impl Default for UpdateSettings {
 /// (ISS-739) — the 3rd delivery channel, SHA-pinned.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginSettings {
-    /// Master switch. Defaults to OFF — the runner ships to every device via
-    /// the Rust release channel, so this is a canary opt-in (enable on one
-    /// device, prove it, then widen), mirroring the ISS-736 rollout discipline.
-    #[serde(default)]
+    /// Master switch. Defaults to ON: the canary widened, and the plugin the
+    /// default names carries the driver skill a pipeline job executes.
+    /// `forge-runner config set plugins.enabled false` opts a device out.
+    #[serde(default = "default_plugins_enabled")]
     pub enabled: bool,
     /// Marketplace source: a GitHub `owner/repo` shorthand or full git URL,
-    /// passed straight to `claude plugin marketplace add`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// passed straight to `claude plugin marketplace add`. Defaults to the
+    /// first-party marketplace.
+    #[serde(
+        default = "default_marketplace_repo",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub marketplace_repo: Option<String>,
-    /// Plugin name(s) from the marketplace to install + enable. Empty = none
-    /// (marketplace added but nothing installed).
-    #[serde(default)]
+    /// Plugin name(s) from the marketplace to install + enable. Defaults to
+    /// the `forge` plugin; an explicit empty list installs nothing.
+    #[serde(default = "default_plugin_names")]
     pub plugin_names: Vec<String>,
     /// Commit SHA the marketplace clone is checked out to right after
     /// `marketplace add`, giving a deterministic floor for the initial
@@ -113,16 +119,59 @@ fn default_plugin_auto_update() -> bool {
     true
 }
 
+/// The first-party marketplace: `github.com/SidCorp-co/forge-plugin`, which
+/// carries the `forge` CLI, the session hooks and the `issue-flow` driver
+/// skill. `forge-pipeline-skills` was its predecessor and is retired.
+pub const DEFAULT_MARKETPLACE_REPO: &str = "SidCorp-co/forge-plugin";
+/// The plugin published by [`DEFAULT_MARKETPLACE_REPO`].
+pub const DEFAULT_PLUGIN_NAME: &str = "forge";
+/// The marketplace the default replaced. A config still naming it is migrated
+/// on load, loudly.
+pub const RETIRED_MARKETPLACE_REPO: &str = "SidCorp-co/forge-pipeline-skills";
+
+fn default_plugins_enabled() -> bool {
+    true
+}
+
+fn default_marketplace_repo() -> Option<String> {
+    Some(DEFAULT_MARKETPLACE_REPO.to_string())
+}
+
+fn default_plugin_names() -> Vec<String> {
+    vec![DEFAULT_PLUGIN_NAME.to_string()]
+}
+
 fn default_plugin_poll_interval_secs() -> u64 {
     6 * 3600
+}
+
+impl PluginSettings {
+    /// A config still pointing at the retired marketplace is moved onto the
+    /// first-party one and told so. Leaving it would not preserve anything:
+    /// the plugin names it carries do not exist in the new marketplace, so
+    /// every sweep would fail against a source nobody publishes to.
+    fn migrate_retired_marketplace(&mut self, path: &std::path::Path) {
+        if self.marketplace_repo.as_deref() != Some(RETIRED_MARKETPLACE_REPO) {
+            return;
+        }
+        self.marketplace_repo = default_marketplace_repo();
+        self.plugin_names = default_plugin_names();
+        tracing::warn!(
+            "{}: `[plugins] marketplace_repo = \"{RETIRED_MARKETPLACE_REPO}\"` is retired — this \
+             run uses {DEFAULT_MARKETPLACE_REPO} with plugin `{DEFAULT_PLUGIN_NAME}` instead. \
+             Delete the `[plugins]` block, or `forge-runner config set plugins.marketplace-repo \
+             {DEFAULT_MARKETPLACE_REPO}`, to stop seeing this.",
+            path.display()
+        );
+    }
 }
 
 impl Default for PluginSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
-            marketplace_repo: None,
-            plugin_names: Vec::new(),
+            enabled: default_plugins_enabled(),
+            marketplace_repo: default_marketplace_repo(),
+            plugin_names: default_plugin_names(),
             pinned_ref: None,
             auto_update: default_plugin_auto_update(),
             poll_interval_secs: default_plugin_poll_interval_secs(),
@@ -253,7 +302,10 @@ impl Config {
         }
         let raw = std::fs::read_to_string(&p)?;
         warn_on_retired_concurrency_keys(&raw, &p);
-        toml::from_str(&raw).map_err(|e| Error::Config(format!("parse {}: {e}", p.display())))
+        let mut cfg: Config = toml::from_str(&raw)
+            .map_err(|e| Error::Config(format!("parse {}: {e}", p.display())))?;
+        cfg.plugins.migrate_retired_marketplace(&p);
+        Ok(cfg)
     }
 
     /// Atomic write (`.tmp` + rename).
@@ -354,30 +406,74 @@ chat_max_concurrent = 5
     }
 
     #[test]
-    fn plugin_settings_default_disabled_with_auto_update_on() {
+    fn plugin_settings_default_to_the_first_party_plugin() {
         let cfg = Config::default();
-        assert!(!cfg.plugins.enabled);
+        assert!(cfg.plugins.enabled);
         assert!(cfg.plugins.auto_update);
         assert_eq!(cfg.plugins.poll_interval_secs, 6 * 3600);
-        assert!(cfg.plugins.marketplace_repo.is_none());
-        assert!(cfg.plugins.plugin_names.is_empty());
+        assert_eq!(
+            cfg.plugins.marketplace_repo.as_deref(),
+            Some(DEFAULT_MARKETPLACE_REPO)
+        );
+        assert_eq!(cfg.plugins.plugin_names, vec![DEFAULT_PLUGIN_NAME]);
+    }
+
+    #[test]
+    fn a_config_with_no_plugins_block_still_gets_the_first_party_plugin() {
+        let cfg: Config = toml::from_str("core_url = \"https://core.example.com\"\n").unwrap();
+        assert!(cfg.plugins.enabled);
+        assert_eq!(cfg.plugins.plugin_names, vec![DEFAULT_PLUGIN_NAME]);
+    }
+
+    #[test]
+    fn an_explicit_opt_out_survives_the_new_default() {
+        let cfg: Config = toml::from_str("[plugins]\nenabled = false\n").unwrap();
+        assert!(!cfg.plugins.enabled);
+    }
+
+    #[test]
+    fn the_retired_marketplace_is_migrated_onto_the_first_party_one() {
+        let mut plugins: PluginSettings = toml::from_str(&format!(
+            "marketplace_repo = \"{RETIRED_MARKETPLACE_REPO}\"\nplugin_names = [\"forge-pipeline-skills\"]\n"
+        ))
+        .unwrap();
+        plugins.migrate_retired_marketplace(std::path::Path::new("/tmp/config.toml"));
+        assert_eq!(
+            plugins.marketplace_repo.as_deref(),
+            Some(DEFAULT_MARKETPLACE_REPO)
+        );
+        assert_eq!(plugins.plugin_names, vec![DEFAULT_PLUGIN_NAME]);
+    }
+
+    #[test]
+    fn a_marketplace_nobody_retired_is_left_alone() {
+        let mut plugins: PluginSettings = toml::from_str(
+            "marketplace_repo = \"acme/private-skills\"\nplugin_names = [\"house-rules\"]\n",
+        )
+        .unwrap();
+        plugins.migrate_retired_marketplace(std::path::Path::new("/tmp/config.toml"));
+        assert_eq!(
+            plugins.marketplace_repo.as_deref(),
+            Some("acme/private-skills")
+        );
+        assert_eq!(plugins.plugin_names, vec!["house-rules"]);
     }
 
     #[test]
     fn plugin_settings_roundtrip_through_toml() {
         let mut cfg = Config::default();
         cfg.plugins.enabled = true;
-        cfg.plugins.marketplace_repo = Some("SidCorp-co/forge-pipeline-skills".into());
-        cfg.plugins.plugin_names = vec!["forge-shared-skills".into()];
+        cfg.plugins.marketplace_repo = Some("acme/private-skills".into());
+        cfg.plugins.plugin_names = vec!["house-rules".into()];
         cfg.plugins.pinned_ref = Some("deadbeef".into());
         let s = toml::to_string_pretty(&cfg).unwrap();
         let back: Config = toml::from_str(&s).unwrap();
         assert!(back.plugins.enabled);
         assert_eq!(
             back.plugins.marketplace_repo.as_deref(),
-            Some("SidCorp-co/forge-pipeline-skills")
+            Some("acme/private-skills")
         );
-        assert_eq!(back.plugins.plugin_names, vec!["forge-shared-skills"]);
+        assert_eq!(back.plugins.plugin_names, vec!["house-rules"]);
         assert_eq!(back.plugins.pinned_ref.as_deref(), Some("deadbeef"));
     }
 }

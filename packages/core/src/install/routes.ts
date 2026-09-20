@@ -71,6 +71,11 @@ curl -fsSL "$BASE$PREFIX/install/bin/$target" -o "$dest/forge-runner.new"
 chmod +x "$dest/forge-runner.new"
 mv "$dest/forge-runner.new" "$dest/forge-runner"
 echo "Installed to $dest/forge-runner"
+# The script knows which core it was served by, so the binary should not have
+# to be told again: write it once here and \`forge-runner login\` needs no flag.
+"$dest/forge-runner" config set core-url "$BASE" >/dev/null 2>&1 \
+  && echo "Core URL set to $BASE" \
+  || echo "Could not write the core URL — pass --core-url $BASE to login." >&2
 if [ "$AUTO_UPDATE" = "0" ]; then
   "$dest/forge-runner" config set update.auto false || true
   echo "Auto-update disabled for this device."
@@ -81,7 +86,7 @@ case ":$PATH:" in
   *":$dest:"*) ;;
   *) echo "Add to PATH:  export PATH=\\"$dest:\\$PATH\\"";;
 esac
-echo "Next:  forge-runner login --core-url $BASE --code <CODE>"
+echo "Next:  forge-runner login"
 `;
 
 // Served when RUNNER_RELEASE_DIR is unset: the download script above would

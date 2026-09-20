@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Setting up a runner is install, `login`, `bind`.** The installer records the core URL it came
+  from, `login` prints the approval URL instead of opening a browser (`--open` still does), and
+  every device installs the `forge` plugin unless told otherwise.
 - **Work handed to a subagent must be declared, and a box now refuses the hand-off rather than
   advising against it.** Skipping it left that work invisible and its issues never offered again.
   `forge-runner status` counts what still got through.

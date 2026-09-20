@@ -16,8 +16,12 @@ pub struct Args {
     /// Device name shown in the dashboard (default: hostname).
     #[arg(long)]
     pub name: Option<String>,
-    /// Skip opening the browser; print the approval URL instead.
+    /// Open the approval URL in a browser. Off by default: most runners are
+    /// headless boxes reached over SSH, where the URL is what you want.
     #[arg(long)]
+    pub open: bool,
+    /// Accepted and ignored — printing the URL is now the default.
+    #[arg(long, hide = true)]
     pub no_browser: bool,
     /// Store a Personal Access Token for `forge-runner api`. Used alone, this
     /// stores the token and does not pair a device.
@@ -43,7 +47,13 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let mut cfg = Config::load()?;
     let core_url = ctx
         .resolve_core_url(&cfg)
-        .ok_or_else(|| anyhow::anyhow!("no core URL — pass --core-url <url>"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no core URL configured — `forge-runner config set core-url <https://core.example.com>`, \
+                 or pass `--core-url <url>` for this call. The installer normally writes it: \
+                 `curl -fsSL <core>/install.sh | sh`."
+            )
+        })?;
     let name = args
         .name
         .clone()
@@ -75,9 +85,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     println!("Pairing code: {}", init.pairing_code);
     println!("Approve this device in your browser:");
     println!("  {verify_url}");
-    if args.no_browser {
-        println!("(browser auto-open skipped — open the URL above)");
-    } else if webbrowser::open(&verify_url).is_err() {
+    if args.open && webbrowser::open(&verify_url).is_err() {
         println!("(could not open a browser automatically — open the URL above)");
     }
     println!("Waiting for approval (expires {})…", init.expires_at);

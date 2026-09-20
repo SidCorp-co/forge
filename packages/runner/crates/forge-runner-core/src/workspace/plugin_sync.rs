@@ -603,6 +603,7 @@ mod tests {
     fn local_targets_empty_without_a_marketplace() {
         let settings = PluginSettings {
             enabled: true,
+            marketplace_repo: None,
             plugin_names: vec!["a".into()],
             ..PluginSettings::default()
         };

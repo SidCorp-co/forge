@@ -75,6 +75,22 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
 
+    // Which plugin a job spawned here would find installed. `enabled = false`
+    // is a legitimate device state, not a failure, so it reports as a note.
+    if cfg.plugins.enabled {
+        match cfg.plugins.marketplace_repo.as_deref() {
+            Some(repo) if !cfg.plugins.plugin_names.is_empty() => println!(
+                "✔ plugins      {} @ {repo}",
+                cfg.plugins.plugin_names.join(", ")
+            ),
+            _ => println!(
+                "• plugins      enabled but none designated — `forge-runner config set plugins.plugin-names forge`"
+            ),
+        }
+    } else {
+        println!("• plugins      disabled — `forge-runner config set plugins.enabled true`");
+    }
+
     // Report the backend a read/write would actually resolve to right now
     // (ISS-467 — was a hardcoded string). The plaintext-file warning only makes
     // sense where a keychain alternative exists: on Linux the file store is the

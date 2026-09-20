@@ -16,7 +16,8 @@ pub enum Action {
     /// Print the config file path.
     Path,
     /// Set a config value: `core-url`, `projects-root`, `update.auto`,
-    /// `update.manifest-url`, or `skills.auto_pull`.
+    /// `update.manifest-url`, `skills.auto_pull`, `plugins.enabled`,
+    /// `plugins.marketplace-repo` or `plugins.plugin-names`.
     Set { key: String, value: String },
 }
 
@@ -49,8 +50,27 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
                         )
                     })?;
                 }
+                // The driver skill reaches a device through this plugin, so
+                // the three keys that decide which one it installs are
+                // settable without hand-editing TOML.
+                "plugins.enabled" | "plugins-enabled" => {
+                    cfg.plugins.enabled = value.parse::<bool>().map_err(|_| {
+                        anyhow::anyhow!("`plugins.enabled` expects `true` or `false`, got `{value}`")
+                    })?;
+                }
+                "plugins.marketplace-repo" | "plugins.marketplace_repo" => {
+                    cfg.plugins.marketplace_repo = Some(value);
+                }
+                "plugins.plugin-names" | "plugins.plugin_names" => {
+                    cfg.plugins.plugin_names = value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|n| !n.is_empty())
+                        .map(str::to_string)
+                        .collect();
+                }
                 other => anyhow::bail!(
-                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url | skills.auto_pull)"
+                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url | skills.auto_pull | plugins.enabled | plugins.marketplace-repo | plugins.plugin-names)"
                 ),
             }
             cfg.save()?;
