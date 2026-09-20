@@ -112,6 +112,18 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A box can be told to stop driving a project, and stay stopped.** `forge-runner master
+  stand-down <project>` places no master and sends no nudge until `stand-up`. Killing the pane
+  never held: it came back on the old conversation.
+- **Standing it up puts the project back on the same terms as any other** rather than starting a
+  master on the spot. The next pane is told how long it was down; `--fresh` starts it cold.
+- **A stand-down will not quietly take running work with it.** Where the master still holds open
+  runs, or where the box cannot establish what it holds, the pane is left running and each run is
+  named. `--force` ends it anyway.
+- **`forge-runner master status` answers two questions, not one.** Whether a pane exists, and
+  whether this box may keep a master at all — so a box deliberately not driving reads as that.
+- **`forge-runner master kill` says what actually happens next.** It claimed the next pane was
+  fresh. It resumes the same conversation. Help and result now say so, and name what does stop it.
 - **A release that already happened can now be recorded, with no release batch.** Name the
   commit production is serving and how it shipped; Forge reads the live probes itself, closes
   what the release carried, and refuses a commit nothing serves.
