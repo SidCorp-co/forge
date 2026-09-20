@@ -20,22 +20,30 @@ export const RECORD_RULE_IDS: readonly string[] = ['field-budget', 'record-in-co
 /** The guide that holds the whole table, named by every record-in-comment message. */
 export const RECORD_GUIDE_SLUG = 'records-and-comments';
 
-/** Where a record goes when it is not a comment: the route, by the kind that names it. */
+/**
+ * Where a record goes when it is not a comment: the route, by the kind that
+ * names it — and ONLY where a store can hold the whole of that kind.
+ *
+ * `issue_step_contexts` types a verdict on `(issue, step, attempt)` and holds
+ * the payload beside it, so a verdict and a review have a home. Nothing else
+ * does: `issue_attributes` holds ten registered keys of issue assertions, and
+ * a baseline's gate/result/commit or a decision's reading/assumption/undo is
+ * not one of them — a write of either is refused UNREGISTERED_KEY. So those
+ * kinds are sent to the guide, which says what core does and does not have a
+ * store for, rather than to a route that would reject them. Naming a route the
+ * caller cannot use is the silent substitution this rule exists to refuse.
+ */
 export const RECORD_DESTINATIONS: Readonly<Record<string, string>> = {
   verdict: 'POST /api/issue-step-contexts',
   review: 'POST /api/issue-step-contexts',
-  confirmation: 'POST /api/issues/:id/attributes',
-  decision: 'POST /api/issues/:id/attributes',
-  baseline: 'POST /api/issues/:id/attributes',
-  merged: 'POST /api/issues/:id/attributes',
-  verification: 'POST /api/issues/:id/attributes',
-  triage: 'POST /api/issues/:id/attributes',
-  park: 'POST /api/issues/:id/attributes',
 };
 
+/** The route an issue assertion goes to, which the guide names for every other kind. */
+export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
+
 /**
- * The route this record's own kind goes to, or null where the table does not
- * name it. An untagged fence carries no kind and lands here too: it is sent to
+ * The route this record's own kind goes to, or null where no store holds it
+ * whole. An untagged fence carries no kind and lands here too: it is sent to
  * the guide rather than guessed at, because guessing a destination is how a
  * verdict ends up in the store that holds issue assertions.
  */
@@ -53,7 +61,7 @@ export function recordInCommentMessage(record: ForgeRecord): string {
   const named = record.kind ? `a \`${record.kind}\` record` : 'a record';
   const where = route
     ? `${named} goes to \`${route}\`, and the comment keeps your summary line`
-    : `${named} goes to the record store rather than into a comment body, and the comment keeps your summary line`;
+    : `no store here holds ${named} whole — put the assertions it makes about the issue at \`${ISSUE_ASSERTION_ROUTE}\` under a registered key, and keep the sentence in the comment`;
   return `a \`forge-record\` fence is not comment content — ${where}. The store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``;
 }
 

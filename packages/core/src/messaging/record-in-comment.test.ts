@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { parseForgeRecord } from './forge-record.js';
 import {
   destinationFor,
+  ISSUE_ASSERTION_ROUTE,
   RECORD_GUIDE_SLUG,
   RECORD_RULE_IDS,
   recordInCommentRefusal,
@@ -43,19 +44,21 @@ describe('record-in-comment', () => {
     expect(refusal?.why).not.toContain('/attributes');
   });
 
-  it('sends a decision to the issue-attributes route', () => {
-    expect(destinationFor('decision')).toBe('POST /api/issues/:id/attributes');
-    const refusal = recordInCommentRefusal(parseForgeRecord(bodyOf('decision')));
-    expect(refusal?.why).toContain('POST /api/issues/:id/attributes');
-    expect(refusal?.why).not.toContain('issue-step-contexts');
+  it('names no route for a kind no store holds whole, and says so', () => {
+    for (const kind of ['baseline', 'decision', 'merged', 'somethingelse']) {
+      expect(destinationFor(kind)).toBeNull();
+      const why = recordInCommentRefusal(parseForgeRecord(bodyOf(kind)))?.why ?? '';
+      expect(why).toContain('no store here holds');
+      expect(why).toContain(ISSUE_ASSERTION_ROUTE);
+      expect(why).not.toContain('issue-step-contexts');
+    }
   });
 
-  it('sends a kind it does not route, and an untagged fence, to the guide alone', () => {
-    for (const body of [bodyOf('somethingelse'), bodyOf(null)]) {
-      const refusal = recordInCommentRefusal(parseForgeRecord(body));
-      expect(refusal?.why).toContain(RECORD_GUIDE_SLUG);
-      expect(refusal?.why).not.toContain('POST /api');
-    }
+  it('sends an untagged fence to the assertion route and the guide, never a guess', () => {
+    const why = recordInCommentRefusal(parseForgeRecord(bodyOf(null)))?.why ?? '';
+    expect(why).toContain('no store here holds');
+    expect(why).toContain(RECORD_GUIDE_SLUG);
+    expect(why).not.toContain('issue-step-contexts');
   });
 
   it('names the guide on every message, routed or not', () => {

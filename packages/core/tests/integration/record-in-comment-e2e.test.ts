@@ -135,16 +135,23 @@ describe('a caller that declared it can write a record elsewhere', () => {
     expect(refused.details?.refusals?.map((r) => r.rule)).toEqual(['record-in-comment']);
   });
 
-  it('is told the route its own kind goes to', async () => {
+  it('is told the route its own kind goes to, where a store holds that kind', async () => {
     const { issueId, jwt } = await seed();
     const verdict = (await (
       await post(issueId, jwt, fenced('verdict'), 'record-route')
     ).json()) as Refused;
-    const decision = (await (
-      await post(issueId, jwt, fenced('decision'), 'record-route')
-    ).json()) as Refused;
     expect(verdict.details?.refusals?.[0]?.why).toContain('POST /api/issue-step-contexts');
-    expect(decision.details?.refusals?.[0]?.why).toContain('POST /api/issues/:id/attributes');
+  });
+
+  it('is told no store holds a kind core cannot represent, rather than a route it would be refused at', async () => {
+    const { issueId, jwt } = await seed();
+    const baseline = (await (
+      await post(issueId, jwt, fenced('baseline'), 'record-route')
+    ).json()) as Refused;
+    const why = baseline.details?.refusals?.[0]?.why ?? '';
+    expect(why).toContain('no store here holds');
+    expect(why).toContain('POST /api/issues/:id/attributes');
+    expect(why).not.toContain('issue-step-contexts');
   });
 
   it('writes nothing when it is refused', async () => {
