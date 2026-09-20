@@ -36,11 +36,9 @@ function buildTitle(skillName: string | null, jobType: string, issueTitle: strin
 /**
  * The master session holding this job, where it holds one core can stand behind.
  *
- * `jobs.held_by` is a session id core wrote itself when a master claimed the
- * job, so this is core's own record rather than the box's report. It is still
- * checked: a hold released since, or one naming a session that is not a master
- * of this project, leaves the child a root rather than pointing at the wrong
- * parent.
+ * `jobs.held_by` is core's own record, not the box's report, and is still
+ * checked: a released hold, or one naming a session that is not a master of
+ * this project, leaves the child a root rather than a wrong parent.
  */
 async function resolveHoldingMaster(job: JobRow): Promise<string | null> {
   if (!job.heldBy) return null;
@@ -154,10 +152,6 @@ export async function ensureAgentSessionForJob(
         pipelineRunId: job.pipelineRunId,
         title,
         kind,
-        // The master holding this job is the session that owns the one it opens.
-        // Core has had this edge all along in `jobs.held_by` and never wrote it
-        // down; a hold that has since been released leaves a root, which is what
-        // an unowned job-linked session truthfully is.
         parentSessionId: await resolveHoldingMaster(job),
         status: 'queued',
         dispatchedAt: new Date(),

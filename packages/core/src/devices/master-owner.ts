@@ -1,26 +1,13 @@
 /**
- * Who owns a session, resolved from core's own record.
- *
- * Deliberately thin: the db client, the schema and the kind vocabulary, and
- * nothing else. `agent-session-link.ts` and `session-descent.ts` both resolve
- * an owner while the transition chokepoint is importing them, and reaching
- * `master-session.ts` for it drags the whole pipeline-runs graph through a
- * module cycle — which showed up as the descent throwing on its own module
- * constant and being swallowed by its error path (ISS-1136).
+ * Who owns a session, from core's own record. Deliberately thin — reaching
+ * `master-session.ts` instead cycles through the pipeline-runs graph.
  */
-
 import { and, eq, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 
-/**
- * The live master session for one (device, project), or `null`.
- *
- * This is how core issues the owner edge for a run session: the box does not
- * get to say who its parent is, because core already registered a master for
- * that pair and `agent_sessions_one_live_master_uq` makes the answer single.
- */
+/** How core issues the owner edge: the box does not say who its parent is. */
 export async function liveMasterSessionId(args: {
   deviceId: string;
   projectId: string;
@@ -43,11 +30,8 @@ export async function liveMasterSessionId(args: {
 /**
  * The named session, but only if it is a master of this project and box.
  *
- * A caller hands this an id it read off somewhere else — `jobs.held_by`, a
- * box's ledger frame — and gets back either a parent core can stand behind or
- * `null`. The id's shape proves nothing: a uuid resolving to a chat session is
- * as wrong an answer as one resolving to no row at all, and a foreign key would
- * accept both.
+ * The id's shape proves nothing: a uuid resolving to a chat session is as wrong
+ * an answer as one resolving to no row, and a foreign key accepts both.
  */
 export async function masterSessionIfOwned(args: {
   sessionId: string;

@@ -270,8 +270,6 @@ describe("isRealFailure (only genuine failures count as attention)", () => {
 });
 
 describe("sessionKind / isInteractiveSession", () => {
-  // ISS-1136 — the row says what it is. This used to fold five species into
-  // two, so a master and a run session both read as somebody's conversation.
   it("reads the species off the column", () => {
     expect(sessionKind({ kind: "master", metadata: null })).toBe("master");
     expect(sessionKind({ kind: "run_session", metadata: null })).toBe("run_session");
@@ -291,9 +289,7 @@ describe("sessionKind / isInteractiveSession", () => {
     expect(isJobDriven({ kind: "chat", metadata: null })).toBe(false);
   });
 
-  // A deployment older than the column sends no `kind`. Falling back to the
-  // old reading is the honest answer; claiming a species the server never sent
-  // would be this change lying about a row it did not write.
+  // A deployment older than the column sends no `kind`.
   it("falls back to the old reading for a row served without a kind", () => {
     expect(sessionKind({ metadata: { type: "pipeline" } })).toBe("pipeline");
     expect(sessionKind({ metadata: { type: "pm" } })).toBe("pm");

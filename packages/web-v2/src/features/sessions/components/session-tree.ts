@@ -1,35 +1,24 @@
 import type { SessionRow } from "../types";
 
 /**
- * The sessions index as a tree, because a session now says who owns it.
- *
- * ISS-1136 — the list was flat because nothing in the row could say otherwise:
- * a master and the runs it started were three unrelated lines, and which run
- * belonged to which master was a fact only the box held. `parentSessionId` is
- * core's own record of that edge, so the index can show the shape instead of
- * asking the reader to infer it from timestamps.
+ * The sessions index as a tree: `parentSessionId` is core's own record of which
+ * run belongs to which master, so the shape is shown rather than inferred.
  */
 export interface TreeRow<T extends { id: string }> {
   row: T;
-  /** How many owners stand between this row and its root, in THIS list. */
   depth: number;
-  /** Whether anything in this list is owned by it. */
   hasChildren: boolean;
 }
 
-/** How deep the index will indent before it stops; below this, rows sit flat. */
 const MAX_RENDERED_DEPTH = 4;
 
 /**
- * Order rows so each one follows the session that owns it, keeping the order
- * the caller sorted them in within every sibling group.
+ * Order rows so each follows the session that owns it, keeping the caller's
+ * order within every sibling group.
  *
- * A row whose owner is not in this list is a root HERE, whatever it is in the
- * database: the alternative is hiding it because a filter excluded its parent,
- * and a session that vanishes from a filtered list because of something not in
- * that list is worse than a flat one. The same rule covers a cycle — a row
- * already placed is never placed twice, and anything left over is appended at
- * depth zero rather than dropped.
+ * A row whose owner is not in this list is a root HERE: hiding it because a
+ * filter excluded its parent is worse than a flat list. A cycle is the same —
+ * a row is never placed twice, and leftovers are appended at depth zero.
  */
 export function orderByOwner<T extends { id: string; parentSessionId?: string | null }>(
   rows: readonly T[],
@@ -65,8 +54,6 @@ export function orderByOwner<T extends { id: string; parentSessionId?: string | 
   };
 
   for (const root of roots) walk(root, 0);
-  // A cycle leaves its members unplaced, because every one of them has a parent
-  // that is present. They are still sessions somebody is looking for.
   for (const row of rows) {
     if (!placed.has(row.id)) {
       placed.add(row.id);
@@ -76,7 +63,6 @@ export function orderByOwner<T extends { id: string; parentSessionId?: string | 
   return out;
 }
 
-/** The indent one nesting level buys, in pixels. */
 export const OWNER_INDENT_PX = 18;
 
 export type SessionTreeRow = TreeRow<SessionRow>;

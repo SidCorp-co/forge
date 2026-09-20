@@ -47,17 +47,12 @@ function masterLockKey(args: { deviceId: string; projectId: string }): SQL<numbe
  * none.
  *
  * Idempotent by design: a daemon restart, a re-registration after a network
- * blip and a second sweep in the same minute must all land on the same row,
- * because that row's id is what `jobs.held_by` already carries — and, since
- * ISS-1136, what `agent_sessions.parent_session_id` carries on everything that
- * master starts.
+ * blip and a second sweep in the same minute all land on the same row, because
+ * that row's id is what `jobs.held_by` and the children's
+ * `agent_sessions.parent_session_id` carry.
  *
- * That idempotence used to be a select followed by an insert with nothing
- * between them, so two registrations arriving together could both find nothing
- * and both insert, and "the live master for this pair" became a choice rather
- * than a read. `agent_sessions_one_live_master_uq` is what makes it single, and
- * the advisory lock here is what makes the loser WAIT and read the winner's row
- * rather than raise on the constraint.
+ * `agent_sessions_one_live_master_uq` makes that row single; the advisory lock
+ * makes a concurrent registration WAIT and read the winner rather than raise.
  */
 export async function ensureMasterSession(args: {
   deviceId: string;

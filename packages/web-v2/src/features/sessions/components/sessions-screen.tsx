@@ -130,10 +130,8 @@ const FILTER_LABEL: Record<SessionFilter, string> = {
 };
 
 // ISS-465 — kind dimension on top of the status filter. Defaults to "all" so
-// existing readers see the same set. ISS-1136 — it used to offer two tabs,
-// "Runs" and "Chats", because `metadata.type` could only be read two ways and
-// a master or a run session fell into "Chats" with somebody's conversation.
-// The row states its species now, so each one is its own tab.
+// existing readers see the same set. The row states its species, so each one
+// is its own tab.
 type KindFilter = "all" | AgentSessionKind;
 const KIND_FILTERS: KindFilter[] = ["all", ...AGENT_SESSION_KINDS];
 const KIND_LABEL: Record<KindFilter, string> = {
@@ -288,9 +286,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       .map(({ row }) => row);
   }, [rows, displays, filter]);
 
-  // ISS-1136 — each row follows the session that owns it. The ordering is a
-  // pure derivation so it can be tested without a browser; see session-tree.ts
-  // for what happens to a row whose owner a filter excluded.
+  // A pure derivation so it can be tested without a browser; session-tree.ts
+  // says what happens to a row whose owner a filter excluded.
   const treeRows = useMemo(() => orderByOwner(visibleRows), [visibleRows]);
 
   const filterOptions: SegmentOption<SessionFilter>[] = FILTERS.map((f) => ({
@@ -799,7 +796,7 @@ function SessionTableRow({
           )}
           <SessionKindTag row={row} />
           {hasChildren && (
-            <span className="text-[11px] text-muted" title="this session owns others in this list">
+            <span className="text-11 text-muted" title="this session owns others in this list">
               &#8226;
             </span>
           )}
@@ -825,13 +822,7 @@ function SessionTableRow({
   );
 }
 
-/**
- * What species the row says it is.
- *
- * ISS-1136 — the index used to have two words for five things, so a master and
- * a run session both read as "Chat". A reader could not tell the pane that
- * dispatches work from the work it dispatched.
- */
+/** What species the row says it is: one word per kind, five of them. */
 const KIND_TONE = {
   master: "accent",
   run_session: "cobalt",
@@ -874,9 +865,8 @@ function SessionMobileCard({
       : undefined
     : () => onInlineOpen(row.id);
   return (
-    // The indent is the same edge the table shows, at a width a phone can carry:
-    // the nesting has to survive the narrow layout or the tree is a desktop-only
-    // claim about the data (ISS-1136).
+    // The same edge the table shows, at a width a phone can carry: the nesting
+    // has to survive the narrow layout or the tree is a desktop-only claim.
     <Card>
       <CardContent>
         <div

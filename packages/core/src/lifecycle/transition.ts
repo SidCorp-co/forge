@@ -149,11 +149,9 @@ export async function applyKernelTransition(
 /**
  * A session that just went terminal closes what it owns.
  *
- * Here rather than at each call site because there are twenty-three of those
- * and a leaked subtree is invisible from every one of them. A flip the descent
- * itself wrote is skipped: the walk is iterative and owns its own depth bound,
- * so letting it re-enter here would run one walk per row instead of one per
- * terminal flip.
+ * Here rather than at twenty-three call sites, none of which can see a leaked
+ * subtree. A flip the descent itself wrote is skipped: the walk owns its own
+ * depth bound, and re-entering would run one walk per row.
  */
 async function descendFrom(
   rows: Array<Record<string, unknown> & { id: string }>,

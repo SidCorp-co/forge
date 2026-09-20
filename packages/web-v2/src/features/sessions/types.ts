@@ -88,8 +88,6 @@ export interface SessionRow {
    *  project repoPath). Present on the full row; older rows may be null. */
   repoPath: string | null;
   status: AgentSessionStatus;
-  /** The species the row states (ISS-1136). Absent on a row served by a
-   *  deployment older than that column. */
   kind?: AgentSessionKind | null;
   /** The session that owns this one, as core issued it. `null` is a root. */
   parentSessionId?: string | null;
@@ -138,7 +136,6 @@ export interface SessionCost {
  *  stalled + cancelled_stale (unchanged; job failures, not reply-waiting). */
 export type SessionFilter = "all" | "waiting" | "running" | "queued" | "attention";
 
-/** What species a session row says it is. Mirrors `agent_sessions.kind`. */
 export type AgentSessionKind = "master" | "run_session" | "pipeline" | "pm" | "chat";
 
 export const AGENT_SESSION_KINDS: AgentSessionKind[] = [
@@ -149,7 +146,6 @@ export const AGENT_SESSION_KINDS: AgentSessionKind[] = [
   "chat",
 ];
 
-/** What an operator should read, per species. */
 export const SESSION_KIND_LABEL: Record<AgentSessionKind, string> = {
   master: "Master",
   run_session: "Run",
@@ -159,13 +155,9 @@ export const SESSION_KIND_LABEL: Record<AgentSessionKind, string> = {
 };
 
 /**
- * The species the row states.
- *
- * ISS-1136 — this used to read `metadata.type` and fold everything that was
- * not `pipeline`/`pm` into "chat", so a master and a run session both rendered
- * as somebody's conversation. The row says what it is now; a row from before
- * the column falls back to the old reading rather than claiming a species the
- * server never sent.
+ * The species the row states. A row served by a deployment older than the
+ * column falls back to reading `metadata.type`, rather than claiming a species
+ * the server never sent.
  */
 export function sessionKind(
   session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
@@ -178,7 +170,6 @@ export function sessionKind(
   return "chat";
 }
 
-/** Whether a session is job-driven, whichever of the two job kinds it is. */
 export function isJobDriven(
   session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
 ): boolean {

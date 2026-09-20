@@ -11,19 +11,13 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
 /**
  * Close the master sessions whose box has stopped answering, and say how many.
  *
- * This used to be the half of the sweep that did not exist. The reaper released
- * a silent master's job holds and left the row `running`, so `master status`
- * answered `alive` for a pane that had dispatched nothing for hours, and the
- * runs that master had started kept their issue leases because nothing could
- * name them as its children. Flipping the row terminal is what invokes the
- * descent in `applyKernelTransition`, which is what gives those leases back.
+ * Flipping the row terminal is what invokes the descent in
+ * `applyKernelTransition`, which is what returns the children's issue leases.
  *
- * A master is only silent if its whole tree is. A child that beat inside the
- * window is a box that is alive with a master whose own heartbeat path is
- * broken; reaping there would return a lease under a run that is still working,
- * which is the failure the single ten-minute clock exists to avoid. So the
- * child's life keeps the parent, while the parent's death closes the child —
- * the two directions are deliberately not the same.
+ * A master is silent only if its whole tree is: a child that beat inside the
+ * window means the box is alive with a broken heartbeat on the master, and
+ * reaping there would return a lease under a run still working. The child's
+ * life keeps the parent; the parent's death closes the child.
  */
 export async function reapSilentMasters(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;

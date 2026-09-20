@@ -14,13 +14,10 @@ import {
 const SRC = resolve(fileURLToPath(new URL('../', import.meta.url)));
 
 /**
- * The one file allowed to read `metadata.type`, and why.
- *
- * `assertAgentChatOwner` guards a flag a CLIENT put in metadata, not a species
- * core wrote. No writer in this repository sets `type: 'agent'`, and the create
- * route now refuses a caller that tries, so the guard is reachable only by rows
- * written before ISS-1136 — deleting it would widen read access on exactly
- * those rows.
+ * The one file allowed to read `metadata.type`: `assertAgentChatOwner` guards a
+ * flag a CLIENT put there, not a species core wrote. No writer sets
+ * `type: 'agent'` and the create route refuses a caller that tries, so the
+ * guard is reachable only by older rows — deleting it widens read access there.
  */
 const PRIVACY_FLAG_READER = 'agent-sessions/session-access.ts';
 
