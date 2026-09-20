@@ -247,7 +247,7 @@ and `check-doc-citations` decides whether it was entitled to say *still true*: e
 file in this repo is resolved against the tree, a dead one fails the build, and one whose target
 moved after the document did comes back on the worklist. Prose is still the step's alone.
 
-<!-- doc-citation: unchecked — `file.ts:symbol` here is the NOTATION being defined, not a file this repo holds. -->
+<!-- doc-citation: unchecked `file.ts:symbol` — the NOTATION being defined, not a file this repo holds. -->
 Cite a doc claim so it can be checked: name the identifier or the `file.ts:symbol` anchor, never a
 line number — a line number is stale the moment anything above it moves, and stale in silence.
 

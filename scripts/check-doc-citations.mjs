@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 const MANIFESTS = ['package.json', 'Cargo.toml'];
-const MARKER = /doc-citation:\s*unchecked\s*[—-]\s*\S/;
+const MARKER = /<!--\s*doc-citation:\s*unchecked\s+(.*?)\s*\u2014\s*(\S.*?)\s*-->/;
 const MARKER_REACH = 3;
 const DEFAULTS = {
   skipDocs: [],
@@ -90,9 +90,27 @@ const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 export function citationsIn(rel, source, cfg = DEFAULTS) {
   const pathExt = new RegExp(`\\.(${cfg.pathExts.join('|')})$`);
   const sourceExt = new RegExp(`\\.(${cfg.sourceExts.join('|')})$`);
+  // An excusal names the tokens it excuses, and excuses nothing else. A window alone
+  // would reach every citation in the same paragraph: the migration README's marker sat
+  // three lines above a live `meta/_journal.json`, and would have hidden its deletion
+  // under a reason written about something else entirely.
   const excused = new Set();
+  const markerFaults = [];
   source.split('\n').forEach((line, i) => {
-    if (MARKER.test(line)) for (let l = i + 1; l <= i + 1 + MARKER_REACH; l++) excused.add(l);
+    const marked = line.match(MARKER);
+    if (!marked) return;
+    const named = [...marked[1].matchAll(/`([^`]+)`/g)].map((m) => m[1].trim());
+    if (named.length === 0) {
+      markerFaults.push({
+        rel,
+        line: i + 1,
+        why: 'names no citation in backticks between `unchecked` and the em-dash, so it excuses nothing',
+      });
+      return;
+    }
+    for (const token of named) {
+      for (let l = i + 1; l <= i + 1 + MARKER_REACH; l++) excused.add(`${l}\u0000${token}`);
+    }
   });
   const text = strip(source);
   const out = [];
@@ -116,10 +134,11 @@ export function citationsIn(rel, source, cfg = DEFAULTS) {
       target,
       symbol: numbered ? null : (anchored?.[2] ?? null),
       numbered: Boolean(numbered),
-      excused: excused.has(lineOf(text, hit.index)),
+      excused: excused.has(`${lineOf(text, hit.index)}\u0000${token}`),
     });
   }
-  return out.filter((c) => !c.excused);
+  out.markerFaults = markerFaults;
+  return out;
 }
 
 /**
@@ -138,7 +157,11 @@ export function resolveCitation(citation, home, world) {
     const exact = posix.normalize(posix.join(posix.dirname(citation.rel), bare));
     return pool.includes(exact) ? [exact] : [];
   }
-  if (pool.includes(bare)) return [bare];
+  // Whether a path is written from the root is decided by its FIRST SEGMENT naming a
+  // top-level entry of the repository, never by whether the whole path is there: a
+  // rooted citation that has gone dead must stay dead rather than falling through to a
+  // suffix match on a namesake nested somewhere else.
+  if (world.topLevel.has(bare.split('/')[0])) return pool.includes(bare) ? [bare] : [];
   const under = home === '' ? pool : pool.filter((p) => p.startsWith(`${home}/`));
   return under.filter((p) => p.endsWith(`/${bare}`));
 }
@@ -150,6 +173,7 @@ export function resolveCitation(citation, home, world) {
  * nobody sees is indistinguishable from a rule nobody wrote.
  */
 export function judge(citations, world) {
+  const markerFaults = [...(citations.markerFaults ?? [])];
   const dead = [];
   const numbered = [];
   const badAnchor = [];
@@ -157,6 +181,7 @@ export function judge(citations, world) {
   const unverifiable = [];
   const drift = [];
   for (const c of citations) {
+    if (c.excused) continue;
     if (c.numbered) {
       numbered.push(c);
       continue;
@@ -183,12 +208,15 @@ export function judge(citations, world) {
     const wrote = world.changedAt(c.rel);
     if (moved > wrote && moved > 0 && wrote > 0) drift.push({ ...c, at: hits[0] });
   }
-  return { dead, numbered, badAnchor, ambiguous, unverifiable, drift };
+  return { dead, numbered, badAnchor, ambiguous, unverifiable, drift, markerFaults };
 }
 
 const at = (c) => `${c.rel}:${c.line}`;
 
 function world(cfg) {
+  // Tracked AND present. `git ls-files` reads the index, so a file deleted in the
+  // working tree and not yet staged is still listed there — and a citation of it would
+  // read live on the very run whose job is to notice it went.
   const files = execFileSync('git', ['ls-files'], {
     cwd: ROOT,
     encoding: 'utf8',
@@ -196,13 +224,16 @@ function world(cfg) {
   })
     .trim()
     .split('\n')
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((p) => existsSync(join(ROOT, p)));
   if (files.length === 0)
     die('`git ls-files` listed nothing, so every citation below would read dead');
   const dirs = new Set();
   const manifestDirs = new Set();
+  const topLevel = new Set();
   for (const p of files) {
     const parts = p.split('/');
+    topLevel.add(parts[0]);
     for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
     if (MANIFESTS.includes(parts.at(-1))) manifestDirs.add(parts.slice(0, -1).join('/'));
   }
@@ -218,6 +249,7 @@ function world(cfg) {
     shallow,
     dirs: [...dirs],
     manifestDirs,
+    topLevel,
     ignored: (p) => {
       try {
         execFileSync('git', ['check-ignore', '-q', '--', p], { cwd: ROOT, stdio: 'ignore' });
@@ -285,11 +317,13 @@ function reportDrift(drift, listAll, shallow) {
   if (!listAll) console.log('  (--drift lists each one)');
 }
 
-function reportFaults({ dead, numbered, badAnchor }) {
+function reportFaults({ dead, numbered, badAnchor, markerFaults }) {
   console.error(
     `check-doc-citations: ${dead.length} citation(s) name a file that is not there, ` +
-      `${numbered.length} cite a line number, ${badAnchor.length} name a symbol its file does not hold:\n`,
+      `${numbered.length} cite a line number, ${badAnchor.length} name a symbol its file does not hold, ` +
+      `${markerFaults.length} excusal(s) excuse nothing:\n`,
   );
+  for (const f of markerFaults) console.error(`  ${f.rel}:${f.line} — ${f.why}`);
   for (const c of dead) {
     console.error(`  ${at(c)} — ${c.token} is not in ${c.home === '' ? 'the tree' : c.home}`);
   }
@@ -304,8 +338,9 @@ function reportFaults({ dead, numbered, badAnchor }) {
       'one and this refuses it: cite the identifier or the file.ts:symbol anchor instead.\n\n' +
       'A token that is not a claim about this repository — a path inside a dependency, a filename\n' +
       'template, a stack frame quoted from a log — says so where it is written, in a comment within\n' +
-      `${MARKER_REACH} lines above it, reading: <!-- doc-citation: unchecked — <why it is not a ` +
-      'claim about this tree> -->',
+      `${MARKER_REACH} lines above it. It NAMES what it excuses, so a live citation in the same\n` +
+      'paragraph is still measured:\n\n' +
+      '  <!-- doc-citation: unchecked `one/token` `another` — why these are not claims about this tree -->',
   );
 }
 
@@ -322,15 +357,19 @@ function main() {
     .filter((p) => !skip.some((re) => re.test(p)));
   if (docs.length === 0) die('no documents left to scan — every tracked .md is excluded');
 
-  const citations = docs.flatMap((rel) =>
-    citationsIn(rel, readFileSync(join(ROOT, rel), 'utf8'), cfg),
-  );
+  const perDoc = docs.map((rel) => citationsIn(rel, readFileSync(join(ROOT, rel), 'utf8'), cfg));
+  const citations = perDoc.flat();
+  citations.markerFaults = perDoc.flatMap((one) => one.markerFaults);
   const verdict = judge(citations, w);
 
   reportSilences(verdict);
   reportDrift(verdict.drift, args.includes('--drift'), w.shallow);
 
-  const faults = verdict.dead.length + verdict.numbered.length + verdict.badAnchor.length;
+  const faults =
+    verdict.dead.length +
+    verdict.numbered.length +
+    verdict.badAnchor.length +
+    verdict.markerFaults.length;
   if (faults > 0) {
     reportFaults(verdict);
     process.exit(1);

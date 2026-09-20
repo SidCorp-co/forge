@@ -18,6 +18,7 @@ function world(files, { ignored = [], symbols = {}, changed = {} } = {}) {
     files,
     dirs: [...dirs],
     manifestDirs,
+    topLevel: new Set(files.map((p) => p.split('/')[0])),
     ignored: (p) => ignored.includes(p),
     contains: (p, symbol) => (symbols[p] ?? []).includes(symbol),
     changedAt: (p) => changed[p] ?? 1,
@@ -34,6 +35,7 @@ const PACKAGES = [
 ];
 
 const scan = (source, rel = 'packages/core/README.md') => citationsIn(rel, source);
+const measured = (source, rel) => scan(source, rel).filter((c) => !c.excused);
 const run = (source, rel, tree, opts) => judge(scan(source, rel), world(tree, opts));
 
 describe('check-doc-citations — a claim about a file that is not there', () => {
@@ -78,6 +80,17 @@ describe('check-doc-citations — a citation resolves inside its own package', (
     const noSrcAtAll = CORE_DELETED.filter((p) => !p.startsWith('packages/core/src/'));
     const { dead } = run('The app is `src/index.ts`.\n', 'packages/core/README.md', noSrcAtAll);
     expect(dead.map((c) => c.token)).toEqual(['src/index.ts']);
+  });
+
+  it('keeps a DELETED root-relative citation dead rather than falling through to a nested namesake', () => {
+    const nested = [
+      'package.json',
+      'scripts/README.md',
+      'packages/demo/package.json',
+      'packages/demo/scripts/gone.mjs',
+    ];
+    const { dead } = run('Run `scripts/gone.mjs`.\n', 'scripts/README.md', nested);
+    expect(dead.map((c) => c.token)).toEqual(['scripts/gone.mjs']);
   });
 
   it('resolves a path written from the repository root wherever the document sits', () => {
@@ -183,44 +196,57 @@ describe('check-doc-citations — what reports instead of failing', () => {
   });
 });
 
-describe('check-doc-citations — a written reason at the citation', () => {
-  it('excuses a citation the line above says is not a claim about this tree', () => {
+describe('check-doc-citations — a written reason names what it excuses', () => {
+  it('excuses the tokens the marker names', () => {
     const marked =
-      '<!-- doc-citation: unchecked — a path inside the dependency, not in this repo. -->\n' +
+      '<!-- doc-citation: unchecked `bin/dependency-cruise.mjs` `bin/dependency-cruiser.mjs` — inside the dependency, not in this repo. -->\n' +
       'It renamed `bin/dependency-cruise.mjs` to `bin/dependency-cruiser.mjs`.\n';
-    expect(scan(marked)).toEqual([]);
+    expect(measured(marked)).toEqual([]);
+  });
+
+  it('still measures a live citation sharing the paragraph with an excused one', () => {
+    const mixed =
+      '<!-- doc-citation: unchecked `NNNN_name.sql` — the naming template, not a file. -->\n' +
+      'Write a `NNNN_name.sql`, then append to `meta/_journal.json`.\n';
+    expect(measured(mixed).map((c) => c.token)).toEqual(['meta/_journal.json']);
+  });
+
+  it('refuses a marker that names no citation, rather than letting it excuse nothing in silence', () => {
+    const vague = '<!-- doc-citation: unchecked — a path inside the dependency. -->\n';
+    const { markerFaults } = judge(scan(vague), world(PACKAGES));
+    expect(markerFaults).toHaveLength(1);
   });
 
   it('does not excuse a citation further down the document than the marker reaches', () => {
     const far =
-      '<!-- doc-citation: unchecked — covers the frame below it. -->\n\n\n\n\n' +
+      '<!-- doc-citation: unchecked `src/db/gone.ts` — covers the frame below it. -->\n\n\n\n\n' +
       'Thrown at `src/db/gone.ts`.\n';
-    expect(scan(far).map((c) => c.token)).toEqual(['src/db/gone.ts']);
+    expect(measured(far).map((c) => c.token)).toEqual(['src/db/gone.ts']);
   });
 });
 
 describe('check-doc-citations — what it deliberately does not read', () => {
   it('reads no path inside a fenced code block', () => {
-    expect(scan('```sh\ncat `src/db/gone.ts`\n```\n')).toEqual([]);
+    expect(measured('```sh\ncat `src/db/gone.ts`\n```\n')).toEqual([]);
   });
 
   it('reads no bare extension, which names a kind of file and no file', () => {
-    expect(scan('Every `.ts` and `.sql` under it.\n')).toEqual([]);
+    expect(measured('Every `.ts` and `.sql` under it.\n')).toEqual([]);
   });
 
   it('reads no path in another repository, which carries no extension here', () => {
-    expect(scan('It lives in `plugin/skills/issue-flow`.\n')).toEqual([]);
+    expect(measured('It lives in `plugin/skills/issue-flow`.\n')).toEqual([]);
   });
 
   it('reads no URL and no route', () => {
-    expect(scan('Served at `/api/guides/x.md` from `https://example.com/a.ts`.\n')).toEqual([]);
+    expect(measured('Served at `/api/guides/x.md` from `https://example.com/a.ts`.\n')).toEqual([]);
   });
 
   it('reads no build output, which no commit carries', () => {
-    expect(scan('Compiled to `dist/db/migrate.js`.\n')).toEqual([]);
+    expect(measured('Compiled to `dist/db/migrate.js`.\n')).toEqual([]);
   });
 
   it('reads no glob and no brace expansion, which name a set rather than a file', () => {
-    expect(scan('Covered by `src/**/*.ts` and `db/{schema,client}.ts`.\n')).toEqual([]);
+    expect(measured('Covered by `src/**/*.ts` and `db/{schema,client}.ts`.\n')).toEqual([]);
   });
 });
