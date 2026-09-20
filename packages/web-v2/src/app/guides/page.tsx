@@ -17,6 +17,7 @@ export default async function GuidesIndexPage() {
   const guides = await fetchGuideIndex();
   return (
     <GuideShell>
+      <h1 className="fg-h2 mb-6 text-fg">Forge guides</h1>
       <ul className="flex flex-col gap-1">
         {guides.map((guide) => (
           <li key={guide.slug}>
