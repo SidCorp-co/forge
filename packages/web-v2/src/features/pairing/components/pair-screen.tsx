@@ -67,7 +67,7 @@ export function PairScreen() {
       <div className="flex items-center justify-between gap-3">
         <PageTitle className="fg-h2">Approve a device</PageTitle>
         <HelpButton
-          summary="A device running `forge-runner login` is asking to pair with your account. Confirm the code matches what the CLI printed, then approve. Approving mints a device-scoped token the runner uses to accept jobs."
+          summary="A device running `forge-runner setup` (or `login`) is asking to pair with your account. Confirm the code matches what the CLI printed, then approve. Approving mints a device-scoped token the runner uses to accept jobs."
           actions={[
             "Approve — bind this pairing code to your account",
             "Deny — ignore the request (the code expires on its own)",
@@ -80,7 +80,7 @@ export function PairScreen() {
           <CardContent>
             <EmptyState
               title="No pairing code"
-              message="Open this page from the link printed by `forge-runner login`, or paste a code into the CLI."
+              message="Open this page from the link printed by `forge-runner setup`, or paste a code into the CLI."
             />
           </CardContent>
         </Card>
@@ -134,7 +134,7 @@ export function PairScreen() {
           <CardContent>
             <div className="flex flex-col gap-4">
               <p className="fg-body-sm text-muted">
-                Confirm this code matches what <MonoTag>forge-runner login</MonoTag> printed in
+                Confirm this code matches what <MonoTag>forge-runner setup</MonoTag> printed in
                 your terminal before approving.
               </p>
               <div className="flex items-center justify-center rounded-lg border border-line bg-sunken py-5">

@@ -68,9 +68,9 @@ function PairPanel() {
       <CardHeader>
         <CardTitle>Pair a device</CardTitle>
         <HelpButton
-          summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it opens this site to approve, then writes a device-scoped token locally."
+          summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it prints a code to approve here, then writes a device-scoped token locally."
           actions={[
-            "Run `forge-runner login` on the runner host (opens the browser to approve)",
+            "Run `forge-runner setup` on the runner host (it prints the approval URL)",
             "Or generate a code here and approve it at /pair",
             "Revoke a device below to cut off its access immediately",
           ]}
@@ -81,12 +81,13 @@ function PairPanel() {
           <div className="flex flex-col gap-1.5">
             <span className="fg-label">Recommended — run on the runner machine</span>
             <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-              <code className="font-mono text-13 text-fg">forge-runner login</code>
-              <CopyButton value="forge-runner login" />
+              <code className="font-mono text-13 text-fg">forge-runner setup</code>
+              <CopyButton value="forge-runner setup" />
             </div>
             <p className="fg-body-sm text-subtle">
-              It opens a browser to approve the device, then provisions a device token (and a git
-              push credential when the server has it enabled).
+              It checks the machine can run a job, prints an approval URL, waits for you to assign
+              it a project, gets a checkout, installs the background service, and ends on a
+              verdict. `forge-runner login` does the pairing step alone.
             </p>
           </div>
 

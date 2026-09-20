@@ -225,12 +225,12 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             <span className="fg-label">Connect a runner</span>
             <ol className="fg-body-sm mt-2 list-decimal space-y-1.5 pl-5 text-subtle">
               <li>
-                Pair a device with your account: run{' '}
-                <code className="font-mono text-13 text-fg">forge-runner login</code> on the
-                machine that will execute jobs.
+                Run{' '}
+                <code className="font-mono text-13 text-fg">forge-runner setup</code> on the
+                machine that will execute jobs: it pairs the device, then waits for step 2.
               </li>
               <li>
-                Bind the runner to this project — runner bindings are per project, managed from
+                Assign the device to this project — assignments are per project, managed from
                 the{' '}
                 <Link href="/runners" className="text-accent hover:underline">
                   Runners

@@ -838,16 +838,17 @@ function AssignDevice({
 					</div>
 
 					<div className="rounded-lg border border-dashed border-line-strong p-3">
-						<span className="fg-label">No device yet? Pair one</span>
+						<span className="fg-label">No device yet? Set one up</span>
 						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
 							<code className="font-mono text-13 text-fg">
-								forge-runner login
+								forge-runner setup
 							</code>
-							<CopyButton value="forge-runner login" />
+							<CopyButton value="forge-runner setup" />
 						</div>
 						<p className="fg-body-sm mt-1.5 text-subtle">
-							Run it on the device, approve in the browser — it appears in the
-							picker above, then assign it here. Or{" "}
+							Run it on the device and approve the code it prints — the device
+							appears in the picker above. Assign it here while setup waits; it
+							then gets the checkout and installs the service on its own. Or{" "}
 							<button
 								type="button"
 								className="text-accent hover:underline"
