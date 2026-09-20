@@ -5,10 +5,9 @@
 // on one commit, and that commit is the one the caller claims — so no runner,
 // label or job is needed to record a release that shipped (ISS-1129).
 //
-// It does NOT establish per-issue ancestry: seeing that each named issue's
-// merge is in the live commit needs a git provider, and requiring one would put
-// the coupling straight back. `merged_at` is required instead, the evidence is
-// persisted beside the live identity, and the residual is priced on ISS-1129.
+// It does NOT establish per-issue ancestry: that needs a git provider, and
+// requiring one would put the coupling straight back. `merged_at` is required
+// instead, and the residual is priced on ISS-1129.
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -80,16 +79,8 @@ async function soleVerifyConfig(projectId: string) {
   return verify;
 }
 
-/**
- * Every issue this record may close, read once and refused by name.
- *
- * Not at the gate, nothing written about what shipped, and work nobody merged
- * are three different mistakes, and each keeps its own name. What changed in
- * ISS-1127 is that they are enumerated in ONE pass and the refusal carries the
- * rest: this endpoint refused releasing ISS-1103 twice, minutes apart, once for
- * a missing note and then for an unmarked merge, and the first refusal said
- * nothing about the second.
- */
+/** Every issue this record may close, enumerated in ONE pass so the refusal
+ *  carries the reasons standing beside it (ISS-1127). */
 async function admissibleIssues(projectId: string, issueIds: string[]): Promise<RecordedIssue[]> {
   const report = await collectReleaseBlockers(projectId, { issueIds, door: 'record' });
   const refusal = releaseBlockerError(report);

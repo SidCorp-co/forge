@@ -37,6 +37,7 @@ import {
 } from './provider-schemas.js';
 import { enqueueOutboundDispatch } from './queue.js';
 import { getAdapter, getIntegration } from './registry.js';
+import { withdrawNulls } from './release-channel-schema.js';
 import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
@@ -215,16 +216,16 @@ integrationsRoutes.patch(
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
       const tiers = splitProviderConfig(binding.provider, parsed.data as Record<string, unknown>);
       if (Object.keys(tiers.connection).length > 0) {
-        mergedConfig = {
+        mergedConfig = withdrawNulls({
           ...((connection.config ?? {}) as object),
           ...tiers.connection,
-        };
+        });
       }
       if (Object.keys(tiers.binding).length > 0) {
-        mergedBindingConfig = {
+        mergedBindingConfig = withdrawNulls({
           ...((binding.config ?? {}) as object),
           ...tiers.binding,
-        };
+        });
       }
     }
 

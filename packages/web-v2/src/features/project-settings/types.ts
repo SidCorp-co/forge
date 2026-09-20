@@ -161,6 +161,24 @@ export interface PluginDesignation {
 	autoUpdate?: boolean;
 }
 
+/** One reason a release will not start, and what to do about it — mirrors
+ *  `ReleaseBlocker` in core `release-batch/blocker-sentences.ts`. */
+export interface ReleaseBlocker {
+	code: string;
+	/** The one sentence an operator reads, carrying its own remedy. */
+	message: string;
+	details?: Record<string, unknown>;
+	/** False when this check could not be run at all. */
+	evaluated: boolean;
+}
+
+/** Something that changes how a release runs without being a reason it will not. */
+export interface ReleaseWarning {
+	code: string;
+	message: string;
+	details?: Record<string, unknown>;
+}
+
 /** What a project still has to declare — mirrors `ReleaseReadiness` in core
  *  `release-batch/readiness.ts`. `gaps` is what settings says out loud. */
 export interface ReleaseReadiness {
@@ -178,6 +196,12 @@ export interface ReleaseReadiness {
 	rollback: string | null;
 	rollbackMode: "manual" | "coolify-image" | "unrepresentable" | null;
 	hasVerify: boolean;
+	/** Every reason a release would be refused RIGHT NOW — the declarations, and
+	 *  also the roster and the fleet, which `gaps` never looked at. Empty here
+	 *  means a release over this roster starts (ISS-1127). */
+	blockers: ReleaseBlocker[];
+	/** What changes how the release runs without stopping it. */
+	warnings: ReleaseWarning[];
 	gaps: (
 		| "build-commands"
 		| "test-commands"

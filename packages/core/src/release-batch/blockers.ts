@@ -8,16 +8,16 @@
 //
 // Three properties hold here and are what the callers rely on:
 //
-//   - It never throws. A check that cannot be evaluated becomes an answer of its
-//     own, in the position that check held, and the checks after it still run.
-//     A reason that cannot be read is not the same as a reason that is absent,
-//     and omitting it is the silent substitution this repository refuses.
-//   - It makes no outbound request, so no unreachable probe can withhold the
-//     answer. `readLiveCommit` stays where it was, in the create path, and what
-//     is checked here is the probe DECLARATION.
+//   - It never throws. A check that cannot be evaluated becomes an answer of
+//     its own, in the position that check held. A reason that cannot be read
+//     is not the same as a reason that is absent.
+//
+//   - It makes no outbound request. `readLiveCommit` stays in the create path,
+//     and what is checked here is the probe DECLARATION.
+//
 //   - It reports in the order the doors refuse in, and a door throws the FIRST
-//     blocker by its existing name. So no caller meets a different code than it
-//     does today for the same state, and the rest of the list rides along.
+//     blocker under its existing name, so no caller meets a different code than
+//     it does today for the same state.
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -27,6 +27,7 @@ import { issuesMissingReleaseRecord } from '../issues/release-record-required.js
 import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import {
+  blockerHttpStatus,
   type CollectReleaseBlockersOptions,
   RELEASE_ROSTER_LIMIT,
   type ReleaseBlockedError,
@@ -64,12 +65,6 @@ import { invalidProbeUrls } from './verify.js';
 
 export * from './blocker-sentences.js';
 
-const FLEET_CODES = new Set<ReleaseBlockerCode>([
-  'RELEASE_POOL_EMPTY',
-  'NO_RUNNER_ONLINE',
-  'RELEASE_CHECK_UNEVALUATED',
-]);
-
 function blocker(
   code: ReleaseBlockerCode,
   details?: Record<string, unknown>,
@@ -77,7 +72,7 @@ function blocker(
 ): ReleaseBlocker {
   return {
     code,
-    httpStatus: FLEET_CODES.has(code) ? 503 : 409,
+    httpStatus: blockerHttpStatus(code),
     message: releaseBlockerSentence(code, details),
     evaluated: code !== 'RELEASE_CHECK_UNEVALUATED',
     ...(details ? { details } : {}),
@@ -85,13 +80,7 @@ function blocker(
   };
 }
 
-/**
- * One check, and what it answers when it cannot be run.
- *
- * The failure becomes a blocker in the position the check held rather than an
- * exception, so the checks after it still run and the operator sees the twelve
- * that answered beside the one that did not.
- */
+/** One check, and the blocker that stands in for it when it cannot be run. */
 async function evaluate<T>(
   check: string,
   read: () => Promise<T>,

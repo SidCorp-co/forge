@@ -33,19 +33,7 @@ export function parseVerifyConfig(raw: unknown): VerifyConfig | null {
   };
 }
 
-/**
- * The declared probe urls that no request could ever be made to.
- *
- * `parseVerifyConfig` accepts any non-empty string, and `readProbe` builds
- * `new URL(probe.url)` outside its own try — so a stored
- * `"forge-beta-api.sidcorp.co/version"` throws past every mapped refusal
- * rather than answering. A url that does not parse is a DECLARATION defect,
- * not an outage, so it is named here and refused by the caller (ISS-1127)
- * instead of being folded into `unreachable`, which would lose the very
- * distinction the four reading kinds exist to keep.
- *
- * Pure: it makes no request, which is what lets the readiness answer carry it.
- */
+/** Declared probe urls no request could be made to: a declaration defect rather than an outage (ISS-1127). */
 export function invalidProbeUrls(cfg: VerifyConfig): string[] {
   return cfg.probes.map((p) => p.url).filter((url) => !URL.canParse(url));
 }

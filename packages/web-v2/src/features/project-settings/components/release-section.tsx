@@ -187,8 +187,35 @@ export function ReleaseSection({
         </p>
       )}
 
+      {r.blockers.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">
+            Why a release will not start — every reason, now
+          </h4>
+          {r.blockers.map((b) => (
+            <Banner key={`${b.code}:${b.message}`} tone={b.evaluated ? "danger" : "attention"}>
+              <span className="font-mono">{b.code}</span> — {b.message}
+            </Banner>
+          ))}
+        </div>
+      )}
+
+      {r.warnings.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">
+            What will change how the release runs, without stopping it
+          </h4>
+          {r.warnings.map((w) => (
+            <Banner key={`${w.code}:${w.message}`} tone="attention">
+              <span className="font-mono">{w.code}</span> — {w.message}
+            </Banner>
+          ))}
+        </div>
+      )}
+
       {r.gaps.length > 0 && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">What this project has not declared</h4>
           {r.gaps.map((g) => (
             <Banner key={g} tone="attention">
               {GAP_TEXT[g]}{" "}

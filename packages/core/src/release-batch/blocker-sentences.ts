@@ -1,23 +1,13 @@
 /**
- * The code an operator learns a release refusal by, and the one sentence that
- * explains it.
- *
- * Split from `blockers.ts` when that file crossed the 500-line budget, on the
- * seam the module already had: this is the text somebody reads, and what is
- * left there is the reading that decides which of these applies. It is also
- * what lets `refusals.ts` and `blockers.ts` share one copy of each sentence
- * without closing a cycle through `service.ts` (ISS-1127).
- *
- * `refusals.ts` states the rule these serve: a caller that learns
- * `RELEASE_PROBES_UNDECLARED` at one door must not meet a second name, or a
- * second wording, for the same fact at another.
+ * The code an operator learns a release refusal by, and the sentence that
+ * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import type { ReleaseDeclaration } from './gate.js';
 import type { ReleaseChannel } from './plan.js';
 
-/** The most issues one call may name, which `createBodySchema` also holds. */
+/** The most issues one call may name; `createBodySchema` holds it too. */
 export const RELEASE_ROSTER_LIMIT = 50;
 
 export type ReleaseBlockerCode =
@@ -41,14 +31,13 @@ export type ReleaseBlockerCode =
 
 export interface ReleaseBlocker {
   code: ReleaseBlockerCode;
-  /** 409 where a declaration or a roster must change, 503 where the fleet must. */
+  /** 409 where a declaration or roster must change, 503 where the fleet must. */
   httpStatus: 409 | 503;
-  /** The one sentence an operator reads, identical at every door. */
   message: string;
   details?: Record<string, unknown>;
   /** False only on `RELEASE_CHECK_UNEVALUATED`: this check could not be run. */
   evaluated: boolean;
-  /** Set where the answer is about the project's own roster, not a named list. */
+  /** Set where the answer is about the project's roster, not a named list. */
   scope?: 'roster';
 }
 
@@ -64,17 +53,13 @@ export interface ReleaseBlockerReport {
   projectExists: boolean;
   /** Null where the project is absent, or where the read failed. */
   declaration: ReleaseDeclaration | null;
-  /** Null where the read failed — distinct from a project declaring none. */
+  /** Distinct from a project that declares none: `[]` is an answer. */
   channels: ReleaseChannel[] | null;
   blockers: ReleaseBlocker[];
   warnings: ReleaseWarning[];
 }
 
-/**
- * Which door is asking. `batch` cuts a release and needs a box to cut it on;
- * `record` writes down one that already happened and deliberately needs no
- * runner, label or job (ISS-1129), and asks instead that the work was merged.
- */
+/** `batch` needs a box to cut on; `record` needs none and asks for a merge. */
 export type ReleaseDoor = 'batch' | 'record';
 
 export interface CollectReleaseBlockersOptions {
@@ -84,12 +69,9 @@ export interface CollectReleaseBlockersOptions {
 }
 
 /**
- * An error carrying every reason that stood when it was thrown, not only its own.
- *
- * The first blocker keeps its existing class, its code and its wording, so no
- * caller's `instanceof` and no operator's vocabulary moves. What is added is the
- * rest of the list, which is the whole of ISS-1127: two refusals minutes apart,
- * each individually correct and neither mentioning the other.
+ * An error carrying every reason that stood when it was thrown. The first
+ * blocker keeps its class, code and wording; the rest ride along, which is the
+ * whole of ISS-1127.
  */
 export type ReleaseBlockedError = Error & { releaseBlockers?: ReleaseBlocker[] };
 
@@ -140,10 +122,16 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed. Everything else below was evaluated; this one was not.',
 };
 
-/**
- * The one copy of each sentence. Every door reads it, so a caller that learns a
- * code at one of them never meets a second wording for the same fact.
- */
+/** The one copy of each sentence. */
+/** One owner, so no two doors disagree about whose problem a reason is. */
+export function blockerHttpStatus(code: ReleaseBlockerCode): 409 | 503 {
+  return code === 'RELEASE_POOL_EMPTY' ||
+    code === 'NO_RUNNER_ONLINE' ||
+    code === 'RELEASE_CHECK_UNEVALUATED'
+    ? 503
+    : 409;
+}
+
 export function releaseBlockerSentence(
   code: ReleaseBlockerCode,
   details?: Record<string, unknown>,

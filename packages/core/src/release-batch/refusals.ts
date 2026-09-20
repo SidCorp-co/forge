@@ -13,6 +13,7 @@
 import { HTTPException } from 'hono/http-exception';
 import {
   alsoBlocking,
+  blockerHttpStatus,
   type ReleaseBlockerCode,
   releaseBlockerSentence,
 } from './blocker-sentences.js';
@@ -61,10 +62,9 @@ export function releaseBlockerHttp(
   details?: Record<string, unknown>,
 ): HTTPException {
   const standing = alsoBlocking(err, code);
-  const status = code === 'RELEASE_POOL_EMPTY' || code === 'NO_RUNNER_ONLINE' ? 503 : 409;
   const body: Record<string, unknown> = { ...(details ?? {}) };
   if (standing.length > 0) body.alsoBlocking = standing;
-  return new HTTPException(status === 503 ? 503 : 409, {
+  return new HTTPException(blockerHttpStatus(code), {
     message: releaseBlockerSentence(code, details),
     cause: Object.keys(body).length > 0 ? { code, details: body } : { code },
   });
