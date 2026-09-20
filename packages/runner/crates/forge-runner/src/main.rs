@@ -53,7 +53,7 @@ enum Command {
     Run(cmd::run::Args),
     /// List runners registered for this device.
     Runners(cmd::runners::Args),
-    /// Look at, talk to, and end this box's resident masters.
+    /// Look at, talk to, stand down and end this box's resident masters.
     Master(cmd::master::Args),
     /// Pull the latest skills for bound projects now (on-demand, one-shot).
     Sync(cmd::sync::Args),

@@ -149,6 +149,20 @@ impl SessionTokens {
         }
     }
 
+    /// Whether any capability on this box names `session_id`.
+    ///
+    /// `mint` leaves exactly one entry per session and `retire` removes by
+    /// session, so a `false` here means nothing on this box was ever minted
+    /// for that session — which is what a pane adopted onto a session row core
+    /// replaced looks like from the daemon's side.
+    ///
+    /// The error is never collapsed into `false`. A map this process could not
+    /// read is not evidence about any pane, and treating it as one would report
+    /// every master on the box as unplaceable at once.
+    pub fn holds_session(&self, session_id: &str) -> Result<bool> {
+        Ok(self.load()?.values().any(|s| s == session_id))
+    }
+
     pub fn retire(&self, session_id: &str) {
         let mut map = match self.load() {
             Ok(map) => map,
@@ -196,6 +210,8 @@ mod tests {
             .with_writer(move || made.clone())
             .with_ansi(false)
             .finish();
+        // Why a capture needs this: `crate::daemon::keep_tracing_capturable`.
+        crate::daemon::keep_tracing_capturable();
         tracing::subscriber::with_default(sub, f);
         let out = buf.0.lock().unwrap().clone();
         String::from_utf8_lossy(&out).into_owned()

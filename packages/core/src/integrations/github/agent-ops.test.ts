@@ -230,6 +230,42 @@ describe('writing', () => {
     });
   });
 
+  // ISS-1123 criteria 1 and 6. These three fields are not decoration: the projection row the merge
+  // route resolves on is NOT NULL on both SHAs, and the writer's ordering rule treats an absent
+  // `updated_at` as always-wins, so dropping it silently overwrites a newer delivery.
+  it('carries back the head sha, the base sha and the updated_at the row is written from', async () => {
+    const { client } = recorder({
+      json: () => ({
+        number: 534,
+        html_url: 'https://gh/pr/534',
+        title: 'what Forge opens, Forge records',
+        state: 'open',
+        draft: false,
+        updated_at: '2026-09-20T15:04:05Z',
+        head: { ref: 'ISS-1123-projection', sha: 'a'.repeat(40) },
+        base: { ref: 'main', sha: 'b'.repeat(40) },
+      }),
+    });
+    await expect(
+      openPullRequest(client, { head: 'ISS-1123-projection', base: 'main', title: 'T' }),
+    ).resolves.toMatchObject({
+      number: 534,
+      title: 'what Forge opens, Forge records',
+      headSha: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      updatedAt: '2026-09-20T15:04:05Z',
+    });
+  });
+
+  it('reports a field GitHub left out as null rather than as an empty string', async () => {
+    const { client } = recorder({
+      json: () => ({ number: 534, head: { ref: 'x' }, base: { ref: 'main' } }),
+    });
+    await expect(
+      openPullRequest(client, { head: 'x', base: 'main', title: 'T' }),
+    ).resolves.toMatchObject({ headSha: null, baseSha: null, updatedAt: null });
+  });
+
   it('requests named reviewers and teams, and reports what GitHub now holds', async () => {
     const { client, calls } = recorder({
       json: () => ({
@@ -302,6 +338,8 @@ describe('nothing on this face merges', () => {
     expect(said).not.toContain('ISS-1073');
     expect(said).toContain('DISPATCH face');
     expect(said).toContain('merged_at');
+    // ISS-1123: the sentence states the one-writer rule, so it says which writer this face reaches.
+    expect(said).toContain("Forge's projection of the repository");
     expect(kernelVerbRefusal('merge-pull-request')).toContain('merge-pull-request');
   });
 

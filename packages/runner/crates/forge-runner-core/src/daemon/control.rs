@@ -663,7 +663,13 @@ fn note_master_pane(ctl: &Arc<Control>, session_id: &str, conversation_id: Optio
     };
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else { return };
-    if let Err(e) = led.note_master(&project_id, &pane, conversation_id, &ctl.boot_id) {
+    if let Err(e) = led.note_master(
+        &project_id,
+        &pane,
+        conversation_id,
+        Some(session_id),
+        &ctl.boot_id,
+    ) {
         tracing::warn!("[control] cannot record {project_id}'s master pane: {e}");
     }
 }

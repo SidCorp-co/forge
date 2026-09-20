@@ -1,7 +1,9 @@
 import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
+import type { IssueStatus } from '../db/schema.js';
 import { projects } from '../db/schema.js';
+import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -45,8 +47,6 @@ function emailInitials(email: string): string {
 
 const MEMBER_AVATAR_CAP = 5;
 const PER_PROJECT_BLOCKER_CAP = 5;
-
-const NON_OPEN_STATUSES = new Set(['awaiting_release', 'closed', 'draft']);
 
 export const projectHealthRoutes = new Hono<{ Variables: AuthVars }>();
 projectHealthRoutes.use('/health', requireAuth(), assertEmailVerified());
@@ -139,7 +139,7 @@ projectHealthRoutes.get('/health', async (c) => {
     const dist = distByProject.get(p.id) ?? {};
     let totalActive = 0;
     for (const [status, n] of Object.entries(dist)) {
-      if (!NON_OPEN_STATUSES.has(status)) totalActive += n;
+      if (!NON_OPEN_STATUSES.includes(status as IssueStatus)) totalActive += n;
     }
     return {
       id: p.id,

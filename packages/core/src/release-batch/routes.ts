@@ -10,6 +10,7 @@ import { resolveReleaseChannels } from './channel.js';
 import { openAttempt, readAttempt, recordAccount, settleAttempt } from './ledger.js';
 import { announceMethod } from './method.js';
 import { loadReleaseReadiness } from './readiness.js';
+import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
 import {
   badRequest,
   conflict,
@@ -17,6 +18,7 @@ import {
   holding,
   methodRefusal,
   notFound,
+  recordRefusal,
   refuseMachineKeys,
   serviceUnavailable,
   undeclaredBranches,
@@ -104,7 +106,7 @@ releaseBatchRoutes.post(
       if (err instanceof ReleasePoolEmptyError) {
         throw serviceUnavailable(
           'RELEASE_POOL_EMPTY',
-          `No runner carries the release label \`${err.label}\`, so nothing here may deploy`,
+          'This project has no runner registered, so there is no box a release could run on — pair a box to this project first',
         );
       }
       if (err instanceof NoRunnerOnlineError) {
@@ -205,6 +207,22 @@ const runParamSchema = z.object({ projectId: z.uuid(), runId: z.uuid() });
 
 const finishBodySchema = z.object({ commit: z.string().trim().max(200).optional() }).strict();
 const abortBodySchema = z.object({ reason: z.string().trim().max(2000).optional() }).strict();
+
+/**
+ * `account` has a floor because it is the whole of Rule 2 of ISS-1129: a release
+ * performed by hand and a release performed by a batch are different facts, and
+ * "released" with no account of how is the silent substitution this repository
+ * refuses everywhere else. Twenty characters does not make an account good; it
+ * makes `ok` refused.
+ */
+const releaseRecordBodySchema = z
+  .object({
+    issueIds: z.array(z.uuid()).min(1).max(50),
+    commit: z.string().trim().min(7).max(200),
+    account: z.string().trim().min(20).max(20_000),
+    providerRef: z.string().trim().max(500).optional(),
+  })
+  .strict();
 
 async function loadRunForProject(runId: string, projectId: string, userId: string) {
   const run = await findReleaseBatchRun(runId);
@@ -424,5 +442,52 @@ releaseBatchRoutes.post(
             : `the application is not answering: ${live.unhealthy.join('; ')}`,
     });
     return c.json(settled);
+  },
+);
+
+// ISS-1129 — the release that already happened, and the read of what was written.
+//
+// Registered on this router rather than on one of its own, so the `use('*')`
+// at the top covers them and `check-pat-surface` — which reads routes off the
+// router file `index.ts` mounts — can see that both reach the fence.
+releaseBatchRoutes.post(
+  '/:projectId/release-records',
+  zValidator('param', projectParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', releaseRecordBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access) throw notFound('project not found');
+    assertProjectRole(access, 'admin');
+
+    try {
+      const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });
+      return c.json(result, 201);
+    } catch (err) {
+      throw recordRefusal(err);
+    }
+  },
+);
+
+releaseBatchRoutes.get(
+  '/:projectId/release-records/:runId',
+  zValidator('param', runParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    if (!access) throw notFound('project not found');
+    assertProjectRole(access, 'member');
+
+    const record = await readReleaseRecord(projectId, runId);
+    if (!record) throw notFound('no release record under this id on this project');
+    return c.json(record);
   },
 );

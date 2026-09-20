@@ -12,7 +12,7 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, pipelineRuns, schedules } from '../db/schema.js';
+import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readProjectBranches } from '../projects/service.js';
@@ -219,6 +219,22 @@ export interface ReleaseBatchIssue {
   status: IssueStatus;
 }
 
+/**
+ * Which box this release was meant for, whether it got one, and which box took
+ * the job.
+ *
+ * `null` for a run opened before ISS-1128, which recorded no verdict: saying
+ * `preferenceMet: false` there would claim a reading nobody took.
+ */
+export interface ReleaseRunnerAccount {
+  /** The declared preference, as the live deploy bindings resolved it. */
+  label: string | null;
+  /** False where no box eligible to release carried the label. */
+  preferenceMet: boolean;
+  /** The box the release job was claimed on, or `null` while nobody has. */
+  claimedByDeviceId: string | null;
+}
+
 export interface ReleaseBatchContext {
   runId: string;
   projectId: string;
@@ -230,7 +246,29 @@ export interface ReleaseBatchContext {
   liveBranch: string;
   deployPlanned: boolean;
   promotePlanned: boolean;
+  releaseRunner: ReleaseRunnerAccount | null;
   issues: ReleaseBatchIssue[];
+}
+
+/** The declared preference and its verdict, off the run's own metadata. */
+async function releaseRunnerAccount(
+  runId: string,
+  meta: Record<string, unknown>,
+): Promise<ReleaseRunnerAccount | null> {
+  const recorded = meta.releaseRunner;
+  if (typeof recorded !== 'object' || recorded === null) return null;
+  const { label, preferenceMet } = recorded as { label?: unknown; preferenceMet?: unknown };
+  const [job] = await db
+    .select({ deviceId: jobs.deviceId })
+    .from(jobs)
+    .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
+    .orderBy(sql`${jobs.queuedAt} DESC`)
+    .limit(1);
+  return {
+    label: typeof label === 'string' && label.length > 0 ? label : null,
+    preferenceMet: preferenceMet === true,
+    claimedByDeviceId: job?.deviceId ?? null,
+  };
 }
 
 export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBatchContext | null> {
@@ -282,6 +320,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     liveBranch,
     deployPlanned,
     promotePlanned,
+    releaseRunner: await releaseRunnerAccount(runId, meta),
     issues: claimedIssues.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(claimedPrefix, r.issSeq) : r.id,

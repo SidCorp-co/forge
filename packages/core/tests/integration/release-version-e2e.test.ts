@@ -1,5 +1,5 @@
 /**
- * ISS-1120 — what the DATABASE refuses once `0291` has run, and the two rules whose absence is
+ * ISS-1120 — what the DATABASE refuses once `0294` has run, and the two rules whose absence is
  * invisible until the day they matter.
  *
  * Four things live here rather than in a unit test, because none of them is a rule TypeScript can

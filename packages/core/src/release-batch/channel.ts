@@ -123,9 +123,14 @@ export async function resolveReleasePlan(projectId: string): Promise<ReleasePlan
 }
 
 /**
- * The devices whose runners carry the release label. Empty means the operator
- * named a pool that no box is in — which the caller must treat as a refusal,
- * never as "use anyone".
+ * The devices whose runners carry the release label — the boxes a release
+ * should PREFER.
+ *
+ * Empty means no box on the fleet carries it, which ISS-1128 made a ranking
+ * rather than a refusal: the caller releases on the pool it has and records
+ * that the preference went unmet. It was a refusal until then, so declaring
+ * which box a release should prefer was indistinguishable from removing every
+ * other box from the pool.
  */
 export async function resolveReleaseDeviceIds(projectId: string, label: string): Promise<string[]> {
   const rows = await db.execute<{ device_id: string }>(sql`
@@ -134,6 +139,22 @@ export async function resolveReleaseDeviceIds(projectId: string, label: string):
     WHERE project_id = ${projectId}
       AND device_id IS NOT NULL
       AND labels ? ${label}
+  `);
+  return rows.map((r) => r.device_id);
+}
+
+/**
+ * Every device this project has a runner row for, eligible or not.
+ *
+ * What separates a genuinely empty pool — `RELEASE_POOL_EMPTY` — from a fleet
+ * that exists with nothing online, which is `NO_RUNNER_ONLINE` and always was.
+ */
+export async function projectRunnerDeviceIds(projectId: string): Promise<string[]> {
+  const rows = await db.execute<{ device_id: string }>(sql`
+    SELECT DISTINCT device_id
+    FROM runners
+    WHERE project_id = ${projectId}
+      AND device_id IS NOT NULL
   `);
   return rows.map((r) => r.device_id);
 }

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import {
   AUTONOMOUS_DRIVER_STATUSES,
   AUTONOMOUS_ENTRY_STATUS,
   AUTONOMOUS_INFLIGHT_STATUSES,
   AUTONOMOUS_QUESTION_STATUS,
-  AUTONOMOUS_TERMINAL_STATUSES,
   BACKLOG_ADMISSIBLE_STATUSES,
 } from './autonomous-mode.js';
 
@@ -22,7 +22,7 @@ describe('AUTONOMOUS_INFLIGHT_STATUSES (ISS-890)', () => {
   });
 
   it('excludes the terminal statuses, whose runs are already closing', () => {
-    for (const s of AUTONOMOUS_TERMINAL_STATUSES) {
+    for (const s of ISSUE_TERMINAL_STATUSES) {
       expect(AUTONOMOUS_INFLIGHT_STATUSES).not.toContain(s);
     }
   });
@@ -37,7 +37,7 @@ describe('AUTONOMOUS_INFLIGHT_STATUSES (ISS-890)', () => {
     const classified = new Set([
       AUTONOMOUS_ENTRY_STATUS,
       AUTONOMOUS_QUESTION_STATUS,
-      ...AUTONOMOUS_TERMINAL_STATUSES,
+      ...ISSUE_TERMINAL_STATUSES,
       ...AUTONOMOUS_INFLIGHT_STATUSES,
     ]);
     expect([...AUTONOMOUS_DRIVER_STATUSES].sort()).toEqual([...classified].sort());

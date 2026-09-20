@@ -37,6 +37,7 @@ type AskBody = {
   sensitive?: boolean;
 };
 
+import { readDeviceIssueLease } from '../issues/issue-lease.js';
 import { readAdmissibleIssues } from './admissible.js';
 import {
   prepareJobForMaster,
@@ -48,7 +49,7 @@ import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
-import { isIssueLeaseHeld, readRunSessionTerminal, releaseIssueLease } from './run-session.js';
+import { readRunSessionTerminal, releaseIssueLease } from './run-session.js';
 import { deviceRunSessionRoutes } from './run-session-routes.js';
 
 export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -113,7 +114,11 @@ devicePoolRoutes.get(
   }),
   async (c) => {
     const { issueKey } = c.req.valid('param');
-    return c.json({ held: await isIssueLeaseHeld({ deviceId: c.get('device').id, issueKey }) });
+    // Two questions, both answered, because they are different ones: `held` is
+    // the fleet-wide fact, `heldByThisDevice` is what a close loop asking
+    // "have I given this back" means. Answering the second under the first
+    // name is the defect ISS-1109 closed.
+    return c.json(await readDeviceIssueLease({ deviceId: c.get('device').id, issueKey }));
   },
 );
 
