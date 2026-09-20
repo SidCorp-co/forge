@@ -23,7 +23,7 @@ import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
-import { markMergedOnClose } from './merged-at.js';
+import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
@@ -59,6 +59,7 @@ export type TransitionErrorCode =
   | 'NO_WORK_EVIDENCE'
   | 'RELEASE_RECORD_REQUIRED'
   | 'ENTRY_CRITERIA_UNMET'
+  | 'CLOSE_REQUIRES_SHIPPED'
   | 'WAITING_KIND_NOT_APPLICABLE';
 
 /**
@@ -381,28 +382,6 @@ export async function transitionIssueStatus(
     }
   }
 
-  if (txResult?.stampedOnClose && !held) {
-    try {
-      const evidenceFound = await collectWorkEvidence(issue.id)
-        .then(hasCodeEvidence)
-        .catch(() => true);
-      const evidenceNote = evidenceFound
-        ? "If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to withdraw the shipped-work claim. That alone does NOT re-block the dependents: they are held by this issue's STATUS, and `closed` releases them whatever `merged_at` says (ISS-1100). Move this issue back off `closed` to hold them again."
-        : "No branch, commit or code handoff is recorded for this issue — if its code never landed, run `forge_issues` `unmark` to withdraw the shipped-work claim. That alone does NOT re-block the dependents: they are held by this issue's STATUS, and `closed` releases them whatever `merged_at` says (ISS-1100). Move this issue back off `closed` to hold them again.";
-      await db.insert(comments).values({
-        issueId: issue.id,
-        authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-        body: `merged_at auto-stamped on close — \`closed\` counts as done, so \`blocks\`-dependents can now dispatch. ${evidenceNote}`,
-        parentId: null,
-      });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: issue.id },
-        'transition: close-stamp audit comment failed (transition already committed)',
-      );
-    }
-  }
-
   if (txResult && txResult.unblockedDependents.length > 0) {
     await recordDropUnblock(issue, txResult.unblockedDependents, actor);
   }
@@ -438,7 +417,6 @@ type TransitionWriteInput = {
 
 type TransitionWriteResult = {
   row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
-  stampedOnClose: boolean;
   unblockedDependents: UnblockedDependent[];
 };
 
@@ -530,15 +508,21 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
               source: 'issues',
             },
           ]);
-          const closeStamp = await markMergedOnClose(t, {
+          const unshipped = await refuseUnshippedClose(t, {
             issueId: issue.id,
             toStatus: requestedStatus,
           });
+          if (unshipped)
+            throw new TransitionError(
+              'CLOSE_REQUIRES_SHIPPED',
+              unshipped.detail,
+              unshipped.details,
+            );
           const unblockedDependents =
             toStatus === 'dropped'
               ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id)
               : [];
-          return { row, stampedOnClose: closeStamp.stamped, unblockedDependents };
+          return { row, unblockedDependents };
         },
       );
       if (!result)
