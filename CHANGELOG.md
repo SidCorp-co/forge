@@ -162,6 +162,10 @@
 - **A comment carrying a machine record is told where that record belongs.** The answer names the
   route for its kind, and a guide. Guidance today; a refusal only for a client that says it can
   comply.
+- **An issue sitting in a live status with nothing working it now says so on itself**, naming what
+  it waits for and who owes the next move. Each status has its own clock.
+- **A claim left behind by a run that stopped is let go once it expires.** One still inside its
+  time, or one that cannot be read, is left alone and reported instead.
 - **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
   credential core mints for that one checkout, writes its `.mcp.json`, and records the local
   binding — no pasted token, no `bind` by hand.
