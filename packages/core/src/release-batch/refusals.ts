@@ -11,7 +11,11 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
-import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
+import {
+  alsoBlocking,
+  type ReleaseBlockerCode,
+  releaseBlockerSentence,
+} from './blocker-sentences.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   ClaimConflictError,
@@ -41,6 +45,30 @@ export const conflict = (code: string, message: string, details?: unknown) =>
 
 export const serviceUnavailable = (code: string, message: string) =>
   new HTTPException(503, { message, cause: { code } });
+
+/**
+ * One refusal, carrying every reason that stood beside it.
+ *
+ * ISS-1127: releasing ISS-1103 by hand was refused twice by this same endpoint
+ * minutes apart — a missing release note, and then a merge nobody had marked —
+ * each individually correct and neither mentioning the other. The thrown code
+ * and its wording are unchanged; `alsoBlocking` is what stops the second
+ * refusal being a surprise.
+ */
+export function releaseBlockerHttp(
+  err: unknown,
+  code: ReleaseBlockerCode,
+  details?: Record<string, unknown>,
+): HTTPException {
+  const standing = alsoBlocking(err, code);
+  const status = code === 'RELEASE_POOL_EMPTY' || code === 'NO_RUNNER_ONLINE' ? 503 : 409;
+  const body: Record<string, unknown> = { ...(details ?? {}) };
+  if (standing.length > 0) body.alsoBlocking = standing;
+  return new HTTPException(status === 503 ? 503 : 409, {
+    message: releaseBlockerSentence(code, details),
+    cause: Object.keys(body).length > 0 ? { code, details: body } : { code },
+  });
+}
 
 export function declarationRefusal(err: unknown): HTTPException | null {
   if (err instanceof ReleaseTargetUndeclaredError) {
@@ -131,27 +159,14 @@ export function recordRefusal(err: unknown): HTTPException {
       cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
     });
   }
-  if (err instanceof ReleaseWorkUnmergedError) {
-    return conflict(
-      'RELEASE_WORK_UNMERGED',
-      `${err.issueIds.length} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.`,
-      { issueIds: err.issueIds },
-    );
-  }
   if (err instanceof ClaimConflictError) {
-    return conflict(
-      'CLAIM_CONFLICT',
-      'One or more issues could not be recorded (wrong status, not on this project, or already claimed by a batch)',
-      { issueIds: err.issueIds },
-    );
+    return releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
   }
   if (err instanceof ReleaseRecordMissingError) {
-    return conflict(
-      'RELEASE_RECORD_MISSING',
-      `${err.issueIds.length} issue(s) named here have no release note, and closing them ` +
-        `would claim a ship nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
-      { issueIds: err.issueIds },
-    );
+    return releaseBlockerHttp(err, 'RELEASE_RECORD_MISSING', { issueIds: err.issueIds });
+  }
+  if (err instanceof ReleaseWorkUnmergedError) {
+    return releaseBlockerHttp(err, 'RELEASE_WORK_UNMERGED', { issueIds: err.issueIds });
   }
   throw err;
 }

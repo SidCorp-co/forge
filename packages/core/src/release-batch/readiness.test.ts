@@ -9,10 +9,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listBindings = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
+// ISS-1127 — the enumerator this answer is now built on reads the roster with a
+// query that ENDS at `where()`, and the runner pool with `db.execute`. A `where`
+// that only carried `.limit` made every one of these fail on `rows.map is not a
+// function`, which is a mock too narrow rather than a readiness that is wrong.
+const selectRows = vi.fn(async () => [] as unknown[]);
+const execRows = vi.fn(async () => [] as unknown[]);
 
 vi.mock('../db/client.js', () => ({
-  db: { select: () => ({ from: () => ({ where: () => ({ limit: selectLimit }) }) }) },
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => Object.assign(selectRows(), { limit: selectLimit }),
+      }),
+    }),
+    execute: () => execRows(),
+  },
 }));
+
+vi.mock('../runners/select.js', () => ({ onlineCapableDeviceIds: async () => [] }));
 
 const heldSlugs = vi.fn(async (_id: string): Promise<string[]> => Object.keys(CONTRACT_KNOWLEDGE));
 vi.mock('../knowledge/service.js', () => ({
@@ -100,6 +115,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   listBindings.mockResolvedValue([]);
   selectLimit.mockResolvedValue([]);
+  selectRows.mockResolvedValue([]);
+  execRows.mockResolvedValue([]);
 });
 
 describe('loadReleaseReadiness', () => {
@@ -446,7 +463,11 @@ describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
 
   it('names the roster and fleet refusals a create would make, not only the declarations', async () => {
     project({ ...RELEASING, environments: LIVE_DECLARED });
-    liveBinding({ releaseRunnerLabel: 'prod-box', verify: PROBES, rollback: { mode: 'coolify-image' } });
+    liveBinding({
+      releaseRunnerLabel: 'prod-box',
+      verify: PROBES,
+      rollback: { mode: 'coolify-image' },
+    });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 

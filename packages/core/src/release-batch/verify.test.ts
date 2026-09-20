@@ -410,7 +410,9 @@ describe('verifyServingNow', () => {
 // `TypeError: Invalid URL` past every mapped refusal, as a 500 with no code, while
 // `release-readiness` says nothing about it.
 describe('a probe url that does not parse (ISS-1127)', () => {
-  const MALFORMED = { probes: [{ url: 'forge-beta-api.sidcorp.co/version', commitPath: 'commit' }] };
+  const MALFORMED = {
+    probes: [{ url: 'forge-beta-api.sidcorp.co/version', commitPath: 'commit' }],
+  };
 
   it('is named by invalidProbeUrls without a request being made', async () => {
     const { invalidProbeUrls } = await import('./verify.js');

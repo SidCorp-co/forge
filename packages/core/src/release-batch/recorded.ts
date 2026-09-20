@@ -12,12 +12,12 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
+import { comments, issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import { resolveReleaseChannels } from './channel.js';
 import {
   ClaimConflictError,
@@ -25,8 +25,6 @@ import {
   ReleaseMultiChannelUnsupportedError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
-  ReleaseRecordMissingError,
-  ReleaseWorkUnmergedError,
 } from './errors.js';
 import { resolveReleaseGate } from './gate.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
@@ -83,38 +81,28 @@ async function soleVerifyConfig(projectId: string) {
 }
 
 /**
- * Every issue this record may close, read once and refused by name. The order
- * is what a caller should learn first: not at the gate, nothing written about
- * what shipped, and work nobody merged are three different mistakes.
+ * Every issue this record may close, read once and refused by name.
+ *
+ * Not at the gate, nothing written about what shipped, and work nobody merged
+ * are three different mistakes, and each keeps its own name. What changed in
+ * ISS-1127 is that they are enumerated in ONE pass and the refusal carries the
+ * rest: this endpoint refused releasing ISS-1103 twice, minutes apart, once for
+ * a missing note and then for an unmarked merge, and the first refusal said
+ * nothing about the second.
  */
-async function admissibleIssues(
-  projectId: string,
-  issueIds: string[],
-  gateStatus: IssueStatus,
-): Promise<RecordedIssue[]> {
+async function admissibleIssues(projectId: string, issueIds: string[]): Promise<RecordedIssue[]> {
+  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'record' });
+  const refusal = releaseBlockerError(report);
+  if (refusal) throw refusal;
+
   const rows = await db
     .select({
       id: issues.id,
-      status: issues.status,
-      releaseBatchRunId: issues.releaseBatchRunId,
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
     })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds)));
-
-  const found = new Set(rows.map((r) => r.id));
-  const notFound = issueIds.filter((id) => !found.has(id));
-  if (notFound.length > 0) throw new ClaimConflictError(notFound);
-
-  const notClaimable = rows.filter((r) => r.status !== gateStatus || r.releaseBatchRunId !== null);
-  if (notClaimable.length > 0) throw new ClaimConflictError(notClaimable.map((r) => r.id));
-
-  const unrecorded = await issuesMissingReleaseRecord(issueIds);
-  if (unrecorded.length > 0) throw new ReleaseRecordMissingError(unrecorded);
-
-  const unmerged = rows.filter((r) => r.mergedAt === null).map((r) => r.id);
-  if (unmerged.length > 0) throw new ReleaseWorkUnmergedError(unmerged);
 
   return rows.map((r) => ({
     id: r.id,
@@ -154,7 +142,7 @@ export async function recordPerformedRelease(
   if (!gateStatus) throw new NoReleaseGateError();
 
   const verify = await soleVerifyConfig(projectId);
-  const roster = await admissibleIssues(projectId, issueIds, gateStatus);
+  const roster = await admissibleIssues(projectId, issueIds);
 
   const outcome = await verifyServingNow({ cfg: verify, expected: commit });
   if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
