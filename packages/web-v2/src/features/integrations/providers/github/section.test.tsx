@@ -37,15 +37,18 @@ const REPOSITORIES = [
   },
 ];
 
+/** Overridden by the tests that need the App to answer with nothing, or to fail. */
+let repos: {
+  data?: { repositories: typeof REPOSITORIES; truncated: boolean };
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+};
+
 vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({ data: { items } }),
   useConnections: () => ({ data: { items: connections } }),
-  useGitHubRepositories: () => ({
-    data: { repositories: REPOSITORIES, truncated: false },
-    isLoading: false,
-    isError: false,
-    error: null,
-  }),
+  useGitHubRepositories: () => repos,
   useBindExistingConnection: () => ({ mutate: bind, isPending: false, isError: false, error: null }),
   useUpdateProviderIntegration: () => ({
     mutate: update,
@@ -143,6 +146,12 @@ beforeEach(() => {
   remove.mockClear();
   items = [];
   connections = [connection()];
+  repos = {
+    data: { repositories: REPOSITORIES, truncated: false },
+    isLoading: false,
+    isError: false,
+    error: null,
+  };
 });
 afterEach(cleanup);
 
@@ -249,6 +258,41 @@ describe("a github binding row that records no repository", () => {
     mount();
 
     expect(screen.queryByText(/reconnecting this project/i)).toBeNull();
+  });
+});
+
+describe("the controls that belong to the binding row itself", () => {
+  it("keeps Disconnect on the picker when the App answers with no repositories", () => {
+    items = [binding({ config: {} })];
+    repos = {
+      data: { repositories: [], truncated: false },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+
+    expect(remove).toHaveBeenCalledWith(BINDING);
+  });
+
+  it("keeps Disconnect on the picker when the repository list fails to load", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+    repos = { isLoading: false, isError: true, error: new Error("boom") };
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+
+    expect(remove).toHaveBeenCalledWith(BINDING);
+  });
+
+  it("keeps the enable toggle on the picker, so a switched-off row has a way back either way", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+
+    mount();
+
+    expect(screen.getByLabelText("Enabled for this project")).toBeInTheDocument();
   });
 });
 

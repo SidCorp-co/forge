@@ -71,6 +71,42 @@ function repositoryOf(config: Record<string, unknown>): { owner: string; repo: s
   return owner && repo ? { owner, repo } : null;
 }
 
+/**
+ * Enable, agent access and Disconnect. Every card built over a binding row
+ * carries these, so the picker is never the only thing on the screen: an App
+ * whose repository list comes back empty or failing would otherwise leave an
+ * admin with no control at all on the binding they already have.
+ */
+function BindingControls({
+  projectId,
+  binding,
+}: {
+  projectId: string;
+  binding: IntegrationSummary;
+}) {
+  const remove = useDeleteProviderIntegration(projectId);
+
+  return (
+    <>
+      <IntegrationEnabledControl projectId={projectId} binding={binding} />
+
+      <AgentAccessControl projectId={projectId} binding={binding} canEdit />
+
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => remove.mutate(binding.id)}
+          disabled={remove.isPending}
+        >
+          Disconnect from this project
+        </Button>
+        {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
+      </div>
+    </>
+  );
+}
+
 function ConnectedState({
   projectId,
   binding,
@@ -82,7 +118,6 @@ function ConnectedState({
   repository: { owner: string; repo: string };
   onChangeRepository: () => void;
 }) {
-  const remove = useDeleteProviderIntegration(projectId);
   const { owner, repo } = repository;
 
   return (
@@ -106,21 +141,7 @@ function ConnectedState({
           </Button>
         </div>
 
-        <IntegrationEnabledControl projectId={projectId} binding={binding} />
-
-        <AgentAccessControl projectId={projectId} binding={binding} canEdit />
-
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => remove.mutate(binding.id)}
-            disabled={remove.isPending}
-          >
-            Disconnect from this project
-          </Button>
-          {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
-        </div>
+        <BindingControls projectId={projectId} binding={binding} />
       </CardContent>
     </Card>
   );
@@ -251,6 +272,8 @@ function SetRepository({
             </Button>
           )}
         </div>
+
+        <BindingControls projectId={projectId} binding={binding} />
       </CardContent>
     </Card>
   );
