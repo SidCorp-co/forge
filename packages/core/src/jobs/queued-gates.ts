@@ -2,10 +2,16 @@ import { eq, type SQL, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { jobs } from '../db/schema.js';
-import { RELEASE_LABEL_FOR_JOB } from '../devices/release-label.js';
+import { runnerMayTakeJob } from '../devices/release-label.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 import { claimCapableSql } from '../runners/device-cap.js';
+import {
+  deviceNotDisabled,
+  runnerFresh,
+  runnerUnlimited,
+  runnerWorkspaceReady,
+} from '../runners/liveness-sql.js';
 import { countInFlightForOneRunner } from './in-flight.js';
 
 export type GateSkipReason =
@@ -81,24 +87,10 @@ export function buildBarrierFragments(args: {
       FROM runners r
       JOIN devices d ON d.id = r.device_id
       WHERE ${projectScope}
-        AND r.status = 'online'
-        AND r.last_seen_at IS NOT NULL
-        AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-        AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
-        AND r.limit_reason IS DISTINCT FROM 'auth'
-        AND (r.quarantined_until IS NULL OR r.quarantined_until <= now())
-        AND (r.provision_status IS NULL OR r.provision_status = 'ready')
-        -- Device turn-off gate — MUST mirror runners/select.ts
-        -- (NOT_DISABLED_DEVICE). Without it the picker/asserter counts a runner
-        -- on a disabled device as available and declares the job dispatchable,
-        -- but the candidate query filters that runner out, so the job sits
-        -- queued while this gate reports it ready. A disabled device's runner
-        -- can keep heartbeating
-        -- (status stays online), so status alone does not cover this.
-        AND NOT EXISTS (
-          SELECT 1 FROM devices d
-          WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
-        )
+        AND ${runnerFresh('r', livenessSeconds)}
+        AND ${runnerUnlimited('r')}
+        AND ${runnerWorkspaceReady('r')}
+        AND ${deviceNotDisabled('r')}
     )`;
 
   const predicates = {
@@ -141,11 +133,16 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
           SELECT 1 FROM fresh_capable_runners WHERE project_id = j.project_id AND claim_capable
         )
           THEN 'runner_too_old'
+        -- ISS-1128 — a question about the JOB: may anything that could claim
+        -- take it. Since the label became a preference that leaves one shape:
+        -- the live deploy bindings resolve no single label, so there is no box
+        -- to prefer and no rule to fall back from. A box that merely carries
+        -- the wrong label is ordinary routing and waits on nobody.
         WHEN j.type = 'release_batch'
           AND NOT EXISTS (
-            SELECT 1 FROM fresh_capable_runners
-            WHERE project_id = j.project_id
-              AND claim_capable AND labels ? ${RELEASE_LABEL_FOR_JOB}
+            SELECT 1 FROM fresh_capable_runners fcr
+            WHERE fcr.project_id = j.project_id
+              AND fcr.claim_capable AND ${runnerMayTakeJob(sql`fcr.labels`)}
           )
           THEN 'release_label_missing'
         ELSE NULL

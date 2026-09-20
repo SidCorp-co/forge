@@ -29,6 +29,7 @@ const {
   ReleaseRunnerAmbiguousError,
   releaseRunnerLabelOf,
   resolveReleaseChannels,
+  projectRunnerDeviceIds,
   resolveReleaseDeviceIds,
   resolveReleasePlan,
 } = await import('./channel.js');
@@ -296,6 +297,20 @@ describe('resolveReleaseDeviceIds', () => {
 
   it('returns an empty list when no runner carries the label', async () => {
     expect(await resolveReleaseDeviceIds(PROJECT_ID, 'nobody-has-this')).toEqual([]);
+  });
+});
+
+describe('projectRunnerDeviceIds', () => {
+  it('returns every device the project has a runner row for', async () => {
+    dbExecute.mockResolvedValue([{ device_id: 'dev-a' }, { device_id: 'dev-b' }]);
+
+    expect(await projectRunnerDeviceIds(PROJECT_ID)).toEqual(['dev-a', 'dev-b']);
+  });
+
+  // The one case RELEASE_POOL_EMPTY now means, and the only one: a project with
+  // no box at all, rather than a fleet a preference emptied.
+  it('returns an empty list where the project has no runner at all', async () => {
+    expect(await projectRunnerDeviceIds(PROJECT_ID)).toEqual([]);
   });
 });
 
