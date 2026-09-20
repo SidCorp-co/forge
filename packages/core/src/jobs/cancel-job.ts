@@ -10,9 +10,7 @@ import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
-
-/** Job statuses from which a single-job cancel is permitted. */
-export const CANCELLABLE_STATUSES = new Set(['queued', 'dispatched', 'running', 'held']);
+import { LIVE_JOB_STATUSES } from './status-sets.js';
 
 /**
  * Statuses with no device attached yet, so a cancel flips them straight to
@@ -54,7 +52,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new JobCancelError('NOT_FOUND', 'job not found');
 
-  if (!CANCELLABLE_STATUSES.has(job.status)) {
+  if (!LIVE_JOB_STATUSES.includes(job.status)) {
     throw new JobCancelError('NOT_CANCELLABLE', 'job is not cancellable');
   }
 

@@ -4,12 +4,12 @@
  * a verdict with named failure modes and the fact behind each comes out. Nothing here fetches.
  */
 
-import type { REGISTRY_ISSUE_STATUSES } from '@forge/contracts';
 import {
   emptyFallbackReply,
   errorFallbackReply,
   unverifiedFallbackReply,
 } from '../../conversations/fallback-replies.js';
+import { issueStatuses } from '../../db/schema.js';
 import { ISSUE_NAV_RE } from '../../messaging/text-rules.js';
 import { type Check, type ExpectedRow, fill, type Pattern, type Turn } from './task.js';
 import type { Attempt, ToolCall } from './trail.js';
@@ -142,31 +142,9 @@ const isHelp = (call: ToolCall): boolean =>
 
 const unanswered = (fact: string): Evidence[] => [{ mode: 'unanswered', fact }];
 
-type RegistryStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
-
-export const ONLY_FROM_STATUSES = [
-  'open',
-  'confirmed',
-  'clarified',
-  'waiting',
-  'approved',
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'awaiting_release',
-  'releasing',
-  'closed',
-  'reopen',
-  'on_hold',
-  'needs_info',
-  'draft',
-  'dropped',
-] as const satisfies readonly RegistryStatus[];
-
 /** Every registry status name the text carries as a whole word (`_` is part of the word, so `in_progress` is one token and `progress` none). */
 function stateTokens(text: string): string[] {
-  return ONLY_FROM_STATUSES.filter((s) => new RegExp(`(?<![\\w])${s}(?![\\w])`).test(text));
+  return issueStatuses.filter((s) => new RegExp(`(?<![\\w])${s}(?![\\w])`).test(text));
 }
 
 /** A clause ends at a line break, a full stop, a semicolon, a comma, a slash or the word "and"; a pipe is not a break, so a table cell pairs with its row's label. */

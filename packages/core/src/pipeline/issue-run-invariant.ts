@@ -1,16 +1,12 @@
 import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
+import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
 import { sweepGroupKey } from './stranded-issues.js';
-
-/**
- * The statuses whose meaning is "a run is working this right now".
- */
-export const ASSERTS_WORK_IN_PROGRESS = ['in_progress', 'testing', 'releasing'] as const;
 
 /**
  * How long an issue may assert work with no run behind it before it is named.

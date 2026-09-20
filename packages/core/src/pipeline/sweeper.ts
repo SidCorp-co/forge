@@ -13,6 +13,7 @@ import {
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from '../jobs/session-kinds.js';
+import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -486,9 +487,8 @@ export async function reapOrphanedOneShotRuns(
   let reaped = 0;
   for (const row of candidates) {
     try {
-      // Force-fail any lingering non-terminal session for this run. A session
-      // already completed/failed is left as-is — the run still needs closing
-      // (the missed-`/desktop/status` case).
+      // A session already completed or failed is left as-is — the run still
+      // needs closing (the missed-`/desktop/status` case).
       const flipped = await applyKernelTransition(db, {
         entity: 'session',
         returning: SWEEP_SESSION_COLUMNS,
@@ -496,7 +496,7 @@ export async function reapOrphanedOneShotRuns(
         set: { failureReason: 'heartbeat_timeout', updatedAt: now },
         where: and(
           eq(agentSessions.pipelineRunId, row.id),
-          inArray(agentSessions.status, ['queued', 'running', 'idle']),
+          inArray(agentSessions.status, LIVE_SESSION_STATUSES),
         ),
         fromStatus: 'active',
         reason: 'heartbeat_timeout',
@@ -587,7 +587,7 @@ export async function closeIdleChatSessions(
     set: { failureReason: null, failureDetail: null, updatedAt: now },
     where: and(
       inArray(agentSessions.id, ids),
-      inArray(agentSessions.status, ['queued', 'running', 'idle']),
+      inArray(agentSessions.status, LIVE_SESSION_STATUSES),
     ),
     fromStatus: 'active',
     reason: 'chat_idle_timeout',
