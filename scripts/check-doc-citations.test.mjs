@@ -93,6 +93,32 @@ describe('check-doc-citations — a citation resolves inside its own package', (
     expect(dead.map((c) => c.token)).toEqual(['scripts/gone.mjs']);
   });
 
+  it('keeps a deleted ROOT-LEVEL file dead where only a nested namesake survives', () => {
+    const nested = ['package.json', 'README.md', 'packages/demo/eslint.config.mjs'];
+    const { dead } = run('Configured in `eslint.config.mjs`.\n', 'README.md', nested);
+    expect(dead.map((c) => c.token)).toEqual(['eslint.config.mjs']);
+  });
+
+  it("resolves shorthand under the document's own directory as well as its package", () => {
+    const tree = [
+      'package.json',
+      'packages/core/package.json',
+      'packages/core/tests/README.md',
+      'packages/core/tests/helpers/container.ts',
+    ];
+    const { dead } = run(
+      'Started by `tests/helpers/container.ts`.\n',
+      'packages/core/tests/README.md',
+      tree,
+    );
+    expect(dead).toEqual([]);
+  });
+
+  it('gives a document at the repository root the exact path and no shorthand at all', () => {
+    const { dead } = run('The app is `src/index.ts`.\n', 'README.md', PACKAGES);
+    expect(dead.map((c) => c.token)).toEqual(['src/index.ts']);
+  });
+
   it('resolves a path written from the repository root wherever the document sits', () => {
     const { dead } = run(
       'Mounted in `packages/web-v2/src/index.ts`.\n',
@@ -190,9 +216,27 @@ describe('check-doc-citations — what reports instead of failing', () => {
   });
 
   it('reports a citation matching more than one file rather than picking one', () => {
-    const { ambiguous, dead, drift } = run('One of `index.ts`.\n', 'README.md', PACKAGES);
+    const tree = [
+      'package.json',
+      'packages/core/package.json',
+      'packages/core/README.md',
+      'packages/core/src/a/index.ts',
+      'packages/core/src/b/index.ts',
+    ];
+    const { ambiguous, dead, drift } = run('One of `index.ts`.\n', 'packages/core/README.md', tree);
     expect(ambiguous.map((c) => c.hits.length)).toEqual([2]);
     expect([...dead, ...drift]).toEqual([]);
+  });
+
+  it('asks git about where a document-relative citation RESOLVES, not about the text of it', () => {
+    const { unverifiable, dead } = run(
+      'Written to `./generated/client.ts`.\n',
+      'packages/core/README.md',
+      PACKAGES,
+      { ignored: ['packages/core/generated/client.ts'] },
+    );
+    expect(unverifiable.map((c) => c.token)).toEqual(['./generated/client.ts']);
+    expect(dead).toEqual([]);
   });
 });
 

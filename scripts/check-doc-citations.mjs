@@ -141,29 +141,34 @@ export function citationsIn(rel, source, cfg = DEFAULTS) {
   return out;
 }
 
+/** A document-relative citation, written from the repository root; anything else unchanged. */
+export function originOf(citation) {
+  return /^\.{1,2}\//.test(citation.target)
+    ? posix.normalize(posix.join(posix.dirname(citation.rel), citation.target))
+    : citation.target;
+}
+
 /**
- * Where a citation points. A path already written from a known origin — relative to
- * the document, or from the repository root — names one file and is resolved there;
- * scoping could only narrow an answer that is already exact. Shorthand is the case
- * scoping exists for, and it is matched by path suffix inside the document's HOME
- * and nowhere else, so a namesake in another package can never stand in for the file
- * a document meant. More than one match is ambiguous rather than resolved.
+ * Where a citation points. Two scopes and no third: the document's own directory, and
+ * the package the document sits in. A path written from the repository root is already
+ * exact and is resolved there or nowhere. NOTHING falls back to the whole tree, and
+ * none of this reads whether the target is present — which is the property that matters,
+ * because a resolution that widens at the moment a file disappears is a resolution that
+ * cannot report the disappearance. More than one match inside those scopes is ambiguous
+ * rather than resolved. The cost is that a document at the repository root writes the
+ * full path or is told it cites nothing.
  */
 export function resolveCitation(citation, home, world) {
   const isDir = citation.target.endsWith('/');
-  const bare = isDir ? citation.target.replace(/\/+$/, '') : citation.target;
+  const target = originOf(citation);
+  const bare = isDir ? target.replace(/\/+$/, '') : target;
   const pool = isDir ? world.dirs : world.files;
-  if (/^\.{1,2}\//.test(bare)) {
-    const exact = posix.normalize(posix.join(posix.dirname(citation.rel), bare));
-    return pool.includes(exact) ? [exact] : [];
-  }
-  // Whether a path is written from the root is decided by its FIRST SEGMENT naming a
-  // top-level entry of the repository, never by whether the whole path is there: a
-  // rooted citation that has gone dead must stay dead rather than falling through to a
-  // suffix match on a namesake nested somewhere else.
-  if (world.topLevel.has(bare.split('/')[0])) return pool.includes(bare) ? [bare] : [];
-  const under = home === '' ? pool : pool.filter((p) => p.startsWith(`${home}/`));
-  return under.filter((p) => p.endsWith(`/${bare}`));
+  if (pool.includes(bare)) return [bare];
+  if (/^\.{1,2}\//.test(citation.target)) return [];
+  const scopes = [...new Set([posix.dirname(citation.rel), home])].filter(
+    (s) => s !== '' && s !== '.',
+  );
+  return pool.filter((p) => p.endsWith(`/${bare}`) && scopes.some((s) => p.startsWith(`${s}/`)));
 }
 
 /**
@@ -189,7 +194,10 @@ export function judge(citations, world) {
     const home = homeOf(c.rel, world.manifestDirs);
     const hits = resolveCitation(c, home, world);
     if (hits.length === 0) {
-      (world.ignored(c.target) ? unverifiable : dead).push({ ...c, home });
+      // The ignore question is asked about the path the citation RESOLVES to, not the
+      // text it was written as: `./generated/client.ts` under an ignored package
+      // directory is unverifiable, and asking git about the raw token would call it dead.
+      (world.ignored(originOf(c)) ? unverifiable : dead).push({ ...c, home });
       continue;
     }
     if (hits.length > 1) {
@@ -230,10 +238,8 @@ function world(cfg) {
     die('`git ls-files` listed nothing, so every citation below would read dead');
   const dirs = new Set();
   const manifestDirs = new Set();
-  const topLevel = new Set();
   for (const p of files) {
     const parts = p.split('/');
-    topLevel.add(parts[0]);
     for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
     if (MANIFESTS.includes(parts.at(-1))) manifestDirs.add(parts.slice(0, -1).join('/'));
   }
@@ -249,7 +255,6 @@ function world(cfg) {
     shallow,
     dirs: [...dirs],
     manifestDirs,
-    topLevel,
     ignored: (p) => {
       try {
         execFileSync('git', ['check-ignore', '-q', '--', p], { cwd: ROOT, stdio: 'ignore' });
