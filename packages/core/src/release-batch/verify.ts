@@ -272,3 +272,97 @@ function failureFor(
   }
   return { ...base, health: 'up', reason: 'the live commit never held still' };
 }
+
+/** What a commit identity may look like: a git object name, whole or abbreviated. */
+const COMMIT_SHAPE = /^[0-9a-f]{7,40}$/;
+
+/**
+ * One commit identity, or `null` where the value is not one.
+ *
+ * Seven is git's own floor on an abbreviation and the floor here, so no
+ * four-character value can agree with a fleet by accident.
+ */
+function normalizeCommit(raw: string): string | null {
+  const text = raw.trim().toLowerCase();
+  return COMMIT_SHAPE.test(text) ? text : null;
+}
+
+/**
+ * Whether two commit identities name the same commit.
+ *
+ * Production reports an abbreviation and a caller holds the whole sha, so
+ * equality alone would refuse a release that plainly happened. The same prefix
+ * comparison is what `0286_merged_commit_sha_is_evidence` used to decide a
+ * claimed sha against GitHub's. A value that is not a commit at all agrees with
+ * nothing: it is refused rather than compared, so `HEAD`, a tag and an empty
+ * string cannot match by being prefixes of each other.
+ */
+export function commitsAgree(a: string, b: string): boolean {
+  const left = normalizeCommit(a);
+  const right = normalizeCommit(b);
+  if (left === null || right === null) return false;
+  return left.startsWith(right) || right.startsWith(left);
+}
+
+export interface ServingNowArgs {
+  cfg: VerifyConfig;
+  /** The commit the caller says production is serving. */
+  expected: string;
+}
+
+/**
+ * Like {@link VerifyOutcome}, except that the probe readings survive a GREEN.
+ *
+ * `verifyDeployed` drops them on its ok arm because the deploy it watched is
+ * its own evidence. A recorded release has no such act to point at: the
+ * readings ARE the record, so they travel on both arms.
+ */
+export type ServingNowOutcome =
+  | { ok: true; identity: string; health: 'up'; readings: string[] }
+  | {
+      ok: false;
+      reason: string;
+      live: string | null;
+      health: 'up' | 'down';
+      identity: string | null;
+      readings: string[];
+    };
+
+/**
+ * Whether the application is serving this commit RIGHT NOW, in one read.
+ *
+ * {@link verifyDeployed} answers a different question — did the deploy this run
+ * started arrive — so it polls, and it refuses an identity equal to what was
+ * serving before. A release that already happened has no before and nothing to
+ * wait for: it either is live at the moment of the call or the record is not
+ * earned. Polling here would turn a false claim into a five-minute wait and
+ * then the same refusal.
+ */
+export async function verifyServingNow(args: ServingNowArgs): Promise<ServingNowOutcome> {
+  const state = await readLiveState(args.cfg);
+  const claimed = normalizeCommit(args.expected);
+  if (claimed === null) {
+    return {
+      ok: false,
+      reason: `\`${args.expected}\` is not a commit — a release record names the commit production is serving, as 7 to 40 hexadecimal characters`,
+      live: state.identity,
+      health: state.health,
+      identity: state.identity,
+      readings: state.readings,
+    };
+  }
+  if (state.health === 'up' && state.identity !== null) {
+    if (commitsAgree(claimed, state.identity)) {
+      return { ok: true, health: 'up', identity: state.identity, readings: state.readings };
+    }
+    return {
+      ok: false,
+      reason: `the application is healthy and serving ${state.identity}; this record claims ${claimed}`,
+      live: state.identity,
+      health: 'up',
+      identity: state.identity,
+      readings: state.readings,
+    };
+  }
+  return { ...failureFor(state, null, null), readings: state.readings };
+}
