@@ -9,8 +9,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestDevice,
   createTestProject,
@@ -423,5 +425,101 @@ describe('a master is only silent when its whole tree is', () => {
       SELECT status FROM agent_sessions WHERE id = ${master.sessionId}
     `)) as unknown as Array<{ status: string }>;
     expect(row?.status).toBe('running');
+  });
+});
+
+describe("the backfill infers once and says so when it cannot", () => {
+  /**
+   * The migration's own statements, from the first inference to the abort.
+   *
+   * Read out of the file rather than restated here: an inference this test
+   * carried a copy of would go green over a migration that had stopped saying
+   * the same thing, which is the failure mode the whole issue is about.
+   */
+  function inferenceStatements(): string[] {
+    const file = fileURLToPath(
+      new URL('../../drizzle/migrations/0293_a_session_says_what_it_is.sql', import.meta.url),
+    );
+    const all = readFileSync(file, 'utf8')
+      .split('--> statement-breakpoint')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const abort = all.findIndex((s) => s.includes('five session kinds'));
+    expect(abort, 'the migration no longer carries the abort this test is about').toBeGreaterThan(0);
+    return all
+      .slice(0, abort + 1)
+      .filter((s) => !/ALTER TABLE "agent_sessions"\s+ADD COLUMN/.test(s));
+  }
+
+  /** Run the migration's inference over the rows currently in the table. */
+  async function runInference(): Promise<void> {
+    for (const statement of inferenceStatements()) {
+      await harness.db.execute(sql.raw(statement));
+    }
+  }
+
+  beforeEach(async () => {
+    // The column arrives NOT NULL on a migrated database; the migration itself
+    // adds it nullable and sets NOT NULL only after the abort has passed, so
+    // this reproduces the state the inference actually runs in.
+    await harness.db.execute(sql`ALTER TABLE agent_sessions ALTER COLUMN kind DROP NOT NULL`);
+  });
+
+  afterEach(async () => {
+    await harness.db.execute(sql`UPDATE agent_sessions SET kind = 'chat' WHERE kind IS NULL`);
+    await harness.db.execute(sql`ALTER TABLE agent_sessions ALTER COLUMN kind SET NOT NULL`);
+  });
+
+  it('classifies a chat session from its interactive run', async () => {
+    const { project, owner } = await seed();
+    const row = await mods.createChatSessionRow({ projectId: project.id, userId: owner.id });
+    await harness.db.execute(sql`UPDATE agent_sessions SET kind = NULL WHERE id = ${row.id}`);
+    await runInference();
+    const [after] = (await harness.db.execute(sql`
+      SELECT kind FROM agent_sessions WHERE id = ${row.id}
+    `)) as unknown as Array<{ kind: string }>;
+    expect(after?.kind).toBe('chat');
+  });
+
+  it('classifies a run session from the type its run declared', async () => {
+    const { project, device } = await seed();
+    await mods.ensureMasterSession({ deviceId: device.id, projectId: project.id, name: 'm' });
+    const run = await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-7001'],
+      name: 'run-a',
+    });
+    await harness.db.execute(sql`UPDATE agent_sessions SET kind = NULL WHERE id = ${run.sessionId}`);
+    await runInference();
+    const [after] = (await harness.db.execute(sql`
+      SELECT kind FROM agent_sessions WHERE id = ${run.sessionId}
+    `)) as unknown as Array<{ kind: string }>;
+    expect(after?.kind).toBe('run_session');
+  });
+
+  it('aborts naming the row it cannot classify, rather than defaulting it', async () => {
+    const { project } = await seed();
+    // A system run with no source, no job link and no declared type: no branch
+    // of the inference has a positive signal for it. Before the abort, the only
+    // way to get this row through was a default — which would then read to
+    // every later sweep as a fact core had established.
+    const orphanRun = randomUUID();
+    const orphan = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, metadata)
+      VALUES (${orphanRun}, ${project.id}, 'system', 'running', '{}'::jsonb)
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata)
+      VALUES (${orphan}, ${project.id}, ${orphanRun}, NULL, 'running', '{}'::jsonb)
+    `);
+
+    const said = await refusalFor(() => runInference());
+    expect(said).toMatch(/ISS-1136/);
+    expect(said, 'the abort has to name the row, or nobody can go and classify it').toContain(
+      orphan,
+    );
+    expect(said).toMatch(/do not give them a default/i);
   });
 });
