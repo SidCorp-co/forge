@@ -62,10 +62,14 @@ import {
   classifySessionOutcome,
   isRealFailure,
   failureReasonLabel,
+  AGENT_SESSION_KINDS,
+  SESSION_KIND_LABEL,
   type AgentSessionDisplayStatus,
+  type AgentSessionKind,
   type SessionFilter,
   type SessionRow,
 } from "../types";
+import { orderByOwner, OWNER_INDENT_PX } from "./session-tree";
 
 interface SessionsScreenProps {
   /** Project-tier scope. Omit for the cross-project workspace tier.
@@ -126,21 +130,20 @@ const FILTER_LABEL: Record<SessionFilter, string> = {
 };
 
 // ISS-465 — kind dimension on top of the status filter. Defaults to "all" so
-// existing readers see the same set; explicit "Runs" / "Chats" labels separate
-// pipeline/pm sessions from interactive chats (already discriminated server-
-// side by metadata.type, here just presentation).
-type KindFilter = "all" | "runs" | "chats";
-const KIND_FILTERS: KindFilter[] = ["all", "runs", "chats"];
+// existing readers see the same set. ISS-1136 — it used to offer two tabs,
+// "Runs" and "Chats", because `metadata.type` could only be read two ways and
+// a master or a run session fell into "Chats" with somebody's conversation.
+// The row states its species now, so each one is its own tab.
+type KindFilter = "all" | AgentSessionKind;
+const KIND_FILTERS: KindFilter[] = ["all", ...AGENT_SESSION_KINDS];
 const KIND_LABEL: Record<KindFilter, string> = {
   all: "All kinds",
-  runs: "Runs",
-  chats: "Chats",
+  ...SESSION_KIND_LABEL,
 };
 
 function matchesKind(kind: KindFilter, row: SessionRow): boolean {
   if (kind === "all") return true;
-  const k = sessionKind(row);
-  return kind === "runs" ? k === "pipeline" : k === "chat";
+  return sessionKind(row) === kind;
 }
 
 function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSessionDisplayStatus): boolean {
@@ -285,6 +288,11 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       .map(({ row }) => row);
   }, [rows, displays, filter]);
 
+  // ISS-1136 — each row follows the session that owns it. The ordering is a
+  // pure derivation so it can be tested without a browser; see session-tree.ts
+  // for what happens to a row whose owner a filter excluded.
+  const treeRows = useMemo(() => orderByOwner(visibleRows), [visibleRows]);
+
   const filterOptions: SegmentOption<SessionFilter>[] = FILTERS.map((f) => ({
     value: f,
     label: `${FILTER_LABEL[f]} ${counts[f]}`,
@@ -299,14 +307,13 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   }, [sessionsQ.data, issueFilter, projectId, orgProjectIds]);
   const kindCounts: Record<KindFilter, number> = {
     all: kindRows.length,
-    runs: 0,
-    chats: 0,
+    master: 0,
+    run_session: 0,
+    pipeline: 0,
+    pm: 0,
+    chat: 0,
   };
-  for (const r of kindRows) {
-    const k = sessionKind(r);
-    if (k === "pipeline") kindCounts.runs += 1;
-    else kindCounts.chats += 1;
-  }
+  for (const r of kindRows) kindCounts[sessionKind(r)] += 1;
   const kindOptions: SegmentOption<KindFilter>[] = KIND_FILTERS.map((k) => ({
     value: k,
     label: `${KIND_LABEL[k]} ${kindCounts[k]}`,
@@ -433,10 +440,12 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                 </TR>
               </THead>
               <TBody>
-                {visibleRows.map((row) => (
+                {treeRows.map(({ row, depth, hasChildren }) => (
                   <SessionTableRow
                     key={row.id}
                     row={row}
+                    depth={depth}
+                    hasChildren={hasChildren}
                     slug={slugFor(row)}
                     deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                     now={now}
@@ -451,10 +460,11 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
           {/* Mobile: stacked cards — no horizontal page scroll. */}
           <div className="space-y-2.5 md:hidden">
-            {visibleRows.map((row) => (
+            {treeRows.map(({ row, depth }) => (
               <SessionMobileCard
                 key={row.id}
                 row={row}
+                depth={depth}
                 slug={slugFor(row)}
                 deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                 now={now}
@@ -738,12 +748,18 @@ function SessionTableRow({
   actions,
   projectId,
   onInlineOpen,
+  depth,
+  hasChildren,
 }: {
   row: SessionRow;
   slug?: string;
   deviceName?: string;
   now: number;
   actions: RowActions;
+  /** How far under its owner this row sits, in the list as filtered. */
+  depth: number;
+  /** Whether anything in this list is owned by it. */
+  hasChildren: boolean;
   /** Set at the project tier only — when present, rows navigate as before. */
   projectId?: string;
   /** Workspace tier only (ISS-664): opens the inline reply panel instead of
@@ -765,13 +781,29 @@ function SessionTableRow({
   return (
     <TR>
       <TD>
-        {open ? (
-          <button type="button" onClick={open} className="focus-visible:outline-none">
+        <div
+          className="flex items-center gap-1.5"
+          style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
+        >
+          {depth > 0 && (
+            <span aria-hidden className="text-muted select-none">
+              &#8735;
+            </span>
+          )}
+          {open ? (
+            <button type="button" onClick={open} className="focus-visible:outline-none">
+              <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
+            </button>
+          ) : (
             <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
-          </button>
-        ) : (
-          <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
-        )}
+          )}
+          <SessionKindTag row={row} />
+          {hasChildren && (
+            <span className="text-[11px] text-muted" title="this session owns others in this list">
+              &#8226;
+            </span>
+          )}
+        </div>
       </TD>
       <TD className="max-w-[260px]">
         <SessionIdentity row={row} slug={slug} onOpen={open} />
@@ -793,6 +825,26 @@ function SessionTableRow({
   );
 }
 
+/**
+ * What species the row says it is.
+ *
+ * ISS-1136 — the index used to have two words for five things, so a master and
+ * a run session both read as "Chat". A reader could not tell the pane that
+ * dispatches work from the work it dispatched.
+ */
+const KIND_TONE = {
+  master: "accent",
+  run_session: "cobalt",
+  pipeline: "neutral",
+  pm: "neutral",
+  chat: "neutral",
+} as const satisfies Record<AgentSessionKind, "neutral" | "accent" | "cobalt">;
+
+function SessionKindTag({ row }: { row: SessionRow }) {
+  const kind = sessionKind(row);
+  return <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+}
+
 function SessionMobileCard({
   row,
   slug,
@@ -801,12 +853,14 @@ function SessionMobileCard({
   actions,
   projectId,
   onInlineOpen,
+  depth,
 }: {
   row: SessionRow;
   slug?: string;
   deviceName?: string;
   now: number;
   actions: RowActions;
+  depth: number;
   projectId?: string;
   onInlineOpen: (id: string) => void;
 }) {
@@ -820,10 +874,26 @@ function SessionMobileCard({
       : undefined
     : () => onInlineOpen(row.id);
   return (
+    // The indent is the same edge the table shows, at a width a phone can carry:
+    // the nesting has to survive the narrow layout or the tree is a desktop-only
+    // claim about the data (ISS-1136).
     <Card>
       <CardContent>
-        <div className="flex items-start justify-between gap-3">
-          <SessionIdentity row={row} slug={slug} onOpen={open} />
+        <div
+          className="flex items-start justify-between gap-3"
+          style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
+        >
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-1.5">
+              {depth > 0 && (
+                <span aria-hidden className="text-muted select-none">
+                  &#8735;
+                </span>
+              )}
+              <SessionKindTag row={row} />
+            </div>
+            <SessionIdentity row={row} slug={slug} onOpen={open} />
+          </div>
           <RowActionsMenu row={row} display={display} actions={actions} />
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">

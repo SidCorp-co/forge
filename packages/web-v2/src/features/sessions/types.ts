@@ -88,6 +88,11 @@ export interface SessionRow {
    *  project repoPath). Present on the full row; older rows may be null. */
   repoPath: string | null;
   status: AgentSessionStatus;
+  /** The species the row states (ISS-1136). Absent on a row served by a
+   *  deployment older than that column. */
+  kind?: AgentSessionKind | null;
+  /** The session that owns this one, as core issued it. `null` is a root. */
+  parentSessionId?: string | null;
   usage: SessionUsage | null;
   metadata: SessionMetadata | null;
   failureReason: SessionFailureReason | string | null;
@@ -133,21 +138,64 @@ export interface SessionCost {
  *  stalled + cancelled_stale (unchanged; job failures, not reply-waiting). */
 export type SessionFilter = "all" | "waiting" | "running" | "queued" | "attention";
 
-/** Session kind: `pipeline` (job-driven, picked up by a headless runner) vs
- *  `chat` (interactive desktop session that spawns no job). A `chat` session
- *  sitting `running` is NOT a wedged runner — it is awaiting the user, so the
- *  liveness derivation treats it as `na` (ISS-378 AC#4). */
-export function sessionKind(session: Pick<SessionRow, "metadata">): "pipeline" | "chat" {
+/** What species a session row says it is. Mirrors `agent_sessions.kind`. */
+export type AgentSessionKind = "master" | "run_session" | "pipeline" | "pm" | "chat";
+
+export const AGENT_SESSION_KINDS: AgentSessionKind[] = [
+  "master",
+  "run_session",
+  "pipeline",
+  "pm",
+  "chat",
+];
+
+/** What an operator should read, per species. */
+export const SESSION_KIND_LABEL: Record<AgentSessionKind, string> = {
+  master: "Master",
+  run_session: "Run",
+  pipeline: "Step",
+  pm: "PM",
+  chat: "Chat",
+};
+
+/**
+ * The species the row states.
+ *
+ * ISS-1136 — this used to read `metadata.type` and fold everything that was
+ * not `pipeline`/`pm` into "chat", so a master and a run session both rendered
+ * as somebody's conversation. The row says what it is now; a row from before
+ * the column falls back to the old reading rather than claiming a species the
+ * server never sent.
+ */
+export function sessionKind(
+  session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
+): AgentSessionKind {
+  if (session.kind && AGENT_SESSION_KINDS.includes(session.kind)) return session.kind;
   const type = session.metadata?.type;
-  return type === "pipeline" || type === "pm" ? "pipeline" : "chat";
+  if (type === "pipeline" || type === "pm" || type === "master" || type === "run_session") {
+    return type;
+  }
+  return "chat";
+}
+
+/** Whether a session is job-driven, whichever of the two job kinds it is. */
+export function isJobDriven(
+  session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
+): boolean {
+  const k = sessionKind(session);
+  return k === "pipeline" || k === "pm";
 }
 
 /** Whether a session is an interactive chat (not driven by a pipeline job). */
-export function isInteractiveSession(session: Pick<SessionRow, "metadata">): boolean {
+export function isInteractiveSession(
+  session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
+): boolean {
   return sessionKind(session) === "chat";
 }
 
-export function isAwaitingReply(session: Pick<SessionRow, "status" | "metadata">): boolean {
+export function isAwaitingReply(
+  session: Pick<SessionRow, "status" | "metadata"> & { kind?: AgentSessionKind | null },
+): boolean {
   return isInteractiveSession(session) && session.status === "idle";
 }
 
@@ -442,8 +490,7 @@ export function sessionStep(metadata: SessionMetadata | null): string | null {
   return null;
 }
 
-/** Whether a session can be retried (pipeline/pm sessions tied to an issue). */
+/** Whether a session can be retried (job-driven sessions tied to an issue). */
 export function isRetryable(row: SessionRow): boolean {
-  const type = row.metadata?.type;
-  return (type === "pipeline" || type === "pm") && !!row.metadata?.issueId;
+  return isJobDriven(row) && !!row.metadata?.issueId;
 }

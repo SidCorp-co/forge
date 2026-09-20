@@ -15,6 +15,7 @@ import {
   useElapsed,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { isJobDriven } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
   sessionStep,
@@ -142,7 +143,7 @@ export function SessionScreen({
   }, [turnsQ.data, session?.messages]);
   const fromMessages =
     (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
-  const isRun = session?.metadata?.type === "pipeline" || session?.metadata?.type === "pm";
+  const isRun = session ? isJobDriven(session) : false;
   // Task-count indicator (ISS-391) — surfaces "this session ran N agents/skills"
   // in the header without opening the context rail. Same derivation the rail uses.
   const taskCount = useMemo(() => deriveAgentTasks(items).length, [items]);

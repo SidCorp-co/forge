@@ -31,6 +31,7 @@ import {
   type SessionRow,
 } from "@/features/sessions/types";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
+import { isJobDriven } from "@/features/sessions/types";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
@@ -112,7 +113,7 @@ export function ContextRail({
   const usage = session.usage ?? {};
   const files = deriveFilesChanged(items);
   const agentTasks = useMemo(() => deriveAgentTasks(items), [items]);
-  const isPipeline = session.metadata?.type === "pipeline" || session.metadata?.type === "pm";
+  const isPipeline = isJobDriven(session);
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 
   // Resolve the runner the session is bound to. The device may not be in the

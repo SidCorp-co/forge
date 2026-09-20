@@ -14,6 +14,7 @@ import {
   deriveSessionDisplayStatus,
   isAwaitingReply,
   isInteractiveSession,
+  isJobDriven,
   sessionKind,
   sessionStep,
   statusToChip,
@@ -269,17 +270,41 @@ describe("isRealFailure (only genuine failures count as attention)", () => {
 });
 
 describe("sessionKind / isInteractiveSession", () => {
-  it("classifies pipeline + pm as pipeline", () => {
-    expect(sessionKind({ metadata: { type: "pipeline" } })).toBe("pipeline");
-    expect(sessionKind({ metadata: { type: "pm" } })).toBe("pipeline");
+  // ISS-1136 — the row says what it is. This used to fold five species into
+  // two, so a master and a run session both read as somebody's conversation.
+  it("reads the species off the column", () => {
+    expect(sessionKind({ kind: "master", metadata: null })).toBe("master");
+    expect(sessionKind({ kind: "run_session", metadata: null })).toBe("run_session");
+    expect(sessionKind({ kind: "pipeline", metadata: null })).toBe("pipeline");
+    expect(sessionKind({ kind: "pm", metadata: null })).toBe("pm");
+    expect(sessionKind({ kind: "chat", metadata: null })).toBe("chat");
   });
 
-  it("classifies agent / interactive / unset as chat", () => {
+  it("does not collapse a master or a run session into a chat", () => {
+    expect(isInteractiveSession({ kind: "master", metadata: null })).toBe(false);
+    expect(isInteractiveSession({ kind: "run_session", metadata: null })).toBe(false);
+  });
+
+  it("groups the two job-driven kinds without merging their names", () => {
+    expect(isJobDriven({ kind: "pipeline", metadata: null })).toBe(true);
+    expect(isJobDriven({ kind: "pm", metadata: null })).toBe(true);
+    expect(isJobDriven({ kind: "chat", metadata: null })).toBe(false);
+  });
+
+  // A deployment older than the column sends no `kind`. Falling back to the
+  // old reading is the honest answer; claiming a species the server never sent
+  // would be this change lying about a row it did not write.
+  it("falls back to the old reading for a row served without a kind", () => {
+    expect(sessionKind({ metadata: { type: "pipeline" } })).toBe("pipeline");
+    expect(sessionKind({ metadata: { type: "pm" } })).toBe("pm");
+    expect(sessionKind({ metadata: { type: "master" } })).toBe("master");
+    expect(sessionKind({ metadata: { type: "run_session" } })).toBe("run_session");
     expect(sessionKind({ metadata: { type: "agent" } })).toBe("chat");
-    expect(sessionKind({ metadata: { type: "interactive" } })).toBe("chat");
     expect(sessionKind({ metadata: null })).toBe("chat");
-    expect(isInteractiveSession({ metadata: { type: "agent" } })).toBe(true);
-    expect(isInteractiveSession({ metadata: { type: "pipeline" } })).toBe(false);
+  });
+
+  it("ignores a kind outside the vocabulary rather than rendering it", () => {
+    expect(sessionKind({ kind: "wave" as never, metadata: null })).toBe("chat");
   });
 });
 
@@ -292,6 +317,11 @@ describe("isAwaitingReply (ISS-664 — 'waiting for me' signal)", () => {
   it("is false for an idle PIPELINE session — that's waiting on capacity, not the owner", () => {
     expect(isAwaitingReply({ status: "idle", metadata: { type: "pipeline" } })).toBe(false);
     expect(isAwaitingReply({ status: "idle", metadata: { type: "pm" } })).toBe(false);
+  });
+
+  it("is false for an idle master or run session, which await nobody's reply", () => {
+    expect(isAwaitingReply({ status: "idle", kind: "master", metadata: null })).toBe(false);
+    expect(isAwaitingReply({ status: "idle", kind: "run_session", metadata: null })).toBe(false);
   });
 
   it("is false for a running chat (agent still working, not awaiting reply yet)", () => {
