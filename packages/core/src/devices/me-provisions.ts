@@ -7,6 +7,7 @@ import { isHttpsGitUrl, projectsWithGitHubAppCredential } from '../git/github-ap
 import { deviceGitCredentialRoutes } from '../git/github-credential-routes.js';
 import { decryptSecret } from '../integrations/vault.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { deviceHolderUserId, issueWorkspaceCredential } from './workspace-credential.js';
 
 export const deviceProvisionRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -46,29 +47,47 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
     );
 
   const appProjects = await projectsWithGitHubAppCredential(rows.map((r) => r.projectId));
+  // The identity the box acts as, resolved once: every credential minted below
+  // belongs to it, so a box paired as an agent hands its checkouts that agent's
+  // reach and not the approving person's.
+  const holderUserId = rows.length > 0 ? await deviceHolderUserId(device.id) : null;
 
-  const provisions = rows.map((r) => {
-    let sshPrivateKey: string | null = null;
-    if (r.sshPrivateKeyEnc) {
-      try {
-        sshPrivateKey = decryptSecret(r.sshPrivateKeyEnc);
-      } catch {
-        sshPrivateKey = null;
+  const provisions = await Promise.all(
+    rows.map(async (r) => {
+      let sshPrivateKey: string | null = null;
+      if (r.sshPrivateKeyEnc) {
+        try {
+          sshPrivateKey = decryptSecret(r.sshPrivateKeyEnc);
+        } catch {
+          sshPrivateKey = null;
+        }
       }
-    }
-    return {
-      runnerId: r.runnerId,
-      projectId: r.projectId,
-      slug: r.slug,
-      repoPath: r.repoPath,
-      branch: r.branch ?? r.baseBranch,
-      repoUrl: r.repoUrl,
-      sshKeySource: sshPrivateKey ? r.sshSource : null,
-      sshPublicKey: sshPrivateKey ? r.sshPublicKey : null,
-      sshPrivateKey,
-      githubAppCredential: isHttpsGitUrl(r.repoUrl) && appProjects.has(r.projectId),
-    };
-  });
+      // The token the checkout's `.mcp.json` carries. Delivered with the
+      // provision, over the same TLS channel as the deploy key above, because the
+      // alternative is a human pasting a wider one into the box by hand.
+      const mcpCredential = holderUserId
+        ? await issueWorkspaceCredential({
+            deviceId: device.id,
+            projectId: r.projectId,
+            holderUserId,
+          })
+        : null;
+
+      return {
+        runnerId: r.runnerId,
+        projectId: r.projectId,
+        slug: r.slug,
+        repoPath: r.repoPath,
+        branch: r.branch ?? r.baseBranch,
+        repoUrl: r.repoUrl,
+        sshKeySource: sshPrivateKey ? r.sshSource : null,
+        sshPublicKey: sshPrivateKey ? r.sshPublicKey : null,
+        sshPrivateKey,
+        githubAppCredential: isHttpsGitUrl(r.repoUrl) && appProjects.has(r.projectId),
+        mcpCredential,
+      };
+    }),
+  );
 
   return c.json(provisions);
 });

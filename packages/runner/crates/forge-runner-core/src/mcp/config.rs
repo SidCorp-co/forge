@@ -337,13 +337,22 @@ pub enum PersistentMcp {
     SkippedNoPat,
 }
 
+/// `credential` is the token core minted for this checkout, delivered with the
+/// provision. It is preferred over anything stored on the box: it is fenced to
+/// this one project, and the box's own stored PAT (when it has one at all) is
+/// whatever a human happened to paste.
 pub fn write_persistent(
     repo_path: &Path,
     core_url: &str,
     project_slug: &str,
+    credential: Option<&str>,
 ) -> Result<PersistentMcp> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
-    let Some(pat) = load_pat().ok().flatten() else {
+    let from_server = credential
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_string);
+    let Some(pat) = from_server.or_else(|| load_pat().ok().flatten()) else {
         tracing::warn!(
             project_slug,
             "mcp config: no stored PAT — leaving the `forge` entry in the provisioned \
@@ -603,7 +612,7 @@ mod tests {
         let xdg = ScopedVar::set("XDG_CONFIG_HOME", "/nonexistent-forge-config");
         let repo = tmp_repo("no-pat");
         assert_eq!(
-            write_persistent(&repo, "https://core.example", "proj").unwrap(),
+            write_persistent(&repo, "https://core.example", "proj", None).unwrap(),
             PersistentMcp::SkippedNoPat
         );
         assert!(
@@ -615,6 +624,48 @@ mod tests {
     }
 
     #[test]
+    fn the_credential_core_sent_is_written_and_beats_whatever_is_stored() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let stored = ScopedVar::set("FORGE_PAT", "forge_pat_dev_pastedbyhand");
+        let repo = tmp_repo("from-server");
+        assert_eq!(
+            write_persistent(
+                &repo,
+                "https://core.example",
+                "proj",
+                Some("forge_pat_dev_fromtheserver")
+            )
+            .unwrap(),
+            PersistentMcp::Written
+        );
+        assert_eq!(
+            read_doc(&repo)["mcpServers"]["forge"]["headers"]["Authorization"],
+            "Bearer forge_pat_dev_fromtheserver",
+            "the fenced credential core minted for this checkout, not the box-wide one"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        drop(stored);
+    }
+
+    #[test]
+    fn an_empty_credential_from_an_older_core_falls_back_to_the_stored_pat() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let stored = ScopedVar::set("FORGE_PAT", "forge_pat_dev_pastedbyhand");
+        let repo = tmp_repo("blank-server-cred");
+        write_persistent(&repo, "https://core.example", "proj", Some("   ")).unwrap();
+        assert_eq!(
+            read_doc(&repo)["mcpServers"]["forge"]["headers"]["Authorization"],
+            "Bearer forge_pat_dev_pastedbyhand"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        drop(stored);
+    }
+
+    #[test]
     fn credential_store_paths() {
         let _env = crate::auth::cred_store::ENV_TEST_LOCK
             .lock()
@@ -623,7 +674,7 @@ mod tests {
 
         // -- the provisioned folder is authed by the operator's PAT --
         let repo = tmp_repo("fresh");
-        write_persistent(&repo, "https://core.example/", "proj").unwrap();
+        write_persistent(&repo, "https://core.example/", "proj", None).unwrap();
         let forge = read_doc(&repo)["mcpServers"]["forge"].clone();
         assert_eq!(forge["type"], "http");
         assert_eq!(forge["url"], "https://core.example/mcp");
@@ -658,7 +709,7 @@ mod tests {
             r#"{"mcpServers":{"playwright":{"type":"stdio","command":"npx"}}}"#,
         )
         .unwrap();
-        write_persistent(&repo, "https://core.example", "proj").unwrap();
+        write_persistent(&repo, "https://core.example", "proj", None).unwrap();
         let doc = read_doc(&repo);
         assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
         assert_eq!(
@@ -674,7 +725,7 @@ mod tests {
             r#"{"mcpServers":{"forge":{"type":"http","url":"https://stale/mcp"},"other":{"x":1}}}"#,
         )
         .unwrap();
-        write_persistent(&repo, "https://fresh.example", "proj2").unwrap();
+        write_persistent(&repo, "https://fresh.example", "proj2", None).unwrap();
         let doc = read_doc(&repo);
         assert_eq!(
             doc["mcpServers"]["forge"]["url"],
@@ -686,7 +737,7 @@ mod tests {
         // -- a malformed file is never clobbered --
         let repo = tmp_repo("malformed");
         std::fs::write(repo.join(".mcp.json"), "{ not json").unwrap();
-        let err = write_persistent(&repo, "https://core.example", "proj").unwrap_err();
+        let err = write_persistent(&repo, "https://core.example", "proj", None).unwrap_err();
         assert!(format!("{err}").contains("not valid JSON"));
         assert_eq!(
             std::fs::read_to_string(repo.join(".mcp.json")).unwrap(),
@@ -741,7 +792,7 @@ mod tests {
             r#"{"mcpServers":{"forge":{"type":"http","url":"https://hand-written/mcp"}}}"#,
         )
         .unwrap();
-        write_persistent(&repo, "https://core.example", "proj").unwrap();
+        write_persistent(&repo, "https://core.example", "proj", None).unwrap();
         assert_eq!(
             read_doc(&repo)["mcpServers"]["forge"]["url"],
             "https://hand-written/mcp"

@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
+  credential core mints for that one checkout, writes its `.mcp.json`, and records the local
+  binding — no pasted token, no `bind` by hand.
 - **A checkout provisioned with no PAT says so.** It got no `forge` server in `.mcp.json` and was
   still reported `ready`. The reason now rides that report, `doctor` shows it per checkout, and
   `setup` asks for the token.

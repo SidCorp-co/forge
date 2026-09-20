@@ -42,3 +42,14 @@ export function patPrefixOf(token: string): string {
 const DEVICE_TOKEN_NAME_PREFIX = 'device:';
 
 export const deviceTokenNameFor = (deviceId: string) => `${DEVICE_TOKEN_NAME_PREFIX}${deviceId}`;
+
+const WORKSPACE_TOKEN_NAME_PREFIX = 'workspace:';
+
+/**
+ * The credential a box writes into one provisioned checkout's `.mcp.json`, so
+ * a person opening `claude` there reaches this project. Distinct from the
+ * device credential (`device:<id>`): that one names the machine and is fenced
+ * to nothing for a human holder, which is why it cannot serve this.
+ */
+export const workspaceTokenNameFor = (deviceId: string, projectId: string) =>
+  `${WORKSPACE_TOKEN_NAME_PREFIX}${deviceId}:${projectId}`;

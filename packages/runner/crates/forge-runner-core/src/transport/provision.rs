@@ -15,8 +15,11 @@ use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 
 /// One queued provision for this device. `ssh_private_key` is present only when
-/// the project has a git credential AND the server could decrypt it.
-#[derive(Debug, Clone, Deserialize)]
+/// the project has a git credential AND the server could decrypt it;
+/// `mcp_credential` only when the server could resolve the identity this box
+/// acts as. Both are secrets — see the hand-written `Debug` below, which
+/// redacts them so a `{:?}` in a log line cannot leak one.
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Provision {
     pub runner_id: String,
@@ -30,6 +33,30 @@ pub struct Provision {
     pub ssh_private_key: Option<String>,
     #[serde(default)]
     pub github_app_credential: bool,
+    /// The token to write into this checkout's `.mcp.json`, minted by core for
+    /// (this device × this project) so a person running `claude` in the folder
+    /// reaches Forge without pasting one in by hand.
+    #[serde(default)]
+    pub mcp_credential: Option<String>,
+}
+
+impl std::fmt::Debug for Provision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let held = |v: &Option<String>| if v.is_some() { "<redacted>" } else { "none" };
+        f.debug_struct("Provision")
+            .field("runner_id", &self.runner_id)
+            .field("project_id", &self.project_id)
+            .field("slug", &self.slug)
+            .field("repo_path", &self.repo_path)
+            .field("branch", &self.branch)
+            .field("repo_url", &self.repo_url)
+            .field("ssh_key_source", &self.ssh_key_source)
+            .field("ssh_public_key", &self.ssh_public_key)
+            .field("ssh_private_key", &held(&self.ssh_private_key))
+            .field("github_app_credential", &self.github_app_credential)
+            .field("mcp_credential", &held(&self.mcp_credential))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

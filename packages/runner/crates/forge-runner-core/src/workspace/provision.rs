@@ -203,7 +203,12 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
 
     report(client, &p.runner_id, "writing_mcp", None).await;
     let mut ready_detail: Option<String> = None;
-    match mcp::config::write_persistent(repo_path, client.base(), &p.slug) {
+    match mcp::config::write_persistent(
+        repo_path,
+        client.base(),
+        &p.slug,
+        p.mcp_credential.as_deref(),
+    ) {
         Ok(mcp::config::PersistentMcp::Written) => {}
         // Jobs reach Forge through the credential the daemon writes per run, so
         // this does not hold the workspace back — but a human opening `claude`
@@ -211,9 +216,10 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
         // the `ready` report instead of living only in this box's log.
         Ok(mcp::config::PersistentMcp::SkippedNoPat) => {
             ready_detail = Some(
-                "no PAT stored on this device — .mcp.json has no `forge` entry, so `claude` run \
-                 by hand in this folder cannot reach Forge. Fix: `forge-runner login --pat <token>` \
-                 (mint one under Settings → Access tokens), then re-provision."
+                "no credential for this checkout — core sent none with the provision and this box \
+                 has no stored PAT, so .mcp.json has no `forge` entry and `claude` run by hand in \
+                 this folder cannot reach Forge. An older core does not send one: \
+                 `forge-runner login --pat <token>` covers it until it is upgraded."
                     .into(),
             );
         }
@@ -226,6 +232,7 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
         tracing::warn!("[provision] write orientation failed: {e}");
     }
     trust::pre_trust_logged(repo_path, &p.slug);
+    record_binding(p, repo_path);
 
     report(client, &p.runner_id, "ready", ready_detail.as_deref()).await;
     tracing::info!(
@@ -233,6 +240,56 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
         p.slug,
         repo_path.display()
     );
+}
+
+/// Write the local binding for a workspace this box just provisioned.
+///
+/// The server row and `config.toml` used to disagree after an assignment made
+/// in the web UI: the runner row said `ready` with its path while `[bindings]`
+/// stayed empty, so `doctor` reported none, `sync` had no project to pull for,
+/// and `forge-runner api` could not resolve a slug — the operator had to go to
+/// the box and run `bind` by hand for work the server had already arranged.
+/// Best-effort like every other step here: a failure is logged, and the
+/// workspace is still ready.
+fn record_binding(p: &Provision, repo_path: &Path) {
+    let mut cfg = match Config::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            tracing::warn!(
+                "[provision] {}: cannot read config to record the binding: {e}",
+                p.slug
+            );
+            return;
+        }
+    };
+    let existing = cfg.bindings.get(&p.slug);
+    let branch = p
+        .branch
+        .clone()
+        .or_else(|| existing.and_then(|b| b.branch.clone()));
+    if existing.is_some_and(|b| {
+        b.repo_path == repo_path
+            && b.branch == branch
+            && b.project_id.as_deref() == Some(p.project_id.as_str())
+    }) {
+        return;
+    }
+    cfg.bindings.insert(
+        p.slug.clone(),
+        crate::config::Binding {
+            repo_path: repo_path.to_path_buf(),
+            branch,
+            project_id: Some(p.project_id.clone()),
+        },
+    );
+    match cfg.save() {
+        Ok(()) => tracing::info!(
+            "[provision] {}: bound locally to {}",
+            p.slug,
+            repo_path.display()
+        ),
+        Err(e) => tracing::warn!("[provision] {}: binding not saved: {e}", p.slug),
+    }
 }
 
 /// Server `repoPath` wins; else fall back to `projects_root/<slug>`.
@@ -523,6 +580,42 @@ mod tests {
         let _ = fs::remove_dir_all(&present);
     }
 
+    #[test]
+    fn a_provisioned_workspace_records_its_own_binding() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("forge-bind-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", &dir);
+
+        let mut p = provision(Some("/srv/checkouts/butlocs"));
+        p.branch = Some("develop".into());
+        record_binding(&p, Path::new("/srv/checkouts/butlocs"));
+
+        let cfg = Config::load().unwrap();
+        let bound = cfg
+            .bindings
+            .get("butlocs")
+            .expect("the provision bound itself");
+        assert_eq!(bound.repo_path, PathBuf::from("/srv/checkouts/butlocs"));
+        assert_eq!(bound.branch.as_deref(), Some("develop"));
+        assert_eq!(bound.project_id.as_deref(), Some("p-1"));
+
+        // Re-provisioning the same workspace is not a second binding.
+        record_binding(&p, Path::new("/srv/checkouts/butlocs"));
+        assert_eq!(Config::load().unwrap().bindings.len(), 1);
+
+        // A path the server moved wins over what was recorded before.
+        record_binding(&p, Path::new("/srv/moved/butlocs"));
+        assert_eq!(
+            Config::load().unwrap().bindings["butlocs"].repo_path,
+            PathBuf::from("/srv/moved/butlocs")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     fn provision(repo_path: Option<&str>) -> crate::transport::provision::Provision {
         crate::transport::provision::Provision {
             runner_id: "r-1".into(),
@@ -535,6 +628,7 @@ mod tests {
             ssh_public_key: None,
             ssh_private_key: None,
             github_app_credential: false,
+            mcp_credential: None,
         }
     }
 
