@@ -216,7 +216,7 @@ pub fn take_down(ledger_path: &Path, run_id: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::fd::AsFd;
+    use std::os::fd::{AsFd, AsRawFd};
     use std::time::{Duration, Instant};
 
     fn led_path() -> PathBuf {
@@ -317,11 +317,22 @@ mod tests {
         let ear = listen(&p, "run-1").unwrap();
         assert_eq!(ring(&p, "run-1").unwrap(), Ring::Heard);
 
-        // SAFETY: the child sleeps and `_exit`s, both async-signal-safe, and
-        // touches nothing this process's other threads could hold a lock on.
+        // A fork copies the whole descriptor table, and a child sleeping inside
+        // a test process with a thread per core would hold files other tests
+        // are still writing — one of them would then exec its own scratch
+        // binary and meet `ETXTBSY`. This child holds the door and nothing
+        // else, which is also exactly what it is here to stand for.
+        let door_fd = ear._read.as_raw_fd();
+        // SAFETY: the child calls only `close`, `nanosleep` and `_exit`, each
+        // async-signal-safe, and takes no lock another thread could hold.
         let forked = unsafe { nix::unistd::fork() }.expect("fork");
         let child = match forked {
             nix::unistd::ForkResult::Child => {
+                for fd in 3..1024 {
+                    if fd != door_fd {
+                        unsafe { nix::libc::close(fd) };
+                    }
+                }
                 std::thread::sleep(Duration::from_secs(30));
                 unsafe { nix::libc::_exit(0) }
             }
