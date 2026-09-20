@@ -381,4 +381,33 @@ describe('a pull request the agent face opened', () => {
     await expect(project({ headSha: null })).rejects.toThrow(/head sha/);
     expect(await g.row()).toBeUndefined();
   });
+
+  /**
+   * The ordering rule has no effect at all on a payload carrying no `updated_at`: the `setWhere`
+   * clause reads a null incoming timestamp as always-wins, by design, so that a delivery GitHub
+   * sent without one still lands. A creation answer arriving that way does not merely land
+   * unordered — it lands ON TOP of a merged row and takes the merge commit with it. Which is why
+   * the timestamp is refused by name at the door rather than ordered against inside the statement.
+   */
+  it('refuses a creation answer with no updated_at, which would erase a merged row', async () => {
+    await g.mods.applyPullRequestEvent(
+      g.ctx(),
+      g.prEvent({
+        state: 'closed',
+        merged: true,
+        merged_at: '2026-09-18T04:00:00Z',
+        merge_commit_sha: 'e'.repeat(40),
+        head: { ref: 'ISS-4242-projection', sha: H2 },
+        updated_at: '2026-09-18T04:00:00Z',
+      }),
+    );
+
+    await expect(project({ updatedAt: null })).rejects.toThrow(/updated at/);
+
+    expect(await g.row()).toMatchObject({
+      state: 'merged',
+      head_sha: H2,
+      merge_commit_sha: 'e'.repeat(40),
+    });
+  });
 });

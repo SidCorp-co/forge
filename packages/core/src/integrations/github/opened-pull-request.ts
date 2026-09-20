@@ -39,7 +39,8 @@ export interface OpenedProjectionResult {
  *
  * The row's identity columns are `NOT NULL` and the merge route resolves on them, so a partial row
  * is not a lesser record — it is a row the merge would find and then fail to act on. GitHub sending
- * a pull request back without a head sha is not a shape this widens to accept.
+ * a pull request back without a head sha is not a shape this widens to accept, and nor is one
+ * without the `updated_at` the writer orders on — `RowIdentity` says what that absence costs.
  */
 export class OpenedPullRequestIncomplete extends Error {
   readonly missing: string[];
@@ -55,13 +56,24 @@ export class OpenedPullRequestIncomplete extends Error {
   }
 }
 
-/** The five identity fields, present — or the names of the ones GitHub left out. */
+/**
+ * The six fields a row cannot be written without — or the names of the ones GitHub left out.
+ *
+ * `updated_at` is one of them, and it is here for a reason the other five are not: it is the only
+ * field whose ABSENCE is louder than its presence. The writer's `setWhere` reads a null
+ * `payload_updated_at` on the incoming row as always-wins, so a creation answer that carried no
+ * timestamp would not merely arrive unordered — it would overwrite a `merged` row's state, head and
+ * merge commit with `open` and no merge evidence, silently, and the merge stamp this whole path
+ * exists to protect would be gone. Refusing it by name is the loud break; widening the writer to
+ * cope is the silent substitution.
+ */
 interface RowIdentity {
   number: number;
   headRef: string;
   headSha: string;
   baseRef: string;
   baseSha: string;
+  updatedAt: string;
 }
 
 function identityOf(opened: OpenedPullRequest): RowIdentity | { missing: string[] } {
@@ -71,6 +83,7 @@ function identityOf(opened: OpenedPullRequest): RowIdentity | { missing: string[
   if (!opened.headSha) missing.push('head sha');
   if (!opened.baseRef) missing.push('base ref');
   if (!opened.baseSha) missing.push('base sha');
+  if (!opened.updatedAt) missing.push('updated at');
   if (missing.length > 0) return { missing };
   return {
     number: opened.number,
@@ -78,6 +91,7 @@ function identityOf(opened: OpenedPullRequest): RowIdentity | { missing: string[
     headSha: opened.headSha as string,
     baseRef: opened.baseRef,
     baseSha: opened.baseSha as string,
+    updatedAt: opened.updatedAt as string,
   };
 }
 
@@ -106,7 +120,7 @@ function payloadFor(args: {
       merged: false,
       merged_at: null,
       merge_commit_sha: null,
-      updated_at: opened.updatedAt,
+      updated_at: identity.updatedAt,
       head: { ref: identity.headRef, sha: identity.headSha },
       base: { ref: identity.baseRef, sha: identity.baseSha },
     },

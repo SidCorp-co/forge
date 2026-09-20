@@ -116,6 +116,9 @@ describe('what it will not write', () => {
     ['base sha', { baseSha: null }],
     ['number', { number: 0 }],
     ['head ref', { headRef: '' }],
+    // The writer reads an absent `updated_at` as always-wins, so this one is not a lesser row —
+    // it is the one that overwrites a merged row's evidence with `open`. Refused with the rest.
+    ['updated at', { updatedAt: null }],
   ])('refuses by naming the missing %s rather than writing a partial row', async (name, over) => {
     await expect(project(over as Partial<OpenedPullRequest>)).rejects.toThrow(
       OpenedPullRequestIncomplete,
