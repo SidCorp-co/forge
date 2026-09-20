@@ -115,6 +115,9 @@
 - **A release that already happened can now be recorded, with no release batch.** Name the
   commit production is serving and how it shipped; Forge reads the live probes itself, closes
   what the release carried, and refuses a commit nothing serves.
+- **A migration is now ordered against every open branch, not against `main` alone.** Picking a
+  number that beat numbers you could not see lost migrations silently. The build reads the set,
+  refuses a clash and prints the number to take.
 - **The build refuses two names for one answer.** Two constants holding the same set of statuses,
   or a status list written out where a named one already held it, went unnoticed. A check now
   names both and fails.

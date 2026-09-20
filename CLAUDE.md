@@ -266,14 +266,20 @@ line number — a line number is stale the moment anything above it moves, and s
 - **A migration's `when` in `drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
   already in the target DB** — drizzle reads the single highest `created_at` once and skips lower
   entries **silently, forever**, so the container starts and serves new code against an old schema
-  (ISS-807: a live 500 on `GET /me/attention` for every signed-in user). Take `max(when)` across the
-  journal and add whole days — `86400000` when yours is the only migration open, more when it is
-  not. **Read every unmerged sibling's journal immediately before the landing push and clear the
-  highest `when` you find there**: branches each deriving `+86400000` from one `main` all land on
-  the SAME number, and whichever merges first silently kills the rest — measured twice on
-  2026-09-17, four open migrations, three of them holding `1796083200000`. Never a real
-  timestamp. Gated by `db/migrations-journal.test.ts`, which reads only your own journal and so
-  cannot see a sibling; the looking is yours.
+  (ISS-807: a live 500 on `GET /me/attention` for every signed-in user). **`node
+  scripts/check-migration-order.mjs` prints the number to take**, derived across `origin/main` and
+  every open branch, and refuses a `when` that collides with, straddles or falls below one of
+  theirs. Never a real timestamp: the values here are synthetic whole days, and the checker's
+  `Next free:` line is the only place to read the next one from.
+
+  The set is the subject, not your branch. Branches each deriving `+86400000` from one `main` all
+  land on the SAME number and whichever merges first silently kills the rest — measured twice on
+  2026-09-17, four open migrations, three of them holding `1796083200000`. Two gates split the
+  work: `packages/core/src/db/migrations-journal.test.ts` owns one journal's own properties, and
+  `check-migration-order.mjs` owns the relation between branches, running from `pnpm verify` and
+  from the always-on `lang-check` CI job. What neither can catch is a merge taken out of the order
+  the checker derived, which costs the branch behind it a renumber rather than its migration —
+  `scripts/README.md` has the residual in full.
 
 
 ## Where the detail lives
