@@ -24,6 +24,13 @@ Three boundaries hold the shape:
   [`SidCorp-co/forge-plugin`](https://github.com/SidCorp-co/forge-plugin) ships the CLI, the
   session hooks and the driver skill on its own clock.
 
+### The plugin boundary, close up
+
+The driver skill, the `forge` CLI and the session hooks live in a second repository on its own
+clock. This is the surface they reach core through, and the one thing in it that carries a version:
+
+<img src="docs/assets/plugin-core.svg" alt="forge-plugin and forge core: three callers (agent session over MCP, the forge CLI over REST with a PAT, and the forge-runner daemon over the device API) reach three surfaces; the two repos agree on five contract items of which only pinnedRef carries a version, and that pin is set to null when two projects designate different SHAs, so the box installs plugin HEAD." width="100%">
+
 The agent's surface and where it is going: [`docs/architecture/agent-surface.md`](docs/architecture/agent-surface.md).
 
 ## Quickstart

@@ -18,13 +18,13 @@
   <text x="750" y="116" fill="#1f2328" font-size="13" font-weight="700">API</text>
   <text x="792" y="116" fill="#59636e" font-size="12.5">REST</text>
   <text x="840" y="116" fill="#8c959f" font-size="12.5">/api/*</text>
-  <text x="750" y="134" fill="#8c959f" font-size="11.5">~50 route module · the data contract</text>
+  <text x="750" y="134" fill="#8c959f" font-size="11.5">130 route mounts · the data contract</text>
 
   <rect x="732" y="154" width="334" height="50" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
   <text x="750" y="176" fill="#1f2328" font-size="13" font-weight="700">MCP</text>
   <text x="792" y="176" fill="#59636e" font-size="12.5">JSON-RPC</text>
   <text x="866" y="176" fill="#8c959f" font-size="12.5">/mcp</text>
-  <text x="750" y="194" fill="#8c959f" font-size="11.5">60 tool · shrinking to session-lifecycle</text>
+  <text x="750" y="194" fill="#8c959f" font-size="11.5">37 tools · shrinking to session-lifecycle</text>
 
   <rect x="732" y="214" width="334" height="50" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
   <text x="750" y="236" fill="#1f2328" font-size="13" font-weight="700">WS</text>
