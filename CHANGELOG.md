@@ -3060,8 +3060,8 @@
 ### Fixed
 
 - **A published release entry can be corrected.** An edit keeping over half its words reads as
-  that entry, not as a deletion plus a new one, so a dead link can be fixed. It may not grow the
-  entry.
+  that entry, not a deletion plus a new one, so a dead link can be fixed without cutting the
+  entry to the 40-word budget.
 
 - **A project can be asked what commit its deployment is serving.** `GET /api/projects/:id/deployment`
   reads the declared probes and answers, deriving on every call. Health and identity stay apart,

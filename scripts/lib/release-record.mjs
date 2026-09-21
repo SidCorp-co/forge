@@ -93,7 +93,6 @@ export function parseRecord(text) {
   return { sections, entries, repeatedSubsections };
 }
 
-
 /** Amnesty entries are matched after the same normalisation the record gets, or they never match. */
 function forgiven(amnesty) {
   const out = new Map();
@@ -106,13 +105,10 @@ function forgiven(amnesty) {
 }
 
 /**
- * The share of the longer entry's words that must survive, in order, for one entry to be read as
- * an edit of another rather than as a deletion standing beside an unrelated addition.
- *
- * Measured over this record's own 572 entries: 14,270 sampled pairs of DIFFERENT entries peaked
- * at 0.250 and sat at 0.078 median, while the corrections declared in the amnesty file — the very
- * edit this rule exists to let through — ran 0.469 to 0.996. Every row there that is a deletion
- * rather than a correction scored 0.283 or less.
+ * The share of the longer entry's words that must survive, in order, for one entry to read as an
+ * edit of another rather than as an unrelated addition beside a deletion. Measured over this
+ * record's own 572 entries: 14,270 sampled pairs of DIFFERENT entries peaked at 0.250, while the
+ * corrections the amnesty file declares ran 0.469 to 0.996 and every deletion there 0.283 or less.
  */
 const SAME_ENTRY_SURVIVAL = 0.5;
 
@@ -146,14 +142,12 @@ function survivingRun(a, b) {
 }
 
 /**
- * Which entry this change added is which entry it removed, edited: one removed entry to at most
- * one added entry, best match taken first.
- *
  * cm:guard two entries are THE SAME ENTRY when more than half the words of the longer one survive
- * into the other in order. Nothing type-checks that, and it is the whole hole this pairing could
- * become, so it is bounded twice: the threshold sits above the 0.250 scored by the most alike pair
- * of genuinely different entries this record holds, and a paired entry still answers to the budget
- * of the entry it replaced, so a deletion dressed as an edit buys no words.
+ * into the other in order; each removed entry pairs with at most one added entry, best match first.
+ * Nothing type-checks that, and it is the whole hole this pairing could become, so it is bounded
+ * twice: the threshold sits above the 0.250 scored by the most alike pair of genuinely different
+ * entries this record holds, and a paired entry answers to the larger of the budget and what it
+ * replaced, so a deletion dressed as an edit buys no words.
  */
 export function pairEdits(removed, added) {
   const candidates = [];
@@ -187,15 +181,15 @@ function lostEntries(removed, edited, pardons) {
 }
 
 /**
- * Words an added entry may spend. An entry this change EDITS is measured against what it already
- * held instead, so a published entry can be corrected without first being cut to the budget it
- * was written before — and cannot be grown past the length it already had.
+ * Words an added entry may spend: the budget, or — where this change EDITS a published entry — the
+ * larger of the budget and what that entry already held, so a correction is never the cheaper way.
  */
 function overBudgetEntries(added, edited) {
   const over = [];
   for (const entry of added) {
     const before = edited.get(entry);
-    const ceiling = before === undefined ? ENTRY_WORD_BUDGET : Math.max(ENTRY_WORD_BUDGET, wordCount(before));
+    const ceiling =
+      before === undefined ? ENTRY_WORD_BUDGET : Math.max(ENTRY_WORD_BUDGET, wordCount(before));
     const words = wordCount(entry);
     if (words > ceiling) over.push({ entry, words, ceiling });
   }

@@ -286,6 +286,20 @@ describe('correcting a published entry', () => {
     expect(judge({ head: record(trimmed, SHORT), base: BASE, amnesty: null }).code).toBe(0);
   });
 
+  it.each([
+    [41, 41, false],
+    [41, 42, true],
+    [39, 40, false],
+    [39, 41, true],
+  ])('a %i-word entry corrected to %i words: refused = %s', (before, after, refused) => {
+    const was = prose(before, 's');
+    const now = `${prose(after - 1, 's')} ${prose(1, 'x')}`;
+    const verdict = judge({ head: record(now), base: record(was), amnesty: null });
+    expect(wordCount(now)).toBe(after);
+    expect(budgetOf(verdict) !== undefined).toBe(refused);
+    expect(lossOf(verdict)).toBeUndefined();
+  });
+
   it('holds the plain budget over an edit to an entry that was under it', () => {
     const was = prose(38, 's');
     const verdict = judge({
