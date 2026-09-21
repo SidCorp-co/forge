@@ -249,7 +249,13 @@ export async function runCoolifyRollback(input: {
 }): Promise<CoolifyControlOutcome> {
   const row = await requireIntegration(input);
   const target = requireTarget(row, input.resourceUuid);
-  if (await liveActionNeedsHumanConfirm(input.projectId, row.stages)) {
+  if (
+    await liveActionNeedsHumanConfirm(
+      input.projectId,
+      row.stages,
+      targetsOf(row).map((t) => t.resourceUuid),
+    )
+  ) {
     return pendingProd(row.id, 'rollback');
   }
 
@@ -292,7 +298,13 @@ export async function runCoolifyCancel(input: {
   deploymentUuid?: string | undefined;
 }): Promise<CoolifyControlOutcome> {
   const row = await requireIntegration(input);
-  if (await liveActionNeedsHumanConfirm(input.projectId, row.stages)) {
+  if (
+    await liveActionNeedsHumanConfirm(
+      input.projectId,
+      row.stages,
+      targetsOf(row).map((t) => t.resourceUuid),
+    )
+  ) {
     return pendingProd(row.id, 'cancel');
   }
 

@@ -246,6 +246,16 @@ integrationsRoutes.patch(
       await authorizeAgentAccessWrite(userId, projectId, binding.provider);
     }
 
+    // `stages` describes where a DEPLOY binding sends code. A service binding
+    // sends none, and the DB check holds it at zero stages, so a patch carrying
+    // them is refused here rather than as a constraint violation.
+    if (patch.stages !== undefined && binding.role !== 'deploy') {
+      throw new HTTPException(400, {
+        message: `stages say where a deploy binding sends code; this binding's role is \`${binding.role}\`, which sends none. Change the role, or leave stages off this patch.`,
+        cause: { code: 'STAGES_ON_NON_DEPLOY_BINDING', details: { role: binding.role } },
+      });
+    }
+
     let mergedSecrets: Record<string, unknown> | undefined;
     if (patch.secrets) {
       mergedSecrets = await applySecretsPatch({
@@ -271,13 +281,15 @@ integrationsRoutes.patch(
       mergedBindingConfig !== undefined ||
       patch.active !== undefined ||
       patch.instructions !== undefined ||
-      patch.agentAccess !== undefined
+      patch.agentAccess !== undefined ||
+      patch.stages !== undefined
     ) {
       const bindingPatch: Parameters<typeof updateBinding>[1] = {};
       if (mergedBindingConfig !== undefined) bindingPatch.config = mergedBindingConfig;
       if (patch.active !== undefined) bindingPatch.active = patch.active;
       if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
       if (patch.agentAccess !== undefined) bindingPatch.agentAccess = patch.agentAccess;
+      if (patch.stages !== undefined) bindingPatch.stages = patch.stages;
       await updateBinding(binding.id, bindingPatch);
     }
 

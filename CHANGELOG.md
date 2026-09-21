@@ -3060,6 +3060,14 @@
 
 ### Fixed
 
+- **A deploy binding's stages can be corrected after it is created.** Settable only at create,
+  they forced a project with the wrong stage topology to delete the binding, and its credential
+  with it, to say so.
+
+- **A `preview` deploy that lands on the production box is now gated like production.** The
+  confirm gate asked the binding's stage label; where one branch and one application serve both
+  stages, the label is not the box.
+
 - **A record's pointer back to the comment that asserted it is now checked.** An id naming no
   comment answered 500; one naming a comment on another issue was stored silently. Both are
   refused by name.
