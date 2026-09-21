@@ -203,8 +203,6 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     const said = (await commentsOn(id)).join('\n');
     expect(said).toContain(SHA);
     expect(said).toContain("recorded here as this call's claim");
-    // ISS-1126 — and the trail now names which kind of record this is, not only what it holds.
-    expect(said).toContain('CLAIM Forge did not observe');
   });
 
   it('adopts the commit and the time of a merge Forge observed', async () => {
@@ -232,12 +230,8 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     await seedObservedMerge(id, { commit: SHA, at: '2026-09-17T12:17:12.321Z' });
     await mark(id, token, { target: 'base', commit: 'feedface1234567' });
     const said = (await commentsOn(id)).join('\n');
-    // ISS-1126 reworded this sentence so it names the KIND of mark; the property it holds is
-    // unchanged — both commits appear, and the trail says which one the column took.
     expect(said).toContain('feedface1234567');
-    expect(said).toContain(SHA);
-    expect(said).toContain('is not what the column holds');
-    expect(said).toContain('merge Forge observed');
+    expect(said).toContain(`which for this issue is ${SHA}`);
     expect((await storedMark(id)).merged_commit_sha).toBe(SHA);
   });
 

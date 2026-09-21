@@ -88,10 +88,6 @@ export interface IssueRow {
   creatorLabel: string;
   reopenCount: number;
   mergedAt: string | null;
-  /** ISS-959 — the commit, present only on a merge Forge observed. */
-  mergedCommitSha?: string | null;
-  /** ISS-1126 — which kind of record `mergedAt` is. Derived by core, never here. */
-  mergeMark?: "unmarked" | "asserted" | "observed";
   createdAt: string;
   updatedAt: string;
   agentSessions?: IssueAgentSession[];

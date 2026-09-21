@@ -33,7 +33,6 @@ import {
   MergeMarkerError,
   mergedCommitShaSchema,
 } from '../../issues/merge-marker.js';
-import { mergeMarkFields } from '../../issues/merge-record.js';
 import { parkQuestionNotMinted } from '../../issues/park-question.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issues/patch-fields.js';
 import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
@@ -52,7 +51,6 @@ import {
   type TaskRow,
   updateTask as updateTaskRow,
 } from '../../tasks/task-service.js';
-import { FORGE_ISSUES_DESCRIPTION } from './forge-issues-description.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -301,7 +299,6 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
     sessionContext: sanitizeDeep(row.sessionContext),
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
-    ...mergeMarkFields(row),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -332,7 +329,6 @@ export function serializeListRow(
     assigneeId: row.assigneeId,
     reopenCount: row.reopenCount,
     mergedAt: row.mergedAt,
-    ...mergeMarkFields(row),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     ...(row.matchedFields ? { matchedFields: row.matchedFields } : {}),
@@ -394,7 +390,6 @@ export function serializeManifest(row: IssueRow, prefix: string | null): Record<
     reopenCount: row.reopenCount,
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
-    ...mergeMarkFields(row),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     bodyTruncated: true as const,
@@ -488,7 +483,60 @@ function parseDate(value: string, field: string): Date {
 
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
-  description: FORGE_ISSUES_DESCRIPTION,
+  description:
+    'Issues and their tasks; every sub-action is in the action enum, and documentId takes a ' +
+    'uuid or the short ISS-<n>.\n' +
+    'READING. list returns a summary projection - it omits the five heavy fields the fields ' +
+    'enum names - to stay under the response token cap; get returns the full body. ' +
+    'filters.issue and filters.taskStatus belong to listTasks - list REFUSES them, use get. ' +
+    'Triage with list, get only the one issue you are about to work, and never re-get a body ' +
+    'already loaded this session; after a lean forge_step_start manifest (bodyTruncated:true) ' +
+    'pull just the fields:[...] you need. Read hasMore before calling any count complete: a ' +
+    'list cut short by your own limit looks exactly like a complete one. truncated/truncatedBy ' +
+    'name the cap that bit.\n' +
+    'CREATE. Fill title, description, priority, category. plan and acceptanceCriteria are the ' +
+    "clarify/plan steps' output - pre-filling them deletes that step's reason to exist (red " +
+    'flag: plan-by-hand). description is a requirements contract (outcome, business rules, ' +
+    'invariants, out-of-scope), not an implementation script: file paths, endpoints and ' +
+    '"follow the pattern at <path>" go stale and outrank live exploration. Body shape: guides ' +
+    'pipeline-and-issue-lifecycle and writing-an-issue; mermaid fences render; ATTACH .html ' +
+    'rather than pasting it.\n' +
+    'FILTERS. search: a literal substring or identifier-split token over ' +
+    'title/description/plan/acceptanceCriteria, with matchedFields naming which matched per ' +
+    'row, so a clause cited only on a criterion is findable. label/module: a name or uuid or ' +
+    'an array of either (OR); an unknown name returns an EMPTY set, and module matches MODULE ' +
+    'labels only.\n' +
+    'LABELS. data.labels takes label NAMES or UUIDs from this project; unknown ones are ' +
+    'refused, never auto-created. On update it is a REPLACE-SET, not additive: [] clears all, ' +
+    'omitting it changes none. Read the current labels[] off a FULL get before a delta, or you ' +
+    'clobber the set. A module is a label with kind:"module", and each labels[] entry reports ' +
+    'kind and isPrimary. Set the primary module by sending { labelId, isPrimary: true } among ' +
+    'the plain strings - at most one, and it must be a module, or the whole write is refused. ' +
+    'A new primary replaces the old atomically; omit isPrimary everywhere for none.\n' +
+    'RELATIONS. data.relations applies on create AND update and works with a personal access ' +
+    'token; for a kind its own enum does not list, use forge_project_pm set_dependency. Send ' +
+    'exactly one of dependsOnId (THIS issue is blocked BY it) or blocksId (THIS issue blocks ' +
+    'it). Edges commit before the dispatch trigger, so nothing dispatches ahead of its ' +
+    "blocker, and the reply's relations[] confirms each edge. Re-send an edge with validUntil " +
+    'in the past to RETRACT it (updated:true). get returns relations.blocks (this blocks them) ' +
+    'and relations.blockedBy (they block this), each flagged expired when its validUntil has ' +
+    'passed and it no longer gates dispatch.\n' +
+    'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
+    'closed auto-stamps merged_at when still NULL (closed = done, for the blocks-gate), so a ' +
+    'close meaning "abandoned, code never landed" needs unmark after it.\n' +
+    'MERGE MARK. mark_merged (data.issueId, data.target, optional data.commit / data.mergedAt ' +
+    'ISO / data.note) idempotently stamps merged_at and merged_commit_sha together, defaulting ' +
+    "commit to the recorded implementation handoff's, and unblocks dependents. target is an " +
+    'audit label; every value stamps the same column. unmark (data.issueId + optional ' +
+    'data.note) clears merged_at to NULL, re-blocking children when a merge is rolled back.\n' +
+    'TASKS. createTask needs data.issueId + data.taskTitle; listTasks needs filters.issue and ' +
+    'accepts filters.taskStatus; updateTask/deleteTask take the task UUID as documentId. Tasks ' +
+    'inherit project membership from their issue.\n' +
+    'ATTACHMENTS. Use forge_uploads (presigned URL) for anything past a tiny snippet; base64 ' +
+    'in data.attachments[] is slow and burns context, though it still works for up to 10 tiny ' +
+    'files (total <= UPLOADS_MAX_BYTES) and on partial failure returns attachments plus ' +
+    'attachmentErrors (code/message).\n' +
+    'The X-Forge-Project-Slug header sets the project; projectId only overrides it.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -775,12 +823,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsWriter(principal, issue.projectId);
 
         try {
-          const {
-            issue: fresh,
-            action,
-            mark,
-            markDetail: detail,
-          } = await applyMergeMarker({
+          const { issue: fresh, action } = await applyMergeMarker({
             issue,
             op: marking ? 'mark' : 'unmark',
             ...(input.data?.target ? { target: input.data.target } : {}),
@@ -795,7 +838,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               hookActor: principalHookActor(principal),
             },
           });
-          return { ...(await serializeWithAttachments(fresh)), action, mark, detail };
+          return { ...(await serializeWithAttachments(fresh)), action };
         } catch (err) {
           if (err instanceof MergeMarkerError) throw new Error(`${err.code}: ${err.message}`);
           throw err;

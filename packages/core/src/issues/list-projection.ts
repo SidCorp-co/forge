@@ -2,7 +2,6 @@ import type { SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import type { IssueSearchField } from './search-predicate.js';
 
 /**
@@ -81,20 +80,11 @@ export const REST_ISSUE_LIST_OMITTED = [
   'identSearch',
 ] as const;
 
-/**
- * ISS-1126 — the sha has been in this projection since ISS-959; `mergeMark` is what makes it
- * legible. The reading is `merge-record.ts`'s, so a list row and the issue detail cannot disagree
- * about which kind of mark the same issue carries.
- */
-export function serializeRestListRow<T extends { issSeq: number } & MergeMarkColumns>(
+export function serializeRestListRow<T extends { issSeq: number }>(
   row: T,
   prefix: string | null,
-): T & { displayId: string; mergeMark: MergeMarkKind } {
-  return {
-    ...row,
-    displayId: formatIssueRef(prefix, row.issSeq),
-    mergeMark: mergeMarkKindOf(row),
-  };
+): T & { displayId: string } {
+  return { ...row, displayId: formatIssueRef(prefix, row.issSeq) };
 }
 
 /** One page of either REST issue list, ordered and limited. */
