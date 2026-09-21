@@ -2,9 +2,8 @@
  * Who is working one issue — asked once, answered once, fleet-wide (ISS-1109).
  *
  * This module is the only writer of `issue_leases` and the only place the SQL
- * for "is this issue being worked" is written. Before it, the same question was
- * asked in four places in three shapes, one of which filtered on the asking
- * device and so told box B that an issue box A was running was free.
+ * for "is this issue being worked" is written: asked four ways, one of them
+ * filtering on the asker, box B was told an issue box A was running was free.
  *
  * A lease is taken by a conditional write the primary key can refuse, never by
  * a read followed by a write: `takeIssueLeases` clears rows whose session is
@@ -13,6 +12,7 @@
  *
  * `(project_id, issue_key)` is the identity on every path, take and give-back
  * alike, and `resolveLeaseKey` is where a caller's key becomes that pair.
+ * cm:edge naming -> packages/core/src/pipeline/session-claim.ts — which RUN may write a record.
  */
 
 import { type SQL, sql } from 'drizzle-orm';

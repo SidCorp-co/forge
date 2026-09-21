@@ -29,7 +29,7 @@ import {
   leaseIsReleasable,
   leaseIsUnexpired,
   leaseIsWorkInProgress,
-} from './issue-lease.js';
+} from './session-claim.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import {
   SHORTEST_GRACE_MS,
@@ -41,14 +41,9 @@ import {
 import { sweepGroupKey } from './stranded-issues.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
-/**
- * Nothing anywhere is working this issue.
- *
- * This is a USE of the fleet-wide predicate, never a second copy of it: `issues/issue-lease.ts`
- * is the only place that SQL is written (ISS-1109), and a sweep that answers the question its own
- * way reports as stranded exactly the issues a box is holding. The binding exists only to carry
- * this module's `issues i` alias into it.
- */
+/** A USE of the fleet-wide predicate, never a second copy: `issues/issue-lease.ts` is the only
+ *  place that SQL is written (ISS-1109), and a sweep answering it another way reports as stranded
+ *  exactly the issues a box is holding. This binding only carries the `issues i` alias in. */
 const NOTHING_LIVE_ON_THIS_ISSUE = sql`NOT ${issueWorkInFlightSql({
   issueId: sql`i.id`,
   projectId: sql`i.project_id`,

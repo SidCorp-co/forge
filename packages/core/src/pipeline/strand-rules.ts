@@ -1,15 +1,12 @@
 /**
- * Which non-terminal statuses this project watches for a stranded row, on what clock, and who owes
- * the next move where nothing is working it.
- *
- * The table is a `Record<IssueStatus, StrandRule>`, so a status added to `issueStatuses` and left
- * unclassified is a typecheck failure rather than a row that quietly falls out of the sweep. That
- * is the hole ISS-1122 was filed about: `stranded-issues.ts` enumerates `waiting`, and
- * `issue-run-invariant.ts` enumerates three statuses, and every status neither names went unread.
+ * Which non-terminal statuses are watched for a stranded row, on what clock, and who owes the next
+ * move. `Record<IssueStatus, StrandRule>`, so a status added to `issueStatuses` and left
+ * unclassified is a typecheck failure rather than a row that falls out of the sweep — the hole
+ * ISS-1122 was filed about, where `waiting` and three others were enumerated and the rest unread.
  */
 
 import type { IssueStatus } from '../db/schema.js';
-import type { LeaseReading } from './issue-lease.js';
+import type { LeaseReading } from './session-claim.js';
 
 /** Whose move it is for a stranded row to leave the status it is stuck at. */
 export type StrandOwner = 'agent' | 'human';
@@ -22,11 +19,9 @@ export type StrandRule =
     }
   | {
       watch: true;
-      /** How long the status may go unmoved before the row is read as stranded. */
       graceMs: number;
       /** Who owes the next move, absent evidence that says otherwise. */
       owes: StrandOwner;
-      /** What the status itself says it is waiting for. */
       waitingFor: string;
     };
 
@@ -80,7 +75,6 @@ export const STRAND_RULES: Record<IssueStatus, StrandRule> = {
   reopen: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a run to build it again' },
 };
 
-/** The statuses this pass does not watch, each for the reason its rule names. */
 export const AT_REST_STATUSES: readonly IssueStatus[] = (
   Object.keys(STRAND_RULES) as IssueStatus[]
 ).filter((s) => STRAND_RULES[s].watch === false);
@@ -97,20 +91,14 @@ export const SHORTEST_GRACE_MS: number = Math.min(
   }),
 );
 
-/**
- * The rule for a status as the database holds it.
- *
- * `issues.status` is a `text` column, so a value no release of `issueStatuses` has caught up with
- * is a row the database can hold. It returns `null` there rather than guessing, and the pass counts
- * it as `unclassified` and logs the value by name.
- */
+/** `issues.status` is a `text` column, so a value `issueStatuses` has not caught up with is a row
+ *  the database can hold: `null` rather than a guess, counted `unclassified` and logged by name. */
 export function strandRuleFor(status: string): StrandRule | null {
   return Object.hasOwn(STRAND_RULES, status) ? (STRAND_RULES[status as IssueStatus] ?? null) : null;
 }
 
 /** What the pass could see about one row, and nothing it inferred. */
 export interface StrandEvidence {
-  /** Whether the issue carries a merge mark. */
   merged: boolean;
   /** Whether any `pipeline_runs` row has ever existed for this issue, terminal or not. */
   everRan: boolean;

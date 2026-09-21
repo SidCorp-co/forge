@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { LeaseReading, LeaseVerdict } from './issue-lease.js';
+import type { LeaseReading, LeaseVerdict } from './session-claim.js';
 import {
   classifyLease,
   leaseHolderOf,
   leaseIsReleasable,
   leaseIsUnexpired,
   leaseIsWorkInProgress,
-} from './issue-lease.js';
+} from './session-claim.js';
 
 const NOW = new Date('2026-09-20T16:00:00.000Z');
 

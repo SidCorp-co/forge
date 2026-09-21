@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
-import type { LeaseReading } from './issue-lease.js';
+import type { LeaseReading } from './session-claim.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import {
   AT_REST_STATUSES,
