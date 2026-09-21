@@ -51,4 +51,14 @@ export const MEMORY_REINDEX_STATES = [
   'cancelled',
 ] as const;
 
+/* status-tuple: differs — the browser's copy of core's `issues/dependency-effects.ts`
+   BLOCKER_SETTLED_STATUSES, read by the blocked chip so the screen and the dispatcher answer
+   "is this blocker settled?" the same way; status-sets-parity.test.ts binds the two. */
+export const BLOCKER_SETTLED_STATUSES = [
+  'developed',
+  'testing',
+  'awaiting_release',
+  'closed',
+] as const;
+
 export type MemoryReindexState = (typeof MEMORY_REINDEX_STATES)[number];

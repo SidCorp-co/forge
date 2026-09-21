@@ -1,5 +1,6 @@
 import * as CONTRACT from '@forge/contracts/status-sets';
 import { describe, expect, it } from 'vitest';
+import { BLOCKER_SETTLED_STATUSES } from '../issues/dependency-effects.js';
 import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
 import { REASON_REQUIRED_STATUSES } from '../issues/transition-reason.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
@@ -15,6 +16,10 @@ import { terminalAgentSessionStatuses } from './session-vocabulary.js';
 
 const MIRRORS: Record<string, { core: readonly string[]; contract: readonly string[] }> = {
   LIVE_JOB_STATUSES: { core: LIVE_JOB_STATUSES, contract: CONTRACT.LIVE_JOB_STATUSES },
+  BLOCKER_SETTLED_STATUSES: {
+    core: BLOCKER_SETTLED_STATUSES,
+    contract: CONTRACT.BLOCKER_SETTLED_STATUSES,
+  },
   NON_OPEN_ISSUE_STATUSES: {
     core: NON_OPEN_STATUSES,
     contract: CONTRACT.NON_OPEN_ISSUE_STATUSES,

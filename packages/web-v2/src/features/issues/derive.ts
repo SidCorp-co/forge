@@ -10,7 +10,10 @@ import {
 	REGISTRY_ISSUE_STATUSES,
 	type StatusExits,
 } from "@forge/contracts/pipeline-registry";
-import { REASON_REQUIRED_ISSUE_STATUSES } from "@forge/contracts/status-sets";
+import {
+	BLOCKER_SETTLED_STATUSES,
+	REASON_REQUIRED_ISSUE_STATUSES,
+} from "@forge/contracts/status-sets";
 import {
 	type SemanticTone,
 	STATUS_KEY_TONE,
@@ -567,19 +570,11 @@ export interface BlockerState {
 	detail?: string;
 }
 
-/* status-tuple: differs — this answers whether a blocker still reads as blocking in the list and
-   board chips, not core's ISSUE_RESOLVED_STATUSES question of whether a failed job still matters.
-   Core releases dispatch earlier than this: BLOCKER_SETTLED_STATUSES in issues/dependency-effects.ts
-   adds `developed` and `testing`, so a blocker at either is already dispatch-released while this
-   chip still names it. Changing what the chip says is a product decision nobody has taken. */
-const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set([
-	"awaiting_release",
-	"closed",
-]);
+const SETTLED_BLOCKERS: ReadonlySet<string> = new Set(BLOCKER_SETTLED_STATUSES);
 
-/** Incoming `blocks` edges whose blocker isn't terminal — i.e. this issue is
- *  genuinely blocked-by an open issue. Exported so list/board rows can flag a
- *  genuinely-stuck issue (danger chip) without re-deriving the terminal rule. */
+/** Incoming `blocks` edges whose blocker core has not settled — i.e. this issue is genuinely
+ *  blocked-by one Forge will not dispatch past. Exported so list/board rows can flag a
+ *  genuinely-stuck issue (danger chip) without re-deriving the rule. */
 export function openBlockingRefs(
 	deps: IssueDependencies | undefined,
 ): BlockingRef[] {
@@ -588,7 +583,7 @@ export function openBlockingRefs(
 		.filter(
 			(e) =>
 				e.kind === "blocks" &&
-				!(e.fromStatus && TERMINAL_STATUSES.has(e.fromStatus)),
+				!(e.fromStatus && SETTLED_BLOCKERS.has(e.fromStatus)),
 		)
 		.map((e) => ({
 			id: e.fromIssueId,

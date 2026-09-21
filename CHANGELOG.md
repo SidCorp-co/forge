@@ -3080,6 +3080,10 @@
   tabs, the segmented control, keyboard hints — fell back to the body size, which is why sidebar
   labels ran past the sidebar's edge.
 
+- **An issue no longer warns it is stuck on a blocker whose code has landed.** The red badge and
+  banner waited for a release Forge does not wait for. The link to the blocker stays; only the
+  alarm goes.
+
 - **A project can be asked what commit its deployment is serving.** `GET /api/projects/:id/deployment`
   reads the declared probes and answers, deriving on every call. Health and identity stay apart,
   so a fleet mid-deploy reports healthy with no identity.
