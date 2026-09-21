@@ -145,14 +145,6 @@ export function principalAgency(principal: McpPrincipal): ActorAgency {
   return actorAgency(principalActor(principal));
 }
 
-/**
- * What this credential ESTABLISHED about who is speaking, or `null` for a
- * person's own token, which establishes nothing (ISS-1003).
- */
-export function principalEstablishedAgency(principal: McpPrincipal): ActorAgency | null {
-  return principal.agency;
-}
-
 /** The same decision, in the shape the hooks bus and `activity_log` take. */
 export function principalHookActor(principal: McpPrincipal): Actor {
   const actor = principalActor(principal);

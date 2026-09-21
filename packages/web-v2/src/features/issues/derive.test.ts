@@ -16,7 +16,6 @@ import {
 	deriveCommentKind,
 	deriveStepOutcomes,
 	runningStepOf,
-	FORGE_AGENT_LABEL,
 	filterToQueryParams,
 	groupRows,
 	groupedTransitions,
@@ -587,21 +586,33 @@ describe("groupRows", () => {
 		expect(g.map((x) => x.key)).toEqual(["open", "developed"]);
 		expect(g[0].rows.map((r) => r.id)).toEqual(["a", "b"]);
 	});
-	it("groups by creator, distinct group per creator, agent group last", () => {
+	// ISS-1137 — an agent is an account with a name, so two agents are two
+	// groups. The old shape collapsed every agent into one `__agent__` bucket,
+	// which is the case a single-agent fixture cannot tell apart from this one.
+	it("groups by creator, one group per account, agents after people", () => {
 		const mixed = [
 			...rows,
 			row({
 				id: "d",
-				createdById: "u3",
+				createdById: "a1",
 				creatorIsAgent: true,
-				creatorLabel: FORGE_AGENT_LABEL,
+				creatorLabel: "master",
+			}),
+			row({
+				id: "e",
+				createdById: "a2",
+				creatorIsAgent: true,
+				creatorLabel: "reviewer",
 			}),
 		];
 		const g = groupRows(mixed, "creator");
-		expect(g.map((x) => x.key)).toEqual(["u1", "u2", "__agent__"]);
-		expect(g[0].label).toBe("ann@x.co");
-		expect(g[1].label).toBe("bob@x.co");
-		expect(g[g.length - 1].label).toBe(FORGE_AGENT_LABEL);
+		expect(g.map((x) => x.key)).toEqual(["u1", "u2", "a1", "a2"]);
+		expect(g.map((x) => x.label)).toEqual([
+			"ann@x.co",
+			"bob@x.co",
+			"master",
+			"reviewer",
+		]);
 	});
 });
 
@@ -625,25 +636,22 @@ describe("creatorLabelOf", () => {
 			creatorLabelOf({
 				creatorLabel: "ann@x.co",
 				creatorEmail: "ann@x.co",
-				creatorIsAgent: false,
 			}),
 		).toBe("ann@x.co");
 	});
-	it("falls back to Forge Agent for an agent row with no label", () => {
+	it("falls back to the address when the server sent no label", () => {
 		expect(
 			creatorLabelOf({
 				creatorLabel: "",
-				creatorEmail: null,
-				creatorIsAgent: true,
+				creatorEmail: "master@agents.local",
 			}),
-		).toBe(FORGE_AGENT_LABEL);
+		).toBe("master@agents.local");
 	});
 	it("never falls back to a raw id — 'Unknown user' when nothing resolves", () => {
 		expect(
 			creatorLabelOf({
 				creatorLabel: "",
 				creatorEmail: null,
-				creatorIsAgent: false,
 			}),
 		).toBe("Unknown user");
 	});

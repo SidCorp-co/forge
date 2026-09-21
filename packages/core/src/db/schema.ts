@@ -1016,7 +1016,6 @@ export const issues = pgTable(
     // Set by webhook/MCP imports; NULL when `createdById` covers the actor.
     reportedBy: text('reported_by'),
     createdVia: text('created_via', { enum: issueCreationChannels }),
-    creatorAgency: text('creator_agency', { enum: actorAgencies }),
     detectorKey: text('detector_key'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     createdById: uuid('created_by_id')
@@ -1129,7 +1128,6 @@ export const comments = pgTable(
     body: text('body').notNull(),
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
     stage: text('stage'),
-    authorAgency: text('author_agency', { enum: actorAgencies }),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

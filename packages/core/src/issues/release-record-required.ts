@@ -29,7 +29,7 @@ export async function issuesMissingReleaseRecord(issueIds: string[]): Promise<st
 export async function refuseUnrecordedClose(
   issueId: string,
   toStatus: IssueStatus,
-  actor: { type: 'user' | 'device'; agency?: ActorAgency | null },
+  actor: { type: 'user' | 'device'; agency?: ActorAgency | undefined },
   options: { viaReleasePath?: boolean },
 ): Promise<ReleaseRecordRefusal | null> {
   if (toStatus !== 'closed') return null;

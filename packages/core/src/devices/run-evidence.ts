@@ -279,7 +279,6 @@ async function insertCommentOnce(args: {
       issueId: args.issueId,
       authorId: args.authorId,
       authorDeviceId: args.deviceId,
-      authorAgency: 'agent',
       body: args.body,
     });
     return true;

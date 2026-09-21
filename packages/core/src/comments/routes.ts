@@ -17,7 +17,6 @@ import {
   requireAuth,
   restActor,
   restAuthored,
-  restEstablishedAgency,
 } from '../middleware/auth.js';
 import {
   clientCapabilities,
@@ -124,7 +123,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           issueId,
           authorId: userId,
           authorDeviceId: null,
-          authorAgency: restEstablishedAgency(c),
           body,
           format,
           parentId: parentId ?? null,
