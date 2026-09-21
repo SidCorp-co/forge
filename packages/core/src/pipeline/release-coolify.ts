@@ -150,7 +150,7 @@ async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): 
  * unless the project opted into `autoProdDeploy`; a project with no binding
  * at all returns `reason: 'no-integration'` and stamps the skipped substep.
  */
-// cm:flow release/deploy after:reap — job completion, not the close, is what dispatches the deploy; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
+// cm:flow release/deploy after:stamp — the landing is what dispatches the deploy: an issue arriving at `developed` calls this, which is why a change is judgeable before anything reaches the release gate; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;
@@ -185,7 +185,7 @@ export async function tryDispatchCoolifyRelease(args: {
       // Manual approval gate — never auto-dispatch prod. The UI sticky
       // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
       // Skipped entirely when the project opted into autoProdDeploy.
-      const gateState = await getProdGateState(binding.id);
+      const gateState = await getProdGateStateForRun(binding.id, runId);
       if (!gateState || gateState.confirmedAt === null) {
         await markPendingHumanConfirm({ runId, issueId, bindingId: binding.id });
         pendingHumanConfirm = true;
@@ -338,11 +338,26 @@ async function markPendingHumanConfirm(input: {
   );
 }
 
+/** One human confirmation authorises one deploy, so the gate is run-scoped. */
+async function getProdGateStateForRun(
+  bindingId: string,
+  runId: string,
+): Promise<ProdGateState | null> {
+  const [row] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  const md = (row?.metadata ?? {}) as Record<string, unknown>;
+  const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
+  const gate = gates[bindingId];
+  if (!gate) return null;
+  return gate.runId === runId ? gate : null;
+}
+
 async function getProdGateState(bindingId: string): Promise<ProdGateState | null> {
-  // Find the most recent run (regardless of status) that has a gate for this
-  // integration. The release flow closes the issue-run before the deploy hook
-  // fires, so we must look at completed runs too — otherwise the prod gate
-  // would never be observable post-merge.
+  // The confirm endpoint is handed a binding id and nothing else, and the run
+  // that opened the gate may already be closed, so completed runs are in scope.
   const rows = await db
     .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
     .from(pipelineRuns)
@@ -448,46 +463,4 @@ export async function isIssueAtReleaseStage(issueId: string): Promise<boolean> {
     .where(eq(issues.id, issueId))
     .limit(1);
   return row?.status === 'awaiting_release' || row?.status === 'closed';
-}
-
-/**
- * Subscribes to `jobCompleted` and forwards `release`-type completions into
- * the Coolify dispatch path. Must be called once at boot.
- */
-export function registerReleaseCompletedSubscriber(hooks: {
-  on: (
-    event: 'jobCompleted',
-    listener: (payload: {
-      jobId: string;
-      projectId: string;
-      issueId: string | null;
-      type: string;
-    }) => void | Promise<void>,
-  ) => void;
-}): void {
-  hooks.on('jobCompleted', async (payload) => {
-    if (payload.type !== 'release') return;
-
-    if (!payload.issueId) return;
-    const runId = await resolveLatestIssueRunId(payload.issueId);
-    if (!runId) {
-      logger.debug(
-        { jobId: payload.jobId, issueId: payload.issueId },
-        'release.deploy hook: no run found for issue — skipping coolify dispatch',
-      );
-      return;
-    }
-    try {
-      await tryDispatchCoolifyRelease({
-        projectId: payload.projectId,
-        issueId: payload.issueId,
-        runId,
-      });
-    } catch (err) {
-      logger.error(
-        { err, jobId: payload.jobId, projectId: payload.projectId },
-        'release.deploy hook: dispatch threw',
-      );
-    }
-  });
 }
