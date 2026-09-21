@@ -271,6 +271,9 @@ impl Unplaced {
             Self::StoodDown {
                 pane: Some(pane), ..
             } => format!("{pane} is RUNNING and this box is not driving it"),
+            Self::StaleCapability { pane, .. } => {
+                format!("{pane} is RUNNING and this box cannot be heard by it")
+            }
             _ => "no master pane placed".to_string(),
         }
     }
@@ -278,14 +281,18 @@ impl Unplaced {
     /// Whether this is a state an operator has to act on before the box's two
     /// answers agree.
     ///
-    /// Two of them are. A pane running against a stand-down is the nine-hour
-    /// silence this issue was filed over; a standing this box could not read
-    /// is a box that cannot say what it is doing. Everything else here is a
-    /// pane absent for a reason the box is content with.
+    /// Three of them are. A pane running against a stand-down is the nine-hour
+    /// silence ISS-1118 was filed over; a standing this box could not read is a
+    /// box that cannot say what it is doing; a pane whose capability is stale
+    /// is the four-hour silence ISS-1099 was filed over, and no sweep resolves
+    /// it. Everything else here is a pane absent for a reason the box is
+    /// content with.
     fn is_error(&self) -> bool {
         matches!(
             self,
-            Self::StoodDown { pane: Some(_), .. } | Self::StandingUnreadable { .. }
+            Self::StoodDown { pane: Some(_), .. }
+                | Self::StandingUnreadable { .. }
+                | Self::StaleCapability { .. }
         )
     }
 }
@@ -1934,6 +1941,12 @@ async fn ensure_master(
                 // it, so the project has no working master and the registry has
                 // to say so — clearing it here erased the one record of why, at
                 // the moment the daemon learned it.
+                //
+                // `note_unplaced` and not `say_unplaced`, because the error
+                // below already carries this state to the journal and says more
+                // about it than the generic line would. Recording it twice is
+                // two entries for one event and a reader who cannot tell
+                // whether it happened once.
                 masters.note_unplaced(
                     project_id,
                     Unplaced::StaleCapability {
