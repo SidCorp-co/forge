@@ -3,8 +3,9 @@
  * `source_comment_id` pointing back at the comment that made them, and the MCP
  * `forge_issues action=setAttributes` tool was its only door — no destination a REST writer could
  * be sent to, and a refusal naming a route nobody can reach teaches nothing. This route calls the
- * same service, so there is one writer and one set of refusals: every one of them is raised inside
- * `setIssueAttributes`, and all this route decides is which status carries which code.
+ * same service, so there is one writer and one set of refusals about what is written:
+ * `setIssueAttributes` raises all of them and this route only says which status carries which code.
+ * What a door still owns is its own shape — the body schema, the issue, the caller's role.
  */
 
 import { zValidator } from '@hono/zod-validator';
