@@ -26,8 +26,7 @@ const PROBES = {
     ],
   },
   knowledge: {
-    gate:
-      'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations',
+    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations',
     probe: ['node', 'scripts/check-honest-costs.mjs'],
     from: 'none',
     also: [

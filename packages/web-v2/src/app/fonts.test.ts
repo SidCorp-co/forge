@@ -2,12 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// `next/font/google` downloads the binaries while `next build` runs, so a font host
-// that does not answer fails the build — and one Coolify application builds `core` and
-// `web-v2` together, which means a web-only font fetch takes the BACKEND deploy down
-// with it. It did, on 2026-08-13 (ISS-854): a core-only fix sat merged-but-not-live for
-// about ninety minutes. `src/app/fonts/README.md` says this file is what stops the
-// import coming back, and until 2026-09-20 no such file was in the tree.
+// `next/font/google` downloads the binaries during `next build`, and one Coolify
+// application builds `core` and `web-v2` together, so a web-only font fetch takes the
+// BACKEND deploy down with it (ISS-854, 2026-08-13).
 
 const APP = join(__dirname);
 const LAYOUT = join(APP, 'layout.tsx');
