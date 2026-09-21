@@ -13,7 +13,6 @@ import { eq } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
@@ -38,6 +37,7 @@ import {
   buildAppManifest,
   convertManifestCode,
   manifestPostUrl,
+  resolveApiBaseUrl,
   signConnectState,
   verifyConnectState,
 } from './connect.js';
@@ -63,9 +63,9 @@ function webBaseUrl(): string {
 }
 
 function apiBaseUrl(): string {
-  const base = env.PUBLIC_API_BASE_URL ?? env.OAUTH_REDIRECT_BASE ?? process.env.APP_BASE_URL;
+  const base = resolveApiBaseUrl();
   if (!base) throw new HTTPException(500, { message: 'APP_BASE_URL is not configured' });
-  return base.replace(/\/+$/, '');
+  return base;
 }
 
 function assertApiOriginReachable(c: Context, api: string): void {

@@ -22,6 +22,7 @@ export type CardCapabilities = Omit<IntegrationCapabilities, "agentPath">;
 export const DEFAULT_CAPABILITIES: CardCapabilities = {
   canDispatch: false,
   canReceiveWebhook: false,
+  inboundUnprompted: false,
   canDeploy: false,
   liveConfirmGate: false,
   hasDeliveryLog: false,

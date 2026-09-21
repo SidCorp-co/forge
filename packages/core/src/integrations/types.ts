@@ -145,6 +145,19 @@ export interface IntegrationCapabilities {
   /** Core handles an inbound webhook callback from the provider. */
   canReceiveWebhook: boolean;
   /**
+   * True where a bound resource makes this provider call IN by itself, so a binding that has
+   * recorded no inbound delivery is a broken pipe rather than a quiet period.
+   *
+   * GitHub calls on every push and pull request against a repository its App is installed on, so
+   * zero-ever on a live binding means nothing is arriving and something is wrong. Sentry calls
+   * only when an error happens, and a project with no errors has correctly received nothing —
+   * demoting that binding would be the same lie pointing the other way. `canReceiveWebhook` is
+   * therefore the wrong condition to read for this, and it is declared instead of inferred.
+   *
+   * Only meaningful where `canReceiveWebhook` is true.
+   */
+  inboundUnprompted: boolean;
+  /**
    * Forge can DEPLOY to this provider, so a binding of it may be `role: 'deploy'`
    * and carry stages. Must equal `providerCanDeploy(provider)` — `capabilities.test.ts`
    * asserts the two agree, because a screen that offers a deploy role the create
