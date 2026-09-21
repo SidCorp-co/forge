@@ -1200,8 +1200,7 @@
   issue attributed to both counted once. A module with no issues appears with zeroes rather than
   vanishing, and the issues carrying no module at all are their own row rather than being dropped.
   The aggregation reads `issue_labels` joined to `kind='module'` labels and nothing else: there is
-  no second store of module membership. Flow:
-  [`docs/flows/issue-work.html`](docs/flows/issue-work.html).
+  no second store of module membership.
 - **A project's four module diagrams — mindmap, context, user flow and swimlane — are now generated
   from its module taxonomy instead of drawn by hand.** `GET /api/projects/:id/module-diagrams/:kind`
   computes the Mermaid inside the request from the `kind='module'` labels and the knowledge nodes
@@ -3059,6 +3058,10 @@
   set is now 59.
 
 ### Fixed
+
+- **A published release entry can be corrected.** An edit keeping over half its words reads as
+  that entry, not as a deletion plus a new one, so a dead link can be fixed. It may not grow the
+  entry.
 
 - **A project can be asked what commit its deployment is serving.** `GET /api/projects/:id/deployment`
   reads the declared probes and answers, deriving on every call. Health and identity stay apart,

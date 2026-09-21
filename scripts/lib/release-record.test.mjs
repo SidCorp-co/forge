@@ -3,6 +3,7 @@ import {
   ENTRY_WORD_BUDGET,
   judge,
   normaliseEntry,
+  pairEdits,
   parseRecord,
   wordCount,
 } from './release-record.mjs';
@@ -243,5 +244,104 @@ describe('entry-budget', () => {
       amnesty: { removals: [{ entry: long, reason: 'it is long on purpose' }] },
     });
     expect(budgetOf(verdict)).toBeDefined();
+  });
+});
+
+describe('correcting a published entry', () => {
+  const prose = (n, tag = 'w') => Array.from({ length: n }, (_, i) => `${tag}${i}`).join(' ');
+  const record = (...entries) =>
+    `# Changelog\n\n## [Unreleased]\n\n${entries.map((e) => `- ${e}\n`).join('\n')}`;
+  const budgetOf = (verdict) => (verdict.violations ?? []).find((v) => v.rule === 'entry-budget');
+  const lossOf = (verdict) => (verdict.violations ?? []).find((v) => v.rule === 'no-silent-loss');
+
+  const SHORT = 'A short entry that also shipped.';
+  const PUBLISHED = prose(120);
+  const BASE = record(PUBLISHED, SHORT);
+
+  it('reads a one-word correction to a published over-budget entry as neither a loss nor an addition', () => {
+    const corrected = PUBLISHED.replace('w60', 'w60-corrected');
+    expect(judge({ head: record(corrected, SHORT), base: BASE, amnesty: null })).toMatchObject({
+      code: 0,
+    });
+  });
+
+  it('refuses an entry that is genuinely new and over budget, naming its word count', () => {
+    const fresh = prose(80, 'n');
+    const verdict = judge({ head: record(PUBLISHED, SHORT, fresh), base: BASE, amnesty: null });
+    expect(verdict.code).toBe(1);
+    expect(budgetOf(verdict).detail).toContain('80 words');
+    expect(budgetOf(verdict).removed[0]).toContain('[80 words]');
+  });
+
+  it('refuses an edit that grows an already-over-budget entry past what it held', () => {
+    const grown = `${PUBLISHED} ${prose(10, 'x')}`;
+    const verdict = judge({ head: record(grown, SHORT), base: BASE, amnesty: null });
+    expect(verdict.code).toBe(1);
+    expect(budgetOf(verdict).removed[0]).toContain('[130 words, was 120]');
+    expect(lossOf(verdict)).toBeUndefined();
+  });
+
+  it('admits an edit that shrinks an over-budget entry without reaching the budget', () => {
+    const trimmed = prose(90);
+    expect(judge({ head: record(trimmed, SHORT), base: BASE, amnesty: null }).code).toBe(0);
+  });
+
+  it('holds the plain budget over an edit to an entry that was under it', () => {
+    const was = prose(38, 's');
+    const verdict = judge({
+      head: record(`${was} ${prose(5, 'x')}`),
+      base: record(was),
+      amnesty: null,
+    });
+    expect(budgetOf(verdict).removed[0]).toContain('[43 words]');
+    expect(budgetOf(verdict).removed[0]).not.toContain('was');
+  });
+
+  it('still raises no-silent-loss for a genuine deletion made beside an addition', () => {
+    const verdict = judge({ head: record(SHORT, prose(20, 'z')), base: BASE, amnesty: null });
+    expect(verdict.code).toBe(1);
+    expect(lossOf(verdict).removed).toEqual([PUBLISHED]);
+  });
+
+  it('still lets that deletion through on its amnesty row, and on nothing else', () => {
+    const head = record(SHORT, prose(20, 'z'));
+    const removals = [{ entry: PUBLISHED, reason: 'withdrawn, and here is why' }];
+    expect(judge({ head, base: BASE, amnesty: { removals } }).code).toBe(0);
+  });
+
+  it('does not pair at exactly half: the threshold is MORE than half the longer entry', () => {
+    const half = `${prose(60)} ${prose(60, 'q')}`;
+    const verdict = judge({ head: record(half, SHORT), base: BASE, amnesty: null });
+    expect(verdict.violations.map((v) => v.rule).sort()).toEqual([
+      'entry-budget',
+      'no-silent-loss',
+    ]);
+  });
+
+  it('pairs one removed entry with at most one added one, so a split pays the budget for its other half', () => {
+    const head = record(prose(100), prose(80), SHORT);
+    const verdict = judge({ head, base: BASE, amnesty: null });
+    expect(lossOf(verdict)).toBeUndefined();
+    expect(budgetOf(verdict).removed).toHaveLength(1);
+    expect(budgetOf(verdict).removed[0]).toContain('[80 words]');
+  });
+});
+
+describe('pairEdits', () => {
+  const prose = (n, tag) => Array.from({ length: n }, (_, i) => `${tag}${i}`).join(' ');
+
+  it('pairs an entry with its own corrected text', () => {
+    const before = prose(60, 'w');
+    const after = before.replace('w30', 'w30-corrected');
+    expect(pairEdits([before], [after]).get(after)).toBe(before);
+  });
+
+  it('leaves two genuinely different entries unpaired, whatever else the change did', () => {
+    expect(pairEdits([prose(80, 'a')], [prose(80, 'b')]).size).toBe(0);
+  });
+
+  it('pairs nothing when the change only removed, or only added', () => {
+    expect(pairEdits([prose(60, 'w')], []).size).toBe(0);
+    expect(pairEdits([], [prose(60, 'w')]).size).toBe(0);
   });
 });

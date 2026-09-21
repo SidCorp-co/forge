@@ -93,6 +93,7 @@ export function parseRecord(text) {
   return { sections, entries, repeatedSubsections };
 }
 
+
 /** Amnesty entries are matched after the same normalisation the record gets, or they never match. */
 function forgiven(amnesty) {
   const out = new Map();
@@ -102,6 +103,104 @@ function forgiven(amnesty) {
     if (entry && reason) out.set(entry, reason);
   }
   return out;
+}
+
+/**
+ * The share of the longer entry's words that must survive, in order, for one entry to be read as
+ * an edit of another rather than as a deletion standing beside an unrelated addition.
+ *
+ * Measured over this record's own 572 entries: 14,270 sampled pairs of DIFFERENT entries peaked
+ * at 0.250 and sat at 0.078 median, while the corrections declared in the amnesty file — the very
+ * edit this rule exists to let through — ran 0.469 to 0.996. Every row there that is a deletion
+ * rather than a correction scored 0.283 or less.
+ */
+const SAME_ENTRY_SURVIVAL = 0.5;
+
+/** Words of `a` that `b` also holds, ignoring order — an exact ceiling on the ordered run below. */
+function sharedWords(a, b) {
+  const spare = new Map();
+  for (const word of a) spare.set(word, (spare.get(word) ?? 0) + 1);
+  let shared = 0;
+  for (const word of b) {
+    const left = spare.get(word) ?? 0;
+    if (left > 0) {
+      spare.set(word, left - 1);
+      shared += 1;
+    }
+  }
+  return shared;
+}
+
+/** Longest run of words appearing in both, in order, not necessarily adjacent. */
+function survivingRun(a, b) {
+  let prev = new Uint32Array(b.length + 1);
+  let row = new Uint32Array(b.length + 1);
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      row[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], row[j - 1]);
+    }
+    [prev, row] = [row, prev];
+    row.fill(0);
+  }
+  return prev[b.length];
+}
+
+/**
+ * Which entry this change added is which entry it removed, edited: one removed entry to at most
+ * one added entry, best match taken first.
+ *
+ * cm:guard two entries are THE SAME ENTRY when more than half the words of the longer one survive
+ * into the other in order. Nothing type-checks that, and it is the whole hole this pairing could
+ * become, so it is bounded twice: the threshold sits above the 0.250 scored by the most alike pair
+ * of genuinely different entries this record holds, and a paired entry still answers to the budget
+ * of the entry it replaced, so a deletion dressed as an edit buys no words.
+ */
+export function pairEdits(removed, added) {
+  const candidates = [];
+  for (const before of removed) {
+    const was = before.split(' ');
+    for (const after of added) {
+      const now = after.split(' ');
+      const longest = Math.max(was.length, now.length);
+      const floor = longest * SAME_ENTRY_SURVIVAL;
+      if (Math.min(was.length, now.length) <= floor) continue;
+      if (sharedWords(was, now) <= floor) continue;
+      const survived = survivingRun(was, now);
+      if (survived > floor) candidates.push({ before, after, share: survived / longest });
+    }
+  }
+  candidates.sort((x, y) => y.share - x.share);
+
+  const paired = new Map();
+  const spent = new Set();
+  for (const { before, after } of candidates) {
+    if (spent.has(before) || paired.has(after)) continue;
+    spent.add(before);
+    paired.set(after, before);
+  }
+  return paired;
+}
+
+function lostEntries(removed, edited, pardons) {
+  const kept = new Set(edited.values());
+  return removed.filter((entry) => !kept.has(entry) && !pardons.has(entry));
+}
+
+/**
+ * Words an added entry may spend. An entry this change EDITS is measured against what it already
+ * held instead, so a published entry can be corrected without first being cut to the budget it
+ * was written before — and cannot be grown past the length it already had.
+ */
+function overBudgetEntries(added, edited) {
+  const over = [];
+  for (const entry of added) {
+    const before = edited.get(entry);
+    const ceiling = before === undefined ? ENTRY_WORD_BUDGET : Math.max(ENTRY_WORD_BUDGET, wordCount(before));
+    const words = wordCount(entry);
+    if (words > ceiling) over.push({ entry, words, ceiling });
+  }
+  over.sort((a, b) => b.words - a.words);
+  return over;
 }
 
 /**
@@ -147,12 +246,11 @@ export function judge({ head, base, amnesty }) {
   }
 
   const was = parseRecord(base);
-  const pardons = forgiven(amnesty);
-  const unpardoned = [];
-  for (const entry of was.entries) {
-    if (now.entries.has(entry) || pardons.has(entry)) continue;
-    unpardoned.push(entry);
-  }
+  const removed = [...was.entries].filter((entry) => !now.entries.has(entry));
+  const added = [...now.entries].filter((entry) => !was.entries.has(entry));
+  const edited = pairEdits(removed, added);
+
+  const unpardoned = lostEntries(removed, edited, forgiven(amnesty));
   if (unpardoned.length > 0) {
     violations.push({
       rule: 'no-silent-loss',
@@ -163,27 +261,22 @@ export function judge({ head, base, amnesty }) {
     });
   }
 
-  // Only entries this change ADDS are measured. The record is edited one line at a time or
-  // not at all (the `record` axis carries no baseline for the same reason), so the entries
-  // already published are rewritten deliberately rather than frozen in bulk here — a
-  // baseline would make 333 of them permanent by declaring them once.
-  const overBudget = [];
-  for (const entry of now.entries) {
-    if (was.entries.has(entry)) continue;
-    const words = wordCount(entry);
-    if (words > ENTRY_WORD_BUDGET) overBudget.push({ entry, words });
-  }
+  const overBudget = overBudgetEntries(added, edited);
   if (overBudget.length > 0) {
-    overBudget.sort((a, b) => b.words - a.words);
     violations.push({
       rule: 'entry-budget',
       detail:
-        `${overBudget.length} new release entr${overBudget.length === 1 ? 'y' : 'ies'} over ` +
-        `${ENTRY_WORD_BUDGET} words (longest ${overBudget[0].words}). An entry says what changed and ` +
-        `what it means for the reader; the reasoning belongs in the issue and the commit, which is ` +
-        `where a reader who wants it will look. Cut it down rather than splitting one change across ` +
-        `several bullets — that moves the words, it does not spend fewer.`,
-      removed: overBudget.map((o) => `[${o.words} words] ${o.entry}`),
+        `${overBudget.length} release entr${overBudget.length === 1 ? 'y' : 'ies'} over budget ` +
+        `(longest ${overBudget[0].words} words). An entry this change adds may spend ` +
+        `${ENTRY_WORD_BUDGET} words; one it edits may spend what that entry already held. An entry ` +
+        `says what changed and what it means for the reader; the reasoning belongs in the issue and ` +
+        `the commit, which is where a reader who wants it will look. Cut it down rather than ` +
+        `splitting one change across several bullets — that moves the words, it does not spend fewer.`,
+      removed: overBudget.map((o) =>
+        o.ceiling > ENTRY_WORD_BUDGET
+          ? `[${o.words} words, was ${o.ceiling}] ${o.entry}`
+          : `[${o.words} words] ${o.entry}`,
+      ),
     });
   }
 

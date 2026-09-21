@@ -57,8 +57,9 @@ function report(verdict) {
   const rules = new Set((verdict.violations ?? []).map((v) => v.rule));
   if (rules.has('no-silent-loss')) {
     console.error(
-      `\nAn entry in ${RECORD} is a line someone published about what shipped. Restore what went\n` +
-        `missing, or — if a removal is deliberate — declare it in ${AMNESTY} as\n` +
+      `\nAn entry in ${RECORD} is a line someone published about what shipped. An edit to one is\n` +
+        `read as an edit and is not listed here, so what is listed kept less than half its words or\n` +
+        `is simply gone. Restore it, or — if a removal is deliberate — declare it in ${AMNESTY} as\n` +
         `{"removals": [{"entry": "<the entry, verbatim>", "reason": "<why it goes>"}]} so the\n` +
         `trade-off is visible in the diff rather than only in the deletion.`,
     );
@@ -67,10 +68,13 @@ function report(verdict) {
   // let you declare your way past the budget would be the budget's off switch.
   if (rules.has('entry-budget')) {
     console.error(
-      `\nThe budget is ${ENTRY_WORD_BUDGET} words per entry and it applies only to entries this change\n` +
-        `adds — nothing already published turns this red. There is no amnesty for it: rewrite the\n` +
-        `entry. Say what changed and what it means for the reader; leave the reasoning in the issue\n` +
-        `and the commit message, where it is not competing with every other release for attention.`,
+      `\nThe budget is ${ENTRY_WORD_BUDGET} words for an entry this change adds. An entry it EDITS —\n` +
+        `one more than half of whose words survive into its replacement — is measured against what\n` +
+        `that entry already held instead, so a published entry can be corrected at the length it has\n` +
+        `but never grown past it; a rewrite keeping less than that is a new entry and pays the ${ENTRY_WORD_BUDGET}.\n` +
+        `An entry left alone turns this red under no circumstance. There is no amnesty for it:\n` +
+        `rewrite the entry. Say what changed and what it means for the reader; leave the reasoning in\n` +
+        `the issue and the commit message, where it is not competing with every other release.`,
     );
   }
 }
