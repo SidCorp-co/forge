@@ -2,7 +2,12 @@ import type { JobStatus } from '../db/schema.js';
 
 /**
  * The named answers about `jobStatuses`. One question has one answer: a caller
- * asks by importing the name, never by writing the tuple again.
+ * asks by importing the name, never by writing the tuple again and never by
+ * classifying the vocabulary a second time in its own module.
+ *
+ * `status-sets.test.ts` holds the four to a partition of `jobStatuses`, so a
+ * status added to the schema and to none of them goes red there rather than
+ * quietly dropping out of every count that reads these names.
  */
 
 /** The job is not over: it holds a runner slot, waits for one, or waits for a person. */
@@ -12,7 +17,7 @@ export const LIVE_JOB_STATUSES: readonly JobStatus[] = ['queued', 'dispatched', 
  * status-tuple: differs — `held` is a job waiting on a person, not on a runner,
  * so a reader counting work the pipeline is moving must exclude it while a
  * reader counting occupied slots must not. Merging this into
- * {@link LIVE_JOB_STATUSES} would add `held` to three call sites that exclude
+ * {@link LIVE_JOB_STATUSES} would add `held` to four call sites that exclude
  * it today, which is a change of behaviour rather than of spelling.
  */
 export const UNHELD_LIVE_JOB_STATUSES: readonly JobStatus[] = ['queued', 'dispatched', 'running'];
