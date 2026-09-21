@@ -234,6 +234,39 @@ pub(crate) fn lease_path(project_id: Option<&str>, issue_key: &str) -> String {
     }
 }
 
+/// Core's codes for a key under which no lease of any box can stand.
+///
+/// A lease call carries the key the pool handed the box, and core resolves it
+/// against the project whose prefix it names. Two of its refusals settle the
+/// key itself: a shape that is no issue reference, which the store keys nothing
+/// by, and a prefix no project answers to — the state a deleted project leaves,
+/// where `issue_prefix_aliases` keeps the row with a null project and the
+/// cascade on `issue_leases.project_id` has already taken every lease that
+/// project held. No lease could have opened under either shape in the first
+/// place — `openRunSession` parses every key against the prefixes its project
+/// holds and refuses the open otherwise — so `not held` is the fact. An error
+/// in its place is a refusal the box cannot clear, and the loop marks returned only
+/// on `Ok(true)`, so the run keeps its master waiting for ever (ISS-1139).
+///
+/// `ISSUE_LEASE_KEY_PROJECT_MISMATCH` is not one of them: the two identities in
+/// that request disagree and a lease may stand under either, so `not held`
+/// there is a guess wearing the shape of a fact.
+const NO_LEASE_STANDS_UNDER_KEY: [&str; 2] =
+    ["ISSUE_LEASE_KEY_SHAPE", "ISSUE_LEASE_KEY_UNKNOWN_PREFIX"];
+
+/// The code core named, where it is one of those two.
+///
+/// Read by code and never by status: a bare `404` from a core that does not
+/// serve this route says nothing about any lease, and reading that as `not
+/// held` marks a lease returned while it is still standing.
+fn no_lease_stands_under_key(body: &str) -> Option<&'static str> {
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    let code = parsed.get("code")?.as_str()?;
+    NO_LEASE_STANDS_UNDER_KEY
+        .into_iter()
+        .find(|known| *known == code)
+}
+
 pub async fn lease_state(
     client: &CoreClient,
     project_id: Option<&str>,
@@ -253,6 +286,15 @@ pub async fn lease_state(
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
+        if let Some(code) = no_lease_stands_under_key(&text) {
+            tracing::warn!(
+                "[lease] read {issue_key}: core answers {code}; no lease stands under that key, so this box holds none"
+            );
+            return Ok(LeaseState {
+                held: false,
+                held_by_this_device: false,
+            });
+        }
         return Err(Error::Other(format!("issue-lease read: {status}: {text}")));
     }
     let parsed: LeaseState = resp
@@ -295,8 +337,13 @@ pub async fn release_lease(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::fake_core;
 
     const RECOVERY_PORTS: &str = include_str!("../daemon/recovery_ports.rs");
+
+    fn client(url: String) -> CoreClient {
+        CoreClient::new(url, String::from("tok"))
+    }
 
     #[test]
     fn a_lease_carries_the_fleet_answer_and_this_box_answer_separately() {
@@ -337,6 +384,81 @@ mod tests {
 
         assert!(!state.held);
         assert!(!state.held_by_this_device);
+    }
+
+    /// ISS-1139 — a key core resolves to no project must not wedge the close loop.
+    ///
+    /// A project is hard-deleted, its prefix stays spent, and core answers the
+    /// read `404 ISSUE_LEASE_KEY_UNKNOWN_PREFIX` for as long as that row
+    /// stands — which is for ever. Turning it into an `Err` leaves
+    /// `is_returned` unanswerable, `CloseState::is_closed` false and the master
+    /// waiting on a run that can never close. No lease survives the cascade on
+    /// `issue_leases.project_id`, so `held: false` is the fact and not a
+    /// softened refusal.
+    #[tokio::test]
+    async fn a_key_that_reaches_no_project_reads_as_no_lease() {
+        let url = fake_core::serve_always("404 Not Found", fake_core::UNKNOWN_PREFIX).await;
+
+        let state = lease_state(&client(url), Some("proj-1"), "FD-880")
+            .await
+            .expect("a key core resolves to no project reaches no lease, which answers the read");
+
+        assert!(
+            !state.held_by_this_device,
+            "the close loop marks a lease returned only on Ok(true), so an Err here is a run that never closes"
+        );
+        assert!(!state.held);
+    }
+
+    #[tokio::test]
+    async fn a_key_core_cannot_parse_reads_as_no_lease() {
+        let url = fake_core::serve_always("400 Bad Request", fake_core::KEY_SHAPE).await;
+
+        let state = lease_state(&client(url), Some("proj-1"), "ISS-x")
+            .await
+            .expect("the store keys every lease by a canonical reference, so a key that is none reaches nothing");
+
+        assert!(!state.held_by_this_device);
+    }
+
+    #[tokio::test]
+    async fn a_404_that_is_not_about_the_key_is_still_an_error() {
+        let url = fake_core::serve_always("404 Not Found", fake_core::ROUTE_ABSENT).await;
+
+        lease_state(&client(url), Some("proj-1"), "ISS-880")
+            .await
+            .expect_err(
+                "a route core does not serve says nothing about any lease, and reading it as `not held` marks one returned that is still standing",
+            );
+    }
+
+    #[tokio::test]
+    async fn a_key_naming_two_projects_at_once_is_still_an_error() {
+        let url = fake_core::serve_always("400 Bad Request", fake_core::PROJECT_MISMATCH).await;
+
+        lease_state(&client(url), Some("p-1"), "FD-880")
+            .await
+            .expect_err(
+                "the two identities disagree and a lease may stand under either, so `held: false` would be a guess dressed as a fact",
+            );
+    }
+
+    /// ISS-1139 — a release core could not narrow carries its way out.
+    ///
+    /// The close loop logs what this error says, so the sentence naming
+    /// `?projectId=` is the whole of what an operator has to act on.
+    #[tokio::test]
+    async fn a_release_core_could_not_narrow_names_the_way_out_in_its_error() {
+        let url = fake_core::serve_always("409 Conflict", fake_core::AMBIGUOUS).await;
+
+        let err = release_lease(&client(url), None, "ISS-880")
+            .await
+            .expect_err("a box holding one key in two projects gave nothing back");
+
+        assert!(
+            format!("{err}").contains("projectId"),
+            "an error that drops the way out leaves the operator a run that will not close and no act to take: {err}"
+        );
     }
 
     #[test]

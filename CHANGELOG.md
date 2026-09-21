@@ -3095,6 +3095,12 @@
   project labels them — `FD-880` — reached no record and were told "done". Either form works now,
   and a hand-back that matched nothing says so.
 
+- **A machine finishing work in a project you deleted no longer hangs.** It asked about the issue
+  under a label nothing answers to, and waited for ever. It now records the hand-back and moves on.
+
+- **A hand-back a machine cannot complete now says why.** Where the same issue number is live in
+  two of your projects, the machine has to name which one, and that sentence now reaches its log.
+
 - **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
   claim the database refuses, and the machine that loses is told which one holds it and since when.
 
