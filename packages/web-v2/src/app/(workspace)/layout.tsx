@@ -353,7 +353,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onWhatsNew={() => router.push("/whats-new")}
             whatsNewBadge={whatsNewUnseen ? 1 : 0}
             onDocs={() => router.push("/docs")}
-            version={<ForgeVersion className="text-11 leading-tight" />}
+            version={<ForgeVersion className="text-9-5 leading-tight" />}
           />
         ) : (
           <>

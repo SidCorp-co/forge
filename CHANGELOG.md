@@ -3068,10 +3068,14 @@
   reachable by no scrolling.
 
 - **The sidebar's icon list scrolls now; the row under it stays put.** At any window height the
-  account menu and the version sit at the bottom of the sidebar. The version reads a size larger.
+  account menu and the version sit at the bottom of the sidebar.
 
 - **A deployment that answers without naming a version now says so.** It used to read
   `Forge vundefined`, which looks like a version and is not one.
+
+- **Text that asked for a size now renders at it.** Fifteen places — sidebar labels, menu rows,
+  tabs, the segmented control, keyboard hints — fell back to the body size, which is why sidebar
+  labels ran past the sidebar's edge.
 
 - **A project can be asked what commit its deployment is serving.** `GET /api/projects/:id/deployment`
   reads the declared probes and answers, deriving on every call. Health and identity stay apart,
