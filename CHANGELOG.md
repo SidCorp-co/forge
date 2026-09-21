@@ -3066,9 +3066,9 @@
   tool stored it and called it written, or answered with the database's insert statement. An id in
   upper case is accepted, not refused as nothing.
 
-- **A published release entry can be corrected.** An edit keeping over half its words reads as
-  that entry, not a deletion plus a new one, so a dead link can be fixed without cutting the
-  entry to the 40-word budget.
+- **A published release entry can be corrected.** An edit of a few words reads as that entry, not
+  a deletion plus a new one, so a dead link can be fixed without cutting the entry to the 40-word
+  budget.
 
 - **Forge's version is on screen in the narrow sidebar you get by default.** That sidebar ran
   taller than the window, so the row under it — version, account menu, Docs — sat below the fold,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CORRECTION_SPAN,
   ENTRY_WORD_BUDGET,
   judge,
   normaliseEntry,
@@ -31,6 +32,7 @@ Style prose that is not an entry.
 `;
 
 const entriesOf = (text) => [...parseRecord(text).entries];
+const lossOfRule = (verdict) => (verdict.violations ?? []).find((v) => v.rule === 'no-silent-loss');
 
 describe('parseRecord', () => {
   it('reads one entry per bullet, joining the lines a hard wrap split', () => {
@@ -282,8 +284,14 @@ describe('correcting a published entry', () => {
   });
 
   it('admits an edit that shrinks an over-budget entry without reaching the budget', () => {
-    const trimmed = prose(90);
+    const trimmed = prose(120 - CORRECTION_SPAN);
     expect(judge({ head: record(trimmed, SHORT), base: BASE, amnesty: null }).code).toBe(0);
+  });
+
+  it('refuses a trim that takes more of the published entry than a correction may', () => {
+    const gutted = prose(120 - CORRECTION_SPAN - 1);
+    const verdict = judge({ head: record(gutted, SHORT), base: BASE, amnesty: null });
+    expect(lossOf(verdict).removed).toEqual([PUBLISHED]);
   });
 
   it.each([
@@ -343,11 +351,103 @@ describe('correcting a published entry', () => {
   });
 
   it('pairs one removed entry with at most one added one, so a split pays the budget for its other half', () => {
-    const head = record(prose(100), prose(80), SHORT);
+    const head = record(prose(112), prose(106), SHORT);
     const verdict = judge({ head, base: BASE, amnesty: null });
     expect(lossOf(verdict)).toBeUndefined();
     expect(budgetOf(verdict).removed).toHaveLength(1);
-    expect(budgetOf(verdict).removed[0]).toContain('[80 words]');
+    expect(budgetOf(verdict).removed[0]).toContain('[106 words]');
+  });
+
+  it('reads the correction this gate was built for: a long entry losing a dead link', () => {
+    const body = `**The backlog can be read by module.** ${prose(160)}`;
+    const linked = `${body} Flow: [\`docs/flows/issue-work.html\`](docs/flows/issue-work.html).`;
+    const verdict = judge({ head: record(body), base: record(linked), amnesty: null });
+    expect(verdict).toMatchObject({ code: 0 });
+  });
+});
+
+describe("a removal wearing a correction's face", () => {
+  const words = (n, tag) => Array.from({ length: n }, (_, i) => `${tag}${i}`).join(' ');
+  const record = (...entries) =>
+    `# Changelog\n\n## [Unreleased]\n\n${entries.map((e) => `- ${e}\n`).join('\n')}`;
+  const ruleset = (verdict) => (verdict.violations ?? []).map((v) => v.rule).sort();
+
+  // 61 words of background beside a 59-word claim: the background alone scores 61/120, which is
+  // over half the longer entry. Every share threshold has such an entry; an absolute span has none.
+  const BACKGROUND = words(61, 'bg');
+  const PUBLISHED = `${BACKGROUND} ${words(59, 'claim')}`;
+
+  it('refuses a published claim replaced wholesale behind surviving background prose', () => {
+    const rewritten = `${BACKGROUND} ${words(59, 'other')}`;
+    const verdict = judge({ head: record(rewritten), base: record(PUBLISHED), amnesty: null });
+    expect(ruleset(verdict)).toEqual(['entry-budget', 'no-silent-loss']);
+    expect(lossOfRule(verdict).removed).toEqual([PUBLISHED]);
+  });
+
+  it("refuses the same removal made by subtraction, with nothing put in the claim's place", () => {
+    const verdict = judge({ head: record(BACKGROUND), base: record(PUBLISHED), amnesty: null });
+    expect(lossOfRule(verdict).removed).toEqual([PUBLISHED]);
+  });
+
+  it('cannot be bought with background: the same claim swap is refused at every entry length', () => {
+    for (const padding of [40, 100, 400, 1000]) {
+      const background = words(padding, 'bg');
+      const before = `${background} ${words(30, 'claim')}`;
+      const after = `${background} ${words(30, 'other')}`;
+      expect(pairEdits([before], [after]).size).toBe(0);
+    }
+  });
+
+  it('takes a correction at the span and refuses the word past it, on either side', () => {
+    const published = words(120, 'w');
+    const trimmed = (n) => words(120 - n, 'w');
+    expect(pairEdits([published], [trimmed(CORRECTION_SPAN)]).size).toBe(1);
+    expect(pairEdits([published], [trimmed(CORRECTION_SPAN + 1)]).size).toBe(0);
+    const grown = (n) => `${published} ${words(n, 'x')}`;
+    expect(pairEdits([published], [grown(CORRECTION_SPAN)]).size).toBe(1);
+    expect(pairEdits([published], [grown(CORRECTION_SPAN + 1)]).size).toBe(0);
+  });
+
+  it('still refuses a pair at exactly half the longer entry, inside the span', () => {
+    const before = `${words(16, 'k')} ${words(16, 'a')}`;
+    const after = `${words(16, 'k')} ${words(16, 'b')}`;
+    expect(pairEdits([before], [after]).size).toBe(0);
+  });
+});
+
+describe('two corrections in one change', () => {
+  const run = (from, to, tag) =>
+    Array.from({ length: to - from }, (_, i) => `${tag}${from + i}`).join(' ');
+  const record = (...entries) =>
+    `# Changelog\n\n## [Unreleased]\n\n${entries.map((e) => `- ${e}\n`).join('\n')}`;
+
+  // A pairs with X (.77) and with Y (.73); B pairs with X (.73) and with nothing else. Taking the
+  // likeliest candidate first spends A on X and leaves B lost and Y over budget; A-Y with B-X
+  // clears every threshold and the one-to-one rule, and is the answer.
+  const A = run(0, 44, 'c');
+  const B = `${run(0, 22, 'c')} ${run(22, 34, 'b')} ${run(34, 44, 'x')}`;
+  const X = `${run(0, 34, 'c')} ${run(34, 44, 'x')}`;
+  const Y = `${run(0, 32, 'c')} ${run(32, 44, 'y')}`;
+
+  it('takes both rather than the single likeliest, so neither correction refuses the other', () => {
+    const paired = pairEdits([A, B], [X, Y]);
+    expect(paired.size).toBe(2);
+    expect(paired.get(X)).toBe(B);
+    expect(paired.get(Y)).toBe(A);
+  });
+
+  it('reports neither a loss nor an over-budget entry for the pair of them', () => {
+    expect(judge({ head: record(X, Y), base: record(A, B), amnesty: null })).toMatchObject({
+      code: 0,
+    });
+  });
+
+  it('breaks a tie between two pairings of the same size by similarity', () => {
+    const published = run(0, 60, 'c');
+    const near = `${run(0, 55, 'c')} ${run(55, 60, 'n')}`;
+    const far = `${run(0, 48, 'c')} ${run(48, 60, 'f')}`;
+    expect(pairEdits([published], [near, far]).get(near)).toBe(published);
+    expect(pairEdits([published], [far, near]).get(near)).toBe(published);
   });
 });
 

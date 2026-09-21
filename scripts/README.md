@@ -629,14 +629,42 @@ the other. No published entry could be corrected at all, which is what held `mai
 job: `CHANGELOG.md` linked `docs/flows/issue-work.html`, a directory `c74d9b3f7` deleted, and the
 only edit that would fix it was the one edit the gate refused.
 
-`pairEdits` in `lib/release-record.mjs` now matches each removed entry to at most one added entry,
-best match first. **Two entries are the same entry when more than half the words of the longer one
-survive into the other, in order.** A paired entry is neither a loss nor an addition, and it answers
-to the larger of the budget and what the entry it replaces held — so a correction may hold its
-length or shrink, and never buys words. The threshold is measured on this record: 14,270 sampled
-pairs of DIFFERENT entries peak at 0.250, while the corrections `.forge/changelog-amnesty.json`
-already declares run 0.469 to 0.996. A rewrite that keeps less pays the budget as a new entry, and
-its removal still needs the amnesty row.
+`pairEdits` in `lib/release-record.mjs` matches each removed entry to at most one added entry.
+**Two entries are the same entry when more than half the words of the longer one survive into the
+other in order, AND the change moved at most `CORRECTION_SPAN` words each way** — at most that many
+of the published entry's words gone, at most that many new ones standing where they were. A paired
+entry is neither a loss nor an addition, and it answers to the larger of the budget and what the
+entry it replaces held, so a correction never buys words. A wider change is a withdrawal and a new
+entry however much of the wording it carries over: it pays the budget as a new entry and its removal
+still needs the amnesty row.
+
+**The share alone was not enough, and no share is.** ISS-1145's first round shipped the share by
+itself, and a review of the merged head found the hole from the other side: the share of a long
+entry that survives is buyable with background prose. A 120-word entry holding 61 words of
+background beside a 59-word claim scores 61/120 with that whole claim replaced by an unrelated one
+— the removal reads as a correction, the replacement inherits the 120-word ceiling, and the record
+is rewritten under a green gate. Raising the share moves the ratio and nothing else, because an
+entry padded to any ratio has the remainder free. An absolute span cannot be padded into.
+
+Both bounds are measured on this record rather than picked. The share: 14,270 sampled pairs of
+DIFFERENT entries peak at 0.250, while the corrections `.forge/changelog-amnesty.json` already
+declares run 0.469 to 0.996. The span: over every commit that has touched `CHANGELOG.md`, the widest
+change that is plainly still the same entry moved 9 words in and 16 out (`226ddf039`), and the
+narrowest that is plainly a different claim moved 52 in and 54 out (`021b26c2a`) — which clears the
+share at 0.578, so the adversarial shape is already in this repo's own record and the span is what
+refuses it. `CORRECTION_SPAN` is 16.
+
+**The allocation takes the most pairs, not the likeliest one.** Sorting candidates by similarity and
+taking each irrevocably lets two genuine corrections in one change refuse each other: where a removed
+entry's best match is also the only match another removed entry has, the greedy answer reports one
+entry lost and the other over budget while a pairing satisfying both exists. `bestMatching` grows the
+matching along augmenting paths, so a pair already held is given up to buy two, and similarity only
+breaks ties between pairings of the same size.
+
+**What the pairing does not claim.** A change inside the span can still reverse what an entry says —
+one word can — and no rule that counts words can tell that from a typo fix. The gate bounds how much
+of the published record one change may replace without declaring it; the meaning of a narrow edit is
+the diff review's, which sees it as two lines.
 
 Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against `origin/main`
 with the `HEAD~1` fallback, because a commit pushed straight to `main` has `origin/main == HEAD` and
