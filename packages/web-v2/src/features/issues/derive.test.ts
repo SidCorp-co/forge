@@ -3,6 +3,7 @@ import {
 	REGISTRY_ISSUE_STATUSES,
 	type StatusExits,
 } from "@forge/contracts/pipeline-registry";
+import { REASON_REQUIRED_ISSUE_STATUSES } from "@forge/contracts/status-sets";
 import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
@@ -260,8 +261,16 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		];
 		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(
 			allowedTransitions(EXITS, "approved").filter(
-				(s) => s !== "reopen" && s !== "waiting" && s !== "needs_info",
+				(s) => !(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s),
 			),
+		);
+	});
+	it("omits exactly the targets the shared reason-required answer names, whatever it grows to", () => {
+		const rows = [row({ id: "a", status: "in_progress" })];
+		const all = allowedTransitions(EXITS, "in_progress");
+		const offered = bulkAllowedStatuses(EXITS, rows);
+		expect(all.filter((s) => !offered.includes(s))).toEqual(
+			all.filter((s) => (REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s)),
 		);
 	});
 	it("never offers a status that requires an authored reason", () => {

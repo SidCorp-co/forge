@@ -98,6 +98,31 @@ describe('check-status-tuples — what it deliberately does not read', () => {
   });
 });
 
+describe('check-status-tuples — how the source spells a status literal', () => {
+  it('reads a double-quoted tuple, which is how the browser package is written', () => {
+    const sites = scan('const OPEN = new Set(["closed", "dropped"]);\n', 'web.ts');
+    expect(sites.map((s) => s.name)).toEqual(['OPEN']);
+  });
+
+  it('holds one answer to one question across the two spellings', () => {
+    const { twoAnswers } = judge([
+      ...scan("export const OWNER = ['closed', 'dropped'];\n", 'core.ts'),
+      ...scan('const OPEN = new Set(["dropped", "closed"]);\n', 'web.ts'),
+    ]);
+    expect(twoAnswers).toHaveLength(1);
+    expect(twoAnswers[0].declarations.map((d) => d.name)).toEqual(['OWNER', 'OPEN']);
+  });
+
+  it('refuses a double-quoted inline copy of a tuple a constant already holds', () => {
+    const { restatements } = judge([
+      ...scan("export const OWNER = ['closed', 'dropped'];\n", 'core.ts'),
+      ...scan('rows.filter((r) => ["closed", "dropped"].includes(r.status));\n', 'web.ts'),
+    ]);
+    expect(restatements).toHaveLength(1);
+    expect(restatements[0].owner.name).toBe('OWNER');
+  });
+});
+
 describe('check-status-tuples — which vocabulary a tuple is drawn from', () => {
   it('reads the vocabulary off the text when a tuple fits more than one', () => {
     const near = 'inArray(agentSessions.status, ';

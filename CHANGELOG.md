@@ -153,6 +153,9 @@
 - **The build refuses two names for one answer.** Two constants holding the same set of statuses,
   or a status list written out where a named one already held it, went unnoticed. A check now
   names both and fails.
+- **That check now reads the web app too.** It was blind to the browser, which kept its own copy
+  of which jobs count as still running. The two share one answer now, and a test fails if they
+  drift apart.
 - **An issue's records now have a store of their own.** `POST` and `GET /api/issues/:id/attributes`
   take a typed value and the comment that asserted it, so the sentence a person reads and the
   structured row stay joined.
