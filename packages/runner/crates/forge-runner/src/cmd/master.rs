@@ -18,6 +18,8 @@
 //! the web UI sets, so the owner in ISS-1118's own story got a confident wrong
 //! answer from the surface built to stop them guessing.
 
+use std::time::Duration;
+
 use clap::{Args as ClapArgs, Subcommand};
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
@@ -376,6 +378,15 @@ fn listed(base: &std::path::Path, led: Option<&Ledger>) -> Vec<String> {
     slugs
 }
 
+/// How long `status` waits for core before answering `unknown` for it.
+///
+/// A refused connection returns at once; a core that accepts and then never
+/// answers returns never, and nothing under `list_me` sets a deadline. Without
+/// this, the one command an operator runs when the network is the problem
+/// withholds the pane and the standing — the two answers that need no network
+/// at all — for as long as the socket stays open.
+const ADMISSION_DEADLINE: Duration = Duration::from_secs(5);
+
 /// This box's runner rows as core last served them, or why they could not be
 /// read.
 ///
@@ -404,9 +415,18 @@ async fn read_admission(ctx: &Ctx) -> Admission {
     let Some(core_url) = ctx.resolve_core_url(&cfg) else {
         return Admission::Unreadable("this box has no core URL configured".into());
     };
-    match runners::list_me(&CoreClient::new(core_url, token)).await {
-        Ok(rows) => Admission::Read(rows),
-        Err(e) => Admission::Unreadable(format!("core could not be asked: {e}")),
+    let asked = tokio::time::timeout(
+        ADMISSION_DEADLINE,
+        runners::list_me(&CoreClient::new(core_url, token)),
+    )
+    .await;
+    match asked {
+        Ok(Ok(rows)) => Admission::Read(rows),
+        Ok(Err(e)) => Admission::Unreadable(format!("core could not be asked: {e}")),
+        Err(_) => Admission::Unreadable(format!(
+            "core did not answer within {}s",
+            ADMISSION_DEADLINE.as_secs()
+        )),
     }
 }
 
@@ -647,6 +667,50 @@ mod tests {
             unbound.contains("no runner"),
             "a project core serves this box no runner for gets no master either, and that is not a stand-down: {unbound}"
         );
+    }
+
+    /// F1 from the whole-set review. `status` is the command an operator runs
+    /// when the network is what is wrong, and the two answers that need no
+    /// network must not wait on the one that does.
+    #[tokio::test]
+    async fn a_core_that_accepts_and_never_answers_does_not_hold_the_local_answers() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a loopback port");
+        let addr = listener.local_addr().expect("the bound address");
+        // Accept and then hold the connection open, answering nothing. A
+        // refused connection returns at once and proves nothing about this.
+        let held = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("the request arrives");
+            tokio::time::sleep(Duration::from_secs(120)).await;
+            drop(stream);
+        });
+
+        let client = CoreClient::new(format!("http://{addr}"), "scratch-token".to_string());
+        let began = std::time::Instant::now();
+        let asked = tokio::time::timeout(ADMISSION_DEADLINE, runners::list_me(&client)).await;
+        let waited = began.elapsed();
+
+        assert!(
+            asked.is_err(),
+            "a core that never answers has to expire rather than return, or `read_admission` awaits it forever"
+        );
+        assert!(
+            waited < ADMISSION_DEADLINE + Duration::from_secs(2),
+            "the wait is bounded by the deadline and not by the socket: waited {waited:?}"
+        );
+        let said = admission_line(
+            &Admission::Unreadable(format!(
+                "core did not answer within {}s",
+                ADMISSION_DEADLINE.as_secs()
+            )),
+            "judgeproj",
+        );
+        assert!(
+            said.starts_with("unknown") && said.contains("did not answer"),
+            "and the expiry reads as an answer this box could not get, never as no impediment: {said}"
+        );
+        held.abort();
     }
 
     /// The rule the third line states IS the rule the daemon runs — the same

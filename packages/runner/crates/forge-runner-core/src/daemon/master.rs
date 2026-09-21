@@ -773,12 +773,22 @@ async fn sweep(
                 runner.slug,
                 runner.status
             );
-            masters.note_unplaced(
-                &runner.project_id,
-                Unplaced::Draining {
-                    status: runner.status.clone(),
-                },
+            // A box taking no work still meets the contradiction, and the
+            // louder reason wins the one slot this project has: `draining`
+            // explains an absent pane, never a pane that is up.
+            let read = read_standing(ledger.as_ref(), &runner.project_id);
+            let contradicted = matches!(
+                standing_verdict(masters, read, &runner.project_id, &runner.slug).await,
+                Some((Placed::Contradicted, _))
             );
+            if !contradicted {
+                masters.note_unplaced(
+                    &runner.project_id,
+                    Unplaced::Draining {
+                        status: runner.status.clone(),
+                    },
+                );
+            }
             supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
             continue;
         }
@@ -800,25 +810,13 @@ async fn sweep(
         // resident master and nothing else, which is why it sits AFTER
         // `take_pool_job`: the box goes on taking pool jobs for a project whose
         // master is stood down (ISS-1118).
-        let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
-        let standing = match read_standing(ledger.as_ref(), &runner.project_id) {
-            StandingRead::Known(s) => s,
-            StandingRead::Unreadable(detail) => {
-                say_unplaced(
-                    masters,
-                    &runner.project_id,
-                    &runner.slug,
-                    Unplaced::StandingUnreadable { detail },
-                );
-                continue;
-            }
+        let read = read_standing(ledger.as_ref(), &runner.project_id);
+        let Some((placed, standing)) =
+            standing_verdict(masters, read, &runner.project_id, &runner.slug).await
+        else {
+            continue;
         };
-        let stands = standing.as_ref().is_some_and(MasterStanding::stands);
-        // The pane is only looked for where something might contradict it: a
-        // project nobody stood down answers `Proceed` either way, and asking
-        // tmux about every project on every sweep buys that answer nothing.
-        let pane_alive = stands && terminal::alive(&pane_name).await;
-        match placement_under(standing.as_ref(), pane_alive) {
+        match placed {
             Placed::Proceed => {}
             Placed::Withheld => {
                 say_unplaced(
@@ -829,16 +827,9 @@ async fn sweep(
                 );
                 continue;
             }
-            Placed::Contradicted => {
-                say_unplaced(
-                    masters,
-                    &runner.project_id,
-                    &runner.slug,
-                    stood_down_reason(standing.as_ref(), &runner.slug, Some(&pane_name)),
-                );
-                continue;
-            }
+            Placed::Contradicted => continue,
         }
+        let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
         let lifted_interval = standing.as_ref().and_then(stood_down_interval);
 
         let admissible = admissible::admissible(client, Some(&runner.project_id))
@@ -2047,6 +2038,58 @@ fn capability_of(tokens: Option<&session_tokens::SessionTokens>, session_id: &st
         Ok(false) => Capability::Stale,
         Err(e) => Capability::Unknown(e.to_string()),
     }
+}
+
+/// The owner's veto for one project: what the ledger says, whether a pane
+/// contradicts it, and the report where one does.
+///
+/// Called from both branches of the sweep's per-project loop. A runner that
+/// takes no new work is a reason to place nothing; it is not a reason to stop
+/// looking, and a pane running against a stand-down on a `draining` box was
+/// reported by no daemon at all before this (ISS-1118 criterion 4). The read
+/// is the local ledger's, so the branch that asks core nothing still pays
+/// nothing.
+///
+/// `None` where the standing could not be read: the caller places nothing, and
+/// the reason is already recorded.
+///
+/// Takes the read rather than the ledger, because a `Ledger` held across the
+/// `terminal::alive` await below makes this future non-`Send` and the daemon
+/// spawns it.
+async fn standing_verdict(
+    masters: &Arc<Masters>,
+    read: StandingRead,
+    project_id: &str,
+    slug: &str,
+) -> Option<(Placed, Option<MasterStanding>)> {
+    let standing = match read {
+        StandingRead::Known(s) => s,
+        StandingRead::Unreadable(detail) => {
+            say_unplaced(
+                masters,
+                project_id,
+                slug,
+                Unplaced::StandingUnreadable { detail },
+            );
+            return None;
+        }
+    };
+    let stands = standing.as_ref().is_some_and(MasterStanding::stands);
+    // The pane is only looked for where something might contradict it: a
+    // project nobody stood down answers `Proceed` either way, and asking tmux
+    // about every project on every sweep buys that answer nothing.
+    let pane_name = terminal::session_name(terminal::MASTER_PREFIX, slug);
+    let pane_alive = stands && terminal::alive(&pane_name).await;
+    let placed = placement_under(standing.as_ref(), pane_alive);
+    if placed == Placed::Contradicted {
+        say_unplaced(
+            masters,
+            project_id,
+            slug,
+            stood_down_reason(standing.as_ref(), slug, Some(&pane_name)),
+        );
+    }
+    Some((placed, standing))
 }
 
 /// Say why a project got no pane, once per change of reason and at the level
@@ -5145,6 +5188,28 @@ mod stand_down_tests {
         &rest[..rest.find("\n}").expect("ensure_master must close")]
     }
 
+    /// The veto's own source. The decision moved out of `sweep` so both
+    /// branches of its loop could reach it — the one that takes work and the
+    /// one that does not.
+    fn verdict_body() -> &'static str {
+        production()
+            .split("\nasync fn standing_verdict(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .and_then(|r| r.split("\nfn ").next())
+            .expect("standing_verdict must be findable")
+    }
+
+    /// The part of the loop reached only for a runner this box takes work for,
+    /// which is where a pane may actually be placed.
+    fn admitting_branch() -> &'static str {
+        let body = sweep_body();
+        let at = body
+            .find("take_pool_job(")
+            .expect("the admitting branch still takes pool jobs");
+        &body[at..]
+    }
+
     fn stood_down() -> MasterStanding {
         MasterStanding {
             project_id: "proj-1".into(),
@@ -5224,16 +5289,12 @@ mod stand_down_tests {
     /// cannot reach core replaces the pane its owner withheld.
     #[test]
     fn the_stand_down_is_read_off_the_ledger_and_decided_before_core_is_asked_anything() {
-        let body = sweep_body();
-        let reads = body
+        let branch = admitting_branch();
+        let reads = branch
             .find("read_standing(")
-            .expect("the sweep must consult the standing");
-        let window = &body[..reads];
-        let per_project = &window[window
-            .rfind("for runner in &served {")
-            .expect("the sweep still walks this box's projects")..];
+            .expect("the admitting branch must consult the standing");
         assert!(
-            body[reads..].starts_with("read_standing(ledger.as_ref()"),
+            branch[reads..].starts_with("read_standing(ledger.as_ref()"),
             "the standing is read off the same ledger handle the sweep already reads the conversation id from, never off a field on the runner row or a fresh core call"
         );
         let reader = production()
@@ -5250,13 +5311,48 @@ mod stand_down_tests {
             "resolve_repo(",
         ] {
             assert!(
-                !per_project.contains(gating),
+                !branch[..reads].contains(gating),
                 "`{gating}` is reached before the standing is, so a project whose owner stood its master down still pays for it — and a box that cannot reach core decides nothing (ISS-1118 criterion 15)"
             );
         }
         assert!(
-            per_project.contains("take_pool_job("),
-            "`take_pool_job` is deliberately still reached first: a stand-down governs the resident master only, and the box goes on taking pool jobs for that project"
+            !verdict_body().contains("client")
+                && !verdict_body().contains("admissible::")
+                && !verdict_body().contains("master_api::"),
+            "and the veto itself asks core nothing: no network call stands between the owner's act and the pane not returning"
+        );
+        assert!(
+            sweep_body()[..sweep_body()
+                .find("take_pool_job(")
+                .expect("the sweep still takes pool jobs")]
+                .contains("standing_verdict("),
+            "the draining branch consults the veto too, or a pane running against a stand-down on a box taking no work is reported by no daemon at all (ISS-1118 criterion 4)"
+        );
+    }
+
+    /// Criterion 4, the third place the report was unreachable. A runner that
+    /// takes no new work is a reason to place nothing; it is not a reason to
+    /// stop looking at a pane that is already up.
+    #[test]
+    fn a_box_taking_no_work_still_reports_a_pane_running_against_a_stand_down() {
+        let body = sweep_body();
+        let at = body
+            .find("if !accepts_new_work(&runner.status) {")
+            .expect("the branch for a runner taking no new work must be findable");
+        let rest = &body[at..];
+        let end = rest.find("\n        }").expect("that branch must close");
+        let branch = &rest[..end];
+        assert!(
+            branch.contains("standing_verdict("),
+            "a stood-down project whose box is `draining` never reached the veto, so its contradicted pane was named nowhere: {branch}"
+        );
+        assert!(
+            branch.contains("if !contradicted {"),
+            "and the louder reason wins the one slot this project has — `draining` explains an absent pane, never a pane that is up: {branch}"
+        );
+        assert!(
+            !branch.contains("ensure_master(") && !branch.contains("nudge_master("),
+            "looking is not placing: the branch still places nothing and nudges nothing"
         );
     }
 
@@ -5277,23 +5373,28 @@ mod stand_down_tests {
     /// the loop would adopt the pane as this box's master or nudge it.
     #[test]
     fn a_pane_alive_under_a_stand_down_is_neither_adopted_nor_nudged() {
-        let body = sweep_body();
+        let body = admitting_branch();
         let at = body
-            .find("Placed::Contradicted => {")
-            .expect("the contradicted branch must be findable");
+            .find("Placed::Contradicted =>")
+            .expect("the contradicted arm must be findable");
         let rest = &body[at..];
-        let end = rest.find("\n            }").expect("the branch must close");
+        let end = rest.find("\n        }").expect("the match must close");
         let branch = &rest[..end];
         assert!(
-            branch.contains("continue;"),
-            "the branch has to leave the iteration: falling through reaches `ensure_master`, which adopts a live pane as this box's master, and then the nudge: {branch}"
+            branch.contains("continue"),
+            "the arm has to leave the iteration: falling through reaches `ensure_master`, which adopts a live pane as this box's master, and then the nudge: {branch}"
         );
         for reached in ["ensure_master(", "nudge_master(", "masters.note_work("] {
             assert!(
                 !branch.contains(reached),
-                "`{reached}` inside the contradicted branch drives a pane its owner stood down"
+                "`{reached}` inside the contradicted arm drives a pane its owner stood down"
             );
         }
+        assert!(
+            !verdict_body().contains("ensure_master(")
+                && !verdict_body().contains("nudge_master("),
+            "and the verdict that reports the contradiction places nothing and nudges nothing either"
+        );
     }
 
     /// Criterion 17. A pane this sweep started and then ended is two acts an
@@ -5443,15 +5544,24 @@ mod stand_down_tests {
 
     #[test]
     fn an_unreadable_standing_withholds_the_pane_and_says_which_it_could_not_read() {
-        let body = sweep_body();
+        let body = verdict_body();
         let at = body
             .find("StandingRead::Unreadable(detail)")
-            .expect("the sweep must handle the unreadable case by name");
+            .expect("the veto must handle the unreadable case by name");
         let branch = &body[at..at + 900.min(body.len() - at)];
         assert!(
-            branch.contains("continue;"),
-            "carrying on to `ensure_master` would place the pane an owner may have withheld"
+            branch.contains("return None;"),
+            "the verdict has to refuse rather than answer, and every caller places nothing on a refusal — carrying on to `ensure_master` would place the pane an owner may have withheld"
         );
+        for call in [
+            "standing_verdict(",
+            "else {\n            continue;\n        };",
+        ] {
+            assert!(
+                sweep_body().contains(call),
+                "and the sweep consumes that refusal by leaving the iteration: `{call}` is missing"
+            );
+        }
         assert!(
             !branch.contains("note_capability"),
             "gating this report on the registry of panes this process placed makes it unreachable on a daemon that placed none, which is every daemon that restarts (ISS-1118 criterion 4): {branch}"
