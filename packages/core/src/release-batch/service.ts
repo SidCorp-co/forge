@@ -27,7 +27,13 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
-import { cancelConcludedRun, closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import {
+  announceOneShotRun,
+  cancelConcludedRun,
+  closeRunIfOneShot,
+  insertOneShotRun,
+  type OneShotRunSpec,
+} from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import { resolveReleaseChannels, resolveReleasePlan } from './channel.js';
@@ -38,6 +44,7 @@ import {
   ReleaseBatchAbortedError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
+  ReleaseVersionMissingError,
 } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { assertMethodFor, readMethod } from './method.js';
@@ -46,6 +53,7 @@ import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
+import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
 export * from './errors.js';
 export { ReleaseBranchesUndeclaredError };
@@ -53,6 +61,11 @@ export interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
   userId: string;
+  /**
+   * The version of a FAILED release being cut again. Raises the patch digit instead of the minor;
+   * refused by name unless it names this project's highest release and that release never shipped.
+   */
+  recutOf?: string | undefined;
 }
 
 export interface CreateReleaseBatchResult {
@@ -60,6 +73,8 @@ export interface CreateReleaseBatchResult {
   jobId: string;
   issueIds: string[];
   gateStatus: IssueStatus;
+  /** The version this release cut. Its identity from the instant its row existed. */
+  version: string;
   /** When this batch must have an owner, or it is cancelled and its roster handed back. */
   ownerDeadlineAt: string;
 }
@@ -67,7 +82,7 @@ export interface CreateReleaseBatchResult {
 export async function createReleaseBatch(
   args: CreateReleaseBatchArgs,
 ): Promise<CreateReleaseBatchResult> {
-  const { projectId, issueIds, userId } = args;
+  const { projectId, issueIds, userId, recutOf } = args;
 
   // ISS-1127 — one enumerator, and this door throws its FIRST answer. Every
   // refusal keeps the class, the code and the wording it had; what is new is
@@ -99,7 +114,11 @@ export async function createReleaseBatch(
   const firstVerify = plan.channels[0]?.verify ?? null;
   const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
 
-  const run = await openOneShotRun({
+  // The row and its version in ONE transaction, and the announcement after it commits. Cutting
+  // the number after `openOneShotRun` returned would leave a window — a crash in it, and a
+  // subscriber reading the announcement during it — in which a committed release row has no
+  // identity. `insertOneShotRun` takes its executor for exactly this.
+  const runSpec: OneShotRunSpec = {
     projectId,
     kind: 'system',
     metadata: {
@@ -111,7 +130,13 @@ export async function createReleaseBatch(
       commitBefore,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
     },
+  };
+  const { run, version } = await db.transaction(async (tx) => {
+    const row = await insertOneShotRun(tx, runSpec);
+    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, recutOf });
+    return { run: row, version: cut };
   });
+  await announceOneShotRun(run.id, runSpec);
 
   const claimed = await db.execute<{ id: string }>(sql`
     UPDATE issues
@@ -203,6 +228,7 @@ export async function createReleaseBatch(
     jobId,
     issueIds,
     gateStatus,
+    version,
     ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
   };
 }
@@ -227,6 +253,7 @@ export async function finishReleaseBatch(
       projectId: pipelineRuns.projectId,
       metadata: pipelineRuns.metadata,
       status: pipelineRuns.status,
+      releaseVersion: pipelineRuns.releaseVersion,
     })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
@@ -247,6 +274,13 @@ export async function finishReleaseBatch(
   if (run?.status === 'cancelled') throw new ReleaseBatchAbortedError();
 
   if (run) {
+    // A release closes its roster claiming a ship. Without a version nothing afterwards can name
+    // WHICH release carried these issues, which is the one thing this path exists to make true, so
+    // it is refused by name rather than closed anyway. `createReleaseBatch` cuts the number inside
+    // the transaction that inserts the row, so a release row reaching here without one was not
+    // opened by it.
+    if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
+
     const [job] = await db
       .select({ payload: jobs.payload })
       .from(jobs)
@@ -305,6 +339,11 @@ export async function finishReleaseBatch(
     actorUserId: actor.type === 'user' ? actor.id : undefined,
     comment: true,
   });
+
+  // The ship, stamped on the release row itself. It is not read back off the run's status because
+  // `cancelConcludedRun` flips a `completed` run to `cancelled`, and a release that shipped and was
+  // aborted afterwards is still the one whose bytes are live.
+  await markReleaseShipped(runId);
 
   await closeRunIfOneShot(runId, 'completed');
 

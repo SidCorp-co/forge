@@ -28,8 +28,10 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
+import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { CREATE_ENTRY_STATUSES, createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
+import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
   LabelResolutionError,
@@ -39,6 +41,7 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
+import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
@@ -52,16 +55,6 @@ import {
   updateIssueFields,
 } from './update-service.js';
 
-const attachmentInputSchema = z
-  .object({
-    name: z.string().min(1).max(200),
-    mime: z.string().min(1).max(255),
-    dataBase64: z.string().min(1),
-  })
-  .strict();
-
-import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
-
 export {
   branchConfigOverrideSchema,
   branchNameSchema,
@@ -71,16 +64,6 @@ export {
 
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { ReleaseNotesSchema } from './release-notes.js';
-
-const labelAttachItemSchema = z.union([
-  z.string().trim().min(1),
-  z
-    .object({
-      labelId: z.string().trim().min(1),
-      isPrimary: z.boolean().optional(),
-    })
-    .strict(),
-]);
 
 export const issueCreateSchema = z
   .object({
@@ -415,6 +398,7 @@ export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerIssueCommentRoutes(issueRoutes);
+registerIssueAttributeRoutes(issueRoutes);
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
   const row = await findIssueById(issueId);
