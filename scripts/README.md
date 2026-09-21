@@ -46,7 +46,7 @@ passed, because the external record of what shipped belonged to none of them.
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
 | flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
-| record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
+| record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
 | comment | `check-comment-budget` — `conformance` | what a comment SAYS: density against the code around it, the length of one run, historical narration, and one comment restating another — the four rules `eslint.config.mjs` enables out of `.forge/code-quality`, frozen per (file, rule) | file or function LENGTH, which biome owns at 500/150; and the other halves of `pnpm lint:code-quality` — raw elements, pass-through wrappers, crowded directories, the design-token sweep — which belong to axes nobody has declared |
 
 ### Why `core` lint prints every diagnostic
@@ -606,19 +606,37 @@ message never named the file. Twelve gates ran on it and every one passed. The i
 feed parses this file (`packages/web-v2/src/lib/changelog.ts`) and renders an empty list when it
 finds no `## [` heading, so it went blank for every signed-in user without throwing.
 
-Two rules:
+Three rules:
 
 | | Fails when |
 |---|---|
-| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it |
-| `no-silent-loss` | an entry present at the base revision is absent at HEAD and nothing declares the removal |
+| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice |
+| `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
+| `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held |
 
 Entries are compared as a **set of whitespace-normalised bullet texts, position-independent**. That
 is what lets `forge-cut-release` promote `## [Unreleased]` to `## [X.Y.Z]` and open a fresh one — a
 release cut moves every entry under a new heading without losing one, and a positional comparison
 would turn the next release red. Normalising whitespace is what stops a hard-wrap reflow reading as
-30 deletions. Nothing further is normalised: case and punctuation are how you tell a reword from the
-same entry.
+30 deletions.
+
+### A correction is an edit, not a deletion and a new entry
+
+Until ISS-1145 an entry was kept by the byte identity of its whole normalised text, so changing one
+word inside a 172-word entry was one removal plus one 172-word addition — `no-silent-loss` and
+`entry-budget` refusing the same bytes in opposite directions, with an amnesty for one and none for
+the other. No published entry could be corrected at all, which is what held `main` red on the `docs`
+job: `CHANGELOG.md` linked `docs/flows/issue-work.html`, a directory `c74d9b3f7` deleted, and the
+only edit that would fix it was the one edit the gate refused.
+
+`pairEdits` in `lib/release-record.mjs` now matches each removed entry to at most one added entry,
+best match first. **Two entries are the same entry when more than half the words of the longer one
+survive into the other, in order.** A paired entry is neither a loss nor an addition, and it answers
+to the larger of the budget and what the entry it replaces held — so a correction may hold its
+length or shrink, and never buys words. The threshold is measured on this record: 14,270 sampled
+pairs of DIFFERENT entries peak at 0.250, while the corrections `.forge/changelog-amnesty.json`
+already declares run 0.469 to 0.996. A rewrite that keeps less pays the budget as a new entry, and
+its removal still needs the amnesty row.
 
 Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against `origin/main`
 with the `HEAD~1` fallback, because a commit pushed straight to `main` has `origin/main == HEAD` and
@@ -628,9 +646,11 @@ why `lang-check` carries `fetch-depth: 0`.
 ### Removing an entry is legal, and it is declared
 
 `.forge/changelog-amnesty.json` holds one `{entry, reason}` per removal, the entry verbatim and the
-reason non-empty. That file is the ledger of every edit made to an already-published record: a
-correction is fine, a correction nobody can see is not. It is not a bulk baseline and there is no
-`--update-baseline` — a public record is edited one line at a time or not at all.
+reason non-empty. It is the ledger of every entry that LEFT the record — a removal is fine, a
+removal nobody can see is not. Its rows written before ISS-1145 are mostly corrections rather than
+removals, because a correction was the only shape the gate could not tell from one. It is not a bulk
+baseline and there is no `--update-baseline` — a public record is edited one line at a time or not
+at all, and `entry-budget` has no amnesty at all.
 
 ```bash
 node scripts/check-release-record.mjs      # 0 the record holds · 1 it was broken · 2 could not run
