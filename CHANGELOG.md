@@ -3182,6 +3182,14 @@
   issue is released when its blocker is marked merged. What releases it is the blocker reaching
   built work.
 
+- **The column headed Status now shows the status.** It showed one of nine lane words, and seven
+  statuses share "Running": a release deploying to production read the same as an issue nobody had
+  started. The lanes still run the board.
+
+- **The column beside it is now headed "Updated", not "Waiting".** It counts from the last write to
+  the issue's record, which an agent claiming it resets and a comment does not touch. Hovering says
+  so.
+
 - **Six background checks that got slower as the tables grew now answer at a steady speed.** Each
   read a whole table to find a handful of rows. Same answers, with the shortcuts to reach them.
 

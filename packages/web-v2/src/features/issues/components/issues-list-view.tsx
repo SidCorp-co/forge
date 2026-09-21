@@ -671,7 +671,7 @@ export function IssuesListView({
                         <TH>Issue</TH>
                         <TH>Module</TH>
                         <TH>Status</TH>
-                        <TH>Waiting</TH>
+                        <TH>Updated</TH>
                         <TH>Priority</TH>
                         <TH>Complexity</TH>
                         <TH className="text-right">Cost</TH>

@@ -107,13 +107,11 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 	xl: "XL",
 };
 
+/** The issue's own status, written out: one word per kernel status, all 17 distinct. Every surface that REPORTS a status takes this one. */
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
 
-/**
- * Label an issue the way its project reads. `mode` is
- * `agentConfig.pipelineConfig.mode`; anything but `autonomous` is unchanged.
- */
-export const statusLabelFor = (s: IssueStatus): string =>
+/** The nine-bucket LANE word, for the board's column heads, the tabs, the grouping and the status-move menus. Lossy, so never for a surface that reports the status. */
+export const laneLabel = (s: IssueStatus): string =>
 	LABEL_VIEW[toAutonomousLabel(s)]?.label ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;

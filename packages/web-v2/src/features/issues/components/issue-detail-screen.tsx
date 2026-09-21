@@ -46,7 +46,7 @@ import {
   deriveStepOutcomes,
   runningStepOf,
   parseChecklist,
-  statusLabelFor,
+  statusLabel,
   statusToChip,
 } from "../derive";
 import { deriveQueuedStep } from "../waiting";
@@ -308,7 +308,7 @@ export function IssueDetailScreen({
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             {
         }
-        <StatusChip status={statusToChip(issue.status)} label={statusLabelFor(issue.status)} />
+        <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
             {runChip && (
               <StatusChip
                 status={runChip}

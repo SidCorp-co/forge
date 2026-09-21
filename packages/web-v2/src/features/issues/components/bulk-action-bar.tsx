@@ -18,7 +18,7 @@ import { useId, useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
 import { bulkAllowedStatuses, priorityLabel, transitionLabels } from "../derive";
 import { agentHoldsSelection, heldInSelection } from "../edit-lock";
-import { useStatusLabeller } from "../vocabulary";
+import { useLaneLabeller } from "../vocabulary";
 import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
@@ -77,7 +77,7 @@ export function BulkActionBar({
   onCleared: () => void;
 }) {
   const bulk = useBulkUpdateIssues();
-  const statusLabel = useStatusLabeller();
+  const laneLabel = useLaneLabeller();
   const { exits, isPending: exitsPending, isError: exitsFailed } = useStatusExits();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const statusReasonId = useId();
@@ -99,7 +99,7 @@ export function BulkActionBar({
   const run = (update: BulkUpdate) =>
     bulk.mutate({ ids, update }, { onSuccess: onCleared });
 
-  const statusNames = transitionLabels(statusTargets, statusLabel);
+  const statusNames = transitionLabels(statusTargets, laneLabel);
   const statusItems: MenuItem[] = statusTargets.map((s, i) => ({
     label: statusNames[i],
     onSelect: () => run({ kind: "status", toStatus: s }),

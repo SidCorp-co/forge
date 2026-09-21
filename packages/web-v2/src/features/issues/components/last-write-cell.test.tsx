@@ -7,29 +7,24 @@
 // two facts the rendered colour actually rests on, each of which can go red on
 // its own: the span asks for the mark by a class the cascade lets through, and
 // that class is declared where it outranks `.fg-caption`.
-//
-// What shipped and failed: `font-semibold text-[color:var(--amber-600)]`
-// spelled on the same span as `fg-caption`. `.fg-caption` is unlayered, every
-// Tailwind utility lives in `@layer utilities`, and an unlayered rule beats a
-// layered one whatever its specificity — so on beta at d0389485c a row that had
-// not moved in 2d computed to rgb(118,125,138) at weight 500, identical to the
-// row above it that moved 2h ago.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { WaitingCell } from "./issue-table-row";
+import { statusLabel } from "../derive";
+import { ISSUE_STATUSES } from "../types";
+import { LastWriteCell } from "./issue-table-row";
 
 expect.extend(matchers);
 
 afterEach(cleanup);
 
 const classesOf = (waited: { label: string; stale: boolean } | null) => {
-  const { container } = render(<WaitingCell waited={waited} />);
+  const { container } = render(<LastWriteCell written={waited} />);
   const span = container.querySelector("span");
-  if (!span) throw new Error("WaitingCell rendered no span");
+  if (!span) throw new Error("LastWriteCell rendered no span");
   return span.className.split(/\s+/).filter(Boolean);
 };
 
@@ -53,8 +48,71 @@ describe("the stale mark reaches the cascade", () => {
   });
 
   it("renders a dash for a settled row rather than a figure or a zero", () => {
-    const { container } = render(<WaitingCell waited={null} />);
+    const { container } = render(<LastWriteCell written={null} />);
     expect(container.textContent).toBe("—");
+  });
+});
+
+// ISS-1097 — the column said "Waiting" over a figure that is not a wait, and titled itself
+// "No movement in 2d" / "Last moved 2h ago" over a figure that is neither. `issues.updated_at` is
+// reset by an agent's claim or lease renewal, in which no field of the issue changes, and is not
+// moved at all by a comment. So the copy has to name the measurement AND both surprises: a reader
+// who is told only "last updated" still reads the reset as movement.
+describe("the column says what it measures", () => {
+  const titleOf = (stale: boolean) => {
+    const { container } = render(<LastWriteCell written={{ label: "2d", stale }} />);
+    return container.querySelector("span")?.getAttribute("title") ?? "";
+  };
+
+  it("names the measurement as a write to this issue, on both branches", () => {
+    for (const stale of [true, false]) {
+      expect(titleOf(stale), String(stale)).toMatch(/written to this issue|this issue was last written/i);
+    }
+  });
+
+  it("says a comment on its own does not reset it, on both branches", () => {
+    for (const stale of [true, false]) {
+      expect(titleOf(stale), String(stale)).toMatch(/comment on its own does not/i);
+    }
+  });
+
+  it("says an agent's claim or lease renewal does reset it, on both branches", () => {
+    for (const stale of [true, false]) {
+      expect(titleOf(stale), String(stale)).toMatch(/claim or lease renewal/i);
+    }
+  });
+
+  it("claims neither movement nor time-in-status, on either branch", () => {
+    for (const stale of [true, false]) {
+      const said = titleOf(stale);
+      expect(said, String(stale)).not.toMatch(/last moved|no movement|since it moved/i);
+      expect(said, String(stale)).not.toMatch(/\bwaiting\b/i);
+      expect(said, String(stale)).not.toMatch(/at this status|in this status/i);
+    }
+  });
+});
+
+describe("the column heading", () => {
+  const view = readFileSync(
+    join(import.meta.dirname, "issues-list-view.tsx"),
+    "utf8",
+  );
+  const headings = [...view.matchAll(/<TH[^>]*>([^<]+)<\/TH>/gu)].map((m) => m[1].trim());
+
+  it("is read from a file that actually has the table in it", () => {
+    expect(headings).toContain("Status");
+    expect(headings.length).toBeGreaterThan(5);
+  });
+
+  it("is no kernel status's word", () => {
+    const words = new Set(ISSUE_STATUSES.map(statusLabel));
+    const beside = headings[headings.indexOf("Status") + 1];
+    expect(beside).toBeDefined();
+    expect(words.has(beside)).toBe(false);
+  });
+
+  it("names what the figure measures", () => {
+    expect(headings[headings.indexOf("Status") + 1]).toBe("Updated");
   });
 });
 

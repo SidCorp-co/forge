@@ -6,7 +6,7 @@
 
 import { type ReactNode, useState } from "react";
 import { useToast } from "@/providers/toast-provider";
-import { useStatusLabeller } from "../vocabulary";
+import { statusLabel } from "../derive";
 import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
 import { type ReasonStatus, TransitionReasonDialog } from "./transition-reason-dialog";
@@ -38,7 +38,6 @@ export interface GuardedTransition {
 export function useGuardedTransition(): GuardedTransition {
   const transition = useTransitionIssue();
   const { toast } = useToast();
-  const statusLabel = useStatusLabeller();
   const [prompt, setPrompt] = useState<
     { id: string; status: ReasonStatus; successMessage: string; onSuccess?: () => void } | null
   >(null);
