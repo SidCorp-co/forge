@@ -2,13 +2,23 @@
  * The REST half of the agency axis.
  *
  * `PATCH /api/issues/batch` transitions, and it is reachable with a personal
- * access token (`/api/issues` is on the PAT allowlist). MCP enforces the
- * ISS-786 evidence gate on an agent because it synthesizes a device for a PAT
- * principal; REST has no device to synthesize, so before `restActor` carried
- * `agency` every PAT-held caller here was a human and the gate never ran.
+ * access token (`/api/issues` is on the PAT allowlist). The ISS-786 evidence
+ * gate runs on an agent and not on a person, so the question every case here
+ * asks is which of the two a credential names.
  *
- * The two cases are one falsification pair: same request, same issue, same
- * absent evidence — only the credential class differs.
+ * Each pair is one falsification set: same request, same issue, same absent
+ * evidence — only the credential differs. Three credentials appear, and the
+ * third is the one that moved (ISS-1137): a token a PERSON owns is that
+ * person, because `users.kind` of the account it belongs to says so. It used
+ * to reach the gate as an agent, on the reading that a token establishes
+ * nobody — which is how every issue a person filed from their own terminal
+ * was also recorded as an agent's.
+ *
+ * What that costs is real and is the point: an unattended box holding a
+ * person's PAT is no longer held to the agent gates. The remedy is the one the
+ * product already states in `issues/park-question.ts` — such a box wants an
+ * agent account or a paired device, not a person's credential — and the agent
+ * cases below are what prove the gate still bites for it.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -135,7 +145,7 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
     expect(row?.status).toBe('developed');
   });
 
-  it('refuses a token a person owns, which establishes nobody', async () => {
+  it('lets a token a person owns through, because it is that person', async () => {
     const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
       userId: user.id,
@@ -144,11 +154,11 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
     });
     const res = await advance(plaintext, issueId);
 
-    expect(JSON.stringify(await res.json())).toContain('no_work_evidence');
+    expect(JSON.stringify(await res.json())).not.toContain('no_work_evidence');
     const [row] = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
     );
-    expect(row?.status).toBe('approved');
+    expect(row?.status).toBe('developed');
   });
 });
 
@@ -187,7 +197,7 @@ describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim'
     expect(await mergedAtOf(issueId)).toBeNull();
   });
 
-  it('refuses the claim on a token a person owns', async () => {
+  it('allows the claim on a token a person owns, as it does in their session', async () => {
     const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
       userId: user.id,
@@ -196,9 +206,8 @@ describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim'
     });
     const res = await merge(plaintext, issueId, 'POST', { target: 'main' });
 
-    expect(res.status).toBe(422);
-    expect(JSON.stringify(await res.json())).toContain('NO_WORK_EVIDENCE');
-    expect(await mergedAtOf(issueId)).toBeNull();
+    expect(res.status).toBe(200);
+    expect(await mergedAtOf(issueId)).not.toBeNull();
   });
 
   it('refuses a claim that does not say where it merged', async () => {
