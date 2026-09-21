@@ -10,12 +10,6 @@
  *
  * Postgres is real because the two dropped columns, the `EXISTS` over `users` behind
  * the filter, and the attention bucket's condition are all things the DATABASE does.
- *
- * What this file replaces: it used to assert the defect as intended behaviour. Its
- * first case was titled "a person's PAT through REST files as an agent, not as its
- * owner" and asserted `creator_agency = 'agent'` for an issue a person filed on
- * their own token; another case carried the comment `// the defect`. Those
- * expectations were the guess written down, and they are what changes here.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -149,7 +143,7 @@ describe('the credential answers, and a person on their own token is a person', 
     expect(row.creatorLabel).toBe(personEmail);
   });
 
-  // Criterion 3, the other surface of the same event. The two used to disagree.
+  // Criterion 3 — the other surface of the same event, which has to agree.
   it('the activity feed reads that same issue as the person too', async () => {
     const id = await createIssueWith(await personPat(), 'one event, two surfaces');
 
@@ -240,10 +234,9 @@ describe('the stored second copies are gone', () => {
     const [listed] = await listAs(token);
     expect(listed).not.toHaveProperty('creatorAgency');
 
-    const searched = await app.request(
-      `/api/projects/${projectId}/issues/search?limit=100`,
-      { headers },
-    );
+    const searched = await app.request(`/api/projects/${projectId}/issues/search?limit=100`, {
+      headers,
+    });
     expect(searched.status).toBe(200);
     const first = ((await searched.json()) as { items: Record<string, unknown>[] }).items[0];
     expect(first).not.toHaveProperty('creatorAgency');
@@ -342,7 +335,7 @@ describe('a comment is marked by who wrote it, and screened by the same answer',
     expect(nodes[0]?.author?.isAgent).toBe(false);
   });
 
-  // Criteria 15, 11 — an agent account's comment, under its own name.
+  // Criteria 15, 11 — the comment half.
   it("marks an agent account's comment and names it", async () => {
     const agent = await agentAccount(`master-${randomUUID().slice(0, 8)}`);
     const id = await createIssueWith(agent.token, 'a run that comments');

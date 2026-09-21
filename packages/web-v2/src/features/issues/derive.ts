@@ -365,11 +365,8 @@ export function memberLabel(
 /** The creator-filter option that selects every agent's issues at once. */
 export const ANY_AGENT_LABEL = "any agent";
 
-/** ISS-756 — the ONE creator-label helper for every surface (cell, mobile
- *  card, rail, filter option, group header). A writer is a named account, so
- *  this is its name and never a class label standing in for a group of them
- *  (ISS-1137). NEVER falls back to a raw id — a creator need not be a project
- *  member (unlike `memberLabel`'s id-slice). */
+/** ISS-756 — the ONE creator-label helper for every surface. A writer is a
+ *  named account, so never a class label (ISS-1137) and never a raw id. */
 export function creatorLabelOf(
 	row: Pick<IssueRow, "creatorLabel" | "creatorEmail">,
 ): string {
@@ -411,9 +408,7 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 		groups.push({ key, label, rows: groupRowsArr });
 	}
 	if (groupBy === "creator") {
-		// Every creator gets a group of its own, agents included — an agent is
-		// an account with a name, not a class (ISS-1137). People first, then
-		// agents, each side alphabetical.
+		// An agent is an account with a name, not a class (ISS-1137).
 		const isAgentGroup = (g: IssueGroup) => g.rows[0].creatorIsAgent;
 		groups.sort((a, b) => {
 			const byKind = Number(isAgentGroup(a)) - Number(isAgentGroup(b));

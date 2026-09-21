@@ -13,13 +13,8 @@ import { getClientIp } from './rate-limit.js';
 export type PatPrincipal = {
   kind: 'pat';
   /**
-   * The `users.kind` of the account this token belongs to (ISS-1137).
-   *
-   * A credential resolves to exactly one `users` row, and that row's kind is
-   * the agency of every write made with it — there is no third answer and no
-   * "could not establish". `users.kind` and {@link ActorAgency} are the same
-   * two-value domain, so {@link verifyPat}'s `ownerKind` is carried here
-   * unchanged rather than collapsed.
+   * The `users.kind` of the account this token belongs to — the agency of every
+   * write made with it, with no third answer (ISS-1137).
    */
   agency: ActorAgency;
   agentUserId: string | null;
