@@ -5,11 +5,12 @@
 //! belongs to which project and where its transcript went, and that is the gap
 //! this fills.
 //!
-//! Three of those answers are different questions and are printed as three
+//! Four of those answers are different questions and are printed as four
 //! lines: whether a pane exists, whether this box's owner stood the project
-//! down, and whether this box's runner row for the project takes work at all.
-//! A box whose runner is online and whose pane is alive while a human drives
-//! the project is not an error, and `alive` alone cannot say it (ISS-1118).
+//! down, whether this box's runner row for the project takes work at all, and
+//! whether this box can still be heard by the pane it has. A box whose runner
+//! is online and whose pane is alive while a human drives the project is not an
+//! error, and `alive` alone cannot say it (ISS-1118).
 //!
 //! The third line is there because the second one used to answer for it. The
 //! standing line said "driving — this box places a master for <slug> whenever
@@ -17,6 +18,12 @@
 //! that is `draining` places none — which is exactly what the pool toggle in
 //! the web UI sets, so the owner in ISS-1118's own story got a confident wrong
 //! answer from the surface built to stop them guessing.
+//!
+//! The fourth is there because none of the first three can say it. A pane that
+//! is alive, on a project nobody stood down, on a runner that takes work, can
+//! still be one every declaration of which is refused — and on 2026-09-18 one
+//! was, for four hours, with a daemon log line as the only account of it
+//! (ISS-1099).
 
 use std::time::Duration;
 
@@ -26,7 +33,7 @@ use forge_runner_core::config::Config;
 use forge_runner_core::daemon::master::accepts_new_work;
 use forge_runner_core::daemon::master_exit::{self, Holding};
 use forge_runner_core::daemon::terminal;
-use forge_runner_core::runner::ledger::Ledger;
+use forge_runner_core::runner::ledger::{Ledger, MasterAuthority};
 use forge_runner_core::transport::{runners, CoreClient};
 
 use super::Ctx;
@@ -39,7 +46,8 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Whether a master pane is up, and whether this box may keep one.
+    /// Whether a master pane is up, whether this box may keep one, and whether
+    /// it can still be heard by the one it has.
     Status(ProjectArgs),
     /// Where the master's transcript is, and its last lines.
     Log(LogArgs),
@@ -346,6 +354,11 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
         );
         println!("{:<20} standing  {}", "", standing_line(led.as_ref(), &s));
         println!("{:<20} runner    {}", "", admission_line(&admission, &s));
+        println!(
+            "{:<20} authority {}",
+            "",
+            authority_line(led.as_ref(), &s, &name, alive)
+        );
         if alive {
             println!("{:<20} attach: tmux attach -t {name}", "");
         }
@@ -371,6 +384,16 @@ fn listed(base: &std::path::Path, led: Option<&Ledger>) -> Vec<String> {
         for standing in led.standings().unwrap_or_default() {
             if !slugs.contains(&standing.slug) {
                 slugs.push(standing.slug);
+            }
+        }
+        // And a project whose pane this box adopted rather than started, which
+        // has no transcript directory here and may have no standing row either.
+        // That is exactly the pane this issue is about, so leaving it out of the
+        // list would put the new answer where the one project that needs it
+        // cannot be asked for it (ISS-1099).
+        for authority in led.authorities().unwrap_or_default() {
+            if !slugs.contains(&authority.slug) {
+                slugs.push(authority.slug);
             }
         }
     }
@@ -495,6 +518,84 @@ this project cannot be read here"
 Whether one is placed then answers to the runner line below, admissible work, a repo path and \
 tmux. `forge-runner master stand-down {slug}` is what withholds it"
         ),
+    }
+}
+
+/// The third answer, which neither of the other two gives.
+///
+/// A pane is a fact about tmux and a standing is a fact about what the owner
+/// decided. Whether this box can still be heard by the pane it has is a third,
+/// and on 2026-09-18 a project stood still for four hours with `alive` and
+/// `driving` both saying yes while every declaration that pane made was
+/// refused. The only account of it was a daemon log line, which is what this
+/// issue's Outcome says nobody should have to read (ISS-1099).
+///
+/// Suppressed where the pane is not running: a verdict about a pane that is
+/// gone is not an answer about anything, and printing the last one would tell
+/// an operator who has just killed a stale pane that the kill did nothing.
+fn authority_line(led: Option<&Ledger>, slug: &str, pane: &str, alive: bool) -> String {
+    if !alive {
+        return format!(
+            "not asked — no pane is running for {slug}, and whether this box could be heard by one \
+is only a question about a pane that exists"
+        );
+    }
+    let Some(led) = led else {
+        return "unknown — this box's ledger could not be opened, so what its own sweep \
+established about this pane cannot be read here"
+            .into();
+    };
+    let row = match led.master_authority_for_slug(slug) {
+        Err(e) => {
+            return format!("unknown — the authority verdict for {slug} could not be read: {e}")
+        }
+        Ok(None) => {
+            return format!(
+                "not yet established — no sweep has judged {pane} since this box's ledger was \
+written. The daemon judges it on the sweep that adopts or places the pane"
+            )
+        }
+        Ok(Some(r)) => r,
+    };
+    if row.pane_name != pane {
+        return format!(
+            "not asked — the last verdict this box reached was about {}, and the pane running for \
+{slug} now is {pane}. The next sweep judges this one",
+            row.pane_name
+        );
+    }
+    let held = held_for(&row);
+    match row.verdict.as_str() {
+        MasterAuthority::STALE => format!(
+            "STALE for {held} — {pane} is up and this box cannot hear it: the capability that pane \
+holds names a session core has since replaced, and a running pane cannot be handed a new one. Every \
+declaration it makes is refused and the daemon stopped nudging it. \
+`tmux kill-session -t {pane}` ends it, and the next sweep places a master carrying the current \
+capability"
+        ),
+        MasterAuthority::UNKNOWN => format!(
+            "unknown for {held} — this box could not read its own capability map ({}), so it says \
+nothing about {pane} rather than calling it stale. An unreadable map is not evidence about any pane",
+            row.detail.as_deref().unwrap_or("no reason recorded")
+        ),
+        MasterAuthority::CURRENT => format!(
+            "current for {held} — a capability this box minted names the session core gives it, so \
+what {pane} declares is served"
+        ),
+        other => format!(
+            "unrecognised verdict `{other}` for {held} — this ledger was written by a build this \
+one does not know, and nothing here will guess what it meant"
+        ),
+    }
+}
+
+/// How long the verdict has stood, in the coarsest unit that still says it.
+fn held_for(row: &MasterAuthority) -> String {
+    let secs = row.held_for().as_secs();
+    match secs {
+        0..=90 => format!("{secs}s"),
+        91..=5400 => format!("{}m", secs / 60),
+        _ => format!("{}h{:02}m", secs / 3600, (secs % 3600) / 60),
     }
 }
 
@@ -730,6 +831,124 @@ mod tests {
             !SOURCE.contains(concat!("fn ", "accepts_new_work(")),
             "a second copy of the daemon's admission rule in this crate is a box that says one thing and does another; call `forge_runner_core::daemon::master::accepts_new_work`"
         );
+    }
+
+    /// A ledger holding one verdict, so the line can be read as an operator
+    /// reads it rather than as a source scan.
+    fn led_saying(verdict: &'static str, detail: Option<&str>) -> Ledger {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_authority("proj-1", "sidpeak", "forge-master-sidpeak", verdict, detail)
+            .unwrap();
+        led
+    }
+
+    /// The third answer. On 2026-09-18 a project stood still for four hours
+    /// while the two lines above this one both said yes: the pane was `alive`
+    /// and nothing had stood the project down, and every declaration that pane
+    /// made was refused. The only account of it was a daemon log line
+    /// (ISS-1099 criteria 11 and 12).
+    #[test]
+    fn a_pane_this_box_cannot_hear_says_so_and_names_the_act_that_ends_it() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let line = authority_line(Some(&led), "sidpeak", "forge-master-sidpeak", true);
+        assert!(
+            line.contains("STALE"),
+            "an operator scanning three lines for the one that is wrong has to be able to see it: {line}"
+        );
+        assert!(
+            line.contains("tmux kill-session -t forge-master-sidpeak"),
+            "and the act that ends it, because no sweep resolves this state and waiting is what cost four hours: {line}"
+        );
+        let standing = standing_line(Some(&led), "sidpeak");
+        assert!(
+            !standing.contains("kill-session"),
+            "the standing line answers a different question and must not be mistaken for this one: {standing}"
+        );
+    }
+
+    /// Three verdicts stay three on the surface too. Reporting an unreadable
+    /// map as `stale` would tell an operator to kill every pane on the box.
+    #[test]
+    fn a_map_this_box_could_not_read_is_neither_current_nor_stale_on_the_line() {
+        let led = led_saying(MasterAuthority::UNKNOWN, Some("the map is not valid JSON"));
+        let line = authority_line(Some(&led), "sidpeak", "forge-master-sidpeak", true);
+        assert!(
+            !line.contains("STALE") && !line.contains("current"),
+            "an unreadable map is evidence about the map and about no pane: {line}"
+        );
+        assert!(
+            line.contains("the map is not valid JSON"),
+            "and it says which map and why, or `unknown` is a shrug: {line}"
+        );
+        assert!(
+            !line.contains("kill-session"),
+            "telling an operator to kill a pane on evidence this box has not got is the substitution this verdict exists to refuse: {line}"
+        );
+    }
+
+    /// A verdict about a pane that is gone is not an answer about anything,
+    /// and printing the last one tells an operator who has just killed a stale
+    /// pane that the kill did nothing (ISS-1099 criterion 15).
+    #[test]
+    fn a_dead_pane_is_given_no_verdict_however_recent_the_last_one_was() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let line = authority_line(Some(&led), "sidpeak", "forge-master-sidpeak", false);
+        assert!(
+            !line.contains("STALE") && !line.contains("kill-session"),
+            "the row still says stale; the pane it was about is gone: {line}"
+        );
+        assert!(
+            line.contains("no pane is running"),
+            "and the line says why it is not answering rather than going quiet: {line}"
+        );
+    }
+
+    /// A pane replaced under the same slug is a different pane. Reading the
+    /// old verdict onto it is the same mistake in the other direction.
+    #[test]
+    fn a_verdict_about_a_pane_that_has_been_replaced_is_not_read_onto_the_new_one() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let line = authority_line(Some(&led), "sidpeak", "forge-master-sidpeak-2", true);
+        assert!(
+            !line.contains("STALE"),
+            "this is a pane no sweep has judged yet: {line}"
+        );
+        assert!(
+            line.contains("forge-master-sidpeak") && line.contains("next sweep"),
+            "and it says which pane the verdict it holds was about, and when this one gets judged: {line}"
+        );
+    }
+
+    #[test]
+    fn a_project_no_sweep_has_judged_is_not_reported_as_working() {
+        let led = Ledger::open_in_memory().unwrap();
+        let line = authority_line(Some(&led), "sidpeak", "forge-master-sidpeak", true);
+        assert!(
+            !line.contains("current"),
+            "no verdict is not the same answer as a good one — that equivalence is what let a refused pane read as healthy for four hours: {line}"
+        );
+        assert!(
+            line.contains("not yet established"),
+            "and an absent verdict says so in its own words: {line}"
+        );
+    }
+
+    #[test]
+    fn the_line_says_how_long_the_verdict_has_stood() {
+        let mut row = MasterAuthority {
+            project_id: "proj-1".into(),
+            slug: "sidpeak".into(),
+            pane_name: "forge-master-sidpeak".into(),
+            verdict: MasterAuthority::STALE.into(),
+            detail: None,
+            since: 1_000_000,
+            seen_at: 1_000_000 + 4 * 3600 + 12 * 60,
+        };
+        assert_eq!(held_for(&row), "4h12m");
+        row.seen_at = row.since + 600;
+        assert_eq!(held_for(&row), "10m");
+        row.seen_at = row.since + 5;
+        assert_eq!(held_for(&row), "5s");
     }
 
     #[test]

@@ -3069,6 +3069,10 @@
 
 ### Fixed
 
+- **A machine now says when it can no longer be heard by a session it is running.**
+  `forge-runner master status` gives that answer, how long it has stood, and the one command that
+  ends it.
+
 - **An issue can now be named by its short key everywhere the issue tools take one.** They
   answered with that key and refused it back. A key naming nothing is now refused saying which.
 
@@ -3225,8 +3229,6 @@
 - **The instructions a master is given no longer contradict themselves.** The text typed into its
   pane disagreed with the guide it works from about what decides whether work gets declared. It now
   carries only what the guide cannot know.
-
-
 
 - **Work an agent does now shows as the agent's on the issue list, not as yours.** A box filing on
   your token was credited to you, while the activity log said an agent. Issues already filed are
