@@ -43,8 +43,8 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
 import {
+  ANY_AGENT_LABEL,
   filterToQueryParams,
-  FORGE_AGENT_LABEL,
   groupRows,
   priorityLabel,
   statusesFromParam,
@@ -253,11 +253,21 @@ export function IssuesListView({
     isPending: transitionPending,
   } = useGuardedTransition();
 
+  // ISS-1137 — a writer is a named account, so every member is offered under
+  // its own name and an agent is marked rather than replaced by a class label.
+  // "any agent" stays as a KIND filter above them, which is a different
+  // question from "which writer" and is why it is not one of the names.
   const creatorFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Creator: anyone" },
-      { value: "agent", label: `Creator: ${FORGE_AGENT_LABEL}` },
-      ...(membersQ.data ?? []).map((m) => ({ value: m.userId, label: m.email })),
+      { value: "agent", label: `Creator: ${ANY_AGENT_LABEL}` },
+      ...(membersQ.data ?? []).map((m) => ({
+        value: m.userId,
+        label:
+          m.kind === "agent"
+            ? `${m.displayName ?? m.email} (agent)`
+            : (m.displayName ?? m.email),
+      })),
     ],
     [membersQ.data],
   );

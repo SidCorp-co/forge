@@ -8,7 +8,7 @@ export function makeFakePrincipal(
 ): McpPrincipal {
   return {
     kind: 'pat',
-    agency: null,
+    agency: 'human',
     agentUserId: null,
     userId,
     tokenId,

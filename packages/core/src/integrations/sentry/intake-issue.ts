@@ -348,7 +348,11 @@ async function reopenOnRegression(
       reopenCount: existing.reopenCount,
     },
     'reopen',
-    { type: 'user', id: ctx.createdById, agency: null },
+    // No credential is behind a detector reopen — the Sentry webhook is the
+    // writer and `ctx.createdById` only says whose intake configuration it ran
+    // under. The audit row names the machine, said here rather than left to a
+    // collapse in `actorAgency` (ISS-1137).
+    { type: 'user', id: ctx.createdById, agency: 'agent' },
     {
       transitionReason: `Sentry reports ${shortId} has regressed: this error is happening again after this issue was closed. Reopened rather than filed a second time — an error coming back is the same work, and the detector key holds at most one live issue for it.`,
     },

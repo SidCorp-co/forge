@@ -74,10 +74,16 @@ memberRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
+    // `kind` and `displayName` are here because an agent account IS a project
+    // member (ISS-932) and a reader that is only told its synthesized address
+    // cannot name it (ISS-1137) — which is why the issue list's creator filter
+    // offered every agent as a fake person for as long as it did.
     const rows = await db
       .select({
         userId: projectMembers.userId,
         email: users.email,
+        displayName: users.displayName,
+        kind: users.kind,
         role: projectMembers.role,
         createdAt: projectMembers.createdAt,
       })

@@ -1,6 +1,5 @@
 import type { BodyNode } from '../body/parse.js';
 import { bodyNodes } from '../body/prepare.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { actorKey, type ResolvedActor } from '../issues/actor-identity.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
 import type { RecordLens } from '../messaging/record-screen.js';
@@ -13,10 +12,6 @@ export interface CommentRow {
   issueId: string;
   authorId: string;
   authorDeviceId?: string | null;
-  // ISS-969 — who was at the keyboard, taken from the credential at write time.
-  // NULL is "written before this column existed", never 'human'. Optional for the
-  // same reason as `authorDeviceId`.
-  authorAgency?: ActorAgency | null;
   body: string;
   /** ISS-898 renderer the body was stored for; absent reads as `markdown`. */
   format?: string | null;
@@ -99,8 +94,6 @@ export function attachAuthors(
         ? actorKey('device', node.authorDeviceId)
         : actorKey('user', node.authorId),
     );
-    node.author = actor
-      ? { ...actor, isAgent: node.authorAgency === 'agent' || actor.isAgent }
-      : null;
+    node.author = actor ?? null;
   });
 }

@@ -146,7 +146,6 @@ export async function noteReviewOnIssue(args: {
         issueId,
         authorId,
         authorDeviceId: null,
-        authorAgency: null,
         body: reviewNoteBody({
           review: args.review,
           repository: args.repository,

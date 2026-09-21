@@ -18,7 +18,7 @@ export async function connectClientAsPat(patPlaintext: string) {
   const ctx = {
     principal: {
       kind: 'pat' as const,
-      agency: verified.ownerKind === 'agent' ? ('agent' as const) : null,
+      agency: verified.ownerKind,
       agentUserId: verified.ownerKind === 'agent' ? row.userId : null,
       userId: row.userId,
       tokenId: row.id,

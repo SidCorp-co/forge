@@ -2,8 +2,7 @@ import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
+import { comments, issues, users } from '../db/schema.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
 
@@ -15,7 +14,6 @@ export type CommentThreadRow = {
   body: string;
   format: BodyFormat;
   stage: string | null;
-  authorAgency: ActorAgency | null;
   parentId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -30,7 +28,6 @@ export const commentThreadColumns = {
   body: comments.body,
   format: comments.format,
   stage: comments.stage,
-  authorAgency: comments.authorAgency,
   parentId: comments.parentId,
   createdAt: comments.createdAt,
   updatedAt: comments.updatedAt,
@@ -156,15 +153,6 @@ export type NewComment = {
   issueId: string;
   authorId: string;
   authorDeviceId: string | null;
-  /**
-   * Who was at the keyboard, from the principal the door authenticated.
-   *
-   * REQUIRED, and never defaulted — the same reasoning `actorAgency`'s own
-   * guard states: a door that forgets it would silently write every agent's
-   * comment as a person's, which both exempts it from the mandate and drops it
-   * out of the number that decides the mandate.
-   */
-  authorAgency: ActorAgency | null;
   body: string;
   format?: BodyFormat | null | undefined;
   parentId: string | null;
@@ -195,11 +183,32 @@ async function loadStageContext(
   return row ? { stage: row.stage, projectId: row.projectId } : null;
 }
 
+/**
+ * Was this comment written by an agent? (ISS-1137.)
+ *
+ * The same rule `issues/actor-resolution.ts:resolveActors` answers the thread's
+ * marker with, asked here so the screening and the marker cannot disagree: a
+ * comment carrying an `author_device_id` is a box's, and otherwise the author's
+ * `users.kind` decides. Nothing is stored — the author's account IS the answer.
+ */
+async function writtenByAnAgent(
+  input: { authorId: string; authorDeviceId: string | null },
+  tx: Tx,
+): Promise<boolean> {
+  if (input.authorDeviceId != null) return true;
+  const [row] = await tx
+    .select({ kind: users.kind })
+    .from(users)
+    .where(eq(users.id, input.authorId))
+    .limit(1);
+  return row?.kind === 'agent';
+}
+
 export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const fence = screenRecordFence(input.body, input.declaresRecordRoute === true);
   const context = await loadStageContext(input.issueId, tx);
-  if (input.authorAgency === 'agent' && context) {
+  if (context && (await writtenByAnAgent(input, tx))) {
     await screenAgentComment(context.projectId, input.body, tx);
   }
 
@@ -236,12 +245,16 @@ export async function updateCommentBody(
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const fence = screenRecordFence(input.body, input.declaresRecordRoute === true);
   const [existing] = await db
-    .select({ issueId: comments.issueId, authorAgency: comments.authorAgency })
+    .select({
+      issueId: comments.issueId,
+      authorId: comments.authorId,
+      authorDeviceId: comments.authorDeviceId,
+    })
     .from(comments)
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!existing) return null;
-  if (existing.authorAgency === 'agent') {
+  if (await writtenByAnAgent(existing, db)) {
     const context = await loadStageContext(existing.issueId);
     if (context) await screenAgentComment(context.projectId, input.body, db);
   }

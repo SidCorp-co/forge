@@ -7,7 +7,7 @@ import { isPatLike } from '../auth/pat-format.js';
 import { runWithPatScope } from '../auth/pat-scope.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
-import { type ActorAgency, actorAgency } from '../issues/actor-agency.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { beginPatRequest } from './pat-rest-surface.js';
 
@@ -15,7 +15,13 @@ export type AuthVars = {
   userId: string;
   deviceId?: string;
   principal?: 'user' | 'device' | 'pat';
-  agency?: ActorAgency | null;
+  /**
+   * Whether the credential this request arrived on belongs to a person or to
+   * an agent, set by every branch of every door below (ISS-1137). A session
+   * JWT is a person at a keyboard; a token carries its owner's `users.kind`; a
+   * device is a machine.
+   */
+  agency?: ActorAgency;
   agentUserId?: string;
   patTokenId?: string;
 };
@@ -25,23 +31,34 @@ export function restActor(c: Context<{ Variables: RestActorVars }>): {
   id: string;
   agency: ActorAgency;
 } {
-  return {
-    type: 'user',
-    id: c.get('userId'),
-    agency: actorAgency({ type: 'user', agency: restEstablishedAgency(c) }),
-  };
+  return { type: 'user', id: c.get('userId'), agency: restAgency(c) };
 }
 
 type RestActorVars = {
   userId: string;
-  agency?: ActorAgency | null;
+  agency?: ActorAgency;
   principal?: 'user' | 'device' | 'pat';
 };
 
-export function restEstablishedAgency(
-  c: Context<{ Variables: RestActorVars }>,
-): ActorAgency | null {
-  return c.get('principal') === 'user' ? 'human' : (c.get('agency') ?? null);
+/**
+ * The agency the door established for this request.
+ *
+ * Every branch of every gate in this file and in `require-any-auth.ts` sets it,
+ * so an absent value is a route reached through no gate at all rather than a
+ * caller whose kind could not be worked out — and it is refused by name rather
+ * than guessed, because a guess here is what wrote every person's issue as an
+ * agent's until ISS-1137.
+ */
+function restAgency(c: Context<{ Variables: RestActorVars }>): ActorAgency {
+  const agency = c.get('agency');
+  if (!agency) {
+    throw new Error(
+      'restActor: no agency on this request — the route was reached without requireAuth(), ' +
+        'requireUserOrDevice() or requireAnyAuth(), and who is writing cannot be answered from ' +
+        'the request alone. Mount one of those gates on it.',
+    );
+  }
+  return agency;
 }
 
 export function restAuthored(c: Context<{ Variables: RestActorVars }>): 'human' | 'agent' {
@@ -74,6 +91,7 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
       const claims = await verifyUserToken(token);
       c.set('userId', claims.sub);
       c.set('principal', 'user');
+      c.set('agency', 'human');
     } catch {
       throw new HTTPException(401, {
         message: 'invalid token',
@@ -94,6 +112,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
         const claims = await verifyUserToken(token);
         c.set('userId', claims.sub);
         c.set('principal', 'user');
+        c.set('agency', 'human');
         await next();
         return;
       } catch {

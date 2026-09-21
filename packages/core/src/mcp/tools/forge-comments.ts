@@ -32,7 +32,6 @@ import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   principalAuthorDeviceId,
-  principalEstablishedAgency,
   principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
@@ -205,7 +204,6 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
           issueId,
           authorId: principal.userId,
           authorDeviceId,
-          authorAgency: principalEstablishedAgency(principal),
           body,
           format: input.data?.format,
           parentId: input.data?.parentId ?? null,

@@ -3063,6 +3063,10 @@
   kinds instead of answering an empty page. A caller can also no longer declare what kind it is
   creating.
 
+- **What you write with your own access token is filed under your name, not an agent's.** Forge
+  reads the writer from the account behind the credential. Agents now appear under the names
+  their admins gave them.
+
 - **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
   claim the database refuses, and the machine that loses is told which one holds it and since when.
 

@@ -29,7 +29,6 @@ import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
-import type { ActorAgency } from './actor-agency.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import {
   buildCreatedByCondition,
@@ -366,12 +365,7 @@ searchRoutes.get(
 
     if (serialized.length > 0) {
       const creatorMap = await hydrateCreatorsForIssues(
-        serialized.map((r) => ({
-          id: r.id as string,
-          createdById: r.createdById as string,
-          createdVia: r.createdVia as string | null,
-          creatorAgency: r.creatorAgency as ActorAgency | null,
-        })),
+        serialized.map((r) => ({ id: r.id as string, createdById: r.createdById as string })),
       );
       serialized = serialized.map((r) => ({
         ...r,
