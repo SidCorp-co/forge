@@ -451,6 +451,93 @@ describe('two corrections in one change', () => {
   });
 });
 
+describe('the pairing against a brute-force reference', () => {
+  // An independent oracle: the same qualification rule written out again, and every one-to-one
+  // selection enumerated. What `pairEdits` returns has to tie it on both terms of the objective.
+  const SPAN = CORRECTION_SPAN;
+  const longestRun = (a, b) => {
+    const table = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+    for (let i = 1; i <= a.length; i += 1) {
+      for (let j = 1; j <= b.length; j += 1) {
+        table[i][j] =
+          a[i - 1] === b[j - 1]
+            ? table[i - 1][j - 1] + 1
+            : Math.max(table[i - 1][j], table[i][j - 1]);
+      }
+    }
+    return table[a.length][b.length];
+  };
+  const qualifies = (before, after) => {
+    const was = before.split(' ');
+    const now = after.split(' ');
+    const longest = Math.max(was.length, now.length);
+    const survived = longestRun(was, now);
+    if (survived <= longest * 0.5) return null;
+    if (was.length - survived > SPAN || now.length - survived > SPAN) return null;
+    return survived / longest;
+  };
+  const bestOf = (removed, added) => {
+    let best = { pairs: 0, share: 0 };
+    const walk = (index, takenAdded, pairs, share) => {
+      if (pairs > best.pairs || (pairs === best.pairs && share > best.share + 1e-9)) {
+        best = { pairs, share };
+      }
+      if (index === removed.length) return;
+      walk(index + 1, takenAdded, pairs, share);
+      for (const [right, after] of added.entries()) {
+        if (takenAdded.has(right)) continue;
+        const scored = qualifies(removed[index], after);
+        if (scored === null) continue;
+        takenAdded.add(right);
+        walk(index + 1, takenAdded, pairs + 1, share + scored);
+        takenAdded.delete(right);
+      }
+    };
+    walk(0, new Set(), 0, 0);
+    return best;
+  };
+
+  // A small deterministic generator, so a failure names one seed rather than a mood.
+  let seed = 20260921;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const variant = (base, changes, tag) => {
+    const out = [...base];
+    for (let n = 0; n < changes; n += 1) out[Math.floor(next() * out.length)] = `${tag}${n}`;
+    return out;
+  };
+
+  it('ties the reference on pair count and on total similarity over 300 generated changes', () => {
+    for (let round = 0; round < 300; round += 1) {
+      const base = Array.from({ length: 30 + Math.floor(next() * 20) }, (_, i) => `w${i}`);
+      const removed = [0, 1, 2].map((i) =>
+        variant(base, Math.floor(next() * 20), `r${i}`).join(' '),
+      );
+      const added = [0, 1, 2].map((i) => variant(base, Math.floor(next() * 20), `a${i}`).join(' '));
+      if (new Set([...removed, ...added]).size !== 6) continue;
+
+      const paired = pairEdits(removed, added);
+      let share = 0;
+      const spent = new Set();
+      for (const [after, before] of paired) {
+        const scored = qualifies(before, after);
+        expect(scored, `round ${round}: an unqualified pair was taken`).not.toBeNull();
+        expect(spent.has(before), `round ${round}: one removed entry paired twice`).toBe(false);
+        spent.add(before);
+        share += scored;
+      }
+      const reference = bestOf(removed, added);
+      expect(paired.size, `round ${round}: fewer pairs than the reference`).toBe(reference.pairs);
+      expect(share, `round ${round}: a worse pairing of the same size`).toBeCloseTo(
+        reference.share,
+        9,
+      );
+    }
+  });
+});
+
 describe('pairEdits', () => {
   const prose = (n, tag) => Array.from({ length: n }, (_, i) => `${tag}${i}`).join(' ');
 
