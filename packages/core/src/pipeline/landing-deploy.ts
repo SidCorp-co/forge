@@ -10,28 +10,23 @@ export const LANDED_STATUS: IssueStatus = 'developed';
 export const LANDING_DEPLOY_SUBSCRIBER = 'landing-deploy';
 
 async function landingDeployIsOn(projectId: string): Promise<boolean> {
-  try {
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    const ac = (row?.agentConfig ?? null) as Record<string, unknown> | null;
-    const pc = ac?.pipelineConfig as Record<string, unknown> | undefined;
-    return pc?.enabled === true && pc?.deployOnLanding === true;
-  } catch (err) {
-    logger.warn({ err, projectId }, 'landing deploy: pipelineConfig unreadable — not dispatching');
-    return false;
-  }
+  const [row] = await db
+    .select({ agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const ac = (row?.agentConfig ?? null) as Record<string, unknown> | null;
+  const pc = ac?.pipelineConfig as Record<string, unknown> | undefined;
+  return pc?.enabled === true && pc?.deployOnLanding === true;
 }
 
 /**
  * ISS-1152 — arrival at `developed` is what asks for a deployment, so a landed
- * change is judgeable without an unrelated issue's release carrying it out. The
- * trigger it replaces filtered `jobCompleted` on `type === 'release'`, a job
- * type no producer creates. A project opts in with `deployOnLanding`, a live
- * binding still parks for a human without `autoProdDeploy`, and a dispatch that
- * throws propagates so the outbox redelivers rather than losing the deploy.
+ * change is judgeable without an unrelated issue's release carrying it out. It
+ * replaces a `jobCompleted` filter on `type === 'release'`, a job type no
+ * producer creates. A project opts in with `deployOnLanding`, a live binding
+ * still parks for a human, and anything that throws propagates so the outbox
+ * redelivers rather than losing the deploy to a false "not opted in".
  */
 export function registerLandedChangeDeploySubscriber(bus: HooksBus): void {
   bus.on(

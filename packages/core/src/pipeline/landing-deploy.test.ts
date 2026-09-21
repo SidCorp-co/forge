@@ -159,6 +159,25 @@ describe('the landed change is what asks for the deployment', () => {
     expect(() => assertHookDelivered(result, { owned: [LANDING_DEPLOY_SUBSCRIBER] })).toThrow();
   });
 
+  it('a config read that throws is a delivery failure, never a silent opt-out', async () => {
+    const { db } = await import('../db/client.js');
+    vi.mocked(db.select).mockImplementationOnce(() => {
+      throw new Error('the database went away');
+    });
+    const result = await bus().emit('transition', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor: ACTOR,
+      // biome-ignore lint/suspicious/noExplicitAny: the status is the subject of the test
+      from: 'in_progress' as any,
+      // biome-ignore lint/suspicious/noExplicitAny: see above
+      to: 'developed' as any,
+      reopenCount: 0,
+    });
+    expect(dispatchSpy).not.toHaveBeenCalled();
+    expect(result.failures.map((f) => f.subscriber)).toEqual([LANDING_DEPLOY_SUBSCRIBER]);
+  });
+
   it('writes nothing onto the issue row — the deployment identity stays derived', async () => {
     optedIn();
     await land(bus());
