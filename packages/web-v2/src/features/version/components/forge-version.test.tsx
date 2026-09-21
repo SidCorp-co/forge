@@ -63,6 +63,31 @@ describe("ForgeVersion", () => {
 		expect(screen.getByText("Forge version unavailable")).toBeTruthy();
 	});
 
+	it("says unavailable when a 200 carries no version key, rather than `vundefined`", () => {
+		// The shape between loaded and failed: the request settled, the body did
+		// not carry the one field it is read for.
+		useForgeVersion.mockReturnValue({
+			isPending: false,
+			data: { sourceCommit: "749400892e520f64ea6dc380d390b8805b03b689", uptimeSeconds: 12 },
+		});
+
+		render(<ForgeVersion />);
+
+		expect(screen.getByText("Forge version unavailable")).toBeTruthy();
+		expect(document.body.textContent).not.toContain("undefined");
+	});
+
+	it("says unavailable when the version the deployment reported is blank", () => {
+		useForgeVersion.mockReturnValue({
+			isPending: false,
+			data: { version: "   ", sourceCommit: null, uptimeSeconds: 12 },
+		});
+
+		render(<ForgeVersion />);
+
+		expect(screen.getByText("Forge version unavailable")).toBeTruthy();
+	});
+
 	it("never substitutes a number for a version it does not have", () => {
 		useForgeVersion.mockReturnValue({ isPending: false, isError: true, data: undefined });
 
