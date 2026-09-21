@@ -132,6 +132,7 @@ import {
 } from './pipeline/analytics-routes.js';
 import { registerAnswerResume } from './pipeline/answer-resume.js';
 import { hooks } from './pipeline/hooks.js';
+import { registerLandedChangeDeploySubscriber } from './pipeline/landing-deploy.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
 import { registerPausedRunWedgeResolve } from './pipeline/paused-run-wedge-resolve.js';
@@ -140,7 +141,6 @@ import { registerPhaseJournalClose } from './pipeline/phase-journal-close.js';
 import { phaseRoutes } from './pipeline/phase-routes.js';
 import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
-import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
 import { registerRetentionSweeper } from './pipeline/retention/sweep.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
@@ -429,7 +429,7 @@ if (isMain) {
   await assertVaultBootSafety();
   registerAllIntegrations();
   await registerIntegrationsWorker();
-  registerReleaseCompletedSubscriber(hooks);
+  registerLandedChangeDeploySubscriber(hooks);
   const skillSeed = await seedBuiltinSkills(db);
   for (const change of skillSeed.changes) {
     await hooks.emit('globalSkillUpdated', {

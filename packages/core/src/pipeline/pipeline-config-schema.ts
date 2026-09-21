@@ -246,6 +246,8 @@ export const pipelineConfigSchema = z
       .optional(),
     mcpServers: z.record(z.string(), z.unknown()).optional(),
     autoProdDeploy: z.boolean().optional(),
+    /** ISS-1152 — deploy when a change LANDS, not when RELEASE is pressed. */
+    deployOnLanding: z.boolean().optional(),
     lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
     sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
     [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),

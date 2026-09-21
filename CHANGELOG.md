@@ -3066,6 +3066,14 @@
 
 ### Fixed
 
+- **A landed change can now be deployed straight away, rather than waiting for an unrelated
+  release to carry it.** Turn it on under Coolify settings; who may deploy to production is
+  unchanged.
+
+- **Approving one production deploy no longer approves every one after it.** The approval was
+  remembered against the destination rather than the work it was given for, so one press waved
+  through everything after. Each deploy now asks its own.
+
 - **A runner change now reaches the machines that run it.** Publishing was a step someone had to
   remember; a missed one left every box on the old program. Releases are automatic now, and a box
   behind what landed says so.

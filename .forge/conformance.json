@@ -318,7 +318,7 @@
         },
         {
           "name": "release",
-          "description": "An issue reaching released and ending closed: merging the pull request IS the stamp \u2014 one operation writes merged_at, merged_commit_sha and the projection row, releasing every blocks dependent \u2014 the orchestrator enqueues the release job, the agent's close stamps merged_at as an assertion if it is still null, closing the run reaps the child jobs, and job completion dispatches the deploy."
+          "description": "An issue reaching released and ending closed: merging the pull request IS the stamp \u2014 one operation writes merged_at, merged_commit_sha and the projection row, releasing every blocks dependent \u2014 the landing dispatches the deploy so the change is judgeable before anything reaches the release gate, the agent's close stamps merged_at as an assertion if it is still null, and closing the run reaps the child jobs."
         }
       ],
       "sources": [
