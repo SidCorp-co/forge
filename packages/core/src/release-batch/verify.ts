@@ -164,10 +164,10 @@ export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
  * else, the commit serving before anything moved, and reads it once. It throws
  * rather than reading: `readProbe` builds its `URL` above the `try`, so an
  * unparseable probe url rejects out of here instead of becoming a reading.
- * `verifyDeployed` is unguarded the same way and `finishReleaseBatch` screens
- * no probe url, so only this path's caller is covered — `invalidProbeUrls`
- * refuses ahead of it, which is why that throw is not a 500 any more
- * (ISS-1127, ISS-1129 F3).
+ * `verifyDeployed` and `verifyServingNow` throw the same way. Two doors screen
+ * ahead of them — `createReleaseBatch` and `recordPerformedRelease`, both
+ * through `collectReleaseBlockers` — which is why that throw is a 409 and not a
+ * 500. `finishReleaseBatch` screens nothing (ISS-1127, ISS-1129 F3, F4).
  */
 export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> {
   return (await readLiveState(cfg)).identity;

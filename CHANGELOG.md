@@ -3060,6 +3060,10 @@
 
 ### Fixed
 
+- **A project can be asked what commit its deployment is serving.** `GET /api/projects/:id/deployment`
+  reads the declared probes and answers, deriving on every call. Health and identity stay apart,
+  so a fleet mid-deploy reports healthy with no identity.
+
 - **A deploy binding's stages can be corrected after it is created.** Settable only at create,
   they forced a project with the wrong stage topology to delete the binding, and its credential
   with it, to say so.

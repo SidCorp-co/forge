@@ -52,6 +52,7 @@ import {
   ReleaseVersionExhaustedError,
   ReleaseVersionMissingError,
 } from './service.js';
+import { readServingDeployment } from './serving.js';
 import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
 import { readLiveState } from './verify.js';
 
@@ -189,6 +190,28 @@ releaseBatchRoutes.get(
     const readiness = await loadReleaseReadiness(projectId);
     if (!readiness) throw notFound('project not found');
     return c.json(readiness);
+  },
+);
+
+releaseBatchRoutes.get(
+  '/:projectId/deployment',
+  zValidator('param', projectParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    if (!access) throw notFound('project not found');
+    assertProjectRole(access, 'member');
+
+    // cm:edge protocol -> packages/core/src/release-batch/readiness.ts — readiness answers the
+    // DECLARATION and makes no outbound request; this one reads the probes, so they stay apart
+    const read = await readServingDeployment(projectId);
+    if (!read.ok) {
+      if (read.code === 'NO_PROJECT') throw notFound('project not found');
+      throw new HTTPException(409, { message: read.detail, cause: { code: read.code } });
+    }
+    return c.json(read.deployment);
   },
 );
 
