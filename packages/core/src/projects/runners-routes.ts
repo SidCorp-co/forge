@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
+import { residentMasterSql } from '../devices/master-session.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -88,6 +89,9 @@ projectRunnerRoutes.get(
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,
         provisionedAt: runners.provisionedAt,
+        // ISS-1118 — the most expensive thing a bound box runs is a resident
+        // master for this project, and no screen said whether one existed.
+        residentMaster: residentMasterSql(runners.deviceId, runners.projectId),
       })
       .from(runners)
       .leftJoin(devices, eq(devices.id, runners.deviceId))

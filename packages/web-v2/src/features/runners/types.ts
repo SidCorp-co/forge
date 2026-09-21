@@ -56,6 +56,19 @@ export type ProvisionStatus =
 	| "failed";
 
 /** One row of `GET /api/projects/:id/runners` (project-centric, member-scoped). */
+/**
+ * The resident master session core holds for one (device, project), or `null`.
+ *
+ * A registration and not a pane, so `lastHeartbeatAt` is the only thing that
+ * separates a master working now from a box that went quiet (ISS-1118).
+ */
+export interface ResidentMaster {
+	sessionId: string;
+	/** The terminal session name, so a reader can match it on the box. */
+	name: string;
+	lastHeartbeatAt: string | null;
+}
+
 export interface ProjectRunner {
 	runnerId: string;
 	deviceId: string | null;
@@ -83,6 +96,8 @@ export interface ProjectRunner {
 	provisionStatus: ProvisionStatus | null;
 	provisionDetail: string | null;
 	provisionedAt: string | null;
+	/** `undefined` on a core that does not serve the field; `null` is "none". */
+	residentMaster?: ResidentMaster | null;
 }
 
 /** What every surface says for a version nobody reported. Blank would read as a
