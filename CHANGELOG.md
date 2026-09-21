@@ -3066,6 +3066,10 @@
 
 ### Fixed
 
+- **A runner change now reaches the machines that run it.** Publishing was a step someone had to
+  remember; a missed one left every box on the old program. Releases are automatic now, and a box
+  behind what landed says so.
+
 - **An attribute pointing at the wrong comment is refused whichever door writes it.** The agent
   tool stored it and called it written, or answered with the database's insert statement. An id in
   upper case is accepted, not refused as nothing.

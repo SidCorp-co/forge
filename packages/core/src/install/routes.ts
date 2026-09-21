@@ -25,18 +25,34 @@ function mountPrefix(path: string): string {
   return path.startsWith('/api/') ? '/api' : '';
 }
 
+/** What a published runner release is: a version and the commit it was built from. */
+export interface PublishedRunnerBuild {
+  version: string;
+  /** null for a release published before runner-release.yml wrote COMMIT. */
+  commit: string | null;
+}
+
 /**
- * Latest published runner version (the `VERSION` file in `RUNNER_RELEASE_DIR`),
- * or null when nothing is published / the dir is unset. Exported so the devices
- * routes can flag runners that lag the latest release (ISS-392).
+ * The published runner build (the `VERSION` and `COMMIT` files in
+ * `RUNNER_RELEASE_DIR`), or null when nothing is published / the dir is unset.
+ *
+ * Exported so the devices routes can flag boxes that lag it (ISS-392). The commit
+ * rides along because the version alone cannot tell a released 0.17.0 from a
+ * hand-built one, which is how seven landed runner commits reached no box while
+ * every surface read healthy (ISS-1165).
  */
-export async function getLatestRunnerVersion(): Promise<string | null> {
+export async function getPublishedRunnerBuild(): Promise<PublishedRunnerBuild | null> {
   if (!RELEASE_DIR) return null;
-  try {
-    return (await readFile(join(RELEASE_DIR, 'VERSION'), 'utf8')).trim() || null;
-  } catch {
-    return null;
-  }
+  const read = async (name: string) => {
+    try {
+      return (await readFile(join(RELEASE_DIR, name), 'utf8')).trim() || null;
+    } catch {
+      return null;
+    }
+  };
+  const version = await read('VERSION');
+  if (!version) return null;
+  return { version, commit: await read('COMMIT') };
 }
 
 // No `${}` in this template — it must survive verbatim to the shell. Only the
@@ -113,12 +129,9 @@ installRoutes.get('/install.sh', (c) =>
 
 installRoutes.get('/install/latest.json', async (c) => {
   if (!RELEASE_DIR) return c.json({ error: 'RUNNER_RELEASE_DIR not configured' }, 501);
-  let version: string;
-  try {
-    version = (await readFile(join(RELEASE_DIR, 'VERSION'), 'utf8')).trim();
-  } catch {
-    return c.json({ error: 'no release published' }, 404);
-  }
+  const published = await getPublishedRunnerBuild();
+  if (!published) return c.json({ error: 'no release published' }, 404);
+  const { version, commit } = published;
   const base = origin(c.req.url);
   const prefix = mountPrefix(c.req.path);
   const files = await readdir(RELEASE_DIR).catch(() => [] as string[]);
@@ -132,7 +145,10 @@ installRoutes.get('/install/latest.json', async (c) => {
       sha256: createHash('sha256').update(buf).digest('hex'),
     };
   }
-  return c.json({ version, assets });
+  // `commit` is omitted rather than null where the release recorded none, so a
+  // reader cannot mistake "this release did not say" for "this release has no
+  // commit".
+  return c.json(commit === null ? { version, assets } : { version, commit, assets });
 });
 
 installRoutes.get('/install/bin/:target', async (c) => {

@@ -14,8 +14,6 @@ import {
   runnerProvisionStatuses,
   runners,
 } from '../db/schema.js';
-import { cmpVersion } from '../install/fetch-release.js';
-import { getLatestRunnerVersion } from '../install/routes.js';
 import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -23,7 +21,9 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
+import { annotateDeviceBuilds } from './build-state.js';
 import { revokeDeviceCredentials } from './credential.js';
+import { heartbeatPatch } from './heartbeat-patch.js';
 import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
@@ -70,6 +70,9 @@ const pairBodySchema = z
 const heartbeatBodySchema = z
   .object({
     agentVersion: z.string().max(80).optional(),
+    // The commit the running binary was built from. A box that does not send one
+    // is not a published build, and is reported as such rather than as current.
+    agentCommit: z.string().max(80).optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
@@ -133,6 +136,7 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
     name: devices.name,
     platform: devices.platform,
     agentVersion: devices.agentVersion,
+    agentCommit: devices.agentCommit,
     status: devices.status,
     disabledAt: devices.disabledAt,
     lastSeenAt: devices.lastSeenAt,
@@ -155,20 +159,11 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
         .from(devices)
         .where(eq(devices.ownerId, userId))
         .orderBy(desc(devices.pairedAt));
-  // ISS-392 — annotate each device with the latest published runner version so
-  // the dashboard can flag devices lagging behind. `latestAgentVersion` is null
-  // when no release is published (RUNNER_RELEASE_DIR unset / empty); in that
-  // case `agentOutdated` is always false (nothing to compare against).
-  const latestAgentVersion = await getLatestRunnerVersion();
-  const enriched = rows.map((r) => ({
-    ...r,
-    latestAgentVersion,
-    agentOutdated:
-      latestAgentVersion !== null &&
-      r.agentVersion !== null &&
-      cmpVersion(r.agentVersion, latestAgentVersion) < 0,
-  }));
-  return c.json(enriched);
+  // ISS-392, widened by ISS-1165 — each box is compared against the published
+  // release AND the runner head on the default branch. The second is what catches
+  // a release that was never cut, where every box reports the number the last one
+  // carried and nothing reads as behind.
+  return c.json(await annotateDeviceBuilds(rows));
 });
 
 const deviceIdParamSchema = z.object({ id: z.uuid() });
@@ -403,12 +398,7 @@ deviceAuthRoutes.post(
 
     const [updated] = await db
       .update(devices)
-      .set({
-        lastSeenAt: new Date(),
-        status: 'online',
-        ...(input.agentVersion !== undefined ? { agentVersion: input.agentVersion } : {}),
-        ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
-      })
+      .set(heartbeatPatch(input, new Date()))
       .where(eq(devices.id, device.id))
       .returning({ id: devices.id });
 

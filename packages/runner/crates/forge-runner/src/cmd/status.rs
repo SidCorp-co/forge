@@ -19,7 +19,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let cfg = Config::load()?;
     println!(
         "version    {} ({})",
-        forge_runner_core::update::CURRENT_VERSION,
+        forge_runner_core::update::VERSION_LINE,
         forge_runner_core::update::BUILD_TARGET
     );
     println!(
