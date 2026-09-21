@@ -25,10 +25,8 @@ import {
   LEGACY_ISSUE_PREFIX,
   parseIssueRef,
 } from '../lib/issue-ref.js';
+import { LIVE_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
-
-/** Statuses a `pipeline_runs` row carries while it is still someone's work. */
-const LIVE_PIPELINE_RUN_STATUSES = ['running', 'paused'] as const;
 
 const terminalSessionList = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),

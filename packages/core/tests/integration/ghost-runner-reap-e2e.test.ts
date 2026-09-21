@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { OCCUPYING_JOB_STATUSES } from '../../src/jobs/status-sets.js';
 import {
   createTestDevice,
   createTestProject,
@@ -130,7 +131,7 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
     expect(await statusOf(runnerId)).toBe('disabled');
   });
 
-  it.each(['dispatched', 'running'])(
+  it.each(OCCUPYING_JOB_STATUSES)(
     'leaves a long-offline runner still holding a `%s` job',
     async (jobStatus) => {
       const { runnerId } = await seedRunner({ lastSeenDaysAgo: 90 });

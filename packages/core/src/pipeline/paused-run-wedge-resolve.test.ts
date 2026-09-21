@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { TERMINAL_PIPELINE_RUN_STATUSES } from './status-sets.js';
 
 const resolveMock = vi.fn(async (_entityId: string) => 1);
 vi.mock('./wedge.js', () => ({
@@ -36,7 +37,7 @@ describe('registerPausedRunWedgeResolve (ISS-879)', () => {
     expect(resolveMock).toHaveBeenCalledWith('paused:run-1');
   });
 
-  it.each(['completed', 'failed', 'cancelled'])('resolves when the run closes %s', async (to) => {
+  it.each(TERMINAL_PIPELINE_RUN_STATUSES)('resolves when the run closes %s', async (to) => {
     resolveMock.mockClear();
     const { fire } = busWith();
 

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ISSUE_TERMINAL_STATUSES } from '../../src/issues/status-sets.js';
 import {
   createTestProject,
   createTestUser,
@@ -84,7 +85,7 @@ describe('reapOrphanedIssueRuns status coverage E2E (ISS-879)', () => {
     return rows[0]?.status ?? 'missing';
   }
 
-  it.each(['closed', 'dropped'])('closes a leaked run under a `%s` issue', async (status) => {
+  it.each(ISSUE_TERMINAL_STATUSES)('closes a leaked run under a `%s` issue', async (status) => {
     const runId = await runUnderIssueAt(status);
 
     const res = await mods.reapOrphanedIssueRuns(new Date());
