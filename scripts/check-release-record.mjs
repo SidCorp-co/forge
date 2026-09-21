@@ -57,8 +57,11 @@ function report(verdict) {
   const rules = new Set((verdict.violations ?? []).map((v) => v.rule));
   if (rules.has('no-silent-loss')) {
     console.error(
-      `\nAn entry in ${RECORD} is a line someone published about what shipped. Restore what went\n` +
-        `missing, or — if a removal is deliberate — declare it in ${AMNESTY} as\n` +
+      `\nAn entry in ${RECORD} is a line someone published about what shipped. An edit to one is read\n` +
+        `as an edit and is not listed here: an edit is an added entry into which more than half the\n` +
+        `words of the LONGER of the two survived in order, one removed entry to one added entry. What\n` +
+        `IS listed cleared neither. Restore it, or — if the removal is deliberate — declare it in\n` +
+        `${AMNESTY} as\n` +
         `{"removals": [{"entry": "<the entry, verbatim>", "reason": "<why it goes>"}]} so the\n` +
         `trade-off is visible in the diff rather than only in the deletion.`,
     );
@@ -67,10 +70,14 @@ function report(verdict) {
   // let you declare your way past the budget would be the budget's off switch.
   if (rules.has('entry-budget')) {
     console.error(
-      `\nThe budget is ${ENTRY_WORD_BUDGET} words per entry and it applies only to entries this change\n` +
-        `adds — nothing already published turns this red. There is no amnesty for it: rewrite the\n` +
+      `\nThe budget is ${ENTRY_WORD_BUDGET} words for an entry this change ADDS. An entry it EDITS may spend the\n` +
+        `larger of the ${ENTRY_WORD_BUDGET} and the words that entry already held, so a published entry can be\n` +
+        `corrected without first being cut to a budget written after it. An edit is an added entry\n` +
+        `into which more than half the words of the LONGER of the two survived in order, one removed\n` +
+        `entry to one added entry; anything short of that is a new entry and pays the ${ENTRY_WORD_BUDGET}. An entry\n` +
+        `left alone turns this red under no circumstance. There is no amnesty for it: rewrite the\n` +
         `entry. Say what changed and what it means for the reader; leave the reasoning in the issue\n` +
-        `and the commit message, where it is not competing with every other release for attention.`,
+        `and the commit message.`,
     );
   }
 }

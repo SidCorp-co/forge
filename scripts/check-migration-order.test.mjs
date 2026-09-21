@@ -13,8 +13,18 @@ afterEach(() => {
   while (made.length > 0) rmSync(made.pop(), { recursive: true, force: true });
 });
 
+/**
+ * The whole environment every child of this fixture gets, built up rather than filtered down.
+ *
+ * cm:guard a fixture inheriting the ambient environment is not hermetic: its subject reads
+ * `GITHUB_HEAD_REF` on purpose and its `git` reads `GIT_DIR`, `GIT_WORK_TREE` and a dozen more,
+ * so a list of names to DELETE is a list of the ones that have bitten us so far. Only `PATH` and
+ * `LC_ALL` are carried — what makes `node` and `git` findable, and what pins git to one language.
+ */
+const SEALED_ENV = { PATH: process.env.PATH ?? '', LC_ALL: 'C' };
+
 function git(cwd, ...args) {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: SEALED_ENV });
   if (r.status !== 0) throw new Error(`git ${args.join(' ')} in ${cwd}: ${r.stderr}`);
   return r.stdout.trim();
 }
@@ -74,7 +84,7 @@ function pushBranch(world_, name, text) {
 }
 
 function run(cwd) {
-  const r = spawnSync('node', [CHECKER], { cwd, encoding: 'utf8' });
+  const r = spawnSync('node', [CHECKER], { cwd, encoding: 'utf8', env: SEALED_ENV });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -322,5 +332,34 @@ describe('a sibling git cannot read is an unknown, and an unknown is not an abse
     expect(out).toContain('origin/iss-sibling');
     expect(out).toContain('could not be read');
     expect(out).not.toContain('Merge order');
+  });
+
+  // `754440730` gave the checker a reading of `GITHUB_HEAD_REF`; this fixture kept spawning it with
+  // the ambient one, so no pull request could pass `core` while `push` to main stayed green.
+  it('answers the same whatever the environment around it says, subject and git alike', () => {
+    const w = world(journal([288, 1000, '0288_main']));
+    pushBranch(w, 'iss-first', journal([288, 1000, '0288_main'], [289, 2000, '0289_first']));
+    const work = pushBranch(
+      w,
+      'iss-second',
+      journal([288, 1000, '0288_main'], [290, 3000, '0290_second']),
+    );
+    const sealed = run(work);
+    const sealedHead = git(work, 'rev-parse', '--abbrev-ref', 'HEAD');
+    expect(sealed.code).toBe(0);
+    expect(sealed.out).toContain('origin/iss-first');
+    expect(sealedHead).toBe('iss-second');
+
+    const polluted = { ...process.env };
+    process.env.GITHUB_HEAD_REF = 'iss-second';
+    process.env.GIT_DIR = join(w.box, 'origin.git');
+    process.env.GIT_WORK_TREE = w.seed;
+    try {
+      expect(run(work)).toEqual(sealed);
+      // `GIT_DIR` at the bare origin makes an inheriting `git -C work` answer for another repo.
+      expect(git(work, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(sealedHead);
+    } finally {
+      process.env = polluted;
+    }
   });
 });
