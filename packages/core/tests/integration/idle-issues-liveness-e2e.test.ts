@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
+import { describe, expect, it, vi } from 'vitest';
 import { terminalAgentSessionStatuses } from '../../src/db/session-vocabulary.js';
 import { LIVE_SESSION_STATUSES } from '../../src/lifecycle/status-sets.js';
-import { describe, expect, it, vi } from 'vitest';
 import { registerIdleFixture } from '../helpers/idle-fixture.js';
 
 vi.mock('../../src/notifications/emit.js', () => ({
