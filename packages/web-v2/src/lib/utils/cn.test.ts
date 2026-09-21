@@ -27,6 +27,16 @@ describe("cn over this repo's type ramp", () => {
 		expect(cn("text-sm text-lg")).toBe("text-lg");
 	});
 
+	it("collapses a ramp step against a stock size, because they are one group", () => {
+		expect(cn("text-xs text-13")).toBe("text-13");
+		expect(cn("text-13 text-xs")).toBe("text-xs");
+	});
+
+	it("leaves an arbitrary size to the classifier that already handled it", () => {
+		expect(cn("text-[13px] text-fg")).toBe("text-[13px] text-fg");
+		expect(cn("text-13 text-[13px]")).toBe("text-[13px]");
+	});
+
 	it("lets a caller's className override the size a component declared", () => {
 		expect(cn("font-mono text-11 text-muted", "text-13")).toBe("font-mono text-muted text-13");
 	});
