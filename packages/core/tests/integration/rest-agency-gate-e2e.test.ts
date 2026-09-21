@@ -8,17 +8,16 @@
  *
  * Each pair is one falsification set: same request, same issue, same absent
  * evidence — only the credential differs. Three credentials appear, and the
- * third is the one that moved (ISS-1137): a token a PERSON owns is that
- * person, because `users.kind` of the account it belongs to says so. It used
- * to reach the gate as an agent, on the reading that a token establishes
- * nobody — which is how every issue a person filed from their own terminal
- * was also recorded as an agent's.
+ * third carries the rule this file exists for (ISS-1137): a token a PERSON
+ * owns is that person, because `users.kind` of the account it belongs to says
+ * so. Nothing about a token's name, its transport or its absence of a device
+ * may add to that answer.
  *
- * What that costs is real and is the point: an unattended box holding a
- * person's PAT is no longer held to the agent gates. The remedy is the one the
- * product already states in `issues/park-question.ts` — such a box wants an
- * agent account or a paired device, not a person's credential — and the agent
- * cases below are what prove the gate still bites for it.
+ * The cost is deliberate and is the point: an unattended box holding a
+ * person's PAT is not held to the agent gates. `issues/park-question.ts`
+ * states the remedy in its own refusal — such a box wants an agent account or
+ * a paired device, not a person's credential — and the agent cases below are
+ * what prove the gate still bites for one credentialed that way.
  */
 
 import { randomUUID } from 'node:crypto';
