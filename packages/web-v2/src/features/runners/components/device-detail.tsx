@@ -87,11 +87,10 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 						{device.agentOutdated && (
 							<span
 								className="inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
-								title={
-									device.latestAgentVersion
-										? `Update pending — latest is v${device.latestAgentVersion}`
-										: "Update pending"
-								}
+								// The server's own sentence: with the commit in play, two boxes
+								// can share a version and still differ, so "latest is v0.17.0"
+								// beside a box reading 0.17.0 says nothing (ISS-1165).
+								title={device.agentBuildDetail || "Update pending"}
 							>
 								update pending
 							</span>

@@ -232,11 +232,7 @@ export function RunnersScreen() {
                             {d.agentOutdated && (
                               <span
                                 className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
-                                title={
-                                  d.latestAgentVersion
-                                    ? `Update pending — latest is v${d.latestAgentVersion}`
-                                    : "Update pending"
-                                }
+                                title={d.agentBuildDetail || "Update pending"}
                               >
                                 update pending
                               </span>

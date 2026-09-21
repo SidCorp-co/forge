@@ -7,9 +7,23 @@ export interface DeviceRow {
 	name: string;
 	platform: "macos" | "linux" | "windows";
 	agentVersion: string | null;
+	/** The commit this device's last heartbeat said it was built from (ISS-1165). */
+	agentCommit: string | null;
 	/** Latest published runner version (server-read VERSION), null if none. */
 	latestAgentVersion: string | null;
-	/** True when this device's agentVersion lags `latestAgentVersion` (ISS-392). */
+	/** The commit that published release was built from, null if it recorded none. */
+	latestAgentCommit: string | null;
+	/** The newest commit under `packages/runner` on the default branch, null if unread. */
+	mainRunnerHead: string | null;
+	/**
+	 * What this box is running, against the published release and the default
+	 * branch: `behind` it, `current` with it, or `unknown` because the comparison
+	 * could not be made. `unknown` is not `current` (ISS-1165).
+	 */
+	agentBuildState: "current" | "behind" | "unknown";
+	/** One sentence naming what was compared and what it found. */
+	agentBuildDetail: string;
+	/** True when `agentBuildState` is `behind` — kept as the name the screens read. */
 	agentOutdated: boolean;
 	status: "online" | "offline" | "revoked";
 	disabledAt: string | null;

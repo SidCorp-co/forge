@@ -1,17 +1,9 @@
 #!/usr/bin/env node
 /**
- * The version the next runner release carries.
- *
- * `packages/runner/Cargo.toml`'s `[workspace.package] version` is the LINE — the
- * major.minor a release belongs to. The patch is the release counter, read off the
- * `runner-v*` tags that already exist, because `main` carries a required status check
- * and linear history and so no CI push of a version-bump commit can reach it. The
- * released patch is therefore stamped into the binary at build time; see
- * `packages/runner/crates/forge-runner-core/build.rs`.
- *
- * Refusals are loud on purpose. A version that would land at or below one already
- * published is a release no box would ever apply — `update::is_newer` compares the
- * number alone — so it fails naming the file rather than publishing a no-op.
+ * The version the next runner release carries. `Cargo.toml`'s `[workspace.package]
+ * version` is the LINE; the patch is the release counter read off the `runner-v*`
+ * tags, because `main` is protected and no CI push of a version-bump commit can
+ * reach it. A version at or below one published is refused: no box would apply it.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -69,8 +61,7 @@ export function nextRunnerVersion(cargoToml, tags) {
   }
 
   const onLine = released.filter(([ma, mi]) => ma === major && mi === minor);
-  const next =
-    onLine.length === 0 ? patch : Math.max(...onLine.map(([, , p]) => p)) + 1;
+  const next = onLine.length === 0 ? patch : Math.max(...onLine.map(([, , p]) => p)) + 1;
   const version = `${major}.${minor}.${next}`;
   return { version, tag: `${TAG_PREFIX}${version}` };
 }
