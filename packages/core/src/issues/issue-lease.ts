@@ -10,12 +10,22 @@
  * a read followed by a write: `takeIssueLeases` clears rows whose session is
  * already terminal and then inserts with `ON CONFLICT DO NOTHING`, so the loser
  * of a race is told no by Postgres rather than by a check that raced.
+ *
+ * `(project_id, issue_key)` is the identity on every path, take and give-back
+ * alike, and `resolveLeaseKey` is where a caller's key becomes that pair.
  */
 
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { TERMINAL_JOB_STATUSES } from '../jobs/status-sets.js';
+import {
+  canonicalIssueKey,
+  issueRefPrefixOf,
+  LEGACY_ISSUE_PREFIX,
+  parseIssueRef,
+} from '../lib/issue-ref.js';
+import { issuePrefixHolder } from './issue-prefix-read.js';
 
 /** Statuses a `pipeline_runs` row carries while it is still someone's work. */
 const LIVE_PIPELINE_RUN_STATUSES = ['running', 'paused'] as const;
@@ -217,7 +227,11 @@ export interface DeviceIssueLease {
 export async function readDeviceIssueLease(args: {
   deviceId: string;
   issueKey: string;
+  projectId?: string | null;
 }): Promise<DeviceIssueLease> {
+  // Unnarrowed, the answer is tie-broken across every project this box reaches,
+  // which can be a lease the caller did not mean (ISS-1139).
+  const inProject = args.projectId ? sql`AND l.project_id = ${args.projectId}` : sql.empty();
   const rows = (await db.execute(sql`
     SELECT l.project_id, l.issue_key, l.device_id, l.session_id, l.run_id, l.acquired_at
       FROM issue_leases l
@@ -225,6 +239,7 @@ export async function readDeviceIssueLease(args: {
      WHERE l.issue_key = ${args.issueKey}
        AND ls.status NOT IN (${terminalSessionList})
        AND l.project_id IN ${reachableProjects(args.deviceId)}
+       ${inProject}
      ORDER BY (l.device_id = ${args.deviceId}) DESC, l.acquired_at ASC
      LIMIT 1
   `)) as unknown as Array<Record<string, unknown>>;
@@ -240,21 +255,113 @@ export async function readDeviceIssueLease(args: {
   return { held: true, heldByThisDevice: holder.deviceId === args.deviceId, holder };
 }
 
+/** A key that reaches no lease, with the status that says which way. */
+export interface LeaseKeyRefusal {
+  code:
+    | 'ISSUE_LEASE_KEY_SHAPE'
+    | 'ISSUE_LEASE_KEY_UNKNOWN_PREFIX'
+    | 'ISSUE_LEASE_KEY_PROJECT_MISMATCH';
+  status: 400 | 404;
+  message: string;
+}
+
+/** One caller's key as the store holds it, and the project it named. */
+export interface ResolvedLeaseKey {
+  /** The canonical `ISS-<seq>`, whichever vocabulary the caller used. */
+  issueKey: string;
+  /** The project the prefix or the caller named, null where neither did. */
+  projectId: string | null;
+}
+
 /**
- * Give one issue's lease back, from the holder and no other. Takes an executor
- * because the lease and the run's membership drop in ONE transaction —
- * `docs/modules/issues/issue-lease.md`.
+ * Whatever key a caller sent, as the pair the table is keyed by. A prefixed key
+ * is mapped, not refused; only a key that reaches nothing at all is refused,
+ * and an out-of-reach project is answered. `docs/modules/issues/issue-lease.md`.
+ */
+export async function resolveLeaseKey(args: {
+  rawKey: string;
+  projectId?: string | null;
+}): Promise<{ ok: true; key: ResolvedLeaseKey } | { ok: false; refusal: LeaseKeyRefusal }> {
+  const given = issueRefPrefixOf(args.rawKey);
+  const parsed = parseIssueRef(args.rawKey, given ? [given] : []);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      refusal: { code: 'ISSUE_LEASE_KEY_SHAPE', status: 400, message: parsed.message },
+    };
+  }
+  const issueKey = canonicalIssueKey(parsed.issSeq);
+  let projectId = args.projectId ?? null;
+
+  if (given && given !== LEGACY_ISSUE_PREFIX) {
+    const named = (await issuePrefixHolder(given))?.projectId ?? null;
+    if (named === null) {
+      return {
+        ok: false,
+        refusal: {
+          code: 'ISSUE_LEASE_KEY_UNKNOWN_PREFIX',
+          status: 404,
+          message: `\`${args.rawKey}\` names the issue prefix \`${given}\`, which no project answers to, so it reaches no lease. A prefix names the project an issue belongs to; send the prefix of a project this box serves, or the canonical \`${issueKey}\` the lease store keeps.`,
+        },
+      };
+    }
+    if (projectId !== null && projectId !== named) {
+      return {
+        ok: false,
+        refusal: {
+          code: 'ISSUE_LEASE_KEY_PROJECT_MISMATCH',
+          status: 400,
+          message: `\`${args.rawKey}\` names project ${named} through the prefix \`${given}\`, and \`projectId\` names ${projectId}. One request names one lease, so send the canonical \`${issueKey}\` with the project you mean, or the prefixed key on its own.`,
+        },
+      };
+    }
+    projectId = named;
+  }
+
+  return { ok: true, key: { issueKey, projectId } };
+}
+
+/** What a give-back did, or why it did nothing. */
+export type IssueLeaseRelease =
+  | { released: true; projectId: string }
+  | { released: false; reason: 'not_held'; projectIds: [] }
+  | { released: false; reason: 'ambiguous'; projectIds: string[] };
+
+/**
+ * Give one issue's lease back, for the project it was taken for and no other.
+ * The identity is settled before anything is removed, so `not_held` and
+ * `ambiguous` are answers rather than deletes; `device_id` narrows and never
+ * identifies. Why, and the executor: `docs/modules/issues/issue-lease.md`.
  */
 export async function releaseIssueLeaseRow(
   executor: Tx,
   args: {
     deviceId: string;
     issueKey: string;
+    projectId?: string | null;
   },
-): Promise<void> {
-  await executor.execute(sql`
-    DELETE FROM issue_leases
+): Promise<IssueLeaseRelease> {
+  const inProject = args.projectId ? sql`AND project_id = ${args.projectId}` : sql.empty();
+  const candidates = (await executor.execute(sql`
+    SELECT project_id
+      FROM issue_leases
      WHERE device_id = ${args.deviceId}
        AND issue_key = ${args.issueKey}
+       ${inProject}
+     ORDER BY project_id
+       FOR UPDATE
+  `)) as unknown as Array<Record<string, unknown>>;
+  const projectIds = candidates.map((r) => String(r.project_id));
+
+  if (projectIds.length === 0) return { released: false, reason: 'not_held', projectIds: [] };
+  if (projectIds.length > 1) return { released: false, reason: 'ambiguous', projectIds };
+
+  const projectId = projectIds[0] as string;
+  await executor.execute(sql`
+    DELETE FROM issue_leases
+     WHERE project_id = ${projectId}
+       AND issue_key = ${args.issueKey}
+       AND device_id = ${args.deviceId}
   `);
+  return { released: true, projectId };
 }

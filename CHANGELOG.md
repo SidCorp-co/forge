@@ -3066,6 +3066,13 @@
 - **What you write with your own access token is filed under your name, not an agent's.** Forge
   reads the writer from the account behind the credential. Agents now appear under the names
   their admins gave them.
+- **Handing one issue back no longer frees a different project's issue with it.** Issue numbers
+  restart per project, and a machine working several gave up every issue carrying that number.
+  A hand-back now names the project it belongs to.
+
+- **A hand-back is confirmed only when something was given back.** Issues labelled the way your
+  project labels them — `FD-880` — reached no record and were told "done". Either form works now,
+  and a hand-back that matched nothing says so.
 
 - **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
   claim the database refuses, and the machine that loses is told which one holds it and since when.

@@ -16,6 +16,7 @@ import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import {
+  type IssueLeaseRelease,
   readDeviceIssueLease,
   releaseIssueLeaseRow,
   takeIssueLeases,
@@ -303,31 +304,41 @@ export async function readRunSessionTerminal(args: {
 export async function isIssueLeaseHeld(args: {
   deviceId: string;
   issueKey: string;
+  projectId?: string | null;
 }): Promise<boolean> {
   return (await readDeviceIssueLease(args)).held;
 }
 
 /**
- * Give one issue's lease back, per ISSUE and never per run.
+ * Give one issue's lease back, per ISSUE and per PROJECT, never per run.
  *
  * Two writes, because there are two records: the lease row, which says who is
  * holding the issue, and the run's membership array, which says what this run
  * was carrying and is what `returnIssuesForRun` reads to give statuses back.
  * Dropping the key from membership without dropping the lease would leave the
  * issue held by a run that no longer claims it.
+ *
+ * Total on purpose: a release that matched nothing, and one that matched more
+ * than it could identify, are answers rather than throws, and the route turns
+ * each into the refusal a box reads.
  */
 export async function releaseIssueLease(args: {
   deviceId: string;
   issueKey: string;
-}): Promise<void> {
+  projectId?: string | null;
+}): Promise<IssueLeaseRelease> {
   // One transaction, because they are two halves of one act. With the lease
   // dropped and committed on its own, a replacement open on this same device
   // can take the lease back before the UPDATE below runs — and that UPDATE
-  // matches every run on the device carrying the key, so it strips membership
-  // from the NEW run while leaving its lease standing. The run then holds an
-  // issue that `returnIssuesForRun` will not give back when the box dies.
-  await db.transaction(async (tx) => {
-    await releaseIssueLeaseRow(tx, args);
+  // would then strip membership from the NEW run while leaving its lease
+  // standing. The run then holds an issue that `returnIssuesForRun` will not
+  // give back when the box dies.
+  return await db.transaction(async (tx) => {
+    const outcome = await releaseIssueLeaseRow(tx, args);
+    if (!outcome.released) return outcome;
+    // Narrowed to the project whose row went: the same key names a different
+    // issue in every other project this box serves, and a run of one of those
+    // is still carrying it (ISS-1139).
     await tx.execute(sql`
     UPDATE pipeline_runs r
        SET metadata = jsonb_set(
@@ -344,8 +355,10 @@ export async function releaseIssueLease(args: {
      WHERE s.pipeline_run_id = r.id
        AND s.device_id = ${args.deviceId}
        AND s.kind = ${RUN_SESSION_KIND}
+       AND r.project_id = ${outcome.projectId}
        AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)
   `);
+    return outcome;
   });
 }
 

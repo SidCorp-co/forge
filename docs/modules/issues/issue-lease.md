@@ -38,16 +38,55 @@ the session, so a refusal rolls those back with it. A partial open — some issu
 leased, the rest silently joined — is the state this prevents, not a smaller
 version of it.
 
-## Why the release is scoped to the asking device
+## What identifies a release, and what only narrows it
 
-A box that could release another box's lease could take an issue out from under
-a running agent: the same defect this module closes, arriving from the other
-side.
+`(project_id, issue_key)` identifies the row, on the give-back exactly as on the
+take. `iss_seq` restarts per project, so `ISS-880` is a different issue in every
+project a box serves and one box can hold several rows under that one key. A
+delete keyed on the device alone matches all of them, which is a different
+question with a different answer set: it gave back one issue and freed two
+(ISS-1139).
+
+`device_id` stays in the `WHERE` of both statements, and it is the check that a
+box releases only its own — a box that could release another box's lease could
+take an issue out from under a running agent, the same defect this module closes
+arriving from the other side. It is not what says which row.
+
+So `releaseIssueLeaseRow` settles the identity before it removes anything: it
+reads the candidate rows `FOR UPDATE`, and answers `not_held` for none and
+`ambiguous` for more than one rather than picking. The route turns those into a
+`404` and a `409`, because a delete that matched nothing acknowledged as `200`
+is read by the box as the issue handed back.
 
 `releaseIssueLease` takes an executor rather than reaching for `db`, because the
 lease and the run's membership have to drop in one transaction. Between two
 autonomous writes, a replacement open on the same device can take the lease back
 and then have its membership stripped by the second half of the earlier release.
+The membership `UPDATE` is narrowed to the project whose row went, for the same
+reason the delete is.
+
+## One vocabulary in the store, two on the wire
+
+The pool hands a box `formatIssueRef(issue_prefix, iss_seq)` — `FD-880` on a
+project with a prefix — while the store keeps `canonicalIssueKey(issSeq)`,
+`ISS-880` (ISS-992). That is the interface's own second vocabulary and not a
+caller's mistake, so `resolveLeaseKey` maps it rather than refusing it, and
+every lease endpoint goes through that one function. It returns the canonical
+key and the project the prefix named, which is also how a caller identifies one
+of several rows without a query parameter.
+
+What it does refuse is a key that reaches nothing at all: a string that is no
+issue reference, a prefix no project anywhere answers to, and a prefix that
+contradicts the `projectId` sent beside it. All three are properties of the key,
+and none of them changes when a lease does.
+
+A project the asking box cannot reach is **answered, not refused** — `held:
+false`, which is true, and which the `reachableProjects` filter already
+produced. Refusing it was tried and reverted: reachability is bindings *union
+leases already held*, so an unbound box releasing its last lease would destroy
+its own permission to read that release back, and the close loop — which marks a
+run closed only on a successful read — would never terminate. A refusal whose
+condition the successful operation creates is not a loud failure; it is a wedge.
 
 ## The two booleans are two questions
 
@@ -62,11 +101,3 @@ the database to learn which box to stop. And the sentence differs by who holds �
 a box refused by its own earlier run closes that session or waits for the
 reaper; one refused by a stranger works something else. One sentence for both
 hides which of the two it is.
-
-## Known residual
-
-`issue_key` is unique only per project (`issues_project_iss_seq_uq`), but the
-lease routes and `releaseIssueLeaseRow` address by `(device_id, issue_key)`
-alone, so a box serving two projects frees both leases when one run closes.
-Pre-existing — the jsonb release was equally project-blind. Carried on ISS-1110
-and in `docs/proposals/destination/module-1-work-lifecycle.md`.

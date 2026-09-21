@@ -59,19 +59,13 @@ provenance of its own.
    **Done, ISS-1109.** `issue_leases`, primary key `(project_id, issue_key)`, taken by
    `INSERT ... ON CONFLICT DO NOTHING` inside the transaction that opens the run session.
    `runIssues` stays as the run's membership record and says nothing about who holds what.
-4. **Address a lease by its project, not by its key alone.** `issue_key` is unique only per
-   project — `issues_project_iss_seq_uq` is on `(project_id, iss_seq)`, so `ISS-9` exists in every
-   project — but `DELETE /api/devices/me/issue-leases/:issueKey` carries no project, and
-   `issue-lease.ts:releaseIssueLeaseRow` deletes on `(device_id, issue_key)`. A box bound to two
-   projects that holds `ISS-9` in both gives up both leases when one run closes, freeing an issue
-   the other run is still working — the double-hold ISS-1109 closed, arriving through the release.
-   `readDeviceIssueLease` has the same shape: it filters by key across every reachable project and
-   `LIMIT 1`s the tie-break, so `held` can answer about a project the caller did not mean.
-   ISS-1109 did not introduce this — the JSONB release it replaced was `WHERE s.device_id = $1`
-   and equally project-blind — and did not fix it, because the fix is a wire change: the route,
-   `transport/run_sessions.rs:release_lease` and the close loop all have to carry the project or
-   the session. Reachable today: `reachableProjects` exists precisely because a device serves more
-   than one project.
+4. ~~**Address a lease by its project, not by its key alone.**~~ **Done, ISS-1139.** The route,
+   `transport/run_sessions.rs:release_lease` and the close loop all carry the project now.
+   `releaseIssueLeaseRow` deletes on `(project_id, issue_key)` with `device_id` narrowing it,
+   `readDeviceIssueLease` takes the project the caller named, and `resolveLeaseKey` is the one
+   place the prefixed key the pool hands out becomes the canonical one the store holds. A release
+   that matched no row answers `404` and one this box holds in two projects answers `409` naming
+   both, rather than either being acknowledged as done.
 5. **Issue revision**, so a live attempt is not silently re-aimed.
 6. **Delete `POST /me/pool/claim`** — a live endpoint whose whole body returns
    `{ ok: false, reason: 'runner_too_old' }`, false for most callers, superseded by `prepare`.
