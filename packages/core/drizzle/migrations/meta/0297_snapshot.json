@@ -1,6 +1,6 @@
 {
-  "id": "2ac260fc-5c4c-4e0e-a4e2-c178c8432a4b",
-  "prevId": "7a27ec7c-e75b-4571-986f-26660800f729",
+  "id": "7a27ec7c-e75b-4571-986f-26660800f729",
+  "prevId": "44a41bd4-3ea7-44d8-a148-2b81647a7f45",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3065,21 +3065,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_health_detail": {
-          "name": "last_health_detail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "last_health_at": {
           "name": "last_health_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "inbound_endpoint_observed": {
-          "name": "inbound_endpoint_observed",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

@@ -18,6 +18,7 @@ import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/trans
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
+import { type IdleIssuesResult, reconcileIdleIssues } from './idle-issues.js';
 import {
   alarmAgedHolds,
   alarmPausedRunsWithQueuedWork,
@@ -82,15 +83,6 @@ export interface IdleChatCloseResult {
   closed: number;
 }
 
-export interface StallDetectResult {
-  detected: number;
-}
-
-export interface ClosedUnmergedAlarmResult {
-  /** Dependents alarmed because their blocker closed without merging. */
-  alerted: number;
-}
-
 export interface StaleReleaseBatchClaimsResult {
   released: number;
 }
@@ -121,6 +113,8 @@ export interface SweepResult {
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
   /** ISS-1050 — issues asserting work in progress with no live run behind them (report only). */
   orphanedRunAssertions: IssueRunInvariantResult;
+  /** ISS-1122 — non-terminal issues with nothing working them, named on the row itself. */
+  idleIssues: IdleIssuesResult;
   /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
   strandedIssues: StrandedIssuesResult;
   owedCloses: StrandedIssuesResult;
@@ -189,6 +183,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const overdueRunnerReleases = await runPass('nameOverdueRunnerReleases', () =>
     nameOverdueRunnerReleases(now),
   );
+  const idleIssues = await runPass('reconcileIdleIssues', () => reconcileIdleIssues(now));
   const strandedIssues = await runPass('detectStrandedIssues', () => detectStrandedIssues(now));
   const owedCloses = await runPass('detectOwedCloses', () => detectOwedCloses(now));
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
@@ -227,6 +222,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     rejectionStreaks: rejectionStreaks as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     orphanedRunAssertions: orphanedRunAssertions as IssueRunInvariantResult,
+    idleIssues: idleIssues as IdleIssuesResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
     owedCloses: owedCloses as StrandedIssuesResult,
     orphanedPauses: orphanedPauses as OrphanedPauseResult,

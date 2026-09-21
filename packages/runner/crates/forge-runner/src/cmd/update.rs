@@ -22,7 +22,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
     println!(
         "current  {} ({})",
-        update::CURRENT_VERSION,
+        update::VERSION_LINE,
         update::BUILD_TARGET
     );
     let manifest = update::fetch_manifest(&url).await?;
