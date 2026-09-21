@@ -3066,9 +3066,9 @@
 
 ### Fixed
 
-- **A change that has landed is now deployed straight away, instead of waiting for an unrelated
-  release to carry it.** When nothing was queued for release, that wait had no end. Who may deploy
-  to production is unchanged.
+- **A landed change can now be deployed straight away, rather than waiting for an unrelated
+  release to carry it.** Turn it on under Coolify settings; who may deploy to production is
+  unchanged.
 
 - **Approving one production deploy no longer approves every one after it.** The approval was
   remembered against the destination rather than the work it was given for, so one press waved

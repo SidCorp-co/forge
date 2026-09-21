@@ -58,8 +58,10 @@ vi.mock('./release-coolify.js', () => ({
 }));
 
 const { logger } = await import('../logger.js');
-const { HooksBus } = await import('./hooks.js');
-const { registerLandedChangeDeploySubscriber } = await import('./landing-deploy.js');
+const { assertHookDelivered, HooksBus } = await import('./hooks.js');
+const { LANDING_DEPLOY_SUBSCRIBER, registerLandedChangeDeploySubscriber } = await import(
+  './landing-deploy.js'
+);
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
@@ -72,8 +74,12 @@ function bus() {
   return b;
 }
 
-function pipelineEnabled(enabled: boolean): void {
-  selectQueue.push([{ agentConfig: { pipelineConfig: { enabled } } }]);
+function projectConfig(pipelineConfig: Record<string, unknown>): void {
+  selectQueue.push([{ agentConfig: { pipelineConfig } }]);
+}
+
+function optedIn(): void {
+  projectConfig({ enabled: true, deployOnLanding: true });
 }
 
 async function land(b: ReturnType<typeof bus>, to = 'developed'): Promise<void> {
@@ -99,7 +105,7 @@ beforeEach(() => {
 
 describe('the landed change is what asks for the deployment', () => {
   it('dispatches a deploy when an issue arrives at developed', async () => {
-    pipelineEnabled(true);
+    optedIn();
     await land(bus());
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
     expect(dispatchSpy).toHaveBeenCalledWith({
@@ -117,21 +123,27 @@ describe('the landed change is what asks for the deployment', () => {
   });
 
   it('dispatches nothing when the project pipeline is not enabled', async () => {
-    pipelineEnabled(false);
+    projectConfig({ enabled: false, deployOnLanding: true });
+    await land(bus());
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+
+  it('dispatches nothing for a project that did not opt into deployOnLanding', async () => {
+    projectConfig({ enabled: true });
     await land(bus());
     expect(dispatchSpy).not.toHaveBeenCalled();
   });
 
   it('refuses a landing whose issue resolves to no run, at error level', async () => {
-    pipelineEnabled(true);
+    optedIn();
     resolveRunSpy.mockImplementation(async () => null);
     await land(bus());
     expect(dispatchSpy).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 
-  it('a dispatch that throws is logged and never fails the transition delivery', async () => {
-    pipelineEnabled(true);
+  it('a dispatch that throws is a delivery failure the outbox owns, not a log line', async () => {
+    optedIn();
     dispatchSpy.mockRejectedValueOnce(new Error('coolify is down'));
     const result = await bus().emit('transition', {
       issueId: ISSUE_ID,
@@ -143,12 +155,12 @@ describe('the landed change is what asks for the deployment', () => {
       to: 'developed' as any,
       reopenCount: 0,
     });
-    expect(result.failures).toEqual([]);
-    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(result.failures.map((f) => f.subscriber)).toEqual([LANDING_DEPLOY_SUBSCRIBER]);
+    expect(() => assertHookDelivered(result, { owned: [LANDING_DEPLOY_SUBSCRIBER] })).toThrow();
   });
 
   it('writes nothing onto the issue row — the deployment identity stays derived', async () => {
-    pipelineEnabled(true);
+    optedIn();
     await land(bus());
     const call = dispatchSpy.mock.calls[0]?.[0];
     expect(Object.keys(call ?? {}).sort()).toEqual(['issueId', 'projectId', 'runId']);
