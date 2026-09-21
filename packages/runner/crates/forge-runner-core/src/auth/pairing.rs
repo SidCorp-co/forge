@@ -227,7 +227,7 @@ pub async fn pair(core_url: &str, code: &str, name: &str) -> Result<PairResponse
         "code": code,
         "name": name,
         "platform": detected_platform(),
-        "agentVersion": env!("CARGO_PKG_VERSION"),
+        "agentVersion": crate::update::CURRENT_VERSION,
     });
     if let Some(mid) = machine_id() {
         body["machineId"] = serde_json::Value::String(mid);
