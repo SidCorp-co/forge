@@ -132,10 +132,14 @@
 - **A stand-down will not quietly take running work with it.** Where the master still holds open
   runs, or where the box cannot establish what it holds, the pane is left running and each run is
   named. `--force` ends it anyway.
-- **`forge-runner master status` answers two questions, not one.** Whether a pane exists, and
-  whether this box may keep a master at all — so a box deliberately not driving reads as that.
+- **`forge-runner master status` answers three questions, not one.** Whether a session exists,
+  whether you stood the project down, and whether this box takes work for it at all.
 - **`forge-runner master kill` says what actually happens next.** It claimed the next pane was
   fresh. It resumes the same conversation. Help and result now say so, and name what does stop it.
+- **The project's Runners screen now shows whether a box is running a session for the project, and
+  what stops it.** It names the session, when it last reported, and the command to stand it down.
+- **The pool switch says what it does not reach.** Turning it off was the obvious way to stop a box
+  working on a project, and it left the session running. It now says so where it is read.
 - **A release that already happened can now be recorded, with no release batch.** Name the
   commit production is serving and how it shipped; Forge reads the live probes itself, closes
   what the release carried, and refuses a commit nothing serves.

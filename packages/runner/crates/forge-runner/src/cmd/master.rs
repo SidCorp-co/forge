@@ -5,10 +5,18 @@
 //! belongs to which project and where its transcript went, and that is the gap
 //! this fills.
 //!
-//! Two of those answers are different questions and are printed as two lines:
-//! whether a pane exists, and whether this box is allowed to keep one. A box
-//! whose runner is online and whose pane is alive while a human drives the
-//! project is not an error, and `alive` alone cannot say it (ISS-1118).
+//! Three of those answers are different questions and are printed as three
+//! lines: whether a pane exists, whether this box's owner stood the project
+//! down, and whether this box's runner row for the project takes work at all.
+//! A box whose runner is online and whose pane is alive while a human drives
+//! the project is not an error, and `alive` alone cannot say it (ISS-1118).
+//!
+//! The third line is there because the second one used to answer for it. The
+//! standing line said "driving — this box places a master for <slug> whenever
+//! there is work for one" off the `master_standing` table alone, and a runner
+//! that is `draining` places none — which is exactly what the pool toggle in
+//! the web UI sets, so the owner in ISS-1118's own story got a confident wrong
+//! answer from the surface built to stop them guessing.
 
 use clap::{Args as ClapArgs, Subcommand};
 use forge_runner_core::auth::cred_store;
@@ -96,7 +104,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         anyhow::bail!("tmux is not installed on this box, so it hosts no masters");
     }
     match args.cmd {
-        Command::Status(a) => status(a.slug.as_deref()).await?,
+        Command::Status(a) => status(&ctx, a.slug.as_deref()).await?,
         Command::Log(a) => {
             let path = transcript(&a.slug)?;
             println!("{}", path.display());
@@ -310,9 +318,10 @@ fn whoami() -> String {
         .unwrap_or_else(|_| "an operator at this box".into())
 }
 
-async fn status(slug: Option<&str>) -> anyhow::Result<()> {
+async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
     let base = Config::path()?.with_file_name("master");
     let led = open_ledger().ok();
+    let admission = read_admission(ctx).await;
     let slugs: Vec<String> = match slug {
         Some(s) => vec![s.to_string()],
         None => listed(&base, led.as_ref()),
@@ -333,6 +342,7 @@ async fn status(slug: Option<&str>) -> anyhow::Result<()> {
             path.display()
         );
         println!("{:<20} standing  {}", "", standing_line(led.as_ref(), &s));
+        println!("{:<20} runner    {}", "", admission_line(&admission, &s));
         if alive {
             println!("{:<20} attach: tmux attach -t {name}", "");
         }
@@ -365,15 +375,92 @@ fn listed(base: &std::path::Path, led: Option<&Ledger>) -> Vec<String> {
     slugs
 }
 
+/// This box's runner rows as core last served them, or why they could not be
+/// read.
+///
+/// Best effort on purpose: `status` is the command an operator reaches for on
+/// a box whose network may be the problem, and refusing to print the pane and
+/// the standing because core is unreachable would withhold the two answers
+/// that need nothing from core.
+enum Admission {
+    Read(Vec<runners::MeRunner>),
+    Unreadable(String),
+}
+
+async fn read_admission(ctx: &Ctx) -> Admission {
+    let Ok(cfg) = Config::load() else {
+        return Admission::Unreadable("this box's config could not be read".into());
+    };
+    let token = match cred_store::load_device_token() {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            return Admission::Unreadable(
+                "this box is not logged in, so core cannot be asked — `forge-runner login`".into(),
+            )
+        }
+        Err(e) => return Admission::Unreadable(format!("the device token could not be read: {e}")),
+    };
+    let Some(core_url) = ctx.resolve_core_url(&cfg) else {
+        return Admission::Unreadable("this box has no core URL configured".into());
+    };
+    match runners::list_me(&CoreClient::new(core_url, token)).await {
+        Ok(rows) => Admission::Read(rows),
+        Err(e) => Admission::Unreadable(format!("core could not be asked: {e}")),
+    }
+}
+
+/// The third answer: whether this box's runner row for the project takes work
+/// at all.
+///
+/// An unreadable answer is printed rather than omitted. An omitted line reads
+/// as no impediment, and the impediment this line exists to show — a runner
+/// left `draining` by the web toggle — is invisible on the box in every other
+/// place an operator looks.
+fn admission_line(admission: &Admission, slug: &str) -> String {
+    match admission {
+        Admission::Unreadable(why) => format!(
+            "unknown — {why}. Whether this box would place a master for {slug} also depends on this answer"
+        ),
+        Admission::Read(rows) => match rows.iter().find(|r| r.slug == slug) {
+            None => format!(
+                "core serves no runner for {slug} to this box, so this box places no master for it whatever its standing says"
+            ),
+            Some(r) if accepts_new_work(&r.status) => format!(
+                "`{}` — this box takes work for {slug}, so nothing here withholds a master beyond the standing above",
+                r.status
+            ),
+            Some(r) => format!(
+                "`{}` — this box takes NO new work for {slug}, so it places no master for it whatever the standing above says. That is the `Takes jobs from the pool` control in the web UI, not a stand-down, and turning it back on is what reverses it",
+                r.status
+            ),
+        },
+    }
+}
+
+/// Whether a runner status lets this box place a master at all.
+///
+/// The daemon's own gate, restated here so `status` answers with the same rule
+/// the sweep runs: `draining` and `disabled` both take the "no new work"
+/// branch in `daemon/master.rs`, and neither ends a pane already running.
+fn accepts_new_work(status: &str) -> bool {
+    !matches!(status, "draining" | "disabled")
+}
+
 /// The second answer, which `alive` cannot give.
 ///
-/// A pane is a fact about tmux. Whether this box may keep a master for the
-/// project is a fact about what its owner decided, and on 2026-09-20 those two
-/// answers differed for nine hours with nothing here able to report it.
+/// A pane is a fact about tmux. Whether this box's OWNER stood the project
+/// down is a fact about what they decided, and on 2026-09-20 those two answers
+/// differed for nine hours with nothing here able to report it.
 /// Read by slug rather than through the `masters` row: a project can be stood
 /// down before this box has ever placed a master for it, and a lookup that
 /// needs a pane row would answer "nothing is standing it down" about a project
 /// that is standing down right there in the ledger.
+///
+/// It answers for the ledger and for nothing else. The arm below used to say
+/// "driving — this box places a master for {slug} whenever there is work for
+/// one", which is a claim about placement that this function's one input
+/// cannot support: a `draining` runner places none. The placement answer is
+/// `admission_line`'s.
 fn standing_line(led: Option<&Ledger>, slug: &str) -> String {
     let Some(led) = led else {
         return "unknown — this box's ledger could not be opened, so what its owner decided about \
@@ -392,8 +479,9 @@ this project cannot be read here"
                 .unwrap_or_default()
         ),
         Ok(_) => format!(
-            "driving — this box places a master for {slug} whenever there is work for one. \
-`forge-runner master stand-down {slug}` stops that"
+            "not stood down — nothing this box's owner recorded withholds a master for {slug}. \
+Whether one is placed then answers to the runner line below, admissible work, a repo path and \
+tmux. `forge-runner master stand-down {slug}` is what withholds it"
         ),
     }
 }
@@ -489,6 +577,98 @@ mod tests {
             !body.contains("master_for_pane("),
             "and it needs no pane row to answer, because a stood-down project may never have had one"
         );
+    }
+
+    fn online(slug: &str, status: &str) -> runners::MeRunner {
+        runners::MeRunner {
+            project_id: "proj-1".into(),
+            runner_id: "r-1".into(),
+            slug: slug.into(),
+            base_branch: None,
+            repo_path: None,
+            branch: None,
+            status: status.into(),
+            workspace_setup: None,
+            master_policy: None,
+            rate_limited_for_seconds: None,
+            limit_reason: None,
+        }
+    }
+
+    /// Criterion 21, and Finding B of the independent judgement.
+    ///
+    /// Reproduced on a scratch box: with the runner served as `draining` and
+    /// no stand-down anywhere, the daemon logged "runner is draining — taking
+    /// no new work" and `master status` said `driving` in the same minute. The
+    /// owner in this issue's story reached for that toggle first.
+    #[test]
+    fn the_standing_line_never_claims_this_box_places_a_master() {
+        let said = standing_line(None, "judgeproj");
+        assert!(
+            !said.contains("places a master"),
+            "the standing line reads one table and cannot answer for placement; a `draining` runner places none: {said}"
+        );
+        let led = Ledger::open_in_memory().expect("an in-memory ledger opens");
+        let clean = standing_line(Some(&led), "judgeproj");
+        assert!(
+            !clean.contains("driving") && !clean.contains("places a master"),
+            "a project nobody stood down is not thereby being driven: {clean}"
+        );
+        assert!(
+            clean.contains("stand-down judgeproj"),
+            "and it still names the act that withholds one: {clean}"
+        );
+    }
+
+    /// Criterion 22. The third answer is printed whatever happens, because an
+    /// omitted line reads as no impediment.
+    #[test]
+    fn the_runner_line_answers_or_says_why_it_could_not() {
+        let draining = Admission::Read(vec![online("judgeproj", "draining")]);
+        let said = admission_line(&draining, "judgeproj");
+        assert!(
+            said.contains("NO new work") && said.contains("places no master"),
+            "a box that places no master because its runner takes no work has to say so where an owner is looking for the reason: {said}"
+        );
+        assert!(
+            said.contains("Takes jobs from the pool"),
+            "and it names the control that set it, which is the guessing this issue exists to end: {said}"
+        );
+        let up = admission_line(
+            &Admission::Read(vec![online("judgeproj", "online")]),
+            "judgeproj",
+        );
+        assert!(
+            !up.contains("NO new work"),
+            "an online runner withholds nothing: {up}"
+        );
+        let blind = admission_line(
+            &Admission::Unreadable("core could not be asked: connection refused".into()),
+            "judgeproj",
+        );
+        assert!(
+            blind.starts_with("unknown") && blind.contains("connection refused"),
+            "an answer this box could not get is printed as unknown with what stopped it — omitting the line would read as nothing standing in the way: {blind}"
+        );
+        let unbound = admission_line(&Admission::Read(vec![]), "judgeproj");
+        assert!(
+            unbound.contains("no runner"),
+            "a project core serves this box no runner for gets no master either, and that is not a stand-down: {unbound}"
+        );
+    }
+
+    /// The rule the third line states must be the rule the daemon runs, or the
+    /// box says one thing and does another.
+    #[test]
+    fn the_status_gate_is_the_daemons_gate() {
+        for withheld in ["draining", "disabled"] {
+            assert!(
+                !accepts_new_work(withheld),
+                "`{withheld}` takes the no-new-work branch in daemon/master.rs and places no master; saying otherwise here is the surface disagreeing with the box"
+            );
+        }
+        assert!(accepts_new_work("online"));
+        assert!(accepts_new_work("offline"));
     }
 
     #[test]

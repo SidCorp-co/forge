@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
+import { residentMasterSql } from '../devices/master-session.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -88,6 +89,13 @@ projectRunnerRoutes.get(
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,
         provisionedAt: runners.provisionedAt,
+        // ISS-1118 — the most expensive thing a bound box runs is a resident
+        // master session for this project, and until now no screen said
+        // whether one existed. Neither the pool control nor turning the device
+        // off ends one that is already running, so an owner reading this
+        // screen had no way to tell that the control they reached for does not
+        // govern it. This is the registration core already holds, read back.
+        residentMaster: residentMasterSql(runners.deviceId, runners.projectId),
       })
       .from(runners)
       .leftJoin(devices, eq(devices.id, runners.deviceId))

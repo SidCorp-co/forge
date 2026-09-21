@@ -1,4 +1,13 @@
-import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  type Column,
+  eq,
+  getTableName,
+  inArray,
+  notInArray,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
@@ -151,6 +160,43 @@ export async function closeMasterSession(args: {
     source: 'master-session',
   });
   return rows.length > 0;
+}
+
+/**
+ * The outer table's own column, table-qualified. Interpolated bare, a drizzle
+ * `Column` renders unqualified in a single-table select, and inside the
+ * subquery below that name binds to the subquery's own row — a predicate true
+ * for every row, answering every runner with the first master it finds.
+ */
+function outerRef(column: Column) {
+  return sql`${sql.identifier(getTableName(column.table))}.${sql.identifier(column.name)}`;
+}
+
+/**
+ * Whether a device holds a live resident master for a project. A REGISTRATION
+ * and not a pane: core cannot see tmux, so `lastHeartbeatAt` is all that
+ * separates a master working now from a box gone quiet (ISS-1118).
+ */
+export function residentMasterSql(deviceIdColumn: Column, projectIdColumn: Column) {
+  const device = outerRef(deviceIdColumn);
+  const project = outerRef(projectIdColumn);
+  return sql<{ sessionId: string; name: string; lastHeartbeatAt: string | null } | null>`(
+    SELECT jsonb_build_object(
+             'sessionId', s.id,
+             'name', COALESCE(s.metadata->>'terminalName', ''),
+             'lastHeartbeatAt', s.last_heartbeat_at
+           )
+      FROM ${agentSessions} s
+     WHERE s.device_id = ${device}
+       AND s.project_id = ${project}
+       AND s.kind = ${MASTER_SESSION_KIND}
+       AND s.status NOT IN (${sql.join(
+         terminalAgentSessionStatuses.map((v) => sql`${v}`),
+         sql`, `,
+       )})
+     ORDER BY s.started_at DESC NULLS LAST
+     LIMIT 1
+  )`;
 }
 
 /** Every live master session on one device, for the daemon's own reconcile. */

@@ -41,6 +41,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
 import { PoolAdmission } from "./pool-admission";
+import { ResidentMaster } from "./resident-master";
 import { RunnerLabels } from "./runner-labels";
 import {
 	useActiveRunners,
@@ -499,6 +500,7 @@ function RunnerRow({
 	isPrimary,
 	onSetPrimary,
 	settingPrimary,
+	slug,
 }: {
 	runner: ProjectRunner;
 	/** The job this runner is executing right now, or null when idle. */
@@ -510,6 +512,8 @@ function RunnerRow({
 	/** Set this device as primary (deviceId), or clear (null). */
 	onSetPrimary: (deviceId: string | null) => void;
 	settingPrimary: boolean;
+	/** The project slug, as `forge-runner master stand-down` takes it. */
+	slug: string | undefined;
 }) {
 	const reprovision = useReprovision(projectId);
 	const unassign = useUnassignDeviceFromProject(projectId);
@@ -760,6 +764,12 @@ function RunnerRow({
 				runnerId={runner.runnerId}
 				status={runner.runnerStatus}
 				canEdit={canEdit}
+			/>
+
+			<ResidentMaster
+				master={runner.residentMaster}
+				slug={slug}
+				deviceName={runner.deviceName}
 			/>
 
 			<div className="flex justify-start">
@@ -1024,6 +1034,7 @@ export function ProjectRunnersScreen({
 									isPrimary={!!r.deviceId && r.deviceId === defaultDeviceId}
 									onSetPrimary={(id) => setDefault.mutate(id)}
 									settingPrimary={setDefault.isPending}
+									slug={project.data?.slug}
 								/>
 							))}
 						</div>

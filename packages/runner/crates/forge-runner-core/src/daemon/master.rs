@@ -148,10 +148,16 @@ pub(crate) enum Unplaced {
     NothingAdmissible,
     /// An owner stood this project's master down, so this box places none
     /// until somebody stands it up again (ISS-1118).
+    ///
+    /// `pane` is the session running against that stand-down, where one is.
+    /// It is part of the value rather than a second map because the two states
+    /// are two different things to tell an operator, and a value that cannot
+    /// tell them apart cannot report the move from one to the other either.
     StoodDown {
         by: String,
         why: Option<String>,
         slug: String,
+        pane: Option<String>,
     },
     /// This box could not read whether its owner stood this project down, so
     /// it placed nothing rather than deciding it was driving.
@@ -187,21 +193,63 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "it has nothing claimable and no pane of its own running, so this box started none"
             ),
-            Self::StoodDown { by, why, slug } => {
+            Self::StoodDown {
+                by,
+                why,
+                slug,
+                pane,
+            } => {
                 write!(f, "its master was stood down by {by}")?;
                 if let Some(w) = why {
                     write!(f, " ({w})")?;
                 }
-                write!(
-                    f,
-                    " — this box places none for it and nudges none. `forge-runner master stand-up {slug}` is the one act that lets it be placed again"
-                )
+                match pane {
+                    None => write!(
+                        f,
+                        " — this box places none for it and nudges none. `forge-runner master stand-up {slug}` is the one act that lets it be placed again"
+                    ),
+                    Some(pane) => write!(
+                        f,
+                        " — nothing here adopts it as this box's master, nudges it or ends it. Either `tmux kill-session -t {pane}` to make the box's two answers agree, or `forge-runner master stand-up {slug}` to put the project back under this box's authority"
+                    ),
+                }
             }
             Self::StandingUnreadable { detail } => write!(
                 f,
-                "this box cannot read whether its owner stood this project down ({detail}), so it places no master rather than deciding it is driving"
+                "this box cannot read whether its owner stood this project down ({detail}), so it places no master rather than deciding it is driving. A box that cannot tell a stood-down project from a driving one must not decide it is driving"
             ),
         }
+    }
+}
+
+impl Unplaced {
+    /// What to say before the reason.
+    ///
+    /// Every reason but one is a report that no pane was placed. The
+    /// contradiction is a report that one IS running and this box will not
+    /// drive it, and leading that with "no master pane placed" states the
+    /// opposite of what an operator finds on the box (ISS-1118 criterion 20).
+    fn lead(&self) -> String {
+        match self {
+            Self::StoodDown {
+                pane: Some(pane), ..
+            } => format!("{pane} is RUNNING and this box is not driving it"),
+            _ => "no master pane placed".to_string(),
+        }
+    }
+
+    /// Whether this is a state an operator has to act on before the box's two
+    /// answers agree.
+    ///
+    /// Two of them are. A pane running against a stand-down is the nine-hour
+    /// silence this issue was filed over; a standing this box could not read
+    /// is a box that cannot say what it is doing. Everything else here is a
+    /// pane absent for a reason the box is content with.
+    fn is_error(&self) -> bool {
+        matches!(
+            self,
+            Self::StoodDown { pane: Some(_), .. } | Self::StandingUnreadable { .. }
+        )
     }
 }
 
@@ -248,11 +296,16 @@ pub(crate) enum Placed {
 ///
 /// A lifted stand-down proceeds: `stand-up` restores a project to the gates
 /// every other project answers to rather than to a guaranteed pane.
-fn stood_down_reason(standing: Option<&MasterStanding>, slug: &str) -> Unplaced {
+fn stood_down_reason(
+    standing: Option<&MasterStanding>,
+    slug: &str,
+    pane: Option<&str>,
+) -> Unplaced {
     Unplaced::StoodDown {
         by: standing.map_or_else(|| "somebody".to_string(), |s| s.stood_down_by.clone()),
         why: standing.and_then(|s| s.why.clone()),
         slug: slug.to_string(),
+        pane: pane.map(str::to_string),
     }
 }
 
@@ -440,6 +493,13 @@ impl Masters {
 
     /// Record what this box now says about a pane's capability, and answer
     /// whether that is a change from what it last said.
+    ///
+    /// Only for a project THIS process placed or adopted a pane for: the state
+    /// lives on the `reg.live` entry, so a project absent from it answers
+    /// `false` and whatever the caller guards is never said. That is sound for
+    /// a capability, which is a fact about a pane in `reg.live` and nothing
+    /// else. It was not sound for the two ISS-1118 reports about a project
+    /// that reaches no pane at all, which is why they use `note_unplaced`.
     fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let Some(m) = reg.live.get_mut(project_id) else {
@@ -737,12 +797,6 @@ async fn sweep(
         let standing = match read_standing(ledger.as_ref(), &runner.project_id) {
             StandingRead::Known(s) => s,
             StandingRead::Unreadable(detail) => {
-                if masters.note_capability(&runner.project_id, "standing-unreadable") {
-                    tracing::error!(
-                        "[master] {}: {detail} — placing no master for it and nudging none. A box that cannot tell a stood-down project from a driving one must not decide it is driving.",
-                        runner.slug
-                    );
-                }
                 say_unplaced(
                     masters,
                     &runner.project_id,
@@ -764,23 +818,16 @@ async fn sweep(
                     masters,
                     &runner.project_id,
                     &runner.slug,
-                    stood_down_reason(standing.as_ref(), &runner.slug),
+                    stood_down_reason(standing.as_ref(), &runner.slug, None),
                 );
                 continue;
             }
             Placed::Contradicted => {
-                if masters.note_capability(&runner.project_id, "stood-down-contradicted") {
-                    tracing::error!(
-                        "[master] {}: {pane_name} is running while this project is stood down — nothing here adopts it as this box's master, nudges it or ends it. Either `tmux kill-session -t {pane_name}` to make the box's two answers agree, or `forge-runner master stand-up {}` to put the project back under this box's authority.",
-                        runner.slug,
-                        runner.slug
-                    );
-                }
                 say_unplaced(
                     masters,
                     &runner.project_id,
                     &runner.slug,
-                    stood_down_reason(standing.as_ref(), &runner.slug),
+                    stood_down_reason(standing.as_ref(), &runner.slug, Some(&pane_name)),
                 );
                 continue;
             }
@@ -895,11 +942,16 @@ async fn sweep(
                     resolved.slug,
                     resolved.slug
                 );
+                // A withdrawal that failed leaves the pane up, so the reason
+                // recorded against the project has to be the one that says a
+                // pane is running — not the one that says none was placed.
+                let mut left_running = None;
                 if let Err(e) = terminal::kill(&pane_name).await {
                     tracing::error!(
                         "[master] {}: could not withdraw {pane_name}: {e} — it is running against a stand-down and `tmux kill-session -t {pane_name}` is what ends it",
                         resolved.slug
                     );
+                    left_running = Some(pane_name.clone());
                 }
                 if let Some((session_id, _)) = masters.get(&runner.project_id) {
                     end_master(
@@ -916,7 +968,7 @@ async fn sweep(
                     masters,
                     &runner.project_id,
                     &resolved.slug,
-                    stood_down_reason(since.as_ref(), &resolved.slug),
+                    stood_down_reason(since.as_ref(), &resolved.slug, left_running.as_deref()),
                 );
                 continue;
             }
@@ -1990,9 +2042,24 @@ fn capability_of(tokens: Option<&session_tokens::SessionTokens>, session_id: &st
     }
 }
 
+/// Say why a project got no pane, once per change of reason and at the level
+/// the reason earns.
+///
+/// The de-duplication is `note_unplaced`'s, which is keyed on `reg.unplaced`
+/// and asks nothing of `reg.live`. That distinction is the whole of ISS-1118
+/// criterion 4: `reg.live` holds the panes THIS process placed, so a report
+/// gated on it is unreachable on a daemon that has just started — and a
+/// stood-down project never reaches `ensure_master`, so it is in `reg.live` on
+/// no daemon at all once one restarts.
 fn say_unplaced(masters: &Arc<Masters>, project_id: &str, slug: &str, why: Unplaced) {
-    if masters.note_unplaced(project_id, why.clone()) {
-        tracing::warn!("[master] {slug}: no master pane placed — {why}");
+    if !masters.note_unplaced(project_id, why.clone()) {
+        return;
+    }
+    let lead = why.lead();
+    if why.is_error() {
+        tracing::error!("[master] {slug}: {lead} — {why}");
+    } else {
+        tracing::warn!("[master] {slug}: {lead} — {why}");
     }
 }
 
@@ -5246,16 +5313,87 @@ mod stand_down_tests {
         );
     }
 
+    /// Criterion 4, and the defect the reopen was filed for.
+    ///
+    /// `Masters::new()` is not a convenience here — it IS the state a daemon
+    /// that has just started holds, and it is the state EVERY daemon holds for
+    /// a stood-down project, because such a project `continue`s before
+    /// `ensure_master` and `ensure_master` is the only thing that ever puts a
+    /// project in `reg.live`. The report this arm makes must therefore ask
+    /// nothing of `reg.live`. It used to, through `note_capability`, and the
+    /// consequence was zero ERROR lines for the whole life of a daemon meeting
+    /// a pane running against a stand-down.
     #[test]
-    fn a_pane_alive_under_a_stand_down_is_named_at_error_level() {
+    fn a_contradiction_is_reported_by_a_daemon_that_never_placed_the_pane() {
+        let masters = Masters::new();
+        let contradicted = stood_down_reason(
+            Some(&stood_down()),
+            "judgeproj",
+            Some("forge-master-judgeproj"),
+        );
+        assert!(
+            contradicted.is_error(),
+            "a master driving a project its owner stood down is the one state this change exists to make impossible to miss, so it is not a warn line (ISS-1118 criterion 4)"
+        );
+        assert!(
+            masters.note_unplaced("proj-1", contradicted.clone()),
+            "a daemon that never placed this pane meets it under the stand-down and says nothing — which is the nine-hour silence this issue was filed over, returning on every auto-update restart (ISS-1118 criterion 4)"
+        );
+        assert!(
+            !masters.note_unplaced("proj-1", contradicted),
+            "and it says it once, not on all forty-five sweeps after (ISS-1118 criterion 29)"
+        );
+    }
+
+    /// Criterion 4, the other half: the arm may not go back to gating its
+    /// report on the registry of panes this process placed.
+    #[test]
+    fn the_contradicted_arm_gates_its_report_on_nothing_this_process_placed() {
         let body = sweep_body();
         let start = body
             .find("Placed::Contradicted")
             .expect("the contradicted branch must be findable");
-        let branch = &body[start..start + 900.min(body.len() - start)];
+        let branch = &body[start..start + 600.min(body.len() - start)];
         assert!(
-            branch.contains("tracing::error!"),
-            "a master driving a project its owner stood down is the one state this change exists to make impossible to miss, so it is not an info line (ISS-1118 criterion 4)"
+            !branch.contains("note_capability"),
+            "`Masters::note_capability` opens `reg.live.get_mut(project_id)` and returns false for a project that is not there; a stood-down project is in `reg.live` on no daemon that did not place its pane, so a report gated on it is unreachable by its own report: {branch}"
+        );
+    }
+
+    /// Criterion 20. Withheld and contradicted are two different things to
+    /// tell an operator, and one `Unplaced` value for both says the wrong one.
+    #[test]
+    fn a_stood_down_project_with_a_pane_up_is_not_reported_as_having_no_pane() {
+        let withheld = stood_down_reason(Some(&stood_down()), "judgeproj", None);
+        let contradicted = stood_down_reason(
+            Some(&stood_down()),
+            "judgeproj",
+            Some("forge-master-judgeproj"),
+        );
+        assert!(
+            withheld.lead().contains("no master pane placed"),
+            "a project withheld with no pane up is exactly that: {}",
+            withheld.lead()
+        );
+        assert!(
+            !contradicted.lead().contains("no master pane placed"),
+            "the line that survives a contradicted sweep asserted the opposite of what an operator finds: a pane alive, holding a session, reported as none placed: {}",
+            contradicted.lead()
+        );
+        assert!(
+            contradicted.lead().contains("forge-master-judgeproj"),
+            "and it names the pane, which is what `tmux kill-session` needs: {}",
+            contradicted.lead()
+        );
+        assert!(
+            !withheld.is_error(),
+            "a stand-down the box is honouring with no pane up is the owner's own act working, not a fault"
+        );
+        let masters = Masters::new();
+        masters.note_unplaced("proj-1", withheld);
+        assert!(
+            masters.note_unplaced("proj-1", contradicted),
+            "a project that goes from withheld to contradicted — somebody started a pane by hand — is a change, and one value for both states makes it invisible"
         );
     }
 
@@ -5304,13 +5442,21 @@ mod stand_down_tests {
             .expect("the sweep must handle the unreadable case by name");
         let branch = &body[at..at + 900.min(body.len() - at)];
         assert!(
-            branch.contains("tracing::error!") && branch.contains("continue;"),
-            "an unreadable standing is reported loudly and places nothing; carrying on to `ensure_master` would place the pane an owner may have withheld"
+            branch.contains("continue;"),
+            "carrying on to `ensure_master` would place the pane an owner may have withheld"
         );
-        let why = Unplaced::StandingUnreadable {
+        assert!(
+            !branch.contains("note_capability"),
+            "gating this report on the registry of panes this process placed makes it unreachable on a daemon that placed none, which is every daemon that restarts (ISS-1118 criterion 4): {branch}"
+        );
+        let unreadable = Unplaced::StandingUnreadable {
             detail: "the standing could not be read: disk is gone".into(),
-        }
-        .to_string();
+        };
+        assert!(
+            unreadable.is_error(),
+            "a box that cannot say whether it is driving a project is reported loudly, on every daemon that meets it"
+        );
+        let why = unreadable.to_string();
         assert!(
             why.contains("disk is gone"),
             "and the reason a pane is absent names what could not be read, not merely that something could not be: {why}"
@@ -5397,6 +5543,7 @@ mod stand_down_tests {
             by: "owner".into(),
             why: Some("a human is driving it".into()),
             slug: "forge-dev".into(),
+            pane: None,
         }
         .to_string();
         assert!(
@@ -5411,6 +5558,7 @@ mod stand_down_tests {
             by: "owner".into(),
             why: None,
             slug: "forge-dev".into(),
+            pane: None,
         }
         .to_string();
         assert!(
