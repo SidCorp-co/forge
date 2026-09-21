@@ -36,6 +36,7 @@ export interface RetentionFixture {
   }): Promise<string>;
   insertSession(opts?: {
     status?: string;
+    kind?: string;
     metadata?: unknown;
     messages?: unknown;
   }): Promise<string>;
@@ -111,10 +112,10 @@ export async function createRetentionFixture(): Promise<RetentionFixture> {
     async insertSession(opts = {}) {
       const id = randomUUID();
       await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, status, metadata,
-                                    messages)
+        INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status,
+                                    metadata, messages)
         VALUES (${id}, ${ids.projectId}, ${ids.ownerId}, ${ids.runId},
-                ${opts.status ?? 'completed'},
+                ${opts.kind ?? 'pipeline'}, ${opts.status ?? 'completed'},
                 ${JSON.stringify(opts.metadata ?? {})}::jsonb,
                 ${JSON.stringify(opts.messages ?? [])}::jsonb)
       `);

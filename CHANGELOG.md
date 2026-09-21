@@ -112,6 +112,18 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Forge shows its own version**, once, in the sidebar footer. It is read from the deployment
+  answering you, so it names what is actually serving you rather than what this page was built
+  from.
+- **Every runner row shows that runner's own version**, beside the box it describes, labelled so
+  it cannot be read as Forge's. A runner that has never reported one now says so instead of
+  showing a blank where a number belongs.
+- **The sessions list is a tree, and every row says what kind it is.** Each session sits under
+  the one that started it, named Master, Run, Step, PM or Chat — five kind tabs where there were
+  two.
+- **A session that ends takes what it started with it.** Closing a master closes the runs beneath
+  it and returns their issues. One silence clock at ten minutes replaces two that could not see
+  each other.
 - **A box can be told to stop driving a project, and stay stopped.** `forge-runner master
   stand-down <project>` places no master and sends no nudge until `stand-up`. Killing the pane
   never held: it came back on the old conversation.
@@ -3039,6 +3051,10 @@
   set is now 59.
 
 ### Fixed
+- **Asking the session list for a kind that does not exist now says so.** It names the valid
+  kinds instead of answering an empty page. A caller can also no longer declare what kind it is
+  creating.
+
 - **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
   claim the database refuses, and the machine that loses is told which one holds it and since when.
 

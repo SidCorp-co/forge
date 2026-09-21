@@ -1933,6 +1933,13 @@
       "when": 1808524800000,
       "tag": "0294_release_cuts_a_version",
       "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1808611200000,
+      "tag": "0295_a_session_says_what_it_is",
+      "breakpoints": true
     }
   ]
 }

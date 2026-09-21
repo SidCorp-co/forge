@@ -37,6 +37,7 @@ import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
+import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
@@ -337,16 +338,8 @@ agentSessionRoutes.get(
     }
 
     if (status) conditions.push(eq(agentSessions.status, status));
-    if (metadataType) {
-      conditions.push(sql`${agentSessions.metadata}->>'type' = ${metadataType}`);
-    }
-    // ISS-522 — interactive `agent` chats are private to their owner. Scope the
-    // "My conversations" listing to the caller; this also drops legacy
-    // userId=NULL rows (NULL never equals). Pipeline/pm/Agents-overview calls
-    // (no metadataType=agent) stay project-shared.
-    if (metadataType === 'agent') {
-      conditions.push(eq(agentSessions.userId, userId));
-    }
+    if (metadataType)
+      conditions.push(eq(agentSessions.kind, kindFromQuery(metadataType, badRequest)));
     if (issueId) {
       conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
     }
@@ -452,6 +445,9 @@ agentSessionRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     assertProjectRole(access, 'member');
 
+    const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
+    assertCallerDeclaresNoKind(clientMetadata, badRequest);
+
     // Chat bootstrap: an EMPTY session row. The first turn is dispatched later
     // through `POST /send` → the shared chat-turn dispatcher (which picks the
     // device), so this path deliberately does NOT pin a device or dispatch.
@@ -462,7 +458,7 @@ agentSessionRoutes.post(
       title: input.title ?? null,
       repoPath: input.repoPath ?? null,
       claudeSessionId: input.claudeSessionId ?? null,
-      metadata: (input.metadata as Record<string, unknown> | null | undefined) ?? null,
+      metadata: clientMetadata ?? null,
     });
 
     broadcastSession(inserted, 'agent-session.created');

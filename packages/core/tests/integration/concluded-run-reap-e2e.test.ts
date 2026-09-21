@@ -101,8 +101,8 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
 
   async function seedSession(runId: string, status: string): Promise<void> {
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status)
-      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${status})
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, 'pipeline', ${status})
     `);
   }
 

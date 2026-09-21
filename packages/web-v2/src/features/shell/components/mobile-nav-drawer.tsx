@@ -80,6 +80,10 @@ export interface MobileNavDrawerProps {
   onOpenProject: (slug: string) => void;
   onCreateProject: () => void;
   onViewAllProjects: () => void;
+  /** The product's own version, pinned to the drawer footer. Presentational
+   *  slot; the layout supplies the wired node. The drawer is the only shell
+   *  navigation below md, so nothing else carries it there (ISS-1119). */
+  version?: React.ReactNode;
 }
 
 export function MobileNavDrawer({
@@ -97,6 +101,7 @@ export function MobileNavDrawer({
   onOpenProject,
   onCreateProject,
   onViewAllProjects,
+  version,
 }: MobileNavDrawerProps) {
   // Esc closes the mobile drawer.
   useEffect(() => {
@@ -232,6 +237,8 @@ export function MobileNavDrawer({
             </>
           )}
         </div>
+
+        {version && <div className="border-t border-line-subtle px-1.5 pt-2">{version}</div>}
       </div>
     </div>
   );

@@ -221,7 +221,7 @@ const corsMiddleware = cors({
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
 
-app.route('/', publicHealthRoutes);
+for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
 app.notFound(notFoundHandler);
 app.onError(errorHandler);

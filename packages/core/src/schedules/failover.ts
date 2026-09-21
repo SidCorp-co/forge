@@ -192,6 +192,7 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
       projectId: failed.projectId,
       userId: failed.userId,
       title: failed.title ?? 'Scheduled run',
+      parentSessionId: failed.id,
       runKind: 'system',
       runMetadata: { source: 'schedule.run', scheduleId: meta.scheduleId },
       metadata: nextMeta,

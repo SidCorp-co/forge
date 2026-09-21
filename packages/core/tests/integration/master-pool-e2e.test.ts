@@ -250,9 +250,10 @@ describe('master pool — reaping, load and preparation', () => {
       [liveSession, 'running'],
     ] as const) {
       await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, user_id, device_id, status,
-                                    last_heartbeat_at)
-        VALUES (${id}, ${project.id}, ${run}, ${owner.id}, ${device.id}, ${status}, now())
+        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, user_id, device_id, kind,
+                                    status, last_heartbeat_at)
+        VALUES (${id}, ${project.id}, ${run}, ${owner.id}, ${device.id}, 'master', ${status},
+                now())
       `);
     }
     await harness.db.execute(sql`
@@ -281,9 +282,9 @@ describe('master pool — reaping, load and preparation', () => {
     const silent = randomUUID();
 
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, user_id, device_id, status,
-                                  last_heartbeat_at)
-      VALUES (${silent}, ${project.id}, ${run}, ${owner.id}, ${device.id}, 'running',
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, user_id, device_id, kind,
+                                  status, last_heartbeat_at)
+      VALUES (${silent}, ${project.id}, ${run}, ${owner.id}, ${device.id}, 'master', 'running',
               now() - interval '10 minutes')
     `);
     await harness.db.execute(sql`

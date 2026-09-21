@@ -13,13 +13,13 @@
  */
 
 import type { SQL } from 'drizzle-orm';
-import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
-import { PIPELINE_METADATA_TYPES } from './session-kinds.js';
+import { PIPELINE_SESSION_KINDS } from './session-kinds.js';
 
 /** Resolve the linked issue for a session's wedge event via its pipeline_run
  *  (sessions carry no issue_id of their own). Best-effort. */
@@ -79,7 +79,7 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
         and(isNotNull(agentSessions.dispatchedAt), lt(agentSessions.dispatchedAt, queueCutoff)),
         and(sql`${agentSessions.dispatchedAt} IS NULL`, lt(agentSessions.createdAt, queueCutoff)),
       ),
-      sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+      inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
       ...(projectFilter ? [projectFilter] : []),
     ),
     fromStatus: 'queued',
@@ -111,7 +111,7 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
       eq(agentSessions.status, 'queued'),
       isNotNull(agentSessions.lastHeartbeatAt),
       lt(agentSessions.lastHeartbeatAt, quietCutoff),
-      sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+      inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
       ...(projectFilter ? [projectFilter] : []),
     ),
     fromStatus: 'queued',

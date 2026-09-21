@@ -57,6 +57,9 @@ export interface NavRailProps {
   /** Global org switcher slot (ISS-469), pinned under the brand. Presentational
    *  here — the caller supplies the wired control. Hidden while collapsed. */
   orgSwitcher?: React.ReactNode;
+  /** The product's own version, pinned to the footer (ISS-1119). Hidden while
+   *  collapsed — the compact rail carries it there instead. */
+  version?: React.ReactNode;
   /** Icon-only collapsed rail. */
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
@@ -206,6 +209,7 @@ export function NavRail({
   project,
   user,
   orgSwitcher,
+  version,
   collapsed = false,
   onToggleCollapsed,
   groupOpen,
@@ -393,6 +397,7 @@ export function NavRail({
           />
         )}
         <div className={cn("flex items-center pt-1", collapsed ? "justify-center" : "")}>{userArea}</div>
+        {!collapsed && version && <div className="px-2.5 pt-1.5">{version}</div>}
       </div>
     </nav>
   );

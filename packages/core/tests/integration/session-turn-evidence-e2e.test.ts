@@ -101,8 +101,9 @@ async function seed(sessionStatus: 'queued' | 'running'): Promise<{
     VALUES (${runId}, ${projectId}, 'interactive', 'running')
   `);
   await harness.db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, status, dispatched_at, metadata)
-    VALUES (${sessionId}, ${projectId}, ${runId}, ${deviceId}, ${sessionStatus}, now(),
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, kind, status,
+                                dispatched_at, metadata)
+    VALUES (${sessionId}, ${projectId}, ${runId}, ${deviceId}, 'pipeline', ${sessionStatus}, now(),
             ${JSON.stringify({ type: 'pipeline' })}::jsonb)
   `);
   await harness.db.execute(sql`

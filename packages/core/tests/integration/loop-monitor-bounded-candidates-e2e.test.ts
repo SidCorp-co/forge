@@ -105,10 +105,10 @@ async function seedLiveJobs(
       VALUES (${runId}, ${projectId}, 'pm', 'running', now() - interval '4 hours')
     `);
     await db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata,
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata,
                                   started_at, last_heartbeat_at, runtime_state,
                                   created_at, updated_at)
-      VALUES (${sessionId}, ${projectId}, ${runId}, 'running',
+      VALUES (${sessionId}, ${projectId}, ${runId}, 'pipeline', 'running',
               ${JSON.stringify({ type: 'pipeline' })}::jsonb,
               now() - interval '4 hours', now() - interval '4 hours',
               ${parked ? 'awaiting_input' : resident ? 'working' : null},

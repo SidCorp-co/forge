@@ -56,9 +56,9 @@ describe('agent_sessions reads that must not carry a transcript', () => {
           Array.from({ length: args.messageCount }, (_, i) => ({ role: 'user', content: `m${i}` })),
         );
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, messages, metadata)
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, messages, metadata)
       VALUES (
-        ${id}, ${projectId}, ${runId}, 'completed',
+        ${id}, ${projectId}, ${runId}, 'chat', 'completed',
         ${messages === null ? sql`'[]'::jsonb` : sql`${messages}::jsonb`},
         ${JSON.stringify({ issueId: 'not-a-real-issue' })}::jsonb
       )

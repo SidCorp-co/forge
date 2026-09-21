@@ -83,7 +83,7 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 				</MetaRow>
 				<MetaRow label="Agent version">
 					<span className="inline-flex items-center gap-2">
-						{device.agentVersion ? `v${device.agentVersion}` : "—"}
+						{device.agentVersion ? `v${device.agentVersion}` : "Not reported"}
 						{device.agentOutdated && (
 							<span
 								className="inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
