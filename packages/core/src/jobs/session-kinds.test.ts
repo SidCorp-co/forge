@@ -46,7 +46,8 @@ describe('a session says its own species', () => {
         if (/metadata\s*(\}\s*)?->>\s*'type'/.test(line)) {
           offences.push(`${rel}:${i + 1} reads a species out of metadata->>'type'`);
         }
-        if (rel !== PRIVACY_FLAG_READER && /metadata\s+as\s*\{\s*type\??:/.test(line)) {
+        const castsToType = /as\s*\{\s*type\??:/.test(line) && /metadata/.test(line);
+        if (rel !== PRIVACY_FLAG_READER && castsToType) {
           offences.push(`${rel}:${i + 1} casts metadata to read a \`type\``);
         }
       }

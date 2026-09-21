@@ -14,6 +14,11 @@ export const PIPELINE_SESSION_KINDS = [
   'pm',
 ] as const satisfies readonly AgentSessionKind[];
 
+/** Whether a row's own `kind` is one a pipeline step drives, so `/retry` may reach it. */
+export function isPipelineSessionKind(kind: AgentSessionKind): boolean {
+  return (PIPELINE_SESSION_KINDS as readonly AgentSessionKind[]).includes(kind);
+}
+
 export const NON_CLIENT_SESSION_KINDS = [
   'pipeline',
   'pm',

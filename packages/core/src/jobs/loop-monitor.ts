@@ -390,8 +390,8 @@ export async function reapZombieSessions(
 
   // No-client hop (ISS-420): a chat/schedule/agent session created `running`
   // that never got a working client — claudeSessionId still NULL and the
-  // heartbeat never advanced past creation. COALESCE so a NULL/absent
-  // metadata.type (plain chat, schedule.run) counts as "not pipeline/pm".
+  // heartbeat never advanced past creation. The arm is `kind IN
+  // CLIENT_SESSION_KINDS`, so a species a pipeline step drives is outside it.
   const noClientFailed = await applyKernelTransition(db, {
     entity: 'session',
     returning: SWEEP_SESSION_COLUMNS,

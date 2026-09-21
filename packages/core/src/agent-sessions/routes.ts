@@ -15,6 +15,7 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
+import { isPipelineSessionKind } from '../jobs/session-kinds.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -128,7 +129,6 @@ agentSessionRoutes.route('/', agentSessionEventsRoutes);
 
 // Pipeline-session types for the retry endpoint. Mirrors the predicate
 // used by sweeper.ts and the migration backfill.
-const PIPELINE_SESSION_TYPES = new Set<string>(['pipeline', 'pm']);
 
 // Idempotency on /retry comes from orchestrator.reEnqueueForIssue + the
 // unique-active-job index — re-firing while a job is queued/running is a
@@ -144,8 +144,8 @@ agentSessionRoutes.post(
 
     const { session } = await ensureSessionRole(id, userId, 'member');
 
-    const meta = (session.metadata ?? {}) as { type?: string; issueId?: string };
-    if (!meta.type || !PIPELINE_SESSION_TYPES.has(meta.type)) {
+    const meta = (session.metadata ?? {}) as { issueId?: string };
+    if (!isPipelineSessionKind(session.kind)) {
       throw new HTTPException(400, {
         message: 'retry only supported for pipeline sessions',
         cause: { code: 'NOT_PIPELINE_SESSION' },
