@@ -469,6 +469,7 @@ export const devices = pgTable(
     name: text('name').notNull(),
     platform: text('platform', { enum: devicePlatforms }).notNull(),
     agentVersion: text('agent_version'),
+    agentCommit: text('agent_commit'),
     status: text('status', { enum: deviceStatuses }).notNull().default('offline'),
     disabledAt: timestamp('disabled_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),

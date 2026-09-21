@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { RunnerLimitReason, RunnerStatus, RunnerType } from '../db/schema.js';
+import type { RunnerBuildComparison } from '../devices/build-state.js';
 
 export const runnerCapabilitiesSchema = z
   .object({
@@ -72,6 +73,11 @@ export interface DispatchResult {
 
 export interface HealthInput {
   runner: Runner;
+  /**
+   * What the box is running, and what it is compared against. Optional because a
+   * caller that cannot read the device has nothing to say about a build (ISS-1165).
+   */
+  build?: RunnerBuildComparison | undefined;
 }
 
 export interface HealthResult {

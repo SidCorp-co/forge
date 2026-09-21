@@ -22,7 +22,13 @@ pub async fn beat(client: &CoreClient) -> Result<()> {
 /// `UNAUTHORIZED` error so callers can prompt a re-login.
 pub async fn beat_verbose(client: &CoreClient) -> Result<String> {
     let url = client.url("/api/devices/heartbeat");
-    let body = serde_json::json!({ "agentVersion": env!("CARGO_PKG_VERSION") });
+    // The RELEASED identity, not Cargo's — core compares a box against both halves,
+    // and a box that answered with Cargo's number reported the same 0.17.0 as the
+    // release while running seven commits of different code (ISS-1165).
+    let mut body = serde_json::json!({ "agentVersion": crate::update::CURRENT_VERSION });
+    if let Some(commit) = crate::update::build_commit() {
+        body["agentCommit"] = serde_json::Value::String(commit.to_string());
+    }
     let resp = client
         .http()
         .post(&url)

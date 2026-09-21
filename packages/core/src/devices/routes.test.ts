@@ -241,14 +241,14 @@ describe('POST /api/devices/heartbeat', () => {
       req('/api/devices/heartbeat', {
         method: 'POST',
         token: 'good',
-        body: JSON.stringify({ agentVersion: '0.1.0' }),
+        body: JSON.stringify({ agentVersion: '0.1.0', agentCommit: 'fbe6468ddf' }),
       }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
     expect(typeof body.serverTime).toBe('string');
-    expect(updateSet).toHaveBeenCalled();
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ agentCommit: 'fbe6468ddf' }));
   });
 });
 

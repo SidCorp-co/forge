@@ -19,6 +19,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { resolvedWindowDaysFor } from '../pipeline/retention/policy.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { runnerHealthWithBuild } from './build-comparison.js';
 import { clearRunnerQuarantine } from './quarantine.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
@@ -444,8 +445,7 @@ runnerRoutes.post(
     if (!access.role) throw forbidden('not a project member');
     const adapter = getRunnerAdapter(existing.type);
     if (!adapter) throw badRequest({ type: 'no adapter registered' });
-    const result = await adapter.health({ runner: rowToRunner(existing) });
-    return c.json(result);
+    return c.json(await runnerHealthWithBuild(adapter, rowToRunner(existing), existing.deviceId));
   },
 );
 

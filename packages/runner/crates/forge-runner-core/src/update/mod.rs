@@ -12,9 +12,42 @@ use serde::Deserialize;
 
 use crate::error::{Error, Result};
 
-/// This build's version (from Cargo) and target triple (from build.rs).
-pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// This build's identity, all three fixed by build.rs.
+///
+/// `CURRENT_VERSION` is the RELEASED version — the one the release tag carried,
+/// stamped in at build time — and not Cargo's, because the released patch is the
+/// tag's. `BUILD_COMMIT` is the commit that release was built from, or `unknown`
+/// for a build nobody released. Core compares a box against both.
+pub const CURRENT_VERSION: &str = env!("FORGE_RUNNER_VERSION");
+pub const BUILD_COMMIT: &str = env!("FORGE_RUNNER_COMMIT");
 pub const BUILD_TARGET: &str = env!("FORGE_RUNNER_TARGET");
+
+/// What `--version` prints, and what a person reads back off a box.
+pub const VERSION_LINE: &str = concat!(
+    env!("FORGE_RUNNER_VERSION"),
+    " (",
+    env!("FORGE_RUNNER_COMMIT"),
+    ")"
+);
+
+/// The commit this build came from, or None where it was never stamped.
+///
+/// A build with no commit is not a published one, and saying so is the point:
+/// core cannot compare it against `main` and must not call it current.
+pub fn build_commit() -> Option<&'static str> {
+    commit_or_none(BUILD_COMMIT)
+}
+
+/// The reading itself, separate from the constant so it can be asserted against
+/// every shape a stamp arrives in rather than against whatever this build got.
+fn commit_or_none(raw: &str) -> Option<&str> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "unknown" {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
@@ -149,6 +182,35 @@ mod tests {
         assert!(!is_newer("0.1.0", "0.1.0"));
         assert!(!is_newer("0.1.0", "0.2.0"));
         assert!(is_newer("v0.2.0-rc.1", "0.1.0"));
+    }
+
+    #[test]
+    fn an_unstamped_build_has_no_commit_to_report() {
+        assert_eq!(commit_or_none("unknown"), None);
+        assert_eq!(commit_or_none(""), None);
+        assert_eq!(commit_or_none("   "), None);
+        assert_eq!(commit_or_none("\n unknown \n"), None);
+    }
+
+    #[test]
+    fn a_stamped_build_reports_the_commit_it_carries() {
+        assert_eq!(
+            commit_or_none("fbe6468ddf0a1b2c3d4e5f60718293a4b5c6d7e8"),
+            Some("fbe6468ddf0a1b2c3d4e5f60718293a4b5c6d7e8")
+        );
+        assert_eq!(commit_or_none(" fbe6468 \n"), Some("fbe6468"));
+    }
+
+    #[test]
+    fn a_commit_that_merely_contains_unknown_is_still_a_commit() {
+        assert_eq!(commit_or_none("unknown0"), Some("unknown0"));
+    }
+
+    #[test]
+    fn the_version_line_carries_both_halves_of_the_identity() {
+        assert!(VERSION_LINE.starts_with(CURRENT_VERSION));
+        assert!(VERSION_LINE.contains(BUILD_COMMIT));
+        assert!(VERSION_LINE.ends_with(')'));
     }
 
     #[test]

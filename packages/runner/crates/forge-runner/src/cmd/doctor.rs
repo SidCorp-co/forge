@@ -24,7 +24,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     println!("Forge Runner — doctor\n");
     println!(
         "✔ version      {} ({})",
-        update::CURRENT_VERSION,
+        update::VERSION_LINE,
         update::BUILD_TARGET
     );
 

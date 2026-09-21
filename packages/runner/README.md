@@ -178,3 +178,42 @@ forge-runner config set update.manifest-url https://<core>/api/install/latest.js
 
 The installer enables it by default; pass `--no-auto-update` to opt out at install
 time: `curl -fsSL https://<core>/api/install.sh | sh -s -- --no-auto-update`.
+
+## Where a release comes from (ISS-1165)
+
+**Nobody cuts the tag.** A change under `packages/runner/` that lands on `main`
+triggers `.github/workflows/runner-autorelease.yml`, which computes the next
+version, creates `runner-v<next>` at the commit that landed, and calls
+`runner-release.yml` in the same run — called and not triggered, because a tag
+pushed with the workflow's own `GITHUB_TOKEN` starts no workflow run. What comes
+out is a GitHub Release carrying the two `forge-runner-<target>` binaries,
+`VERSION` and `COMMIT`. Core picks that up within 30 minutes and boxes with
+`update.auto` apply it on their next check.
+
+**`[workspace.package] version` in `Cargo.toml` is the LINE, not the released
+version.** It declares the major.minor; the patch is the release counter that
+`scripts/next-runner-version.mjs` reads off the existing tags, and the release
+build stamps the result in through `FORGE_RUNNER_VERSION`. Raise the major or the
+minor in `Cargo.toml` when a release deserves one; never the patch. The reason is
+that `main` carries a required status check, so no CI push of a version-bump
+commit can reach it — a tag push can.
+
+**What a binary answers with is what core compares it against.**
+`forge-runner --version` prints the released version and the commit it was built
+from; a `cargo build` that nothing stamped prints Cargo's own version and
+`unknown`, which is the truth about it — it is not a published build, and core
+reports such a box as unknown rather than current rather than guessing.
+
+The stamped commit is the newest commit that **touched `packages/runner`**, not the
+head of the push that carried it: one push can hold a runner commit followed by an
+unrelated one, and core reads the branch the same way, so stamping the push head
+would leave a freshly updated box reading as behind for ever. A commit some release
+already carries is refused rather than released again — a rerun of an older release
+job would otherwise publish that code under a version higher than what followed it.
+
+Withdrawing a release takes two acts, not one: `fetch-release.ts` never moves
+`RUNNER_RELEASE_DIR` backwards, so deleting a tag and its GitHub Release leaves
+the bad build still being served. Either delete `VERSION` and the
+`forge-runner-*` assets from that directory on the core host, or publish a higher
+corrective release — then read `/api/install/latest.json` back before reinstalling
+anything.
