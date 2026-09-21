@@ -18,14 +18,18 @@ const release = (tag: string, assets: string[]) => ({
 
 let dir: string;
 
-/** Answers the releases list once, then each asset by the name in its URL. */
+/**
+ * Answers the releases list once, then each asset by the name in its URL. Routed on
+ * the parsed host, not on a substring of the URL: a host check that reads anywhere
+ * in the string is the shape CodeQL refuses, and a stub is not a reason to write it.
+ */
 function serve(releases: unknown[], bodies: Record<string, string>) {
   return vi.fn(async (input: unknown) => {
-    const url = String(input);
-    if (url.includes('api.github.com')) {
+    const url = new URL(String(input));
+    if (url.hostname === 'api.github.com') {
       return new Response(JSON.stringify(releases), { status: 200 });
     }
-    const name = url.split('/').pop() as string;
+    const name = url.pathname.split('/').pop() as string;
     if (!(name in bodies)) return new Response('missing', { status: 404 });
     return new Response(bodies[name], { status: 200 });
   });

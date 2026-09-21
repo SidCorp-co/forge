@@ -34,14 +34,19 @@ export const claudeCodeAdapter: RunnerAdapter = {
     }
 
     // A live box running superseded code is not healthy: the work it is given is
-    // written against what landed (ISS-1165). An unknown build is a box that did not
-    // answer for itself, and core will not answer for it either.
-    if (build?.state === 'behind') {
-      return { ok: false, lastError: build.detail, details: { ageMs, build: build.state } };
+    // written against what landed (ISS-1165). `outdated` covers a box behind the
+    // release and a release behind the branch. An unknown BOX did not answer for
+    // itself; an unknown RELEASE is core's blind spot, not held against the box.
+    if (build && (build.outdated || build.state === 'unknown')) {
+      return {
+        ok: false,
+        lastError: build.detail,
+        details: { ageMs, build: build.state, release: build.releaseState },
+      };
     }
-    if (build?.state === 'unknown') {
-      return { ok: false, lastError: build.detail, details: { ageMs, build: build.state } };
-    }
-    return { ok: true, details: { ageMs, build: build?.state ?? 'unread' } };
+    return {
+      ok: true,
+      details: { ageMs, build: build?.state ?? 'unread', release: build?.releaseState ?? 'unread' },
+    };
   },
 };

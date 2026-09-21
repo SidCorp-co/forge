@@ -1,4 +1,6 @@
 import type { HealthKey } from "@/design";
+
+export type RunnerBuildState = "current" | "behind" | "unknown";
 export type { ProjectGitAccessView, SshConnTestResult } from "@forge/contracts";
 
 /** A row of `GET /api/me/devices` (owner-scoped). */
@@ -16,14 +18,14 @@ export interface DeviceRow {
 	/** The newest commit under `packages/runner` on the default branch, null if unread. */
 	mainRunnerHead: string | null;
 	/**
-	 * What this box is running, against the published release and the default
-	 * branch: `behind` it, `current` with it, or `unknown` because the comparison
-	 * could not be made. `unknown` is not `current` (ISS-1165).
+	 * This box against the published release, and the published release against the
+	 * runner on the default branch. `unknown` is not `current` (ISS-1165).
 	 */
-	agentBuildState: "current" | "behind" | "unknown";
+	agentBuildState: RunnerBuildState;
+	runnerReleaseState: RunnerBuildState;
 	/** One sentence naming what was compared and what it found. */
 	agentBuildDetail: string;
-	/** True when `agentBuildState` is `behind` — kept as the name the screens read. */
+	/** True when either comparison answered `behind`. */
 	agentOutdated: boolean;
 	status: "online" | "offline" | "revoked";
 	disabledAt: string | null;
@@ -130,6 +132,33 @@ export function runnerVersionLabel(agentVersion: string | null | undefined): str
 export function deviceVersionLabel(agentVersion: string | null | undefined): string {
 	const reported = agentVersion?.trim();
 	return reported ? `v${reported}` : VERSION_NOT_REPORTED;
+}
+
+/** The chip beside a device's version, or null where there is nothing to say. */
+export interface DeviceBuildChip {
+	label: string;
+	title: string;
+	tone: "warning" | "muted";
+}
+
+/**
+ * A box that could not be compared gets a chip of its own rather than none: the
+ * health endpoint refuses such a box, and a row that says nothing about it reads
+ * as a box with nothing wrong (ISS-1165).
+ */
+export function deviceBuildChip(device: {
+	agentOutdated: boolean;
+	agentBuildState: RunnerBuildState;
+	agentBuildDetail: string;
+}): DeviceBuildChip | null {
+	const title = device.agentBuildDetail || "";
+	if (device.agentOutdated) {
+		return { label: "update pending", title: title || "Update pending", tone: "warning" };
+	}
+	if (device.agentBuildState === "unknown") {
+		return { label: "build unknown", title: title || "This build could not be compared", tone: "muted" };
+	}
+	return null;
 }
 
 /** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */

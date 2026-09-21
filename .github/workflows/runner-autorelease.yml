@@ -36,6 +36,7 @@ jobs:
     outputs:
       version: ${{ steps.next.outputs.version }}
       tag: ${{ steps.next.outputs.tag }}
+      sha: ${{ steps.head.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,16 +44,25 @@ jobs:
           # tags have to be here: a shallow checkout would compute the manifest's
           # own version every time and collide on the first push.
           fetch-depth: 0
+      # The identity a release carries is the newest commit that TOUCHED the runner,
+      # not the head of the push. A push can carry a runner commit followed by an
+      # unrelated one; stamping the push head would leave the binary claiming a
+      # commit that core's own path-filtered read of the branch never returns, and
+      # every freshly updated box would read as behind for ever.
+      - name: The runner this release is cut from
+        id: head
+        run: echo "sha=$(git log -1 --format=%H -- packages/runner)" >> "$GITHUB_OUTPUT"
       - name: The version this release carries
         id: next
         run: node scripts/next-runner-version.mjs >> "$GITHUB_OUTPUT"
       - name: Cut the tag
         env:
           TAG: ${{ steps.next.outputs.tag }}
+          SHA: ${{ steps.head.outputs.sha }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          node scripts/cut-runner-tag.mjs "$TAG" "$GITHUB_SHA"
+          node scripts/cut-runner-tag.mjs "$TAG" "$SHA"
 
   # Called, not triggered: a tag pushed with this workflow's own GITHUB_TOKEN
   # does not start a workflow run, so the release has to be invoked here.
@@ -63,4 +73,4 @@ jobs:
     uses: ./.github/workflows/runner-release.yml
     with:
       version: ${{ needs.tag.outputs.version }}
-      sha: ${{ github.sha }}
+      sha: ${{ needs.tag.outputs.sha }}

@@ -21,6 +21,7 @@ import { useDeviceRunners, useRenameDevice } from "../hooks";
 import {
 	type DeviceRow,
 	type DeviceRunnerAssignment,
+	deviceBuildChip,
 	deviceHealth,
 	runnerHealth,
 } from "../types";
@@ -45,6 +46,7 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 	const trimmed = name.trim();
 	const dirty = trimmed.length > 0 && trimmed !== device.name;
 	const revoked = device.status === "revoked";
+	const buildChip = deviceBuildChip(device);
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -84,19 +86,28 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 				<MetaRow label="Agent version">
 					<span className="inline-flex items-center gap-2">
 						{device.agentVersion ? `v${device.agentVersion}` : "Not reported"}
-						{device.agentOutdated && (
+						{buildChip && (
 							<span
-								className="inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
-								// The server's own sentence: with the commit in play, two boxes
-								// can share a version and still differ, so "latest is v0.17.0"
-								// beside a box reading 0.17.0 says nothing (ISS-1165).
-								title={device.agentBuildDetail || "Update pending"}
+								className={
+									buildChip.tone === "warning"
+										? "inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+										: "inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken"
+								}
+								title={buildChip.title}
 							>
-								update pending
+								{buildChip.label}
 							</span>
 						)}
 					</span>
 				</MetaRow>
+				{buildChip && (
+					<MetaRow label="Build">
+						{/* The sentence itself, not only a hover: with the commit in play two
+						    boxes can share a version and still differ, and a title nobody can
+						    reach says nothing to a keyboard or a screen reader (ISS-1165). */}
+						<span className="fg-body-sm text-subtle">{buildChip.title}</span>
+					</MetaRow>
+				)}
 				<MetaRow label="Git push">
 					{device.gitCredentialRef ? (
 						<span className="inline-flex items-center gap-1.5">

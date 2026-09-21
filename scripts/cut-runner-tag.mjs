@@ -19,11 +19,30 @@ export function tagTarget(cwd, tag) {
   }
 }
 
-/**
- * Create `tag` at `commit` and push it to `remote`. Refuses a tag that already
- * exists, naming it and the commit it already points at.
- */
+/** The `runner-v*` tags pointing at `commit`, if any. */
+export function releasesAt(cwd, commit) {
+  try {
+    return git(cwd, ['tag', '--points-at', commit, '--list', 'runner-v*'])
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Create `tag` at `commit`. Refuses an existing tag, or an already-released commit. */
 export function cutRunnerTag({ cwd, tag, commit, remote = 'origin' }) {
+  // A rerun of an older run allocates a HIGHER version from today's tags and would
+  // publish yesterday's code under it: numerically forward, functionally back.
+  const already = releasesAt(cwd, commit);
+  if (already.length > 0) {
+    throw new Error(
+      `${commit} is already released as ${already.join(', ')} — nothing to release, and ` +
+        `cutting ${tag} here would publish that code under a higher version than what ` +
+        `followed it. Nothing was pushed.`,
+    );
+  }
   const existing = tagTarget(cwd, tag);
   if (existing !== null) {
     throw new Error(

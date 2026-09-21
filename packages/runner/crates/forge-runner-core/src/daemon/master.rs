@@ -5578,12 +5578,16 @@ mod stand_down_tests {
             branch.contains("return None;"),
             "the verdict has to refuse rather than answer, and every caller places nothing on a refusal — carrying on to `ensure_master` would place the pane an owner may have withheld"
         );
+        // Read through a copy with one line ending: a checkout with CRLF holds
+        // `\r\n` where a multi-line literal here holds `\n`, and this assertion
+        // then reports a missing branch on source that carries it.
+        let sweep = sweep_body().replace("\r\n", "\n");
         for call in [
             "standing_verdict(",
             "else {\n            continue;\n        };",
         ] {
             assert!(
-                sweep_body().contains(call),
+                sweep.contains(call),
                 "and the sweep consumes that refusal by leaving the iteration: `{call}` is missing"
             );
         }

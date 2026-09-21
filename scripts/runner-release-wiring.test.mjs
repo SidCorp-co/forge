@@ -44,9 +44,20 @@ describe('runner-autorelease — how the release is reached', () => {
     expect(AUTO).toMatch(/uses: \.\/\.github\/workflows\/runner-release\.yml/);
   });
 
-  it('hands the release the version it just tagged, and the commit', () => {
+  it('hands the release the version it just tagged, and the commit it tagged', () => {
     expect(AUTO).toMatch(/with:\s*\n\s*version: \$\{\{ needs\.tag\.outputs\.version \}\}/);
-    expect(AUTO).toMatch(/sha: \$\{\{ github\.sha \}\}/);
+    expect(AUTO).toMatch(/sha: \$\{\{ needs\.tag\.outputs\.sha \}\}/);
+  });
+
+  // The identity has to be the commit that TOUCHED the runner, because that is what
+  // core's own path-filtered read of the branch returns. Stamping the head of the
+  // push would leave a freshly updated box reading as behind for ever.
+  it('takes its identity from the newest commit under the runner package', () => {
+    expect(AUTO).toContain('git log -1 --format=%H -- packages/runner');
+  });
+
+  it('never hands the release the head of the push instead', () => {
+    expect(AUTO).not.toMatch(/sha: \$\{\{ github\.sha \}\}/);
   });
 
   it('grants the called workflow the permission a release needs', () => {

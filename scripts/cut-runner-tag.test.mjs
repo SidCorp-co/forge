@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cutRunnerTag, tagTarget } from './cut-runner-tag.mjs';
+import { cutRunnerTag, releasesAt, tagTarget } from './cut-runner-tag.mjs';
 
 // A real repository with a real remote, because the subject of these assertions is
 // what git does when a tag already exists — which a stub would simply agree with.
@@ -99,6 +99,34 @@ describe('cut-runner-tag', () => {
       /pushing runner-v0\.17\.1 to origin was refused, so no release was cut/,
     );
     expect(tagTarget(work, 'runner-v0.17.1')).toBeNull();
+  });
+
+  // A rerun of an older successful autorelease would allocate a HIGHER version from
+  // today's tags and publish yesterday's code under it, moving every box numerically
+  // forward and functionally back.
+  it('refuses a commit some release already carries, naming that release', () => {
+    const first = commitFile('a.txt', 'a\n');
+    cutRunnerTag({ cwd: work, tag: 'runner-v0.17.1', commit: first });
+    expect(() => cutRunnerTag({ cwd: work, tag: 'runner-v0.17.4', commit: first })).toThrow(
+      /already released as runner-v0\.17\.1/,
+    );
+    expect(tagTarget(work, 'runner-v0.17.4')).toBeNull();
+  });
+
+  it('releases a commit no tag points at', () => {
+    const first = commitFile('a.txt', 'a\n');
+    expect(releasesAt(work, first)).toEqual([]);
+    const second = commitFile('b.txt', 'b\n');
+    cutRunnerTag({ cwd: work, tag: 'runner-v0.17.1', commit: first });
+    expect(releasesAt(work, second)).toEqual([]);
+    expect(() => cutRunnerTag({ cwd: work, tag: 'runner-v0.17.2', commit: second })).not.toThrow();
+  });
+
+  it('reads past a tag on that commit that is not a runner release', () => {
+    const first = commitFile('a.txt', 'a\n');
+    git(work, 'tag', 'v9.9.9', first);
+    expect(releasesAt(work, first)).toEqual([]);
+    expect(() => cutRunnerTag({ cwd: work, tag: 'runner-v0.17.1', commit: first })).not.toThrow();
   });
 
   it('answers null for a tag that does not exist', () => {

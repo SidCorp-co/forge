@@ -18,8 +18,14 @@ const runner = (over: Partial<Runner> = {}): Runner =>
     ...over,
   }) as Runner;
 
-const build = (state: RunnerBuildComparison['state'], detail: string): RunnerBuildComparison => ({
+const build = (
+  state: RunnerBuildComparison['state'],
+  detail: string,
+  releaseState: RunnerBuildComparison['releaseState'] = 'current',
+): RunnerBuildComparison => ({
   state,
+  releaseState,
+  outdated: state === 'behind' || releaseState === 'behind',
   detail,
 });
 
@@ -73,15 +79,36 @@ describe('claude-code health — the build the box is running', () => {
   it('passes a live box whose build is what the default branch holds', async () => {
     const r = await claudeCodeAdapter.health({
       runner: runner(),
-      build: build('current', 'runner 0.17.1 (fbe6468ddf) is what the default branch holds'),
+      build: build('current', 'runner 0.17.1 (fbe6468ddf)'),
     });
     expect(r.ok).toBe(true);
-    expect(r.details).toMatchObject({ build: 'current' });
+    expect(r.details).toMatchObject({ build: 'current', release: 'current' });
+  });
+
+  // The box is faithfully running the last release; the release is the stale thing.
+  it('refuses a live box whose release is behind what landed, though the box matches it', async () => {
+    const r = await claudeCodeAdapter.health({
+      runner: runner(),
+      build: build('current', 'no release carries what landed', 'behind'),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.details).toMatchObject({ build: 'current', release: 'behind' });
+  });
+
+  // Core's own blind spot is not held against the box: a GitHub outage would
+  // otherwise report every live box as unhealthy.
+  it('passes a live box whose release could not be compared to the branch', async () => {
+    const r = await claudeCodeAdapter.health({
+      runner: runner(),
+      build: build('current', 'the branch could not be read', 'unknown'),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.details).toMatchObject({ release: 'unknown' });
   });
 
   it('says the build went unread rather than claiming it passed, where no comparison came', async () => {
     const r = await claudeCodeAdapter.health({ runner: runner() });
     expect(r.ok).toBe(true);
-    expect(r.details).toMatchObject({ build: 'unread' });
+    expect(r.details).toMatchObject({ build: 'unread', release: 'unread' });
   });
 });

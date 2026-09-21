@@ -204,6 +204,13 @@ from; a `cargo build` that nothing stamped prints Cargo's own version and
 `unknown`, which is the truth about it — it is not a published build, and core
 reports such a box as unknown rather than current rather than guessing.
 
+The stamped commit is the newest commit that **touched `packages/runner`**, not the
+head of the push that carried it: one push can hold a runner commit followed by an
+unrelated one, and core reads the branch the same way, so stamping the push head
+would leave a freshly updated box reading as behind for ever. A commit some release
+already carries is refused rather than released again — a rerun of an older release
+job would otherwise publish that code under a version higher than what followed it.
+
 Withdrawing a release takes two acts, not one: `fetch-release.ts` never moves
 `RUNNER_RELEASE_DIR` backwards, so deleting a tag and its GitHub Release leaves
 the bad build still being served. Either delete `VERSION` and the

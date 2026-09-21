@@ -17,16 +17,29 @@ describe('heartbeatPatch', () => {
     });
   });
 
-  it('leaves the stored commit alone where the box sent none', () => {
-    expect(heartbeatPatch({ agentVersion: '0.17.1' }, NOW)).not.toHaveProperty('agentCommit');
+  // The identity moves as one. A box that came back on an unstamped build reports
+  // a version and no commit; keeping the commit its last release reported would let
+  // that build pass for the release it was made from.
+  it('clears the stored commit where a version-bearing heartbeat sends none', () => {
+    expect(heartbeatPatch({ agentVersion: '0.17.1' }, NOW)).toEqual({
+      lastSeenAt: NOW,
+      status: 'online',
+      agentVersion: '0.17.1',
+      agentCommit: null,
+    });
   });
 
-  it('leaves the stored version alone where the box sent none', () => {
-    expect(heartbeatPatch({ agentCommit: 'fbe6468ddf' }, NOW)).not.toHaveProperty('agentVersion');
+  it('changes neither where the heartbeat reports no version at all', () => {
+    const patch = heartbeatPatch({ capabilities: { skills: [] } }, NOW);
+    expect(patch).not.toHaveProperty('agentVersion');
+    expect(patch).not.toHaveProperty('agentCommit');
   });
 
   it('writes an empty commit the box did send, rather than treating it as silence', () => {
-    expect(heartbeatPatch({ agentCommit: '' }, NOW)).toHaveProperty('agentCommit', '');
+    expect(heartbeatPatch({ agentVersion: '0.17.1', agentCommit: '' }, NOW)).toHaveProperty(
+      'agentCommit',
+      '',
+    );
   });
 
   it('carries capabilities through untouched', () => {
