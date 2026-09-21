@@ -262,7 +262,8 @@ export function judge({ head, base, amnesty }) {
       detail:
         `${overBudget.length} release entr${overBudget.length === 1 ? 'y' : 'ies'} over budget ` +
         `(longest ${overBudget[0].words} words). An entry this change adds may spend ` +
-        `${ENTRY_WORD_BUDGET} words; one it edits may spend what that entry already held. An entry ` +
+        `${ENTRY_WORD_BUDGET} words; one it edits may spend the larger of the ${ENTRY_WORD_BUDGET} and what that ` +
+        `entry already held. An entry ` +
         `says what changed and what it means for the reader; the reasoning belongs in the issue and ` +
         `the commit, which is where a reader who wants it will look. Cut it down rather than ` +
         `splitting one change across several bullets — that moves the words, it does not spend fewer.`,

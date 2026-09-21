@@ -332,6 +332,16 @@ describe('correcting a published entry', () => {
     ]);
   });
 
+  it('does not pair an entry wholly contained in a much longer one — the denominator is the longer', () => {
+    const swollen = `${prose(60)} ${prose(60, 'q')}`;
+    const verdict = judge({
+      head: record(swollen, SHORT, prose(60, 'r')),
+      base: BASE,
+      amnesty: null,
+    });
+    expect(lossOf(verdict).removed).toEqual([PUBLISHED]);
+  });
+
   it('pairs one removed entry with at most one added one, so a split pays the budget for its other half', () => {
     const head = record(prose(100), prose(80), SHORT);
     const verdict = judge({ head, base: BASE, amnesty: null });
