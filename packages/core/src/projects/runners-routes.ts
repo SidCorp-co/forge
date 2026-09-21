@@ -90,11 +90,7 @@ projectRunnerRoutes.get(
         provisionDetail: runners.provisionDetail,
         provisionedAt: runners.provisionedAt,
         // ISS-1118 — the most expensive thing a bound box runs is a resident
-        // master session for this project, and until now no screen said
-        // whether one existed. Neither the pool control nor turning the device
-        // off ends one that is already running, so an owner reading this
-        // screen had no way to tell that the control they reached for does not
-        // govern it. This is the registration core already holds, read back.
+        // master for this project, and no screen said whether one existed.
         residentMaster: residentMasterSql(runners.deviceId, runners.projectId),
       })
       .from(runners)
