@@ -3060,6 +3060,10 @@
 
 ### Fixed
 
+- **A record's pointer back to the comment that asserted it is now checked.** An id naming no
+  comment answered 500; one naming a comment on another issue was stored silently. Both are
+  refused by name.
+
 - **A `sessionContext` write can no longer delete keys its writer never read.** The field is
   replaced whole and has no history, so sending one key dropped the landing checkpoint, lease
   and worklog. Now refused; `expect` permits a deliberate removal.

@@ -119,10 +119,16 @@ async function seed() {
     VALUES (${issueId}, ${owner.id}, 'This one supersedes the other; here is why in a sentence.')
     RETURNING id
   `);
+  const offIssueCommentRows = await harness.db.execute<{ id: string }>(sql`
+    INSERT INTO comments (issue_id, author_id, body)
+    VALUES (${(otherRows[0] as { id: string }).id}, ${owner.id}, 'A sentence on the OTHER issue.')
+    RETURNING id
+  `);
   return {
     issueId,
     otherIssueId: (otherRows[0] as { id: string }).id,
     commentId: (commentRows[0] as { id: string }).id,
+    offIssueCommentId: (offIssueCommentRows[0] as { id: string }).id,
     jwt: await signUserToken(owner.id),
     readerJwt: await signUserToken(reader.id),
   };
@@ -168,6 +174,38 @@ describe('POST /api/issues/:id/attributes', () => {
       sql`SELECT source_comment_id FROM issue_attributes WHERE issue_id = ${issueId}`,
     );
     expect((rows[0] as { source_comment_id: string }).source_comment_id).toBe(commentId);
+  });
+
+  // The pointer back to the asserting sentence is what the row is FOR, and both
+  // of its wrong values arrived unannounced: an id naming no comment broke a
+  // foreign key nothing caught and left as a 500, and an id naming a comment on
+  // another issue satisfied every constraint and was stored (ISS-1113 crit. 9).
+  it('refuses a sourceCommentId naming no comment, rather than answering 500', async () => {
+    const { issueId, otherIssueId, jwt } = await seed();
+    const res = await write(issueId, jwt, [
+      {
+        key: 'supersedes',
+        value: otherIssueId,
+        sourceCommentId: '00000000-0000-4000-8000-00000000dead',
+      },
+    ]);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(body.code).toBe('SOURCE_COMMENT_NOT_FOUND');
+    expect(body.message).toContain('00000000-0000-4000-8000-00000000dead');
+  });
+
+  it('refuses a sourceCommentId naming a comment on another issue', async () => {
+    const { issueId, otherIssueId, offIssueCommentId, jwt } = await seed();
+    const res = await write(issueId, jwt, [
+      { key: 'supersedes', value: otherIssueId, sourceCommentId: offIssueCommentId },
+    ]);
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('SOURCE_COMMENT_OFF_ISSUE');
+    const rows = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM issue_attributes WHERE issue_id = ${issueId}`,
+    );
+    expect((rows[0] as { n: number }).n).toBe(0);
   });
 
   it('refuses an unregistered key by name and lists the keys it holds', async () => {

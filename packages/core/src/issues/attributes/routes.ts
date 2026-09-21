@@ -7,13 +7,13 @@
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import { db } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
+import { comments, issues } from '../../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { loadIssueAttributes } from './read.js';
@@ -63,6 +63,37 @@ function driftHttp(keys: readonly string[]): HTTPException {
   });
 }
 
+/**
+ * Every `sourceCommentId`, checked against its issue ahead of the insert: the
+ * constraint cannot separate the two wrong values, because an id naming no
+ * comment breaks a foreign key other than the one caught below, and one naming
+ * a comment on ANOTHER issue violates nothing at all (ISS-1113).
+ */
+async function assertSourceCommentsOnIssue(issueId: string, ids: readonly string[]): Promise<void> {
+  const wanted = [...new Set(ids)];
+  if (wanted.length === 0) return;
+  const rows = await db
+    .select({ id: comments.id, issueId: comments.issueId })
+    .from(comments)
+    .where(inArray(comments.id, wanted));
+
+  const found = new Map(rows.map((r) => [r.id, r.issueId]));
+  const missing = wanted.filter((id) => !found.has(id));
+  if (missing.length > 0) {
+    throw new HTTPException(400, {
+      message: `sourceCommentId ${missing.map((i) => `\`${i}\``).join(', ')} names no comment. It must be the id of a comment on this issue — the row exists to point back at the sentence that asserted it.`,
+      cause: { code: 'SOURCE_COMMENT_NOT_FOUND', details: { missing } },
+    });
+  }
+  const elsewhere = wanted.filter((id) => found.get(id) !== issueId);
+  if (elsewhere.length > 0) {
+    throw new HTTPException(400, {
+      message: `sourceCommentId ${elsewhere.map((i) => `\`${i}\``).join(', ')} names a comment on a different issue (${elsewhere.map((i) => `\`${i}\` is on \`${found.get(i)}\``).join(', ')}). The pointer must stay on the issue the attribute is written to, or no reader can follow it back.`,
+      cause: { code: 'SOURCE_COMMENT_OFF_ISSUE', details: { ids: elsewhere, issueId } },
+    });
+  }
+}
+
 export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/attributes',
@@ -78,6 +109,11 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
       const issue = await loadIssueRow(issueId);
       const access = await loadProjectAccess(issue.projectId, c.get('userId'));
       assertProjectRole(access, 'member');
+
+      await assertSourceCommentsOnIssue(
+        issue.id,
+        attributes.flatMap((a) => (a.sourceCommentId ? [a.sourceCommentId] : [])),
+      );
 
       try {
         const result = await setIssueAttributes(
