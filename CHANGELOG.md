@@ -3063,6 +3063,20 @@
   that entry, not a deletion plus a new one, so a dead link can be fixed without cutting the
   entry to the 40-word budget.
 
+- **Forge's version is on screen in the narrow sidebar you get by default.** That sidebar ran
+  taller than the window, so the row under it — version, account menu, Docs — sat below the fold,
+  reachable by no scrolling.
+
+- **The sidebar's icon list scrolls now; the row under it stays put.** At any window height the
+  account menu and the version sit at the bottom of the sidebar.
+
+- **A deployment that answers without naming a version now says so.** It used to read
+  `Forge vundefined`, which looks like a version and is not one.
+
+- **Text that asked for a size now renders at it.** Fifteen places — sidebar labels, menu rows,
+  tabs, the segmented control, keyboard hints — fell back to the body size, which is why sidebar
+  labels ran past the sidebar's edge.
+
 - **A project can be asked what commit its deployment is serving.** `GET /api/projects/:id/deployment`
   reads the declared probes and answers, deriving on every call. Health and identity stay apart,
   so a fleet mid-deploy reports healthy with no identity.

@@ -7,12 +7,13 @@ import { useForgeVersion } from "../hooks";
 export function ForgeVersion({ className }: { className?: string }) {
 	const query = useForgeVersion();
 
-	// Not yet fetched is not the same as not reported: nothing stands in for it.
 	if (query.isPending) return null;
 
-	const deployment = query.data ?? null;
-	const label = deployment ? `Forge v${deployment.version}` : "Forge version unavailable";
-	const commit = deployment?.sourceCommit;
+	// A 200 with no version string reported none; "undefined" is not a version (ISS-1119).
+	const raw = query.data?.version;
+	const version = typeof raw === "string" ? raw.trim() : "";
+	const label = version ? `Forge v${version}` : "Forge version unavailable";
+	const commit = version ? query.data?.sourceCommit : null;
 
 	return (
 		<p
