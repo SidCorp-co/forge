@@ -775,13 +775,13 @@ async fn sweep(
             );
             // A box taking no work still meets the contradiction, and the
             // louder reason wins the one slot this project has: `draining`
-            // explains an absent pane, never a pane that is up.
+            // explains an absent pane, never a pane that is up and never a
+            // standing this box could not read. Overwriting either would hide
+            // it AND make every unchanged sweep look like a change, which is
+            // the repetition `note_unplaced` exists to stop.
             let read = read_standing(ledger.as_ref(), &runner.project_id);
-            let contradicted = matches!(
-                standing_verdict(masters, read, &runner.project_id, &runner.slug).await,
-                Some((Placed::Contradicted, _))
-            );
-            if !contradicted {
+            let verdict = standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
+            if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
                 masters.note_unplaced(
                     &runner.project_id,
                     Unplaced::Draining {
@@ -5347,13 +5347,38 @@ mod stand_down_tests {
             "a stood-down project whose box is `draining` never reached the veto, so its contradicted pane was named nowhere: {branch}"
         );
         assert!(
-            branch.contains("if !contradicted {"),
-            "and the louder reason wins the one slot this project has — `draining` explains an absent pane, never a pane that is up: {branch}"
+            branch.contains("Placed::Proceed | Placed::Withheld"),
+            "and the louder reason wins the one slot this project has — `draining` explains an absent pane, never a pane that is up and never a standing this box could not read: {branch}"
         );
         assert!(
             !branch.contains("ensure_master(") && !branch.contains("nudge_master("),
             "looking is not placing: the branch still places nothing and nudges nothing"
         );
+    }
+
+    /// The other half of that slot. A standing this box could NOT read is the
+    /// loudest thing it has to say about the project; overwriting it with
+    /// `draining` hides it and makes every unchanged sweep after it look like
+    /// a change, which is the repetition `note_unplaced` exists to stop.
+    #[test]
+    fn an_unreadable_standing_is_not_overwritten_by_the_drained_reason() {
+        let masters = Masters::new();
+        let unreadable = Unplaced::StandingUnreadable {
+            detail: "the standing could not be read: disk is gone".into(),
+        };
+        assert!(masters.note_unplaced("proj-1", unreadable.clone()));
+        let drained = Unplaced::Draining {
+            status: "draining".into(),
+        };
+        assert!(
+            masters.note_unplaced("proj-1", drained.clone()),
+            "the two ARE different values, which is exactly why the branch must not write the second over the first"
+        );
+        assert!(
+            masters.note_unplaced("proj-1", unreadable),
+            "and writing them alternately on every sweep is a fresh report every 30s from a box whose state never changed"
+        );
+        let _ = drained;
     }
 
     #[test]

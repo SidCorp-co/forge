@@ -34,8 +34,9 @@ field on that payload is ignored rather than fatal, so an older daemon is safe. 
 the cost. The precedence rule below is.**
 
 **Nor does the read half need one, and this page used to imply that too.** Core has held a master
-session per `(device, project)` since ISS-919 — an `agent_sessions` row discriminated by
-`metadata->>'type' = 'master'`, written and heartbeated by `ensureMasterSession`. That is what the
+session per `(device, project)` since ISS-919 — an `agent_sessions` row whose
+`kind` is `master` (ISS-1136 made that a column; before it, `metadata->>'type'`),
+written and heartbeated by `ensureMasterSession`. That is what the
 Runners screen now renders, through `residentMasterSql` in
 `packages/core/src/devices/master-session.ts`. It is a REGISTRATION and not a pane: core cannot see
 tmux, so the heartbeat is the only thing separating a master working now from one whose box went
