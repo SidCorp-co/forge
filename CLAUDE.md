@@ -17,7 +17,7 @@ number.
 | `packages/core` | Hono backend. Single app (`src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the job pool a master agent claims from. |
 | `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
 | `packages/runner` | Headless Rust `forge-runner` CLI daemon (crates `forge-runner` / `forge-runner-core`) for servers/CI; pairs as a device. |
-| `packages/contracts` | Shared cross-app TS types & registries (`issues.ts`, `pipeline-registry.ts`, `requests.ts`, `responses.ts`, `rows.ts`, `domain-templates.ts`). |
+| `packages/contracts` | Shared cross-app TS types & registries (`src/issues.ts`, `src/pipeline-registry.ts`, `src/requests.ts`, `src/responses.ts`, `src/rows.ts`, `src/domain-templates.ts`). |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
 
 **The driver skill lives in a second repo.** `github.com/SidCorp-co/forge-plugin` is Forge's own
@@ -75,12 +75,12 @@ Seven axes — form (gated 5×), knowledge (gated 4×), relations, behaviour (ga
 record, comment. Five of them own a property of the code; `record` owns `CHANGELOG.md`, the
 external record of what shipped, which was nobody's until 1,034 lines of it left in silence, and
 `comment` owns what a comment SAYS. An axis measures at its weakest gate. `.forge/conformance.json` declares each axis's level and the repo's profile
-(today: hardened); `conformance-status.mjs` **runs** every checker and fails when what it does
+(today: hardened); `scripts/conformance-status.mjs` **runs** every checker and fails when what it does
 disagrees with what the manifest claims.
 
 Thresholds live in one place per axis: `.arch.json` for architecture contracts, and
 `packages/core/biome.json` for the file/function line limits. **Do not add a rule to an axis another
-already owns** — no comments inside `biome.json`, and nothing that re-measures file or function
+already owns** — no comments inside `packages/core/biome.json`, and nothing that re-measures file or function
 length, which biome owns at 500/150 with `check-size-budget` as its baseline.
 
 **Comment content is the one axis that was vacant, and now is not.** The codemap checker that used
@@ -276,7 +276,7 @@ line number — a line number is stale the moment anything above it moves, and s
   land on the SAME number and whichever merges first silently kills the rest — measured twice on
   2026-09-17, four open migrations, three of them holding `1796083200000`. Two gates split the
   work: `packages/core/src/db/migrations-journal.test.ts` owns one journal's own properties, and
-  `check-migration-order.mjs` owns the relation between branches, running from `pnpm verify` and
+  `scripts/check-migration-order.mjs` owns the relation between branches, running from `pnpm verify` and
   from the always-on `lang-check` CI job. What neither can catch is a merge taken out of the order
   the checker derived, which costs the branch behind it a renumber rather than its migration —
   `scripts/README.md` has the residual in full.
