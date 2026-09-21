@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { BodyInvalidError } from '../../body/errors.js';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodyText } from '../../body/prepare.js';
 import {
@@ -12,18 +11,16 @@ import {
 } from '../../db/schema.js';
 import { actorAgency } from '../../issues/actor-agency.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
-import { AttachmentError, listIssueAttachments } from '../../issues/attachment-service.js';
+import { listIssueAttachments } from '../../issues/attachment-service.js';
 import { loadIssueAttributes } from '../../issues/attributes/read.js';
 import { setIssueAttributes } from '../../issues/attributes/service.js';
 import { AttributeRefusal } from '../../issues/attributes/write.js';
-import { createIssue, IssueCreateError } from '../../issues/create-service.js';
+import { createIssue } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import {
-  LabelResolutionError,
   listIssueLabels,
-  PrimaryModuleError,
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from '../../issues/label-service.js';
@@ -39,7 +36,7 @@ import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/r
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
-import { SessionContextExpectMismatch, updateIssueFields } from '../../issues/update-service.js';
+import { updateIssueFields } from '../../issues/update-service.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import {
@@ -51,6 +48,7 @@ import {
   type TaskRow,
   updateTask as updateTaskRow,
 } from '../../tasks/task-service.js';
+import { toMcpIssueError } from './forge-issues-errors.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -62,37 +60,6 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
-
-function toMcpIssueError(err: unknown): unknown {
-  if (err instanceof BodyInvalidError) return new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
-  if (err instanceof PrimaryModuleError) {
-    return new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
-  }
-  if (err instanceof LabelResolutionError) {
-    return new Error(
-      `BAD_REQUEST: one or more labels do not exist in this project (no auto-create): ${err.missing.join(', ')}`,
-    );
-  }
-  if (err instanceof AttachmentError) return new Error(`${err.code}: ${err.message}`);
-  if (err instanceof SessionContextExpectMismatch) {
-    return new Error(
-      'SESSION_CONTEXT_MISMATCH: `sessionContext` no longer holds the value this write expected — ' +
-        'another writer moved it. It now holds ' +
-        `${JSON.stringify(err.current)}. Decide whether your claim still stands, then send the write again with the new \`expect\`.`,
-    );
-  }
-  if (err instanceof IssueCreateError) {
-    if (err.code === 'INVALID_DETECTOR_KEY') {
-      return new Error(
-        `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${err.value}')`,
-      );
-    }
-    return new Error(
-      `BAD_REQUEST: status at create must be 'open', 'on_hold', or 'draft' (got '${err.value}'); use the transition action for other statuses`,
-    );
-  }
-  return err;
-}
 
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_issues` tool. The

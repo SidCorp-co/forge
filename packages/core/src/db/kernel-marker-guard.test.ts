@@ -57,16 +57,30 @@ function stripComments(src: string): string {
 function markedRanges(body: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   const stack: Array<{ at: number; marked: boolean }> = [];
-  let quote: string | null = null;
+  // A template literal holds `${ … }` whose contents are code, and that code may
+  // open another template literal. Tracked in one `quote` variable, the inner
+  // backtick reads as the outer one closing: every paren after it is scored in
+  // the wrong state, and a genuine unmarked write can land outside every range
+  // and go unreported. So quotes and interpolations share ONE stack.
+  const lexical: Array<{ quote: string } | { interp: true; depth: number }> = [];
+  const top = () => lexical[lexical.length - 1];
   for (let i = 0; i < body.length; i++) {
     const ch = body[i];
-    if (quote) {
+    const cur = top();
+    if (cur && 'quote' in cur) {
       if (ch === '\\') i++;
-      else if (ch === quote) quote = null;
+      else if (cur.quote === '`' && ch === '$' && body[i + 1] === '{') {
+        lexical.push({ interp: true, depth: 0 });
+        i++;
+      } else if (ch === cur.quote) lexical.pop();
       continue;
     }
-    if (ch === "'" || ch === '"' || ch === '`') {
-      quote = ch;
+    if (cur && ch === '{') cur.depth++;
+    else if (cur && ch === '}') {
+      if (cur.depth === 0) lexical.pop();
+      else cur.depth--;
+    } else if (ch === "'" || ch === '"' || ch === '`') {
+      lexical.push({ quote: ch });
     } else if (ch === '(') {
       stack.push({ at: i, marked: body.slice(Math.max(0, i - MARKER.length), i) === MARKER });
     } else if (ch === ')') {
@@ -228,5 +242,25 @@ describe('kernel marker guard (ISS-943)', () => {
       '/* await db.delete(projects); */',
     ].join('\n');
     expect(findViolations('synthetic.ts', commented)).toEqual([]);
+  });
+});
+
+describe('markedRanges — a nested template literal may not unbalance the walk', () => {
+  // Reproduced against `issues/routes.ts` on 2026-09-21; `markedRanges` states why.
+  const body = [
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal `${` IS the input under test — the walk has to read it as source text.
+    'const m = `remove ${d.map((k) => `\\`${k}\\`` ).join(", ")} now`;',
+    'await withKernelMarker(db, async (tx) => tx.delete(issues).where(eq(issues.id, id)));',
+  ].join('\n');
+
+  it('keeps a marked write inside its marker', () => {
+    const at = body.indexOf('.delete(issues)');
+    expect(at).toBeGreaterThan(-1);
+    expect(isInside(markedRanges(body), at)).toBe(true);
+  });
+
+  it('leaves a genuinely unmarked write outside every range', () => {
+    const loose = `${body}\nawait db.delete(issues).where(eq(issues.id, id));`;
+    expect(isInside(markedRanges(loose), loose.lastIndexOf('.delete(issues)'))).toBe(false);
   });
 });

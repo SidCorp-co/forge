@@ -37,6 +37,9 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const guard = expect ? [sessionContextGuard(expect.sessionContext)] : [];
 
   return db.transaction(async (tx) => {
+    if (updates.sessionContext !== undefined && !expect) {
+      await refuseUnreadSessionContextDrop(tx, issueId, updates.sessionContext);
+    }
     const [row] = await tx
       .update(issues)
       .set(updates)
@@ -96,6 +99,41 @@ async function announceContractInput(
     issueId,
     reason: `fields written: ${moved.join(', ')}`,
   });
+}
+
+/**
+ * A `sessionContext` write replaces the field whole, so one that omits a key the
+ * field already holds destroys it — there is no history to read it back from.
+ * A caller that sent `expect` read the current value and means the removal, so
+ * it passes. One that did not is refused by name, naming the keys it would have
+ * dropped, because the alternative is the write landing silently: a probe body
+ * of `{ probe: 1 }` took `landing`, `lease` and `worklog` off ISS-1127 in one
+ * call on 2026-09-21, and the landing checkpoint underneath was unrecoverable.
+ */
+async function refuseUnreadSessionContextDrop(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  issueId: string,
+  next: unknown,
+): Promise<void> {
+  const [current] = await tx
+    .select({ sessionContext: issues.sessionContext })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  const held = current?.sessionContext;
+  if (!held || typeof held !== 'object' || Array.isArray(held)) return;
+
+  const kept = next && typeof next === 'object' && !Array.isArray(next) ? next : {};
+  const dropped = Object.keys(held).filter((k) => !(k in (kept as Record<string, unknown>)));
+  if (dropped.length === 0) return;
+  throw new SessionContextDropsUnreadKeys(dropped);
+}
+
+export class SessionContextDropsUnreadKeys extends Error {
+  constructor(readonly dropped: string[]) {
+    super('SESSION_CONTEXT_DROPS_UNREAD_KEYS');
+    this.name = 'SessionContextDropsUnreadKeys';
+  }
 }
 
 function sessionContextGuard(expected: Record<string, unknown> | null) {

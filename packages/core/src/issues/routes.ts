@@ -51,6 +51,7 @@ import { sessionContextExpectSchema, sessionContextSchema } from './session-cont
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 import {
   IssueUpdateNotFound,
+  SessionContextDropsUnreadKeys,
   SessionContextExpectMismatch,
   updateIssueFields,
 } from './update-service.js';
@@ -144,6 +145,15 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+const sessionContextDrops = (err: SessionContextDropsUnreadKeys) =>
+  new HTTPException(409, {
+    message:
+      `this write replaces \`sessionContext\` whole and would remove ${err.dropped.join(', ')}, ` +
+      'which it never read. Read the field, add your key to what is there, and send it back complete — ' +
+      'or send `expect: { sessionContext: <what you read> }` to say the removal is deliberate.',
+    cause: { code: 'SESSION_CONTEXT_DROPS_UNREAD_KEYS', dropped: err.dropped },
+  });
 
 const sessionContextMoved = (err: SessionContextExpectMismatch) =>
   new HTTPException(409, {
@@ -531,6 +541,7 @@ issueRoutes.patch(
       });
     } catch (err) {
       if (err instanceof IssueUpdateNotFound) throw notFound('issue not found');
+      if (err instanceof SessionContextDropsUnreadKeys) throw sessionContextDrops(err);
       if (err instanceof SessionContextExpectMismatch) throw sessionContextMoved(err);
       throw err;
     }

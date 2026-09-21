@@ -3059,6 +3059,11 @@
   set is now 59.
 
 ### Fixed
+
+- **A `sessionContext` write can no longer delete keys its writer never read.** The field is
+  replaced whole and has no history, so sending one key dropped the landing checkpoint, lease
+  and worklog. Now refused; `expect` permits a deliberate removal.
+
 - **Asking the session list for a kind that does not exist now says so.** It names the valid
   kinds instead of answering an empty page. A caller can also no longer declare what kind it is
   creating.
