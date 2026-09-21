@@ -104,12 +104,8 @@ const leaseQuerySchema = z.object({ projectId: z.string().uuid().optional() });
  * prefixed key while the store keeps the canonical one, and an endpoint that
  * skips the mapping answers about a lease that does not exist (ISS-1139).
  */
-async function leaseKeyOf(
-  deviceId: string,
-  rawKey: string,
-  projectId?: string,
-): Promise<ResolvedLeaseKey> {
-  const resolved = await resolveLeaseKey({ deviceId, rawKey, projectId: projectId ?? null });
+async function leaseKeyOf(rawKey: string, projectId?: string): Promise<ResolvedLeaseKey> {
+  const resolved = await resolveLeaseKey({ rawKey, projectId: projectId ?? null });
   if (resolved.ok) return resolved.key;
   const { status, code, message } = resolved.refusal;
   throw new HTTPException(status, { message, cause: { code } });
@@ -139,11 +135,7 @@ devicePoolRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const key = await leaseKeyOf(
-      c.get('device').id,
-      c.req.valid('param').issueKey,
-      c.req.valid('query').projectId,
-    );
+    const key = await leaseKeyOf(c.req.valid('param').issueKey, c.req.valid('query').projectId);
     // Two questions, both answered, because they are different ones: `held` is
     // the fleet-wide fact, `heldByThisDevice` is what a close loop asking
     // "have I given this back" means. Answering the second under the first
@@ -169,7 +161,7 @@ devicePoolRoutes.delete(
   }),
   async (c) => {
     const rawKey = c.req.valid('param').issueKey;
-    const key = await leaseKeyOf(c.get('device').id, rawKey, c.req.valid('query').projectId);
+    const key = await leaseKeyOf(rawKey, c.req.valid('query').projectId);
     const outcome = await releaseIssueLease({
       deviceId: c.get('device').id,
       issueKey: key.issueKey,

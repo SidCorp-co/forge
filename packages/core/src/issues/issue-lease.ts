@@ -260,8 +260,7 @@ export interface LeaseKeyRefusal {
   code:
     | 'ISSUE_LEASE_KEY_SHAPE'
     | 'ISSUE_LEASE_KEY_UNKNOWN_PREFIX'
-    | 'ISSUE_LEASE_KEY_PROJECT_MISMATCH'
-    | 'ISSUE_LEASE_KEY_UNREACHABLE_PROJECT';
+    | 'ISSUE_LEASE_KEY_PROJECT_MISMATCH';
   status: 400 | 404;
   message: string;
 }
@@ -274,21 +273,12 @@ export interface ResolvedLeaseKey {
   projectId: string | null;
 }
 
-/** Is this project one the asking box serves, or already holds a lease in? */
-async function deviceReaches(deviceId: string, projectId: string): Promise<boolean> {
-  const rows = (await db.execute(sql`
-    SELECT 1 AS reached WHERE ${projectId}::uuid IN ${reachableProjects(deviceId)}
-  `)) as unknown as Array<unknown>;
-  return rows.length > 0;
-}
-
 /**
  * Whatever key a caller sent, as the pair the table is keyed by. A prefixed key
- * is the interface's own second vocabulary and is mapped, not refused; a key
- * that reaches nothing is refused. `docs/modules/issues/issue-lease.md`.
+ * is mapped, not refused; only a key that reaches nothing at all is refused,
+ * and an out-of-reach project is answered. `docs/modules/issues/issue-lease.md`.
  */
 export async function resolveLeaseKey(args: {
-  deviceId: string;
   rawKey: string;
   projectId?: string | null;
 }): Promise<{ ok: true; key: ResolvedLeaseKey } | { ok: false; refusal: LeaseKeyRefusal }> {
@@ -304,17 +294,14 @@ export async function resolveLeaseKey(args: {
   let projectId = args.projectId ?? null;
 
   if (given && given !== LEGACY_ISSUE_PREFIX) {
-    const held = (await issuePrefixHolder(given))?.projectId ?? null;
-    // Out of reach reads the same as held by nobody: naming the difference
-    // would tell a box about a project it may not ask about.
-    const named = held !== null && (await deviceReaches(args.deviceId, held)) ? held : null;
+    const named = (await issuePrefixHolder(given))?.projectId ?? null;
     if (named === null) {
       return {
         ok: false,
         refusal: {
           code: 'ISSUE_LEASE_KEY_UNKNOWN_PREFIX',
           status: 404,
-          message: `\`${args.rawKey}\` names the issue prefix \`${given}\`, which no project this box serves answers to, so it reaches no lease. A prefix names the project an issue belongs to; send the prefix of a project this box serves, or the canonical \`${issueKey}\` the lease store keeps.`,
+          message: `\`${args.rawKey}\` names the issue prefix \`${given}\`, which no project answers to, so it reaches no lease. A prefix names the project an issue belongs to; send the prefix of a project this box serves, or the canonical \`${issueKey}\` the lease store keeps.`,
         },
       };
     }
@@ -329,17 +316,6 @@ export async function resolveLeaseKey(args: {
       };
     }
     projectId = named;
-  }
-
-  if (projectId !== null && !(await deviceReaches(args.deviceId, projectId))) {
-    return {
-      ok: false,
-      refusal: {
-        code: 'ISSUE_LEASE_KEY_UNREACHABLE_PROJECT',
-        status: 404,
-        message: `this box serves no project ${projectId} and holds no lease in one, so \`${issueKey}\` there reaches no lease it could be asking about. Name a project this box is bound to.`,
-      },
-    };
   }
 
   return { ok: true, key: { issueKey, projectId } };

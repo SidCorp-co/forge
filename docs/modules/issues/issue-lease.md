@@ -75,13 +75,18 @@ every lease endpoint goes through that one function. It returns the canonical
 key and the project the prefix named, which is also how a caller identifies one
 of several rows without a query parameter.
 
-What it does refuse is a key that reaches nothing: a string that is no issue
-reference, a prefix that contradicts the `projectId` sent beside it, and a
-project the asking box does not reach — named by prefix or by `projectId`.
-Reachability is the same union the read uses, bindings **and** leases already
-held, so a box unbound while it was working can still give its lease back. A
-prefix held out of reach reads the same as a prefix held by nobody, because the
-second wording would tell a box about a project it may not ask about.
+What it does refuse is a key that reaches nothing at all: a string that is no
+issue reference, a prefix no project anywhere answers to, and a prefix that
+contradicts the `projectId` sent beside it. All three are properties of the key,
+and none of them changes when a lease does.
+
+A project the asking box cannot reach is **answered, not refused** — `held:
+false`, which is true, and which the `reachableProjects` filter already
+produced. Refusing it was tried and reverted: reachability is bindings *union
+leases already held*, so an unbound box releasing its last lease would destroy
+its own permission to read that release back, and the close loop — which marks a
+run closed only on a successful read — would never terminate. A refusal whose
+condition the successful operation creates is not a loud failure; it is a wedge.
 
 ## The two booleans are two questions
 

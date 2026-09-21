@@ -190,7 +190,7 @@ describe('a key that names no project this box reaches', () => {
     expect(((await res.json()) as Refusal).code).toBe('ISSUE_LEASE_KEY_UNKNOWN_PREFIX');
   });
 
-  it('refuses a prefix a project out of this box reach holds, on the read', async () => {
+  it('answers about a project out of this box reach rather than refusing it', async () => {
     await aProjectThisBoxServes(880);
     const elsewhere = (await createTestProject(harness.db, userId)).id;
     const assigned = await assignIssuePrefix(elsewhere, 'ZZ');
@@ -198,24 +198,11 @@ describe('a key that names no project this box reaches', () => {
 
     const res = await app.request(lease('ZZ-880'), { headers: auth });
 
+    expect(res.status).toBe(200);
     expect(
-      res.status,
-      'answering held:false about a project this box may not ask about is the silent answer wearing a real prefix',
-    ).toBe(404);
-    expect(((await res.json()) as Refusal).code).toBe('ISSUE_LEASE_KEY_UNKNOWN_PREFIX');
-  });
-
-  it('refuses a projectId this box neither serves nor holds a lease in', async () => {
-    await aProjectThisBoxServes(880);
-    const elsewhere = (await createTestProject(harness.db, userId)).id;
-
-    const res = await app.request(lease('ISS-880', elsewhere), {
-      method: 'DELETE',
-      headers: auth,
-    });
-
-    expect(res.status).toBe(404);
-    expect(((await res.json()) as Refusal).code).toBe('ISSUE_LEASE_KEY_UNREACHABLE_PROJECT');
+      await res.json(),
+      'this box holds nothing there, which is the true answer; a refusal here would make a release destroy the permission to read it back',
+    ).toMatchObject({ held: false, heldByThisDevice: false });
   });
 
   it('still reaches a lease in a project whose binding has gone', async () => {
@@ -230,6 +217,21 @@ describe('a key that names no project this box reaches', () => {
       'a box unbound while it was working strands the lease if reachability is the binding alone',
     ).toBe(200);
     expect(await leaseProjectsFor('ISS-880')).toEqual([]);
+  });
+
+  it('answers the read-back after an unbound box gave its last lease away', async () => {
+    const project = await aProjectThisBoxServes(880, 'FD');
+    await openRunSession({ deviceId, projectId: project, issueKeys: ['ISS-880'], name: 'run-a' });
+    await harness.db.execute(sql`DELETE FROM runners WHERE device_id = ${deviceId}`);
+    await app.request(lease('FD-880'), { method: 'DELETE', headers: auth });
+
+    const res = await app.request(lease('FD-880', project), { headers: auth });
+
+    expect(
+      res.status,
+      'the close loop reads the lease back after releasing it, and an error there is a run that never marks itself closed',
+    ).toBe(200);
+    expect(await res.json()).toMatchObject({ heldByThisDevice: false });
   });
 
   it('refuses a key that is no issue reference at all', async () => {
