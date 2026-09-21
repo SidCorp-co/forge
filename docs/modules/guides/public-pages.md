@@ -68,3 +68,16 @@ thrown over — `/guides/%ZZ` was a 500 from edge middleware before that.
 The requested path reaches `not-found.tsx` on the `x-forge-guide-path` header the
 middleware sets, because Next hands a not-found boundary no params and `headers()`
 there carries only what the client sent.
+
+## The markdown address is absolute
+
+The guide pages are served by web-v2 and the markdown by core, on two different origins. A bare
+`/api/guides` in the page's own prose reads as the web host, where it answers 404 — measured
+2026-09-21 against `forge-beta.sidcorp.co` (404) and `forge-beta-api.sidcorp.co` (200). Both the
+footer in `features/guides/components/guide-shell.tsx` and `MISSING_GUIDE_BODY` in
+`features/guides/missing.ts` build the address with `coreFileUrl`, the browser-facing helper in
+`lib/utils/core-url.ts`. `resolveServerApiBase` is not that helper and says so: its origin is the
+one the web server process sees, never the browser.
+
+This is the same two-host confusion that pointed the GitHub App's webhook at the web host and cost
+three days of silent 404s (ISS-1140).

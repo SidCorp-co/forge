@@ -245,6 +245,21 @@ describe('collectReleaseBlockers', () => {
     expect(report.blockers).toEqual([]);
   });
 
+  // ISS-1127's outcome is that every reason is visible AT ONCE. An empty pool and
+  // an unmet label are two facts, and an operator holding both is the state
+  // forge-dev was in when this was found: two runners, `labels: []`, a declared
+  // `release` label, and `warnings: []` on the answer.
+  it('says the label is unmet even when no box is online to rank', async () => {
+    ready();
+    execRows.mockResolvedValue([]);
+    onlineIds.mockResolvedValue([]);
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+
+    expect(report.blockers.map((b) => b.code)).toContain('RELEASE_POOL_EMPTY');
+    expect(report.warnings.map((w) => w.code)).toContain('RELEASE_RUNNER_PREFERENCE_UNMET');
+  });
+
   it('asks the record door for a merge and never for a runner', async () => {
     ready();
     execRows.mockResolvedValue([]);

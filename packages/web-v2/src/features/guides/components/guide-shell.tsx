@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { coreFileUrl } from "@/lib/utils/core-url";
 
 /** Chrome for the public guide pages. Deliberately not the workspace shell:
  *  these routes are read by people with no Forge account and by agents with no
@@ -33,8 +34,9 @@ export function GuideShell({
       <footer className="mx-auto max-w-[72ch] px-6 pb-12">
         <p className="fg-caption text-subtle">
           The same text, as markdown an agent can fetch without a credential:{" "}
-          <code className="font-mono">/api/guides</code> for the index and{" "}
-          <code className="font-mono">/api/guides/&lt;slug&gt;.md</code> for one guide.
+          <code className="font-mono">{coreFileUrl("/api/guides")}</code> for the index and{" "}
+          <code className="font-mono">{coreFileUrl("/api/guides")}/&lt;slug&gt;.md</code> for one
+          guide.
         </p>
       </footer>
     </div>

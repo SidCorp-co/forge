@@ -247,11 +247,13 @@ async function poolBlockers(
   if (!pool) return;
   if (pool.eligible.length === 0) {
     out.push(blocker(pool.fleet.length === 0 ? 'RELEASE_POOL_EMPTY' : 'NO_RUNNER_ONLINE'));
-    return;
   }
   // ISS-1128 made the label rank the pool rather than filter it, so an unmet
   // preference is no longer a reason a release will not start. It is still a
-  // fact the operator is owed in the same answer, which is what a warning is.
+  // fact the operator is owed in the same answer, which is what a warning is —
+  // and owed WITH an empty pool, not instead of it: a box that is offline and a
+  // box that is unlabelled are two things to fix, and this answer shows every
+  // reason at once (ISS-1127).
   if (label && !pool.preferenceMet) {
     warnings.push({
       code: 'RELEASE_RUNNER_PREFERENCE_UNMET',
