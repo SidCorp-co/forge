@@ -216,8 +216,6 @@ function channelBlockers(
     out.push(blocker('RELEASE_RUNNER_AMBIGUOUS', { labels }));
   }
   if (channels.some((c) => !c.verify)) out.push(blocker('RELEASE_PROBES_UNDECLARED'));
-  const urls = channels.flatMap((c) => (c.verify ? invalidProbeUrls(c.verify) : []));
-  if (urls.length > 0) out.push(blocker('RELEASE_PROBES_UNREADABLE', { urls }));
   return label;
 }
 
@@ -261,6 +259,18 @@ async function poolBlockers(
       details: { label, eligible: pool.eligible.length },
     });
   }
+}
+
+/**
+ * A probe url no request could be made to.
+ *
+ * Reported where the LIVE READ stands — last on a batch, after the roster on a
+ * record — because that read is where this state fails. Any earlier and it
+ * displaces a refusal the caller already gets for the same project.
+ */
+function unreadableProbeBlockers(channels: ReleaseChannel[], out: ReleaseBlocker[]): void {
+  const urls = channels.flatMap((c) => (c.verify ? invalidProbeUrls(c.verify) : []));
+  if (urls.length > 0) out.push(blocker('RELEASE_PROBES_UNREADABLE', { urls }));
 }
 
 /** Is there a branch a release could promote from. */
@@ -350,6 +360,7 @@ export async function collectReleaseBlockers(
       if (channels.length > 1) {
         machinery.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
       }
+      unreadableProbeBlockers(channels, machinery);
     }
   } else if (door === 'batch') {
     await poolBlockers(projectId, null, machinery, warnings);
@@ -357,6 +368,7 @@ export async function collectReleaseBlockers(
   }
 
   blockers.push(...(door === 'batch' ? [...roster, ...machinery] : [...machinery, ...roster]));
+  if (door === 'record' && channels) unreadableProbeBlockers(channels, blockers);
 
   if (door === 'batch') {
     const active = await evaluate(

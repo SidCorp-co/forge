@@ -113,8 +113,7 @@ export async function recordPerformedRelease(
   const { projectId, issueIds, commit, account, userId } = args;
   const providerRef = args.providerRef ?? null;
 
-  // ONE pass before anything refuses, so probes AND notes AND merges arrive
-  // together rather than one per call (ISS-1127).
+  // ONE pass before anything refuses, so probes, notes and merges arrive together (ISS-1127).
   const report = await collectReleaseBlockers(projectId, { issueIds, door: 'record' });
   if (!report.projectExists) throw new NoReleaseGateError();
   const refusal = releaseBlockerError(report);

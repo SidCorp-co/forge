@@ -47,9 +47,7 @@ vi.mock('../issues/release-record-required.js', async (importActual) => {
   return { ...actual, issuesMissingReleaseRecord: () => missingNotes() };
 });
 
-const { alsoBlocking, collectReleaseBlockers, releaseBlockerError } = await import(
-  './blockers.js'
-);
+const { alsoBlocking, collectReleaseBlockers, releaseBlockerError } = await import('./blockers.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
@@ -414,5 +412,48 @@ describe('collectReleaseBlockers — each door in its own refusal order', () => 
     const standing = alsoBlocking(err, 'RELEASE_CHECK_UNEVALUATED');
 
     expect(standing.filter((b) => b.code === 'RELEASE_CHECK_UNEVALUATED')).toHaveLength(1);
+  });
+});
+
+/**
+ * `RELEASE_PROBES_UNREADABLE` is a reason this change ADDS, so it belongs where
+ * the live read stands — the last thing either door does before it acts. Added
+ * any earlier, it displaces a refusal the caller already gets for that project.
+ */
+describe('collectReleaseBlockers — a new reason may not displace an old one', () => {
+  const MALFORMED = {
+    releaseRunnerLabel: 'prod-box',
+    rollback: { mode: 'coolify-image' },
+    verify: { probes: [{ url: 'example.test/version' }] },
+  };
+
+  it('refuses a batch by the empty fleet, and carries the malformed probe with it', async () => {
+    ready();
+    projectRow({ environments: {} });
+    liveBinding(MALFORMED);
+    execRows.mockResolvedValue([]);
+    onlineIds.mockResolvedValue([]);
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+    const codes = report.blockers.map((b) => b.code);
+
+    expect(report.blockers[0]?.code).toBe('RELEASE_POOL_EMPTY');
+    expect(codes).toContain('RELEASE_PROBES_UNREADABLE');
+  });
+
+  it('refuses a record by the missing note, and carries the malformed probe with it', async () => {
+    ready();
+    projectRow({ environments: {} });
+    liveBinding(MALFORMED);
+    missingNotes.mockResolvedValue([ISSUE_A]);
+
+    const report = await collectReleaseBlockers(PROJECT_ID, {
+      issueIds: [ISSUE_A],
+      door: 'record',
+    });
+    const codes = report.blockers.map((b) => b.code);
+
+    expect(report.blockers[0]?.code).toBe('RELEASE_RECORD_MISSING');
+    expect(codes).toContain('RELEASE_PROBES_UNREADABLE');
   });
 });
