@@ -22,7 +22,7 @@ export type InboundDoorState =
   | 'unreadable'
   | 'silent';
 
-/** `accepted` got through; `refused` was turned away at the door and is attributed to nobody. */
+/** `accepted` got through; `refused` was turned away at the door, attributed to nobody, and never `failed`, which is a delivery accepted and then not processed and which the outbound breaker counts. */
 export interface InboundDoorTraffic {
   accepted: number;
   lastAcceptedAt: Date | null;
