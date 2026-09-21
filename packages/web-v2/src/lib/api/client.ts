@@ -1,8 +1,3 @@
-// Originally ported from v1 (ISS-288). The `API_URL` default is the RELATIVE
-// `/api`: web-v2 is same-origin with core in dev/CI, so a relative base keeps
-// the httpOnly `forge_auth` cookie attached and lets the `/api` + `/ws`
-// rewrites (next.config.ts → E2E_CORE_PROXY_URL) proxy to core. In prod
-// NEXT_PUBLIC_API_URL is set to core's absolute origin at build time.
 import { CORE_URL } from '@/lib/utils/core-url';
 import { reportTransportFailure } from './transport-failure';
 
@@ -18,7 +13,6 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly details?: unknown;
-  // cm:why captured so a caller can read a non-error-shaped payload on a 4xx/5xx — the 410 `{ archived: true, path }` from `GET /api/jobs/:id/prompt` is the case; undefined when the body was not JSON.
   readonly body?: unknown;
 
   constructor(
@@ -52,7 +46,6 @@ async function parseErrorBody(res: Response): Promise<{
     }
     return { message: res.statusText, body };
   } catch {
-    // cm:why a body that will not parse is not an error worth reporting over the status line the response already carries — every branch above needs JSON, and the one thing a caller can always act on is the status.
   }
   return { message: res.statusText };
 }
@@ -61,7 +54,6 @@ async function parseErrorBody(res: Response): Promise<{
  * Every request this module makes goes out through here, and it is the ONLY
  * place a rejected `fetch` is reported.
  */
-// cm:guard one door on purpose. `apiMultipart` used to call `fetch` itself, which made the transport-failure boundary two places that had to agree; a second caller added later would have been a third. The `catch` rethrows untouched — reporting is not handling, and every caller still sees the error it always saw.
 async function sendRequest(endpoint: string, init: RequestInit): Promise<Response> {
   const url = `${API_URL}${endpoint}`;
   try {
@@ -119,16 +111,11 @@ export async function apiMultipart<T>(endpoint: string, formData: FormData): Pro
  * `{ items, total, hasMore, … }` envelope; routes that do not paginate still
  * answer with a bare array.
  */
-// cm:guard a paginated response must carry its own total — in the BODY, or in `X-Total-Count` for the routes still on the array shape. Neither present is an ERROR, never `items.length`: that fallback made a truncated page indistinguishable from a complete list, silently, and 50 of 900 rows read as "900 of 900" while every caller comparing the two to decide whether to fetch more simply stopped.
-// cm:edge contract -> packages/core/src/lib/pagination.ts — `listResponse` builds the envelope this reads, and `setTotalCount` writes the header form; a paginated route that emits neither fails here rather than under-reporting its own size
-// cm:edge contract -> packages/core/src/index.ts — `exposeHeaders: ['X-Total-Count']` is what lets a browser read the header form at all; drop it and every array-shaped list throws rather than quietly truncating
-// cm:why `extra` carries whatever else the envelope held, unread and untyped by this helper: a route that answers with its rows AND a figure about the set they came from (the issues search and its tab counts) would otherwise need a second endpoint, and two reads of one set can describe two different moments.
 export async function apiClientList<T, E = unknown>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<{ items: T[]; totalCount: number; extra?: E }> {
   const res = await fetchRaw(endpoint, options);
-  // cm:why 204 carries no body and no header by design — an empty list is complete at zero, and demanding a total here would fail every route that answers "nothing" without one
   if (res.status === 204) return { items: [], totalCount: 0 };
 
   const body = (await res.json()) as T[] | ({ items: T[]; total: number } & Record<string, unknown>);
@@ -163,8 +150,6 @@ export async function apiClientList<T, E = unknown>(
  * so it is reported as the caller's `totalCount` and is NOT what the walk
  * stops on.
  */
-// cm:guard the walk stops on `nextCursor === null` and on nothing else, and the page cap is what keeps a server that always returns a cursor from spinning here forever. Deriving the stop from `items.length` or from `total` is what `apiClientList`'s own guard refuses one shape up: a page is indistinguishable from a whole list by its size.
-// cm:edge contract -> packages/core/src/lib/pagination.ts — `cursorList` builds the envelope this reads; a route that answers `{items,total,nextCursor}` from anywhere else has to keep those three names for this to walk it
 export async function apiClientCursorAll<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -194,7 +179,6 @@ export async function apiClientCursorAll<T>(
   throw new Error(`${endpoint}: still returning a cursor after ${MAX_PAGES} pages`);
 }
 
-// cm:guard a shape without `nextCursor` must THROW, never read as a complete list. A bare array or an offset envelope has no cursor, so the walk would stop after one page having pushed nothing — an empty thread on a screen with no control to ask for more, which is exactly the class of silent truncation `apiClientList` was hardened against one shape up (ISS-893, ISS-956).
 function isCursorPage<T>(
   body: unknown,
 ): body is { items: T[]; total: number; nextCursor: string | null } {

@@ -51,7 +51,6 @@ function CountLine({
   );
 }
 
-// cm:edge contract -> packages/web-v2/src/app/globals.css — the keyboard ring is app-wide in `@layer base`, so this row declares neither a `focus-visible:*` ring nor an unconditional `shadow-*`: either one replaces it silently (`design/focus-ring.test.ts`)
 function ModuleCard({
   row,
   href,
@@ -166,7 +165,6 @@ export function ModuleRollupView({ scope }: ModuleRollupViewProps) {
       </div>
 
       {shown.length === 0 ? (
-        // cm:why the filtered-empty state is its own copy and its own action — a project with no modules and a search that matched none read identically otherwise, and the fix for each is the opposite one
         <EmptyState
           title={`No modules match "${search.trim()}"`}
           message="Clear the search to see every module."
@@ -186,7 +184,6 @@ export function ModuleRollupView({ scope }: ModuleRollupViewProps) {
       )}
 
       {unassigned ? (
-        // cm:guard the unattributed bucket is a row of its own and is never folded into a module — an issue with no module is a fact about the taxonomy's coverage, and folding it in reports coverage the modules do not have
         <div className="rounded-md border border-dashed border-line p-3">
           <p className="fg-body font-medium">No module</p>
           <p className="fg-body-sm mt-1 text-muted">

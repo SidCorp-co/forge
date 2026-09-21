@@ -19,7 +19,6 @@ describe('formatIssueRef', () => {
 });
 
 describe('canonicalIssueKey', () => {
-  // cm:why ISS-992 — the stored `runIssues` key never takes the project's prefix; `admissible.ts` matches it by string containment, so a prefixed key would make a run's issues unfindable.
   it('stays ISS- whatever prefix the project holds', () => {
     expect(canonicalIssueKey(977)).toBe('ISS-977');
     expect(canonicalIssueKey(977)).not.toBe(formatIssueRef('FD', 977));

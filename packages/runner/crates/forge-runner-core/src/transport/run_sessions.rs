@@ -15,8 +15,6 @@ struct OpenReply {
     run_id: String,
 }
 
-/// Open the core-side record for a run, carrying the WHOLE group of issues.
-// cm:edge contract -> packages/core/src/devices/run-session.ts — `openRunSession` is the other half; membership lands on `pipeline_runs.metadata.runIssues` because `issue_id` is one column and a run carries many.
 pub async fn open(
     client: &CoreClient,
     project_id: &str,
@@ -54,10 +52,6 @@ pub async fn open(
     Ok((parsed.session_id, parsed.run_id))
 }
 
-/// Say this box still holds the run — the ONLY thing that keeps it out of
-/// core's ten-minute sweep.
-// cm:edge contract -> packages/core/src/devices/run-session-reaper.ts — the beat asserts "this box still holds this run", never progress.
-// cm:guard the beat is a `status` patch and nothing else — `agent-sessions/routes.ts` counts a status write as worker activity and bumps `last_heartbeat_at`, which is the whole point. Never `runtimeState: awaiting_input` here: that value is deliberately EXEMPT from the heartbeat and would park the run outside every clock instead of proving the box holds it.
 pub async fn beat(client: &CoreClient, session_id: &str) -> Result<()> {
     patch_session(
         client,
@@ -70,8 +64,6 @@ pub async fn beat(client: &CoreClient, session_id: &str) -> Result<()> {
     .await
 }
 
-/// Why a run session ended, as core's `close` verb names the three cases.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `closeBodySchema` is a zod enum of exactly these three wire strings; a fourth added here without a matching variant there is a 400 the daemon reads as "core refused the close" and retries forever.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     Ended,
@@ -89,14 +81,6 @@ impl Outcome {
     }
 }
 
-/// Tell core this box finished with the run, and WHICH of the three ways.
-// cm:guard the reason this verb exists: without it the only way a run session reaches terminal is core's ten-minute silence sweep, which writes `runner_unreachable` over a box that was never unreachable — 203 sessions across two projects in 7 days, ~95% of them in that bucket, of which the genuine transport failures can no longer be told apart.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST /me/run-sessions/:sessionId/close` is the other half, and it is device-scoped: closing another box's session answers 404 rather than freeing its issues.
-// cm:guard a 404 is SUCCESS, for `is_terminal`'s reason: core not having the session means its reaper already closed it, and raising would make the caller retry a close that can never land.
-// cm:guard `checkpoint` is OPTIONAL on the wire and core's schema makes it optional too, so a box
-// that cannot reconstruct still closes — the close is how a run session reaches terminal by being
-// reported rather than by going silent for ten minutes, and losing that to a `git` that would not
-// answer trades the whole close for half the evidence (ISS-1050).
 pub async fn close(
     client: &CoreClient,
     session_id: &str,
@@ -134,12 +118,6 @@ pub async fn close(
     Ok(())
 }
 
-/// Tell core what a resumed master decided about a run it inherited.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST
-// /me/run-sessions/:sessionId/resume-choice` is the other half and is device-scoped.
-// cm:guard a 404 is NOT swallowed, for the same reason as the held-worktree report beside it: a
-// report that cannot find its session has failed to say the thing it exists to say, and answering
-// success would leave a decision recorded on one box and nowhere a human looks.
 pub async fn report_resume_choice(
     client: &CoreClient,
     session_id: &str,
@@ -169,14 +147,6 @@ pub async fn report_resume_choice(
     Ok(())
 }
 
-/// Tell core this box is keeping a checkout because its work is on no remote.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST
-// /me/run-sessions/:sessionId/held-worktree` is the other half, and it is device-scoped: a box
-// reporting about another box's session gets a 404.
-// cm:guard a 404 is NOT swallowed here, unlike the close above. The close treats a missing session
-// as "core got there first", which is a fact that lets the local marks land; a report that cannot
-// find its session has failed to say the thing it exists to say, and reporting success for that
-// would leave a held tree whose only record is this box's journal again.
 pub async fn report_held_worktree(
     client: &CoreClient,
     session_id: &str,
@@ -206,9 +176,6 @@ pub async fn report_held_worktree(
     Ok(())
 }
 
-/// Is this box's run session terminal? Read from core's own row.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `GET /me/run-sessions/:sessionId` is the other half, and it is device-scoped: a box asking about another box's session gets a 404, not an answer.
-// cm:guard a 404 answers TERMINAL rather than raising. Core no longer having the session means its own reaper got there first or an operator cancelled it; raising would park the ledger row forever on a run nothing else will ever close, where this lets the local marks land and the row retire.
 pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -241,14 +208,71 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
     Ok(parsed.session_terminal)
 }
 
-/// Is one issue still held by a live run session on this box?
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `GET /me/issue-leases/:issueKey` asks the same question `devices/admissible.ts` excludes on, for one key.
-pub async fn lease_held(client: &CoreClient, issue_key: &str) -> Result<bool> {
-    #[derive(Deserialize)]
-    struct Reply {
-        held: bool,
+/// What core says about one issue's lease, as this box sees it.
+///
+/// Two booleans because they are two questions (ISS-1109). `held` is the
+/// fleet-wide fact — any box, not only this one. `held_by_this_device` is what
+/// a close loop asking "have I given this back" means, and reading the first
+/// under the second's name is what let two boxes hold one issue.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaseState {
+    pub held: bool,
+    pub held_by_this_device: bool,
+}
+
+/// Where one lease lives, named by the project it was taken for.
+///
+/// `issue_leases` is keyed `(project_id, issue_key)` and `iss_seq` restarts per
+/// project, so a box serving two of them holds two rows under one key. Core
+/// refuses a give-back it cannot narrow to one, and this is how the run says
+/// which it means (ISS-1139).
+pub(crate) fn lease_path(project_id: Option<&str>, issue_key: &str) -> String {
+    match project_id {
+        Some(p) => format!("/api/devices/me/issue-leases/{issue_key}?projectId={p}"),
+        None => format!("/api/devices/me/issue-leases/{issue_key}"),
     }
-    let url = client.url(&format!("/api/devices/me/issue-leases/{issue_key}"));
+}
+
+/// Core's codes for a key under which no lease of any box can stand.
+///
+/// A lease call carries the key the pool handed the box, and core resolves it
+/// against the project whose prefix it names. Two of its refusals settle the
+/// key itself: a shape that is no issue reference, which the store keys nothing
+/// by, and a prefix no project answers to — the state a deleted project leaves,
+/// where `issue_prefix_aliases` keeps the row with a null project and the
+/// cascade on `issue_leases.project_id` has already taken every lease that
+/// project held. No lease could have opened under either shape in the first
+/// place — `openRunSession` parses every key against the prefixes its project
+/// holds and refuses the open otherwise — so `not held` is the fact. An error
+/// in its place is a refusal the box cannot clear, and the loop marks returned only
+/// on `Ok(true)`, so the run keeps its master waiting for ever (ISS-1139).
+///
+/// `ISSUE_LEASE_KEY_PROJECT_MISMATCH` is not one of them: the two identities in
+/// that request disagree and a lease may stand under either, so `not held`
+/// there is a guess wearing the shape of a fact.
+const NO_LEASE_STANDS_UNDER_KEY: [&str; 2] =
+    ["ISSUE_LEASE_KEY_SHAPE", "ISSUE_LEASE_KEY_UNKNOWN_PREFIX"];
+
+/// The code core named, where it is one of those two.
+///
+/// Read by code and never by status: a bare `404` from a core that does not
+/// serve this route says nothing about any lease, and reading that as `not
+/// held` marks a lease returned while it is still standing.
+fn no_lease_stands_under_key(body: &str) -> Option<&'static str> {
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    let code = parsed.get("code")?.as_str()?;
+    NO_LEASE_STANDS_UNDER_KEY
+        .into_iter()
+        .find(|known| *known == code)
+}
+
+pub async fn lease_state(
+    client: &CoreClient,
+    project_id: Option<&str>,
+    issue_key: &str,
+) -> Result<LeaseState> {
+    let url = client.url(&lease_path(project_id, issue_key));
     let resp = client
         .http()
         .get(&url)
@@ -262,19 +286,30 @@ pub async fn lease_held(client: &CoreClient, issue_key: &str) -> Result<bool> {
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
+        if let Some(code) = no_lease_stands_under_key(&text) {
+            tracing::warn!(
+                "[lease] read {issue_key}: core answers {code}; no lease stands under that key, so this box holds none"
+            );
+            return Ok(LeaseState {
+                held: false,
+                held_by_this_device: false,
+            });
+        }
         return Err(Error::Other(format!("issue-lease read: {status}: {text}")));
     }
-    let parsed: Reply = resp
+    let parsed: LeaseState = resp
         .json()
         .await
         .map_err(|e| Error::Other(format!("issue-lease decode: {e}")))?;
-    Ok(parsed.held)
+    Ok(parsed)
 }
 
-/// Give ONE issue's lease back. The answer is discarded on purpose.
-// cm:guard the caller must ask `lease_held` again to learn whether this landed, and this function's return says nothing about it. That is criterion 13's rule in the type: a stale success here sets no mark, and a dropped response over a return that landed still ends with one.
-pub async fn release_lease(client: &CoreClient, issue_key: &str) -> Result<()> {
-    let url = client.url(&format!("/api/devices/me/issue-leases/{issue_key}"));
+pub async fn release_lease(
+    client: &CoreClient,
+    project_id: Option<&str>,
+    issue_key: &str,
+) -> Result<()> {
+    let url = client.url(&lease_path(project_id, issue_key));
     let resp = client
         .http()
         .delete(&url)
@@ -285,6 +320,10 @@ pub async fn release_lease(client: &CoreClient, issue_key: &str) -> Result<()> {
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
+    // A 404 is core saying this box holds no such lease, which is the state the
+    // release was asking for; `is_returned` reads it back either way. Anything
+    // else — a 409 core could not narrow to one project among them — is an
+    // error, because retrying it unchanged never resolves (ISS-1139).
     if !resp.status().is_success() && resp.status().as_u16() != 404 {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
@@ -293,4 +332,140 @@ pub async fn release_lease(client: &CoreClient, issue_key: &str) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transport::fake_core;
+
+    const RECOVERY_PORTS: &str = include_str!("../daemon/recovery_ports.rs");
+
+    fn client(url: String) -> CoreClient {
+        CoreClient::new(url, String::from("tok"))
+    }
+
+    #[test]
+    fn a_lease_carries_the_fleet_answer_and_this_box_answer_separately() {
+        let state: LeaseState = serde_json::from_str(
+            r#"{"held":true,"heldByThisDevice":false,"holder":{"deviceId":"d1"}}"#,
+        )
+        .expect("core sends camelCase and an extra holder object the runner does not read");
+
+        assert!(
+            state.held,
+            "another box holding the issue is the fleet answer"
+        );
+        assert!(
+            !state.held_by_this_device,
+            "a box that reads the fleet answer as its own never marks its lease returned, and the run never closes"
+        );
+    }
+
+    #[test]
+    fn a_lease_call_names_the_project_the_lease_was_taken_for() {
+        assert_eq!(
+            lease_path(Some("proj-1"), "ISS-880"),
+            "/api/devices/me/issue-leases/ISS-880?projectId=proj-1",
+            "a box serving two projects holds two rows under one key, and core refuses a give-back that names neither"
+        );
+        assert_eq!(
+            lease_path(None, "ISS-880"),
+            "/api/devices/me/issue-leases/ISS-880",
+            "a run whose ledger row carries no project still asks, and core narrows by the device alone"
+        );
+    }
+
+    #[test]
+    fn a_free_lease_reads_free_on_both_questions() {
+        let state: LeaseState =
+            serde_json::from_str(r#"{"held":false,"heldByThisDevice":false,"holder":null}"#)
+                .expect("a free lease decodes with a null holder");
+
+        assert!(!state.held);
+        assert!(!state.held_by_this_device);
+    }
+
+    /// ISS-1139 — a key core resolves to no project must not wedge the close loop.
+    ///
+    /// A project is hard-deleted, its prefix stays spent, and core answers the
+    /// read `404 ISSUE_LEASE_KEY_UNKNOWN_PREFIX` for as long as that row
+    /// stands — which is for ever. Turning it into an `Err` leaves
+    /// `is_returned` unanswerable, `CloseState::is_closed` false and the master
+    /// waiting on a run that can never close. No lease survives the cascade on
+    /// `issue_leases.project_id`, so `held: false` is the fact and not a
+    /// softened refusal.
+    #[tokio::test]
+    async fn a_key_that_reaches_no_project_reads_as_no_lease() {
+        let url = fake_core::serve_always("404 Not Found", fake_core::UNKNOWN_PREFIX).await;
+
+        let state = lease_state(&client(url), Some("proj-1"), "FD-880")
+            .await
+            .expect("a key core resolves to no project reaches no lease, which answers the read");
+
+        assert!(
+            !state.held_by_this_device,
+            "the close loop marks a lease returned only on Ok(true), so an Err here is a run that never closes"
+        );
+        assert!(!state.held);
+    }
+
+    #[tokio::test]
+    async fn a_key_core_cannot_parse_reads_as_no_lease() {
+        let url = fake_core::serve_always("400 Bad Request", fake_core::KEY_SHAPE).await;
+
+        let state = lease_state(&client(url), Some("proj-1"), "ISS-x")
+            .await
+            .expect("the store keys every lease by a canonical reference, so a key that is none reaches nothing");
+
+        assert!(!state.held_by_this_device);
+    }
+
+    #[tokio::test]
+    async fn a_404_that_is_not_about_the_key_is_still_an_error() {
+        let url = fake_core::serve_always("404 Not Found", fake_core::ROUTE_ABSENT).await;
+
+        lease_state(&client(url), Some("proj-1"), "ISS-880")
+            .await
+            .expect_err(
+                "a route core does not serve says nothing about any lease, and reading it as `not held` marks one returned that is still standing",
+            );
+    }
+
+    #[tokio::test]
+    async fn a_key_naming_two_projects_at_once_is_still_an_error() {
+        let url = fake_core::serve_always("400 Bad Request", fake_core::PROJECT_MISMATCH).await;
+
+        lease_state(&client(url), Some("p-1"), "FD-880")
+            .await
+            .expect_err(
+                "the two identities disagree and a lease may stand under either, so `held: false` would be a guess dressed as a fact",
+            );
+    }
+
+    /// ISS-1139 — a release core could not narrow carries its way out.
+    ///
+    /// The close loop logs what this error says, so the sentence naming
+    /// `?projectId=` is the whole of what an operator has to act on.
+    #[tokio::test]
+    async fn a_release_core_could_not_narrow_names_the_way_out_in_its_error() {
+        let url = fake_core::serve_always("409 Conflict", fake_core::AMBIGUOUS).await;
+
+        let err = release_lease(&client(url), None, "ISS-880")
+            .await
+            .expect_err("a box holding one key in two projects gave nothing back");
+
+        assert!(
+            format!("{err}").contains("projectId"),
+            "an error that drops the way out leaves the operator a run that will not close and no act to take: {err}"
+        );
+    }
+
+    #[test]
+    fn the_close_loop_asks_whether_this_box_gave_it_back() {
+        assert!(
+            RECOVERY_PORTS.contains("held_by_this_device"),
+            "is_returned reading `held` would wedge this box's close loop on an issue another box legitimately holds (ISS-1109)"
+        );
+    }
 }

@@ -9,6 +9,7 @@ import {
   IconButton,
   MonoTag,
   PageContainer,
+  PageTitle,
   ProjectLoader,
   ProjectMark,
   useNow,
@@ -136,7 +137,7 @@ export default function ProjectOverviewPage() {
       <header className="mb-6 flex items-center gap-4">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
         <div className="flex-1">
-          <h1 className="fg-h2">{project.name}</h1>
+          <PageTitle className="fg-h2">{project.name}</PageTitle>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
             <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{project.role ?? "org"}</Badge>

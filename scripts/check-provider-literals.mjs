@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-// Refuse an integration provider's name written outside the places that own it.
-//
-// ISS-1071's first rule: ONE declaration describes a provider, and every generic
-// path resolves what it needs from the registry rather than naming the provider.
-// The places allowed to write the name are the provider's own directory, the
-// registry and the union beside it, the database schema's vocabulary, the
-// contracts enums, and the two identity surfaces where `github` and `google`
-// mean a LOGIN provider — a different namespace that happens to share a word.
-//
-// Every other `provider === 'coolify'` is the same defect: adding a provider
-// means editing it, and forgetting it is silent, because the generic path keeps
-// answering correctly for the providers it already knows.
-//
-// What the rule matches, what it deliberately does not, and what that costs:
-// `scripts/lib/provider-literals.mjs`.
-//
-// Modes: --all (CI, the only mode — the rule is repo-wide and a staged subset
-// would report clean on a tree that is not)
-// Exit: 0 clean · 1 a provider is named outside its declared locations · 2 could not run.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -34,11 +15,6 @@ function die(message) {
   process.exit(2);
 }
 
-// cm:edge naming -> packages/core/src/integrations/types.ts — reads the `INTEGRATION_PROVIDERS`
-// array by name. It is read rather than restated so a provider added there cannot leave this scan
-// by being forgotten here; a rename of that constant takes the checker to exit 2, which is the
-// loud half of the same guarantee.
-/** Every provider name the code itself declares. */
 function declaredProviders() {
   const path = join(ROOT, TYPES_PATH);
   if (!existsSync(path)) return { error: `${TYPES_PATH} not found — nothing declares the set` };
@@ -57,8 +33,6 @@ function walk(rel, acc, exts) {
       if (!SKIP_DIRS.has(entry.name)) walk(path, acc, exts);
       continue;
     }
-    // cm:guard test files are out of scope and that is not laziness: a test PROVING the registry
-    // answers for `coolify` must write `coolify`, so the rule would forbid the evidence for itself.
     if (/\.test\.tsx?$/.test(entry.name)) continue;
     if (/\.fixture\.tsx?$/.test(entry.name)) continue;
     if (exts.some((ext) => entry.name.endsWith(ext))) acc.push(path);
@@ -115,16 +89,10 @@ const { scanned, offenders } = scanEntries(entries, {
   allowed: cfg.allowed,
 });
 
-// cm:guard zero files scanned is exit 2 and never exit 0. A scan root that moved, a `scanExts`
-// typo and a genuinely clean repo all print the same "no offenders"; only the count separates
-// them, which is the fail-closed contract `verify.mjs` parses this line for.
 if (scanned === 0) {
   die(`scanned 0 files under ${scanRoots.join(', ')} — the scope matched nothing`);
 }
 
-// cm:guard printed on EVERY run, clean or not. `agent` is out of the scanned set by a declared
-// decision, and a decision visible only in a JSON file is one the next reader of a green report
-// has no way to know was taken.
 for (const excused of cfg.unscannable ?? []) {
   console.log(`provider-literals: not scanned — ${excused.provider}: ${excused.why}`);
 }

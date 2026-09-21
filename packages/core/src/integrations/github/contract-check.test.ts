@@ -147,7 +147,6 @@ describe('the skips, each named in its own row', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  // cm:guard absent means ON. Reading an absent key as off would ship a feature that runs nowhere, and nobody finds that out until they ask why no check ever appeared.
   it('publishes where the binding has never been asked about the switch', async () => {
     queue(storedRow(), bindingRow({ owner: 'o', repo: 'r', installationId: '42' }));
     expect(await publishForStoredPullRequest(PR_ID)).toMatchObject({ kind: 'published' });
@@ -183,7 +182,6 @@ describe('the skips, each named in its own row', () => {
     expect(skipReason()).toContain(BINDING_ID);
   });
 
-  // cm:guard a skip is `ok` and never `failed`. Each one names something an operator has not set up, and none of them is GitHub refusing Forge — recording them as failures is what trips a connection breaker on a binding nobody ever finished configuring.
   it('records every skip as `ok`, not as a failure', async () => {
     queue(storedRow({ issueId: null }));
     await publishForStoredPullRequest(PR_ID);
@@ -193,7 +191,6 @@ describe('the skips, each named in its own row', () => {
 });
 
 describe('the binding a caller was authorised for', () => {
-  // cm:guard a stored pull request is addressed by its own uuid and carries its OWN binding, so a dispatch holding a context for binding A and a row belonging to binding B would validate A and then publish to B's repository on B's credential — a write nobody authorised, reported as a success.
   it('refuses a pull request stored under a different binding, naming both', async () => {
     await expect(
       publishForStoredPullRequest(PR_ID, '99999999-9999-4999-8999-999999999999'),

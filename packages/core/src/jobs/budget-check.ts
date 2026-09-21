@@ -1,24 +1,3 @@
-/**
- * W2.3.2 — Pre-dispatch monthly budget gate.
- *
- * Reads the configured `perMonthUsd` cap for the issue's `stageStatus`
- * (via the same overrides resolver the dispatcher already uses for prompt /
- * model / tooling overrides), sums month-to-date `cost_usd` for the same
- * (project, jobType) pair from the `pipeline_run_step_durations` view, and
- * decides whether to:
- *   - allow:    spend below the warn threshold
- *   - warn-80:  spend ≥ 80% of cap (or ≥ 100% under action='warn')
- *   - pause:    spend ≥ 100% of cap AND action='pause' → fail the job
- *
- * Fail-open posture: any DB error returns `allow` so a budget-check outage
- * cannot stall the pipeline. Mirrors `loadStageMap` in stage-overrides.ts.
- *
- * Idempotency for warn emissions is provided by `shouldEmitWarn` — an
- * in-process Map keyed by `(projectId, stageStatus, hourBucket)`. Multi-
- * replica deployments may emit one warn per replica per hour; acceptable
- * for v1, promote to a DB-backed dedup in W2.3.4 if needed.
- */
-
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { JobType } from '../db/schema.js';
@@ -68,7 +47,6 @@ export async function checkMonthlyBudget(
 
   let spent = 0;
   try {
-    // cm:why the month floor goes through `utcDateTrunc` so the cutoff is a timestamptz: a bare `date_trunc('month', now() AT TIME ZONE 'UTC')` yields a NAIVE timestamp, which Postgres then coerces against `started_at` using the session TimeZone — on UTC+7 the window opened 7h into the previous month and counted its spend against this month's cap
     const rows = (await db.execute(sql`
       SELECT COALESCE(SUM(cost_usd), 0)::float AS spent
       FROM pipeline_run_step_durations
@@ -96,7 +74,6 @@ export async function checkMonthlyBudget(
   return { action: 'allow', spent, budget, stageStatus };
 }
 
-// cm:why bounded at 1024 with a drop-oldest-half eviction rather than an LRU: the key is per project × stage × hour, so 1024 live entries is already far past any realistic load and the bookkeeping would cost more than the bound is worth
 const warnDedup = new Map<string, number>();
 
 export function shouldEmitWarn(projectId: string, stageStatus: string): boolean {

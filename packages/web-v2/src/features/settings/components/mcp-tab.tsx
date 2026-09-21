@@ -19,10 +19,11 @@ import {
   Field,
   Input,
   MonoTag,
+  SectionTitle,
   Select,
-  type SelectOption,
   Skeleton,
   Tabs,
+  type SelectOption,
   type TabItem,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
@@ -127,7 +128,7 @@ export function McpTab() {
 
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-4">Connect a client</h2>
+          <SectionTitle className="fg-h3 mb-4">Connect a client</SectionTitle>
           <div className="space-y-4">
             <div>
               <p className="fg-label mb-1.5">Endpoint</p>
@@ -147,7 +148,7 @@ export function McpTab() {
       <Card>
         <CardContent>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="fg-h3">Config snippet</h2>
+            <SectionTitle className="fg-h3">Config snippet</SectionTitle>
             <Button
               variant="secondary"
               size="sm"
@@ -167,7 +168,7 @@ export function McpTab() {
             Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
             <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
           </p>
-          <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-[12.5px] leading-relaxed text-fg">
+          <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
             <code>
               <SnippetCode content={snippet.content} />
             </code>
@@ -266,7 +267,7 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-1">Test connection</h2>
+        <SectionTitle className="fg-h3 mb-1">Test connection</SectionTitle>
         <p className="fg-caption mb-4">
           Paste a token to verify it can reach this project over MCP. The token isn&apos;t saved.
         </p>
@@ -316,7 +317,7 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
         {status === "error" && error && (
           <div className="mt-4">
             <Banner tone="danger">
-              <span className="font-mono text-[12.5px]">{error}</span>
+              <span className="font-mono text-12-5">{error}</span>
               {hint && <p className="mt-1">{hint}</p>}
             </Banner>
           </div>

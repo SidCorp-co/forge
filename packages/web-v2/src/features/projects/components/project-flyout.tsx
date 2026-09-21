@@ -142,7 +142,7 @@ export function ProjectFlyout({
                   />
                   <span
                     className={cn(
-                      "min-w-0 flex-1 truncate text-[13.5px] font-semibold",
+                      "min-w-0 flex-1 truncate text-13-5 font-semibold",
                       active ? "text-accent-text" : "text-fg",
                     )}
                   >
@@ -192,7 +192,7 @@ export function ProjectFlyout({
               if (onViewAll) onViewAll();
               else router.push("/projects");
             }}
-            className="flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 font-semibold text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <span className="inline-flex size-6 flex-none items-center justify-center rounded-sm bg-sunken text-subtle">
               <Icon name="folder" size={15} />
@@ -206,7 +206,7 @@ export function ProjectFlyout({
               if (onCreateProject) onCreateProject();
               else router.push("/projects?new=1");
             }}
-            className="flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 font-semibold text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <span className="inline-flex size-6 flex-none items-center justify-center rounded-sm bg-sunken text-subtle">
               <Icon name="plus" size={15} />

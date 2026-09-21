@@ -1,20 +1,20 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs, projects, runners } from '../db/schema.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { ageSeconds, fillHeartbeat } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
 import {
   PULSE_HEARTBEAT_DAYS,
-  PULSE_LIVE_JOB_STATUSES,
   type PulseJobIdentity,
   type PulseLiveness,
   type PulseRunIdentity,
   type PulseThresholds,
 } from './pulse-types.js';
 
-const LIVE = [...PULSE_LIVE_JOB_STATUSES];
+const LIVE = [...LIVE_JOB_STATUSES];
 
 /** One row per live-job status, and zero for a status nothing holds. */
 async function countJobsByStatus(projectIds: string[]): Promise<Record<string, number>> {
@@ -64,7 +64,6 @@ async function selectLiveJobs(
 /**
  * Runs the control plane still calls open that nothing is working.
  */
-// cm:guard the predicate is the ABSENCE of a live job, never `pipeline_runs.status` — on 2026-09-12 every one of the 42 runs at `running` had zero live jobs and the dashboard counted all 42 as work in flight (ISS-988).
 async function selectStuckRuns(
   projectIds: string[],
   cap: number,
@@ -116,7 +115,6 @@ async function selectStuckRuns(
 }
 
 /** The newest moment any job in scope did anything, or null where none has. */
-// cm:guard the coalesce order is finish, ack, dispatch, queue — the LAST thing that happened to the row. Reading `queued_at` alone dates a busy queue as silence, and `finished_at` alone dates a running fleet as silent forever (ISS-988 criteria 5-7).
 async function readLastJobAt(projectIds: string[]): Promise<string | null> {
   const [row] = (await db.execute(sql`
     SELECT max(coalesce(finished_at, acked_at, dispatched_at, queued_at)) AS last_at

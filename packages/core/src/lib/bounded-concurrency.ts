@@ -1,13 +1,3 @@
-/**
- * A counting semaphore for read fan-out against a fixed connection pool.
- *
- * The unit of the bound is a SLOT, and a finished task hands its slot straight
- * to the next waiter rather than returning it to a counter. Returning it is the
- * version that over-subscribes: the wake-up is a microtask, so a caller
- * arriving between the decrement and the woken task's increment sees a free
- * slot that is already spoken for, and the bound is exceeded by the number of
- * pending wake-ups.
- */
 export interface Limiter {
   /** Run `task` once a slot is free; the slot is released even if it throws. */
   run<T>(task: () => Promise<T>): Promise<T>;

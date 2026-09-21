@@ -38,15 +38,6 @@ export const skillStudioRoutes = new Hono<{ Variables: AuthVars }>();
 skillStudioRoutes.use('/:projectId/skills/effective', requireAuth(), assertEmailVerified());
 skillStudioRoutes.use('/:projectId/skills/apply-default', requireAuth(), assertEmailVerified());
 
-// Effective listing for Skill Studio — globals (read-only templates) + this
-// project's project skills, NOT deduped. Each row is annotated:
-//   - `editable`: project skills are editable, globals are not.
-//   - project skill → `shadowsGlobal` + `shadowedGlobalSkillId` (the same-name
-//     global it shadows, or null).
-//   - global → `shadowedByProjectSkillId` (the same-name project skill that
-//     shadows it for this project, or null).
-// Globals serve `globalEffectiveMd` as `skillMd` so a legacy prompt-only skill
-// never surfaces a blank body.
 skillStudioRoutes.get(
   '/:projectId/skills/effective',
   zValidator('param', projectParamSchema, (r) => {
@@ -98,9 +89,6 @@ skillStudioRoutes.get(
   },
 );
 
-// Apply default — copy a global template into a new same-name project skill
-// (the project skill then shadows the global). Project admin only. Rejects when a
-// same-name project skill already exists (one shadow per name).
 skillStudioRoutes.post(
   '/:projectId/skills/apply-default',
   zValidator('param', projectParamSchema, (r) => {

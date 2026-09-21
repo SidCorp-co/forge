@@ -32,9 +32,6 @@ function cardIcon(key: string): IconName {
   return TELEMETRY_CARD_ICON[base] ?? registryIcon(base);
 }
 
-// cm:why keyed on the card's own `meta` and not on which provider it is: a repo link is a fact the
-// card carries or does not, and the provider test this replaced meant a second provider that ever
-// reported a remote URL would have had its link silently dropped.
 function externalRepoUrl(card: StatusCard): string | null {
   const remote = card.meta?.remoteUrl;
   if (typeof remote === "string" && /^https?:\/\//.test(remote)) {
@@ -43,7 +40,6 @@ function externalRepoUrl(card: StatusCard): string | null {
   return null;
 }
 
-// cm:guard Manage must render whenever the card is drillable, even beside a repo link — GitHub became drillable and its card carries `remoteUrl`, so an either/or leaves the only affordance shown navigating AWAY from the one screen that can connect the App
 function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
   const lastSync = formatRelativeTime(card.lastSyncAt);
   const repoUrl = externalRepoUrl(card);
@@ -96,7 +92,7 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
                   href={repoUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:underline"
+                  className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
                   onClick={(e) => e.stopPropagation()}
                 >
                   Open repo
@@ -104,7 +100,7 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
                 </a>
               ) : null}
               {clickable ? (
-                <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
+                <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
                   Manage
                   <Icon name="arrowRight" size={13} />
                 </span>
@@ -123,12 +119,6 @@ function baseProviderLabel(card: StatusCard): string {
   return card.label.replace(/\s*\(.*\)$/, "");
 }
 
-/**
- * What a sub-row's scope reads as: the card's own `meta.role`/`meta.stages`,
- * falling back to the `provider:<scope>` key suffix the card was built with.
- * A service binding reads "Service" rather than the `[prod]` it used to print
- * on every sentry, rocketchat, github and postman row in the fleet.
- */
 function scopeOf(card: StatusCard): string {
   const role = card.meta?.role;
   const stages = card.meta?.stages;
@@ -199,7 +189,7 @@ function GroupedIntegrationCard({
                       {lastSync ? `synced ${lastSync}` : "no sync data"}
                     </span>
                     {clickable ? (
-                      <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
+                      <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
                         Manage
                         <Icon name="arrowRight" size={13} />
                       </span>

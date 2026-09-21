@@ -12,14 +12,6 @@ export async function hashPassword(plain: string): Promise<string> {
   return argon2.hash(plain, OPTIONS);
 }
 
-/**
- * Lazily computed argon2id hash of a random secret, reused across all
- * unknown-email login attempts. Used to equalize verify() timing with the
- * wrong-password path (prevents user enumeration via response latency).
- *
- * The plaintext is generated once per process and discarded — only the hash
- * (and the cost of verifying against it) matters.
- */
 let dummyHashPromise: Promise<string> | null = null;
 export function getDummyPasswordHash(): Promise<string> {
   if (!dummyHashPromise) {

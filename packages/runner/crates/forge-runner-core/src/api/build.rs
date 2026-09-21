@@ -27,7 +27,6 @@ pub struct SlugSources<'a> {
 
 /// Build the request, or return the message the caller should refuse with.
 pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request, String> {
-    // cm:guard --data is checked HERE, before anything is sent. A body core would reject costs a round trip and reports the SERVER's parse error rather than the caller's typo; and for a POST, "it was never sent" is the only cheap answer to "did it half-happen?".
     if let Some(b) = spec.data {
         if !is_json(b) {
             return Err("--data is not valid JSON".to_string());
@@ -49,7 +48,6 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
         return Err("path is empty".to_string());
     }
 
-    // cm:why POST when a body is given: `-X` exists for the rest, and a body on a GET is the one combination that is almost always a mistake rather than an intent
     let method = spec
         .method
         .map(str::to_string)
@@ -68,9 +66,6 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
     })
 }
 
-/// `--project` (handled by the caller), then `$FORGE_PROJECT_SLUG`, then the
-/// sole binding.
-// cm:guard AMBIGUITY RESOLVES TO NOTHING, never to a guess: with two bindings this returns None, core sees no slug header and refuses the project-scoped route. Picking the first binding instead would send the call to the wrong project with a token that is valid for both — a wrong answer that looks like a Forge bug rather than a missing `--project`.
 fn default_slug(slugs: &SlugSources<'_>) -> Option<String> {
     if let Some(s) = slugs.env {
         if !s.trim().is_empty() {
@@ -165,7 +160,6 @@ mod tests {
         );
     }
 
-    // cm:guard split on the FIRST colon only — a value legitimately contains colons (a URL, a timestamp), and splitting on the last or on every colon corrupts it silently, which is worse than refusing
     #[test]
     fn a_value_containing_colons_survives_intact() {
         let hs = vec!["X-Url: https://example.com:8443/a".to_string()];
@@ -261,7 +255,6 @@ mod tests {
         );
     }
 
-    // cm:guard TWO bindings must yield None, not a pick. This is the case that would send a call to the wrong project under a token valid for both — core then refuses for want of a slug, which is a message the caller can act on, where a wrong-project answer is one they cannot even detect. Make `default_slug` fall back to `.first()` and only this goes red.
     #[test]
     fn two_bindings_resolve_to_nothing_rather_than_the_first() {
         let b = vec!["alpha".to_string(), "beta".to_string()];

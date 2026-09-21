@@ -79,7 +79,6 @@ function deriveKey(
 }
 
 export type RateLimitOptions = {
-  /** Logical rule name; also used to namespace bucket keys. */
   name?: string;
 };
 

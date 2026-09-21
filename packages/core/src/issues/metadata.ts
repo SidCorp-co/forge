@@ -1,12 +1,5 @@
-// ISS-137 — Issue.metadata validation (Layer 2 branch config override).
-//
-// Lives in its own module so unit tests can exercise the schemas without
-// loading routes.ts → db/client.ts (which pulls in env validation).
-
 import { z } from 'zod';
 
-// Empty strings rejected so callers must pass `null` to clear a single field.
-// Regex matches Git's safe-ish ref subset (no spaces, no shell-special chars).
 const BRANCH_NAME_RE = /^[a-zA-Z0-9._/-]{1,100}$/;
 
 export const branchNameSchema = z

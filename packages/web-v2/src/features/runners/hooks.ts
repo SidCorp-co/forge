@@ -53,7 +53,6 @@ export function useSetDeviceDisabled() {
 			runnersApi.setDeviceDisabled(id, disabled),
 		onSuccess: (_data, { disabled }) => {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
-			// cm:guard every view that reads runner eligibility must be invalidated here, not just the device list — a disabled device keeps heartbeating, so nothing else expires these: the "Device off" badge on the project-runners projection and the active-runners view both keep rendering a box the pool already excludes. A third such view added anywhere needs its key added here.
 			qc.invalidateQueries({ queryKey: ["projects"] });
 			qc.invalidateQueries({ queryKey: ["runners"] });
 			toast({
@@ -165,7 +164,6 @@ export function usePatchRunner(deviceId: string) {
 	});
 }
 
-// cm:edge contract -> packages/core/src/devices/pool-admission.ts — `draining` is one of the statuses that withdraw a box from the pool; renaming it there without this leaves a switch that writes a value nothing excludes on
 /** Take a runner out of the pool, or put it back. */
 export function useSetRunnerAdmission(projectId: string) {
 	const qc = useQueryClient();

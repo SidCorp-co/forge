@@ -1,20 +1,3 @@
-/**
- * ISS-877 — the session failure taxonomy, as web-v2 sees it.
- *
- * `agent_sessions.failure_reason` held one value, `job_failed`, for every
- * agent-side death, so the record said nothing (`VISION: state-never-lies`).
- * The list below is what replaced it, and the derivation, the live counts and
- * the origin axis live with the WRITER, in core.
- *
- * This file is a deliberate second copy. Core cannot value-import this package
- * (its prod image does not ship it — ISS-510 took the API down that way, and
- * `contracts-runtime-boundary.test.ts` gates it since), and web-v2 cannot
- * import core. `NOTIFICATION_TYPES` has the same shape for the same reason.
- * What keeps the copies honest is `failure-causes-parity.test.ts` in core.
- */
-// cm:edge lockstep -> packages/core/src/pipeline/failure-causes.ts — the canonical list; a cause added there and not here renders an operator a raw snake_case token, and one added here alone is a cause nothing writes
-
-// cm:guard every member needs live rows or a named writer, and the line must say which — a cause nobody emits is indistinguishable from one nobody looked for, and it is what lets a taxonomy rot the way `job_failed` rotted
 export const FAILURE_CAUSES = [
   /** org/account monthly spend cap. 4,412 jobs/60d; 7 of the 8 ISS-871 sessions. */
   'provider_spend_cap',
@@ -50,10 +33,6 @@ export const FAILURE_CAUSES = [
    *  runner `daemon/dispatch.rs` (`repo_lock_timeout`); 7 rows in 30 minutes on
    *  forge-vm 2026-09-05, all read `unclassified` before ISS-920. */
   'repo_root_contention',
-  /** the box's `duplex_max_sessions` permits were all held. Writer: runner
-   *  `runner/claude_code.rs` (`session_permit_saturated`); new in ISS-920, which
-   *  is also what made it nameable — before it, the same event surfaced on a
-   *  DIFFERENT project's jobs as `repo_lock_timeout`. */
   'box_session_saturated',
   /** dispatch never delivered or never claimed. 54 jobs/60d. */
   'runner_unreachable',
@@ -65,14 +44,6 @@ export const FAILURE_CAUSES = [
   'heartbeat_timeout',
   /** nobody picked it up. 20 sessions all-time. */
   'queue_timeout',
-  /** a worker reported on the session and then stopped, and no report that a
-   *  turn had begun ever arrived. NAMED FOR WHAT WAS OBSERVED and not for what
-   *  it usually means: core sees reports, never the pane, so silence past the
-   *  quiet threshold establishes that no turn was REPORTED and never that none
-   *  ran. Writers: jobs/loop-monitor.ts (the quiet arm of the queue hop), and
-   *  the runner's `turn_evidence::never_started_reason` through `CAUSE_RULES`,
-   *  which is the reading that CAN say more because it watches the pane
-   *  (ISS-1101, pairing with ISS-1096). New; no live rows by construction. */
   'turn_never_reported',
   /** the ack hop reaped it. 7 sessions all-time. */
   'no_client_ack',
@@ -114,16 +85,6 @@ export const FAILURE_CAUSES = [
 
 export type FailureCause = (typeof FAILURE_CAUSES)[number];
 
-/**
- * Values written before ISS-877 that must keep reading as something. Resolved
- * at READ time only — the 1,787 historical `job_failed` rows are NOT rewritten,
- * because `failure-classifier.ts` states that a historical row keeps its
- * original verdict, and because most of those rows no longer have a source to
- * derive a cause from. `job_failed` resolves to `unclassified` on purpose: it
- * IS the unclassified era, and pretending otherwise would trade an admitted
- * lie for a confident one.
- */
-// cm:edge contract -> packages/web-v2/src/features/sessions/types.ts — that file renders these same strings; a key added here without its label/tooltip there shows an operator a raw token
 export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
   job_failed: 'unclassified',
   usage_limit: 'provider_usage_limit',
@@ -131,25 +92,8 @@ export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 };
 
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
-// cm:guard a Map, not the object literal — `raw` comes from a free-text column, and a plain object answers `toString`, `constructor` and `valueOf` off its PROTOTYPE, so a bare `LEGACY_CAUSE_ALIAS[raw]` hands back a function typed `FailureCause` for a row holding any of those words
 const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(LEGACY_CAUSE_ALIAS));
 
-/**
- * Turn whatever is in `failure_reason` into a cause. Historic tokens go through
- * the alias table; free text and unknown tokens read `unclassified`.
- *
- * The write side is held by the TYPE, not by a runtime funnel and not by a
- * CHECK: `schema.ts` declares the column `text('failure_reason', { enum:
- * agentSessionFailureReasons })`, so a `set: { failureReason: someText }`
- * anywhere in core is a compile error. That is deliberate over a CHECK —
- * migration 0180 measured what one costs on this table family, where a single
- * missed writer turns every INSERT into a 23514 — and it is why nothing here
- * normalizes on write. Two things make it hold and both are load-bearing: the
- * `{ enum }` on the column, and `patchSchema` staying `.strict()` without a
- * `failureReason` field so no request body can supply one past the type.
- */
-// cm:guard read the column through this, never by comparing the raw string — pre-ISS-877 rows carry `job_failed`, `usage_limit` and `ws-publish-failed`, and a literal comparison silently stops matching them
-// cm:edge lockstep -> packages/core/src/db/schema.ts — the `{ enum: agentSessionFailureReasons }` on `agent_sessions.failure_reason` is the write-side half of this module; dropping it leaves the column plain `string` and re-opens the enum-mixed-with-free-text hole with nothing at runtime to catch it
 export function resolveFailureCause(raw: string | null | undefined): FailureCause {
   if (!raw) return 'unclassified';
   if (CAUSE_SET.has(raw)) return raw as FailureCause;
@@ -158,18 +102,6 @@ export function resolveFailureCause(raw: string | null | undefined): FailureCaus
 
 export type FailureCausePresentation = 'cleanup' | 'swept' | 'failure';
 
-/**
- * How a cause should READ to an operator, which is a different question from
- * whether something went wrong and must not be answered by the same predicate.
- *
- * `isRealFailureCause` answers 'did the fleet break' — a heartbeat timeout did,
- * and the failure metric counts it. The UI answers "is this the user's problem"
- * — the same timeout is automatic cleanup they need not act on, and ISS-322
- * settled that it reads neutral. Shipping one boolean for both questions is how
- * `residency_expired` came to be a real failure on one surface and a sweep on
- * the other in a single change.
- */
-// cm:guard both surfaces derive from THIS map — web-v2 re-deriving its own neutral set from a hand-copied list of strings is exactly what let `no_client_ack` ship with no label at all
 export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresentation> = {
   provider_spend_cap: 'failure',
   provider_usage_limit: 'failure',
@@ -191,7 +123,6 @@ export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresen
   session_lost: 'failure',
   heartbeat_timeout: 'swept',
   queue_timeout: 'swept',
-  // cm:why `failure` and not `swept` beside the two timeouts above: those are cleanup nobody need act on, and this one asks a person to go and look at why nothing reported a turn — which is the whole reason the runner half names the CONDITION rather than a timeout.
   turn_never_reported: 'failure',
   no_client_ack: 'swept',
   ws_publish_failed: 'failure',
@@ -211,17 +142,6 @@ export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresen
   unclassified: 'failure',
 };
 
-/**
- * Strings that reach `failure_reason` on a live row without being causes.
- * Every one of them is now historical: most were the central dispatcher's SKIP
- * reasons and that dispatcher is gone; `stale_trigger` was the staged lane's
- * discard sweep and `staged_lane_removed` is what migration 0208 stamped on the
- * queued jobs that lane left behind — both ISS-895. Nothing writes these. They
- * are NOT aliased into the taxonomy on purpose (a skipped dispatch was never a
- * failure, and giving it a cause would put it in the failure count), but rows
- * carrying them outlive the code that wrote them, so the UI must still read
- * them neutral rather than showing a raw token.
- */
 export const LEGACY_NEUTRAL_REASONS: ReadonlySet<string> = new Set([
   'issue_busy',
   'waiting_on_dep',

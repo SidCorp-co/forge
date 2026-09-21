@@ -71,9 +71,6 @@ describe('stringLiterals', () => {
     expect(stringLiterals(text).map((s) => s.value)).toEqual(["it's coolify", 'postman']);
   });
 
-  // cm:guard the bound stated at the top of the lib: a quote inside a regex literal is
-  // indistinguishable from a string without a parser, and the ONLY acceptable failure is a
-  // missed literal. An invented one would accuse a file of something it does not contain.
   it('invents no literal out of a regex whose quote never closes, and realigns on the next line', () => {
     const text = `const re = /['"]/;\nconst p = 'coolify';\n`;
     expect(stringLiterals(text)).toEqual([{ value: 'coolify', line: 2 }]);

@@ -1,9 +1,5 @@
 'use client';
 
-// web-v2 feature module: projects — pinned projects (client-only).
-//
-// There is no backend pin column; pins are a per-browser preference stored in
-// localStorage. Kept out of React Query so a pin toggle never refetches.
 import { useCallback, useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'web-v2:pinned-projects';

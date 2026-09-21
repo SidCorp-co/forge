@@ -90,8 +90,6 @@ describe('0241 forward — what every legacy row becomes', () => {
     }
   });
 
-  // cm:guard the author of each migrated row, all three cases at once: the handle on an assistant
-  // turn, the recorded person on a user turn, and NOBODY where the session recorded nobody.
   it('names the handle on an assistant turn, the person on a user turn, and nobody where nobody was', async () => {
     const db = await freshDb();
     try {
@@ -241,8 +239,6 @@ describe('0241 forward — the handle each project gets', () => {
       await db.drop();
     }
   });
-
-  // cm:guard this is the correction of the issue's own filing, held as a test: ISS-1001's body says every legacy row becomes "a direct conversation with one person and one handle", and 34 of the 35 live rows record no person at all. The landed rule is one handle and AT MOST one person; a change that starts inventing a stand-in person reds here.
 });
 
 describe('0241 forward — the person a row did or did not record', () => {
@@ -298,8 +294,6 @@ describe('0241 forward — the person a row did or did not record', () => {
 });
 
 describe('0241 forward — what it takes away', () => {
-  // cm:guard nothing is deleted or nulled to make the schema apply: the counts and the field values
-  // are read BEFORE the run and compared after, so a migration that tidied a row to fit reds here.
   it('drops the chat_sessions table and no chat row or field with it', async () => {
     const db = await freshDb();
     try {
@@ -326,7 +320,6 @@ describe('0241 forward — what it takes away', () => {
       );
       expect(gone).toHaveLength(0);
 
-      // cm:why every planted row is read back field for field off the conversation it became
       for (const row of planted) {
         const [c] = await db.sql.unsafe(
           `SELECT title, adapter, origin FROM conversations WHERE id = $1`,

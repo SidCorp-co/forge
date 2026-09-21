@@ -1,4 +1,3 @@
-// cm:edge contract -> packages/core/src/memory/list-routes.ts — the `/memory` paths and their query params are the wire shape; a route renamed there and not here fails only at runtime, and `search-routes.ts` is the same contract one path over
 
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type { MemoryRow, MemorySearchResult, MemorySource } from "./types";

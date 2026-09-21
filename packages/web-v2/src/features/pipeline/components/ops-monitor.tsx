@@ -19,16 +19,17 @@ import {
   HelpButton,
   MonoTag,
   PageContainer,
+  PageTitle,
   ProgressBar,
   ProjectLoader,
   Stat,
   Table,
+  Tabs,
   TBody,
   TD,
   TH,
   THead,
   TR,
-  Tabs,
 } from "@/design";
 import { deriveHealth } from "@/features/projects/derive";
 import { useOrgScopedProjects, useProjectHealth } from "@/features/projects/hooks";
@@ -127,7 +128,7 @@ export function OpsMonitor() {
 
       <header className="mb-5 flex items-start justify-between gap-3">
         <div>
-          <h1 className="fg-h2">Ops</h1>
+          <PageTitle className="fg-h2">Ops</PageTitle>
           <p className="fg-body-sm mt-1 text-muted">
             Cross-project run telemetry, step durations, and spend — live across {projects.length}{" "}
             project{projects.length === 1 ? "" : "s"}.
@@ -306,12 +307,12 @@ function ProgressTab({
             <div className="flex flex-col gap-2.5">
               {aggs.map((a) => (
                 <div key={a.step} className="flex items-center gap-2.5">
-                  <span className="w-16 flex-none font-mono text-[12px] text-muted">{a.step}</span>
+                  <span className="w-16 flex-none font-mono text-12 text-muted">{a.step}</span>
                   <ProgressBar className="flex-1" value={(a.avgSec / maxAvg) * 100} />
-                  <span className="w-20 flex-none text-right font-mono text-[12px] text-fg">
+                  <span className="w-20 flex-none text-right font-mono text-12 text-fg">
                     {formatDurationSec(a.avgSec)}
                   </span>
-                  <span className="hidden w-14 flex-none text-right font-mono text-[12px] text-subtle sm:block">
+                  <span className="hidden w-14 flex-none text-right font-mono text-12 text-subtle sm:block">
                     {formatUsd(a.cost)}
                   </span>
                 </div>

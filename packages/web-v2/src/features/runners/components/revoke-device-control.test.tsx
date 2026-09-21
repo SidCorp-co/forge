@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 //
-// cm:guard the typed-name match is the ONLY thing between a click and a destructive call, since the route carries no gate of its own — so the cases that matter are the ones that must NOT fire: a near-miss name, a prefix, and a different case. Two fleet hosts are literally `ubuntu6` and `ubuntu6 (barlow)`.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

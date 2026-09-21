@@ -134,7 +134,6 @@ describe('cancelJob — held', () => {
     vi.clearAllMocks();
   });
 
-  // cm:guard a `held` step must be cancellable on its own — while it was not, the only cure was cancelling its parent run, which ALSO parked the issue at `on_hold`. If this starts throwing NOT_CANCELLABLE again, that hammer is back.
   it('cancels a held job through the no-device branch and guards the CAS on `held`', async () => {
     queuedJobRow = { id: 'job-1', status: 'held', issueId: null };
     applyKernelTransitionMock.mockResolvedValueOnce([

@@ -1,10 +1,5 @@
 "use client";
 
-// The one rendering of `classifyBodyHref`, shared by the two body renderers.
-// `markdown.tsx` draws a markdown body and `body-view.tsx` draws a parsed
-// `format: html` one, and a body is written once and read both ways — so the
-// five branches live here rather than once per renderer. The fork this shape
-// exists to prevent is the one `markdown.tsx`'s own `cm:guard` records.
 
 import Link from "next/link";
 import type { ReactNode } from "react";

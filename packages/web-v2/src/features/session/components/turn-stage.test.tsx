@@ -44,9 +44,6 @@ describe("the stage a turn is in", () => {
     expect(turnStageOf({ live: true, blocks: [thinking()] })).toBe("working");
   });
 
-  // cm:guard the TAIL decides and nothing before it does: a turn that wrote a sentence and then
-  // called a tool is working, and reading "has it produced any text" instead would leave it saying
-  // "Responding…" for the whole of a five-minute tool call.
   it("reads the tail rather than whether the turn has written anything at all", () => {
     expect(turnStageOf({ live: true, blocks: [text(), tool()] })).toBe("working");
     expect(turnStageOf({ live: true, blocks: [text(), tool(), text("Here it is.")] })).toBe(
@@ -60,10 +57,6 @@ describe("the stage a turn is in", () => {
     expect(turnStageOf({ failed: true })).toBe("failed");
   });
 
-  // cm:guard a settled turn has NO stage, and this is the assertion that holds the type's shape: a
-  // "Done" line cannot survive a reload, because the stage is nowhere on the stored row, so a turn
-  // would read one way while a person watched it finish and another way after a refresh. If someone
-  // adds a settled member, these go red.
   it("says nothing at all about a turn that has settled", () => {
     expect(turnStageOf({ live: false, blocks: [text()] })).toBeNull();
     expect(turnStageOf({})).toBeNull();
@@ -71,9 +64,6 @@ describe("the stage a turn is in", () => {
   });
 });
 
-// cm:guard the SESSION screen's own wiring, asserted without mounting it: the screen has no test
-// file and these three judgements were invisible inside its JSX. `sessionTurnStage` has exactly one
-// caller, so what goes red here is what that screen does.
 describe("what a runner session's newest turn says", () => {
   const agent = { kind: "agent" as const, blocks: [text()] };
 
@@ -104,11 +94,6 @@ describe("what a runner session's newest turn says", () => {
     expect(sessionTurnStage({ live: false, display: "completed", tail: agent })).toBeNull();
   });
 
-  // cm:guard a live session on the messages fallback says `Working…` and never `Responding…`, and
-  // never nothing: the first cut suppressed the stage entirely there, which lost the indicator the
-  // mascot card had shown throughout that path — a session's storage provenance says nothing about
-  // whether the run is working (implementation consult F1). The tail is what is withheld, because
-  // there are no turn rows growing to read one off.
   it("says a live session on the messages fallback is working, whatever its transcript holds", () => {
     expect(sessionTurnStage({ live: true, display: "running", fromMessages: true })).toBe("working");
     expect(
@@ -161,8 +146,6 @@ describe("the line a reader sees", () => {
     expect(screen.getByTestId("turn-stage")).toBe(first);
   });
 
-  // cm:guard the icon slot is a fixed width in every stage for the same reason: a spinner replaced
-  // by a narrower glyph shifts the words beside it.
   it("keeps the icon slot the same width whichever stage it holds", () => {
     const { rerender } = render(<TurnStage stage="working" />);
     const slot = () => screen.getByTestId("turn-stage").firstElementChild;

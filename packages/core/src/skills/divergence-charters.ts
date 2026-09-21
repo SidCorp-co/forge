@@ -17,7 +17,6 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 /** A drizzle executor: the base `db` or a transaction handle. */
 export type CharterExecutor = Db | Tx;
 
-// cm:edge contract -> packages/contracts/src/divergence-charters.ts — divergenceCharterEntrySchema mirrors this; kept in sync by divergence-charters.test.ts
 export const divergenceCharterEntrySchema = z.object({
   id: z.string().min(1),
   skill: z.string().min(1),
@@ -68,7 +67,6 @@ export interface UpsertCharterInput {
  * MUST be called inside a transaction — emits `charter.changed` into
  * `skill_activity_events` in the same transaction (invariant §9.11).
  */
-// cm:guard Call ONLY inside a db.transaction (pass `tx`, never bare `db`) — charter.changed must be in the same transaction as the upsert.
 export async function upsertCharter(
   tx: Tx,
   input: UpsertCharterInput,
@@ -111,7 +109,10 @@ export async function upsertCharter(
     ...(input.reason !== undefined ? { reason: input.reason } : {}),
   });
 
-  const saved = row!;
+  if (!row) {
+    throw new Error(`divergence charter upsert returned no row for project ${input.projectId}`);
+  }
+  const saved = row;
   return {
     id: saved.id,
     projectId: saved.projectId,

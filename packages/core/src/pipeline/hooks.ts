@@ -1,13 +1,3 @@
-// ISS-831 — HooksBus.emit never throws: every subscriber runs, in registration
-// order, even when an earlier one fails. A subscriber that throws is logged
-// AND recorded in the returned EmitResult.failures; best-effort subscribers
-// (the majority — they already self-catch) never appear there. Callers that
-// can act on a failure inspect `result.failures` (today: only
-// `outbox-worker.ts`, via `assertHookDelivered`); every other one of the ~48
-// call sites ignores the return value and keeps today's fire-and-forget
-// behaviour, because most fire after their primary mutation already
-// committed and a throw here would turn a successful write into a 500.
-
 import type {
   IssueDependencyKind,
   IssueStatus,
@@ -21,7 +11,6 @@ import type { Actor } from './activity.js';
 export interface IssueSnapshot {
   title: string;
   description: string | null;
-  // cm:edge contract -> packages/core/src/memory/indexer.ts — the indexer projects `description` through the body registry and needs the format to pick a path. OPTIONAL because absent degrades to the raw body rather than throwing; `body/doors.test.ts` is what asserts the two real producers set it.
   descriptionFormat?: string;
   priority: string;
   category: string | null;
@@ -35,7 +24,6 @@ export interface HookPayloads {
     issueId: string;
     projectId: string;
     actor: Actor;
-    // cm:guard ISS-130 — the orchestrator's issueCreated subscriber forwards this to considerEnqueue, which is what keeps an issue created at `on_hold` or `draft` from auto-dispatching forge-triage; drop it and every insert triages
     status: IssueStatus;
     snapshot: IssueSnapshot;
   };
@@ -55,17 +43,8 @@ export interface HookPayloads {
     to: IssueStatus;
     reason?: string;
     reopenCount: number;
-    /**
-     * ISS-849 — the `pipeline_outbox` row id this delivery came from, when the
-     * transition was emitted via the outbox drain. Optional/fail-open: absent
-     * for any other emitter, in which case redelivery-dedup is skipped and
-     * behavior is unchanged. Unique per logical transition, so it collapses
-     * redeliveries of the same row without suppressing two independent
-     * transitions through the same `from`/`to` states.
-     */
     outboxId?: string;
   };
-  // cm:edge ordering -> packages/core/src/jobs/lifecycle-routes.ts — emitted there AFTER `scheduleRetry` has written the classification onto the row, and PM subscribers branch on `failureKind` (ISS-450: code/infra/transient-cc/timeout); emitting before that write hands every subscriber the pre-classification value and each one reacts as though the class were unknown
   jobFailed: {
     jobId: string;
     projectId: string;
@@ -80,22 +59,6 @@ export interface HookPayloads {
     issueId: string | null;
     type: JobType;
   };
-  /**
-   * ISS-1072 — an input to the tracker's CONTRACT answer moved: a record one of
-   * the `statusEntryCriteria` keys reads, or the declaration of those criteria
-   * itself. `issueId` absent means the declaration moved and every open pull
-   * request on the project is affected.
-   *
-   * It is a topic of its own rather than a widening of `issueUpdated`, and the
-   * reason is in `issues/patch-fields.ts`: REST emits `issueUpdated` and MCP's
-   * update deliberately does not, which is exactly the door `forge record plan`
-   * and `forge record criteria` come through. Subscribing to `issueUpdated`
-   * would therefore miss the writes this is most about. Widening it instead
-   * would fire the activity logger, the WebSocket broadcaster and the memory
-   * indexer on every MCP field write, which is a live behaviour change nobody
-   * asked for.
-   */
-  // cm:edge lockstep -> packages/core/src/issues/entry-criteria-keys.ts — every key there is a record some writer must emit this after. A key added there with no emit site is a criterion whose check run goes stale silently, which is the one failure mode a published report cannot afford.
   contractInputChanged: {
     projectId: string;
     issueId?: string;
@@ -115,14 +78,11 @@ export interface HookPayloads {
     issueId: string;
     projectId: string;
     actor: Actor;
-    // cm:guard REQUIRED, and the only field on this payload that answers "was a person at the keyboard". `actor.type` answers who OWNS the write and `actor.agency` comes from the PAT owner's `users.kind`, so both read `user`/`human` for an agent running on a human's token — `pipeline/answer-resume.ts` resumed a parked run on the run's own comment twice before this existed (ISS-978 2026-09-13, ISS-962 2026-09-08). A new emit site must decide this rather than inherit it.
     authored: 'human' | 'agent';
     commentId: string;
     body: string;
-    // cm:guard undefined and null both mean TOP-LEVEL and must stay interchangeable — the emit sites that pre-date threading send neither, and the activity logger records this only when it is set.
     parentId?: string | null;
   };
-  // cm:guard `body` is what a parked session is handed, and it is built where the SHAPE is known: a choice answer renders as its option's label and a free-text one as the words themselves. A subscriber that rebuilt it would have to re-read the row and re-learn the shape, and the two renderings would drift.
   questionAnswered: {
     questionId: string;
     projectId: string;
@@ -159,12 +119,6 @@ export interface HookPayloads {
     unchanged: string[];
     removed: string[];
   };
-  // Explicit, user-initiated skill push. Fired only from the two web Sync
-  // actions (Skill Studio + device management) and the `forge_skills.push`
-  // MCP tool — never automatically. The WS bridge publishes `skill.sync` to
-  // each targeted `deviceRoom`, and the device (desktop or CLI runner) pulls
-  // its effective manifest and reports installed hashes back. There is NO
-  // background/auto sync: a device only syncs when it receives this command.
   skillSyncRequested: {
     projectId: string;
     projectSlug: string;
@@ -178,17 +132,11 @@ export interface HookPayloads {
     actorUserId: string;
     stage: string | null;
   };
-  // A (device × project) runner was bound/re-provisioned. The WS bridge wakes
-  // the device room with `provision.request` (best-effort) so an online device
-  // pulls promptly; the durable source of truth is the `queued` row the device
-  // pulls via GET /api/devices/me/provisions. Carries no secret — the device
-  // pulls the (decrypted, single-use) SSH key + clone target itself.
   runnerProvisionRequested: {
     projectId: string;
     deviceId: string;
     runnerId: string;
   };
-  // cm:guard nothing in core subscribes to this any more, and that is deliberate: a box coming online no longer pulls work toward it, because the master on that box decides what it takes. Kept as an announcement other surfaces read; wiring it back to something that starts work would put routing in the kernel again.
   runnerOnline: {
     projectId: string;
     runnerId: string;
@@ -214,12 +162,6 @@ export interface HookPayloads {
     contentHash: string | null;
     actorUserId: string;
   };
-  // ISS-2A — fired from the boot-time builtin seeder when a global skill row
-  // is inserted or its content actually changed. Carries no `projectId`
-  // because the broadcast targets the cross-tenant `globalRoom()`. The WS
-  // bridge maps this to the `skill.updated` wire event with `scope: 'global'`
-  // — kept distinct from `skillUpdated` so the override-flow handler does
-  // not need a runtime branch on a nullable projectId.
   globalSkillUpdated: {
     name: string;
     oldVersion: number;
@@ -257,11 +199,6 @@ export interface HookPayloads {
   notificationCreated: {
     notificationId: string;
     userId: string;
-    // ISS-1063 — whether this event may interrupt: a toast, a sound, a browser
-    // notification. Absent means yes, which is what every emitter outside the delivery
-    // layer means. The delivery layer sets it false for a record that JOINED an existing
-    // grouped delivery, so fifteen records grouped into one bell row interrupt once
-    // rather than fifteen times. The bell still refreshes on either value.
     announce?: boolean;
     projectId: string | null;
     type: string;
@@ -423,8 +360,6 @@ export class HooksBus {
   }
 
   // cm:flow dispatch/emit after:outbox — fans the re-emitted transition out to every subscriber; the one that matters here schedules the per-project sweep
-  // cm:guard emit MUST NOT throw on a subscriber error — ~48 call sites fire it after their primary mutation already committed; a rethrow here turns a successful write into a 500
-  // cm:edge contract -> packages/core/src/pipeline/outbox-worker.ts — drainOutboxOnce keys its processed-vs-failed decision on EmitResult.failures; changing this shape breaks the outbox retry path
   async emit<T extends HookTopic>(topic: T, payload: HookPayloads[T]): Promise<EmitResult> {
     const set = this.handlers.get(topic);
     if (!set || set.size === 0) return { topic, delivered: 0, failures: [] };

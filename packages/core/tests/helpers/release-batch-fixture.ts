@@ -10,6 +10,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { afterAll } from 'vitest';
+import type { CreateReleaseBatchResult } from '../../src/release-batch/service.js';
 import { createTestDevice, type TestDatabase } from './index.js';
 
 export const RELEASE_LABEL = 'release-box';
@@ -38,7 +39,11 @@ export interface ReleaseBatchFixture {
   runStatus(runId: string): Promise<string>;
   storedJob(jobId: string): Promise<StoredJob>;
   commentCount(issueId: string): Promise<number>;
-  claim(ids: string[]): Promise<{ runId: string; jobId: string; issueIds: string[] }>;
+  /**
+   * Whatever `createReleaseBatch` returns, named by its own type rather than copied. The copy
+   * this replaced went stale the moment ISS-1120 put `version` on the result.
+   */
+  claim(ids: string[]): Promise<CreateReleaseBatchResult>;
   waitFor(cond: () => Promise<boolean>): Promise<void>;
 }
 
@@ -48,11 +53,6 @@ export function releaseBatchFixture(
 ): ReleaseBatchFixture {
   let seq = 0;
 
-  // cm:guard every case that CLAIMS now needs declared probes, because `createReleaseBatch` and
-  // `finishReleaseBatch` both refuse a production project without them (ISS-1042). One real server
-  // over a mocked `fetch`: the probe path is `fetch` plus a cache-buster plus `pluck`, and a mock
-  // asserts the call rather than the read. A case wanting a project with NO probes passes
-  // `{ verify: null }`, and one wanting its own passes `verify` — both override this default.
   let probe: Server | null = null;
   let served = 'commit-before-any-release';
 
@@ -70,12 +70,9 @@ export function releaseBatchFixture(
     probe = null;
   });
 
-  // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveProductionDeclaration` reads exactly a production branch distinct from the base plus an active `prod` binding; seed one half and every case dies on NO_RELEASE_GATE before reaching what it asserts
   async function declareProduction(config: Record<string, unknown> = {}): Promise<void> {
     const { projectId, ownerId } = ids();
     const connectionId = randomUUID();
-    // cm:why `stableReads: 1` so one read confirms. The default is two, five seconds apart, and no
-    // case here is about the poll loop's patience.
     const verify = { probes: [{ url: await probeUrl() }], timeoutSeconds: 20, stableReads: 1 };
     await harness().db.execute(sql`
       UPDATE projects
@@ -98,7 +95,6 @@ export function releaseBatchFixture(
     `);
   }
 
-  // cm:guard the box must carry the LABEL and be claim-capable, which are two different gates: `resolveReleaseDeviceIds` matches on `runners.labels`, and `onlineCapableDeviceIds` then asks whether anyone in that set is alive and above the version floor. Seed the label without the liveness and the batch refuses NO_RUNNER_ONLINE, which reads nothing like the pool being empty.
   async function seedReleaseRunner(): Promise<void> {
     const { projectId, ownerId } = ids();
     const device = await createTestDevice(harness().db, ownerId, { status: 'online' });
@@ -146,10 +142,6 @@ export function releaseBatchFixture(
     return String(rows[0]?.status);
   }
 
-  // cm:guard reads `exit_code` alongside `status`, because the two together are
-  // what separate the cascade's success sentinel from its cancel: a
-  // `pipeline_completed` close flips an active child job to `done` with
-  // `exitCode` 0, every other close cancels it.
   async function storedJob(jobId: string): Promise<StoredJob> {
     const rows = await harness().db.execute(sql`
       SELECT status, exit_code FROM jobs WHERE id = ${jobId}
@@ -165,24 +157,15 @@ export function releaseBatchFixture(
     return Number(rows[0]?.n ?? 0);
   }
 
-  // cm:guard go through `createReleaseBatch` and never write `release_batch_run_id` by hand — the claim is a CAS UPDATE inside that function, and a fixture that re-issues it proves its own SQL rather than the batch's
   async function claim(idList: string[]) {
     const { projectId, ownerId } = ids();
     const { createReleaseBatch } = await import('../../src/release-batch/service.js');
     const result = await createReleaseBatch({ projectId, issueIds: idList, userId: ownerId });
-    // cm:guard the served commit MOVES here and nowhere else. `createReleaseBatch` records what was
-    // live before anything moved, and `verifyDeployed` refuses a live commit equal to it — so a
-    // server answering one constant makes every finish in every suite fail verification for the
-    // right reason and the wrong case. This is the release actually happening.
     served = `commit-pushed-by-run-${result.runId}`;
     await announceMethodFor(result.runId);
     return result;
   }
 
-  // cm:guard `claim()` announces the method because a REAL run does: the batch prompt tells the
-  // agent to load its skill and post it, and `finishReleaseBatch` refuses a run that never did
-  // (ISS-1042 criterion 26). A fixture that skipped it would leave every finish case in every suite
-  // asserting the method refusal instead of what it is about.
   async function announceMethodFor(
     runId: string,
     over: { skill?: string; loaded?: boolean } = {},
@@ -198,7 +181,6 @@ export function releaseBatchFixture(
     });
   }
 
-  // cm:why the claim subscriber is fire-and-forget by design (it must not hold up a run close), so an assertion has to wait for the write rather than assume it landed
   async function waitFor(cond: () => Promise<boolean>): Promise<void> {
     for (let i = 0; i < 100; i += 1) {
       if (await cond()) return;

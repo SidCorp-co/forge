@@ -19,7 +19,7 @@ export function MonoTag({ children, hue = "neutral", style }: MonoTagProps) {
   return (
     <span
       className="rounded-sm border font-mono font-semibold"
-      style={{ fontSize: 11, padding: "2px 7px", ...HUES[hue], ...style }}
+      style={{ fontSize: "var(--text-11)", padding: "2px 7px", ...HUES[hue], ...style }}
     >
       {children}
     </span>

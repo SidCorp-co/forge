@@ -1,20 +1,6 @@
-/**
- * How many jobs are occupying a runner right now.
- *
- * Four places counted this independently — the PM's runner-load report, the
- * digest it primes a decision turn with, the ops health snapshot and the
- * runner list — and a fifth, `countInFlightForRunner` in `queued-gates.ts`,
- * answered it for the dispatcher with a filter none of the other four had.
- */
-
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 
-// cm:guard `held` is deliberately absent, and `queued` too. Both are live jobs (RFC 0002) but neither holds a runner slot while it waits, so counting them makes a free runner read as full and dispatch rotates away from a box that could take work. `health/service.ts` counts a WIDER set on purpose — there the question is "what is in flight for an operator", not "what is this runner carrying".
-export const OCCUPYING_JOB_STATUSES = ['dispatched', 'running'] as const;
-
-// cm:guard the parent-run filter is NOT optional and NOT a reporting nicety: ISS-258. A job whose `pipeline_run` is already terminal is an orphan that holds no cap slot, and `countInFlightForRunner` — the gate that actually allocates the slot — has excluded them since the Forge Dev 2026-05-27 stall. A report that counts them says a runner is full that the dispatcher will happily fill, and the PM then routes work away from a healthy box on the strength of a job nobody is running. `pr.id IS NULL` keeps jobs with no parent counted.
-// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — `countInFlightForRunner` answers this same question for one runner and MUST keep the same predicate; a clause here and not there puts the number an operator reads back out of step with the number that decides dispatch
 const OCCUPYING_JOBS_FOR = (runnerFilter: ReturnType<typeof sql>) => sql`
   SELECT j.runner_id, COUNT(*)::int AS n
   FROM jobs j
@@ -53,8 +39,6 @@ export async function countInFlightForOneRunner(runnerId: string): Promise<numbe
 /**
  * The same count for a whole BOX, across every project it serves.
  */
-// cm:guard this, not the per-runner count, is what a concurrency cap must be compared against. The action a cap restrains is spawning a Claude process, and that process consumes the DEVICE — one box bound to N projects carrying one job each is at N, not at 1 N times. dev1 holds 20 bindings, so a per-binding count under a per-device cap would authorise 20x the intended concurrency, and every gate would read as if it were holding.
-// cm:guard count per DEVICE, never per binding. A job is one Claude process on one machine, so a box bound to 20 projects that is running 3 jobs is running 3 — a per-binding count reports the same load 20 times over. There is no cap to compare this against any more (core enforces none), which makes the number itself the whole answer a reader gets.
 export async function countInFlightForDevice(deviceId: string): Promise<number> {
   const rows = await db.execute<{ n: number | string }>(
     sql`

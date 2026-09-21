@@ -1,13 +1,3 @@
-// Estimated per-million-token pricing for cost calculation. Values are USD per
-// 1M tokens (platform.claude.com/docs/en/pricing, checked 2026-06-11). Update
-// as model pricing changes — this is a heuristic for dashboards, not billing.
-// Where omitted, cacheRead defaults to 0.1× input and cacheCreation to 1.25×
-// input (the standard 5-minute-TTL cache rates).
-//
-// Matching is LONGEST-KEY-FIRST substring (ISS-438): a generic family prefix
-// ('claude-opus-4') can never shadow a more specific version key
-// ('claude-opus-4-8') regardless of declaration order — the old first-match
-// loop priced every Opus 4.5–4.8 row at the 4.0/4.1 rate (3× too high).
 const PRICING: Record<
   string,
   { input: number; output: number; cacheRead?: number; cacheCreation?: number }

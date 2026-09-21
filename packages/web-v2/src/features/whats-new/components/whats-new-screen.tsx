@@ -10,6 +10,7 @@ import {
   HelpButton,
   Markdown,
   PageContainer,
+  PageTitle,
   Skeleton,
 } from "@/design";
 import { FORGE_RELEASES_URL } from "@/lib/changelog";
@@ -36,7 +37,7 @@ export function WhatsNewScreen() {
       <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="fg-h2">What&apos;s New</h1>
+          <PageTitle className="fg-h2">What&apos;s New</PageTitle>
           <p className="fg-body-sm text-muted">
             Forge release notes — newest first.{" "}
             <a

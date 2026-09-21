@@ -23,7 +23,6 @@ vi.mock('drizzle-orm', () => ({
   inArray: (...args: unknown[]) => ({ _inArray: args }),
 }));
 
-// cm:why the schema identities are plain strings so `makeTx` can branch on `table ===` without importing the real tables
 vi.mock('../db/schema.js', () => ({
   agentSessions: 'agent_sessions-table',
   jobs: 'jobs-table',
@@ -33,7 +32,16 @@ vi.mock('../db/schema.js', () => ({
 }));
 
 vi.mock('../logger.js', () => ({ logger: { error: vi.fn(), info: vi.fn() } }));
-// cm:why stub jobs/kill-gate.js so importing this module doesn't pull in the real db/client.js (env-validated) at collection time — cascadeCancelChildJobs itself never calls requestJobKill
+
+// ISS-1136 — a terminal session flip now closes what that session owns, through
+// `applyKernelTransition`. This file is about the cascade's own mapping, so the
+// descent is mocked rather than run: naming it here is what keeps the coupling
+// visible instead of dragging a live db client in behind the chokepoint.
+const descendMock = vi.fn(async (..._args: unknown[]) => ({ closed: [], runsReturned: [] }));
+vi.mock('../agent-sessions/session-descent.js', () => ({
+  DESCENT_SOURCE: 'session-descent',
+  closeSessionsOwnedBy: (...args: unknown[]) => descendMock(...args),
+}));
 const requestJobKillMock = vi.fn(
   async (..._args: unknown[]): Promise<'requested' | 'no_device'> => 'requested',
 );
@@ -54,7 +62,6 @@ interface UpdateCapture {
  */
 function makeTx(cancelledJobRows: Array<Record<string, unknown>>) {
   const captures: UpdateCapture[] = [];
-  // cm:why applyKernelTransition reaches its write through `exec.transaction` and stamps `forge.kernel_txn` through `exec.execute`, so a double lacking either never runs the body these assertions are about
   const tx: Record<string, unknown> = {
     transaction: async <T>(cb: (t: unknown) => Promise<T>): Promise<T> => cb(tx),
     execute: async () => undefined,
@@ -156,7 +163,6 @@ describe('cascadeCancelChildJobs — session-status mapping (ISS-352)', () => {
     expect(sessionUpdate(captures)).toBeUndefined();
   });
 
-  // cm:guard `held` must stay in this CAS list (RFC 0002) — it is the one non-terminal status no reaper ever visits, so if the cascade skips it too, a held job under a closed run has no cleanup path left at all and survives as an orphan forever
   it('the CAS WHERE covers held alongside queued/dispatched/running', async () => {
     const { tx, captures } = makeTx(jobRows);
     await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_cancelled');

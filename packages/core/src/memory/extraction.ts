@@ -8,24 +8,6 @@ import { indexMemory } from './indexer.js';
 import { callFastModel, fastModelConfigured } from './llm.js';
 import { foreignScriptChars } from './script-guard.js';
 
-/**
- * memory-v2 phase 3 — session-end fact extraction, ported from forge-agents
- * `agent/memory/extraction.ts` and adapted to forge's pipeline:
- *
- *  - Trigger: `jobCompleted` for review/test/fix jobs — the stages where
- *    corrections and lessons surface (triage/plan emit plans, not lessons).
- *  - Signal: the issue's recent comments (pipeline skills report verdicts,
- *    fixes, and user corrections there) — forge has no server-side
- *    conversation transcript.
- *  - Output: ≤3 facts written as `source:'knowledge'` (semantic dedup ON, so
- *    re-learned facts refine instead of duplicate) and ≤3 knowledge-graph
- *    edges with `issue:<id>` provenance.
- *
- * Disabled when LITELLM_API_URL is unset — same off-switch as the
- * predecessor. Everything is detached + best-effort: extraction must never
- * affect job finalization.
- */
-
 export const EXTRACTION_JOB_TYPES: ReadonlySet<JobType> = new Set(['review', 'test', 'fix']);
 const MAX_FACTS = 3;
 const MAX_EDGES = 3;
@@ -81,11 +63,6 @@ Issue: {issue_title}
 Recent activity:
 {comments}`;
 
-/**
- * Cheap pre-LLM gate, ported from forge-agents. Correction language (incl.
- * Vietnamese) always passes; otherwise require at least one substantial
- * non-trivial line. Saves an LLM call on pure status chatter.
- */
 export function hasMemoryWorthyContent(texts: string[]): boolean {
   const bodies = texts.map((t) => t.trim()).filter(Boolean);
   if (bodies.length === 0) return false;
@@ -169,7 +146,6 @@ export interface RefusedItem {
  * never used does not reach `indexMemory` or `knowledge_edges`. Pure, so the
  * refusal is testable without a model or a database.
  */
-// cm:guard `source` is the HUMAN signal only — the issue title and its comments — never the existing-memories block that shares the prompt. Licensing off already-stored model output makes one leaked character license the next, and the store becomes self-perpetuating rather than self-correcting.
 export function refuseForeignScript(
   parsed: ParsedExtraction,
   source: string,
@@ -333,7 +309,6 @@ export function registerMemoryExtraction(bus: HooksBus): () => void {
   const unsub = bus.on('jobCompleted', (p) => {
     if (!p.issueId || !EXTRACTION_JOB_TYPES.has(p.type)) return;
     const { projectId, issueId, jobId } = p;
-    // cm:why detached deliberately — extraction adds an LLM round-trip, and awaiting it here would put a model provider's latency and its outages on the job-finalization path
     queueMicrotask(() => {
       runExtractionForIssue(projectId, issueId as string).catch((err) => {
         logger.warn(

@@ -1,23 +1,3 @@
-/**
- * ISS-877 — the session/job failure taxonomy.
- *
- * `agent_sessions.failure_reason` held one value, `job_failed`, for every
- * agent-side failure, so the record said nothing (`VISION: state-never-lies`).
- * It also held free text: `session-failure.ts` wrote a human-readable sentence
- * into the same column `queue_timeout` uses as a token, which is why 55 live
- * rows carry prose — 9 of them the agent's own prompt. Two axes, two columns:
- * the sentence now goes to `failure_detail`.
- *
- * Derivation order was mandated, and reversing it is how the previous attempt
- * overreached. The first two causes come from the eight transcripts ISS-871
- * left undiagnosed (7 × `provider_spend_cap`, 1 × `provider_refused_request`);
- * every other member traces to a counted live signature or to a writer in this
- * codebase, named on its own line. Over 90 days of forge-beta failures (10,904
- * rows, 2026-08-29) 99.93% land on a named cause; `failure-patterns.ts` says
- * why the 8 detail-free rows keep no member.
- */
-
-// cm:guard every member needs live rows or a named writer, and the line must say which — a cause nobody emits is indistinguishable from one nobody looked for, and it is what lets a taxonomy rot the way `job_failed` rotted
 export const FAILURE_CAUSES = [
   /** org/account monthly spend cap. 4,412 jobs/60d; 7 of the 8 ISS-871 sessions. */
   'provider_spend_cap',
@@ -32,9 +12,6 @@ export const FAILURE_CAUSES = [
   /** provider rejected the request itself — unrecognized model, content policy.
    *  2 jobs/60d, one of them session 1a950b18 (`[claude-code:unrecognized_model]`). */
   'provider_refused_request',
-  /** the CLI spawned and died before doing anything — MCP init failed, missing
-   *  MCP config, temp dir owned by another uid, or the ISS-450 startup-death
-   *  signal (≤3 messages, no tool use). 120 jobs/90d, 88 of them the latter. */
   'agent_startup_failed',
   /** zero turns because the skill never reached the device. 72 jobs/60d (`[NO_WORK]`). */
   'agent_skill_missing',
@@ -53,10 +30,6 @@ export const FAILURE_CAUSES = [
    *  runner `daemon/dispatch.rs` (`repo_lock_timeout`); 7 rows in 30 minutes on
    *  forge-vm 2026-09-05, all read `unclassified` before ISS-920. */
   'repo_root_contention',
-  /** the box's `duplex_max_sessions` permits were all held. Writer: runner
-   *  `runner/claude_code.rs` (`session_permit_saturated`); new in ISS-920, which
-   *  is also what made it nameable — before it, the same event surfaced on a
-   *  DIFFERENT project's jobs as `repo_lock_timeout`. */
   'box_session_saturated',
   /** dispatch never delivered or never claimed. 54 jobs/60d. */
   'runner_unreachable',
@@ -68,14 +41,6 @@ export const FAILURE_CAUSES = [
   'heartbeat_timeout',
   /** nobody picked it up. 20 sessions all-time. */
   'queue_timeout',
-  /** a worker reported on the session and then stopped, and no report that a
-   *  turn had begun ever arrived. NAMED FOR WHAT WAS OBSERVED and not for what
-   *  it usually means: core sees reports, never the pane, so silence past the
-   *  quiet threshold establishes that no turn was REPORTED and never that none
-   *  ran. Writers: jobs/queue-hop.ts (the quiet arm of the queue hop), and
-   *  the runner's `turn_evidence::never_started_reason` through `CAUSE_RULES`,
-   *  which is the reading that CAN say more because it watches the pane
-   *  (ISS-1101, pairing with ISS-1096). New; no live rows by construction. */
   'turn_never_reported',
   /** the ack hop reaped it. 7 sessions all-time. */
   'no_client_ack',
@@ -127,7 +92,6 @@ export type FailureOrigin =
   | 'user'
   | 'unknown';
 
-// cm:guard exhaustive by construction — `Record<FailureCause, …>` makes a new cause without an origin a compile error, which is the only thing stopping a member from silently counting as `unknown`
 export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   provider_spend_cap: 'provider',
   provider_usage_limit: 'provider',
@@ -149,7 +113,6 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   session_lost: 'transport',
   heartbeat_timeout: 'transport',
   queue_timeout: 'transport',
-  // cm:why `transport` beside its three siblings — `queue_timeout`, `heartbeat_timeout` and `session_lost` all mean core stopped hearing, which is the one thing this cause asserts. `agent` would name the likeliest fault (a prompt that never left the composer) and would be the same over-assertion the member's own name refuses.
   turn_never_reported: 'transport',
   no_client_ack: 'transport',
   ws_publish_failed: 'transport',
@@ -169,16 +132,6 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   unclassified: 'unknown',
 };
 
-/**
- * Values written before ISS-877 that must keep reading as something. Resolved
- * at READ time only — the 1,787 historical `job_failed` rows are NOT rewritten,
- * because `failure-classifier.ts` states that a historical row keeps its
- * original verdict, and because most of those rows no longer have a source to
- * derive a cause from. `job_failed` resolves to `unclassified` on purpose: it
- * IS the unclassified era, and pretending otherwise would trade an admitted
- * lie for a confident one.
- */
-// cm:edge lockstep -> packages/contracts/src/failure-causes.ts — web-v2 cannot import this file (core is not on its dependency path) and core cannot VALUE-import contracts (the prod image ships no contracts package — see contracts-runtime-boundary.test.ts, and ISS-510's boot crash). So the list and this alias table exist TWICE on purpose, exactly as NOTIFICATION_TYPES does, and `failure-causes-parity.test.ts` is what keeps the copies identical. Edit both.
 export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
   job_failed: 'unclassified',
   usage_limit: 'provider_usage_limit',
@@ -186,34 +139,14 @@ export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 };
 
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
-// cm:guard a Map, not the object literal — `raw` comes from a free-text column, and a plain object answers `toString`, `constructor` and `valueOf` off its PROTOTYPE, so a bare `LEGACY_CAUSE_ALIAS[raw]` hands back a function typed `FailureCause` for a row holding any of those words
 const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(LEGACY_CAUSE_ALIAS));
 
-/**
- * Turn whatever is in `failure_reason` into a cause. Historic tokens go through
- * the alias table; free text and unknown tokens read `unclassified`.
- *
- * The write side is held by the TYPE, not by a runtime funnel and not by a
- * CHECK: `schema.ts` declares the column `text('failure_reason', { enum:
- * agentSessionFailureReasons })`, so a `set: { failureReason: someText }`
- * anywhere in core is a compile error. That is deliberate over a CHECK —
- * migration 0180 measured what one costs on this table family, where a single
- * missed writer turns every INSERT into a 23514 — and it is why nothing here
- * normalizes on write. Two things make it hold and both are load-bearing: the
- * `{ enum }` on the column, and `patchSchema` staying `.strict()` without a
- * `failureReason` field so no request body can supply one past the type.
- */
-// cm:guard read the column through this, never by comparing the raw string — pre-ISS-877 rows carry `job_failed`, `usage_limit` and `ws-publish-failed`, and a literal comparison silently stops matching them
 export function resolveFailureCause(raw: string | null | undefined): FailureCause {
   if (!raw) return 'unclassified';
   if (CAUSE_SET.has(raw)) return raw as FailureCause;
   return ALIAS_LOOKUP.get(raw) ?? 'unclassified';
 }
 
-/** Whether a cause names something that went wrong, as opposed to a lifecycle
- *  conclusion or a person pressing cancel. This is the METRIC question — for
- *  how a cause should read to an operator, which is a different question with
- *  different answers, see `FAILURE_CAUSE_PRESENTATION` in `@forge/contracts`. */
 export function isRealFailureCause(cause: FailureCause): boolean {
   const origin = FAILURE_CAUSE_ORIGIN[cause];
   return origin !== 'lifecycle' && origin !== 'user';

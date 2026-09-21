@@ -52,7 +52,6 @@ pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
-    // cm:why a server too old to serve this route must degrade to local-only config, not wedge the sweep
     if resp.status().as_u16() == 404 {
         return Ok(Vec::new());
     }

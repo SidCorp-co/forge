@@ -37,7 +37,6 @@ export type OpenOutcome =
   | { opened: RunnerReleaseRow; held: null }
   | { opened: null; held: RunnerReleaseRow };
 
-// cm:guard the re-arm's WHERE is the whole of the retry rule, and it is in the STATEMENT rather than in a branch above it: a read-then-insert would let two calls both read the row and both cut. Both halves are load-bearing. `settled_at IS NOT NULL` is what stops a second start seizing an attempt still running — without it two overlapping calls share one row, and one of them settles `absent` while the other has a create request in flight. `tag_state IN ('unread','absent')` is what stops a second attempt at a tag that exists or whose create went unanswered: that would either fail on GitHub's own 422 or, worse, succeed against a tag somebody else cut.
 export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
   const rows = await db.execute<{ id: string; attempt: number }>(sql`
     INSERT INTO runner_releases
@@ -72,11 +71,6 @@ export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
       AND runner_releases.tag_state IN ('unread', 'absent')
     RETURNING id, attempt
   `);
-  // cm:guard the statement returns the ID and the ROW is read back through drizzle, because
-  // `db.execute` hands back the driver's own snake_case object: a `RETURNING *` typed as
-  // `RunnerReleaseRow` compiles, and every camelCase field a caller reads off it — `tagState`,
-  // `commitSha`, `step` — is `undefined` at runtime. That shape passed the whole unit suite, which
-  // mocks this module, and was caught by the first integration case that read a column back.
   const granted = rows[0];
   if (granted) {
     const owner = ownerOfGrant(granted, await findById(granted.id));
@@ -100,7 +94,6 @@ export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
  * start re-arm it between those two statements, and there is no point in the
  * public API where a test can stand in that gap.
  */
-// cm:guard the grant and never the reading. A caller that takes whatever attempt the read-back happens to hold owns the attempt that REPLACED its own, and then passes every fence on this table, because the fences compare against the number it adopted. `null` is the row vanishing between the two statements, which is the caller's own upsert to retry rather than a grant to trust.
 export function ownerOfGrant(
   granted: { id: string; attempt: number },
   read: RunnerReleaseRow | null,
@@ -149,7 +142,6 @@ export async function listForProject(projectId: string, limit = 50): Promise<Run
     .limit(limit);
 }
 
-// cm:guard fenced on the attempt like every other write here: a caller still running inside an attempt the deadline ended would otherwise write its readings into the attempt that replaced it, and a readings list is the one field a person reads to reconstruct what happened.
 export async function appendReading(id: string, attempt: number, line: string): Promise<void> {
   await db.execute(sql`
     UPDATE runner_releases
@@ -169,7 +161,6 @@ export interface AdvanceArgs {
   workflowUrl?: string;
 }
 
-// cm:guard non-terminal AND this attempt only, and it answers `false` rather than throwing: the deadline pass can settle a release between two steps of a sequence still running, and a start can then re-arm the row under that same sequence. Both are ordinary races rather than errors, and `attempt` is what tells the second one from the row simply carrying on — `settled_at IS NULL` is true again after a re-arm.
 export async function advance(id: string, attempt: number, args: AdvanceArgs): Promise<boolean> {
   const sets = [sql`updated_at = now()`];
   if (args.step) sets.push(sql`step = ${args.step}`);
@@ -227,7 +218,6 @@ export async function settleFailed(
   if (args.releaseUrl) sets.push(sql`release_url = ${args.releaseUrl}`);
   if (args.buildReportedAt)
     sets.push(sql`build_reported_at = ${args.buildReportedAt.toISOString()}`);
-  // cm:guard `ifUnchanged` is what the deadline pass settles under, and it is a condition rather than a re-read because the row it selected can move between the SELECT and this UPDATE: the sequence it is racing advances `cut_tag`/`unknown` over a `resolve_commit`/`unread` reading, and a settle without this clause writes the OLD step back over the new one together with a failure sentence saying the tag does not exist — a terminal row describing a snapshot that is no longer true. It is the WITHIN-attempt half of that defence; `attempt` above is the other half, for the row that went round through a re-arm to the same step and tag state.
   const guard = args.ifUnchanged
     ? sql` AND step = ${args.ifUnchanged.step} AND tag_state = ${args.ifUnchanged.tagState}`
     : sql``;
@@ -248,7 +238,6 @@ export interface SettlePublishedArgs {
   buildReportedAt: Date;
 }
 
-// cm:guard `tag_state = 'present'` is written HERE and not assumed: `runner_releases_published_chk` refuses the row otherwise, and that refusal is the point — a release cannot read published over a tag nothing confirmed.
 export async function settlePublished(
   id: string,
   attempt: number,
@@ -274,7 +263,6 @@ export async function settlePublished(
   return rows.length > 0;
 }
 
-// cm:guard this is the ONE lookup by commit on this path and it may never attribute a delivery — it exists so a build Forge cannot attribute is written somewhere a reader of that release will meet it, rather than only into a log. A commit does not name a tag: two `runner-v*` tags can point at one, which is exactly why `runner-release-events.ts` settles on the tag alone.
 export async function inFlightAtCommit(
   bindingId: string,
   commitSha: string,

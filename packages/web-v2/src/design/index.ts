@@ -16,6 +16,7 @@ export { ProjectMark, type ProjectMarkProps } from "./primitives/project-mark";
 export { HealthDot, type HealthDotProps } from "./primitives/health-dot";
 export { Stat, type StatProps } from "./primitives/stat";
 export { Card, CardHeader, CardTitle, CardContent } from "./primitives/card";
+export { PageTitle, SectionTitle } from "./primitives/heading";
 export { Kicker } from "./primitives/kicker";
 export { Kbd } from "./primitives/kbd";
 export { Spinner, type SpinnerProps } from "./primitives/spinner";

@@ -1,15 +1,3 @@
-/**
- * REST twin of the `forge_phase` MCP tool — mounted under `/api/pipeline-runs`.
- *
- * A phase declaration keys on `(run, phase, attempt)` and nothing about the
- * session that makes it: `issueId`, `jobId` and `agentSessionId` are optional
- * provenance the driver does not send. That is what makes it reachable from a
- * shell holding only a PAT, and it is why the data-plane doc used to park this
- * tool as MCP-only on the wrong rationale.
- *
- * Semantics live in `./phase-journal.ts`; this file is auth plus shape.
- */
-
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -31,7 +19,6 @@ const startBodySchema = z
   })
   .strict();
 
-// cm:guard `note` is the ONLY artifact this route accepts, and widening it to a free-form artifact is how a driver writes its own review verdict: `endPhase` skips rows already carrying one, but nothing stops a fresh `{kind:'verdict'}` landing on a phase the reviewer never judged, and a reader cannot tell it from the real thing. The DB CHECK backs `source`, not `kind`.
 const endBodySchema = z
   .object({
     phase: z.string().min(1).max(64),
@@ -47,7 +34,6 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-// cm:guard resolve the project FROM the run, never from the caller — the MCP tool takes both and needs `assertRunInProject` to stop a writer on one project appending phases to another's run; taking one identifier makes that class of mistake unrepresentable rather than merely checked.
 async function runProjectFor(runId: string, userId: string, role: 'viewer' | 'member') {
   const row = await readPipelineRun(runId);
   if (!row) throw notFound('pipeline run not found');
@@ -123,12 +109,6 @@ phaseRoutes.get(
   },
 );
 
-// cm:guard `viewer`, the same role `resume-point` takes, and NOT `member`. This is a read of what a
-// run did; gating it above the role that can already read the run's status would leave the people
-// who look at a stuck release unable to see what it had done.
-// cm:edge lockstep -> packages/core/src/prompt/facts/drive-rules.ts — that preamble told every
-// driver "there is no listing, and a GET of `phases` answers 404". It says otherwise now; the two
-// are read in one context window and a driver believes the preamble.
 phaseRoutes.get(
   '/:id/phases',
   zValidator('param', idParamSchema, (r) => {

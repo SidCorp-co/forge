@@ -87,8 +87,9 @@ describe('project-scoped agent-session reads', () => {
     `);
     const sessionId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, messages, created_at, updated_at)
-      VALUES (${sessionId}, ${projectId}, ${runId}, 'completed',
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, messages,
+                                  created_at, updated_at)
+      VALUES (${sessionId}, ${projectId}, ${runId}, 'pm', 'completed',
         ${JSON.stringify(messages)}::jsonb, now(), now())
     `);
     return sessionId;
@@ -119,7 +120,6 @@ describe('project-scoped agent-session reads', () => {
     expect(res.status).toBe(403);
   });
 
-  // cm:guard this is the assertion the route exists to satisfy: the project must come from `row.projectId`, never from the path. Delete the `row.projectId !== id` check and this is the only test that notices — the membership check above still passes, because the caller really IS a member of the project they named.
   it('will not serve another project’s session to a member who names their own', async () => {
     const a = await member();
     const b = await member();

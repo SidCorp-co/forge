@@ -78,7 +78,6 @@ export async function writeBackScheduleLastStatus(
   if (meta.source !== 'schedule.run' || typeof meta.scheduleId !== 'string') return;
   const scheduleId = meta.scheduleId;
   try {
-    // cm:guard the WHERE clause must keep lastSessionId = sessionId — a superseded session's late terminal report must update zero rows, never overwrite a newer run's status
     await db
       .update(schedules)
       .set({ lastStatus: outcome === 'completed' ? 'success' : 'failed' })
@@ -105,7 +104,6 @@ export async function listSchedules(projectId: string, actorUserId: string, enab
     .orderBy(asc(schedules.createdAt));
 }
 
-// cm:guard the projection is narrower than `listSchedules` ON PURPOSE and must stay so: `prompt` and `script` run to 20k characters per row, and an MCP result that overflows the output cap does not truncate — it crashes the agent mid-turn. Authorisation is NOT done here: MCP gates on a principal (device or PAT), which `loadProjectAccess` cannot see, so the caller asserts membership first.
 export async function listSchedulesForMcp(projectId: string, enabled?: boolean) {
   const conditions = [eq(schedules.projectId, projectId)];
   if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
@@ -164,12 +162,6 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
   const access = await loadProjectAccess(schedule.projectId, actorUserId);
   assertProjectRole(access, 'viewer', 'not a project member');
 
-  // cm:guard the test is the runner-less SET, never one kind. Every kind that executes inside core
-  // writes `schedule_runs` and starts NO agent session, so the agent-sessions query below answers
-  // `{ runs: [] }` for it — which is what `release_batch` did from the day it shipped until
-  // ISS-1085 slice 3 found it: every outcome it ever recorded was unreadable through the one
-  // endpoint that exists to show them. A kind added to `RUNNER_LESS_SCHEDULE_KINDS` is covered here
-  // by construction; one added only to `scheduleKinds` is the silence again.
   if (isRunnerLessScheduleKind(schedule.kind)) {
     const scriptRows = await db
       .select()

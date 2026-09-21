@@ -16,13 +16,6 @@ function extractTextContent(content: unknown): string | null {
   return parts.length > 0 ? parts.join('\n') : null;
 }
 
-/**
- * Derive a one-line last-message preview for a conversation-list row from a
- * turn's raw `content` jsonb. Mirrors `extractTextContent` in
- * `schedules/messages/skill-steward-prompt.ts` (string passthrough, or join
- * Anthropic-style `{type:'text'}` blocks) — tool-only turns have no text
- * block and correctly resolve to `null`.
- */
 export function extractTurnPreview(content: unknown): string | null {
   const text = extractTextContent(content);
   if (!text) return null;

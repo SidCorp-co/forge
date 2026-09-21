@@ -51,9 +51,6 @@ let mods: Mods;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
 
-// cm:guard the helpers below live at module scope rather than inside the describe, and the reason is
-// `check-size-budget.mjs`: a describe callback is a function, so every helper written inside it
-// counts against the 150-line budget for one. Hoisting them keeps the budget measuring the cases.
 async function seed(handoffCommit?: string | null) {
   const user = await createTestUser(harness.db);
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
@@ -109,9 +106,6 @@ async function storedMark(id: string) {
     merged_commit_sha: string | null;
   }>(sql`SELECT merged_at, merged_commit_sha FROM issues WHERE id = ${id}`);
   const row = rows[0] as { merged_at: Date | string | null; merged_commit_sha: string | null };
-  // cm:guard `execute` hands back the driver's own value, which is a STRING for timestamptz, so a
-  // caller that assumed a Date here read `.toISOString is not a function` rather than a wrong
-  // timestamp. Normalising once is what lets every case below assert on an exact instant.
   return {
     merged_at: row.merged_at === null ? null : new Date(row.merged_at),
     merged_commit_sha: row.merged_commit_sha,
@@ -197,15 +191,6 @@ beforeEach(async () => {
   await truncateAll(harness.db);
 });
 
-// cm:guard this is the planted violation for criterion 9, and it asserts on BOTH halves. Restore
-// the caller's sha to the column and the first expectation goes red; keep it out of the column and
-// drop the sentence saying so and the second does — which is the shape CLAUDE.md prices, a write
-// that quietly declines half of what it was given.
-
-// cm:guard the harness hooks are at MODULE scope and not inside the first describe. They were, and
-// splitting this file into two describes for the size budget then ran the first one's `afterAll`
-// before the second one's cases, which closed the connection under them — seven tests failing with
-// `CONNECTION_ENDED` and nothing wrong with the subject.
 describe('ISS-959 B — the merged mark records its commit', () => {
   it('records a caller-named commit in the audit trail and not in the column', async () => {
     const { id, token } = await seed();
@@ -229,9 +214,6 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     expect(row.merged_at?.toISOString()).toBe('2026-09-17T12:17:12.321Z');
   });
 
-  // cm:guard ISS-1027's own defect, measured rather than described: a mark made at 14:43 for a merge
-  // that happened at 12:17 used to stamp 14:43, and the CLI says the first stamp wins so no further
-  // correcting recovered it. The observed time outranking the caller's is what closes that.
   it('prefers the observed merge time over a time the caller supplied', async () => {
     const { id, token } = await seed();
     await seedObservedMerge(id, { commit: SHA, at: '2026-09-17T12:17:12.321Z' });
@@ -253,9 +235,6 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     expect((await storedMark(id)).merged_commit_sha).toBe(SHA);
   });
 
-  // cm:guard criteria 14 and 15. The assertion's predicate is `merged_at IS NULL` and evidence's is
-  // `merged_commit_sha IS NULL`, and this is the case that can only pass if they differ: an issue
-  // marked by hand, then merged for real, ends up carrying the real merge and the real time.
   it('lets evidence replace an asserted stamp, taking the merge own time', async () => {
     const { id, token } = await seed();
     await mark(id, token, { target: 'base', mergedAt: '2026-09-17T14:43:00.000Z' });
@@ -277,10 +256,6 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     expect(row.merged_at?.toISOString()).toBe('2026-09-17T12:17:12.321Z');
   });
 
-  // cm:guard criteria 11, 12 and 16 in one statement: ONE merge arriving twice, once as the kernel's
-  // own and once as the `pull_request.closed` delivery that follows it. The second write finds
-  // `merged_commit_sha` already set, changes nothing, and reports that it wrote nothing — which is
-  // what makes the two routes one record rather than two.
   it('leaves one record when the same merge arrives from both routes', async () => {
     const { id } = await seed();
     const { recordIssueMerge } = await import('../../src/issues/merge-record.js');
@@ -379,10 +354,6 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     expect((await storedMark(id)).merged_at).toBeNull();
   });
 
-  // cm:guard the SHAPE check survives ISS-1073 untouched and is asserted on the audit trail now that
-  // the column is evidence. The schema still refuses prose in a commit field, and it has to: a
-  // caller's claim is recorded, and a recorded claim reading `squashed as abc123` is the judgement
-  // the field was built to stop, wherever it is written down.
   it('accepts a short sha at the lower bound and refuses one below it', async () => {
     const short = await seed();
     expect((await mark(short.id, short.token, { target: 'base', commit: 'abc1234' })).status).toBe(
@@ -405,10 +376,6 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     expect((rows[0] as { body: string }).body).toContain(`commit=${SHA}`);
   });
 
-  // cm:guard `unmark` then `mark` is still the only route that moves an asserted stamp, and after
-  // ISS-1073 it is no longer the only route that fixes a WRONG one: evidence supersedes an assertion
-  // without it. This asserts the first half stays true, so a reader is not left thinking the
-  // correction route went away with the column.
   it('re-marking after an unmark re-adopts whatever Forge now observes', async () => {
     const { id, token } = await seed();
     await seedObservedMerge(id, { commit: SHA, at: '2026-09-17T12:17:12.321Z' });

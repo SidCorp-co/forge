@@ -20,7 +20,6 @@ import { GLOBAL_ROOM } from './rooms.js';
 
 type AnyServer = HttpServer | HttpsServer;
 
-// cm:edge naming -> packages/core/src/ws/room-manager.ts — re-exported so the 27 existing `from '../ws/server.js'` imports keep working; the instance lives there because importing it from here dragged the whole server, and its heartbeat handlers, into every publisher
 export { roomManager };
 
 let wss: WebSocketServer | null = null;
@@ -64,10 +63,8 @@ interface ProtocolMatch {
   protocol: string;
 }
 
-// cm:guard return the EXACT protocol string matched, not the token alone — a browser rejects an upgrade whose `Sec-WebSocket-Protocol` response header does not echo the subprotocol it offered, and the handler has nothing else to echo
 function parseProtocolToken(header: string | string[] | undefined): ProtocolMatch | undefined {
   if (!header) return undefined;
-  // cm:why Node's http parser collapses repeated headers into one comma-joined string while other runtimes hand back an array; both shapes reach here.
   const raw = Array.isArray(header) ? header.join(',') : header;
   for (const part of raw.split(',')) {
     const proto = part.trim();
@@ -95,7 +92,6 @@ interface AuthResult {
   acceptedProtocol?: string;
 }
 
-// cm:guard `/ws` is the daemon's own channel and a device is still the principal on it (ISS-931 rule 4) — what changed in ISS-932 is only HOW the box proves it is one: a PAT/AAT carrying `device_id`, verified straight through `verifyPat`. It deliberately does NOT go through `authenticatePat`: that charges the per-minute REST bucket and emits `pat.used`, and a socket authenticates once for a connection that then lives for hours, so metering it as one request per hour would make the token's rate-limit headers lie about what it is doing.
 async function resolveBearer(token: string): Promise<Principal | null> {
   const user = await tryUserToken(token);
   if (user) return user;
@@ -130,7 +126,6 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
     return user ? { principal: user } : null;
   }
 
-  // cm:guard a `?token=<jwt>` query is UNAUTHENTICATED and must stay so — the query string reaches nginx access logs, `Referer` and browser history, and every live client moved to the subprotocol or the cookie before it was removed (ISS-315).
   return null;
 }
 
@@ -144,8 +139,6 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
     const userId = principal.type === 'user' ? principal.userId : principal.ownerId;
     const access = await effectiveProjectRole(userId, projectId);
     if (access?.role) return true;
-    // cm:edge contract -> packages/core/src/admin/aggregate-routes.ts — the Operator Ops Console reads every tenant over `/api/admin/*` on this same ADMIN_EMAILS allow-list, and the live half of that screen rides `pipeline_run.status_changed` in each project's room; without this an admin sees cross-tenant numbers that only refresh for the projects they happen to be a member of
-    // cm:guard this widens READ only — the room carries invalidation events, and a project room's publishers never accept input from a subscriber. Anything that ever gives a room a write side must gate it on membership again here, not on this branch.
     return await isPlatformAdmin(userId);
   }
   if (room.startsWith('device:')) {
@@ -238,7 +231,6 @@ export function attachWs(server: AnyServer): void {
       if (!msg || typeof msg !== 'object') return;
       const { type, room } = msg as { type?: unknown; room?: unknown };
 
-      // cm:guard the room check belongs to the two arms that TAKE a room, never above the switch. It sat above it until ISS-934, so every `runner:*` frame — none of which carries a room — was dropped unread before reaching its handler, and nothing anywhere went red.
       if (type === 'subscribe' || type === 'unsubscribe') {
         if (typeof room !== 'string' || room.length === 0) return;
       }
@@ -255,9 +247,7 @@ export function attachWs(server: AnyServer): void {
                   timestamp: new Date().toISOString(),
                 }),
               );
-            } catch {
-              // cm:why a socket may close between the room read and the write, and a throw here would abort the whole publish loop — the remaining subscribers would silently miss the frame.
-            }
+            } catch {}
             return;
           }
           roomManager.subscribe(ws, room);

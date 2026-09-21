@@ -137,7 +137,6 @@ async function findOrCreateUser(
     }
   }
 
-  // cm:why refuse rather than store half a user: an address the provider will not vouch for is the same address an attacker can claim, and the auto-link above trusts `emailVerified` to keep them apart. The web layer renders the code as "email_unverified".
   if (!identity.email || !identity.emailVerified) {
     throw new HTTPException(400, {
       message: 'OAuth provider did not return a verified email',
@@ -179,7 +178,6 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
   const code = c.req.query('code');
   const state = c.req.query('state');
   const error = c.req.query('error');
-  // User-recoverable error paths redirect back to /login with a typed code
   // so the web banner can give a useful message. Operator-misconfiguration
   // paths (PROVIDER_NOT_ENABLED above) keep their HTTP error since the user
   // can't fix them by retrying.

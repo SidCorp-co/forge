@@ -1,25 +1,3 @@
-/**
- * OAuth state cookie — defends the callback against CSRF + replay.
- *
- * The flow:
- *   1. /:provider/start signs a payload {p, n, v, r, exp} into a JWT and
- *      stores it in `forge_oauth_state` (httpOnly, SameSite=Lax, 5 min).
- *      The `state` query param sent to the provider is just `n` (a 32-byte
- *      random nonce).
- *   2. /:provider/callback reads the cookie, JWT-verifies it, and asserts
- *      that `n` from the cookie equals the `state` query param + that `p`
- *      matches the URL's :provider segment. Anything off → 400.
- *   3. The cookie is deleted on the response (single-use).
- *
- * The PKCE `code_verifier` lives inside the cookie so it never leaves the
- * server, and the post-callback redirect target lives in `r` so a
- * compromised provider can't rewrite where we land.
- *
- * SameSite=Lax is correct for OAuth: top-level GET navigations from the
- * provider's host back to ours DO send Lax cookies; that's the entire
- * reason Lax (rather than Strict) exists.
- */
-
 import type { Context } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { jwtVerify, SignJWT } from 'jose';
@@ -36,18 +14,11 @@ export type StateMode = 'login' | 'reauth';
 export interface StatePayload {
   /** Provider id this state belongs to. */
   p: ProviderId;
-  /** Nonce — what's sent to the provider in the `state` query param. */
   n: string;
   /** PKCE code_verifier (43-128 char URL-safe random string). */
   v: string;
   /** Post-callback redirect path; always relative — never absolute URLs. */
   r: string;
-  /**
-   * Flow mode. `login` (default) — find-or-create user + set auth cookie.
-   * `reauth` — caller is already authenticated; stamp freshness only when
-   * the returned identity matches the linked oauth_accounts row for `uid`.
-   * Omitted on older cookies issued before ISS-167; readers default to `login`.
-   */
   mode?: StateMode;
   /**
    * Authenticated user id captured at `reauth-start`. Only meaningful when

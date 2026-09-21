@@ -66,28 +66,18 @@ describe('resolveReleaseGate', () => {
     await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('awaiting_release');
   });
 
-  // cm:guard butlocs, mowment and pixelight are the reason this case exists separately from `promote`.
-  // A theme publish IS the release: base and live are the same ref by nature, so the branch comparison
-  // the old gate rested on could not see them and the `||` that rescued pixelight rested on a runner
-  // label the other two never set. Under the declared model all three are simply `publish`.
   it('gives the gate to a publish project with a live deploy binding, with no branch involved', async () => {
     selectLimit.mockResolvedValue(project('publish', { baseBranch: 'main', liveBranch: null }));
     listBindings.mockResolvedValue(liveBinding('epodsystem'));
     await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('awaiting_release');
   });
 
-  // cm:guard the regression the old `||` caused and this rule removes. forge-dev's epodsystem binding
-  // is the storefront MCP credential on a trunk repo; if provider identity, mere presence, or a
-  // branch comparison granted the gate, every agent close in this repository would be rewritten.
   it('refuses the gate to a none project even with a live deploy binding', async () => {
     selectLimit.mockResolvedValue(project('none'));
     listBindings.mockResolvedValue(liveBinding('epodsystem'));
     await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBeNull();
   });
 
-  // cm:guard adminhub-api, adminhub-ui, epodsystem-core, house-supabase, sidboss and sidcorp-mail all
-  // carry a live branch genuinely distinct from their base and declare `none`. The old rule read the
-  // branch pair and would have gated four of them the moment they gained any active prod binding.
   it('refuses the gate to a none project whose two branches differ', async () => {
     selectLimit.mockResolvedValue(
       project('none', { baseBranch: 'release/stg', liveBranch: 'release/production' }),
@@ -104,10 +94,6 @@ describe('resolveReleaseGate', () => {
 });
 
 describe('a release model with nothing to release onto', () => {
-  // cm:guard REFUSED BY NAME and not answered `null`. Both shapes answered `null` before ISS-1046,
-  // so "this project ships nothing" and "this project says it ships and has nowhere to ship to" were
-  // the same answer — which is how dodgeprint-api parked every issue at `awaiting_release` behind a
-  // Sentry binding for as long as it did.
   it('throws RELEASE_TARGET_UNDECLARED when the project has no live deploy binding at all', async () => {
     selectLimit.mockResolvedValue(
       project('promote', { liveBranch: 'master', releaseStrategy: 'merge-branch' }),
@@ -117,9 +103,6 @@ describe('a release model with nothing to release onto', () => {
     await expect(resolveReleaseGate(PROJECT_ID)).rejects.toThrow(/RELEASE_TARGET_UNDECLARED/);
   });
 
-  // cm:guard `listActiveDeployBindingsForStage` filters inactive bindings and inactive connections, so
-  // a project whose ONLY live binding was switched off is this case and not the gated one. archmap and
-  // forge-dev each carry an inactive coolify binding today, which is why the distinction is real.
   it('throws the same named error when the only live deploy binding is inactive', async () => {
     selectLimit.mockResolvedValue(project('publish'));
     listBindings.mockResolvedValue([]);
@@ -164,9 +147,6 @@ describe('resolveReleaseDeclaration', () => {
     expect(decl?.kind === 'gated' && decl.releaseStrategy).toBe('cherry-pick');
   });
 
-  // cm:guard a `none` project short-circuits BEFORE the binding query. It is not an optimisation: it
-  // is what makes the model the only input, so a `none` project cannot acquire a gate by acquiring a
-  // binding, which is precisely what happened to getcontent when its coolify box was labelled staging.
   it('answers no-release for a none project without reading its bindings at all', async () => {
     selectLimit.mockResolvedValue(project('none'));
     const decl = await resolveReleaseDeclaration(PROJECT_ID);

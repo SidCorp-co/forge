@@ -1,0 +1,281 @@
+<title>The Session Tree</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1c1a17;--mut:#6b6559;--line:#ddd7cc;--card:#fff;--ok:#2f7a4f;--bad:#b3452c;--warn:#a8761f;--acc:#2c5c8f;--new:#7a3f9d;--soft:#f3f0ea}
+@media(prefers-color-scheme:dark){:root{--bg:#16150f;--fg:#ece7dd;--mut:#9a9280;--line:#332f26;--card:#1e1c16;--ok:#6fbf8f;--bad:#e08a70;--warn:#d6a851;--acc:#7aa9d8;--new:#c18ce0;--soft:#232019}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:44px 28px 100px}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.025em}
+h2{font-size:18px;margin:52px 0 10px;letter-spacing:-.015em;padding-top:12px;border-top:1px solid var(--line)}
+p{margin:8px 0;max-width:74ch}
+.lead{color:var(--mut);max-width:74ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:16px 0;overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.cap{color:var(--mut);font-size:13px;margin-top:10px;max-width:none}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:color-mix(in oklab,var(--fg) 8%,transparent);padding:1px 5px;border-radius:4px}
+a{color:var(--acc)}
+.rule{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:16px 20px;margin:18px 0;font-size:16px}
+.price{border-left:3px solid var(--bad);padding-left:15px;margin:18px 0}
+.price b{display:block;margin-bottom:2px}
+.note{color:var(--mut);font-size:13.5px}
+.bad{color:var(--bad)} .ok{color:var(--ok)} .warn{color:var(--warn)} .acc{color:var(--acc)} .new{color:var(--new)}
+.crumb{font-size:13px;color:var(--mut);margin-bottom:18px}
+</style>
+<main>
+
+<p class="crumb"><a href="index.html">Destination</a> › Session tree</p>
+<h1>The Session Tree</h1>
+<p class="lead">One table for work. Every row says which species it is and who owns it, and
+closure follows the owner edge rather than a timer per species.</p>
+
+<svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+<marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--mut)"/></marker>
+<marker id="b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ok)"/></marker>
+<marker id="c" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--acc)"/></marker>
+<marker id="d" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--bad)"/></marker>
+<marker id="w" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--warn)"/></marker>
+</defs></svg>
+
+<h2>1 · One row</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 250" role="img" aria-label="What one session row carries">
+<rect x="30" y="24" width="460" height="204" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="2"/>
+<text x="260" y="52" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">session</text>
+<text x="52" y="82" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">id</text>
+<text x="52" y="104" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">species</text><text x="180" y="104" font-size="10.5" fill="var(--mut)">NOT NULL — a column, never a metadata key</text>
+<text x="52" y="126" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">parent_id</text><text x="180" y="126" font-size="10.5" fill="var(--mut)">FK · NULL at the root · written by core</text>
+<text x="52" y="148" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">principal_id</text><text x="180" y="148" font-size="10.5" fill="var(--mut)">who is doing this</text>
+<text x="52" y="170" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">intent_id</text><text x="180" y="170" font-size="10.5" fill="var(--mut)">what it is for</text>
+<text x="52" y="192" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">policy_version</text><text x="210" y="192" font-size="10.5" fill="var(--mut)">inherited from the root, never re-read</text>
+<text x="52" y="214" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">root_id · depth</text><text x="210" y="214" font-size="10.5" fill="var(--mut)">denormalised, for the gates</text>
+
+<rect x="530" y="24" width="440" height="96" rx="10" fill="var(--soft)" stroke="var(--ok)" stroke-width="1.7"/>
+<text x="552" y="50" font-size="12.5" font-weight="700" fill="var(--ok)">stamped at OPEN, never after</text>
+<text x="552" y="74" font-size="11.5" fill="var(--fg)">the resolved fact-inputs core served</text>
+<text x="552" y="94" font-size="11.5" fill="var(--fg)">the answered questions core served</text>
+<text x="552" y="112" font-size="10.5" fill="var(--mut)">this is the served-input stamp — not an agent's claim about what it read</text>
+
+<rect x="530" y="132" width="440" height="96" rx="10" fill="var(--soft)" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="552" y="158" font-size="12.5" font-weight="700" fill="var(--bad)">NOT on the row</text>
+<text x="552" y="182" font-size="11.5" fill="var(--mut)">status — derived from facts</text>
+<text x="552" y="202" font-size="11.5" fill="var(--mut)">a heartbeat, unless this is the root</text>
+<text x="552" y="220" font-size="11.5" fill="var(--mut)">a close policy — see §3, there is one behaviour</text>
+</svg>
+</div>
+
+<h2>2 · Liveness is inherited; observation is not</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="link between parent and child, monitor from the daemon">
+<rect x="70" y="120" width="150" height="56" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="145" y="153" font-size="12.5" text-anchor="middle" fill="var(--fg)">daemon</text>
+
+<rect x="380" y="40" width="220" height="62" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="2"/>
+<text x="490" y="68" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">root</text>
+<text x="490" y="88" font-size="10.5" text-anchor="middle" fill="var(--ok)">the only node with a heartbeat</text>
+
+<path d="M224 140 Q320 140 376 96" stroke="var(--ok)" stroke-width="2" fill="none" marker-end="url(#b)"/>
+<text x="286" y="132" font-size="11.5" font-weight="650" fill="var(--ok)">monitor</text>
+<text x="286" y="150" font-size="10" fill="var(--mut)">one-way · does not propagate</text>
+
+<path d="M430 102 L360 168" stroke="var(--acc)" stroke-width="2"/>
+<path d="M490 102 L490 168" stroke="var(--acc)" stroke-width="2"/>
+<path d="M550 102 L620 168" stroke="var(--acc)" stroke-width="2"/>
+<text x="616" y="132" font-size="11.5" font-weight="650" fill="var(--acc)">link</text>
+<text x="616" y="148" font-size="10" fill="var(--mut)">two-way · propagates exit</text>
+
+<rect x="286" y="172" width="150" height="50" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="361" y="202" font-size="11.5" text-anchor="middle" fill="var(--fg)">child</text>
+<rect x="416" y="172" width="150" height="50" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="491" y="202" font-size="11.5" text-anchor="middle" fill="var(--fg)">child</text>
+<rect x="546" y="172" width="150" height="50" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="621" y="202" font-size="11.5" text-anchor="middle" fill="var(--fg)">child</text>
+
+<rect x="70" y="248" width="860" height="36" rx="8" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+<text x="90" y="272" font-size="11.5" fill="var(--bad)">Collapse the two and a child's death takes out the control plane's view of the box. They are different primitives on purpose.</text>
+</svg>
+<p class="cap">A child runs inside its parent's process, so it cannot outlive the parent. Silence from
+the root means every node beneath it is already gone — no per-node heartbeat is needed, and none is
+kept.</p>
+</div>
+
+<h2>3 · Closing — one behaviour, and the rule for earning a second</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="one closure decision following the owner edge">
+<text x="30" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--mut)">ONE DECISION, FOLLOWING THE EDGE</text>
+
+<rect x="30" y="42" width="250" height="70" rx="9" fill="var(--card)" stroke="var(--acc)" stroke-width="1.9"/>
+<text x="155" y="68" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">the root goes silent</text>
+<text x="155" y="90" font-size="10.5" text-anchor="middle" fill="var(--mut)">one threshold, on the root alone</text>
+
+<path d="M284 77 L330 77" stroke="var(--acc)" stroke-width="1.7" marker-end="url(#c)"/>
+
+<rect x="334" y="42" width="290" height="70" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.9"/>
+<text x="479" y="68" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">the subtree closes with it</text>
+<text x="479" y="90" font-size="10.5" text-anchor="middle" fill="var(--mut)">through the one transition chokepoint, audited</text>
+
+<path d="M628 77 L674 77" stroke="var(--ok)" stroke-width="1.7" marker-end="url(#b)"/>
+
+<rect x="678" y="42" width="292" height="70" rx="9" fill="var(--card)" stroke="var(--ok)" stroke-width="1.8"/>
+<text x="824" y="68" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--ok)">everything it held is given back</text>
+<text x="824" y="90" font-size="10.5" text-anchor="middle" fill="var(--mut)">leases, holds, worktrees — named in the close reason</text>
+
+<rect x="30" y="132" width="940" height="76" rx="9" fill="var(--card)" stroke="var(--warn)" stroke-width="1.7"/>
+<text x="52" y="157" font-size="12.5" font-weight="700" fill="var(--warn)">Why not three policies</text>
+<text x="52" y="180" font-size="11.5" fill="var(--fg)">An earlier revision of this page declared <tspan font-family="ui-monospace,monospace">terminate</tspan> / <tspan font-family="ui-monospace,monospace">request_cancel</tspan> / <tspan font-family="ui-monospace,monospace">abandon</tspan> per child, borrowed from Temporal. Forge has</text>
+<text x="52" y="198" font-size="11.5" fill="var(--fg)">exactly one closure cause today — the box stopped answering — and inventing three shapes before there are three behaviours is</text>
+<text x="52" y="214" font-size="11.5" fill="var(--fg)">the same over-generality as an arbitrary-depth tree in a system whose real depth is two.</text>
+
+<rect x="30" y="224" width="940" height="60" rx="9" fill="var(--soft)" stroke="var(--line)"/>
+<text x="52" y="248" font-size="12" font-weight="700" fill="var(--fg)">The rule for earning a second policy</text>
+<text x="52" y="270" font-size="11.5" fill="var(--mut)">A second closure cause exists in the field, someone can name the run it happened to, and the two causes genuinely need different treatment. Until all three hold, one behaviour and no field.</text>
+</svg>
+<p class="cap">The subtree closes because the edge exists, not because each species carries its own
+timer. That is the whole reason <code>parent_id</code> is a column with a foreign key rather than
+something the box reports.</p>
+</div>
+
+<h2>4 · Both directions, or it leaks</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 220" role="img" aria-label="Forward and inverse closure">
+<rect x="30" y="30" width="460" height="160" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="260" y="58" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--acc)">FORWARD</text>
+<text x="52" y="86" font-size="11.5" fill="var(--fg)">no child stays open under a closed parent</text>
+<text x="52" y="112" font-size="11" fill="var(--mut)">an orphan wedges a slot forever, and</text>
+<text x="52" y="130" font-size="11" fill="var(--mut)">nothing is looking for it</text>
+<text x="52" y="162" font-size="11" fill="var(--ok)">one writer: closing a node closes its subtree</text>
+
+<rect x="510" y="30" width="460" height="160" rx="10" fill="var(--card)" stroke="var(--warn)" stroke-width="1.7"/>
+<text x="740" y="58" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--warn)">INVERSE</text>
+<text x="532" y="86" font-size="11.5" fill="var(--fg)">no parent stays open once every child closed</text>
+<text x="532" y="112" font-size="11" fill="var(--mut)">defending only the forward half left 98 of 114</text>
+<text x="532" y="130" font-size="11" fill="var(--mut)">runs open with every child finished — work</text>
+<text x="532" y="148" font-size="11" fill="var(--mut)">nobody was doing, across 18 projects</text>
+<text x="532" y="176" font-size="11" fill="var(--warn)">the parent concludes on the LAST child's outcome</text>
+</svg>
+<p class="cap">The last clause matters: a parent whose final child failed may never conclude
+<i>completed</i>. Closing on "all children terminal" without reading the last outcome is how a failed
+tree reports success.</p>
+</div>
+
+<h2>5 · Held is a fourth shape, and it is not an orphan</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 200" role="img" aria-label="The held state">
+<rect x="30" y="60" width="170" height="54" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="115" y="93" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">open</text>
+<path d="M204 87 L256 87" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="260" y="60" width="170" height="54" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="345" y="93" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">running</text>
+<path d="M434 87 L486 87" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="490" y="60" width="170" height="54" rx="8" fill="var(--card)" stroke="var(--line)"/><text x="575" y="93" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">closed</text>
+
+<path d="M345 118 L345 150" stroke="var(--warn)" stroke-width="1.7" marker-end="url(#w)"/>
+<rect x="260" y="152" width="400" height="40" rx="8" fill="var(--card)" stroke="var(--warn)" stroke-width="1.8"/>
+<text x="282" y="177" font-size="12" font-family="ui-monospace,monospace" font-weight="650" fill="var(--warn)">held</text>
+<text x="340" y="177" font-size="11" fill="var(--mut)">— a question is open; the slot is FREED; the row stays</text>
+
+<rect x="700" y="46" width="270" height="146" rx="9" fill="var(--soft)" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="722" y="72" font-size="12" font-weight="700" fill="var(--bad)">two rules, or this leaks</text>
+<text x="722" y="98" font-size="11.5" fill="var(--fg)">· non-terminal to every sweep</text>
+<text x="722" y="120" font-size="11.5" fill="var(--fg)">· the loop monitor must not reap it</text>
+<text x="722" y="150" font-size="11" fill="var(--mut)">Get either wrong and the feature</text>
+<text x="722" y="168" font-size="11" fill="var(--mut)">manufactures the exact orphan</text>
+<text x="722" y="186" font-size="11" fill="var(--mut)">it exists to prevent.</text>
+</svg>
+<p class="cap">A held node is not running and is not finished. The session process is gone and the
+answer starts a fresh one — the row is what persists, never the pane.</p>
+</div>
+
+<h2>6 · Three caps, three different refusals</h2>
+
+<table>
+<thead><tr><th style="width:18%">Cap</th><th style="width:26%">Bounds</th><th>The refusal must name</th></tr></thead>
+<tbody>
+<tr><td><b>depth</b></td><td>how deep a tree may go</td><td>the depth reached and the limit — a subagent spawning subagents forever is a runaway with no other symptom</td></tr>
+<tr><td><b>concurrency</b></td><td>live children at once</td><td>who currently holds the slots, so an operator can see what to stop</td></tr>
+<tr><td><b>budget</b></td><td>spend under a root</td><td>that the tree was stopped by budget, distinctly from failing — the two look identical downstream otherwise</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>A cap bounds the tree. It is not a liveness edge.</b><br>
+<span class="note">Hitting a cap closes nodes by the same rules as anything else, and writes a fact
+saying which cap fired.</span>
+</div>
+
+<h2>7 · Adopt — the word that means two things</h2>
+
+<table>
+<thead><tr><th style="width:26%">Adopting</th><th style="width:16%">Allowed?</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>a <b>pane</b> left by a dead daemon</td><td class="ok">yes</td><td>the pane is plumbing; finding it again and resuming its conversation loses nothing</td></tr>
+<tr><td>a <b>session row</b> left by a dead master</td><td class="bad">never</td><td>its children died with it, so every open row beneath it is a corpse. Adopting one means reporting work nobody is doing</td></tr>
+</tbody>
+</table>
+
+<div class="price"><b>Declare dead, then take new work — in that order.</b>
+A claim that lands between the two reads looks exactly like a job that just died. Inverting them is
+how a fresh master adopts corpses as live work.</div>
+
+<h2>8 · Why this replaces six nouns</h2>
+
+<table>
+<thead><tr><th style="width:36%">What it removes</th><th>How</th></tr></thead>
+<tbody>
+<tr><td>a run assembled from two rows plus three metadata keys</td><td>one table, one row per unit of work — membership is <code>parent_id</code>, not a jsonb array</td></tr>
+<tr><td>the exclusion clause a sweeper needs so two sweeps don't reap the same row</td><td>there is one writer per direction, so there is nothing to exclude</td></tr>
+<tr><td>a per-node heartbeat and the staleness rules around it</td><td>only the root beats; silence means the subtree is gone</td></tr>
+<tr><td>work the kernel cannot see</td><td>a subagent has a row, so load counts it, the sweeper reaches it, and it can be held to account</td></tr>
+</tbody>
+</table>
+
+<h2>9 · Measured against the tree — 2026-09-20</h2>
+
+<p>Read on <code>main</code> at <code>ab8e2f136</code>. This page is the target; the column below
+is what exists, and two rows of the earlier revision were withdrawn because of it.</p>
+
+<table>
+<thead><tr><th style="width:26%">This page says</th><th style="width:37%">The tree does</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td><b>One row with <code>parent_id</code></b></td><td><code>agent_sessions.parent_session_id</code>, a self foreign key core writes at insert: a job-linked session takes the master holding its job, a run session takes the live master for its device and project, a fork or rerun takes the session it was cut from (ISS-1136)</td><td class="ok">built</td></tr>
+<tr><td><b>Every row says its species</b></td><td><code>agent_sessions.kind</code>, <code>NOT NULL</code> over five values, written by all five insert sites and read by every sweep. This row read <b>two</b> writers when it was measured; three tagged a type — <code>agent-session-link.ts</code> wrote <code>pipeline</code>/<code>pm</code> — and the two that tagged nothing were both chat paths (ISS-1136)</td><td class="bad">built</td></tr>
+<tr><td><b>Core owns the owner edge</b></td><td>core writes <code>parent_session_id</code> from its own record. <code>device_run_ledger.master_session_id</code> stays as the box's claim, now with a foreign key, and a reported master core did not issue — or one that is a master of another box — is refused by name while the run row itself is still stored (ISS-1136)</td><td class="bad">built</td></tr>
+<tr><td><b>Liveness is inherited</b></td><td>one clock, <code>SESSION_SILENCE_TIMEOUT_MS</code> at ten minutes, and both directions. A terminal session flip closes every session beneath it through the one chokepoint, returning a run child's issue leases; a master is eligible for the silence reap only when nothing it owns has beaten inside the window, so a live box with a broken master heartbeat does not cost a working run its lease (ISS-1136)</td><td class="bad">built</td></tr>
+<tr><td><b>Three close policies per child</b></td><td>none exists, and none is needed yet: one closure cause is in the field</td><td class="warn">withdrawn from this page — §3</td></tr>
+<tr><td><b>One species, any depth</b></td><td>the real depth is two. Subagents inside a Claude session are not Forge sessions and core never sees them</td><td class="warn">narrowed — §3</td></tr>
+<tr><td><b>Both directions, or it leaks</b></td><td><code>runs-cascade.ts</code> forward and <code>runs-concluded.ts</code> inverse, closing on the last job's outcome. Born from ISS-923: 98 of 114 live runs sat <code>running</code> with every job terminal, across 18 projects</td><td class="ok">built</td></tr>
+<tr><td><b>Liveness needs more than one witness</b></td><td>already right, and said in the source: <code>run-session-reaper.ts</code> opens with <em>"the local ledger on the box is the fast path and cannot be the only one: a runner that lost power releases nothing at all"</em></td><td class="ok">built</td></tr>
+<tr><td><b>A terminal write goes through one chokepoint</b></td><td><code>run-session-reaper</code> calls <code>applyKernelTransition</code>, so the reap is audited and a bypass is detected — what module 1 found missing for <code>issues</code> is already correct here</td><td class="ok">built</td></tr>
+<tr><td><b><code>held</code> is a fourth shape, not an orphan</b></td><td>a deliberate status, non-terminal to every sweep</td><td class="ok">built</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>Four missing, two withdrawn, four already built — and the four missing landed in ISS-1136, in the order this page forced: species first, then the owner edge with its foreign key, then one closure decision following it. Caps still wait on a subtree to scope to.</b><br>
+<span class="note">The order they must land in is forced: species first, because the other three
+all need to know which kind of row they are talking about. Then the owner edge with its foreign
+key, then one closure decision following it, then caps that finally have a subtree to scope to.</span>
+</div>
+
+<h2>Honest costs</h2>
+
+<table>
+<thead><tr><th style="width:34%">Cost</th><th>What it buys, and who pays</th></tr></thead>
+<tbody>
+<tr><td>A species column is five call sites and a backfill</td><td>Paid in ISS-1136. The backfill infers from the run's metadata, the job link and the run kind, once and frozen; every branch needs a positive signal, and a row with none aborts the migration naming its id rather than taking a default that would read afterwards as a fact</td></tr>
+<tr><td>A foreign key on <code>parent_id</code> can refuse a write that works today</td><td>Paid in ISS-1136, and the paths were enumerated: one writer, <code>applyRunLedgerSnapshot</code>, reached over the <code>runner:sessions</code> frame. It refuses the edge by name before the constraint sees it, so a bad claim costs an operator one edge rather than the whole snapshot</td></tr>
+<tr><td>Merging two timeouts changes when work is reclaimed</td><td>Paid in ISS-1136, at the longer number. A hold returned late costs a delay; a lease returned early costs two boxes on one issue, and only the second makes the state lie. A dead master's holds now sit in the pool for up to ten minutes rather than three, and the condition that would end the merge is a measurement of how long a healthy master's heartbeat goes quiet under load</td></tr>
+<tr><td>The list's clickable tags have no focus ring</td><td><b>Not paid in ISS-1136.</b> The three <code>&lt;button&gt;</code>s wrapping a row's title, its run tag and its id each carry <code>focus-visible:outline-none</code> and predate this change, which left the count unmoved. The tree made the list denser and the rows nested, so a keyboard reader now has more places to be and still no indication of where. <code>code-quality/no-raw-elements</code> names all three; composing <code>Button</code> is what the rule asks for and it changes how every row in the list looks, which is a design decision this issue had no standing to take</td></tr>
+<tr><td>Withdrawing the three close policies loses a shape that was easy to write about</td><td>Temporal's vocabulary reads well and Forge does not have the behaviours behind it. The page is less impressive and more true</td></tr>
+</tbody>
+</table>
+
+<p class="note" style="margin-top:30px">Next from <a href="index.html">the overview</a>: fact &amp;
+projection · question · the floor.</p>
+
+</main>

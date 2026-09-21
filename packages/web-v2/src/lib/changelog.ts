@@ -1,13 +1,3 @@
-// Forge product CHANGELOG parsing for the in-app "What's New" feed (ISS-384).
-//
-// PRODUCT-GLOBAL source: the feed tracks Forge's own releases, not the user's
-// selected project, so it cannot use the per-project ISS-305 docs API. We read
-// Forge's CHANGELOG.md raw from GitHub — the only product-global source that
-// also carries the moving `[Unreleased]` section. No new core API is added.
-//
-// This mirrors `packages/web/src/lib/github-releases.ts` (the two Next apps
-// don't share a runtime package, same as the duplicated `markdown` component);
-// keep the parser shape identical so the UX can't diverge.
 
 const REPO = "SidCorp-co/forge";
 const CHANGELOG_RAW_URL = `https://raw.githubusercontent.com/${REPO}/main/CHANGELOG.md`;
@@ -22,8 +12,6 @@ export interface ChangelogSection {
 }
 
 export interface ChangelogRelease {
-  /** Stable identity for the "seen" comparator: the version for a released
-   *  entry, or `unreleased:<hash>` for the moving `[Unreleased]` section. */
   id: string;
   /** Semver without a leading `v`, or null for `[Unreleased]`. */
   version: string | null;
@@ -58,11 +46,6 @@ function hashContent(s: string): string {
 const RELEASE_HEADING = /^##\s+\[([^\]]+)\](?:\s*[-–]\s*(.+))?\s*$/;
 const SECTION_HEADING = /^###\s+(.+?)\s*$/;
 
-/**
- * Parse a Keep-a-Changelog document into releases. File order is preserved
- * (newest first by convention). Defensive: unrecognized lines attach to the
- * current section body and nothing throws if the format drifts.
- */
 export function parseChangelog(md: string): ChangelogRelease[] {
   const lines = md.split(/\r?\n/);
   const releases: ChangelogRelease[] = [];
@@ -103,9 +86,6 @@ export function parseChangelog(md: string): ChangelogRelease[] {
     if (section) {
       section.body += `${line}\n`;
     } else if (line.trim()) {
-      // Flat (Claude-Code-style) release notes — 0.2.12 onwards have no
-      // `###` subsections: a headline line + flat bullets. Collect them
-      // into an untitled section so the feed renders them as-is.
       section = { title: "", body: `${line}\n` };
     }
   }

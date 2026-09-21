@@ -1,25 +1,5 @@
 #!/usr/bin/env node
 
-// Injected-doc mode-qualification gate.
-//
-// Guide bodies and mandatory facts reach every agent session on every project,
-// and `pipelineConfig.mode` is per-project. Two rules over two surfaces:
-//
-//   R1  a status transition names the mode it means, when its target is
-//       outside AUTONOMOUS_DRIVER_STATUSES
-//   R2  a pipeline STEP named as the ACTOR of something the reader is told
-//       about names it too — staged and autonomous share no step name
-//
-// Out of reach, each for its own reason, none of them "unwritten yet":
-// whether the prose around a qualified claim is TRUE needs a reader who knows
-// the domain; a status ladder with no backtick or arrow was probed 2026-08-31
-// and occurs zero times, so the rule could not fail; and knowledge entries live
-// in the DATABASE while this runs in a CI job with node and nothing else —
-// covering them means the same rule in TypeScript at the write boundary, a
-// second copy of these regexes that no parity test can compare.
-//
-// Exit codes: 0 clean, 1 violations found, 2 could not run.
-
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
@@ -34,33 +14,21 @@ const SOURCES = {
   steps: 'packages/core/src/pipeline/registry.ts',
 };
 
-// cm:guard the fact openers must keep matching `export const` as well as `render:`, because the tier-1 MANDATORY text — the only text injected into every job rather than fetched on demand — reaches the registry through `render: () => PIPELINE_RULES_TEXT` and lives in a top-level const; matching `render:` alone extracted 12 bodies and read green while the two `→ approved` claims in that constant went unseen.
 const SURFACES = [
   { file: 'packages/core/src/guides/registry.ts', openers: ['body:'] },
-  // cm:guard every guide MODULE is listed, not only the aggregator: `registry.ts` imports its tiers, and a body defined in one of them is injected text this gate cannot see through the import. `conformance-guide.ts` sat unread that way from the day it was split out until ISS-1007 added it here.
   { file: 'packages/core/src/guides/conformance-guide.ts', openers: ['body:'] },
-  // cm:guard the assistant method's body is COMPOSED from the two layer modules below since
-  // ISS-1057, so `assistant-method-guide.ts` carries no text of its own for this gate to read and
-  // is no longer a surface. `COMPOSED_ONLY` below is what keeps that true: a body literal written
-  // back into that file would otherwise be injected text nobody checks, which is the exact hole the
-  // guard one entry down was written to close.
   { file: 'packages/core/src/assistant/prompt/base.ts', openers: ['text:'] },
   { file: 'packages/core/src/assistant/prompt/tools.ts', openers: ['text:'] },
   {
     file: 'packages/core/src/prompt/facts/registry.ts',
     openers: ['render: \\([^)]*\\) =>', '(?:export )?const \\w+ ='],
   },
-  // cm:guard the autonomous lane's mandatory blocks live in their OWN file because `registry.ts` is at its 500-line budget, and a surface this gate does not list is injected text nobody checks — which is the exact hole the guard above was written to close, one file over.
   {
     file: 'packages/core/src/prompt/facts/drive-rules.ts',
     openers: ['(?:export )?const \\w+ ='],
   },
 ];
 
-/** Files whose injected text must be composed from a surface above, never written out here. */
-// cm:guard a file that left SURFACES because its text moved has to be held to having left: without
-// this, restoring a `body:` literal to the guide puts an unread body back in front of every agent
-// session, and the gate that exists to notice exactly that would report green (ISS-1057).
 const COMPOSED_ONLY = [
   { file: 'packages/core/src/guides/assistant-method-guide.ts', openers: ['body:'] },
 ];
@@ -83,8 +51,6 @@ function arrayLiterals(src, declRe, rel, what) {
   return out;
 }
 
-// cm:guard derive the retired step names, never list them here. This read `REGISTRY_STEP_TOGGLE_KEYS` until ISS-895 deleted the toggles with the staged lane; the successor derivation is `jobTypes` MINUS what a runner may claim minus the two that bypass the gate, which is exactly the set of types that exist in the enum but can no longer be enqueued — i.e. the steps this pipeline does not have. That is the set R2 is for, and it keeps self-updating: a type dropped from `RUNNER_CAPABILITIES` joins it automatically, so the gate cannot go quiet about a step the fleet stopped running.
-// cm:edge contract -> packages/core/src/pipeline/registry.ts — RUNNER_CAPABILITIES; a claude-code entry added there silently narrows this vocabulary, which is correct (a claimable type IS a step this pipeline has) but must stay a deliberate edit
 const GATE_BYPASSING_JOB_TYPES = ['pm', 'custom'];
 
 function stepVocabulary() {
@@ -162,7 +128,6 @@ function main() {
       claims += r.stepClaimsChecked;
     }
 
-    // cm:guard EACH rule fails closed on its own count. One shared "found nothing" check lets a botched R2 regex ride R1's non-zero total into a green build — which is exactly how a rule that matches nothing becomes indistinguishable from a rule that is satisfied.
     if (checked === 0) {
       throw new CannotRun('0 transitions found across every surface — R1 extraction is broken');
     }
@@ -196,7 +161,6 @@ function main() {
     console.error('Name the mode the claim belongs to, on the line or in its table row.');
     return 1;
   }
-  // cm:edge naming -> scripts/verify.mjs — that script reads capture group 1 of this line as the fail-closed scan count, so the SUM leads: with either rule's count in front, a surface that legitimately holds none of that one kind would read as an empty scope.
   console.log(
     `injected-doc-modes: ${checked + claims} mode-specific claim(s) — ${checked} transition, ${claims} step — across ${bodies} injected bodies, all mode-qualified`,
   );

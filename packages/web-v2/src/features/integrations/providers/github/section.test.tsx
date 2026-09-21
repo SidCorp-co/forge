@@ -1,222 +1,327 @@
 // @vitest-environment jsdom
 //
-// Two rules carry this screen. The manifest handshake is a top-level form POST
-// because GitHub reads `manifest` from a form and the callback authenticates on
-// a cookie only a navigation sends. And an App already connected is REUSED: the
-// repository a project uses belongs on its binding, so minting one App per
-// project puts the scope in the wrong place and costs a private key each time.
+// ISS-1115 asked for the state an owner measured on live forge-dev rather than a
+// live specimen: a github binding row that survived a Disconnect — `active:
+// false`, `config: {}` — which `listBindingsForProject` hands straight back, so
+// the component sees a row and no repository. `GITHUB_EMPTY_INACTIVE` is that
+// row.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IntegrationSummary } from "../../types";
-import { GitHubSection } from "./section";
+import type { ConnectionSummary, IntegrationSummary } from "../../types";
 
-expect.extend(matchers);
-afterEach(cleanup);
+const PROJECT = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
+const CONNECTION = "b1d6b9c2-5f3a-4a1e-9f0e-6c2a7d8e4f10";
+const BINDING = "3f7c1a44-9e52-4d6b-8a21-0b5c9d2e7f61";
 
-const connectMutate = vi.fn();
-const bindMutate = vi.fn();
-const listItems = vi.fn<() => IntegrationSummary[]>();
-const connectionItems = vi.fn<() => Array<Record<string, unknown>>>();
-const repoData = vi.fn<() => Record<string, unknown> | undefined>();
+const bind = vi.fn();
+const update = vi.fn();
+const remove = vi.fn();
+
+let items: IntegrationSummary[] = [];
+let connections: ConnectionSummary[] = [];
+
+const REPOSITORIES = [
+  {
+    fullName: "SidCorp-co/forge",
+    owner: "SidCorp-co",
+    repo: "forge",
+    installationId: 159473037,
+  },
+  {
+    fullName: "SidCorp-co/forge-plugin",
+    owner: "SidCorp-co",
+    repo: "forge-plugin",
+    installationId: 159473037,
+  },
+];
+
+/** Overridden by the tests that need the App to answer with nothing, or to fail. */
+let repos: {
+  data?: { repositories: typeof REPOSITORIES; truncated: boolean };
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+};
 
 vi.mock("../../hooks", () => ({
-  useIsOrgAdmin: () => true,
-  useIntegrationsList: () => ({ data: { items: listItems() } }),
-  useConnections: () => ({ data: { items: connectionItems() } }),
-  useGitHubRepositories: () => ({ data: repoData(), isLoading: false, isError: false }),
-  useBindExistingConnection: () => ({ mutate: bindMutate, isPending: false, isError: false }),
-  useGitHubConnect: () => ({
-    mutateAsync: connectMutate,
+  useIntegrationsList: () => ({ data: { items } }),
+  useConnections: () => ({ data: { items: connections } }),
+  useGitHubRepositories: () => repos,
+  useBindExistingConnection: () => ({ mutate: bind, isPending: false, isError: false, error: null }),
+  useUpdateProviderIntegration: () => ({
+    mutate: update,
     isPending: false,
     isError: false,
-    data: null,
+    error: null,
   }),
-  useDeleteProviderIntegration: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
-  useUpdateProviderIntegration: () => ({ mutate: vi.fn() }),
+  useDeleteProviderIntegration: () => ({
+    mutate: remove,
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+  useGitHubConnect: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false, error: null }),
   useUpdateConnection: () => ({ mutate: vi.fn(), isPending: false }),
   useOrgConnectionLocked: () => false,
+  useIsOrgAdmin: () => true,
 }));
 
-vi.mock("../../components/connection-owner-field", () => ({ ConnectionOwnerField: () => null }));
+const { GitHubSection } = await import("./section");
 
-const START = {
-  postUrl: "https://github.com/organizations/SidCorp-co/settings/apps/new",
-  state: "signed.state.value",
-  manifest: { name: "Forge", default_permissions: { issues: "write" } },
-};
-
-const REPOS = {
-  repositories: [
-    {
-      installationId: 111,
-      account: "SidCorp-co",
-      owner: "SidCorp-co",
-      repo: "forge",
-      fullName: "SidCorp-co/forge",
-    },
-    {
-      installationId: 222,
-      account: "other-org",
-      owner: "other-org",
-      repo: "codemap",
-      fullName: "other-org/codemap",
-    },
-  ],
-  truncated: false,
-};
+expect.extend(matchers);
 
 function binding(over: Partial<IntegrationSummary> = {}): IntegrationSummary {
   return {
-    id: "bind-1",
-    connectionId: "conn-1",
-    projectId: "proj-1",
+    id: BINDING,
+    connectionId: CONNECTION,
+    projectId: PROJECT,
     provider: "github",
     role: "service",
     stages: [],
-    config: { owner: "SidCorp-co", repo: "forge" },
+    config: {},
     bindingConfig: {},
     label: "",
     active: true,
     bindingActive: true,
     connectionActive: true,
-    lastHealthStatus: "ok",
+    lastHealthStatus: null,
     lastHealthAt: null,
     breakerOpenedAt: null,
     hasSecrets: true,
-    integrationSecretSet: false,
-    createdAt: "2026-09-06T00:00:00.000Z",
-    updatedAt: "2026-09-06T00:00:00.000Z",
+    integrationSecretSet: true,
+    agentAccess: "none",
+    agentPathKind: "core-mediated",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-20T00:00:00.000Z",
     ...over,
   } as IntegrationSummary;
 }
 
-describe("GitHubSection", () => {
-  let submit: ReturnType<typeof vi.spyOn>;
+function connection(over: Partial<ConnectionSummary> = {}): ConnectionSummary {
+  return {
+    id: CONNECTION,
+    ownerType: "org",
+    ownerId: "63b1b3a0-1f0e-4a77-9f2d-2c5e6a7b8c90",
+    provider: "github",
+    displayName: "SidCorp-co App",
+    config: {},
+    active: true,
+    lastHealthStatus: null,
+    lastHealthAt: null,
+    breakerOpenedAt: null,
+    hasSecrets: true,
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-20T00:00:00.000Z",
+    ...over,
+  } as ConnectionSummary;
+}
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    listItems.mockReturnValue([]);
-    connectionItems.mockReturnValue([]);
-    repoData.mockReturnValue(REPOS);
-    connectMutate.mockResolvedValue(START);
-    submit = vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
+/** The measured state: Disconnect left the row behind, switched off and empty. */
+const GITHUB_EMPTY_INACTIVE = binding({ active: false, bindingActive: false, config: {} });
+
+const GITHUB_CONFIGURED = binding({
+  config: { owner: "SidCorp-co", repo: "forge", installationId: 159473037 },
+  bindingConfig: { owner: "SidCorp-co", repo: "forge", installationId: 159473037 },
+});
+
+function mount() {
+  render(<GitHubSection projectId={PROJECT} />);
+}
+
+function picker(): HTMLSelectElement | null {
+  return screen.queryByLabelText("Repository") as HTMLSelectElement | null;
+}
+
+function choose(fullName: string) {
+  const select = picker();
+  if (!select) throw new Error("the repository picker did not render");
+  fireEvent.change(select, { target: { value: fullName } });
+}
+
+beforeEach(() => {
+  bind.mockClear();
+  update.mockClear();
+  remove.mockClear();
+  items = [];
+  connections = [connection()];
+  repos = {
+    data: { repositories: REPOSITORIES, truncated: false },
+    isLoading: false,
+    isError: false,
+    error: null,
+  };
+});
+afterEach(cleanup);
+
+describe("a github binding that records a repository", () => {
+  it("names that repository on the connected card", () => {
+    items = [GITHUB_CONFIGURED];
+
+    mount();
+
+    expect(screen.getByText("SidCorp-co/forge")).toBeInTheDocument();
   });
 
-  afterEach(() => submit.mockRestore());
+  it("offers a control that reopens the picker, so a repository is changeable in place", () => {
+    items = [GITHUB_CONFIGURED];
+    mount();
 
-  it("reuses an App that already exists instead of offering to mint another", () => {
-    connectionItems.mockReturnValue([
-      { id: "conn-1", provider: "github", active: true, displayName: "GitHub App forge-sidcorp" },
-    ]);
-    render(<GitHubSection projectId="proj-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /change repository/i }));
 
-    expect(screen.queryByRole("button", { name: "Create GitHub App" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Connect repository" })).toBeInTheDocument();
-    expect(screen.getByText(/GitHub App forge-sidcorp/)).toBeInTheDocument();
+    expect(picker()).not.toBeNull();
   });
 
-  it("puts the repository AND its installation on the binding, not on a new App", async () => {
-    connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
-    render(<GitHubSection projectId="proj-1" />);
+  it("changes the repository by patching that same row, with no `active` field on an active binding", () => {
+    items = [GITHUB_CONFIGURED];
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: /change repository/i }));
 
-    fireEvent.change(screen.getByLabelText("Repository"), {
-      target: { value: "other-org/codemap" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Connect repository" }));
+    choose("SidCorp-co/forge-plugin");
+    fireEvent.click(screen.getByRole("button", { name: /^save repository$/i }));
 
-    await waitFor(() => expect(bindMutate).toHaveBeenCalledTimes(1));
-    expect(bindMutate).toHaveBeenCalledWith({
-      id: "conn-1",
+    expect(bind).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledTimes(1);
+    const [vars] = update.mock.calls[0];
+    expect(vars).toEqual({
+      id: BINDING,
       body: {
-        projectId: "proj-1",
+        config: { owner: "SidCorp-co", repo: "forge-plugin", installationId: 159473037 },
+      },
+    });
+    expect(vars.body).not.toHaveProperty("active");
+  });
+});
+
+describe("a github binding row that records no repository", () => {
+  it("renders the picker rather than the connected card when the row is switched off", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+
+    mount();
+
+    expect(picker()).not.toBeNull();
+  });
+
+  it("renders the picker when the row is still active", () => {
+    items = [binding({ config: {} })];
+
+    mount();
+
+    expect(picker()).not.toBeNull();
+  });
+
+  it("renders the picker when owner and repo are present but empty", () => {
+    items = [binding({ config: { owner: "", repo: "" } })];
+
+    mount();
+
+    expect(picker()).not.toBeNull();
+  });
+
+  it("renders the picker when owner and repo are not strings", () => {
+    items = [binding({ config: { owner: 7, repo: false } })];
+
+    mount();
+
+    expect(picker()).not.toBeNull();
+  });
+
+  it("patches the surviving row instead of asking for a second one the unique index refuses", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+    mount();
+
+    choose("SidCorp-co/forge");
+    fireEvent.click(screen.getByRole("button", { name: /^save repository$/i }));
+
+    expect(bind).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][0].id).toBe(BINDING);
+  });
+
+  it("switches the row back on in the same write that gives it a repository", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+    mount();
+
+    choose("SidCorp-co/forge");
+    fireEvent.click(screen.getByRole("button", { name: /^save repository$/i }));
+
+    expect(update.mock.calls[0][0].body).toEqual({
+      config: { owner: "SidCorp-co", repo: "forge", installationId: 159473037 },
+      active: true,
+    });
+  });
+
+  it("never prints the instruction that names an act which cannot work", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+
+    mount();
+
+    expect(screen.queryByText(/reconnecting this project/i)).toBeNull();
+  });
+});
+
+describe("the controls that belong to the binding row itself", () => {
+  it("keeps Disconnect on the picker when the App answers with no repositories", () => {
+    items = [binding({ config: {} })];
+    repos = {
+      data: { repositories: [], truncated: false },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+
+    expect(remove).toHaveBeenCalledWith(BINDING);
+  });
+
+  it("keeps Disconnect on the picker when the repository list fails to load", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+    repos = { isLoading: false, isError: true, error: new Error("boom") };
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+
+    expect(remove).toHaveBeenCalledWith(BINDING);
+  });
+
+  it("keeps the enable toggle on the picker, so a switched-off row has a way back either way", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+
+    mount();
+
+    expect(screen.getByLabelText("Enabled for this project")).toBeInTheDocument();
+  });
+});
+
+describe("a project with no github binding row at all", () => {
+  it("renders the picker over the reusable connection", () => {
+    items = [];
+
+    mount();
+
+    expect(picker()).not.toBeNull();
+  });
+
+  it("still creates the binding through the bind-existing route, with the body it sent before", () => {
+    items = [];
+    mount();
+
+    choose("SidCorp-co/forge");
+    fireEvent.click(screen.getByRole("button", { name: /^connect repository$/i }));
+
+    expect(update).not.toHaveBeenCalled();
+    expect(bind).toHaveBeenCalledTimes(1);
+    expect(bind.mock.calls[0][0]).toEqual({
+      id: CONNECTION,
+      body: {
+        projectId: PROJECT,
         role: "service",
-        config: { owner: "other-org", repo: "codemap", installationId: 222 },
+        config: { owner: "SidCorp-co", repo: "forge", installationId: 159473037 },
         agentAccess: "none",
       },
     });
-    expect(connectMutate).not.toHaveBeenCalled();
-  });
-
-  // cm:guard ISS-1074 made github `core-mediated`, so this form now carries the grant, and this
-  // pair of cases is what says the default did not move with it. A repository bound without
-  // touching the switch must reach the server as `none`: the previous shape sent no key at all and
-  // the column's own default answered, which stops being true the moment the key is present.
-  it("offers the agent grant and sends it closed unless the operator opens it", async () => {
-    connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
-    render(<GitHubSection projectId="proj-1" />);
-
-    const grant = screen.getByLabelText("Agents on this project may use this");
-    expect(grant).not.toBeChecked();
-    expect(screen.getByText(/Forge holds the credential and makes the call/)).toBeInTheDocument();
-
-    fireEvent.click(grant);
-    fireEvent.change(screen.getByLabelText("Repository"), {
-      target: { value: "other-org/codemap" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Connect repository" }));
-
-    await waitFor(() => expect(bindMutate).toHaveBeenCalledTimes(1));
-    expect(bindMutate.mock.calls[0]?.[0].body).toMatchObject({ agentAccess: "all" });
-  });
-
-  // cm:guard github binds as `service` and offers no stage choice, because
-  // `providerCanDeploy('github')` is false. A screen that offered one would be
-  // an affordance defect: the create schema refuses `role: 'deploy'` on github
-  // by name, so the operator would fill in a field the server then rejects.
-  it("offers no stage choice, because github declares canDeploy false", () => {
-    connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
-    render(<GitHubSection projectId="proj-1" />);
-
-    expect(screen.queryByLabelText("Environment")).toBeNull();
-    expect(screen.queryByLabelText("Stage")).toBeNull();
-  });
-
-  it("refuses to bind until a repository is chosen", () => {
-    connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
-    render(<GitHubSection projectId="proj-1" />);
-
-    expect(screen.getByRole("button", { name: "Connect repository" })).toBeDisabled();
-  });
-
-  it("offers the create path only when no App exists", () => {
-    render(<GitHubSection projectId="proj-1" />);
-    expect(screen.getByRole("button", { name: "Create GitHub App" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Use an existing App" })).toBeNull();
-  });
-
-  it("hands GitHub the manifest as a form POST carrying the signed state", async () => {
-    render(<GitHubSection projectId="proj-1" />);
-    fireEvent.change(screen.getByLabelText("GitHub organization"), {
-      target: { value: "SidCorp-co" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create GitHub App" }));
-
-    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
-    const form = submit.mock.instances[0] as HTMLFormElement;
-    expect(form.method).toBe("post");
-    expect(form.action).toBe(`${START.postUrl}?state=signed.state.value`);
-    const field = form.querySelector('input[name="manifest"]') as HTMLInputElement;
-    expect(JSON.parse(field.value)).toEqual(START.manifest);
-  });
-
-  it("shows the connected repository once a binding exists", () => {
-    listItems.mockReturnValue([binding()]);
-    render(<GitHubSection projectId="proj-1" />);
-
-    expect(screen.queryByRole("button", { name: "Connect repository" })).toBeNull();
-    expect(screen.getByRole("link", { name: "SidCorp-co/forge" })).toHaveAttribute(
-      "href",
-      "https://github.com/SidCorp-co/forge",
-    );
-  });
-
-  it("says so rather than inventing a repository the binding never recorded", () => {
-    listItems.mockReturnValue([binding({ config: {} })]);
-    render(<GitHubSection projectId="proj-1" />);
-
-    expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.getByText(/no repository recorded yet/)).toBeInTheDocument();
   });
 });

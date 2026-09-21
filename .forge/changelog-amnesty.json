@@ -60,6 +60,10 @@
     {
       "entry": "**The Issues list opens on the work that is waiting for you, and every tab says how much it\n  holds.** Opening a project's issues showed all of them, newest first — measured on this project,\n  1,011 rows of which 986 were closed, so the default view was 97% finished work and the eleven\n  live issues were somewhere inside it. The tabs are now counted, and the page opens on the one\n  that matters: **Needs you**. Each tab carries its figure, so where the work sits is legible\n  before anything is clicked rather than after several are.",
       "reason": "Corrected within the same unreleased window, and only the half that became false. The entry announced two things: that the tabs are counted, and that the page opens on the tab holding work waiting on a person. The counts shipped and stay. The landing tab did not: the owner asked on 2026-09-14 for the list to open on the whole ledger, which the counted tabs already make readable without cutting the view to get there. Leaving the published text would have the record claim a landing view the product does not have. The replacement entry states the counts and says the list still opens on everything."
+    },
+    {
+      "entry": "**`forge-runner master status` answers two questions, not one.** Whether a pane exists, and\n  whether this box may keep a master at all — so a box deliberately not driving reads as that.",
+      "reason": "Corrected, not withdrawn, in the same unreleased block and by the same issue. The published text was true of what shipped and stopped being true in the reopened round: `master status` now prints a third line, this box's runner-admission answer, because the two it printed could not tell an owner why no master was placed. An independent judge measured the gap on a scratch box — runner served as `draining`, no stand-down anywhere, the daemon logging `runner is draining — taking no new work` while `master status` said `driving` in the same minute (ISS-1118 comment 5d9e3805, Finding B). The replacement entry says three questions and names the third. Same feature, one more answer."
     }
   ]
 }

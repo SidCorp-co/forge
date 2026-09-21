@@ -29,9 +29,7 @@ const transitionBodySchema = z
   .object({
     toStatus: z.enum(issueStatuses),
     reason: z.string().trim().min(1).max(2000).optional(),
-    // cm:guard optional here on purpose (RFC 0002 INV-5) — a UI that cannot ask the user which kind must send nothing rather than a default, because a wrong kind renders a wrong banner and only a human can correct it
     waitingKind: z.enum(waitingKinds).optional(),
-    // cm:guard what would SETTLE the park, distinct from `reason`, which is why the work stopped. Sending it mints a free-text question; the mint is refused for a human actor, so this route accepting it changes nothing for a person moving an issue by hand (ISS-996).
     needs: z.string().trim().min(1).max(2000).optional(),
   })
   .strict();
@@ -48,19 +46,22 @@ const _forbidden = (message: string, code = 'FORBIDDEN') =>
   new HTTPException(403, { message, cause: { code } });
 
 /**
- * Map a core `TransitionError` onto the REST error contract. Status codes and
- * messages are part of the public API — keep them stable.
+ * Map a core `TransitionError` onto the REST error contract. Status codes are
+ * part of the public API — keep them stable.
+ *
+ * Every arm answers with `err.detail`, the sentence the thrower built, because
+ * a `NO_OP` is two different facts: the issue is at the status asked for, or
+ * the release gate rewrote that status to where it already stands. Only
+ * `noOpSentence` can tell them apart, and it names the endpoints that reach
+ * `closed`. A fixed message here reports the first when it means the second.
  */
 function transitionErrorToHttp(err: TransitionError): HTTPException {
   const cause = { code: err.code, details: err.details };
   switch (err.code) {
-    case 'NO_OP':
-      return new HTTPException(409, { message: 'issue already in toStatus', cause });
     case 'TRANSITION_REASON_REQUIRED':
     case 'WAITING_KIND_REQUIRED':
     case 'WAITING_KIND_NOT_APPLICABLE':
     case 'RELEASE_RECORD_REQUIRED':
-    // cm:guard 422 and not 409, beside its sibling: the request is well-formed and the state is not in conflict — a record the project declared is simply not written yet, and the message names which. A 409 reads as "retry" to every client library that special-cases it.
     case 'ENTRY_CRITERIA_UNMET':
       return new HTTPException(422, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
@@ -87,7 +88,6 @@ const UNBLOCK_CASCADE_DEPENDENT_CAP = 10;
  * blocker has at least one outgoing `kind='blocks'` dependent — the toast
  * confirms the cascade fired before the dispatcher tick lands.
  */
-// cm:guard an entry carrying `dependents` must NOT be re-queried — a `dropped` blocker has already had its edges expired inside the transition and the query below filters expired edges out, so re-deriving finds nothing and the cascade goes unannounced on the one status that needs it most
 export async function triggerTerminalDispatch(
   terminal: Array<{
     issueId: string;
@@ -167,7 +167,6 @@ export async function triggerTerminalDispatch(
       });
     }
 
-    // cm:guard a dependent may sit in ANOTHER project, so a reference is named with ITS project's prefix and not the blocker's — naming a cross-project dependent under this project's prefix is the substitution ISS-992 exists to remove, not one to add on the way out
     const prefixOf = new Map<string, string | null>(
       await Promise.all(
         [...new Set([...terminal.map((t) => t.projectId), ...pending.map((p) => p.projectId)])]
@@ -197,7 +196,6 @@ export async function triggerTerminalDispatch(
         data: {
           blockerId: t.issueId,
           blockerIssSeq: t.issSeq ?? null,
-          // cm:guard the SERVER names the blocker — web-v2 has no `@forge/core` dependency and cannot know the project's issue prefix, so a browser rebuilding `ISS-${issSeq}` renders the wrong name on every prefixed project (ISS-992)
           blockerDisplayId:
             t.issSeq == null ? null : formatIssueRef(prefixOf.get(t.projectId) ?? null, t.issSeq),
           dependents: list.slice(0, UNBLOCK_CASCADE_DEPENDENT_CAP),
@@ -206,9 +204,7 @@ export async function triggerTerminalDispatch(
         },
       });
     }
-  } catch {
-    // cm:why the cascade broadcast is a toast and nothing more — the edge rows are the record and a master reads those itself, so losing one costs a UI hint rather than a dispatch
-  }
+  } catch {}
 }
 
 export const transitionRoutes = new Hono<{ Variables: AuthVars }>();
@@ -264,7 +260,6 @@ transitionRoutes.post(
       throw err;
     }
 
-    // cm:why every distinct CHILD project is ticked as well as this one. The reason given here used to be that a `blocks` edge may cross projects, which it may not: `dependency-service.ts:writeIssueDependency` is the only insert path and throws CROSS_PROJECT unless both endpoints sit in the named project, so the child project is this project for every edge this query can return. What the fan-out still buys is a legacy row written before that check and a dependent whose project is never ticked waiting out the reconciler backstop instead of dispatching — which is why it stays rather than being narrowed to one id (ISS-1100).
     if (result.terminal) {
       await triggerTerminalDispatch([
         {

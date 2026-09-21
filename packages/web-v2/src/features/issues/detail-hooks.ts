@@ -1,15 +1,5 @@
 "use client";
 
-// web-v2 feature module: issues — detail React Query hooks (Part B).
-//
-// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts#routeEvent — these keys MUST match the
-//   ones that router invalidates; a key it does not name simply never refreshes on a WS event
-//   issue     → ['issue', id]                 (issue.* events)
-//   comments  → ['comments', id]              (comment.* events)
-//   activity  → ['activities', id]            (issue.* / comment.* / dep events)
-//   tasks     → ['tasks', id]                 (no WS event → invalidate on mutate)
-//   attachments → ['issue', id, 'attachments']
-// Reuse `useIssueDeps`/`useIssueCost`/`useProjectMembers` from `./hooks`.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
@@ -84,12 +74,6 @@ export function useStepDurations(projectId: string | undefined, id: string | und
   });
 }
 
-/** Post a comment, then upload any staged files via per-file multipart
- *  (`POST /api/comments/:commentId/attachments`). Create-then-upload mirrors v1:
- *  the create endpoint takes only `body`/`parentId`. An upload failure does NOT
- *  discard the already-created comment — we toast and still invalidate so the
- *  comment (and any files that did upload) appears. Invalidate the comment tree
- *  + activity feed on success. */
 export function useCreateComment(id: string) {
   const qc = useQueryClient();
   const { toast } = useToast();

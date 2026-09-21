@@ -90,7 +90,6 @@ describe('runner:sessions', () => {
     expect(applyMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard the incarnation this schema used to refuse, and the assertion is that the OTHER run survives with it: `starting` is what a box publishes between a revival's CAS committing and the process registering, and because the snapshot is validated whole, refusing it took every run on that box off the Agents screen at once. A test asserting only that the `starting` run is stored would have passed against a version that dropped its siblings (ISS-998).
   it('stores a snapshot carrying a run that is still starting, siblings and all', async () => {
     applyMock.mockClear();
     await handleRunnerSessions(socket({ type: 'device', deviceId: 'dev-1' }), {

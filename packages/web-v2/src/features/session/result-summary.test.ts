@@ -39,9 +39,6 @@ describe("what the summary says", () => {
     expect(summarizeResult("")).toEqual({ label: "No result", hasBody: false, pending: false });
   });
 
-  // cm:guard an absent result is "still out" only where the CALLER says the turn is live. Absence
-  // on its own is a missing record, not an in-flight call, and saying otherwise invents a lifecycle
-  // state this issue's rules refuse to invent.
   it("does not read an absent result as running when the turn is not live", () => {
     expect(summarizeResult(undefined)).toEqual({
       label: "No output recorded",
@@ -82,10 +79,6 @@ describe("what the summary says", () => {
   });
 });
 
-// cm:guard THIS is the rule's reason to exist, and it is asserted rather than described: the
-// obvious improvement is to read a well-known field and say "No pipeline runs" for
-// `{"returned":0}`. That is a per-tool registry nobody has written down, and next month's tool falls
-// out of it in silence. If someone adds that read, these two go red.
 describe("nothing about the tool changes the answer", () => {
   it("summarizes {returned: 0} as one field, like any other one-field object", () => {
     expect(summarizeResult({ returned: 0 }).label).toBe(summarizeResult({ anything: 0 }).label);
@@ -120,8 +113,6 @@ describe("the body a reader opens onto", () => {
     expect(formatResultBody("plain words")).toBe("plain words");
   });
 
-  // cm:guard a value that cannot be serialized still has to show a reader something true rather
-  // than throwing inside a render and taking the whole thread down with it.
   it("survives a value JSON cannot take", () => {
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
@@ -130,9 +121,6 @@ describe("the body a reader opens onto", () => {
   });
 });
 
-// cm:guard THE BOUNDARY, which the first cut of this module did not have and 31 green tests did not
-// see: every path serializes a tool's output into a string before it reaches the browser, so a
-// summary that only ever met objects said `Text · N characters` on every real card.
 describe("what arrives from the wire", () => {
   it("reads a serialized object back as the object", () => {
     expect(decodeToolOutput('{"project":{"slug":"erp"}}')).toEqual({ project: { slug: "erp" } });

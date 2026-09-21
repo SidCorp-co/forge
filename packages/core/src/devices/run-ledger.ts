@@ -9,8 +9,9 @@
 
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, runners } from '../db/schema.js';
+import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
+import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
 
 export interface RunLedgerIssue {
@@ -31,22 +32,14 @@ export interface RunLedgerEntry {
   blockerKind: string | null;
   waitingOn: string | null;
   /** Epoch SECONDS, which is the unit the box's ledger stamps. */
-  // cm:guard the unit is in the NAME because it has to be: the box has no date library and stamps `as_secs()`, so this crosses the wire as a bare number. A field called `sessionTerminalAt` carrying seconds is the shape that gets read as milliseconds and dated to 1970 — and a mark 56 years old reads as a mark, so nothing would look wrong (ISS-964 criterion 52).
   sessionTerminalAtEpochS: number | null;
   worktreeGoneAtEpochS: number | null;
   issues: RunLedgerIssue[];
 }
 
-// cm:guard the ONE converter, and it is here rather than at each call site so the unit is asserted once. A zero is a real stamp and must not be read as absent, so the check is `== null` and never falsy.
 const fromEpochSeconds = (s: number | null | undefined): Date | null =>
   s == null ? null : new Date(s * 1000);
 
-/**
- * Replace everything core holds for one device with what that device just said.
- */
-// cm:guard the delete and the upserts are ONE transaction. A snapshot applied in two statements has a window where the device holds nothing, and a reader landing in it reports a working box as idle — the exact wrong answer this surface exists to stop being given.
-// cm:guard the delete is scoped to `deviceId` and must stay so: this is the only writer that removes rows it did not just write, and a predicate widened past one device would have one box's snapshot retire another's runs.
-// cm:guard the PROJECT on each entry is the box's claim and is checked against that box's own bindings before anything is written. Every paired runner in the fleet holds a valid device token, so an unchecked project id would let any box put a worktree path and a pid into any project's read surface — the same reason `closeMasterSession` refuses to act on a session its caller does not own.
 export async function applyRunLedgerSnapshot(args: {
   deviceId: string;
   entries: RunLedgerEntry[];
@@ -72,6 +65,43 @@ export async function applyRunLedgerSnapshot(args: {
     }
   }
 
+  // A box reporting its parent is corroboration, never the record: the record
+  // is `agent_sessions.parent_session_id`, which core writes when it opens the
+  // child. A reported master core never issued — or one that is a master of
+  // another box — is refused here and named, and the run itself is still stored,
+  // because losing the observation would cost an operator the whole row rather
+  // than one edge of it (ISS-1136).
+  const reported = [...new Set(entries.map((e) => e.masterSessionId).filter((id) => id != null))];
+  const issued = new Set(
+    reported.length === 0
+      ? []
+      : (
+          await db
+            .select({ id: agentSessions.id })
+            .from(agentSessions)
+            .where(
+              and(
+                inArray(agentSessions.id, reported),
+                eq(agentSessions.kind, MASTER_SESSION_KIND),
+                eq(agentSessions.deviceId, args.deviceId),
+              ),
+            )
+        ).map((r) => r.id),
+  );
+  for (const e of entries) {
+    if (e.masterSessionId != null && !issued.has(e.masterSessionId)) {
+      logger.warn(
+        {
+          deviceId: args.deviceId,
+          runId: e.runId,
+          projectId: e.projectId,
+          reportedMasterSessionId: e.masterSessionId,
+        },
+        'run-ledger: this box reported a master core did not issue on it — the owner edge was refused, the run is still recorded',
+      );
+    }
+  }
+
   const observedAt = new Date();
   await db.transaction(async (tx) => {
     const keep = entries.map((e) => e.runId);
@@ -89,7 +119,8 @@ export async function applyRunLedgerSnapshot(args: {
       const values = {
         projectId: e.projectId,
         sessionId: e.sessionId,
-        masterSessionId: e.masterSessionId,
+        masterSessionId:
+          e.masterSessionId != null && issued.has(e.masterSessionId) ? e.masterSessionId : null,
         pid: e.pid,
         worktreePath: e.worktreePath,
         bootId: e.bootId,
@@ -132,7 +163,6 @@ export interface ProjectRunSessionRow
 }
 
 /** Every run the fleet has reported for one project, newest report first. */
-// cm:guard `lastActivityAt`, `sessionStatus` and `sessionFailureReason` come from the JOINED `agent_sessions` row and never from the snapshot. A box reporting its own liveness is a box marking its own homework — the heartbeat core already receives is the independent reading, and the two disagreeing is the signal a reader needs (ISS-934 criterion 11).
 export async function readProjectRunSessions(projectId: string): Promise<ProjectRunSessionRow[]> {
   const rows = await db
     .select({
@@ -175,7 +205,6 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
     issues: (r.issues ?? []) as RunLedgerIssue[],
     observedAt: new Date(r.observedAt).toISOString(),
     lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
-    // cm:guard each mark is `null` when unset and never omitted: a reader deciding whether a diff is still recoverable has to tell "this has not happened" from "the box never reported it", and an absent key reads as the second (ISS-964 criterion 52).
     sessionTerminalAt: r.sessionTerminalAt ? new Date(r.sessionTerminalAt).toISOString() : null,
     worktreeGoneAt: r.worktreeGoneAt ? new Date(r.worktreeGoneAt).toISOString() : null,
   }));

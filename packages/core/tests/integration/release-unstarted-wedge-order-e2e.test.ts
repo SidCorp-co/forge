@@ -30,7 +30,6 @@ import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 const REFUSAL = 'the notification write failed';
 const state = vi.hoisted(() => ({ refuseOnce: true }));
 
-// cm:guard the wedge refuses exactly ONCE and then behaves, which is what makes the second half of each test mean something: a mock that refused for ever would prove the pass retries and nothing about whether it can ever finish.
 vi.mock('../../src/pipeline/wedge.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/pipeline/wedge.js')>();
   return {
@@ -107,10 +106,8 @@ describe('a recovery whose notification will not write', () => {
 
     await expect(recoverUnstartedReleaseBatches(new Date())).rejects.toThrow(REFUSAL);
 
-    // cm:guard the RUN still being open is the whole assertion, not a detail of it: it is what keeps the row reachable, because the resume arm selects on `pr.status = 'running'`. Closing it first and failing here is the state no tick can recover from.
     expect(await runStatus(runId)).toBe('running');
     expect(await wedgesFor(jobId)).toBe(0);
-    // cm:guard the fence and the roster are already done and must STAY done — the pass is resumable, not restartable, and an owner whose issues bounced back to `releasing` would be watching the recovery undo itself.
     expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
 
     expect(await recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 1 });

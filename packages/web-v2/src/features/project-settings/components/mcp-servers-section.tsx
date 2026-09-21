@@ -1,29 +1,16 @@
 "use client";
 
-// Project settings → Pipeline → "MCP servers" (project-default).
-//
-// Edits `pipelineConfig.mcpServers`, the project-default MCP server set the
-// dispatcher seeds into EVERY job's temp `--mcp-config`. forge-runner's
-// `--strict-mcp-config` makes Claude ignore the runner box's own MCP config,
-// so a project must declare the secret-free servers it wants (playwright, …)
-// here. The dispatcher merges this as the BASE and per-state overrides layer on top.
-//
-// cm:guard this map is SECRET-FREE servers and nothing else. An integration does not appear here
-// and never did reach an agent from here — whether an agent may use one is `agentAccess` on the
-// binding, set on the Integrations tab.
-//
-// Shorthand persisted to `mcpServers`:
-//   - `name: true`            → enable a catalog default (MCP_CATALOG)
-//   - `{ …raw spec }`         → a custom server (stdio command/args/env, or
-//                               http url/headers), used verbatim by the runner
-//   - absent                  → omitted
-//
-// Round-trips the FULL fetched pipelineConfig on save (the PATCH schema
-// requires `states`), only overriding the `mcpServers` key — sibling keys the
-// Pipeline tab owns survive.
 
 import { useEffect, useMemo, useState } from "react";
-import { Banner, Button, Icon, Input, Textarea, Toggle } from "@/design";
+import {
+  Banner,
+  Button,
+  CardTitle,
+  Icon,
+  Input,
+  Textarea,
+  Toggle,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import { providerForMcpServerName } from "@/features/integrations/providers/registry";
@@ -98,12 +85,6 @@ export function McpServersSection({
     });
   }
 
-  // cm:guard the integration refusal comes BEFORE the JSON parse, and names the provider. Refusing
-  // by shape instead — which is what this did — told an operator typing `epodsystem` that the spec
-  // "must be a JSON object", so the way out it implied was to type `{}`: a custom server of that
-  // name, stored in the map, injecting nothing, and indistinguishable on this screen from one that
-  // works. `epodsystem_<label>` is caught by the same call, because the suffix rule lives once, on
-  // the registry.
   function addCustom() {
     setCustomError(null);
     const name = customName.trim();
@@ -145,7 +126,7 @@ export function McpServersSection({
 
   return (
     <div className="mt-6 border-t border-line pt-5">
-      <h3 className="fg-label text-fg">MCP servers (project default)</h3>
+      <CardTitle className="fg-label text-fg">MCP servers (project default)</CardTitle>
       <p className="fg-body-sm mb-3 text-muted">
         Servers seeded into every agent dispatched for this project. Required because the runner
         ignores its own MCP config — declare the secret-free servers your jobs need here. Per-stage
@@ -177,10 +158,7 @@ export function McpServersSection({
             <div className="min-w-0">
               <p className="fg-label flex flex-wrap items-center gap-1.5 text-fg">
                 <Icon name="command" size={13} className="text-muted" />
-                <span className="font-mono text-[13px]">{name}</span>
-                {/* cm:guard a leftover integration sentinel is NOT a custom server, and the badge
-                    that called it one is what made a stored `epodsystem: true` read as a working
-                    declaration on the only screen that shows this map. */}
+                <span className="font-mono text-13">{name}</span>
                 {providerForMcpServerName(name) ? (
                   <span className="fg-body-sm rounded-pill bg-[var(--amberw-50)] px-2 py-0.5 text-[var(--amberw-700)]">
                     {providerForMcpServerName(name)?.label} integration — injects nothing from here
@@ -223,7 +201,7 @@ export function McpServersSection({
                 rows={5}
                 value={customSpec}
                 onChange={(e) => setCustomSpec(e.target.value)}
-                className="font-mono text-[12.5px]"
+                className="font-mono text-12-5"
               />
               {customError && (
                 <p className="fg-caption text-[var(--red-600)]">{customError}</p>

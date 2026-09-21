@@ -45,7 +45,7 @@ export function PinnedTabBar({ tabs, activeHref, onSelect, onRemove }: PinnedTab
               type="button"
               onClick={() => onSelect?.(t.href)}
               aria-current={active ? "page" : undefined}
-              className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold"
+              className="inline-flex items-center gap-1.5 text-12-5 font-semibold"
             >
               <Icon name={t.icon} size={13} style={active ? { color: "var(--accent)" } : undefined} />
               <span className="max-w-[160px] truncate">{t.label}</span>

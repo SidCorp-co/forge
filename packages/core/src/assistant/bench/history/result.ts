@@ -84,7 +84,6 @@ export function readHistoryResult(text: string, where = 'history'): HistoryResul
   for (const key of KEYS) {
     if (!(key in obj)) throw new HistoryShapeError(`${where} lacks ${key}`);
   }
-  // cm:why a file written before ISS-1065 excluded by run file only: no session was dropped by task message, so the empty list and zero are that file's truth
   if (obj.excludedSessionsByTask === undefined) obj.excludedSessionsByTask = [];
   if (obj.excludedRowsByTask === undefined) obj.excludedRowsByTask = 0;
   if (!Array.isArray(obj.groups) || !Array.isArray(obj.flagged))

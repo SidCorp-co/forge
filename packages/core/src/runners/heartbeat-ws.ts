@@ -62,8 +62,6 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     return;
   }
   const input = parsed.data;
-  // cm:guard the upsert key is (project, device, type) — `runners_project_device_type_uq` in db/schema.ts is the authority, and a device may serve several projects. Keyed on device and type alone this UPDATE re-pointed an existing row's `project_id`, so the second of the daemon's per-project registers silently moved the first project's runner onto the second (ISS-990).
-  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/ws.rs — that side sends one `runner:register` per bound project, which is what makes the project part of the key load-bearing rather than incidental.
   const [existing] = await db
     .select()
     .from(runners)
@@ -115,7 +113,6 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
       if (!inserted) return;
       runnerId = inserted.id;
     } catch (err) {
-      // cm:guard scope the re-select by PROJECT as well as device and type — the index that raced is `runners_project_device_type_uq`, so a device bound to two projects has a second row matching on device and type alone, and the unscoped read returned the other project's runner and set IT online (ISS-990).
       if (isUniqueViolation(err)) {
         const [retry] = await db
           .select()
@@ -149,7 +146,6 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     event: 'runner.status',
     data: { runnerId, status: 'online' },
   });
-  // cm:guard announce, never act — this file must not import the job layer, which is what put it inside a 52-file import cycle the last time it did. A box coming back online is news; what to do about it is the master's on that box.
   if (wasOffline) {
     void hooks.emit('runnerOnline', { projectId: input.projectId, runnerId });
   }

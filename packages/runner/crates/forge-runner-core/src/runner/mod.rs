@@ -14,7 +14,6 @@ use crate::error::Result;
 pub mod blocked;
 pub mod claude_code;
 pub mod close_loop;
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/doorbell_no_fifo.rs — the two files are one API and the stub is what keeps `ledger::declare_blocked_live` and `blocked::arm_bounded` free of `cfg`: a public item added to one must be added to the other, or the windows leg of ci.yml's `runner` matrix fails on a signature only unix has.
 #[cfg_attr(not(unix), path = "doorbell_no_fifo.rs")]
 pub mod doorbell;
 pub mod inflight;
@@ -51,8 +50,6 @@ pub struct JobSpec {
     pub issue_id: Option<String>,
     /// Pipeline step: triage|clarify|plan|code|review|test|release|fix|pm|custom.
     pub step: String,
-    /// The directory the session runs in, already resolved by the caller.
-    // cm:guard the worktree is created by the CALLER, not here, and this field is where it lands. `JobSpec` used to carry `worktree_branch`/`worktree_start_point` and `ClaudeCodeRunner::start` did the `git worktree add` itself — which put the only root-touching work of a spawn inside a call the dispatcher was holding the repo-root lock across, and the permit wait after it (ISS-920). Two fields saying where a job runs is also two answers to one question. A caller that wants a worktree calls `workspace::worktree::create` under whatever lock protects the root and passes the result here.
     pub repo_path: PathBuf,
     pub prompt: Option<String>,
     pub system_prompt: Option<String>,
@@ -65,7 +62,6 @@ pub struct JobSpec {
     /// `claudeSessionId` from core — the single source of truth for resume.
     pub resume_id: Option<String>,
     pub agent_session_id: Option<String>,
-    // cm:guard the ONLY thing that keeps a session process off the box's ceiling, and it is deliberately not derived from `issue_id`/`pat_token`/`step` — those differ between chat and a pipeline job by accident, this says it on purpose. Chat sets it false (owner decision 2026-09-04: a chat turn must never queue behind anything), pipeline jobs set it true. A new caller that leaves it false spawns processes nothing bounds. Since ISS-873 phase 6 deleted `print` this is the ONE remaining axis a spawn varies on — do not fold it into a mode.
     pub counts_against_session_cap: bool,
     /// How long a resident session may sit parked between turns, from
     /// `pipelineConfig.sessionResidencySeconds`. `None` and `Some(0)` both mean
@@ -105,8 +101,6 @@ pub enum RunnerEvent {
     },
     /// Captured CLI session id (for resume bookkeeping on core).
     ClaudeSessionId(String),
-    /// The PROCESS's own state, distinct from the job's lifecycle status.
-    // cm:guard emitted BEFORE the turn's terminal event, never after — the consumer breaks out of its loop on Done/Failed, so a state sent afterwards lands in a receiver nobody is reading and the park is never recorded.
     StateChanged(&'static str),
     Done {
         exit_code: i32,
@@ -130,8 +124,6 @@ pub trait Runner: Send + Sync {
     fn kind(&self) -> RunnerKind;
     /// Spawn the job, streaming normalized events on `tx`. Returns the session id.
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId>;
-    /// Send one more turn into a LIVE session, streaming its events on `tx`.
-    // cm:guard a turn owns its own channel because a resident session outlives any one of them — chat's consumer breaks at every turn end, so re-using the channel from `start` would drop turn 2 into a receiver nobody is reading.
     async fn send(
         &self,
         session: &SessionId,

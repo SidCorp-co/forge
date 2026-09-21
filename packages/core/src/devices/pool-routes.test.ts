@@ -2,6 +2,9 @@
 // own their own suites (admissible.test.ts, run-session's e2e) and are stubs here,
 // so a change to the RESPONSE — the key a runner decodes, the status code a
 // refusal arrives on — fails here and nowhere else.
+//
+// The two `/me/issue-leases/:issueKey` routes are the same kind of suite and
+// live in `pool-routes-lease.test.ts`, because one file may not exceed 500 lines.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -36,12 +39,23 @@ vi.mock('./pool.js', () => ({ readPool: (a: unknown) => readPool(a) }));
 vi.mock('./admissible.js', () => ({
   readAdmissibleIssues: (a: unknown) => readAdmissibleIssues(a),
 }));
+vi.mock('../issues/issue-lease.js', () => ({
+  readDeviceIssueLease: vi.fn(async () => ({
+    held: false,
+    heldByThisDevice: false,
+    holder: null,
+  })),
+  resolveLeaseKey: vi.fn(async (a: { rawKey: string; projectId?: string | null }) => ({
+    ok: true,
+    key: { issueKey: a.rawKey, projectId: a.projectId ?? null },
+  })),
+}));
 vi.mock('./run-session.js', () => ({
   openRunSession: (a: unknown) => openRunSession(a),
   closeRunSession: vi.fn(),
   readRunSessionTerminal: (a: unknown) => readRunSessionTerminal(a),
   isIssueLeaseHeld: vi.fn(),
-  releaseIssueLease: vi.fn(),
+  releaseIssueLease: vi.fn(async () => ({ released: true, projectId: 'proj-1' })),
 }));
 vi.mock('./claim.js', () => ({
   claimJobForMaster: vi.fn(),
@@ -67,7 +81,6 @@ const { errorHandler } = await import('../middleware/error.js');
 
 const app = new Hono();
 app.route('/api/devices', devicePoolRoutes);
-// cm:why the real `onError` is mounted, not left to Hono's default: every refusal on these routes carries its reason in `cause.code`, and that code is the half a runner branches on. A bare app renders only the prose message, so a test without this asserts the sentence and lets the contract the caller actually reads go unchecked.
 app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
 
 const AUTH = { Authorization: 'Bearer good' };
@@ -81,7 +94,6 @@ beforeEach(() => {
 });
 
 describe('GET /me/pool', () => {
-  // cm:guard `items` and `count` are what every runner already decoded; ISS-933 removed the sibling `backlog` key rather than changing either.
   it('keeps items and count exactly as they were', async () => {
     readPool.mockResolvedValue([{ jobId: 'j1' }]);
     const res = await app.request('/api/devices/me/pool', { headers: AUTH });
@@ -91,7 +103,6 @@ describe('GET /me/pool', () => {
     expect(body.count).toBe(1);
   });
 
-  // cm:guard the pool answers JOBS and nothing else since ISS-933: an issue in the array a master claims from is a malformed claim waiting to happen, and `pool claim <issueId>` is a turn spent on a refusal core answers as `not_found`.
   it('carries no issues at all, under any key', async () => {
     readPool.mockResolvedValue([{ jobId: 'j1' }]);
     readAdmissibleIssues.mockResolvedValue([{ issueId: ISSUE, status: 'draft' }]);
@@ -108,7 +119,6 @@ describe('GET /me/pool', () => {
 });
 
 describe('GET /me/issues/admissible', () => {
-  // cm:guard the ONLY reader of `pipelineConfig.poolBacklog.statuses` after ISS-933 deleted `pool promote`. A change that drops this route owes the config key another reader or owes the key its deletion — a knob that is configurable, savable and dead is the shape this repo refuses.
   it('answers the admissible issues on their own route, scoped to the device', async () => {
     const projectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     readAdmissibleIssues.mockResolvedValue([{ issueId: ISSUE, status: 'draft' }]);
@@ -153,11 +163,6 @@ describe('POST /me/run-sessions', () => {
     });
   });
 
-  // cm:guard the assertion is that the box's own run id REACHES the service, and it is separate
-  // from the case above because the schema has demanded this field since the route was written
-  // while the handler dropped it: every existing test passed a `runId` and none of them asked
-  // what became of it, so a 200 that discarded it was indistinguishable from a 200 that stored it
-  // (ISS-1050 criterion 6).
   it('passes the box run id through rather than discarding the field it demands', async () => {
     openRunSession.mockResolvedValue({ sessionId: 's9', runId: 'r9' });
     await app.request('/api/devices/me/run-sessions', {
@@ -175,7 +180,6 @@ describe('POST /me/run-sessions', () => {
     });
   });
 
-  // cm:guard an EMPTY group is refused at the schema. A run with no issues is a worktree nothing will ever close the loop on, and `create_run_group` refuses it on the box too — this is the same refusal one hop earlier, where it costs no ledger row.
   it('400s on an empty issue group — a run carries at least one', async () => {
     const res = await app.request('/api/devices/me/run-sessions', {
       method: 'POST',
@@ -227,7 +231,6 @@ describe('POST /me/limit', () => {
     });
   });
 
-  // cm:guard an `auth` limit carries NO reset by design (schema: `rateLimitedUntil` is NULL for it, nothing parseable to wait for), so a report pairing the two is a contract break and must be refused BY NAME rather than silently dropping one half — a stamp that kept the reset would hand an auth-dead box a self-healing window it does not have, which is the shape that let dev1-ai013 take 421 jobs on an expired session.
   it('refuses an auth report that carries a reset, by name', async () => {
     const res = await app.request('/api/devices/me/limit', {
       method: 'POST',
@@ -249,7 +252,6 @@ describe('POST /me/limit', () => {
     expect(recordMasterLimit).not.toHaveBeenCalled();
   });
 
-  // cm:guard a report the device owns no runner for is a 404, never a 200 — the master would read a 200 as "core knows I am capped" and stop reporting, so an answer that recorded nothing must not look like one that did.
   it('answers 404 when the device owns no runner to stamp', async () => {
     recordMasterLimit.mockResolvedValue(null as never);
     const res = await app.request('/api/devices/me/limit', {
@@ -266,8 +268,6 @@ describe('POST /me/limit', () => {
     expect(clearMasterLimit).toHaveBeenCalledWith('dev-1');
   });
 
-  // cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/master-limit-wire.json — the file read here is the body the Rust producer builds from a captured refusal, asserted byte for byte on that side by `daemon::master_limit::tests::a_captured_refusal_reaches_core_as_the_bytes_both_languages_read`. Reading the artifact rather than retyping it is the point: a field renamed on either side stops matching ONE file, instead of passing two suites and failing on a live box.
-  // cm:guard the file is read off disk, NOT imported. The two packages have no build dependency on each other and must not gain one over a test fixture; `relations archmap` walks imports, and an import here would declare a coupling that does not exist at runtime.
   it('takes the body the runner actually sends, read off the file both sides read', async () => {
     const body = readFileSync(WIRE_FIXTURE, 'utf8').trim();
     const res = await app.request('/api/devices/me/limit', {
@@ -279,7 +279,6 @@ describe('POST /me/limit', () => {
     expect(recordMasterLimit).toHaveBeenCalledWith('dev-1', JSON.parse(body));
   });
 
-  // cm:guard the WHOLE set, in both directions. A reason core stops storing is a report the box sends into a 400 forever; a reason core gains that the runner never sends is a cap a master can see and cannot report. Neither shows up in a test that only checks the reasons it happens to name.
   it('stores exactly the reasons the runner declares it can send', () => {
     const declared = JSON.parse(readFileSync(REASONS_FIXTURE, 'utf8')).reasons as string[];
     expect([...declared].sort()).toEqual([...runnerLimitReasons].sort());
@@ -303,11 +302,6 @@ describe('POST /me/limit', () => {
   );
 });
 
-// cm:guard the four run-session paths are asserted HERE, on the parent router, because they are
-// SERVED by a module split out of it. The handlers keep their own suites either way; what a split
-// can break silently, and what nothing else in this repo reads, is whether the sub-router is still
-// mounted and still mounted at the same prefix. A missing mount answers 404 — the same status a
-// device gets for another box's session — so without this the regression looks like normal scoping.
 describe('the run-session family stays mounted where it was', () => {
   const SESSION = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
   const paths: [string, string][] = [
@@ -339,12 +333,6 @@ describe('the run-session family stays mounted where it was', () => {
   });
 });
 
-// The readback half of ISS-1050 criterion 5, asserted OVER THE API and not against the reader.
-// cm:guard every request here goes through `app.request`, and that is the whole point of the
-// suite: `tests/integration/run-session-readback-e2e.test.ts` was cited as this criterion's
-// evidence while calling the module functions directly — no `app.request`, no path, no status —
-// so "readable back over the device API" was never the thing its green stood for. A rewrite that
-// drops the HTTP hop here puts the criterion back where the verdict at 92e3b9266 found it.
 describe('GET /me/run-sessions/:sessionId — core reads a run session back over the device API', () => {
   const SESSION = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
   const path = `/api/devices/me/run-sessions/${SESSION}`;
@@ -362,9 +350,6 @@ describe('GET /me/run-sessions/:sessionId — core reads a run session back over
     expect(await res.json()).toEqual({ sessionTerminal: true });
   });
 
-  // cm:guard the device id is asserted to be the CREDENTIAL's, never the caller's to name: the
-  // reader is what scopes this row to one box, so a route that passed anything else would answer
-  // another device's session with a 200 and read as a pass here.
   it('scopes the read to the calling device and to the session in the path', async () => {
     readRunSessionTerminal.mockResolvedValue(false);
     await app.request(path, { headers: AUTH });
@@ -377,11 +362,6 @@ describe('GET /me/run-sessions/:sessionId — core reads a run session back over
     expect(res.status).toBe(404);
   });
 
-  // cm:guard 401 is asserted and it is NOT interchangeable with 404 here: measured by deleting the
-  // route and re-running, an unmatched path in this app answers 404, so a 401 is the route being
-  // matched and its `requireDevice` running. The deployed service answers 401 for an unmatched
-  // `/api` path too, which is why the criterion-5 verdict read a 401 on the COLLECTION path
-  // `/api/devices/me/run-sessions` — served by nothing — as proof of no readback at all.
   it('refuses a caller with no device credential', async () => {
     const res = await app.request(path);
     expect(res.status).toBe(401);

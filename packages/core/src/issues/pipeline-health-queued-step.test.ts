@@ -110,7 +110,6 @@ describe('pipelineHealth.queuedStep', () => {
   });
 });
 
-// cm:why the db mock above has `select: vi.fn()` returning undefined, so the real loader throws on `.from(...)` — which is exactly the partial-mock/DB-blip shape this wrapper exists to absorb, and the assertion is that a LIST of issues degrades instead of 500ing
 describe('safeHydratePipelineHealthForIssues', () => {
   it('returns an empty map instead of throwing when the derivation fails', async () => {
     await expect(safeHydratePipelineHealthForIssues('proj-1', ['iss-903'])).resolves.toEqual(

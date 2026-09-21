@@ -103,14 +103,12 @@ describe('the credential the tag is cut with', () => {
     await createTagRef(client(), 'runner-v0.13.3', 'abc1234', 'forge-runner 0.13.3');
     vi.unstubAllGlobals();
 
-    // cm:guard the mint happens per CALL, so the annotated tag's two writes are three requests and every one of them carries the installation token. A test asserting only the first write would pass over a second call that fell back to something else.
     expect(sent).toHaveLength(3);
     const [mint, object, cut] = sent;
     expect(mint?.url).toBe('https://api.github.com/app/installations/42/access_tokens');
     expect(mint?.method).toBe('POST');
 
     const jwt = decodeJwt(String(mint?.authorization).replace('Bearer ', ''));
-    // cm:guard the SIGNATURE is verified against the key the connection holds, not merely parsed. A token that decodes is not a token GitHub would accept, and "we sent something JWT-shaped" is exactly the kind of green that proves nothing.
     expect(jwt.verifies).toBe(true);
     expect(jwt.header.alg).toBe('RS256');
     expect(jwt.payload.iss).toBe('1075');
@@ -148,7 +146,6 @@ describe('the credential the tag is cut with', () => {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-// cm:guard the modules on the release path, listed rather than globbed: a new module added to this path and not to this list is unscanned, and the whole point of the scan is that a credential fallback nobody exercises is still a credential fallback.
 const RELEASE_PATH_MODULES = [
   'runner-release.ts',
   'runner-release-repo.ts',
@@ -187,7 +184,6 @@ describe('what the release path may not reach', () => {
     }
   });
 
-  // cm:guard `install/fetch-release.ts` reads `RUNNER_RELEASE_GITHUB_TOKEN` and is the ingestion half, which is a different thing: it pulls a published release off a PUBLIC repo and a token there only raises the rate limit. This assertion is that the two halves stayed apart — the cutting half has no token of its own to fall back on.
   it('does not import the ingestion half, which does hold a token', () => {
     for (const { name, text } of sources) {
       expect(`${name}: ${/from '[^']*install\/fetch-release/.test(text)}`).toBe(`${name}: false`);

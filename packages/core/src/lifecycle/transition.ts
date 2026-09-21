@@ -6,11 +6,6 @@
  * nothing else. Every downstream side-effect (cascade fan-out, WS broadcast,
  * hooks, dispatch re-tick) stays in the caller.
  */
-// cm:guard invariant I2 — the audit row is written in the same TRANSACTION as the status UPDATE, which is what makes a terminal status physically unable to land without a trail. A root-`db` executor is autocommit, so this module opens a transaction itself rather than letting the two statements commit separately; before ISS-884 they did, and a crash between them left an unaudited terminal flip written BY the audited path. `transition-guard.test.ts` scans the tree for `.update(jobs|agentSessions|pipelineRuns).set({ status: <terminal literal> })` outside this module and fails the build on one.
-// cm:guard the guard test reads a status LITERAL, so a caller writing a VARIABLE status is invisible to it — `PATCH /api/agent-sessions/:id` is exactly that and is a real second terminal writer on the session axis. Anything hung on this chokepoint for sessions (the ISS-675 escalation bridge, the ISS-927 token revoke) needs a second half in `agent-sessions/routes.ts`, and no gate will tell you if you forget. The `forge.kernel_txn` half of that is now gated: `kernel-marker-guard.test.ts` reads the SHAPE of the `.set()` argument rather than its status literal, so the PATCH is caught there as a marker obligation even though it is invisible here.
-// cm:guard the caller supplies `where` and it MUST carry the prior-status guard — the CAS is the only thing stopping two writers double-flipping, and a predicate without it matches every row.
-// cm:guard pass a `tx` when the flip must be atomic with a cascade or a sibling write (cancel audit, run-close cascade); `db` is for a standalone flip. Either way this module opens a transaction of its own — a real one on `db`, a savepoint on a `tx` — so the executor decides what the flip is atomic WITH, never whether it is atomic at all. Passing `db` while inside a transaction that later rolls back still leaves the audit row behind describing a status nothing holds.
-// cm:why `reason='pipeline_completed'` is the cascade's SUCCESS sentinel — a terminal pipeline step set its issue terminal while its own job/session was still active — so `resolvePipelineCompletedTarget` maps it to `done`/`completed` and a succeeded step is never recorded as `cancelled`/`failed` (ISS-444 amendment 2, ISS-352).
 
 import { eq, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
@@ -39,7 +34,6 @@ export type { KernelExecutor };
 export type KernelEntity = 'job' | 'session' | 'run';
 export type KernelActorType = 'user' | 'system' | 'runner' | 'sweeper';
 
-// cm:guard `agency` is required on a `user` actor and ABSENT on every other kind, and that asymmetry is the point. `system`, `sweeper` and `runner` are machines by construction — there is no honest `human` answer for them and no call site should be able to write one. `user` is the only type where both answers are possible, because a job or session token transitions under its creator: `actor_type` says the write is that person's and is true, while `actor_agency` says a machine typed it and is also true. Making the field required there is what stops a new call site recording the column's `'human'` DEFAULT, which reads as plausible and which nobody reports.
 export type KernelActor =
   | {
       type: 'user';
@@ -63,10 +57,6 @@ type SessionRow = typeof agentSessions.$inferSelect;
 type RunRow = typeof pipelineRuns.$inferSelect;
 
 interface BaseArgs {
-  /** CAS predicate — MUST include the prior-status guard so concurrent writers
-   *  cannot double-flip. Typed `SQL | undefined` to accept `and(...)` directly
-   *  (drizzle's `and` is `SQL | undefined`); a bare `undefined` would match
-   *  every row, so callers always pass a real predicate. */
   where: SQL | undefined;
   /** Declared prior status, recorded as `from_status` on the audit row. For a
    *  bulk flip spanning several prior statuses, pass the dominant/guarded one. */
@@ -79,8 +69,6 @@ interface BaseArgs {
   source: string;
 }
 
-// cm:why ISS-1014 — `returning` on each of the three shapes below names which columns a flip hands back. `.returning()` with no projection is `RETURNING *`, and on `agent_sessions` that is the `messages` transcript: 233 KB on average and 35 MB at the largest, pulled for every row a sweep flips (`closeIdleChatSessions` takes up to 200 a tick) so the caller can read four scalar columns off it. `id` is added to every projection, because the audit row below is written from it.
-// cm:guard on a SESSION the projection ALWAYS carries `metadata` too, and that is not a convenience: `fireEscalationBridge` / `fireAgentChatBridge` are gated on `metadata.escalation` / `metadata.agentChat`, and the heartbeat hop in `jobs/loop-monitor.ts` deliberately sweeps exactly those sessions. A projection without `metadata` would read every marked row as unmarked and drop the escalation and agent-chat replies this chokepoint owes — silently, with the room left waiting.
 export interface JobTransitionArgs<K extends keyof JobRow = keyof JobRow> extends BaseArgs {
   entity: 'job';
   to: Extract<JobStatus, 'done' | 'failed' | 'cancelled'>;
@@ -95,15 +83,12 @@ export interface SessionTransitionArgs<K extends keyof SessionRow = keyof Sessio
   entity: 'session';
   to: (typeof terminalAgentSessionStatuses)[number];
   set?: Partial<Omit<SessionRow, 'id' | 'status'>>;
-  /** Columns to hand back; omit for the whole row. `metadata` is added to whatever
-   *  is asked for, because the completion bridges below are gated on it. */
   returning?: readonly K[];
 }
 export interface RunTransitionArgs<K extends keyof RunRow = keyof RunRow> extends BaseArgs {
   entity: 'run';
   to: Extract<PipelineRunStatus, 'completed' | 'failed' | 'cancelled'>;
   set?: Partial<Omit<RunRow, 'id' | 'status'>>;
-  /** Columns to hand back; omit for the whole row. See the guard above the shapes. */
   returning?: readonly K[];
 }
 
@@ -122,13 +107,6 @@ export const SWEEP_SESSION_COLUMNS = [
   'status',
 ] as const;
 
-/**
- * Map the `pipeline_completed` success sentinel to the success terminal status
- * for an entity; every other cascade reason keeps the caller's terminal. The
- * JOB axis resolves to `done` (ISS-444 amendment 2) and the SESSION axis to
- * `completed` (ISS-352), so a step that finished its work is never recorded as
- * cancelled/failed just because the run closed around its still-active row.
- */
 export function resolvePipelineCompletedTarget<E extends KernelEntity, T extends string>(
   entity: E,
   reason: string | null | undefined,
@@ -140,16 +118,6 @@ export function resolvePipelineCompletedTarget<E extends KernelEntity, T extends
   return fallback;
 }
 
-/**
- * The single terminal-status writer. Performs the guarded CAS UPDATE, then
- * writes one `kernel_transitions` audit row per flipped entity. Returns the
- * updated rows (empty array when the CAS matched nothing — i.e. another writer
- * already owns the terminal state, or the guard excluded the row).
- *
- * The post-commit bridges fire OUTSIDE the write, because a token revoke or a
- * chat delivery for a transition that then rolls back is a side-effect with no
- * cause.
- */
 export async function applyKernelTransition<K extends keyof JobRow = keyof JobRow>(
   exec: KernelExecutor,
   args: JobTransitionArgs<K>,
@@ -169,9 +137,9 @@ export async function applyKernelTransition(
   const updated = await exec.transaction((tx) => writeTransition(tx, args));
 
   if (updated.length > 0) {
-    // cm:why ISS-675 — the bridges hang HERE rather than on their callers because this chokepoint catches every terminal session write except the runner's own happy-path `PATCH /:id`, and the callers (sweeper, cascade, cancel, dispatch-failure, …) are too many to wire individually without one drifting and hanging an escalation silent. Gated on a metadata marker, so it is a no-op for the overwhelming majority of session transitions.
     if (args.entity === 'session') {
       await fireSessionBridges(exec, updated, args.returning === undefined);
+      await descendFrom(updated, args);
     }
   }
 
@@ -179,21 +147,42 @@ export async function applyKernelTransition(
 }
 
 /**
- * Fire the two completion bridges for the sessions this flip touched.
+ * A session that just went terminal closes what it owns.
  *
- * The bridges need the WHOLE row — `messages`, `status`, `failureReason` — but
- * only for a session whose `metadata` carries their marker, which is a handful
- * of rows against a sweep's hundreds. So a narrow flip hydrates the marked ones
- * and leaves the rest alone; a whole-row flip already has what they need.
+ * Here rather than at twenty-three call sites, none of which can see a leaked
+ * subtree. A flip the descent itself wrote is skipped: the walk owns its own
+ * depth bound, and re-entering would run one walk per row.
  */
-// cm:guard the hydration reads through `exec`, never the root `db`: a caller that passed its own `tx` has not committed the flip yet, and a second connection would read the PRE-flip row — the bridges would then screen a session that still looks active and post the wrong answer, or none.
+async function descendFrom(
+  rows: Array<Record<string, unknown> & { id: string }>,
+  args: SessionTransitionArgs,
+): Promise<void> {
+  const { closeSessionsOwnedBy, DESCENT_SOURCE } = await import(
+    '../agent-sessions/session-descent.js'
+  );
+  if (args.source === DESCENT_SOURCE) return;
+  try {
+    await closeSessionsOwnedBy(
+      rows.map((r) => r.id),
+      {
+        reason: 'owner_session_closed',
+        detail: `session-descent: the session that owned this one went ${args.to} (${args.reason ?? args.source})`,
+      },
+    );
+  } catch (err) {
+    logger.error(
+      { err, sessionIds: rows.map((r) => r.id), source: args.source },
+      'lifecycle.transition: a terminal session could not close what it owned; rows beneath it are still open',
+    );
+  }
+}
+
 async function fireSessionBridges(
   exec: KernelExecutor,
   rows: Array<Record<string, unknown> & { id: string }>,
   whole: boolean,
 ): Promise<void> {
   for (const row of rows) {
-    // cm:guard the gate is the bridge LIST's own markers and no longer two names written here: a third bridge used to be two edits in two files with nothing to catch a forgotten half, and this file was the half that got forgotten last (ISS-1039).
     if (!sessionCarriesBridgeMarker(row.metadata)) continue;
     let full = row as unknown as SessionRow;
     if (!whole) {
@@ -201,7 +190,6 @@ async function fireSessionBridges(
       if (!hydrated) continue;
       full = hydrated;
     }
-    // cm:guard NOT awaited here, unlike the runner's PATCH: this can be sweeping hundreds of rows and must not hold its caller open behind a REST post. `fireTerminalSessionBridges` swallows per bridge, so the floating promise cannot reject.
     void fireTerminalSessionBridges(full);
   }
 }
@@ -209,7 +197,6 @@ async function fireSessionBridges(
 /**
  * The whole row behind one bridge-marked id, or `null` with the reason logged.
  */
-// cm:guard best-effort, and it MUST stay that way: the flip is already committed by the time this runs, so a throw here would take the caller's whole sweep down AFTER its rows went terminal — the broadcasts and wedges for every row it had already flipped would never fire, and the next tick would not find those rows again because they are no longer candidates. The two bridges this feeds have always been best-effort for the same reason; this read is the only part of the path that could throw, so it carries the same contract.
 async function hydrateSession(exec: KernelExecutor, sessionId: string): Promise<SessionRow | null> {
   try {
     const [row] = await exec
@@ -251,7 +238,6 @@ function projectionFor(
   for (const key of wanted) {
     const column = columns[key];
     if (!column) {
-      // cm:guard a name the table does not carry is REFUSED here rather than silently dropped from the projection: a caller that then reads the field would get `undefined` and read it as "the column is null", which is a state-never-lies violation wearing a typo (`VISION: state-never-lies`).
       throw new Error(
         `applyKernelTransition: returning names \`${key}\`, which is not a column of \`${entity}\``,
       );
@@ -261,13 +247,6 @@ function projectionFor(
   return projection;
 }
 
-/**
- * The CAS UPDATE, the audit row, and the marker that tells the database these
- * belong to one another. Always reached through `exec.transaction`, which opens
- * a real transaction on the root `db` and a SAVEPOINT on a caller's `tx`, so the
- * three statements are one atomic unit no matter which executor arrived.
- */
-// cm:edge contract -> packages/core/src/db/kernel-marker.ts — `stampKernelTxn` is what keeps this flip out of the interventions metric; calling it AFTER the UPDATE, or not at all, charts every kernel flip this repo performs as manual SQL in the north-star.
 async function writeTransition(
   exec: KernelExecutor,
   args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,
@@ -280,7 +259,6 @@ async function writeTransition(
     .update(table as typeof jobs)
     .set({ ...(args.set ?? {}), status: args.to } as Partial<JobRow>)
     .where(args.where);
-  // cm:why `?? []` guards a TEST DOUBLE, not drizzle — `.returning()` always yields an array in production. It mirrors the tolerance the prior call sites had so a mock that omits the return cannot crash the chokepoint.
   const updated = ((projection ? await write.returning(projection) : await write.returning()) ??
     []) as Array<Record<string, unknown> & { id: string }>;
 

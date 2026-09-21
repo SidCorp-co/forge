@@ -86,7 +86,6 @@ afterAll(async () => {
 });
 
 describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () => {
-  // cm:guard the column and the jsonb DISAGREE on purpose, and the assertion is that the column did not move. Two of the three copies on this fleet already disagreed with theirs, so a migration that preferred either value would be making a call nobody is qualified to make from SQL.
   it('deletes every retired key and leaves the disagreeing column exactly as it was', async () => {
     await applyMigration(
       async (tx, { projectId }) => {
@@ -113,12 +112,10 @@ describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () 
           SELECT repo_path, base_branch, default_device_id, agent_config
             FROM projects WHERE id = ${projectId}`;
 
-        // cm:why criterion 13 — every retired key gone, and only those
         expect(row?.agent_config).toEqual({
           pipelineConfig: { enabled: true },
           personaStyle: 'keep me',
         });
-        // cm:why criterion 14 — the columns are the source, and nothing was reconciled into them
         expect(row?.repo_path).toBe('/home/kieutrung/tools/forge');
         expect(row?.base_branch).toBe('release/stg');
         expect(row?.default_device_id).toBeNull();
@@ -126,7 +123,6 @@ describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () 
     );
   });
 
-  // cm:guard the key is deleted although it AGREES with its column, because "delete, never reconcile" is a rule about the key and not about the disagreement. A migration that spared the agreeing copies would leave a key the doors refuse and the column still holds.
   it('deletes a shadow key that agrees with its column', async () => {
     await applyMigration(
       async (tx, { projectId }) => {
@@ -180,7 +176,6 @@ describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () 
     );
   });
 
-  // cm:guard criterion 15 — the abort, and the assertion that NOTHING was deleted. A case asserting only that the migration threw would stay green against one that raised after emptying the column, which is the outcome the RAISE exists to prevent.
   it('aborts naming the project and the key when a row holds a key nothing declares, and deletes nothing', async () => {
     await applyMigration(
       async (tx, { projectId }) => {
@@ -200,7 +195,6 @@ describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () 
         expect(error).toContain('Nothing was deleted');
         expect(error).toContain('agent-config-schema.ts');
 
-        // cm:why the retired key beside it is still there, which is what says the abort ran before any deletion
         const [row] = await tx`SELECT agent_config FROM projects WHERE id = ${projectId}`;
         expect(row?.agent_config).toEqual({
           uxContractProfile: { rules: [] },

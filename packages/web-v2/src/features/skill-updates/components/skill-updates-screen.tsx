@@ -62,7 +62,6 @@ export function SkillUpdatesScreen({ scope }: SkillUpdatesScreenProps) {
   const { data: runs, isLoading, isError, error, refetch } = useReconcileRuns(scope.projectId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // cm:why runs that need a decision sort first; everything else is history
   const ordered = useMemo(() => {
     const rows = runs ?? [];
     return [...rows].sort((a, b) => {

@@ -137,10 +137,6 @@ export async function runDown(sql: Sql): Promise<void> {
   try {
     await sql.unsafe(readFileSync(downFile(), 'utf8'));
   } catch (err) {
-    // cm:why the file opens its own transaction, so a refusal leaves this connection inside an
-    // ABORTED one and every later query answers `current transaction is aborted` — which would
-    // hide whether the refusal changed anything, the only thing worth asserting about it. An
-    // operator never sees this: `psql -v ON_ERROR_STOP=1` exits and the session goes with it.
     await sql.unsafe('ROLLBACK').catch(() => {});
     throw err;
   }
@@ -167,10 +163,6 @@ export async function plantProject(
   agentConfig: Record<string, Json> | null = null,
 ): Promise<string> {
   const id = randomUUID();
-  // cm:guard `sql.json(...)`, never `JSON.stringify(...)::jsonb`: postgres-js serialises a
-  // json-bound parameter itself, so a pre-stringified one is encoded TWICE and lands as a jsonb
-  // string — `agent_config #> '{pipelineConfig,…}'` then answers NULL on every project and every
-  // case here reads as the migration doing nothing. Measured; it cost the first full run.
   await sql.unsafe(
     `INSERT INTO projects (id, slug, name, created_by, org_id, agent_config, release_model)
      VALUES ($1, $2, $3, $4, $5, $6, 'none')`,

@@ -144,7 +144,6 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
             if let Err(e) = run_claude(&["plugin", "enable", &t.name, "--scope", "user"]).await {
                 tracing::debug!("[plugins] enable {} (may already be enabled): {e}", t.name);
             }
-            // cm:guard `plugin update` takes the QUALIFIED id; the bare name answers "not found" and exits non-zero, so a bare-name update here is a silent no-op that leaves the cache at whatever commit first installed it (every box, 2026-09-03)
             if let Err(e) = run_claude(&["plugin", "update", &install_id]).await {
                 tracing::debug!("[plugins] update {install_id}: {e}");
             }
@@ -178,9 +177,6 @@ pub fn repo_url(repo: &str) -> String {
     }
 }
 
-// cm:guard the runner, not the CLI, owns this clone. `claude plugin install` re-clones a github-source marketplace even when the plugin is already installed (measured on claude 2.1.241, 2026-09-03), so a pin applied to the CLI's clone survives until the next install. A directory-source marketplace gives the CLI nothing to re-clone; `plugin install`/`update` copy whatever this clone has checked out.
-/// Bring the clone at `dir` to `pin`, or to `origin/HEAD` when `follow_tip`, else leave it where it
-/// is. Clones (full depth) when absent. Returns the short HEAD.
 pub async fn sync_clone(
     dir: &Path,
     url: &str,
@@ -200,7 +196,6 @@ pub async fn sync_clone(
             .await
             .is_ok();
         if !known {
-            // cm:guard fetch the SHA by name, not `--all`: a pin that has left every branch tip is not moved by a tip fetch, and on a shallow clone it is never fetched at all (`reference is not a tree`, fleet-wide 2026-09-03). The tip fetch stays as the fallback for a remote that refuses SHA wants.
             if git(Some(dir), &["fetch", "--quiet", "origin", sha])
                 .await
                 .is_err()
@@ -233,7 +228,6 @@ pub enum KnownMarketplace {
     Absent,
 }
 
-// cm:guard `claude plugin marketplace add` silently REPLACES a same-name marketplace (dev1 2026-09-03: the operator's `forge-local` at ~/tools/forge-plugin became the runner's clone). Check the name our clone's marketplace.json claims BEFORE adding; an operator's directory under that name outranks the server, the same way a local target outranks a server one in `merge_targets`.
 pub fn classify_known(json: &str, repo: &str, dir: &Path, name: Option<&str>) -> KnownMarketplace {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
         return KnownMarketplace::Absent;
@@ -289,7 +283,6 @@ async fn register_marketplace(repo: &str, dir: &Path) -> Option<String> {
             return None;
         }
         KnownMarketplace::Legacy(name) => {
-            // cm:guard `marketplace remove` uninstalls that marketplace's plugins (measured 2026-09-03), so the install loop after this is what brings them back — never return early between the two
             tracing::info!("[plugins] {repo}: replacing CLI-owned marketplace '{name}' with the runner's clone");
             if let Err(e) = run_claude(&["plugin", "marketplace", "remove", &name]).await {
                 tracing::warn!("[plugins] marketplace remove {name}: {e}");
@@ -610,6 +603,7 @@ mod tests {
     fn local_targets_empty_without_a_marketplace() {
         let settings = PluginSettings {
             enabled: true,
+            marketplace_repo: None,
             plugin_names: vec!["a".into()],
             ..PluginSettings::default()
         };

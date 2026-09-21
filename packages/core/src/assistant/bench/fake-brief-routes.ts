@@ -5,7 +5,6 @@
 
 import type { FakeCtx } from './fake-deployment.js';
 
-/** ISS-1066 — the routes the per-run project brief is assembled from. */
 export function briefRoutes(
   ctx: FakeCtx,
   method: string,
@@ -28,9 +27,6 @@ export function briefRoutes(
       return json(ctx.opts.knowledgeStatus, { error: 'not a project member' });
     const injection = url.searchParams.get('injection');
     const all = (ctx.opts.knowledge ?? []).filter((e) => !injection || e.injection === injection);
-    // cm:why the cap applies only to the UNFILTERED index, as the route's own does: `trimToResponseCap`
-    // runs over whatever the query matched, so a narrowed read of a large project comes back whole.
-    // That asymmetry is the whole of what `knowledgeIndexCap` plants (ISS-1066, codex F1).
     const cap = injection ? undefined : ctx.opts.knowledgeIndexCap;
     const kept = cap === undefined ? all : all.slice(0, cap);
     const rows = kept.map(({ body: _body, ...row }) => row);

@@ -59,8 +59,6 @@ describe('0241 forward — a row it cannot represent stops the deploy', () => {
     }
   });
 
-  // cm:guard the element is REFUSED, never filtered out: the copy selects the three roles it can hold,
-  // so a fourth vanishes and the assertion, filtering both sides alike, agrees nothing was lost.
   it('aborts naming the session that holds a message role the new schema cannot represent', async () => {
     const db = await freshDb();
     try {
@@ -119,8 +117,6 @@ describe('0241 forward — the assertion is the thing that says no', () => {
     return kept;
   }
 
-  // cm:guard a plant that plants nothing runs the REAL migration and passes green: both mutators
-  // below silently missed once 0241 qualified its relations, so an edit that changed nothing throws
   function edited(marker: string, edit: (stmt: string) => string[]): string[] {
     const hit = conversations.filter((s) => s.includes(marker));
     if (hit.length !== 1) throw new Error(`${hit.length} statements contain ${marker}, wanted 1`);
@@ -185,7 +181,6 @@ describe('0241 forward — the assertion is the thing that says no', () => {
           { role: 'assistant', content: 'second' },
         ],
       });
-      // cm:why the same copy with the ordinal read backwards — the transcript survives, its order does not
       const reordered = edited('INSERT INTO public.conversation_messages\n', (s) => [
         s.replace('(t.ord - 1)::int,', '(jsonb_array_length(cs.messages) - t.ord)::int,'),
       ]);
@@ -214,8 +209,6 @@ describe('0241 forward — the assertion is the thing that says no', () => {
     }
   });
 
-  // cm:guard the person assertion counts AND identifies: a copy that kept the cardinality and wrote
-  // somebody else's user id passes a count, and the source table is dropped three statements later
   it('aborts when the copied person is not the person the session recorded', async () => {
     const db = await freshDb();
     try {
@@ -232,8 +225,6 @@ describe('0241 forward — the assertion is the thing that says no', () => {
     }
   });
 
-  // cm:guard and the handle's membership is checked too: a second one widens the room's derived
-  // scope to a project the session it came from was never about
   it('aborts when the handle it minted carries a membership beyond its own project', async () => {
     const db = await freshDb();
     try {
@@ -254,8 +245,6 @@ describe('0241 forward — the assertion is the thing that says no', () => {
 });
 
 describe('0241 forward — a temp relation of the same name is not the source', () => {
-  // cm:guard drop either half of 0241's search_path defence — the pin or the `public.` — and this
-  // goes red on the missing conversation, which is the migration orphaning every real transcript
   it('copies the real rows even when the deploying session carries a temp chat_sessions', async () => {
     const db = await freshDb();
     try {
@@ -285,7 +274,6 @@ describe('0241 forward — a temp relation of the same name is not the source', 
       );
       expect(m?.content).toBe('only in public');
 
-      // cm:guard the table the migration dropped is the real one, not the shadow it was handed
       const [left] = await db.sql.unsafe(
         `SELECT to_regclass('public.chat_sessions') AS still_there`,
       );

@@ -1,17 +1,3 @@
-/**
- * The three things Forge reads from GitHub before it merges. ISS-1073.
- *
- * Here rather than in `merge.ts` so the decision, the reading and the writing
- * are three separable subjects: `merge-eligibility.ts` decides over these
- * shapes, this file produces them, and `merge.ts` is what happens next.
- *
- * Every read goes through `client.publish` rather than `client.get`, and the
- * reason is `client.ts`'s own: `get` collapses an auth failure into a status and
- * throws away which step it came from and the rate-limit headers with it. On the
- * merge path that distinction is what tells an operator whether to grant a
- * permission or to wait.
- */
-
 import type { GitHubRepoClient } from './client.js';
 import { GitHubPublishError } from './client.js';
 import type { HeadCheck, MergeReadout, ProtectionReadout } from './merge-eligibility.js';
@@ -69,7 +55,6 @@ interface ProtectionBody {
  * cannot tell a satisfied protection from an unsatisfied one, and
  * `merge-eligibility.ts` refuses on it rather than merging on the difference.
  */
-// cm:guard the 404 arm is scoped to THIS read and is not a general "absent means fine". It is a documented GitHub answer for an unprotected branch, and it is safe here only because the thing it reports absent — a requirement — has no effect when it is absent. The 403 beside it is the case that looks identical from a distance and means the opposite, which is why the two are written out rather than collapsed into `!ok`.
 export async function readProtection(
   client: GitHubRepoClient,
   baseRef: string,
@@ -108,7 +93,6 @@ interface CheckRunsBody {
 }
 
 /** Every check run on this head, latest per name first, so a re-run answers for its name. */
-// cm:guard one run per NAME, latest `started_at` winning, because a required context names a check and a re-run is the same check answered again. Keeping both would let a first, failing run answer for a name whose re-run went green — and the pull request page would then disagree with Forge about whether the branch is mergeable.
 export async function readHeadChecks(
   client: GitHubRepoClient,
   headSha: string,

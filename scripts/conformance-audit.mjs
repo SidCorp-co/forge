@@ -37,7 +37,6 @@ const read = (p) => {
   }
 };
 
-// cm:guard a profile bounds SHAPE only — axis counts, CI, meta-checks. The moment one names a tool, the claim stops porting across stacks and this file becomes a second place that decides which linter a repo runs.
 const PROFILES = {
   baseline: { blurb: 'a number you did not have', at1: 1, at2: 0, ci: false, meta: false },
   standard: {
@@ -103,9 +102,7 @@ const asserted = [...ciText.matchAll(/"([a-z0-9-]+):\$\{\{\s*needs\.[a-z0-9-]+\.
 const unasserted = needs.filter((j) => j !== 'changes' && !asserted.includes(j));
 
 const badBaselines = [];
-// cm:guard judge EVERY declared baseline, `alsoBaseline` included. This loop read only `spec.baseline` from the day it landed, so 3 of the 6 baselines the manifest declares were never audited for a direction — the identical hole conformance-status.mjs closed for itself, in the one check whose whole subject is whether the setup does what it claims.
 for (const [name, spec] of Object.entries(axes)) {
-  // cm:why level 3 means zero violations and NO baseline, so an absent one is the point rather than a fault — auditing it would punish the strictest level
   if ((spec.level ?? 0) !== 2) continue;
   if (spec.baseline === undefined) {
     badBaselines.push([name, 'level 2 with no baseline declared']);
@@ -128,10 +125,8 @@ for (const [name, spec] of Object.entries(axes)) {
   }
 }
 
-// cm:guard a step that runs and cannot fail is stage 0 by construction — the ONE configuration this repo has measured failing. `continue-on-error: true` carried the desktop Rust gate for months next to a comment promising cleanup "as a separate ISS"; the drift ended when the package was deleted, not when the debt was paid. Zero across .github/workflows/ on 2026-08-27, which is the one day freezing it costs nothing.
 const unfailable = [...ciText.matchAll(/continue-on-error:\s*true/g)].length;
 
-// cm:guard all three of `warn`, `info` and `on`, because biome's severity vocabulary is off|on|info|warn|error and only `off` and `error` are certainly not this. biome exits 0 on a warning AND on an info — measured in packages/core: "Found 409 warnings. Found 10 infos." with status 0 — and `on` means "the rule's DEFAULT severity", which for useOptionalChain is warning and for useLiteralKeys is info. Reading only some of the three leaves a ONE-WORD edit that turns this rule from FAIL to ok while changing nothing about what is gated; `on` is included even though a rule whose default is error needs no baseline, because the config cannot tell us which — and asking for an unnecessary baseline is a cheaper mistake than not asking for a needed one.
 const NON_BLOCKING = new Set(['warn', 'info', 'on']);
 
 /** Every rule a biome config sets to a severity biome exits 0 on, as biome category ids. */
@@ -139,7 +134,6 @@ function nonBlockingRules(doc) {
   const out = new Set();
   const walk = (rules) => {
     for (const [group, body] of Object.entries(rules ?? {})) {
-      // cm:why `preset` and `recommended` name a rule SET, not a rule, so a severity read off them would be a category id no diagnostic ever carries
       if (group === 'preset' || group === 'recommended') continue;
       if (typeof body === 'string') {
         if (NON_BLOCKING.has(body)) out.add(`lint/${group}/*`);
@@ -153,7 +147,6 @@ function nonBlockingRules(doc) {
     }
   };
   walk(doc?.linter?.rules);
-  // cm:guard walk `overrides` too. packages/core drops `noUnsafeOptionalChaining` to `warn` there for 43 test-file sites, and a scan of the top-level rules alone would report that config fully covered while an entire severity downgrade went uncounted.
   for (const o of doc?.overrides ?? []) walk(o?.linter?.rules);
   return out;
 }
@@ -169,7 +162,6 @@ function biomeConfigs(dir = '', depth = 0, acc = []) {
   return acc;
 }
 
-// cm:guard the checker that OWNS a rule decides which baseline must count it: the two length rules are frozen by line count in .forge/size-baseline.json, everything else per (file, rule) in .forge/lint-baseline.json. Reading both scope lists from the manifest rather than restating them is what makes registering a scope enough to satisfy this rule.
 function uncountedWarnRules() {
   const scopesOf = (key) =>
     (manifest?.checkers?.[key]?.scopes ?? []).map((s) => s.cwd).filter(Boolean);
@@ -194,8 +186,6 @@ function uncountedWarnRules() {
 
 const uncounted = uncountedWarnRules();
 
-// cm:guard read the DECLARED level, because nothing else here does. R1-R9 all skip an axis whose level is not 2, and `hardened` needs 4 of 5 axes at >= 2, so an axis declared at level 1 passed the whole audit — while CLAUDE.md said level 1 was forbidden and that a rule enforced it. That is the gate-described-but-not-gating shape this file exists to catch, one level up.
-// cm:guard require a NUMBER of at least 2, never `!== 1`. Level 0 (no checker) and an absent key are the same claim as level 1 with less typing, and `lvl()` compares with a coercing `>=`, so a quoted "1" satisfies `>= 1` and fails `>= 2` — three spellings that all mean "does not block" and would all have passed a test for the digit 1.
 const notBlocking = Object.entries(axes)
   .filter(([, s]) => !(typeof s?.level === 'number' && s.level >= 2))
   .map(([a, s]) => `${a} (level ${JSON.stringify(s?.level) ?? 'absent'})`);
@@ -208,11 +198,9 @@ const metaStatus = /conformance-status/.test(verifySrc) || /conformance-status/.
 const metaParity = /ci-parity/.test(verifySrc) || /ci-parity/.test(ciText);
 const lvl = (n) => Object.values(axes).filter((s) => (s.level ?? 0) >= n).length;
 
-// cm:guard R7 is the only rule here that RUNS anything, and it has to: whether the relations gate can resolve the graph it covers is knowable only by asking it, and a gate that resolves nothing prints the same "0 violations" a clean repo does. Measured 2026-08-23: `archmap check` could not follow web-v2's `@/*` alias, 841 of 997 edges were dropped, and three contracts over that package would have locked onto an empty graph.
 function unresolvableEdges() {
   const declared = manifest?.checkers?.archmap?.maxUnresolvableEdges;
   if (typeof declared !== 'number') return { declared: null };
-  // cm:guard preflight before the spawn. archmap without its dependencies prints `scope matched no files`, and that sentence is about the SCOPE — it reads as a repo whose graph resolves to nothing, which is precisely the catastrophe this rule was written to detect. The two are indistinguishable downstream, so the absence has to be caught before archmap gets to speak.
   const missing = absentPrerequisites(ROOT, ['deps', 'archmap-resolver', 'observability-build']);
   if (missing.length > 0) return { declared, blocked: remedyLines(missing)[0] };
   const r = spawnSync(at('.forge/archmap/archmap'), ['check', '--stats'], {
@@ -222,15 +210,8 @@ function unresolvableEdges() {
   });
   if (couldNotStart(r))
     return { declared, blocked: '.forge/archmap/archmap is not executable here' };
-  // cm:guard match BOTH phrasings archmap has printed — `N unresolvable edges` (<=0.1.2) and `N unresolvable of M possible edges` (0.1.3+). A regex that stops matching yields measured:null, which FAILS this rule rather than passing it, so a wording change is loud rather than silent — but it also fails a repo whose gate is fine, which is why the pattern must track the tool.
   const m = /(\d+)\s+unresolvable(?:\s+of\s+\d+\s+possible)?\s+edges/.exec(r.stdout ?? '');
   if (m) return { declared, measured: Number(m[1]) };
-  // cm:guard a child that STARTED and then DIED is not a wording change, and reporting it as one
-  // sends a reader to this regex over a machine that ran out of memory. `couldNotStart` above
-  // catches only a spawn that never happened; a kill by signal, or a non-zero exit with no count in
-  // what it printed, is the tool failing to answer — `could not run`, which `verify` reports as
-  // exit 2, rather than a violation of the ceiling. The count is read FIRST, so an archmap that
-  // exits non-zero because it found violations is still measured on what it printed.
   if (r.signal || r.status !== 0) {
     const how = r.signal ? `was killed by ${r.signal}` : `exited ${r.status}`;
     const said = (r.stderr ?? '').trim().split('\n').pop() ?? '';
@@ -346,7 +327,6 @@ let blocked = 0;
 console.log(
   `\n  axes ${Object.keys(axes).length}   level>=1 ${lvl(1)}   level>=2 ${lvl(2)}   CI ${hasCI ? 'yes' : 'none'}   profile ${claimed ?? 'undeclared'}\n`,
 );
-// cm:guard `n/a` and ` -- ` are different marks on purpose. ` -- ` is a rule that does not APPLY here — no CI to audit, no ceiling declared — and is a settled answer. `n/a` is a rule that applies and could not be answered, which is an open question and must not read as a settled one.
 for (const r of RULES) {
   const mark = r.blocked ? 'n/a ' : r.pass === null ? ' -- ' : r.pass ? '  ok' : 'FAIL';
   if (r.pass === false) failed++;
@@ -369,7 +349,6 @@ function shortfall(name) {
 
 console.log(`\nconformance-audit: ${RULES.length} rules evaluated`);
 
-// cm:guard before EITHER profile verdict, and before the undeclared-profile branch below. Both of those are claims about whether this repo meets a standard, and an audit that could not run one of its rules has not established either answer.
 if (blocked > 0) {
   console.error(
     `\nconformance-audit: ${blocked} rule(s) could not be evaluated — the tool they run gave\n` +

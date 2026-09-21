@@ -1,11 +1,5 @@
 "use client";
 
-// Shared, clickable issue reference (ISS-331). Single source of truth for
-// rendering a link to an issue's detail page as a friendly `ISS-X` pill —
-// used by relation chips (properties rail) and the sessions list's
-// "back to issue" link. Falls back to a plain "Issue" label when the friendly
-// `displayId` isn't available at the call site (e.g. session metadata only
-// carries the issue UUID).
 import Link from "next/link";
 import { MonoTag } from "@/design";
 import { STATUS_META } from "@/design/status";
@@ -24,10 +18,6 @@ export interface IssueRefBadgeProps {
   /** Optional related-issue status — rendered as a small tone dot before the
    *  pill (reuses the design-kit status tone, no new colors). */
   status?: IssueStatus | null;
-  /** When true (and `title` is present), render the title inline after the
-   *  pill, truncated to one line — so a relation row is identifiable at a
-   *  glance rather than showing only the `ISS-X` number. Off by default to
-   *  keep compact callers (blocker banner, sessions link) unchanged. */
   showTitle?: boolean;
 }
 

@@ -9,7 +9,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ADMITTED_RUNNER } from './pool-admission.js';
-import { RUNNER_MAY_TAKE_JOB } from './release-label.js';
+import { runnerMayTakeJob } from './release-label.js';
 
 export type PoolRelation = {
   kind: string;
@@ -35,7 +35,6 @@ export type PoolEntry = {
   heldBy: string | null;
 };
 
-// cm:guard return the blocker's RAW status and merged_at, never a computed `satisfied` boolean. It destroys information the master needs: `merged_at` set with status `reopen` means landed-then-bounced, `dropped` means abandoned, and both collapse to the same `false`. This guard also used to call such a boolean "a fourth copy of the predicate this design exists to delete"; ISS-1100 dropped that half, because core now holds exactly one copy of the predicate (`issues/dependency-effects.ts:BLOCKER_SETTLED_STATUSES`) and gates the ADMISSIBLE query on it. What stands is the payload rule: the pool's rows are the issue-less job kinds, they carry no blocks gate of their own, and nothing here is folded.
 const RELATIONS = sql`
   COALESCE((
     SELECT json_agg(json_build_object(
@@ -57,10 +56,6 @@ const RELATIONS = sql`
  *
  * `limit` bounds the read only — taking any of it is a separate `claim`.
  */
-// cm:guard the exclusions here are exactly the conditions under which a claim CANNOT succeed — queued under a live run, unheld, off cooldown, no in-flight sibling for the issue. Do NOT add a dependency filter, a project cap, or an ordering by priority: those are routing judgements the master owns, and a pool that pre-decides them is the kernel deciding routing again, which is the whole thing this replaces.
-// cm:edge lockstep -> packages/core/src/devices/claim.ts — the sibling-job NOT EXISTS below must stay identical to L1 in `prepareJobForMaster`. Looser here offers work every claim refuses; tighter hides work a master could have taken, and neither failure says a word.
-// cm:edge lockstep -> packages/core/src/devices/pool-admission.ts — `ADMITTED_RUNNER` is the same predicate `prepareJobForMaster` answers by name; the join above proves a BINDING exists and says nothing about whether an operator has withdrawn the box.
-// cm:edge lockstep -> packages/core/src/devices/release-label.ts — `RUNNER_MAY_TAKE_JOB` is the other predicate `prepareJobForMaster` answers by name, and it is the ONLY thing narrowing a `release_batch` job to the box that holds the production credential. It is a routing judgement the guard above forbids for every other job type and is admitted here for one reason: it is not a preference between boxes that could both do the work, it is the set of boxes on which the work can happen at all.
 export async function readPool(args: {
   deviceId: string;
   projectId?: string | undefined;
@@ -81,7 +76,7 @@ export async function readPool(args: {
     JOIN projects ipj ON ipj.id = j.project_id
     WHERE j.status = 'queued'
       AND ${ADMITTED_RUNNER}
-      AND ${RUNNER_MAY_TAKE_JOB}
+      AND ${runnerMayTakeJob()}
       AND pr.status IN ('running', 'paused')
       AND j.held_by IS NULL
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())

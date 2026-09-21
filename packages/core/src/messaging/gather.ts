@@ -31,11 +31,9 @@ export interface GatherInput {
   /**
    * The handle to read through. A caller inside a transaction MUST pass its own.
    */
-  // cm:guard reading the pool from inside a caller's transaction is a deadlock, not a style point: the pool is ten wide, `insertComment` runs this before its own insert, and a caller holding one connection while waiting for a second means ten concurrent writers wait on each other until they time out (the same hazard `loadStageContext` carries, ISS-981).
   readonly executor?: Tx;
 }
 
-// cm:why a reference-shaped token in ANY prefix, checked before the prefix query rather than after: both rules that read the tracker need a reference, so a body carrying none needs no lookup at all — and finding out otherwise would cost the two queries this skips. It is deliberately wider than the project's own prefixes, so it can only skip work the rules would have found nothing in.
 const ANY_REFERENCE_RE = /\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/;
 
 function needsOf(audience: Audience, intent: Intent): Set<FactKind> {
@@ -61,7 +59,6 @@ function cited(segments: readonly string[], prefixes: readonly string[]): Cited 
   return { ids: [...ids], seqs: [...seqs] };
 }
 
-// cm:guard the lookup fails OPEN, and the flag rather than an empty result is what says so: an empty `issueRows` is indistinguishable from "this project holds none of them", which would turn a database blip into a refusal of every message that names an issue. The rules read `issueLookupFailed` and stand down.
 async function issueRowsFor(
   projectId: string,
   c: Cited,
@@ -96,8 +93,6 @@ async function issueRowsFor(
 /**
  * The prefixes a claim in this project's comments may be written in.
  */
-// cm:guard `LEGACY_ISSUE_PREFIX` is folded in whenever the project stores no prefix of its own, because a NULL `projects.issue_prefix` is not "no prefix" — `formatIssueRef` renders that project's issues as `ISS-n` and its own agents write `ISS-n` back. Reading the column literally made the status rule abstain on every project that never set one, which is most of them: the screen would have passed `ISS-997 is merged` in silence while reporting itself green (found by the ISS-997 integration lane, where a fresh project has no prefix).
-// cm:edge contract -> packages/core/src/lib/issue-ref.ts — `formatIssueRef` is the renderer this mirrors. The two must agree on what a null column means, or the screen judges a key nobody writes and ignores the one everybody does.
 async function activePrefixes(
   projectId: string,
   tx: Tx,
@@ -131,7 +126,6 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     ? await issueRowsFor(input.projectId, cited(input.segments, prefixes), tx)
     : { rows: new Map<number, IssueRow>(), ids: new Set<string>(), failed: false };
 
-  // cm:guard `tx` reaches the progress read too, and not only the two above it. A caller that supplied an executor is inside a transaction holding one of ten pooled connections, and a read here on the pool would have it wait for a second — the deadlock `loadStageContext` names (ISS-981). No cell needing progress is screened inside a transaction TODAY, which is exactly why this was missed; the executor's contract is what must hold, not the current call graph.
   const progress = needs.has('progress')
     ? input.progress === 'compute'
       ? await computeProjectProgress(input.projectId, tx)

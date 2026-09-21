@@ -22,13 +22,6 @@ export const getMemoryInputSchema = z.object({
    * lookup: `{ run_id: "<uuid>", step: "plan", attempt: 1 }`.
    */
   metadataFilter: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
-  /**
-   * Include soft-deleted rows (decay, consolidation, `feedback verdict=
-   * outdated`, and the pre-ISS-876 `<ref>__superseded-<ts>` dedup snapshots).
-   * Off by default: an archived row is not current project memory. Turn it on
-   * to recover text that only survives in an archived row — every returned
-   * row carries `archivedAt` so a recovered one can never be read as live.
-   */
   includeArchived: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),

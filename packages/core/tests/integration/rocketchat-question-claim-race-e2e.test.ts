@@ -1,18 +1,3 @@
-/**
- * ISS-978 F1/F2 — the claim's arithmetic and the claim's clock.
- *
- * `owedRounds` reads every round before the loop posts any of them, so the
- * `attempts` on an `OwedRound` is a value from before this claim; and the drain
- * is sequential over an HTTP call, so a timestamp taken at the top of the pass
- * is minutes old by the last round. Both were carried into the write.
- *
- * Neither is visible from one drain in one process, which is why the plant in
- * every case here is a SECOND derivation — exactly what a second core instance
- * holds, and what the `cm:guard` on `claimRound` says the claim exists to
- * survive. A test that ran one drain would pass against both the defect and
- * the fix.
- */
-
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,7 +14,6 @@ process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwd
 const posts: Array<{ rid: string; tmid: string | undefined; text: string }> = [];
 let nextMessageId: string | null = 'msg-1';
 let postThrows: Error | null = null;
-// cm:guard read DURING the post, which is the only moment that can tell a round marked complete before it succeeded from one marked after: every state after the call returns is identical either way, and a process that dies here is what the rule is about (ISS-978 criterion 6).
 let atPostTime: (() => Promise<void>) | null = null;
 
 vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) => {
@@ -39,11 +23,6 @@ vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) 
     ...actual,
     sendFixedReply: vi.fn(
       async (transport: { rid: string; tmid?: string }, text: string, proof: unknown) => {
-        // cm:guard the mock re-asserts the proof contract the real door enforces, so a caller that stopped screening its text fails here instead of passing because the door was replaced.
-        // cm:guard and it asserts the ISS-978 F5 half too: a proof is a claim about ONE string, so the
-        // mock compares it against the text it is being handed. Until F5 this read `proof.ok`, which
-        // any literal satisfied and which said nothing about which text had been screened — so a lane
-        // that screened the option labels and posted the rendered round passed this mock cleanly.
         if (proof !== actual.FIXED_REPLY_CONSTANT && (proof as { text?: string })?.text !== text) {
           throw new Error('text reached the outbound door under a proof that does not name it');
         }
@@ -85,7 +64,6 @@ const RISKY = {
 const OPTIONS = [SAFE, RISKY];
 
 /** The one owed round, or a failure naming what was found instead. */
-// cm:guard reads the round through a check rather than a non-null assertion: `a!` under `biome check --write` becomes `a?`, which turns "this test is about the owed round" into a silent pass over an empty list.
 function onlyOwed(rounds: Awaited<ReturnType<typeof delivery.owedRounds>>) {
   const round = rounds[0];
   if (!round) throw new Error(`expected exactly one owed round, found ${rounds.length}`);
@@ -179,16 +157,9 @@ describe('a claim that overlaps another one', () => {
     // read BEFORE A wrote one.
     await delivery.deliverOwedRound(derivedByB, new Date(t0 + 2 * 60_000));
 
-    // cm:guard TWO, not one: `attempts = owed.attempts + 1` under `set:` writes 1 both times, so A's
-    // attempt is erased by B's copy of the number A started from (ISS-978 F2).
     expect((await deliveries(q.id))[0]?.attempts).toBe(2);
   });
 
-  // cm:guard the count and the BACKOFF are separate assertions, because the count can be right while
-  // the schedule it feeds is wrong: `60000 * ${attempts}` where `attempts` expands to
-  // `coalesce(attempts, 0) + 1` parses as `(60000 * coalesce(...)) + 1`, which gives a second attempt
-  // 60,001ms of backoff instead of 120,000. The count reads 2 either way, so the test above passes
-  // over it (whole-set review, F1).
   it('backs a reclaimed round off by its own attempt number, not by one millisecond more', async () => {
     await bindRoom();
     postThrows = new Error('rocket.chat is down');
@@ -229,9 +200,6 @@ describe('a claim that overlaps another one', () => {
     expect(row?.status).toBe('undeliverable');
   });
 
-  // cm:guard two rounds and a clock that MOVES between them, because one round cannot tell a
-  // per-round timestamp from a per-pass one: a pass that reads the clock once writes the same retry
-  // time onto every round it touched, however long the posts in between took (ISS-978 F1).
   it('measures each round’s retry from when that round was claimed', async () => {
     await bindRoom();
     postThrows = new Error('rocket.chat is down');

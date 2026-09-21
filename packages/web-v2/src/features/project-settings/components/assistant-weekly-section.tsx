@@ -1,10 +1,13 @@
 "use client";
 
-// cm:edge contract -> packages/core/src/assistant/weekly/config.ts — `readAssistantWeekly` is the only reader of what this writes, and it runs inside the daily 04:00 UTC `assistant-weekly-report` job (one report per ISO week); a field renamed on one side arrives as undefined on the other with no error anywhere
-// cm:guard round-trip the WHOLE fetched config and edit only this slice (`...config`) — PATCH /pipeline-config merges shallowly, so a partial object drops every sibling key the operator set elsewhere on this page
-
 import { useEffect, useState } from "react";
-import { Banner, Button, Toggle } from "@/design";
+import {
+  Banner,
+  Button,
+  CardTitle,
+  Toggle,
+	Input,
+} from "@/design";
 import { formatPipelineConfigError } from "@/lib/api/error";
 import { useRunAssistantWeekly, useUpdatePipelineConfig } from "../hooks";
 import type { PipelineConfig } from "../types";
@@ -60,23 +63,25 @@ export function AssistantWeeklySection({
 		label: string,
 		placeholder: string,
 	) => (
-		<label className="flex items-center gap-3">
-			<input
+		<div className="flex items-center gap-3">
+			<Input
+				id={`assistant-weekly-${key}`}
 				type="text"
 				value={slice[key] ?? ""}
 				disabled={!canEdit || !slice.enabled}
-				aria-label={label}
 				placeholder={placeholder}
-				className="h-9 w-64 rounded border border-line bg-surface px-2 text-fg"
+				className="w-64"
 				onChange={(e) => setSlice({ ...slice, [key]: e.target.value })}
 			/>
-			<span className="fg-body-sm text-fg">{label}</span>
-		</label>
+			<label className="fg-body-sm text-fg" htmlFor={`assistant-weekly-${key}`}>
+				{label}
+			</label>
+		</div>
 	);
 
 	return (
 		<div className="mt-6 border-t border-line pt-5">
-			<h3 className="fg-label text-fg">Assistant weekly reading</h3>
+			<CardTitle className="fg-label text-fg">Assistant weekly reading</CardTitle>
 			<p className="fg-body-sm mb-3 text-muted">
 				Once a week, from <strong>Monday 04:00 UTC</strong>, the core grades the
 				previous week&apos;s assistant conversations, has the judge model read the

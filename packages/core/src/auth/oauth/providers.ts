@@ -1,12 +1,3 @@
-/**
- * Provider registry — config-driven from `env`.
- *
- * A provider is "enabled" only when ALL of its required env vars are set.
- * The frontend asks `/api/auth/oauth/providers` for the live list, so the
- * UI never has to know which buttons to show — that's a server decision
- * keyed off whoever runs the deployment.
- */
-
 import { env } from '../../config/env.js';
 
 export type ProviderId = 'github' | 'google' | 'oidc';
@@ -21,10 +12,6 @@ export interface ProviderConfig {
   clientSecret: string;
   /** Default scopes requested at the authorize step. */
   scopes: string[];
-  /**
-   * Provider issuer URL — used for OIDC discovery. `null` for non-OIDC
-   * providers (GitHub) where authorize/token/userinfo URLs are hardcoded.
-   */
   issuerUrl: string | null;
 }
 
@@ -40,7 +27,7 @@ export function getCallbackUrl(providerId: ProviderId): string {
   return `${base}/api/auth/oauth/${providerId}/callback`;
 }
 
-function resolveProvider(id: ProviderId): ProviderConfig | null {
+export function getProvider(id: ProviderId): ProviderConfig | null {
   if (id === 'github') {
     if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) return null;
     return {
@@ -48,8 +35,6 @@ function resolveProvider(id: ProviderId): ProviderConfig | null {
       label: 'Continue with GitHub',
       clientId: env.GITHUB_OAUTH_CLIENT_ID,
       clientSecret: env.GITHUB_OAUTH_CLIENT_SECRET,
-      // `read:user` exposes the public profile; `user:email` is required to
-      // fetch the (verified) primary email. Both are minimum-scope reads.
       scopes: ['read:user', 'user:email'],
       issuerUrl: null,
     };
@@ -65,8 +50,6 @@ function resolveProvider(id: ProviderId): ProviderConfig | null {
       issuerUrl: 'https://accounts.google.com',
     };
   }
-  // Generic OIDC. The label is operator-controlled via OIDC_LABEL because
-  // "Continue with SSO" reads cleaner than the issuer URL on a button.
   if (!env.OIDC_ISSUER_URL || !env.OIDC_CLIENT_ID || !env.OIDC_CLIENT_SECRET) return null;
   return {
     id,
@@ -78,14 +61,10 @@ function resolveProvider(id: ProviderId): ProviderConfig | null {
   };
 }
 
-export function getProvider(id: ProviderId): ProviderConfig | null {
-  return resolveProvider(id);
-}
-
 export function getEnabledProviders(): ProviderConfig[] {
   const out: ProviderConfig[] = [];
   for (const id of ['github', 'google', 'oidc'] as const) {
-    const cfg = resolveProvider(id);
+    const cfg = getProvider(id);
     if (cfg) out.push(cfg);
   }
   return out;

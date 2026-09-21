@@ -90,7 +90,6 @@ export async function dispatchScheduleReleaseBatchRun(
   if (outcome.status === 'failed') {
     return { ok: false, reason: 'session-failed', status: 'failed', sessionId: run.id };
   }
-  // cm:why a skipped cut reports `success` on the RESULT type (which has no 'skipped' + ok:true arm) while `schedule_runs.status` keeps the honest 'skipped' — a quiet night is not a dispatch failure, and the run row is where a person looks for what happened
   return { ok: true, status: 'success', sessionId: run.id, resolvedProjectId: projectId };
 }
 

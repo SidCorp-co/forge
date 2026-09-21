@@ -16,12 +16,6 @@ export function useSkills(projectId: string | undefined) {
   });
 }
 
-/**
- * The install-only skills invokable as a slash-command in chat (ISS-718) — what
- * the composer's `/` menu lists. Keyed under `['skills', projectId]` so the
- * existing create/update/delete/register mutations already invalidate it when a
- * skill's eligibility changes; nothing new has to remember to.
- */
 export function useInvokableSkills(projectId: string | undefined) {
   return useQuery({
     queryKey: ["skills", projectId, "invokable"],
@@ -38,10 +32,6 @@ export function useSkillSyncStatus(projectId: string | undefined) {
   });
 }
 
-/** Per-stage skill bindings for a project (`GET /skill-registrations`). Keyed
- *  under `['skills', projectId]` so register/unregister mutations invalidate it
- *  alongside the list + sync-status. The Pipeline settings tab reads this to
- *  show which skill is wired to each stage and to gate the auto-toggles. */
 export function useSkillRegistrations(projectId: string | undefined) {
   return useQuery({
     queryKey: ["skills", projectId, "registrations"],
@@ -50,10 +40,6 @@ export function useSkillRegistrations(projectId: string | undefined) {
   });
 }
 
-/** Per-stage smoke-verify report (`GET /skills/smoke-verify`). Keyed under
- *  `['skills', projectId]` so register/unregister/push mutations invalidate it
- *  together with the list. While a tier-2 canary is PENDING the report polls
- *  so the verdict lands without a manual refresh. */
 export function useSkillSmokeVerify(projectId: string | undefined) {
   return useQuery({
     queryKey: ["skills", projectId, "smoke-verify"],

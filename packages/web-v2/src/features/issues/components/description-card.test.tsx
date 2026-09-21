@@ -126,7 +126,6 @@ describe("DescriptionCard, while an agent is working the issue", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
-  // cm:guard the reason stands where the control was, rather than the control simply vanishing — a card that quietly stops offering Edit is indistinguishable from one that is broken
   it("names the reason where the Edit control was", () => {
     render(
       <DescriptionCard
@@ -138,7 +137,6 @@ describe("DescriptionCard, while an agent is working the issue", () => {
     expect(screen.getByText(held)).toBeInTheDocument();
   });
 
-  // cm:guard `needs_info` is the one park a person's answer restarts, and the lock must not reach it on any surface
   it("still offers Edit on a needs_info issue", () => {
     render(
       <DescriptionCard
@@ -151,7 +149,6 @@ describe("DescriptionCard, while an agent is working the issue", () => {
     expect(screen.queryByText(held)).toBeNull();
   });
 
-  // cm:guard only the way IN is locked. Refusing a draft already open discards text the person has typed — a worse loss than the overwrite, and one they cannot recover.
   it("keeps Save on a draft that was already open when the job started", () => {
     const { rerender } = render(
       <DescriptionCard issue={issue("before")} attachments={[]} canWrite />,

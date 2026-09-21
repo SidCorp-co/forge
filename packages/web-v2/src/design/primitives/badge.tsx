@@ -3,9 +3,6 @@ import { TONE_META } from "@/design/status";
 
 type Tone = "neutral" | "accent" | "cobalt" | "green" | "red" | "amber";
 
-// ISS-509 — the status-meaning tones resolve through the semantic-tone source of
-// truth so these one-off badges can't drift from the system. `accent` (flame)
-// stays a brand-accent badge, intentionally NOT a status tone.
 const TONE: Record<Tone, { fg: string; bg: string }> = {
   neutral: { fg: "var(--fg-muted)", bg: "var(--paper-100)" },
   accent: { fg: "var(--flame-700)", bg: "var(--flame-50)" },
@@ -27,7 +24,7 @@ export function Badge({ children, tone = "neutral" }: BadgeProps) {
   return (
     <span
       className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-      style={{ fontSize: 11, lineHeight: "16px", color: t.fg, background: t.bg }}
+      style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: t.fg, background: t.bg }}
     >
       {children}
     </span>

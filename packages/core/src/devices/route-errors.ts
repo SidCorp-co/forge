@@ -1,8 +1,3 @@
-/**
- * The refusals and the one path param every device route family shares, so a module split
- * out of `pool-routes.ts` cannot drift from the parent it was split from.
- */
-
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 
@@ -13,3 +8,10 @@ export const badRequest = (details: unknown) =>
 
 export const notFound = (what: string) =>
   new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
+
+/** Refused: the world already holds it. `message` carries the whole refusal. */
+export const conflict = (code: string, message: string, details?: unknown) =>
+  new HTTPException(409, {
+    message,
+    cause: { code, ...(details === undefined ? {} : { details }) },
+  });

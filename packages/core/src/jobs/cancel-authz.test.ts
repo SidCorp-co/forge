@@ -64,7 +64,6 @@ beforeEach(() => {
   testEnv.ADMIN_EMAILS = undefined;
 });
 
-// cm:guard the caller's `users` row is read ONCE for the whole request and BOTH gates decide on it, so the first queued row carries `emailVerifiedAt` and `email` together — queue an allow-list read of its own and it is the JOB row `loadJob` takes next, which answers 500 instead of the 403 the test is about (ISS-1012)
 function queueLoads(email: string, ...rows: unknown[]): void {
   selectLimit.mockResolvedValueOnce([{ id: 'u-1', emailVerifiedAt: new Date(), email }]);
   for (const row of rows) selectLimit.mockResolvedValueOnce([row]);
@@ -112,7 +111,6 @@ describe('POST /:id/cancel — who is allowed through', () => {
     expect(cancelJobMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard an unset ADMIN_EMAILS parses to the EMPTY allow-list, which must admit nobody — a `!raw` early return that fell through to "allow" would open every tenant's jobs to every signed-in user on any deploy that never set the var
   it('refuses everyone when ADMIN_EMAILS is unset', async () => {
     projectRole.role = null;
     queueLoads(ADMIN_EMAIL, job);
@@ -121,7 +119,6 @@ describe('POST /:id/cancel — who is allowed through', () => {
   });
 });
 
-// cm:guard resume is deliberately NOT widened — reap is the only action the Operator Ops Console ships, so a platform admin who is a member of nothing must still get 403 here; delete this only alongside a caller that needs the widening (ISS-653)
 describe('POST /:id/resume — not widened', () => {
   it('still refuses a platform admin who is a member of nothing', async () => {
     projectRole.role = null;

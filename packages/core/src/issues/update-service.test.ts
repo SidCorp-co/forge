@@ -11,7 +11,6 @@ const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
 
 const txSelectLimit = vi.fn();
 let existingLabels: { labelId: string }[] = [];
-// cm:why the read-back is awaited directly with no `.limit()`; `txSelectLimit` exists only so a reintroduced cap shows up as a call this test can assert on, rather than as a TypeError on a promise
 const txSelectWhere = vi.fn(() => {
   const rows = existingLabels;
   return {
@@ -72,6 +71,9 @@ function labeledIds(action: string): string[] {
 beforeEach(() => {
   vi.clearAllMocks();
   txUpdateReturning.mockResolvedValue([ROW]);
+  // No stored `sessionContext` by default: the drop guard reads the row before
+  // every write that carries the field, and has nothing to protect here.
+  txSelectLimit.mockResolvedValue([]);
   existingLabels = [];
 });
 
@@ -200,18 +202,60 @@ describe('contractInputChanged', () => {
     expect(heard).toHaveLength(1);
   });
 
-  // cm:guard a write of a field no criterion reads announces NOTHING. Every announcement fans out to a network call per open pull request, so announcing a title edit would spend a GitHub rate limit on a change the contract's answer cannot see.
   it('stays silent for a field no declared criterion reads', async () => {
     await updateIssueFields({ issueId: ISSUE_ID, updates: { title: 't' }, actor: ACTOR });
     expect(heard).toEqual([]);
   });
 
-  // cm:guard the emit is AFTER the transaction. A failed write must not announce a move that did not happen, or the check republishes an answer nothing changed.
   it('announces nothing when the write itself failed', async () => {
     txUpdateReturning.mockResolvedValue([]);
     await expect(
       updateIssueFields({ issueId: ISSUE_ID, updates: { plan: 'p' }, actor: ACTOR }),
     ).rejects.toBeInstanceOf(IssueUpdateNotFound);
     expect(heard).toEqual([]);
+  });
+});
+
+// The ISS-1127 destruction: `{ probe: 1 }` replaced a sessionContext holding
+// `landing`, `lease` and `worklog`, and nothing refused it. The landing
+// checkpoint under it had no history to be read back from.
+describe('updateIssueFields — a sessionContext write may not drop what it never read', () => {
+  const held = { landing: { head: 'a3b04356' }, lease: { holder: 'x' }, worklog: {} };
+
+  beforeEach(() => {
+    txSelectLimit.mockResolvedValue([{ sessionContext: held }]);
+    txUpdateReturning.mockResolvedValue([ROW]);
+  });
+
+  it('refuses the write, naming every key it would have removed', async () => {
+    await expect(
+      updateIssueFields({
+        issueId: ISSUE_ID,
+        updates: { sessionContext: { probe: 1 } },
+        actor: ACTOR,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SessionContextDropsUnreadKeys',
+      dropped: ['landing', 'lease', 'worklog'],
+    });
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('allows a write that adds a key and carries the rest back', async () => {
+    const next = { ...held, landing: { head: 'a3b04356', deployment: 'ae8cdcbb0' } };
+    await expect(
+      updateIssueFields({ issueId: ISSUE_ID, updates: { sessionContext: next }, actor: ACTOR }),
+    ).resolves.toMatchObject({ id: ISSUE_ID });
+  });
+
+  it('allows a deliberate removal, because `expect` proves the caller read the field', async () => {
+    await expect(
+      updateIssueFields({
+        issueId: ISSUE_ID,
+        updates: { sessionContext: { probe: 1 } },
+        expect: { sessionContext: held },
+        actor: ACTOR,
+      }),
+    ).resolves.toMatchObject({ id: ISSUE_ID });
   });
 });

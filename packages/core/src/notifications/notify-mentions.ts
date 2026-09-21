@@ -5,16 +5,6 @@ import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { emitNotification } from './emit.js';
 
-/**
- * Wire mention fan-out: when `commentMentioned` fires, insert one
- * `notifications` row per mentioned user (excluding the actor — already
- * filtered by the route, defended again here). Each insert emits
- * `notificationCreated` so the WS broadcaster delivers `notification.created`
- * (type=`mention`) to the user's room.
- *
- * Failures are logged, never thrown — the originating comment must succeed
- * even if a single notification insert blows up.
- */
 export function registerNotifyMentionsSubscriber(bus: HooksBus): void {
   bus.on('commentMentioned', async (p) => {
     const actorId = p.actor.type === 'user' ? p.actor.id : null;

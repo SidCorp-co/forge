@@ -32,7 +32,6 @@ export interface NamedProject {
 /**
  * Somebody who could be put in a room, by the address that identifies them.
  */
-// cm:guard NO display name on this row, and it is not an omission: `db/display-name-readers.test.ts` names this directory one by one as a place `users.display_name` may not be read, because the label is re-assignable and the address is not. What a person is CALLED is attached by the presentation module that answers the request, which is where a label belongs (ISS-1003, ISS-1011).
 export interface PersonCandidate {
   userId: string;
   email: string;
@@ -42,12 +41,10 @@ export interface HandleCandidate {
   /**
    * The people already in this room who would lose it if this agent joined, by id.
    */
-  // cm:guard a room is readable only by somebody holding a role on EVERY project in it, so bringing a new project in can put an existing member outside the room — quietly, and with nothing on the screen that said it would happen. Computed per candidate rather than described in general, because "somebody might lose access" is a warning nobody can act on and "Grace will lose this room" is. Ids, not labels: what to CALL them is attached in `assistant/conversation-people.ts`, which is the module allowed to read the label column (ISS-1011).
   losesReaderIds: string[];
   /**
    * The agent account, or null where this project has never needed one.
    */
-  // cm:guard NULLABLE, because a project's handle is minted the first time a room needs it and not when the project is created: a candidate list built from `users` alone offers nothing for a project nobody has ever talked to, which is exactly the project somebody is now trying to bring into a room. The add resolves it, and `resolveProjectHandle` mints it there under the same lock it always has.
   userId: string | null;
   /** The address it answers to — the name it already has, or the one it will be given. */
   handle: string;
@@ -74,7 +71,6 @@ export async function projectsNamed(
 /**
  * The shape a room takes from the handles in it.
  */
-// cm:guard shape follows the HANDLE count and not the head count, which is the reading `schema-conversations.ts` already states: a direct room is one handle, a group room is several, and what a shape decides is addressing. A room where four colleagues talk to one project's agent is still that one agent's room, and calling it a group would widen its readers from the people in it to everyone holding a role on its project (ISS-1011).
 export function shapeForHandleCount(liveHandles: number): 'direct' | 'group' {
   return liveHandles > 1 ? 'group' : 'direct';
 }
@@ -110,7 +106,6 @@ async function liveCounts(
 /**
  * The shape a room takes from who is in it.
  */
-// cm:guard `group` iff more than one handle OR more than one person, and the person half is what ISS-1034 added to ISS-1011's handle count: one person and one bot is a direct chat whoever is addressed, and a second person makes it a room. `null` for a room that records no persons — a channel adapter's room, whose membership is its channel's — because a count of zero people says nothing about how many are there (ISS-1034 criteria 41, 43, 45).
 export function shapeForCounts(counts: {
   handles: number;
   persons: number;
@@ -127,8 +122,6 @@ function shapeFollows(adapter: ConversationAdapter): boolean {
 /**
  * Move a room's shape to match who is now in it.
  */
-// cm:guard BOTH ways for a room whose transport says its shape follows its members and PROMOTION ONLY for a channel adapter's: a channel room's shape is settled when its venue is first seen and `assertVenueMatches` refuses a message arriving under another, so demoting one here would make the next message a conflict the room itself caused (ISS-987, ISS-1034 criterion 46). A Forge room reads its shape off the row on every request and can move.
-// cm:guard the flip and the `system` row are written TOGETHER, and the row is written only when the caller says what changed: a reader who opens the thread and finds the room a group with nobody having said why has a transcript that lies by omission, while a room opened already holding two people has nothing to explain (ISS-1034 criteria 42, 43).
 export async function settleShape(
   tx: Executor,
   conversationId: string,
@@ -179,7 +172,6 @@ export async function personLabel(tx: Executor, userId: string): Promise<string>
 /**
  * Everyone already in this room, live, by user id.
  */
-// cm:guard a NULL conversation is a room that does not exist yet and answers the empty set, because the candidate question is asked twice: once for a live room, and once by the screen that is about to open one and wants to know who it could open it with. Two functions would be two rules about who may be added, and they would drift (ISS-1011 criterion 39).
 async function liveUserIds(conversationId: string | null, tx: Executor): Promise<Set<string>> {
   if (!conversationId) return new Set();
   const rows = await tx
@@ -197,7 +189,6 @@ async function liveUserIds(conversationId: string | null, tx: Executor): Promise
 /**
  * A person may be added only where they could have read the room already.
  */
-// cm:guard refused BY NAME and never by silently adding somebody the read check will turn away later: a person in the participant list who cannot open the room is a roster that lies, and the person who added them is told nothing. The refusal names the project they hold no role on, because that is the whole of what the adder has to fix (ISS-1011 criteria 7, 8).
 export async function assertPersonReachesScope(
   userId: string,
   scope: readonly string[],
@@ -217,7 +208,6 @@ export async function assertPersonReachesScope(
 /**
  * The people this room could still take in.
  */
-// cm:guard the pool is the ORG's own members and never every user in the deployment: a directory that answered "anybody" would make this endpoint an existence oracle for accounts the caller has no business knowing about, and the set that could actually read the room is bounded by the orgs its projects belong to anyway.
 export async function addablePeople(
   conversationId: string | null,
   scope: readonly string[],
@@ -225,8 +215,6 @@ export async function addablePeople(
 ): Promise<PersonCandidate[]> {
   if (scope.length === 0) return [];
   const already = await liveUserIds(conversationId, tx);
-  // cm:guard a room that does not exist yet opens holding the handle of every project in its scope, so that handle is already a member and is excluded BY IDENTITY — not by excluding its project, which would also hide a project's other agents and quietly drop a room anybody can still compose by adding them a moment later. Excluded here rather than deduplicated later because the cost is not the duplicate row, which `settleShape` absorbs: it is the sentence shown before the room opens, which counts handles and would promise a shared room where a one-to-one room is what gets created (ISS-1011).
-  // cm:edge contract -> packages/core/src/conversations/handles.ts — `existingProjectHandle` is the same pick `resolveProjectHandle` makes, and the create path attaches whatever it returns; a change to that ordering has to reach this exclusion or the list offers the member the room is about to hold.
   if (conversationId === null) {
     for (const projectId of scope) {
       const opening = await existingProjectHandle(tx, projectId);
@@ -260,7 +248,6 @@ export async function addablePeople(
 /**
  * The agents this caller could still put in this room.
  */
-// cm:guard the set is what the CALLER may bring and not what the room could hold: `addHandle` refuses an actor holding less than a member role on the project the agent brings, so offering an agent the caller cannot add would be a list built to be refused. The bound is the orgs the room's projects already belong to — an agent from another org is a scope nobody in this room can reach (ISS-1011 criteria 9, 10).
 export async function addableHandles(
   conversationId: string | null,
   actorUserId: string,
@@ -268,8 +255,6 @@ export async function addableHandles(
   tx: Executor = defaultDb,
 ): Promise<HandleCandidate[]> {
   const already = await liveUserIds(conversationId, tx);
-  // cm:guard a room that does not exist yet opens holding the handle of every project in its scope, so that handle is already a member and is excluded BY IDENTITY — not by excluding its project, which would also hide a project's other agents and quietly drop a room anybody can still compose by adding them a moment later. Excluded here rather than deduplicated later because the cost is not the duplicate row, which `settleShape` absorbs: it is the sentence shown before the room opens, which counts handles and would promise a shared room where a one-to-one room is what gets created (ISS-1011).
-  // cm:edge contract -> packages/core/src/conversations/handles.ts — `existingProjectHandle` is the same pick `resolveProjectHandle` makes, and the create path attaches whatever it returns; a change to that ordering has to reach this exclusion or the list offers the member the room is about to hold.
   if (conversationId === null) {
     for (const projectId of scope) {
       const opening = await existingProjectHandle(tx, projectId);
@@ -307,17 +292,14 @@ export async function addableHandles(
   const out: HandleCandidate[] = [];
   for (const project of candidateProjects) {
     const access = await effectiveProjectRole(actorUserId, project.id);
-    // cm:guard the SAME bar `addHandle` holds, read through the same helper: a candidate list built to a looser rule than the door is a list of agents the caller will be refused on.
     if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
 
-    // cm:guard asked only for a project the room is NOT already about, because a project already in the scope costs nobody their access: everyone still in the room has already passed the check for it.
     const losesReaderIds = scope.includes(project.id)
       ? []
       : await peopleWithoutRoleOn(livePeople, project.id);
 
     const mine = agents.filter((a) => a.projectId === project.id && a.handle);
     if (mine.length === 0) {
-      // cm:guard a project with no agent yet is OFFERED under the name it will be given, rather than left out: leaving it out makes "which projects can this room be about" an answer about which projects happen to have been talked to before, which is not a rule anybody would state out loud. A project already in the scope is the exception, and for the plain reason that it is already there — there is nothing for a caller to bring.
       if (!scope.includes(project.id)) {
         out.push({
           userId: null,
@@ -356,8 +338,6 @@ async function livePersonIds(conversationId: string, tx: Executor): Promise<stri
   return rows.flatMap((r) => (r.userId ? [r.userId] : []));
 }
 
-// cm:guard one call per person per candidate project, and deliberately NOT a batched query of its own: the bar is whatever `effectiveProjectRole` says it is — the project role, the org-derived one above it, and the fence above both — and a second copy of that here would be a second answer to "may this person read this project" that nothing keeps in step. The cost is bounded by the people in ONE room times the projects the room is not yet about, and it is only paid on the candidate list; if a room large enough to feel it ever exists, batch it by teaching `authz` to answer for many projects at once rather than by re-deriving the rule here.
-// cm:guard `viewer` and not `member`, because the bar this is predicting is the READ rule in `scope.ts:assertConversationRole` — asking the stricter question here would name people who keep the room, and a confirmation that overstates the damage is as false as one that hides it (ISS-1011).
 async function peopleWithoutRoleOn(userIds: readonly string[], projectId: string) {
   const out: string[] = [];
   for (const userId of userIds) {

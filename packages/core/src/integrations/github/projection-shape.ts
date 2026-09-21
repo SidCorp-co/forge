@@ -1,17 +1,3 @@
-/**
- * The three ordering rules the projection is built under, and the rollup.
- *
- * Pure functions over the stored maps, holding no db and no fetch, because the
- * thing worth testing here is what happens when deliveries arrive in the wrong
- * order — and that is a property of these functions rather than of Postgres.
- *
- * Webhook delivery is unordered and GitHub retries. A pull request, a check run
- * and a review change independently of one another, so each carries its own
- * evidence of which of two deliveries is later, and none of them is arrival
- * time. Arrival time is the one answer that is always available and always
- * wrong.
- */
-
 import type {
   ProjectedCheckRun,
   ProjectedChecks,
@@ -22,7 +8,6 @@ import type {
 /** How many check runs a row keeps beyond the ones on its current head. */
 const FOREIGN_CHECK_RETENTION = 50;
 
-// cm:guard the order is GitHub's own and it is MONOTONE — a run walks queued → in_progress → completed and never back. A delayed `queued` delivery arriving after the `completed` one is the ordinary shape of a retry, and taking it would put a finished check back in flight on a row a master is reading to decide whether the work is done.
 const STATUS_RANK: Record<string, number> = { queued: 0, in_progress: 1, completed: 2 };
 
 function rankOf(status: string): number {
@@ -62,15 +47,6 @@ export function foldCheckRun(
   return pruneChecks(next, currentHeadSha);
 }
 
-/**
- * Keep every run on the current head, and the most recently started
- * {@link FOREIGN_CHECK_RETENTION} of the rest.
- *
- * A row accumulates a run per check per head forever otherwise, and the ones
- * that are not on the current head are counted by nothing — they are kept only
- * so a delivery that arrives late for a head that has moved is still recorded
- * rather than dropped on the floor.
- */
 export function pruneChecks(checks: ProjectedChecks, currentHeadSha: string): ProjectedChecks {
   const foreign = Object.values(checks).filter((c) => c.headSha !== currentHeadSha);
   if (foreign.length <= FOREIGN_CHECK_RETENTION) return checks;
@@ -88,15 +64,6 @@ export function pruneChecks(checks: ProjectedChecks, currentHeadSha: string): Pr
   return out;
 }
 
-/**
- * The runs the current head's rollup is computed over: one per (app, name), the
- * latest `started_at` winning.
- *
- * Grouped by app AND name because two apps legitimately publish one name — a
- * GitHub Actions `build` beside a third-party `build` are two checks and both
- * count — while a re-run of one app's check on one head is the same check
- * answered again and must not be counted twice.
- */
 export function currentHeadRuns(
   checks: ProjectedChecks,
   currentHeadSha: string,
@@ -111,8 +78,6 @@ export function currentHeadRuns(
   return [...latest.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// cm:guard the id is the tiebreak and it is compared WHOLE, as a BigInt — GitHub's check-run ids are ascending integers, and two runs of one check started in the same second are otherwise ordered by whichever `Map` insertion happened to be last, which is arrival order wearing a different name.
-// cm:guard the two keys are compared in turn rather than packed into one number: epoch milliseconds are ~1.79e12 today, so `t * 1e6` is past `Number.MAX_SAFE_INTEGER` and adjacent ids collapse onto equal values, and a `% 1e6` on the id makes 2000000 sort below 1999999 — both of them silently, and both of them producing the arrival-order answer this function exists to refuse.
 function startedAfter(run: ProjectedCheckRun, held: ProjectedCheckRun): boolean {
   const a = Date.parse(run.startedAt ?? '') || 0;
   const b = Date.parse(held.startedAt ?? '') || 0;
@@ -139,7 +104,6 @@ export interface CheckRollup {
 const SUCCESS_CONCLUSIONS = new Set(['success', 'neutral', 'skipped']);
 
 /** What the current head's checks say, counted from {@link currentHeadRuns}. */
-// cm:guard `neutral` and `skipped` count as SUCCESS and `cancelled`, `timed_out` and `action_required` as failure — that is GitHub's own rollup and the operator has already learnt it. Inventing a fourth bucket here would make Forge's answer disagree with the one on the pull request page.
 export function rollupOf(checks: ProjectedChecks, currentHeadSha: string): CheckRollup {
   const runs = currentHeadRuns(checks, currentHeadSha);
   let success = 0;

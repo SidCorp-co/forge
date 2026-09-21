@@ -11,9 +11,6 @@ export const sentry: ProviderModule = {
   agentPathKind: "direct-mcp",
   mcpServerName: "sentry",
   multiBinding: false,
-  // cm:why `host` is a bare hostname and not a URL, so it cannot go through `urlHost` — the generic
-  // reader this replaced tried `baseUrl`/`endpoint`/`serverUrl`/`url` and none of them exist on a
-  // Sentry config, so every Sentry card showed no target line at all.
   target: (config) => text(config, "host"),
   section: () => import("./section").then((m) => ({ default: m.SentrySection })),
   connectionSection: null,

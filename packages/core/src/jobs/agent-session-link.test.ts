@@ -19,17 +19,34 @@ const jobs = tagTable('jobs');
 // ISS-447 — applyKernelTransition writes the audit row here on the session sync.
 const kernelTransitions = tagTable('kernel_transitions');
 
-vi.mock('../db/schema.js', () => ({ agentSessions, issues, jobs, kernelTransitions }));
+const KINDS = ['master', 'run_session', 'pipeline', 'pm', 'chat'] as const;
+const TERMINAL = [
+  'completed',
+  'failed',
+  'completed_via_recovery',
+  'cancelled_stale',
+  'cancelled',
+] as const;
+vi.mock('../db/schema.js', () => ({
+  agentSessions,
+  issues,
+  jobs,
+  kernelTransitions,
+  agentSessionKinds: KINDS,
+  terminalAgentSessionStatuses: TERMINAL,
+}));
 
 vi.mock('../db/client.js', () => {
   const dbStub: Record<string, unknown> = {
-    // cm:why applyKernelTransition reaches its write through `exec.transaction`, and stamps `forge.kernel_txn` through `exec.execute`, so a double without both never runs the body under test
     transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
     execute: async () => undefined,
+    // `where()` is awaited directly by the descent sweep (ISS-1136) and
+    // `.limit()`-ed by every other reader here, so it has to be both.
     select: () => ({
       from: (tbl: object) => ({
         where: () => ({
           limit: () => Promise.resolve(selectQueue.shift() ? [selectQueue.shift()!] : []),
+          then: (resolve: (rows: Row[]) => unknown) => resolve([]),
         }),
       }),
     }),
@@ -67,6 +84,8 @@ vi.mock('drizzle-orm', () => ({
   eq: () => ({ _sql: 'eq' }),
   ne: (_col: unknown, v: unknown) => ({ _sql: 'ne', value: v }),
   and: (...parts: unknown[]) => ({ _sql: 'and', parts: parts.filter(Boolean) }),
+  inArray: (_col: unknown, v: unknown) => ({ _sql: 'inArray', value: v }),
+  notInArray: (_col: unknown, v: unknown) => ({ _sql: 'notInArray', value: v }),
 }));
 
 // ISS-101 — agent-session-link now closes one-shot pipeline_runs on terminal
@@ -182,7 +201,6 @@ describe('jobs/agent-session-link', () => {
       expect(meta.retryOfJobId).toBe('job-prev');
       expect(meta.retryOfSessionId).toBeUndefined();
       expect(meta.rootSessionId).toBeUndefined();
-      // cm:guard a NULL-session retry clone must mint a fresh queued row, never inherit a terminal one — don't resurrect ISS-434's reuse+reset
       expect(insertCalls[0]?.values.status).toBe('queued');
     });
 
@@ -205,8 +223,9 @@ describe('jobs/agent-session-link', () => {
       expect(inserted?.values.dispatchedAt).toBeInstanceOf(Date);
       expect(inserted?.values.title).toContain('forge-plan');
       expect(inserted?.values.title).toContain('Fix login bug');
+      expect(inserted?.values.kind).toBe('pipeline');
       const meta = inserted?.values.metadata as Record<string, unknown>;
-      expect(meta.type).toBe('pipeline');
+      expect(meta.type).toBeUndefined();
       expect(meta.jobId).toBe('job-1');
       expect(meta.issueId).toBe('iss-1');
       expect(meta.skillName).toBe('forge-plan');
@@ -217,7 +236,7 @@ describe('jobs/agent-session-link', () => {
       expect(publishMock).toHaveBeenCalled();
     });
 
-    it("tags pm jobs with metadata.type='pm' so the pm session filter scopes them", async () => {
+    it('writes kind=pm on a pm job, so the pm session filter scopes it off the column', async () => {
       // No issue lookup for project-scoped pm jobs (issueId stays null).
       const result = await ensureAgentSessionForJob(
         { ...baseJob, type: 'pm', payload: {}, issueId: null } as never,
@@ -225,8 +244,8 @@ describe('jobs/agent-session-link', () => {
       );
       expect(result).toBe('sess-new');
       expect(insertCalls).toHaveLength(1);
+      expect(insertCalls[0]?.values.kind).toBe('pm');
       const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
-      expect(meta.type).toBe('pm');
       expect(meta.jobType).toBe('pm');
     });
 
@@ -254,14 +273,14 @@ describe('jobs/agent-session-link', () => {
       });
     });
 
-    it("keeps metadata.type='pipeline' for non-pm job types", async () => {
+    it('writes kind=pipeline for non-pm job types', async () => {
       pushSelect({ title: 'Bug', createdById: 'user-1' });
       await ensureAgentSessionForJob({ ...baseJob, type: 'code', issueId: 'iss-2' } as never, {
         repoPath: '/r',
         resume: FRESH_RESUME,
       });
+      expect(insertCalls[0]?.values.kind).toBe('pipeline');
       const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
-      expect(meta.type).toBe('pipeline');
       expect(meta.jobType).toBe('code');
     });
   });
@@ -282,7 +301,6 @@ describe('jobs/agent-session-link', () => {
       expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'completed');
     });
 
-    // cm:why ISS-759 — the I1 trigger stamps failure_reason on an active session when its run goes terminal and a late report then lands here; asserting only `status` let 6 rows sit `completed` WITH `orphan_under_terminal_run` for a week
     it('ISS-759: a completed session clears any failureReason the I1 trigger left behind', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
       expect(updateCalls[0]?.set.status).toBe('completed');
@@ -369,7 +387,6 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
     expect(updateCalls[0]?.set.failureDetail).toBe('a shape no rule has ever seen');
   });
 
-  // cm:why the sweeper's phrase is the only thing in this pair that names a cause — the error text is generic. It is NOT that `failureReason` wins by being that column: the two are joined and `CAUSE_RULES` order decides, so an error text carrying a more specific marker outranks it.
   it('ISS-877: reads the sweeper\u2019s precise failureReason when the error text names nothing', async () => {
     await syncAgentSessionLifecycle(
       {
@@ -402,7 +419,6 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
   });
 
   describe('syncAgentSessionLifecycle — which writer owns the reason', () => {
-    // cm:guard first writer wins on the failed branch: a session a sweeper already failed keeps ITS reason. Measured on epodsystem 2026-09-05 — 61 sessions read `session_lost` while `kernel_transitions` showed the real cause was `queue_timeout` 90s earlier, because this mirror re-failed an already-failed row and overwrote the diagnosis with its own consequence.
     const guarded = (i: number) => {
       const w = updateCalls[i]?.where as { parts?: Array<{ _sql: string; value?: unknown }> };
       return Boolean(w?.parts?.some((p) => p._sql === 'ne' && p.value === 'failed'));
@@ -419,7 +435,6 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
       },
     );
 
-    // cm:guard the counterpart the guard must NOT catch: ISS-877 recovers a real cause from the job row, and those still have to land on a session a sweeper already failed. A test that only pins the synthetic side passes just as well on a guard widened to every failed sync.
     it.each(['provider_spend_cap', '[SIGNAL_KILLED]', null])(
       'a real diagnosis (%s) still lands on an already-failed session',
       async (error) => {
@@ -431,7 +446,6 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
       },
     );
 
-    // cm:guard the completed branch must stay UNguarded — a job reporting `done` proves the agent finished, so a session row still reading `failed` is the lie ISS-759 fixed. Guarding both branches symmetrically re-opens it.
     it('still lets a done job clear a stamped session (ISS-759)', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
       const w = updateCalls[0]?.where as { parts?: unknown[] };

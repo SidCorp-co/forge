@@ -81,7 +81,6 @@ export async function effectiveProjectRole(
   userId: string | null | undefined,
   projectId: string,
 ): Promise<ProjectAccess | null> {
-  // cm:guard the fence sits ABOVE the `!userId` branch and returns the same `null` a missing project returns, so `loadProjectAccess` 404s and `assertProjectAccess` 403s exactly as they already do for a project that is not there. Both halves are load-bearing: above, because a fenced request must never reach a query keyed on a project it may not name; and `null` rather than a throw, because a distinct out-of-scope status would turn any PAT into an existence oracle for every project id in the fleet — which is why the MCP side answers NOT_FOUND too.
   const fence = fencedProjectIds();
   if (fence && !fence.includes(projectId)) return null;
   if (!userId) {
@@ -141,12 +140,6 @@ export function assertProjectRole(
   }
 }
 
-/**
- * One-shot gate that does NOT leak existence: any failure mode (project
- * missing, no access, role below `min`) throws the same 403. Use on surfaces
- * where a 404-vs-403 distinction would let callers probe project IDs (memory,
- * docs, step-handoffs).
- */
 export async function assertProjectAccess(
   projectId: string,
   userId: string | null | undefined,
@@ -159,13 +152,6 @@ export async function assertProjectAccess(
   return access;
 }
 
-/**
- * Org-tier gate on an already-loaded project access. Replaces the legacy
- * "project owner only" checks: destructive / settings-level project ops
- * (delete, archive, settings PATCH, pipeline-config PATCH) require org
- * owner/admin on the project's org — a project-level `admin` (invited) is
- * NOT enough, mirroring the old owner-vs-admin split.
- */
 export function assertOrgRoleOnProject(
   access: ProjectAccess,
   min: OrgMemberRole,
@@ -213,8 +199,6 @@ export async function assertOrgAccess(
  * query that has already left-joined `projectMembers` and `organizationMembers`
  * on the caller. `and(...)` the result into the WHERE.
  */
-// cm:guard the OR term keeps its OWN parentheses. `and()` joins its operands with ` and ` and wraps the RESULT, but never wraps a raw `sql` operand, so an unparenthesised `a OR b` binds looser than every sibling condition and silently annuls them all: `GET /api/projects` was returning archived projects to any project member on exactly this shape long before a fence was added, and the fence would have been annulled the same way.
-// cm:guard the fence is a WHERE term and NOT a post-filter on the rows, because a `LIMIT`/`DISTINCT ON` applied before an in-memory filter returns a short page rather than a fenced one — and every caller here paginates. `projects/routes.ts` inlines the same visibility rule for its own wider projection, which is why this is a shared predicate instead of a private one: measured 2026-09-01, that handler was the one enumeration `loadVisibleProjectIds` did not cover, and it listed every project a scoped token's owner could see.
 export function visibleProjectsWhere(): SQL[] {
   const conditions: SQL[] = [
     sql`(${projectMembers.userId} IS NOT NULL OR ${organizationMembers.role} IN ('owner', 'admin'))`,
@@ -224,12 +208,6 @@ export function visibleProjectsWhere(): SQL[] {
   return conditions;
 }
 
-/**
- * Every project id the user can see: explicit project membership (any role,
- * incl. viewer) OR org owner/admin on the project's org. Plain org `member`
- * does not surface the org's projects. Single source for REST project lists,
- * MCP visible-project scoping, and analytics.
- */
 export async function loadVisibleProjectIds(userId: string | null | undefined): Promise<string[]> {
   if (!userId) return [];
   const rows = await db

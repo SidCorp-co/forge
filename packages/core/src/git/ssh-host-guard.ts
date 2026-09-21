@@ -1,24 +1,3 @@
-/**
- * SSRF/RCE guard for SSH connection-test endpoints that accept a
- * caller-supplied `repoUrl` (ISS-628 review fix). Two layers:
- *
- *  1. Transport restriction — reject anything that isn't a `git@host:path` or
- *     `ssh://host/…` remote. This is what actually closes the RCE: git's
- *     `ext::` transport (and other non-ssh forms) would otherwise reach
- *     `execFile('git', ['ls-remote', repoUrl, …])` in `git/ssh-keys.ts` and
- *     spawn an arbitrary shell command via `ext::sh -c "…"`.
- *  2. Host-resolution check — reject hosts that resolve to a private/loopback/
- *     link-local/reserved address, so an org member can't use the probe to
- *     port-scan or fingerprint internal infrastructure (incl. the cloud
- *     metadata address 169.254.169.254).
- *
- * The sibling per-project test route (`projects/git-credential-routes.ts`)
- * already applies guard #1 against an admin-set, stored `repoUrl` (lower
- * trust boundary — the caller can't supply an arbitrary URL per request), so
- * it isn't wired through this module; the org-pool test endpoint is
- * member-reachable with a fully caller-supplied URL, which is what made both
- * gaps exploitable there.
- */
 import { promises as dns } from 'node:dns';
 import { isIPv4, isIPv6 } from 'node:net';
 import { HTTPException } from 'hono/http-exception';

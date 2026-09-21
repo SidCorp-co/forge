@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Field, Input, SegmentedControl } from "@/design";
+import {
+  Button,
+  CardTitle,
+  Field,
+  Input,
+  SegmentedControl,
+} from "@/design";
 import { useUpdateConnection } from "../../hooks";
 import type { PostmanMode, PostmanRegion } from "../../types";
 import type { ConnectionSection } from "../registry";
@@ -24,7 +30,7 @@ export const PostmanConnectionConfig: ConnectionSection = ({ connection, canMana
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="fg-h4">Configuration</h3>
+      <CardTitle>Configuration</CardTitle>
       <Field label="Workspace name" hint="The Postman workspace this connection writes into.">
         <Input
           value={workspaceName}

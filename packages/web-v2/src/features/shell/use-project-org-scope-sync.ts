@@ -19,18 +19,6 @@ export function useProjectOrgScopeSync(opts: {
   const { slug, activeProject } = opts;
   const router = useRouter();
 
-  // Cross-org navigation consistency (ISS-470, AC6): OPENING a project that
-  // belongs to a different org re-scopes the workspace to that project's org,
-  // so the chrome label + console never lie about where you are. setActiveOrg
-  // self-guards on no-op and persists via /me/preferences.
-  //
-  // CRITICAL (ISS-476): this must fire ONLY when the open project actually
-  // CHANGES — not on every divergence between the project's org and activeOrgId.
-  // A continuous reconcile makes the rail's org switcher dead while a project is
-  // open: a deliberate manual switch flips activeOrgId, the effect sees it differ
-  // from the (unchanged) open project's org, and snaps it straight back. We track
-  // the last slug we re-scoped for so a manual switch on the SAME project sticks;
-  // leaving the project (slug → null) resets it so re-entering re-scopes again.
   const { orgs, activeOrgId, setActiveOrg } = useActiveOrg();
   const lastScopedSlugRef = useRef<string | null>(null);
   useEffect(() => {
@@ -64,20 +52,6 @@ export function useProjectOrgScopeSync(opts: {
     if (slug && slug !== lastSlug) setLastSlug(slug);
   }, [slug, lastSlug, setLastSlug]);
 
-  // Leave project context on a MANUAL cross-org switch (ISS-480). When the rail
-  // switcher flips the active org to one that does NOT own the open project, the
-  // workspace must stop showing the old org's project — otherwise the rail lies
-  // (ORGANIZATION = new org, PROJECT = old org's project). We gate on the
-  // PREVIOUS org so this never collides with the ISS-470 AC6 follow-on-open flow,
-  // which ends with activeOrgId === the just-opened project's org:
-  //   • Open cross-org project: slug changes first with org unchanged → the
-  //     `prevOrg === activeOrgId` guard early-returns; the follow-effect then
-  //     sets org = project.orgId → this re-runs but now project.orgId ===
-  //     activeOrgId → early-returns. Never leaves.
-  //   • Manual switch away: org transitions while slug is stable and the project
-  //     is foreign → leave once.
-  // No setActiveOrg here, so ISS-476 stays intact (no extra PATCH, no revert,
-  // no React #185).
   const prevOrgRef = useRef(activeOrgId);
   useEffect(() => {
     const prevOrg = prevOrgRef.current;

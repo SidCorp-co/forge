@@ -11,7 +11,26 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
+import {
+  alsoBlocking,
+  blockerHttpStatus,
+  type ReleaseBlockerCode,
+  releaseBlockerSentence,
+} from './blocker-sentences.js';
+import {
+  ReleaseCheckUnevaluatedError,
+  ReleaseProbesUnreadableError,
+  ReleaseRosterUnusableError,
+} from './blockers.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
+import {
+  ClaimConflictError,
+  NoReleaseGateError,
+  ReleaseNotVerifiedError,
+  ReleaseProbesUndeclaredError,
+  ReleaseRecordMissingError,
+  ReleaseWorkUnmergedError,
+} from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
 import { MethodMismatchError, MethodNotAnnouncedError } from './method.js';
 import { RELEASE_BATCH_SKILL } from './plan.js';
@@ -24,53 +43,75 @@ export const badRequest = (details: unknown) =>
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-export const conflict = (code: string, message: string) =>
-  new HTTPException(409, { message, cause: { code } });
+export const conflict = (code: string, message: string, details?: unknown) =>
+  new HTTPException(409, {
+    message,
+    cause: details === undefined ? { code } : { code, details },
+  });
 
 export const serviceUnavailable = (code: string, message: string) =>
   new HTTPException(503, { message, cause: { code } });
 
 /**
- * The two refusals a project's own release DECLARATION makes, mapped to named 409s.
+ * One refusal, carrying every reason that stood beside it.
  *
- * Both used to be unhandled, so a project that declares `releaseModel` and no live deploy
- * binding — or two live bindings naming different release runners — answered `500 Internal
- * Server Error` on both the create and the roster. That is the same silent shape the
- * declaration exists to remove, one HTTP layer up: an operator reading a 500 has no way to
- * tell a misdeclared project from a broken server. The message is the error's own, written
- * once beside the rule, and carries the remedy.
+ * ISS-1127: releasing ISS-1103 by hand was refused twice by this same endpoint
+ * minutes apart — a missing release note, and then a merge nobody had marked —
+ * each individually correct and neither mentioning the other. The thrown code
+ * and its wording are unchanged; `alsoBlocking` is what stops the second
+ * refusal being a surprise.
  */
+export function releaseBlockerHttp(
+  err: unknown,
+  code: ReleaseBlockerCode,
+  details?: Record<string, unknown>,
+): HTTPException {
+  const standing = alsoBlocking(err, code);
+  const body: Record<string, unknown> = { ...(details ?? {}) };
+  if (standing.length > 0) body.alsoBlocking = standing;
+  return new HTTPException(blockerHttpStatus(code), {
+    message: releaseBlockerSentence(code, details),
+    cause: Object.keys(body).length > 0 ? { code, details: body } : { code },
+  });
+}
+
 export function declarationRefusal(err: unknown): HTTPException | null {
+  // These keep their own long sentences, which name the project and the labels;
+  // what they gain is the rest of the list standing with them (ISS-1127).
   if (err instanceof ReleaseTargetUndeclaredError) {
-    return conflict('RELEASE_TARGET_UNDECLARED', err.message);
+    return carrying(err, 'RELEASE_TARGET_UNDECLARED', err.message);
   }
   if (err instanceof ReleaseRunnerAmbiguousError) {
-    return conflict('RELEASE_RUNNER_AMBIGUOUS', err.message);
+    return carrying(err, 'RELEASE_RUNNER_AMBIGUOUS', err.message);
   }
   if (err instanceof ReleaseMultiChannelUnsupportedError) {
-    return conflict('RELEASE_MULTI_CHANNEL_UNSUPPORTED', err.message);
+    return carrying(err, 'RELEASE_MULTI_CHANNEL_UNSUPPORTED', err.message);
   }
   return null;
 }
-// cm:guard the message must name the CONFIG KEY and the shape, because this refusal is the first
-// thing a project with a fresh gate meets and an operator cannot guess `verify.probes` from
-// "no probes declared".
-// cm:guard BOTH ways out, and the project one FIRST. ISS-1069 measured what naming only the binding
-// costs: `sidpeak` read this message, went to declare `verify`, and needed a hostname Forge held no
-// field for — its two recorded URLs both served staging and its live address existed only in the
-// Coolify UI. Filling one project field now answers this for every binding it has, so an operator
-// who is told only about `verify` is being sent the long way round.
-export function undeclaredProbes(): HTTPException {
-  return conflict(
+
+/** One refusal, its own sentence, and every reason standing beside it. */
+function carrying(err: unknown, code: ReleaseBlockerCode, message: string): HTTPException {
+  const standing = alsoBlocking(err, code);
+  return new HTTPException(blockerHttpStatus(code), {
+    message,
+    cause: standing.length > 0 ? { code, details: { alsoBlocking: standing } } : { code },
+  });
+}
+
+export function undeclaredProbes(err?: unknown): HTTPException {
+  return carrying(
+    err,
     'RELEASE_PROBES_UNDECLARED',
-    'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Two ways out. Either record where this project is deployed — `environments.live.commitUrl`, the endpoint that reports the running commit, and `environments.live.commitPath`, the dot path to it inside that endpoint\'s JSON body (`commit`, or `data.commit`; leave it empty where the whole body is the commit) — which answers this for every live binding at once. Or declare probes on the binding itself, which overrides the project\'s: `verify` = `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`. A binding that declares a `verify` Forge cannot read takes NO project default: correct it or remove it.',
+    releaseBlockerSentence('RELEASE_PROBES_UNDECLARED'),
   );
 }
 
-export function undeclaredBranches(): HTTPException {
-  return conflict(
+export function undeclaredBranches(err?: unknown): HTTPException {
+  return carrying(
+    err,
     'RELEASE_BRANCHES_UNDECLARED',
-    'This project declares no baseBranch, so there is nothing a release could promote from',
+    releaseBlockerSentence('RELEASE_BRANCHES_UNDECLARED'),
   );
 }
 // so the refusal has to say where the verdict actually comes from, or the next caller sends it
@@ -88,9 +129,6 @@ export function refuseMachineKeys(body: Record<string, unknown>): void {
   if (sent.length === 0) return;
   throw new HTTPException(400, {
     message: `\`${sent.join('`, `')}\` ${sent.length === 1 ? 'is' : 'are'} core's reading and not yours to send. Core takes them from this project's declared probes at the moment you record your account, and stores them beside it. Send \`account\`, and \`providerRef\` for the provider's own handle on what you did.`,
-    // cm:why the keys go under `details` and not beside the code — `middleware/error.ts`
-    // `extractCause` copies `code`, `details` and `wwwAuthenticate` and drops every other key, so a
-    // sibling field reaches the caller as nothing at all.
     cause: { code: 'RELEASE_VERDICT_NOT_YOURS', details: { keys: sent } },
   });
 }
@@ -115,4 +153,48 @@ export function methodRefusal(err: unknown): HTTPException | null {
     );
   }
   return null;
+}
+
+/**
+ * Each refusal under the name the batch route already gives it.
+ *
+ * One vocabulary across both doors: a caller that learns `RELEASE_PROBES_UNDECLARED`
+ * from a batch must not meet a second name for the same fact here.
+ */
+export function recordRefusal(err: unknown): HTTPException {
+  const declined = declarationRefusal(err);
+  if (declined) return declined;
+
+  if (err instanceof NoReleaseGateError) {
+    return conflict(
+      'NO_RELEASE_GATE',
+      'This project has no release gate configured, so there is no release to record — an agent `closed` here is already `closed`',
+    );
+  }
+  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes(err);
+  if (err instanceof ReleaseProbesUnreadableError) {
+    return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { urls: err.urls });
+  }
+  if (err instanceof ReleaseCheckUnevaluatedError) {
+    return releaseBlockerHttp(err, 'RELEASE_CHECK_UNEVALUATED', { check: err.check });
+  }
+  if (err instanceof ReleaseRosterUnusableError) {
+    return releaseBlockerHttp(err, err.code, { waiting: err.waiting });
+  }
+  if (err instanceof ReleaseNotVerifiedError) {
+    return new HTTPException(409, {
+      message: err.reason,
+      cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
+    });
+  }
+  if (err instanceof ClaimConflictError) {
+    return releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
+  }
+  if (err instanceof ReleaseRecordMissingError) {
+    return releaseBlockerHttp(err, 'RELEASE_RECORD_MISSING', { issueIds: err.issueIds });
+  }
+  if (err instanceof ReleaseWorkUnmergedError) {
+    return releaseBlockerHttp(err, 'RELEASE_WORK_UNMERGED', { issueIds: err.issueIds });
+  }
+  throw err;
 }

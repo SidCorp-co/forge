@@ -48,14 +48,6 @@ pub async fn run_pending(client: &CoreClient, cfg: &Config) {
     }
 }
 
-/// Re-run provisioning for one runner NOW, from a lane that found the workspace
-/// unusable. Returns once the pull has been drained; the caller re-checks the
-/// workspace itself rather than trusting a status.
-///
-/// Flips the server row back to `queued` because that is what `/me/provisions`
-/// filters on — the pull is the mechanism, not a detail of it.
-// cm:guard go through the SERVER row; never call clone_repo/adopt_repo from another module. This path is the only one that receives the decrypted deploy key (`/me/provisions` delivers it once, per ISS-305's side-channel) and the only one that also writes `.mcp.json`, skills and `orientation.md`. A caller that shortcuts to the clone gets a checkout no agent can work in.
-// cm:guard `queued` makes this runner ineligible for SELECTION (the server requires provision_status ready), which is correct for a box whose workspace is broken but only safe because the job that triggered this is ALREADY claimed. Never call this before a claim.
 pub async fn reprovision(client: &CoreClient, cfg: &Config, runner_id: &str) {
     report(client, runner_id, "queued", None).await;
     run_pending(client, cfg).await;
@@ -96,8 +88,6 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         None => None,
     };
 
-    // 2b. GitHub App credential (optional). Scoped to the remote's host.
-    // cm:guard both halves must hold before the helper is attached — core's say-so AND an https remote. Attaching it to an ssh remote is inert but misleading, and attaching it without core's say-so puts a helper on every https clone that will refuse every ask.
     let cred_host = if p.github_app_credential {
         p.repo_url.as_deref().and_then(git_cred::https_host)
     } else {
@@ -112,7 +102,6 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
     match classify_workspace(&repo_path, p.repo_url.as_deref()) {
         WorkspaceMode::AlreadyRepo => {}
         WorkspaceMode::RepoLess => {
-            // cm:guard the mkdir is an EXPLICIT gate and never an implicit consequence. `finish_workspace` reaches `orientation::write_orientation`, which does `create_dir_all(repo_path/.forge)` of its own — so a version that merely skipped the mkdir would half-create the workspace as a side effect, swallow the failure as a warning and still report `ready`. The directory this provisioner is about to fill has to be one it decided to create and said so.
             if let Err(detail) = ensure_repo_less_dir(&repo_path) {
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
                 return;
@@ -126,7 +115,6 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
             return;
         }
         WorkspaceMode::Occupied(extra) => {
-            // cm:guard name the files and the folder, and say what to do with them — the message this replaced forwarded raw git stderr ("destination path '/home/forge/projects/anhome' already exists and is not an empty directory"), which states a fact and asks for nothing. An operator read it 8 times over 8 hours without a next step.
             let listed = extra.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
             let more = if extra.len() > 5 {
                 format!(" (+{} more)", extra.len() - 5)
@@ -175,9 +163,6 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 .map(str::trim)
                 .expect("WorkspaceMode::Clone implies a non-empty repo url");
             report(client, &p.runner_id, "cloning", None).await;
-            // cm:guard check the base branch out BEFORE the orientation/MCP writes — the
-            // dispatcher assumes the main worktree already sits on the base branch, and
-            // switching afterwards collides with those now-untracked files.
             if let Err(detail) = clone_repo(
                 repo_url,
                 &repo_path,
@@ -185,7 +170,6 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 &git_cfg,
                 p.branch.as_deref(),
             ) {
-                // cm:why an unfinishable clone is manual-setup, not `failed` — the operator can clone it by hand and re-assign, which a hard failure would not invite
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
                 return;
             }
@@ -217,25 +201,95 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
         }
     }
 
-    // cm:why neither write is a hard failure — a workspace missing its orientation
-    // is degraded but usable, while refusing to reach `ready` over it would leave
-    // the project looking unprovisioned and block dispatch entirely.
     report(client, &p.runner_id, "writing_mcp", None).await;
-    if let Err(e) = mcp::config::write_persistent(repo_path, client.base(), &p.slug) {
-        tracing::warn!("[provision] write .mcp.json failed: {e}");
+    let mut ready_detail: Option<String> = None;
+    match mcp::config::write_persistent(
+        repo_path,
+        client.base(),
+        &p.slug,
+        p.mcp_credential.as_deref(),
+    ) {
+        Ok(mcp::config::PersistentMcp::Written) => {}
+        // Jobs reach Forge through the credential the daemon writes per run, so
+        // this does not hold the workspace back — but a human opening `claude`
+        // here would find no `forge` server and no reason why. The reason rides
+        // the `ready` report instead of living only in this box's log.
+        Ok(mcp::config::PersistentMcp::SkippedNoPat) => {
+            ready_detail = Some(
+                "no credential for this checkout — core sent none with the provision and this box \
+                 has no stored PAT, so .mcp.json has no `forge` entry and `claude` run by hand in \
+                 this folder cannot reach Forge. An older core does not send one: \
+                 `forge-runner login --pat <token>` covers it until it is upgraded."
+                    .into(),
+            );
+        }
+        Err(e) => {
+            tracing::warn!("[provision] write .mcp.json failed: {e}");
+            ready_detail = Some(format!(".mcp.json was not written: {e}"));
+        }
     }
     if let Err(e) = orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
         tracing::warn!("[provision] write orientation failed: {e}");
     }
-    // cm:guard the workspace is pre-trusted HERE, where the box first owns the path, and not only in `daemon::master`. A master pane is started every sweep and this runs once per provision, so the source fix is the cheap one and the master's is the retrofit for every box provisioned before this shipped.
     trust::pre_trust_logged(repo_path, &p.slug);
+    record_binding(p, repo_path);
 
-    report(client, &p.runner_id, "ready", None).await;
+    report(client, &p.runner_id, "ready", ready_detail.as_deref()).await;
     tracing::info!(
         "[provision] project={} ready at {}",
         p.slug,
         repo_path.display()
     );
+}
+
+/// Write the local binding for a workspace this box just provisioned.
+///
+/// The server row and `config.toml` used to disagree after an assignment made
+/// in the web UI: the runner row said `ready` with its path while `[bindings]`
+/// stayed empty, so `doctor` reported none, `sync` had no project to pull for,
+/// and `forge-runner api` could not resolve a slug — the operator had to go to
+/// the box and run `bind` by hand for work the server had already arranged.
+/// Best-effort like every other step here: a failure is logged, and the
+/// workspace is still ready.
+fn record_binding(p: &Provision, repo_path: &Path) {
+    let mut cfg = match Config::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            tracing::warn!(
+                "[provision] {}: cannot read config to record the binding: {e}",
+                p.slug
+            );
+            return;
+        }
+    };
+    let existing = cfg.bindings.get(&p.slug);
+    let branch = p
+        .branch
+        .clone()
+        .or_else(|| existing.and_then(|b| b.branch.clone()));
+    if existing.is_some_and(|b| {
+        b.repo_path == repo_path
+            && b.branch == branch
+            && b.project_id.as_deref() == Some(p.project_id.as_str())
+    }) {
+        return;
+    }
+    cfg.bindings.insert(
+        p.slug.clone(),
+        crate::config::Binding {
+            repo_path: repo_path.to_path_buf(),
+            branch,
+            project_id: Some(p.project_id.clone()),
+        },
+    );
+    match cfg.save() {
+        Ok(()) => tracing::info!(
+            "[provision] {}: bound locally to {}",
+            p.slug,
+            repo_path.display()
+        ),
+        Err(e) => tracing::warn!("[provision] {}: binding not saved: {e}", p.slug),
+    }
 }
 
 /// Server `repoPath` wins; else fall back to `projects_root/<slug>`.
@@ -262,7 +316,6 @@ fn clone_repo(
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {e}"))?;
     }
     let mut cmd = Command::new("git");
-    // cm:guard the credential config must ride on the CLONE command line — there is no repo yet to hold it, so a helper written only repo-locally afterwards leaves the clone itself unauthenticated.
     cmd.args(git_cfg).arg("clone").arg(repo_url).arg(repo_path);
     if let Some(ssh) = ssh_cmd {
         cmd.env("GIT_SSH_COMMAND", ssh);
@@ -299,14 +352,6 @@ fn clone_repo(
     Ok(())
 }
 
-/// Turn an existing non-empty folder into a checkout of `repo_url` WITHOUT
-/// moving it: `git init`, add the remote, fetch, then force the base branch out
-/// over whatever provisioning had already written there.
-///
-/// This is the documented recipe for the one thing `git clone` refuses. It is
-/// only ever reached from `WorkspaceMode::Adopt`, which has already established
-/// that every file present is one this provisioner wrote.
-// cm:guard `checkout -f` is safe ONLY under that precondition — `PROVISIONED_ENTRIES` is what establishes it, and the two must be read together. Calling this on an arbitrary folder discards uncommitted work with no prompt.
 fn adopt_repo(
     repo_url: &str,
     repo_path: &Path,
@@ -345,7 +390,6 @@ fn adopt_repo(
     let target = match branch.map(str::trim).filter(|b| !b.is_empty()) {
         Some(b) => b.to_string(),
         None => {
-            // cm:why derive the default from the REMOTE, never assume `main` — a repo whose default is `master`/`develop` would otherwise land on a branch that does not exist and fail the checkout after a successful fetch
             let _ = git(&["remote", "set-head", "origin", "--auto"]);
             let head = git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])?;
             head.strip_prefix("origin/").unwrap_or(&head).to_string()
@@ -396,11 +440,6 @@ enum WorkspaceMode {
     Occupied(Vec<String>),
 }
 
-/// Everything this provisioner writes into a workspace itself.
-// cm:guard keep this in lockstep with what `finish_workspace` writes — it is the entire basis for calling an adopt non-destructive. A name that belongs to the repo but is missing here turns `Adopt` into `Occupied` (harmless, just a manual step); a name this runner writes but is NOT here means a real file gets force-checked-out over, which is data loss.
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/orientation.rs — writes `.forge/orientation.md` and `CLAUDE.md`
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/mcp/config.rs — writes `.mcp.json`
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/skill_sync.rs — writes `.claude/skills/`
 const PROVISIONED_ENTRIES: &[&str] = &[".claude", ".mcp.json", ".forge", "CLAUDE.md"];
 
 /// Entries in `dir` that this provisioner did not write. `Err` on an unreadable
@@ -417,13 +456,6 @@ fn foreign_entries(dir: &Path) -> std::io::Result<Vec<String>> {
     Ok(extra)
 }
 
-/// Create the folder a repo-less workspace IS, or say why not in the words an
-/// operator is given.
-///
-/// Separated from `process_one` so the creation and its refusal are reachable
-/// without a core client: they are the whole of what ISS-1037 changes, and a
-/// classifier test cannot see either.
-// cm:guard the failure must name the PATH and the OS reason. The message this replaced said "folder missing — set the project repo URL (and a deploy key) or create the folder manually", which for a storefront project is advice to invent a repository that does not exist; an operator who cannot act on the first sentence reads the rest as noise.
 fn ensure_repo_less_dir(repo_path: &Path) -> std::result::Result<(), String> {
     std::fs::create_dir_all(repo_path).map_err(|e| {
         format!(
@@ -433,8 +465,6 @@ fn ensure_repo_less_dir(repo_path: &Path) -> std::result::Result<(), String> {
     })
 }
 
-// cm:guard an existing folder + a repo URL is NOT automatically `Clone` — `git clone` refuses a non-empty destination ("destination path '...' already exists and is not an empty directory"), and provisioning is what put files there: a repo-less workspace gets `.mcp.json`/`.forge`/`CLAUDE.md`, so the day someone sets the repo URL every re-provision fails identically, forever, with a raw git error and no way forward (ubuntu1/anhome, 2026-08-14).
-// cm:guard an existing folder without a URL is an MCP-driven project that has no codebase by design — it must stay `RepoLess`. Refusing it is what forced a fake `git init` before any such store could be provisioned at all.
 fn classify_workspace(repo_path: &Path, repo_url: Option<&str>) -> WorkspaceMode {
     if repo_path.join(".git").exists() {
         return WorkspaceMode::AlreadyRepo;
@@ -444,7 +474,6 @@ fn classify_workspace(repo_path: &Path, repo_url: Option<&str>) -> WorkspaceMode
         return if has_url {
             WorkspaceMode::Clone
         } else {
-            // cm:guard a missing folder and an existing one must classify the SAME with no URL. An empty directory is not a fact about a project — it is a fact about which box you are standing on, and making it the difference between `RepoLess` and a refusal is what left a whole class of project unable to pair a box until an operator ran `mkdir` (ISS-1037).
             WorkspaceMode::RepoLess
         };
     }
@@ -454,7 +483,6 @@ fn classify_workspace(repo_path: &Path, repo_url: Option<&str>) -> WorkspaceMode
     match foreign_entries(repo_path) {
         Ok(extra) if !extra.is_empty() => WorkspaceMode::Occupied(extra),
         Ok(_) => {
-            // cm:why an empty folder still takes the plain clone — it is the cheaper, better-understood path, and adopt exists only for the case clone cannot do
             if std::fs::read_dir(repo_path)
                 .map(|d| d.count() == 0)
                 .unwrap_or(false)
@@ -531,7 +559,6 @@ mod tests {
         );
     }
 
-    // cm:guard the two must classify IDENTICALLY, and the assertion is the equality rather than two separate expectations of `RepoLess`. This test replaces `only_a_missing_folder_with_no_url_needs_manual_setup`, which pinned the refusal ISS-1037 is about: an empty directory happening to exist was the whole difference between a project that could pair a box and one that could not.
     #[test]
     fn a_repo_less_project_classifies_the_same_whether_or_not_its_folder_exists() {
         let absent = tmp("missing-no-url");
@@ -553,6 +580,42 @@ mod tests {
         let _ = fs::remove_dir_all(&present);
     }
 
+    #[test]
+    fn a_provisioned_workspace_records_its_own_binding() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("forge-bind-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", &dir);
+
+        let mut p = provision(Some("/srv/checkouts/butlocs"));
+        p.branch = Some("develop".into());
+        record_binding(&p, Path::new("/srv/checkouts/butlocs"));
+
+        let cfg = Config::load().unwrap();
+        let bound = cfg
+            .bindings
+            .get("butlocs")
+            .expect("the provision bound itself");
+        assert_eq!(bound.repo_path, PathBuf::from("/srv/checkouts/butlocs"));
+        assert_eq!(bound.branch.as_deref(), Some("develop"));
+        assert_eq!(bound.project_id.as_deref(), Some("p-1"));
+
+        // Re-provisioning the same workspace is not a second binding.
+        record_binding(&p, Path::new("/srv/checkouts/butlocs"));
+        assert_eq!(Config::load().unwrap().bindings.len(), 1);
+
+        // A path the server moved wins over what was recorded before.
+        record_binding(&p, Path::new("/srv/moved/butlocs"));
+        assert_eq!(
+            Config::load().unwrap().bindings["butlocs"].repo_path,
+            PathBuf::from("/srv/moved/butlocs")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     fn provision(repo_path: Option<&str>) -> crate::transport::provision::Provision {
         crate::transport::provision::Provision {
             runner_id: "r-1".into(),
@@ -565,13 +628,10 @@ mod tests {
             ssh_public_key: None,
             ssh_private_key: None,
             github_app_credential: false,
+            mcp_credential: None,
         }
     }
 
-    /// Criterion 10. Nothing is created outside a configured workspace root:
-    /// with nowhere to put a project, `resolve_path` answers `None`, which is
-    /// the single cause of the refusal `process_one` prints.
-    // cm:guard this is the refusal ISS-1037 must NOT have widened. The whole change is that a missing folder gets created; the one place that must still refuse is the one with no folder to create — a `Some` here would have the runner mkdir-ing into whatever relative path it resolved against its own cwd.
     #[test]
     fn a_device_with_no_repo_path_and_no_projects_root_still_resolves_nowhere() {
         let mut cfg = Config {
@@ -618,9 +678,6 @@ mod tests {
         let _ = fs::remove_dir_all(tmp("repo-less-mkdir"));
     }
 
-    /// Criterion 9. A folder that cannot be created is a loud refusal naming
-    /// the path and the reason, never a quiet walk onward into `finish_workspace`.
-    // cm:guard the PATH and the OS reason both have to be in the string. `finish_workspace` would half-create this workspace on its own and still report `ready`, so this refusal is the only thing standing between an unwritable root and a project that reads as provisioned.
     #[cfg(unix)]
     #[test]
     fn a_workspace_folder_that_cannot_be_created_is_refused_naming_the_path_and_why() {
@@ -650,7 +707,6 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    // cm:guard this is the whole state the Adopt mode exists for — a repo-less workspace that LATER gained a repo URL. Before it, every re-provision reported the raw git refusal and nothing an operator could act on (ubuntu1/anhome, 8 hours, 2026-08-14). If this test ever expects Clone again, the loop is back.
     #[test]
     fn a_folder_holding_only_our_own_output_is_adopted_not_cloned() {
         let dir = tmp("adopt");
@@ -665,7 +721,6 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    // cm:guard a folder with anything else in it must NEVER be adopted — adopt ends in `checkout -f`, so the only thing separating a recovery from silent data loss is this branch
     #[test]
     fn a_folder_with_foreign_files_is_occupied_and_names_them() {
         let dir = tmp("occupied");

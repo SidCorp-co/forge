@@ -1,8 +1,3 @@
-// The batch prompt is where a project's own release ritual meets Forge's
-// protocol. It used to carry one project's Coolify steps for everyone, so the
-// thing worth pinning is which text the agent is told to follow, and that it
-// is always told which of the two it got.
-
 import { describe, expect, it } from 'vitest';
 import {
   defaultReleaseProcedure,
@@ -27,6 +22,7 @@ const BASE = {
   releaseModel: 'promote' as const,
   releaseStrategy: 'merge-branch' as const,
   issues: [{ id: 'i1', displayId: 'ISS-9', title: 'checkout 500s' }],
+  releaseRunnerPreferenceMet: true,
 };
 
 const channel = (over: Partial<ReleaseChannel> = {}): ReleaseChannel => ({
@@ -49,9 +45,6 @@ const plan = (over: Partial<ReleasePlan> = {}): ReleasePlan => ({
 });
 
 describe('buildReleaseBatchPrompt', () => {
-  // cm:guard criterion 38 of ISS-1042, and the negative half is the load-bearing one. The block
-  // used to have four branches and three of them told the agent to perform a rollback; a test that
-  // only asserted the new sentence would pass with any one of those still emitted beside it.
   it('tells the agent to repair forward and to roll back under no declaration at all', () => {
     for (const rollback of [
       null,
@@ -71,9 +64,6 @@ describe('buildReleaseBatchPrompt', () => {
     }
   });
 
-  // cm:guard the declaration is still QUOTED, and quoted as the human's option. A human deciding
-  // whether to roll back wants to read it; dropping it would make the agent's abort comment the
-  // only place it appears, which is nowhere.
   it("quotes the declared way back as the human's, not as a step", () => {
     const out = buildReleaseBatchPrompt({
       ...BASE,
@@ -88,18 +78,12 @@ describe('buildReleaseBatchPrompt', () => {
     expect(out).toContain('promote the previous theme revision');
   });
 
-  // cm:guard criterion 25. The assertion reads the CONSTANT rather than the string `release-flow`,
-  // because what is claimed is that the prompt and the job's `skillName` cannot name two different
-  // skills — a literal here would go on passing after the constant moved.
   it('emits an invocation line for the skill the job names', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
     expect(out).toContain(`run the \`${RELEASE_BATCH_SKILL}\` skill`);
   });
 
-  // cm:guard a skill that does not load must produce an ANNOUNCEMENT, not a release improvised out
-  // of this prompt. `release-flow` does not exist until forge-plugin ISS-1521 ships it, so today
-  // this is the branch every run takes.
   it('tells the agent what to do when the skill does not load', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
@@ -107,7 +91,6 @@ describe('buildReleaseBatchPrompt', () => {
     expect(out).toContain('do not improvise a release out of this prompt');
   });
 
-  // cm:guard the floor exists because 17 gated projects had no procedure on the day this shipped; drop it and every one of their releases starts with the agent being told nothing
   it('falls back to the Forge default, and says that is what it is', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
@@ -148,9 +131,6 @@ describe('buildReleaseBatchPrompt', () => {
     expect(out).toContain('frontend ships WITH varnish');
   });
 
-  // cm:guard ONE block per channel, each naming its own binding. home-kieutrung releases onto a
-  // coolify app AND an epodsystem store; folding the set into one block is how an agent handed two
-  // endpoints reads one set of instructions and deploys half the project.
   it('renders one notes block per live binding rather than folding them together', () => {
     const out = buildReleaseBatchPrompt({
       ...BASE,
@@ -169,16 +149,12 @@ describe('buildReleaseBatchPrompt', () => {
     expect(out).toMatch(/deploy channels \(2, work ALL of them\)/);
   });
 
-  // cm:guard a project with no channel must be TOLD there is none. Left blank, the agent fills the gap with the deploy it has seen in every other prompt, and a release lands somewhere nobody configured.
   it('says out loud when nothing deploys, rather than leaving it blank', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
     expect(out).toMatch(/deploy channels: none/);
   });
 
-  // cm:guard the live-branch line follows the MODEL and not the value. pixelight's release publishes
-  // a theme, so naming a branch for it states a promotion that is not going to happen — and the
-  // agent has no other source for what a release means on this project.
   it('names the live branch under promote and not under publish', () => {
     const promoteOut = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
     expect(promoteOut).toContain('liveBranch: master');
@@ -201,5 +177,48 @@ describe('buildReleaseBatchPrompt', () => {
     });
 
     expect(out).toContain('issue.title');
+  });
+});
+
+describe('the release runner preference the agent is told about', () => {
+  it('says nothing where the project declares no release runner label', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+
+    expect(out).not.toContain('release runner:');
+  });
+
+  it('names the preferred box where one is declared and a box carries it', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: true,
+    });
+
+    expect(out).toContain('release runner: this project prefers a box labelled `prod-box`');
+    expect(out).not.toContain('running somewhere else');
+  });
+
+  it('tells the agent to record a preference no eligible box could honour', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: false,
+    });
+
+    expect(out).toContain('no box eligible to release carried it when this batch was cut');
+    expect(out).toContain('whether the preference was honoured');
+  });
+
+  // The job is claimed after this string is built, so a labelled box coming
+  // online in between would make any claim about where it ran a guess.
+  it('says where the box that took it is read, rather than asserting where it ran', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: false,
+    });
+
+    expect(out).toContain('Read `releaseRunner` in the batch context');
+    expect(out).not.toContain('is running somewhere else');
   });
 });

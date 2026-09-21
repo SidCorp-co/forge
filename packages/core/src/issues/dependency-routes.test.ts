@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbSelect = vi.fn();
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('./issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -79,7 +78,6 @@ describe('dependency route authz', () => {
         where: () => ({ limit: () => Promise.resolve([{ projectId: PROJECT_ID }]) }),
       }),
     }));
-    // cm:why role comes from the ORG with no membership row — the exact shape the old raw-row lookup 403'd, and the only shape that distinguishes this fix from the code it replaced.
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
       orgId: 'org-1',

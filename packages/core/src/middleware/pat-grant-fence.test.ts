@@ -19,7 +19,6 @@ vi.mock('../db/client.js', () => ({ db: {} }));
 vi.mock('../mcp/tools/project-scope.js', () => ({ patEffectiveProjectIds: () => null }));
 
 const authenticatePat = vi.fn();
-// cm:guard the wrapper fires `onVerified` exactly where the real `authenticatePat` does — once a row resolved, never for a token that did not verify — so the cases below keep saying what they said while the header rides on that callback (ISS-974). Firing it unconditionally here would make the fence's own "unauthenticated callers learn nothing" property untestable from this file.
 vi.mock('./require-pat.js', () => ({
   authenticatePat: async (c: unknown, t: unknown, l: unknown, onVerified?: () => void) => {
     const resolved = await authenticatePat(c, t, l);
@@ -34,7 +33,7 @@ type Principal = Awaited<ReturnType<typeof beginPatRequest>>['principal'];
 function principal(permissions: readonly string[] | null | undefined): Principal {
   return {
     kind: 'pat',
-    agency: null,
+    agency: 'human',
     agentUserId: null,
     userId: 'u1',
     tokenId: 't1',
@@ -46,7 +45,6 @@ function principal(permissions: readonly string[] | null | undefined): Principal
   } as Principal;
 }
 
-// cm:guard the fake carries `path` and `method` as its only INPUTS, because every check `beginPatRequest` makes must read one of those two or the token — a case that needs a third input is a check that broke the memo in `PAT_REQUEST_VAR` and the guard there says so. `header` is an output sink and not a third input: it records what the accepted-permissions header was set to (ISS-974) and answers nothing back.
 function ctx(path: string, method = 'GET') {
   const vars = new Map<string, unknown>();
   const headers = new Map<string, string>();
@@ -97,7 +95,6 @@ beforeEach(() => {
 });
 
 describe('a token granted nothing reaches the whole menu', () => {
-  // cm:guard NULL and `[]` are asserted APART, never as one parameterized case with `?? []` in the helper. They arrive by different routes — the column the migration never wrote, and a caller who sent an empty array — and one `??` in the wrong place makes exactly one of them permissionless while the other keeps working, which is the shape that reaches production looking tested.
   it.each([
     ['an unmigrated token (NULL column)', null],
     ['a token minted with an empty grant array', []],
@@ -159,7 +156,6 @@ describe('a granted token reaches its own groups and nothing else', () => {
     expect(await refusalFor('/api/issues', ['issues:write'], 'POST')).toBeNull();
   });
 
-  // cm:guard the opposite direction to the absent-grant rule above, and deliberately so: a token narrowed to groups the menu no longer declares must reach NOTHING. Only ABSENCE is the whole menu, so a non-empty array that resolves to no prefix is a token that was narrowed and whose groups went away.
   it('reaches nothing when every name it holds has left the menu', async () => {
     const refusal = await refusalFor('/api/issues', ['gone:read']);
     expect(refusal?.code).toBe('PAT_PERMISSION_REQUIRED');
@@ -179,7 +175,6 @@ describe('the surface refusal is not the grant refusal', () => {
     expect(refusal?.code).toBe('PAT_NOT_PERMITTED');
   });
 
-  // cm:guard the surface refusal is the ONE outcome that names no permission, and it must name none by being ABSENT rather than empty (ISS-974) — an empty value on `/api/pat` claims the route requires nothing, which is the opposite of true. The wire-level twin of this is `pat-accepted-permissions-header.test.ts`; this one holds the predicate to it without a response to parse.
   it.each([
     ['/api/pat', null],
     ['/api/admin/mcp-audit', ['issues:read']],

@@ -1,19 +1,13 @@
-// cm:guard the DB half of the issue-reference layer, kept OUT of `issue-ref.ts` so that module
-// stays pure string work — the message contract's rules document themselves as importing no db or
-// env and unit-testing standalone, and they need the formatter.
-
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { issuePrefixAliases, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
-// cm:why re-exported so a db-bearing caller reaches the whole reference layer through this one door: `memory/consolidation.ts` needs the canonical key beside `issueRefFormatter`, and importing the pure module directly for it puts that file over its archmap fan-out limit, which the gate says to fix at the source rather than by widening `.arch.json`
 export { canonicalIssueKey } from '../lib/issue-ref.js';
 
 export type IssueRefReader = Pick<typeof defaultDb, 'select'>;
 
 /** The active prefix, for building a reference. NULL where the project renders the legacy one. */
-// cm:guard read per calling operation and NEVER cached across requests — a process cache has no invalidation path to its siblings, so one API box goes on rendering and refusing a prefix another box already moved (ISS-992)
 export async function activeIssuePrefix(
   projectId: string,
   dbi: IssueRefReader = defaultDb,

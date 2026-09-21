@@ -87,8 +87,6 @@ describe("which turn keeps its machinery", () => {
     expect(within(t).queryByTestId("thinking-line")).toBeNull();
   });
 
-  // cm:guard the PROSE of a folded turn is untouched, in order: the fold hides the machinery and
-  // never the answer, which is the whole reason a reader can still scan history after it folds.
   it("keeps a folded turn's prose, and keeps its order", () => {
     render(thread([older, newest]));
     const t = turn("a1") as HTMLElement;
@@ -99,9 +97,6 @@ describe("which turn keeps its machinery", () => {
     );
   });
 
-  // cm:guard a lone turn never folds, whatever it holds. `Conversation` is mounted once per turn on
-  // the chat surface, so this is the case that says an instance seeing one item leaves it alone
-  // rather than folding the only thing on screen.
   it("folds nothing in a thread of one turn", () => {
     render(thread([older]));
     expect(screen.queryByTestId("turn-fold")).toBeNull();
@@ -130,8 +125,6 @@ describe("the row opens back", () => {
     expect(shown).toContain("Object · 1 field");
   });
 
-  // cm:guard opening one turn's row says nothing about any other turn's: the fold is a per-turn
-  // state and a reader who opens one piece of history has not asked for all of it.
   it("leaves the other folded turns folded", () => {
     render(thread([older, newest, newer]));
     fireEvent.click(within(turn("a1") as HTMLElement).getByTestId("turn-fold"));
@@ -154,9 +147,6 @@ describe("a fold never happens under a reader", () => {
     expect(within(t).getByTestId("tool-result-body")).toBeInTheDocument();
   });
 
-  // cm:guard and it stays unfolded after they CLOSE it, which is what `touched` is for: a turn that
-  // folded the instant a reader closed the one card they had opened would take away what they were
-  // reading, and their own click would be what did it.
   it("keeps a turn a reader has been inside whole after they close what they opened", () => {
     const { rerender } = render(thread([older, newest]));
     const toggle = within(turn("a2") as HTMLElement).getByTestId("tool-result-toggle");
@@ -185,12 +175,6 @@ describe("a fold never happens under a reader", () => {
   });
 });
 
-// cm:guard THE sequence the implementation consult named (F1), and it goes through `parseMessages`
-// rather than hand-built blocks because the instability is in that function: `dedupeTodos` drops
-// every task list but the last, so a second one arriving shifts every block after the first, and
-// `withPauseCount` prepends a pause, which shifts all of them. Keyed by index — which is what the
-// first cut did — the reader's open result closed itself and the card below it inherited the key,
-// on a turn where nothing about either card had changed.
 describe("a disclosure's identity, when the blocks under it move", () => {
   const entry = (extra: CanonicalBlock[] = []): MessageEntry => ({
     id: "m1",
@@ -229,9 +213,6 @@ describe("a disclosure's identity, when the blocks under it move", () => {
     expect(bodies[0]).toHaveTextContent('"a": 1');
   });
 
-  // cm:guard the same for a PREPENDED pause, which moves every block in the turn: `withPauseCount`
-  // puts a turn's `thinkingCount` at the front, so this is the shift that lands on a Claude Code
-  // turn the moment its count arrives.
   it("keeps it open when a prepended pause shifts every block", () => {
     const { rerender } = render(render1());
     fireEvent.click(screen.getAllByTestId("tool-result-toggle")[1] as HTMLElement);
@@ -253,9 +234,6 @@ describe("a disclosure's identity, when the blocks under it move", () => {
   });
 });
 
-// cm:guard the row REMOVES itself when it opens, so a keyboard user who activated it would be left
-// on `document.body` with no place in the thread. Focus moves into what they asked for
-// (implementation consult F3).
 describe("opening the row with a keyboard", () => {
   it("leaves focus on the first thing the row revealed", () => {
     render(thread([older, newest]));
@@ -271,12 +249,6 @@ describe("opening the row with a keyboard", () => {
   });
 });
 
-// cm:guard THE case the implementation consult's F2 named, and the one my own structural claim got
-// wrong: I had it at turn granularity — folding only touches the turn that just stopped being
-// newest, so the height that vanishes is at the bottom — and a reader can be INSIDE that turn,
-// below its cards, reading its closing prose. Then the height that vanishes is above them and what
-// they are reading moves. So a turn folds only if the reader was at the bottom at the moment it
-// stopped being newest.
 describe("a fold waits for the reader to be at the bottom", () => {
   const scoped = (items: ConversationItem[], atBottom: boolean) => (
     <DisclosureScope atBottom={atBottom}>
@@ -304,9 +276,6 @@ describe("a fold waits for the reader to be at the bottom", () => {
     expect(within(turn("a2") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
   });
 
-  // cm:guard LATCHED, and this is the half that made the gate safe rather than the same defect with
-  // its sign flipped: read live, `atBottom` going false the moment a reader scrolls up would unfold
-  // every folded turn in the thread at once, and all of them would move.
   it("does not unfold what it has folded when the reader scrolls away", () => {
     const { rerender } = render(scoped([older, newest], true));
     expect(within(turn("a1") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
@@ -316,9 +285,6 @@ describe("a fold waits for the reader to be at the bottom", () => {
     expect(within(turn("a1") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
   });
 
-  // cm:guard a thread MOUNTING already deep in history folds its old turns with no transition to
-  // watch, which is every reload: the scroll hook puts the reader at the bottom, so `atBottom` is
-  // true on the first render and there is no expanded frame to see.
   it("opens a reloaded thread with its history already folded", () => {
     render(scoped([older, newest, newer], true));
     expect(within(turn("a1") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
@@ -326,10 +292,6 @@ describe("a fold waits for the reader to be at the bottom", () => {
   });
 });
 
-// cm:guard the latch is RELEASED when a turn becomes the newest again, and the sequence is not
-// hypothetical: regenerating or editing a turn drops the ones after it, and on the chat surface an
-// optimistic entry can vanish. Without the release the turn folded again on its second transition
-// with the permission it had captured on its first (scroll consult F1).
 describe("a turn that becomes the newest again", () => {
   const scoped = (items: ConversationItem[], atBottom: boolean) => (
     <DisclosureScope atBottom={atBottom}>

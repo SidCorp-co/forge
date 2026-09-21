@@ -1,20 +1,3 @@
-/**
- * ISS-1085 slice 3 — whether one Sentry issue becomes a Forge issue.
- *
- * The gate's default is NOT to file, and every arm below is a refusal that names itself. That is
- * the whole design: a Sentry issue that does not become work has to be distinguishable, in the
- * schedule run's own output, from a Sentry issue nobody looked at. A gate whose skips are silent
- * reads identically to a gate that never ran.
- *
- * Pure on purpose — one issue plus the thresholds in, one verdict out, no database and no clock.
- * The thresholds come from `admin_thresholds` (ISS-654 operator policy) and are passed in rather
- * than read here, so the same function is judged against any policy a test names.
- *
- * ABSENCE IS A REFUSAL, never a pass. Sentry not reporting a count is not the same as Sentry
- * reporting zero, and reading it as "probably fine" is how an admission gate stops being one — the
- * same rule this repo states as a loud break beating a silent substitution.
- */
-
 import { isValidDetectorKey } from '../../issues/detector-key.js';
 import type { SentryIssueDetail } from './types.js';
 
@@ -38,15 +21,6 @@ export type SentryAdmissionVerdict =
   | { admit: true; externalId: string; detectorKey: string }
   | { admit: false; reason: string };
 
-/**
- * The detector key a Sentry issue claims, or `null` where its `shortId` cannot form one.
- *
- * `issues/detector-key.ts` accepts lowercase slash-separated slugs, so a Sentry shortId like
- * `FORGE-WEB-3K` folds to `sentry/forge-web-3k`. A shortId that folds to something that key rule
- * rejects is NOT filed under a made-up key: the key is what makes the kernel hold at most one live
- * issue per detector, and a filer that invents one when the real one does not fit has turned that
- * guarantee off for the rows it invented it for.
- */
 export function sentryDetectorKey(shortId: string): string | null {
   const folded = shortId
     .trim()

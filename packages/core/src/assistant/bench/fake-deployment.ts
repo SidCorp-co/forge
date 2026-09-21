@@ -311,9 +311,6 @@ function issueRoutes(ctx: Ctx, method: string, url: URL): Response | null {
     );
   }
   if (method === 'GET' && path === `/api/projects/${ctx.project.id}/pipeline-config`) {
-    // cm:why the default is `open` alone: that is what nearly every project stores, and reading its
-    // keys as the project's whole pipeline is the ISS-1066 defect — a default of three would have
-    // let the fixture look right in every test while being wrong in the field.
     const states: Record<string, { enabled?: boolean }> = Object.fromEntries(
       (ctx.opts.states ?? ['open']).map((s) => [s, {}]),
     );

@@ -120,7 +120,6 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
     expect(await statusOf(runnerId)).toBe('offline');
   });
 
-  // cm:guard the day count comes from `admin_thresholds`, never a constant — a reaper that ignores the configured value is the whole defect ISS-654 fixes.
   it('follows the configured threshold rather than the default', async () => {
     const { runnerId } = await seedRunner({ lastSeenDaysAgo: 5 });
 
@@ -156,8 +155,9 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
   it('leaves a long-offline runner whose device still holds a live session', async () => {
     const { runnerId, deviceId } = await seedRunner({ lastSeenDaysAgo: 90 });
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, status)
-      VALUES (${randomUUID()}, ${projectId}, ${await seedRun()}, ${deviceId}, 'running')
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, kind, status)
+      VALUES (${randomUUID()}, ${projectId}, ${await seedRun()}, ${deviceId}, 'run_session',
+              'running')
     `);
 
     const res = await reapGhostRunners();
@@ -178,7 +178,6 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
     },
   );
 
-  // cm:guard a runner that never heartbeat at all falls back to created_at — a NULL last_seen_at otherwise makes the comparison NULL and the row is silently immortal.
   it('falls back to created_at for a runner that never heartbeat', async () => {
     const { runnerId } = await seedRunner({ lastSeenDaysAgo: null });
 

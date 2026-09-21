@@ -42,10 +42,6 @@ pub struct SetupOutcome {
     pub ok: bool,
 }
 
-/// Prose the agent must obey whatever the project declares. Kept here rather
-/// than in the project's own procedure because it is not the project's call.
-// cm:guard the stash line is the whole safety story. The owner accepted losing uncommitted work (2026-08-18), and `git checkout --force` would deliver exactly that — irreversibly. A labelled stash loses it from the tree and keeps it recoverable, so an agent that guesses wrong costs a `git stash pop` instead of someone's afternoon. One tree on ubuntu5 held 173 staged files.
-// cm:guard never grant this agent the Forge MCP. It runs with no `--mcp-config`, so it cannot touch issues, statuses or skills — a repair agent that can move an issue is a second, unaudited writer on the pipeline's state, and this one is a cheap model with no issue context.
 const RULES: &str = "\
 You are the setup step for an automated pipeline job. You are NOT doing the issue's work — \
 another agent runs immediately after you and does that. Your only job is to leave this \
@@ -63,12 +59,6 @@ End your reply with a section `WHAT I DID:` listing each command you ran and its
 `PROCEDURE:` with the minimal ordered steps that would set this repo up from a fresh clone — \
 only steps you actually ran and saw succeed, or `unknown` if you could not establish one.";
 
-/// Assemble the agent's prompt: the live findings, the branch it must end on,
-/// and the project's declared procedure when there is one.
-///
-/// `procedure` is `projects.workspace_setup` — prose, never executed as a command
-/// list, so a project admin's text cannot become a shell line on the box.
-// cm:edge contract -> packages/core/src/db/schema.ts — `projects.workspace_setup` is the source of `procedure`; it reaches here via `/me/runners` and this is its only consumer
 pub fn build_prompt(
     findings: &[String],
     base_branch: Option<&str>,
@@ -96,7 +86,6 @@ fast-forwarded to `origin/{base}`.\n"
             out.push_str(p);
             out.push('\n');
         }
-        // cm:guard say "derive it" and say why the PROCEDURE section is then load-bearing: this branch is the expensive one, and the only thing that stops the next job paying it again is the stage agent recording what worked (`forge_projects.update` `workspaceSetup`). Drop the derive-and-report instruction and the setting stays empty forever.
         None => out.push_str(
             "\n## This project's setup procedure\n\
 None is declared. Work it out from the repo itself — the lockfile names the package manager, \

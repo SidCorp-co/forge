@@ -153,9 +153,6 @@ describe('the record the read path ships', () => {
     });
   });
 
-  // cm:guard `at` and `to` are what let the browser draw the prose either side of the fence in its
-  // own place. A page that shipped them wrong would still draw a card, so this reads the body back
-  // through them rather than asserting two numbers.
   it('says where the block sits, so the prose around it keeps its place', async () => {
     const { issueId, jwt } = await seed();
     const page = await read(issueId, jwt);
@@ -165,10 +162,6 @@ describe('the record the read path ships', () => {
     expect(node.body.slice(record.to)).toBe('\n\nAnd a sentence below.');
   });
 
-  // cm:guard the plain comment is found by its own body and not by counting nulls: a page that
-  // attached the record to the WRONG comment would leave exactly one null either way, so the count
-  // passes while the screen draws a card on the comment that has no fence (codex F1 of the second
-  // whole-set read).
   it('ships no record on the comment carrying no fence, and one on the comment that does', async () => {
     const { issueId, jwt } = await seed();
     const page = await read(issueId, jwt);
@@ -199,10 +192,6 @@ describe('the lens the read path resolves', () => {
     expect(recorded(await read(issueId, jwt))?.lens).toBe('product');
   });
 
-  // cm:guard the finding the whole-set review raised (codex F1) and the reason the query joins
-  // `project_members` at all: an ordinary org member holds no project access under `lib/authz.ts`,
-  // so one technical person anywhere in a large organization must not unfold every card on a
-  // project whose own readers are all product. A mocked handle cannot prove this; the rows can.
   it('ignores a technical org member who cannot read this project', async () => {
     const { orgId, issueId, jwt } = await seed();
     const outsider = await createTestUser(harness.db, { email: 'outsider@test.local' });
@@ -223,8 +212,6 @@ describe('the lens the read path resolves', () => {
     expect(recorded(await read(issueId, jwt))?.lens).toBe('technical');
   });
 
-  // cm:guard an agent user holds an `organization_members` row like anybody else, and the lens is
-  // about the PEOPLE reading the record. A fleet that could set its own audience is the failure.
   it('ignores an agent user carrying the technical lens', async () => {
     const { project, orgId, issueId, jwt } = await seed();
     const agent = await createTestUser(harness.db, { email: 'agent@test.local' });

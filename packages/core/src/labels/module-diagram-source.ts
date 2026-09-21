@@ -54,7 +54,6 @@ async function loadModules(projectId: string): Promise<ModuleSnapshot[]> {
   }));
 }
 
-// cm:guard the pair is ordered by id in the join condition (`b.label_id > a.label_id`), so the self-join yields each unordered pair once — drop it and every edge is drawn twice, in both directions, and the count doubles with it.
 async function loadCoOccurrences(projectId: string): Promise<CoOccurrence[]> {
   const a = alias(issueLabels, 'a');
   const b = alias(issueLabels, 'b');
@@ -95,7 +94,6 @@ async function loadDeclaredEdges(
     byText.set(module.name.toLowerCase(), module.id);
   }
 
-  // cm:guard a retracted edge is one whose `valid_until` has passed, and it must not be drawn — the retraction is the only way a declared edge is ever withdrawn, and a reader that ignores it shows a coupling somebody has already said is gone.
   const rows = await db
     .select({
       subject: knowledgeEdges.subject,

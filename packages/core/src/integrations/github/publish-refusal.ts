@@ -1,50 +1,3 @@
-/**
- * One sentence per way any publish to GitHub can be refused. ISS-1075.
- *
- * This is `check-refusal.ts`'s engine, lifted whole the moment Forge gained a
- * SECOND thing it writes to GitHub — the `runner-v*` tag. Everything below was
- * written for the check run and every word of it is about the credential, the
- * quota and the timeout rather than about check runs, which is precisely why a
- * second copy of it would have been the wrong answer: the three meanings of a
- * 403 do not become three different meanings because the request created a tag.
- *
- * ## The rule this file exists to keep
- *
- * A refusal is built from the EVIDENCE, never from the status alone. GitHub
- * answers 403 for at least three different things — a permission the App was not
- * granted, a primary rate limit, a secondary one — and each sends an operator
- * somewhere different: to the App's settings page, to a clock, or to a slower
- * caller. `integrations/types.ts` already states the cost of collapsing 401 and
- * 403 into one verdict (ISS-924, against the coolify adapter: re-entering a
- * credential that works reproduces the state exactly). Collapsing the three
- * meanings of 403 is the same defect one level down, and it is only reachable
- * now that Forge writes.
- *
- * So: a 403 with `x-ratelimit-remaining: 0` is a quota, a 403 with `retry-after`
- * is a secondary limit, a 403 whose body says the resource is not accessible to
- * the integration is a permission — and a 403 carrying NONE of those three is
- * refused as exactly that, an access refusal naming both possibilities. Guessing
- * between them because a guess reads better than an admission is how an operator
- * spends an hour granting a permission they already hold.
- *
- * ## Attempted, and unknown
- *
- * A timeout is two different reports depending on where it happened. Minting a
- * token and looking a thing up both precede any write, so a timeout there means
- * the publish did not happen and can simply be retried. A timeout on the create
- * or the update means Forge does not know whether GitHub took it, and telling an
- * operator it did not is a claim nothing here can support.
- *
- * ## What a subject supplies, and what it may not
- *
- * A `PublishSubject` supplies only the four sentences that are about the THING
- * being written: which operation each op was, which permission it needs, what
- * was not written when a pre-write call timed out, and the commonest cause of a
- * 422. It supplies no cause, no status mapping and no ordering — those are the
- * rule, and a subject that could change them would be a second engine wearing
- * this one's name.
- */
-
 import { GitHubPublishError, type GitHubPublishOp } from './client.js';
 
 /** What one publish path calls its own operations and its own permission. */
@@ -79,7 +32,6 @@ export interface PublishRefusal {
   status: number | null;
   /** What an operator is told. One sentence naming the cause and the way out. */
   message: string;
-  // cm:guard GitHub's OWN body, carried separately from `message` because `message` is Forge's prose with the subject's sentences folded into it. A caller deciding anything from GitHub's words — `saysRefExists` in `runner-release-repo.ts` is the one that does — reads this; matching on `message` instead matched the advice Forge appended, so every 422 read as "the ref already exists" including the ones that say the commit does not.
   detail: string | null;
 }
 
@@ -96,7 +48,6 @@ function rateLimitNote(err: GitHubPublishError): string | null {
   return at ? `the quota resets at ${at}` : 'the quota is exhausted';
 }
 
-// cm:guard GitHub's own words for an ungranted permission. It answers this on a 403 when the App lacks the scope, and it is the ONLY positive evidence of that cause — everything else about such a 403 looks identical to a secondary rate limit. Widening this to any 403 is what turns "grant the permission" into advice given to operators who already granted it.
 const PERMISSION_TELLS = ['not accessible by integration', 'resource not accessible'];
 
 function saysPermission(err: GitHubPublishError): boolean {
@@ -104,7 +55,6 @@ function saysPermission(err: GitHubPublishError): boolean {
   return PERMISSION_TELLS.some((tell) => detail.includes(tell));
 }
 
-// cm:guard the BODY's own words outrank the headers, and the order is the whole of what this function decides. Read the headers first and a 403 saying "Resource not accessible by integration" that happens to arrive on a spent quota is reported as a rate limit — carrying the sentence "No permission is missing; nothing needs granting", which is a positive claim about a permission nobody checked. The operator waits for a reset that changes nothing. The headers are evidence about a quota and never evidence that a permission is held.
 function forbidden(err: GitHubPublishError, subject: PublishSubject): PublishRefusal {
   const quota = rateLimitNote(err);
   if (saysPermission(err)) {
@@ -140,7 +90,6 @@ function forbidden(err: GitHubPublishError, subject: PublishSubject): PublishRef
 
 function notFound(err: GitHubPublishError, subject: PublishSubject): PublishRefusal {
   if (err.op === 'mint') {
-    // cm:guard `app-auth.ts`'s OWN sentence, unchanged. A 404 at the mint is an installation that does not exist — never a repository the App was removed from, which is what the same status means one operation later. Rewording it here is how a run tells an operator a history that did not happen.
     return {
       cause: 'installation-missing',
       op: 'mint',

@@ -16,6 +16,7 @@ import {
   Input,
   MonoTag,
   PageContainer,
+  PageTitle,
   Skeleton,
   Table,
   TBody,
@@ -31,7 +32,7 @@ import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useDevices, useInitPairing, useSetDeviceDisabled } from "../hooks";
 import { RevokeDeviceControl } from "./revoke-device-control";
-import { deviceHealth, type DeviceRow } from "../types";
+import { deviceHealth, deviceVersionLabel, type DeviceRow } from "../types";
 import { DeviceDetail } from "./device-detail";
 
 function CopyButton({ value }: { value: string }) {
@@ -67,9 +68,9 @@ function PairPanel() {
       <CardHeader>
         <CardTitle>Pair a device</CardTitle>
         <HelpButton
-          summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it opens this site to approve, then writes a device-scoped token locally."
+          summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it prints a code to approve here, then writes a device-scoped token locally."
           actions={[
-            "Run `forge-runner login` on the runner host (opens the browser to approve)",
+            "Run `forge-runner setup` on the runner host (it prints the approval URL)",
             "Or generate a code here and approve it at /pair",
             "Revoke a device below to cut off its access immediately",
           ]}
@@ -80,12 +81,13 @@ function PairPanel() {
           <div className="flex flex-col gap-1.5">
             <span className="fg-label">Recommended — run on the runner machine</span>
             <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-              <code className="font-mono text-[13px] text-fg">forge-runner login</code>
-              <CopyButton value="forge-runner login" />
+              <code className="font-mono text-13 text-fg">forge-runner setup</code>
+              <CopyButton value="forge-runner setup" />
             </div>
             <p className="fg-body-sm text-subtle">
-              It opens a browser to approve the device, then provisions a device token (and a git
-              push credential when the server has it enabled).
+              It checks the machine can run a job, prints an approval URL, waits for you to assign
+              it a project, gets a checkout, installs the background service, and ends on a
+              verdict. `forge-runner login` does the pairing step alone.
             </p>
           </div>
 
@@ -121,7 +123,7 @@ function PairPanel() {
                   <span className="fg-body-sm text-muted">Approve at</span>
                   <a
                     href={code.verify_url}
-                    className="truncate font-mono text-[12.5px] text-accent hover:underline"
+                    className="truncate font-mono text-12-5 text-accent hover:underline"
                   >
                     {verifyUrl || code.verify_url}
                   </a>
@@ -164,7 +166,7 @@ export function RunnersScreen() {
     <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="fg-h2">Runners &amp; devices</h1>
+          <PageTitle className="fg-h2">Runners &amp; devices</PageTitle>
           <p className="fg-body-sm text-muted">
             Paired devices that can run pipeline jobs. Status updates live.
           </p>
@@ -222,29 +224,30 @@ export function RunnersScreen() {
                       <TD>
                         <div className="flex flex-col">
                           <span className="font-semibold text-fg">{d.name}</span>
-                          {d.agentVersion && (
-                            <span className="fg-body-sm text-subtle">
-                              v{d.agentVersion}
-                              {d.agentOutdated && (
-                                <span
-                                  className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
-                                  title={
-                                    d.latestAgentVersion
-                                      ? `Update pending — latest is v${d.latestAgentVersion}`
-                                      : "Update pending"
-                                  }
-                                >
-                                  update pending
-                                </span>
-                              )}
-                            </span>
-                          )}
+                          {/* Always a version line: a device that has reported
+                              nothing says so, because a blank one reads as a
+                              device with nothing to say (ISS-1119). */}
+                          <span className="fg-body-sm text-subtle">
+                            {deviceVersionLabel(d.agentVersion)}
+                            {d.agentOutdated && (
+                              <span
+                                className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+                                title={
+                                  d.latestAgentVersion
+                                    ? `Update pending — latest is v${d.latestAgentVersion}`
+                                    : "Update pending"
+                                }
+                              >
+                                update pending
+                              </span>
+                            )}
+                          </span>
                         </div>
                       </TD>
                       <TD>
                         {disabled ? (
                           <span
-                            className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[12px] font-medium text-muted bg-sunken"
+                            className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-12 font-medium text-muted bg-sunken"
                             title="Turned off — ignored by every project until turned back on"
                           >
                             <Icon name="pause" size={12} />
@@ -259,12 +262,12 @@ export function RunnersScreen() {
                       </TD>
                       <TD>
                         {d.gitCredentialRef ? (
-                          <span className="inline-flex items-center gap-1.5 text-[13px] text-fg">
+                          <span className="inline-flex items-center gap-1.5 text-13 text-fg">
                             <Icon name="check" size={14} className="text-[color:var(--green-600)]" />
                             provisioned
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 text-[13px] text-subtle">
+                          <span className="inline-flex items-center gap-1.5 text-13 text-subtle">
                             <Icon name="dot" size={14} />
                             none
                           </span>

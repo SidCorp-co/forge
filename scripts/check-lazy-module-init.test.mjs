@@ -1,21 +1,7 @@
-/**
- * The rule inside check-lazy-module-init: which reads of `env` and `db` run when a file is
- * IMPORTED.
- *
- * Each case here was planted against the checker before the checker was finished, and two of them
- * went green when they had to go red: the module-scope IIFE, because the first version of
- * `isImmediatelyInvoked` climbed one parent and `(() => env.X)()` puts a ParenthesizedExpression
- * there. That is why the IIFE cases are the longest part of this file — the fixture that found a
- * hole is the fixture worth keeping.
- *
- * Fixture text is handed straight to `importTimeReads`, which is why the checker exports it: a
- * `--scan-root` flag would test the same rule and would also be a way for a CI run to narrow its
- * own scope, and a gate that can be pointed at a subset reports clean on a tree that is not.
- */
 import { describe, expect, it } from 'vitest';
 import { importTimeReads } from './check-lazy-module-init.mjs';
 
-// cm:guard the three strings below are FIXTURE TEXT — source this checker parses, not source this
+// the three strings below are FIXTURE TEXT — source this checker parses, not source this
 // file runs — and `${process.argv[1]}` inside them is the entrypoint comparison the gate has to
 // recognise. Written any other way the fixture stops being the shape it is testing.
 // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, parsed rather than evaluated
@@ -81,8 +67,6 @@ describe('check-lazy-module-init — reads that do not run at import', () => {
     expect(found).toEqual([]);
   });
 
-  // cm:guard 24 of core's 26 module-scope mentions of `db` are this shape. A checker that counted
-  // them would have been 92% noise on its first run, which is how a gate teaches its reader to skip it.
   it('passes a typeof in a type position', () => {
     const found = reads('export type Tx = Pick<typeof db, "select">;\n', IMPORT_DB);
     expect(found).toEqual([]);
@@ -109,9 +93,6 @@ describe('check-lazy-module-init — reads that do not run at import', () => {
   });
 });
 
-// cm:guard every case below was a hole the checker had and reported clean on. They came out of the
-// whole-set review of this change (ISS-1067, F2-F4) rather than from imagination, which is why each
-// one is written as the shortest file that reads the environment at import.
 describe('check-lazy-module-init — holes the review found', () => {
   it('catches a read through a namespace import', () => {
     const found = importTimeReads(
@@ -155,8 +136,6 @@ describe('check-lazy-module-init — holes the review found', () => {
     expect(found[0].line).toBe(6);
   });
 
-  // cm:guard without this, `import.meta.url === import.meta.url` is a two-token way to silence the
-  // gate on any block: always true, always runs at import, and read as an entrypoint guard.
   it('catches a read guarded by an always-true url comparison', () => {
     const found = reads(
       'if (import.meta.url === import.meta.url) {\n  const port = env.PORT;\n}\n',
@@ -164,9 +143,6 @@ describe('check-lazy-module-init — holes the review found', () => {
     expect(found).toHaveLength(1);
   });
 
-  // cm:guard the comma expression is what defeated the FIRST fix for this: it mentions
-  // `process.argv` and evaluates to `import.meta.url`, so a regex over the operand's text accepted
-  // it while the then branch ran on every import.
   it('catches a read guarded by a comparison that only mentions process.argv', () => {
     const found = reads(
       'if (import.meta.url === (process.argv, import.meta.url)) {\n  const port = env.PORT;\n}\n',
@@ -174,8 +150,6 @@ describe('check-lazy-module-init — holes the review found', () => {
     expect(found).toHaveLength(1);
   });
 
-  // cm:guard process.argv[2] is a CLI's first ARGUMENT, so this comparison is true whenever a tool is
-  // handed this module's own path — the block runs during an import.
   it('catches a read guarded by a process.argv index other than 1', () => {
     const found = reads(
       `${INLINE_GUARD.replace('argv[1]', 'argv[2]')}  const port = env.PORT;\n}\n`,
@@ -224,8 +198,6 @@ describe('check-lazy-module-init — the entrypoint guard', () => {
     expect(found).toEqual([]);
   });
 
-  // cm:guard this is what keeps the guard from being a whole-file exemption: index.ts holds both
-  // the bootstrap block and the cors registration, and only the block is outside the property.
   it('catches a read in the same file OUTSIDE that block', () => {
     const found = reads(`${IS_MAIN}const port = env.PORT;\nif (isMain) {\n  void port;\n}\n`);
     expect(found).toHaveLength(1);

@@ -1,33 +1,9 @@
-// Asking the database which driver a project runs.
-//
-// `autonomous-mode.ts` answers the same question about a config OBJECT and is
-// deliberately import-free, so every caller that starts from a projectId had to
-// write the same `select agent_config` and the same `safeParse` by hand. Four
-// did, in three modules that must agree — the close gate, the park rewrite and
-// the answer resume all change behaviour on this one boolean, and a fourth copy
-// is how they would start disagreeing.
-//
-// `readPipelineConfig` rather than `loadProjectPipelineConfig`: the release
-// path already owns a function by that name (`release-batch/project-config.ts`)
-// whose failure answer is `PIPELINE_CONFIG_DEFAULTS`, not `null`. Two loaders
-// that disagree about the unreadable case must not also share a name.
-
 import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { isAutonomous } from './autonomous-mode.js';
 import { type PipelineConfig, pipelineConfigSchema } from './pipeline-config-schema.js';
 
-/**
- * `null` when the project is missing or its stored config does not parse.
- *
- * The executor is the caller's, defaulting to the pool. ISS-1072: the check-run
- * publish reads this INSIDE a transaction that already holds a pooled
- * connection, and a read on the pool from there needs a second one — ten
- * concurrent publishes would each hold one and each wait for another, which is
- * the whole pool waiting on itself until `idle_in_transaction_session_timeout`
- * breaks it.
- */
 export async function readPipelineConfig(
   projectId: string,
   executor: Pick<Db, 'select'> = db,
@@ -43,7 +19,6 @@ export async function readPipelineConfig(
   return parsed.success ? parsed.data : null;
 }
 
-// cm:guard an unreadable config answers `false`, and since ISS-897 left one lane that is the WHOLE question this asks — `null` means the project is missing or its stored config did not parse, never that it chose something else. Answering `true` there would rewrite parks and cascade children on a project nobody can see is broken.
 export async function isAutonomousProject(projectId: string): Promise<boolean> {
   return isAutonomous(await readPipelineConfig(projectId));
 }

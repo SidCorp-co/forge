@@ -11,7 +11,17 @@
 // case that made this issue.
 
 import { useState } from "react";
-import { Banner, Button, Card, CardContent, Checkbox, Field, Input, MonoTag } from "@/design";
+import {
+  Banner,
+  Button,
+  Card,
+  CardContent,
+  CardTitle,
+  Checkbox,
+  Field,
+  Input,
+  MonoTag,
+} from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCreateAgent } from "../hooks";
@@ -21,7 +31,6 @@ const HANDLE_RULE = /^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$/;
 /**
  * Whether this handle is one the server will take, and what is wrong when it is not.
  */
-// cm:guard the SAME alphabet `auth/agent-account.ts:isAgentHandle` enforces, and this is a second copy on purpose: the server's refusal is the fence, this is the sentence an admin reads before spending a round trip. Widen one without the other and the form promises a handle the route turns away — so the rule is stated here as the shape, never as "the server will tell you".
 export function handleProblem(handle: string): string | null {
   const v = handle.trim();
   if (!v) return "An agent needs a handle — it is the address typed after @.";
@@ -64,7 +73,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
   return (
     <Card>
       <CardContent>
-        <h3 className="fg-h3 mb-1">New agent</h3>
+        <CardTitle className="mb-1">New agent</CardTitle>
         <p className="fg-body-sm mb-4">
           An agent is a principal of its own: work it files is filed as the agent, not as whoever
           set it up. Its credential reaches exactly the projects picked here and nothing else.

@@ -12,7 +12,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { RELEASE_LABEL_FOR_JOB } from '../devices/release-label.js';
+import { runnerMayTakeJob } from '../devices/release-label.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { readThresholds } from './thresholds.js';
@@ -33,7 +33,6 @@ const CRIT_STUCK_JOBS = 3;
 
 const CRIT_STARVED_PROJECTS = 3;
 
-// cm:why the window, the absolute floor and the schedule-activity window stay env: they are deployment tuning that changes what a measurement MEANS, not operator policy, and none is duplicated in `admin_thresholds`. The three knobs that were duplicated — FORGE_ALERT_STARVED_GRACE_SECONDS, FORGE_ALERT_SPEND_WARN_RATIO and FORGE_ALERT_SPEND_CRIT_RATIO — were deleted with ISS-654 rather than shipped beside the table that supersedes them.
 const SPEND_WINDOW_HOURS = (() => {
   const env = Number(process.env.FORGE_ALERT_SPEND_WINDOW_HOURS);
   return Number.isFinite(env) && env > 0 ? env : 1;
@@ -43,18 +42,15 @@ const SPEND_MIN_USD = (() => {
   return Number.isFinite(env) && env > 0 ? env : 5;
 })();
 
-// cm:guard crit is derived from the configured warn threshold, never configured beside it — one number per axis is what the operator was given, and two would let a PUT invert them (crit below warn), which classifies every warn as crit. Each derivation reproduces exactly the gap the hardcoded pair had: spend 2/4, schedule streak 3/5, delivery rate 50%/80%.
 const SPEND_CRIT_FACTOR = 2;
 const SCHEDULE_CRIT_MARGIN = 2;
 const DELIVERY_CRIT_FACTOR = 1.6;
-// cm:why a streak on a schedule that has stopped running (disabled, or simply abandoned) would pin A5 at warn forever with no path to resolveNotifications — the window is wide enough for a weekly cadence to still be caught
 const SCHEDULE_ACTIVE_WINDOW_HOURS = (() => {
   const env = Number(process.env.FORGE_ALERT_SCHEDULE_ACTIVE_WINDOW_HOURS);
   return Number.isFinite(env) && env > 0 ? env : 24 * 8;
 })();
 const DELIVERY_MIN_SAMPLE = 5;
 
-// cm:why ONE notification type for all 5 Tier 1 alerts, with the identity carried here in the resolutionKey — five `notificationTypes` values would mean five lockstep edits across schema.ts + contracts + emit.ts, and the bell does not branch on type
 export function opsAlertResolutionKey(id: AdminAlertId): string {
   return `ops-alert:${id}`;
 }
@@ -103,7 +99,6 @@ export function classifySpend(
  * the gap ISS-654's ceiling fills, so the two arms are combined with
  * `worstStatus`, never substituted for one another.
  */
-// cm:guard warn at 80% of the ceiling, crit AT it — a budget alarm that first speaks on the breach has already let the money go; the whole point of a ceiling over the ratio arm is the warning that arrives before it.
 export const SPEND_CEILING_WARN_FRACTION = 0.8;
 
 export function classifySpendCeiling(
@@ -187,7 +182,6 @@ type StuckRow = {
 
 /** A2 — jobs dispatched or running past staleSeconds (AC 5: BOTH statuses, not dispatched alone). */
 async function alertStuckJobs(staleSeconds: number): Promise<AdminAlert> {
-  // cm:guard age_seconds is float8, never ::int — classifyStuck compares it against staleSeconds * 4, so truncating SQL-side makes a job already past the crit boundary report warn until the next whole second ticks over
   const rows = await db.execute<StuckRow & { total: number }>(sql`
     SELECT j.id, j.type AS job_type, j.dispatched_at,
            extract(epoch FROM (now() - j.dispatched_at))::float8 AS age_seconds,
@@ -226,26 +220,6 @@ type StarvedProject = {
   oldest: PgTimestamp | null;
 };
 
-/**
- * A3 — a project with jobs that WOULD dispatch except no runner can accept them.
- *
- * Starvation is defined as a job nothing holds back EXCEPT runner
- * availability. A job that is issue-busy, in a retry cooldown, or already
- * claimed by a master (`held_by`) is NOT starved — something is legitimately
- * in front of it and it becomes claimable once that clears. Counting those as
- * "no usable runner" is a false positive, and a stale trigger is the same
- * story — `jobs/stale-trigger.ts` ends that job, no runner would have helped.
- *
- * To stay drift-free with the explainer, this replays the SSOT fragments
- * (`buildBarrierFragments`, the same builder both readers use)
- * per candidate project — both halves: the barrier predicates AND the
- * `fresh_capable_runners` CTE that decides runner health — then adds the two
- * clauses the picker leaves to the candidate query: the per-job capability
- * match and the per-stage device pool. Those two are why an offered job can
- * still be unplaceable, so leaving them out is how starvation reads `ok`. The
- * candidate pre-filter is a cheap cross-tenant scan, so on healthy data (no old
- * queued jobs) the per-project replay never runs.
- */
 async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAlert> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
 
@@ -266,16 +240,6 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
       projectIds: [c.project_id],
       livenessSeconds,
     });
-    // cm:guard take runner health from the SSOT `fresh_capable_runners` CTE, never a hand-rolled copy of its clauses — the copy that used to live here drifted twice (main added `limit_reason <> 'auth'` and the `provision_status` gate without this file), and each missing clause counts a runner the dispatcher will never use as available, so real starvation reads `ok` and the alert meant to catch a wedged queue is what hides it.
-    // cm:edge lockstep -> packages/core/src/runners/select.ts — the `capabilities @>` join is the ONE clause `onlineCapableDeviceIds` applies that the picker's CTE does not, and it must stay: a job no runner is capable of passes every gate here and is still unclaimable, sitting with no reason for any UI to show (measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state). Surfacing that is A3's whole reason to exist.
-    // cm:guard nullif BEFORE coalesce on requiredCapabilities — `->` on a JSON null yields jsonb 'null', not SQL NULL, so a bare coalesce leaves `@> 'null'` matching nothing and every job carrying `requiredCapabilities: null` reads as starved while dispatcher.ts (`?? {}`) places it fine
-    // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — the `pool` lateral reads the per-stage device pool from exactly the path resolveStageOverrides reads, keyed by the job's own `payload.stageStatus`; a pool naming only offline devices wedges a queue with every gate passing, which is the shape A3 exists to name
-    // cm:guard compare the pool CASE-INSENSITIVELY and never cast an element to `uuid` — `z.uuid()` accepts uppercase hex and nothing normalizes it, while `::text` on a uuid column always renders lowercase, so a bare text compare matches zero runners here and every runner in runners/select.ts (which binds a parameter against the uuid column, and so parses case-insensitively): a moving queue would read `runner_starved`, and at three such projects A3 goes crit and pages every platform admin. Casting the ELEMENT instead throws on any malformed entry, which 500s the GET and the sweeper swallows into zeros — `lower()` on both sides is the one form with neither failure.
-    // cm:guard the pool arm needs BOTH `IS NULL` and `jsonb_typeof(...) <> 'array'`, in that order — no pool configured is SQL NULL, on which `jsonb_typeof` returns NULL, so a typeof-only arm evaluates the whole OR to NULL and every healthy project reads as starved; and an `IS NULL`-only arm lets `jsonb_array_length` THROW on a scalar, which the sweeper's try/catch swallows into zeros while the GET 500s.
-    // cm:guard keep BOTH of those clauses: they are the two `onlineCapableDeviceIds` applies that `fresh_capable_runners` does not, so a job can pass every picker gate and still be unclaimable — drop either and genuine starvation reports `ok`
-    // cm:guard the release-label term spells `rr.labels` here rather than importing `RUNNER_MAY_TAKE_JOB`, and that is NOT a second reading of the rule: the label resolution is the shared `RELEASE_LABEL_FOR_JOB`, and only the alias differs, because `r` is `pipeline_runs` in this query and the runner is `rr`. Importing the `r`-scoped constant would resolve `r.labels` against `pipeline_runs` and fail the whole query, which presents as every project reading `ok`.
-    // cm:edge lockstep -> packages/core/src/devices/release-label.ts — one rule, now three readers. Without this term A3 counted a labelled release pool matching nobody as fully served: the job is unclaimable by every box on the fleet and the alert whose whole purpose is to name a wedged queue was the surface hiding it (ISS-1080).
-    // cm:guard there is deliberately NO capacity term here. A busy box still claims — core enforces no ceiling — so requiring a free slot would report every project whose runners are working as STARVED, which is the opposite of the wedge A3 exists to name and would page every platform admin at three such projects.
     const rows = await db.execute<{
       queued_count: number;
       oldest_queued_at: PgTimestamp | null;
@@ -303,7 +267,7 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
           SELECT 1 FROM fresh_capable_runners fcr
           JOIN runners rr ON rr.id = fcr.id
           WHERE fcr.claim_capable
-            AND (j.type <> 'release_batch' OR rr.labels ? ${RELEASE_LABEL_FOR_JOB})
+            AND ${runnerMayTakeJob(sql`rr.labels`)}
             AND rr.capabilities @> coalesce(nullif(j.payload -> 'requiredCapabilities', 'null'::jsonb), '{}'::jsonb)
             AND (
               pool.device_ids IS NULL
@@ -387,7 +351,6 @@ async function alertSpendSpike(now: Date, thresholds: AdminThresholds): Promise<
         AND u.recorded_at >= now() - (${w * 2}::int * interval '1 hour')
       GROUP BY p.id, p.slug
     `),
-    // cm:guard the ceiling arm is a fixed TRAILING 24h, never SPEND_WINDOW_HOURS — `spendCeilingUsdDay` is a per-DAY budget, so reading it against the ratio arm's 1-hour window would compare an hour of spend to a day's allowance and never fire.
     db.execute<{ spend: number }>(sql`
       SELECT coalesce(sum(estimated_cost), 0)::float AS spend
       FROM usage_records
@@ -408,10 +371,8 @@ async function alertSpendSpike(now: Date, thresholds: AdminThresholds): Promise<
   const ratioStatus = overProjects.reduce((acc, r) => worstStatus(acc, r.status), globalStatus);
   const status = worstStatus(ratioStatus, ceilingStatus);
   const windowStart = new Date(now.getTime() - w * 3_600_000).toISOString();
-  // cm:guard count must stay >= 1 whenever status !== 'ok' — a global-only fire (no project individually crosses the ratio) still counts 1: the deployment. A consumer filtering on count > 0 must never silently drop a live spend spike.
   const count = status === 'ok' ? 0 : Math.max(overProjects.length, 1);
 
-  // cm:guard the ceiling breach owns the detail line whenever it is the worse of the two arms — an operator paged for blowing a budget must be told the budget, not a ratio between two hours that may read perfectly ordinary.
   const detail =
     status === 'ok'
       ? 'No spend spike'
@@ -434,7 +395,6 @@ async function alertSpendSpike(now: Date, thresholds: AdminThresholds): Promise<
   };
 }
 
-// cm:guard postgres-js hands `timestamptz` back as a JS Date, never a string — never compare one of these directly (a bare `.sort()` orders by weekday name); go through `oldestIso` below
 type PgTimestamp = string | Date;
 
 type ScheduleStreakRow = {
@@ -470,9 +430,6 @@ function oldestIso(values: Array<PgTimestamp | null>): string | null {
 /** A5 — two contributors combined into one alert: schedule fail-streaks and integration-delivery fail-rates. */
 async function alertAutomationFailing(thresholds: AdminThresholds): Promise<AdminAlert> {
   const [scheduleRows, deliveryRows] = await Promise.all([
-    // cm:guard never put a time bound on schedule_events, however tempting for I/O — a bound changes what a streak MEANS rather than just trimming rows: verified on Postgres 17, failures at 40d/20d/1h give streak=3 -> warn unbounded but streak=1 -> silence under the 8-day bound, while last_run_at still admits the schedule, so a slow-cadence failing schedule stops alarming and nothing looks wrong. A count bound (rn <= 5) does preserve the classification but buys no I/O, because row_number() must read and sort every partition row before rn exists to filter on; the only restructure that would cut I/O is a per-schedule LATERAL ... LIMIT, and the agent_sessions arm needs a partial expression index on (metadata ->> 'scheduleId', updated_at) first or it seq-scans once per schedule.
-    // cm:guard no LIMIT on the row set either — `count` is documented as the true contributor total, so capping in SQL would understate it past ENTITY_LIMIT streaking schedules; only the display `entities` list is truncated
-    // cm:guard keep the enabled + last_run_at gate — it is the only path by which A5 reaches 'ok' again, since a streak on a schedule nobody runs any more never clears on its own
     db.execute<ScheduleStreakRow>(sql`
       WITH schedule_events AS (
         SELECT schedule_id::text, status = 'success' AS succeeded, created_at
@@ -518,8 +475,6 @@ async function alertAutomationFailing(thresholds: AdminThresholds): Promise<Admi
         AND st.last_run_at >= now() - (${SCHEDULE_ACTIVE_WINDOW_HOURS}::int * interval '1 hour')
       ORDER BY st.streak DESC
     `),
-    // cm:guard no LIMIT here — classification (below) must see every qualifying binding, or a low-volume/high-rate binding can be excluded while a high-volume/low-rate one survives
-    // cm:edge contract -> packages/core/src/integrations/deliveries.ts — direction='outbound' mirrors that module's outbound-only delivery health filtering; inbound webhook rows are recorded 'ok' by Coolify even on a reported deploy failure
     db.execute<DeliveryFailRow>(sql`
       SELECT b.id AS binding_id, b.provider, b.project_id, p.slug AS project_slug,
              count(*) FILTER (WHERE d.status = 'failed')::int AS failed,
@@ -556,7 +511,6 @@ async function alertAutomationFailing(thresholds: AdminThresholds): Promise<Admi
     }))
     .filter((r) => r.status !== 'ok');
 
-  // cm:guard status/count are computed over ALL contributors before ENTITY_LIMIT truncation below; the sort keeps a truncation from ever dropping a more-severe row
   const contributors = [...scheduleContributors, ...deliveryContributors].sort(
     (a, b) => STATUS_RANK[b.status] - STATUS_RANK[a.status],
   );
@@ -582,7 +536,6 @@ async function alertAutomationFailing(thresholds: AdminThresholds): Promise<Admi
 
 /** Always returns exactly 5 items, ordered A1..A5. Shared by the pull route and the push sweeper. */
 export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<AdminAlert[]> {
-  // cm:guard read the thresholds per call, never hoist them to module scope — a PUT must take effect on the next sweep tick and the next GET, which is what "the sweeper reads them dynamically" means; a process-lifetime read would restore exactly the redeploy-to-retune defect ISS-654 exists to remove.
   const thresholds = opts.thresholds ?? (await readThresholds());
   const staleSeconds = opts.staleSeconds ?? thresholds.stuckJobSeconds;
   const now = opts.now ?? new Date();

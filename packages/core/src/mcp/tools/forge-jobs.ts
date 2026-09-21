@@ -32,7 +32,6 @@ const listInputSchema = z
   })
   .strict();
 
-// cm:guard the body-free projection bounds per-ROW size, never the TOTAL response, so this limit and the char budget in `buildListEnvelope` are the only things keeping a real-history project under the MCP output cap — raising it spills the whole page to a file, which is the failure ISS-478 fixed (50 rows measured at ~52K, over the threshold; 40 at ~41K, under).
 const DEFAULT_LIST_LIMIT = 25;
 
 const getInputSchema = z.object({ jobId: z.uuid() }).strict();
@@ -64,7 +63,6 @@ export const forgeJobsListTool: ContextScopedMcpToolFactory = ({ principal }) =>
     const jobsLimit = limit ?? DEFAULT_LIST_LIMIT;
     const rows = await listJobs({ projectId, status, type, issueId, limit: overfetch(jobsLimit) });
 
-    // cm:why one extra project-scoped query, not one per row — the gate is stateless, so `queued` alone cannot say whether a job is about to run or blocked forever, and without this the only way to find out is a hand-written script against the database (which is how 11 jobs came to sit queued for 6-22 days unnoticed)
     const gates = rows.some((r) => r.status === 'queued')
       ? await gateReasonsForQueuedJobs(projectId)
       : new Map<string, string>();
@@ -107,7 +105,6 @@ export const forgeJobsGetTool: ContextScopedMcpToolFactory = ({ principal }) => 
  * notice told them to re-call with it. Bounding the payload instead keeps the
  * row, so the cursor always clears the event that could not be sent.
  */
-// cm:guard keep this cap well under MAX_RESPONSE_CHARS — it is what guarantees no SINGLE event can exhaust the response budget, which is what stops the size trim ever returning zero rows and freezing the cursor
 const MAX_EVENT_DATA_CHARS = 8_000;
 
 function boundEventData<T extends { data: unknown }>(event: T): T {
@@ -133,7 +130,6 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
     const fetched = await listJobEvents(jobId, overfetch(eventsLimit), sinceSeq);
 
     const bounded = fetched.map(boundEventData);
-    // cm:guard events are CURSOR-paginated, so the size trim must shed the NEWEST rows — shedding the oldest would move lastSeq past events the caller never received, and nothing replays them
     const envelope = buildListEnvelope({
       key: 'items',
       items: bounded,
@@ -143,7 +139,6 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
       sizeTrimSheds: 'newest',
     });
     const items = envelope.items as typeof bounded;
-    // cm:guard `lastSeq` must come from the RETURNED tail, never the overfetched probe row — it is the cursor the caller passes back as `sinceSeq`, so reading it off the dropped row skips one event on every page and the replay silently loses it
     const lastSeq = items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);
     const { items: _, notice: __, ...metadata } = envelope;
     return {
@@ -159,15 +154,6 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
   },
 });
 
-/**
- * ISS-442 C0 — the audited manual single-job cancel escape hatch. Delegates to
- * the shared {@link cancelJob} helper (same logic as REST `POST /jobs/:id/cancel`),
- * so it works even when the parent pipeline_run is already terminal — the case
- * that previously forced raw-SQL surgery. Writer-gated (this is a destructive
- * mutation), unlike the read-only forge_jobs.* tools which use the member gate.
- * Every cancel writes one `job_events` row (`kind='intervention'`) for the C6
- * interventions metric.
- */
 export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.cancel',
   description:

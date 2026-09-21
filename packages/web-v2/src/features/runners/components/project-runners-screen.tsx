@@ -8,27 +8,28 @@
 // rename / revoke); project membership (admin) gates the writes here.
 
 import {
-	Badge,
-	Banner,
-	Button,
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	ConfirmDialog,
-	EmptyState,
-	ErrorState,
-	Field,
-	HealthDot,
-	HelpButton,
-	Icon,
-	Input,
-	MonoTag,
-	PageContainer,
-	Select,
-	Skeleton,
-	Textarea,
-	useNow,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  Field,
+  HealthDot,
+  HelpButton,
+  Icon,
+  Input,
+  MonoTag,
+  PageContainer,
+  PageTitle,
+  Select,
+  Skeleton,
+  Textarea,
+  useNow,
 } from "@/design";
 import { useUpdateProject } from "@/features/project-settings/hooks";
 import { useProject } from "@/features/projects/hooks";
@@ -40,6 +41,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
 import { PoolAdmission } from "./pool-admission";
+import { ResidentMaster } from "./resident-master";
 import { RunnerLabels } from "./runner-labels";
 import {
 	useActiveRunners,
@@ -66,6 +68,7 @@ import {
 	formatElapsed,
 	provisionHealth,
 	runnerLimitDisplay,
+	runnerVersionLabel,
 } from "../types";
 
 function CopyButton({
@@ -121,7 +124,6 @@ function GitConfigCard({
 	const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
 
 	const urlDirty = url.trim() !== (repoUrl ?? "");
-	// cm:edge contract -> packages/core/src/db/schema.ts — the Workspace setup field below writes `projects.workspace_setup`, which the runner's setup agent follows verbatim; blank is not a neutral default, it is the agent deriving the procedure at a paid model's rates on every job that lands in a broken workspace
 	const setupDirty = setup.trim() !== (workspaceSetup ?? "");
 	const credData = cred.data;
 	const poolKeys = pool.data ?? [];
@@ -211,7 +213,7 @@ function GitConfigCard({
 						) : credData?.configured ? (
 							<div className="mt-2 flex flex-col gap-2 rounded-lg border border-line bg-sunken p-3">
 								<div className="flex items-center justify-between gap-2">
-									<span className="inline-flex items-center gap-1.5 text-[13px] text-fg">
+									<span className="inline-flex items-center gap-1.5 text-13 text-fg">
 										<Icon
 											name="check"
 											size={14}
@@ -224,7 +226,7 @@ function GitConfigCard({
 									)}
 								</div>
 								<div className="flex items-center justify-between gap-2">
-									<code className="min-w-0 flex-1 truncate font-mono text-[12px] text-subtle">
+									<code className="min-w-0 flex-1 truncate font-mono text-12 text-subtle">
 										{credData.key.publicKey}
 									</code>
 									<CopyButton
@@ -350,6 +352,7 @@ function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 	}
 	const activeIdx = PROVISION_STEPS.indexOf(status);
 	return (
+		<div className="flex flex-col gap-1.5">
 		<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 			{PROVISION_STEPS.map((step, i) => {
 				const done = i < activeIdx || status === "ready";
@@ -377,6 +380,14 @@ function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 					</span>
 				);
 			})}
+		</div>
+		{/* A workspace can be ready AND incomplete — the runner reports why on
+		    the same status (e.g. no PAT on the box, so the checkout's .mcp.json
+		    has no `forge` server). Dropping it here is how that reason went back
+		    to living only in the device's log. */}
+		{status === "ready" && runner.provisionDetail && (
+			<Banner tone="info">{runner.provisionDetail}</Banner>
+		)}
 		</div>
 	);
 }
@@ -421,7 +432,7 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 							className="flex flex-col gap-1 rounded-md border border-line bg-surface px-3 py-2"
 						>
 							<div className="flex items-center justify-between gap-2">
-								<span className="truncate text-[13px] text-fg">
+								<span className="truncate text-13 text-fg">
 									{s.title ?? "Untitled session"}
 								</span>
 								<span className="fg-caption flex-none text-subtle">
@@ -445,7 +456,7 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 								)}
 							</div>
 							{s.errorExcerpt && (
-								<code className="whitespace-pre-wrap break-words font-mono text-[11px] text-[color:var(--red-600)]">
+								<code className="whitespace-pre-wrap break-words font-mono text-11 text-[color:var(--red-600)]">
 									{s.errorExcerpt}
 								</code>
 							)}
@@ -460,7 +471,7 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 					{events.map((e) => (
 						<div
 							key={e.id}
-							className="flex items-center justify-between gap-2 text-[12px]"
+							className="flex items-center justify-between gap-2 text-12"
 						>
 							<span className="text-fg">
 								{e.oldStatus ? `${e.oldStatus} → ` : ""}
@@ -489,6 +500,7 @@ function RunnerRow({
 	isPrimary,
 	onSetPrimary,
 	settingPrimary,
+	slug,
 }: {
 	runner: ProjectRunner;
 	/** The job this runner is executing right now, or null when idle. */
@@ -500,6 +512,8 @@ function RunnerRow({
 	/** Set this device as primary (deviceId), or clear (null). */
 	onSetPrimary: (deviceId: string | null) => void;
 	settingPrimary: boolean;
+	/** The project slug, as `forge-runner master stand-down` takes it. */
+	slug: string | undefined;
 }) {
 	const reprovision = useReprovision(projectId);
 	const unassign = useUnassignDeviceFromProject(projectId);
@@ -507,7 +521,6 @@ function RunnerRow({
 	const clearError = useClearRunnerError(projectId);
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [showActivity, setShowActivity] = useState(false);
-	// cm:guard a disabled device keeps heartbeating, so `deviceStatus` stays "online" — this flag is the only thing between the operator and a healthy green dot on a box that pool admission excludes and every claim refuses `device_disabled`. It named the central dispatcher until that was deleted; the exclusion now lives in devices/pool-admission.ts.
 	const deviceDisabled = Boolean(runner.deviceDisabledAt);
 	const online = runner.deviceStatus === "online" && !deviceDisabled;
 	// Tick once a second while this runner is limited (live reset countdown) OR
@@ -516,7 +529,6 @@ function RunnerRow({
 	const limit = runnerLimitDisplay(runner, now);
 	const elapsed = current ? formatElapsed(current.startedAt, now) : null;
 
-	// cm:why offered on a LIVE cooldown too — an operator who raised the cap or fixed the box knows something the recorded fault does not, and a still-real fault re-stamps itself on the next failure
 	const clearFaultButton = canEdit ? (
 		<Button
 			variant="secondary"
@@ -563,6 +575,12 @@ function RunnerRow({
 						</Badge>
 					)}
 					{runner.platform && <MonoTag>{runner.platform}</MonoTag>}
+					{/* This runner's own version, never Forge's — the two move on
+					    different clocks and a reader with one number on screen
+					    cannot tell which software a bug belongs to (ISS-1119). */}
+					<span className="fg-caption whitespace-nowrap text-muted">
+						{runnerVersionLabel(runner.agentVersion)}
+					</span>
 					<HealthDot
 						health={provisionHealth(runner.provisionStatus)}
 						withLabel={false}
@@ -708,7 +726,7 @@ function RunnerRow({
 					{limit.detail && (
 						<>
 							{" "}
-							<code className="font-mono text-[12px]">{limit.detail}</code>
+							<code className="font-mono text-12">{limit.detail}</code>
 						</>
 					)}
 				</Banner>
@@ -716,7 +734,7 @@ function RunnerRow({
 				runner.lastError && (
 					<Banner tone="attention" action={clearFaultButton}>
 						<span className="font-semibold">Last error.</span>{" "}
-						<code className="font-mono text-[12px]">{runner.lastError}</code>
+						<code className="font-mono text-12">{runner.lastError}</code>
 					</Banner>
 				)
 			)}
@@ -748,6 +766,12 @@ function RunnerRow({
 				canEdit={canEdit}
 			/>
 
+			<ResidentMaster
+				master={runner.residentMaster}
+				slug={slug}
+				deviceName={runner.deviceName}
+			/>
+
 			<div className="flex justify-start">
 				<Button
 					variant="ghost"
@@ -768,10 +792,12 @@ function AssignDevice({
 	projectId,
 	defaultRepoPath,
 	assignedDeviceIds,
+	hasRepoUrl,
 }: {
 	projectId: string;
 	defaultRepoPath: string | null;
 	assignedDeviceIds: Set<string>;
+	hasRepoUrl: boolean;
 }) {
 	const devices = useDevices();
 	const assign = useAssignDeviceToProject(projectId);
@@ -791,9 +817,12 @@ function AssignDevice({
 		{ value: "", label: "Select a paired device…" },
 		...available.map((d) => ({
 			value: d.id,
-			label: `${d.name} (${d.platform})`,
+			// Online-ness decides whether provisioning starts now or on the
+			// device's next reconnect, so it belongs in the choice, not after it.
+			label: `${d.name} (${d.platform}) — ${d.status === "online" ? "online" : "offline"}`,
 		})),
 	];
+	const picked = available.find((d) => d.id === deviceId) ?? null;
 
 	return (
 		<Card>
@@ -812,7 +841,7 @@ function AssignDevice({
 						</Field>
 						<Field
 							label="Repo path"
-							hint="Absolute path on that device — typed manually."
+							hint="Absolute path on that device. Leave it empty and the device provisions a checkout under its own projects_root."
 						>
 							<Input
 								value={repoPath}
@@ -822,6 +851,24 @@ function AssignDevice({
 							/>
 						</Field>
 					</div>
+
+					{/* Both conditions are decided elsewhere (the card above, and
+					    the device itself), and both change what "Assign &
+					    provision" actually does. */}
+					{!hasRepoUrl && (
+						<Banner tone="info">
+							This project has no repo URL, so a device assigned now gets an empty
+							workspace instead of a checkout. Set Git access above first, or point
+							Repo path at a checkout that already exists on the device.
+						</Banner>
+					)}
+					{picked && picked.status !== "online" && (
+						<Banner tone="info">
+							{picked.name} is offline. The assignment is saved now and the device
+							provisions the workspace on its next reconnect.
+						</Banner>
+					)}
+
 					<div className="flex justify-end">
 						<Button
 							variant="primary"
@@ -840,16 +887,17 @@ function AssignDevice({
 					</div>
 
 					<div className="rounded-lg border border-dashed border-line-strong p-3">
-						<span className="fg-label">No device yet? Pair one</span>
+						<span className="fg-label">No device yet? Set one up</span>
 						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
-							<code className="font-mono text-[13px] text-fg">
-								forge-runner login
+							<code className="font-mono text-13 text-fg">
+								forge-runner setup
 							</code>
-							<CopyButton value="forge-runner login" />
+							<CopyButton value="forge-runner setup" />
 						</div>
 						<p className="fg-body-sm mt-1.5 text-subtle">
-							Run it on the device, approve in the browser — it appears in the
-							picker above, then assign it here. Or{" "}
+							Run it on the device and approve the code it prints — the device
+							appears in the picker above. Assign it here while setup waits; it
+							then gets the checkout and installs the service on its own. Or{" "}
 							<button
 								type="button"
 								className="text-accent hover:underline"
@@ -919,7 +967,7 @@ export function ProjectRunnersScreen({
 			{!embedded && (
 				<div className="flex items-center justify-between gap-3">
 					<div>
-						<h1 className="fg-h2">Runners</h1>
+						<PageTitle className="fg-h2">Runners</PageTitle>
 						<p className="fg-body-sm text-muted">
 							Devices that run this project&apos;s pipeline jobs. Status &amp;
 							provisioning update live.
@@ -949,6 +997,7 @@ export function ProjectRunnersScreen({
 					projectId={projectId}
 					defaultRepoPath={project.data?.repoPath ?? null}
 					assignedDeviceIds={assignedDeviceIds}
+					hasRepoUrl={!!project.data?.repoUrl}
 				/>
 			)}
 
@@ -985,6 +1034,7 @@ export function ProjectRunnersScreen({
 									isPrimary={!!r.deviceId && r.deviceId === defaultDeviceId}
 									onSetPrimary={(id) => setDefault.mutate(id)}
 									settingPrimary={setDefault.isPending}
+									slug={project.data?.slug}
 								/>
 							))}
 						</div>

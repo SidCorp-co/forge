@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 780" width="1120" height="780" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <marker id="p1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8250df"/></marker>
+    <marker id="p2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1a7f37"/></marker>
+    <marker id="p3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#bc4c00"/></marker>
+    <marker id="p4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#cf222e"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1120" height="780" rx="14" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="1119" height="779" rx="14" fill="none" stroke="#d1d9e0"/>
+
+  <text x="34" y="36" fill="#1f2328" font-size="15" font-weight="700">forge-plugin ⇄ forge — where the method comes from, and where the data comes from</text>
+  <text x="34" y="55" fill="#8c959f" font-size="11.5">measured on forge main and the forge-plugin checkout, 2026-09-20</text>
+
+  <!-- ══ PLUGIN REPO ══ -->
+  <rect x="34" y="74" width="420" height="392" rx="10" fill="#faf7ff" stroke="#8250df" stroke-opacity=".45"/>
+  <text x="54" y="100" fill="#8250df" font-size="14.5" font-weight="700">SidCorp-co/forge-plugin</text>
+  <text x="54" y="119" fill="#8c959f" font-size="11.5">separate repo · ships on a plugin push · owns HOW</text>
+
+  <rect x="54" y="134" width="380" height="50" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="72" y="155" fill="#1f2328" font-size="12.5" font-weight="700">SKILL.md</text>
+  <text x="168" y="155" fill="#8c959f" font-size="11.5">13 lines — a pointer, no method</text>
+  <text x="72" y="173" fill="#8c959f" font-size="11">"run `forge guide issue-flow` and follow what it prints"</text>
+
+  <rect x="54" y="194" width="380" height="66" rx="7" fill="#ffffff" stroke="#8250df" stroke-opacity=".6"/>
+  <text x="72" y="215" fill="#8250df" font-size="12.5" font-weight="700">THE METHOD — on disk</text>
+  <text x="72" y="233" fill="#59636e" font-size="11">guides/skills/issue-flow/guide.md · 291 lines</text>
+  <text x="72" y="250" fill="#8c959f" font-size="11">+ 3 references · 13 phases · served from the INSTALLED copy</text>
+
+  <rect x="54" y="270" width="380" height="82" rx="7" fill="#ffffff" stroke="#8250df" stroke-opacity=".6"/>
+  <text x="72" y="291" fill="#1f2328" font-size="12.5" font-weight="700">CLI</text>
+  <text x="124" y="291" fill="#59636e" font-size="11.5">plugin/bin/forge</text>
+  <text x="72" y="310" fill="#8c959f" font-size="11">own http client — tracker/rest.mjs, NOT forge-runner</text>
+  <text x="72" y="327" fill="#8c959f" font-size="11">Bearer PAT from `forge doctor` · own retry + 429 policy</text>
+  <text x="72" y="344" fill="#8250df" font-size="11">36 capabilities in 9 families, declared in routes.mjs</text>
+
+  <rect x="54" y="362" width="380" height="44" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="72" y="383" fill="#1f2328" font-size="12.5" font-weight="700">HOOKS</text>
+  <text x="140" y="383" fill="#8c959f" font-size="11.5">session gates, inside the agent's own session</text>
+
+  <rect x="54" y="416" width="380" height="36" rx="7" fill="#fff8f0" stroke="#bc4c00" stroke-opacity=".5"/>
+  <text x="72" y="439" fill="#bc4c00" font-size="11.5">method · phase meaning · verbs. Never core's status set.</text>
+
+  <!-- ══ AGENT ══ -->
+  <rect x="474" y="74" width="180" height="392" rx="10" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="492" y="100" fill="#1f2328" font-size="12.5" font-weight="700">agent session</text>
+  <text x="492" y="117" fill="#8c959f" font-size="10.5">claude, in a worktree,</text>
+  <text x="492" y="131" fill="#8c959f" font-size="10.5">plugin installed</text>
+
+  <rect x="488" y="146" width="152" height="74" rx="7" fill="#faf7ff" stroke="#bc4c00" stroke-opacity=".55"/>
+  <text x="502" y="166" fill="#bc4c00" font-size="11" font-weight="700">① the method</text>
+  <text x="502" y="183" fill="#8c959f" font-size="10">`forge guide issue-flow`</text>
+  <text x="502" y="198" fill="#8c959f" font-size="10">reads DISK, phase by phase</text>
+  <text x="502" y="213" fill="#8c959f" font-size="10">no network at all</text>
+
+  <rect x="488" y="230" width="152" height="74" rx="7" fill="#faf7ff" stroke="#8250df" stroke-opacity=".55"/>
+  <text x="502" y="250" fill="#8250df" font-size="11" font-weight="700">② data, via CLI</text>
+  <text x="502" y="267" fill="#8c959f" font-size="10">`forge issues …`</text>
+  <text x="502" y="282" fill="#8c959f" font-size="10">REST · Bearer PAT</text>
+  <text x="502" y="297" fill="#8c959f" font-size="10">`--tracker` for core guides</text>
+
+  <rect x="488" y="314" width="152" height="74" rx="7" fill="#f6f8fa" stroke="#0969da" stroke-opacity=".55"/>
+  <text x="502" y="334" fill="#0969da" font-size="11" font-weight="700">③ data, via MCP</text>
+  <text x="502" y="351" fill="#8c959f" font-size="10">forge_issues tool call</text>
+  <text x="502" y="366" fill="#8c959f" font-size="10">/mcp · session or PAT</text>
+  <text x="502" y="381" fill="#cf222e" font-size="10">same names as ②</text>
+
+  <rect x="488" y="398" width="152" height="54" rx="7" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".55"/>
+  <text x="502" y="418" fill="#1a7f37" font-size="11" font-weight="700">forge-runner</text>
+  <text x="502" y="435" fill="#8c959f" font-size="10">spawns the session;</text>
+  <text x="502" y="448" fill="#8c959f" font-size="10">device API, device token</text>
+
+  <path d="M438 214 L484 190" stroke="#bc4c00" stroke-width="1.7" marker-end="url(#p3)"/>
+  <path d="M438 310 L484 268" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
+
+  <!-- ══ CORE ══ -->
+  <rect x="674" y="74" width="412" height="392" rx="10" fill="#f6f8fa" stroke="#0969da" stroke-opacity=".45"/>
+  <text x="694" y="100" fill="#0969da" font-size="14.5" font-weight="700">forge · control plane</text>
+  <text x="694" y="119" fill="#8c959f" font-size="11.5">packages/core — ships on a core deploy · owns WHAT IS TRUE</text>
+
+  <rect x="694" y="134" width="372" height="50" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="712" y="155" fill="#1f2328" font-size="12.5" font-weight="700">REST</text>
+  <text x="774" y="155" fill="#59636e" font-size="11.5">/api/*</text>
+  <text x="846" y="155" fill="#8c959f" font-size="11.5">130 mounts</text>
+  <text x="712" y="173" fill="#8c959f" font-size="11">what ② calls · the destination's single surface</text>
+
+  <rect x="694" y="194" width="372" height="50" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="712" y="215" fill="#1f2328" font-size="12.5" font-weight="700">MCP</text>
+  <text x="774" y="215" fill="#59636e" font-size="11.5">/mcp</text>
+  <text x="846" y="215" fill="#8c959f" font-size="11.5">37 tools</text>
+  <text x="712" y="233" fill="#8c959f" font-size="11">what ③ calls · holds no DB handle, guarded by nothing</text>
+
+  <rect x="694" y="254" width="372" height="50" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="712" y="275" fill="#1f2328" font-size="12.5" font-weight="700">DEVICE</text>
+  <text x="782" y="275" fill="#59636e" font-size="11.5">/api/devices/me/*</text>
+  <text x="954" y="275" fill="#8c959f" font-size="11.5">23</text>
+  <text x="712" y="293" fill="#8c959f" font-size="11">pool · lease · phases · plugins · skills</text>
+
+  <rect x="694" y="314" width="372" height="50" rx="7" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="712" y="335" fill="#1f2328" font-size="12.5" font-weight="700">GUIDES</text>
+  <text x="782" y="335" fill="#59636e" font-size="11.5">/guides/:slug</text>
+  <text x="712" y="353" fill="#8c959f" font-size="11">core's capability guides — reached only by `guide --tracker`</text>
+
+  <rect x="694" y="374" width="372" height="78" rx="7" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".5"/>
+  <text x="712" y="395" fill="#1a7f37" font-size="12" font-weight="700">core serves state, never the method</text>
+  <text x="712" y="414" fill="#8c959f" font-size="11">Which is why the installed plugin decides what the agent does,</text>
+  <text x="712" y="431" fill="#8c959f" font-size="11">and why the pin below is not a version string but the method</text>
+  <text x="712" y="446" fill="#8c959f" font-size="11">itself.</text>
+
+  <path d="M646 268 L690 160" stroke="#8250df" stroke-width="1.6" marker-end="url(#p1)"/>
+  <path d="M646 350 L690 214" stroke="#0969da" stroke-width="1.6" marker-end="url(#p2)"/>
+  <path d="M646 424 L690 282" stroke="#1a7f37" stroke-width="1.6" marker-end="url(#p2)"/>
+
+  <!-- ══ DEFECT 1 ══ -->
+  <rect x="34" y="482" width="1052" height="86" rx="10" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".5"/>
+  <text x="54" y="507" fill="#cf222e" font-size="13" font-weight="700">② and ③ reach the same data under the same name</text>
+  <text x="54" y="527" fill="#8c959f" font-size="11.5">All 9 CLI capability families carry the identical name as a core MCP tool. There are no CLI-only names, and nothing declares which is authoritative.</text>
+  <rect x="54" y="536" width="1012" height="24" rx="5" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="68" y="552" fill="#59636e" font-size="10.5">forge_issues · forge_projects · forge_knowledge · forge_config · forge_project_pm · forge_comments · forge_guide · forge_memory · forge_uploads</text>
+
+  <!-- ══ DEFECT 2 ══ -->
+  <rect x="34" y="582" width="1052" height="166" rx="10" fill="#ffffff" stroke="#d1d9e0"/>
+  <text x="54" y="607" fill="#1f2328" font-size="13" font-weight="700">five contract items · one carries a version · and it is dropped in the one case it is load-bearing</text>
+
+  <rect x="54" y="620" width="166" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".35"/>
+  <text x="66" y="637" fill="#1f2328" font-size="10.5" font-weight="700">skill name</text>
+  <text x="66" y="652" fill="#8c959f" font-size="10">a literal in core</text>
+
+  <rect x="228" y="620" width="166" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".35"/>
+  <text x="240" y="637" fill="#1f2328" font-size="10.5" font-weight="700">5 driver statuses</text>
+  <text x="240" y="652" fill="#8c959f" font-size="10">no version</text>
+
+  <rect x="402" y="620" width="166" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".35"/>
+  <text x="414" y="637" fill="#1f2328" font-size="10.5" font-weight="700">3 phase endpoints</text>
+  <text x="414" y="652" fill="#8c959f" font-size="10">no version</text>
+
+  <rect x="576" y="620" width="196" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".35"/>
+  <text x="588" y="637" fill="#1f2328" font-size="10.5" font-weight="700">the data surface</text>
+  <text x="588" y="652" fill="#8c959f" font-size="10">declared plugin-side only, never compared</text>
+
+  <rect x="780" y="620" width="140" height="40" rx="6" fill="#f0fbf3" stroke="#1a7f37" stroke-opacity=".6"/>
+  <text x="792" y="637" fill="#1a7f37" font-size="10.5" font-weight="700">pinnedRef ✓</text>
+  <text x="792" y="652" fill="#8c959f" font-size="10">a commit SHA</text>
+
+  <path d="M924 640 L946 640" stroke="#cf222e" stroke-width="1.5" marker-end="url(#p4)"/>
+  <rect x="952" y="620" width="114" height="40" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".6"/>
+  <text x="964" y="637" fill="#cf222e" font-size="10.5" font-weight="700">nulled</text>
+  <text x="964" y="652" fill="#8c959f" font-size="10">on conflict</text>
+
+  <rect x="54" y="672" width="1012" height="60" rx="6" fill="#fff5f5" stroke="#cf222e" stroke-opacity=".4"/>
+  <text x="68" y="691" fill="#cf222e" font-size="11" font-weight="700">pinnedRef is designated per PROJECT and installed per DEVICE. Two projects naming different SHAs merge to null.</text>
+  <text x="68" y="709" fill="#8c959f" font-size="10.5">The SHAs move to a side field, the daemon logs a warning, and the box installs plugin HEAD. Because the method is served from the installed copy,</text>
+  <text x="68" y="725" fill="#8c959f" font-size="10.5">this does not float a version number — it silently changes the 291-line method the agent follows, in the one case where two owners had disagreed.</text>
+</svg>

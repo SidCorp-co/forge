@@ -1,29 +1,10 @@
-// The two comparisons check-lint-budget makes, with no I/O so they are testable.
-//
-// FREEZE is the old contract: a file already carrying debt may keep it and may
-// lose it, never gain. DRAIN is the one ISS-833 asked for and nothing in this
-// repo had — touch a file, leave its count STRICTLY lower. Freezing alone does
-// not reduce: the codemap baseline sat frozen for months at 3% drained, which is
-// the evidence that "not higher" and "lower when you edit it" are different
-// rules, not two names for one.
-//
-// Drain is opt-in per scope. A scope with no `drain` block is freeze-only.
-//
-// The freeze comparison, the registry read and the baseline I/O moved to
-// debt-ratchet.mjs when check-test-signal joined them (ISS-848); what is left
-// here is the part that is about biome specifically.
-
 import { fileTotal } from './debt-ratchet.mjs';
 
-// cm:guard these two categories belong to check-size-budget.mjs, which freezes them by LINE COUNT. Counting them here as well would freeze the same debt under two directions of improvement, and a file that split one 300-line function into two would satisfy one checker while failing the other.
-// cm:edge lockstep -> scripts/conformance-audit.mjs — R9 imports this set to decide which `warn` rule is size-budget's to count and which is lint-budget's; a category moving between the two checkers must move here, or R9 demands a baseline from the wrong one
 export const SIZE_RULES = new Set([
   'lint/style/noExcessiveLinesPerFile',
   'lint/complexity/noExcessiveLinesPerFunction',
 ]);
 
-// cm:guard MEASURE, do not enumerate. Three rounds of review each found another config that empties this checker's input while biome still exits 0 — top-level `linter.enabled`, the same switch behind `extends`, then a single `overrides` block with no second file at all — and each fix closed one instance of "biome scans the scope but lints nothing". This catches a scope emptied ENTIRELY, whatever line did it, because it parses no config.
-// cm:guard it does NOT catch a scope emptied in PART, and do not write that it does. Measured 2026-08-27: an `overrides` block scoped to `src/features/issues/**` leaves web-v2 at 186 diagnostics over 459 scanned files, so this never fires, `linterFault` cannot see it, and the next `--update-baseline` drops 9 files and 24 frozen diagnostics at exit 0. Closing it needs a per-file signal distinguishing "unlinted" from "fixed" that biome's JSON reporter does not expose, and refusing `overrides` outright would false-fail the legitimate don't-lint-generated-code block. Pinned by a test in lint-budget.test.mjs.
 /** Scopes whose baseline records debt but which measured nothing — the shape a silent wipe takes. */
 export function emptiedScopes(currentByScope, baselineByScope) {
   const out = [];
@@ -38,7 +19,6 @@ export function emptiedScopes(currentByScope, baselineByScope) {
  *
  * Returns null when the scope declares no drain, which is how web-v2 stays freeze-only.
  */
-// cm:guard a `drain` block that will not compile is a REGISTRY error, so it throws rather than resolving to null. Returning null would silently demote that scope to freeze-only, which is a checker quietly stopping at half its contract on the strength of a typo — the caller turns this into exit 2.
 export function drainMatcher(scope) {
   const d = scope?.drain;
   if (d === undefined || d === null) return null;
@@ -48,7 +28,6 @@ export function drainMatcher(scope) {
   return (file) => include.test(file) && !exclude?.test(file);
 }
 
-// cm:guard a RENAME is freeze-only, never drained. The baseline is path-keyed, so a moved file arrives as a new path carrying the same debt; asking it to also pay one would fire this rule on every move, and a rule that fires on renames is a rule someone turns off — the same reasoning compareDown's total carries in scripts/lib/baseline-ratchet.mjs.
 /**
  * Drain: a changed drainable file must come back strictly lower than its baseline.
  *
@@ -99,7 +78,6 @@ export function drainFaults({ measured, baseline, changed, renamed, matchers }) 
   return faults;
 }
 
-// cm:guard `original` is the DENOMINATOR of every percent this repo will quote for a class, so --update-baseline may only ever add a missing key. Recomputing it would make "42% drained" mean "42% drained since the last re-freeze", which is a number that resets itself and can never fall — the unfalsifiable "trending to 0" ISS-833 exists to replace.
 /** Merge measured per-scope totals into the baseline's immutable `original` map. */
 export function mergeOriginal(existing, currentByScope) {
   const out = { ...(existing ?? {}) };

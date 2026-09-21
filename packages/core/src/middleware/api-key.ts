@@ -1,12 +1,3 @@
-/**
- * Widget API key middleware.
- *
- * Keys are stored in `projects.api_key` as plaintext and looked up by
- * equality: the secret is embedded in the page that loads the widget, so
- * server-side hashing does not change the threat model. Rotation (POST
- * /api/projects/:id/api-key/rotate) is the mitigation against a DB leak.
- */
-
 import { eq } from 'drizzle-orm';
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';

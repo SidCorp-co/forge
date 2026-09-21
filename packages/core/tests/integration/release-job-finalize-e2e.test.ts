@@ -93,11 +93,9 @@ describe('release deploy dispatch and job finalize E2E', () => {
         integrationIds: [],
         reason: 'no-integration',
       });
-      // cm:guard the substep is the ONLY record that the deploy was considered and declined; without it a project with no integration is indistinguishable on the run from one whose dispatch silently failed
       expect(await currentStep(runId)).toBe(RELEASE_DEPLOY_SKIPPED);
     });
 
-    // cm:guard prod is never auto-dispatched without `pipelineConfig.autoProdDeploy`, and the proof has to be that NOTHING was enqueued — asserting only the returned flag would pass against a version that parked the gate and deployed anyway
     it('parks a prod binding for a human instead of dispatching it', async () => {
       const { tryDispatchCoolifyRelease } = await import('../../src/pipeline/release-coolify.js');
       const bindingId = await seedProdBinding();
@@ -115,7 +113,6 @@ describe('release deploy dispatch and job finalize E2E', () => {
       expect(Number(deliveries[0]?.n ?? 0)).toBe(0);
     });
 
-    // cm:guard `allowProd: false` is what the MCP deploy tool passes pre-release, and it must exclude prod BEFORE the confirm gate rather than by relying on it — a caller outside the release path has no gate to park against, so a prod binding reaching that branch would sit pending forever
     it('reports no integration when the only binding is prod and prod is not allowed', async () => {
       const { tryDispatchCoolifyRelease } = await import('../../src/pipeline/release-coolify.js');
       await seedProdBinding();
@@ -177,7 +174,6 @@ describe('release deploy dispatch and job finalize E2E', () => {
       expect(await jobState(row.id)).toEqual({ status: 'done', exitCode: 0 });
     });
 
-    // cm:guard this is the whole reason the write is a CAS: two finalizers can observe the same job, and the one whose observed status is stale must LOSE rather than overwrite the terminal state the other wrote. Asserting only the `false` would pass against a version that returned false after writing.
     it('loses the race and writes nothing when the row moved since the caller read it', async () => {
       const { finalizeJobDone } = await import('../../src/jobs/finalize-done.js');
       const row = await insertJob('running');

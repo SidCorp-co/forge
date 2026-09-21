@@ -3,9 +3,14 @@
 import { Toggle } from "@/design";
 import { useSetRunnerAdmission } from "../hooks";
 
-// cm:edge contract -> packages/core/src/devices/pool-admission.ts — the OFF position writes `draining`, one of the statuses that predicate excludes. A third status added there needs reading here, or a box withdrawn some other way renders as admitted.
-// cm:guard the ON position must stay reachable at every withdrawn status this renders — locking it on `disabled` left the only control that returns a retired box refusing precisely when it was needed, and sent the operator to a re-registration the unique index refuses (ISS-990).
-/** Whether this runner may be offered jobs from the pool. */
+/**
+ * Whether this runner may be offered jobs from the pool.
+ *
+ * What it does NOT reach is said out loud (ISS-1118): both `draining` and
+ * `disabled` decide whether a NEW master is placed and end no pane already up,
+ * and this was the control an owner reached for to stop one. `ResidentMaster`
+ * below names the control that does.
+ */
 export function PoolAdmission({
 	projectId,
 	runnerId,
@@ -36,6 +41,11 @@ export function PoolAdmission({
 						: withdrawn
 							? "Drained: work already running finishes, nothing new is offered or claimed."
 							: "Offered work whenever this box is bound to the project."}
+				</p>
+				<p className="fg-caption text-muted">
+					Switching this off does not end a resident master session already
+					running on the box — it decides what work is offered, not what is
+					still running.
 				</p>
 			</div>
 		</div>

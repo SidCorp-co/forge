@@ -21,7 +21,16 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const PR_ROW = '33333333-3333-4333-8333-333333333333';
 
 let issueRow: Record<string, unknown> | undefined = { id: ISSUE_ID, projectId: PROJECT_ID };
-const selectLimit = vi.fn(async () => (issueRow ? [issueRow] : []));
+/** The `repo_pull_requests` row a NAMED number resolves to, where there is one. */
+let storedPullRequest: Record<string, unknown> | undefined;
+let selects = 0;
+// The route reads the issue first and the projection second, so the reads are told apart by order:
+// one stub answering both would hand `resolveStoredPullRequest` the issue row as a pull request.
+const selectLimit = vi.fn(async () => {
+  selects += 1;
+  if (selects === 1) return issueRow ? [issueRow] : [];
+  return storedPullRequest ? [storedPullRequest] : [];
+});
 vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: selectLimit }) }) }) },
 }));
@@ -45,6 +54,19 @@ let openPullRequests: string[] = [PR_ROW];
 vi.mock('../integrations/github/contract-check.js', () => ({
   openPullRequestsForIssue: async () => openPullRequests,
 }));
+
+// ISS-1123. The reading is mocked and the SENTENCE is not: the refusal a caller meets is what these
+// cases are about, so `describeEmptyProjection` runs for real over a planted report.
+let pipe: {
+  projectId: string;
+  rows: number;
+  bindings: number;
+  inbound: { count: number; lastAt: Date | null };
+} = { projectId: PROJECT_ID, rows: 4, bindings: 1, inbound: { count: 0, lastAt: null } };
+vi.mock('../integrations/github/projection-health.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, projectionPipeReport: async () => pipe };
+});
 
 const mergeStoredPullRequest = vi.fn();
 vi.mock('../integrations/github/merge.js', async (importOriginal) => {
@@ -70,7 +92,10 @@ const post = (body: unknown) =>
 beforeEach(() => {
   vi.clearAllMocks();
   issueRow = { id: ISSUE_ID, projectId: PROJECT_ID };
+  storedPullRequest = undefined;
+  selects = 0;
   openPullRequests = [PR_ROW];
+  pipe = { projectId: PROJECT_ID, rows: 4, bindings: 1, inbound: { count: 0, lastAt: null } };
   mergeStoredPullRequest.mockResolvedValue({
     kind: 'merged',
     deliveryId: 'd1',
@@ -90,9 +115,6 @@ describe('POST /api/issues/:id/merge-pull-request', () => {
     );
   });
 
-  // cm:guard the planted violation for criterion 32 at this door: send `requestedBy` in the body and
-  // it must reach nothing. A route that spread the body into the call would pass every other test in
-  // this file while letting a caller sign somebody else's name to a merge.
   it('takes the caller from the principal and ignores one sent in the body', async () => {
     const res = await post({ requestedBy: 'user:someone-else' });
     expect(res.status).toBe(400);
@@ -113,8 +135,6 @@ describe('POST /api/issues/:id/merge-pull-request', () => {
     );
   });
 
-  // cm:guard a refusal is a 422 and never a 200 with a `refused` field. What the caller does next —
-  // dispatch the dependents — turns on this, and it must be readable from the status alone.
   it('answers 422 with the reason when the merge is refused', async () => {
     mergeStoredPullRequest.mockResolvedValue({
       kind: 'refused',
@@ -127,8 +147,6 @@ describe('POST /api/issues/:id/merge-pull-request', () => {
     expect(JSON.stringify(await res.json())).toContain('ci-passed');
   });
 
-  // cm:guard choosing for the caller here is what made a master misread ISS-1027 on 2026-09-17: a
-  // landing pull request and a follow-up on one issue, and only the open one read.
   it('refuses to choose when the issue has more than one open pull request', async () => {
     openPullRequests = [PR_ROW, '44444444-4444-4444-8444-444444444444'];
     const res = await post({});
@@ -142,6 +160,48 @@ describe('POST /api/issues/:id/merge-pull-request', () => {
     const res = await post({});
     expect(res.status).toBe(422);
     expect(mergeStoredPullRequest).not.toHaveBeenCalled();
+  });
+
+  // ISS-1123 criteria 11 and 12. For the first year of this route's life the `NO_PULL_REQUEST`
+  // below was never once true on this deployment: the projection had one writer nothing reached, so
+  // every pull request on every project met a sentence about the number the caller sent.
+  it('names the empty projection rather than the number, where nothing has ever written a row', async () => {
+    openPullRequests = [];
+    pipe = { projectId: PROJECT_ID, rows: 0, bindings: 1, inbound: { count: 0, lastAt: null } };
+    const res = await post({});
+    expect(res.status).toBe(422);
+    const said = JSON.stringify(await res.json());
+    expect(said).toContain('PROJECTION_EMPTY');
+    expect(said).toContain('holds no pull request at all');
+    expect(said).toContain('Forge has recorded no webhook delivery at all');
+    expect(said).not.toContain('NO_PULL_REQUEST');
+    expect(mergeStoredPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('still names the empty projection where deliveries HAVE arrived and written no row', async () => {
+    openPullRequests = [];
+    pipe = {
+      projectId: PROJECT_ID,
+      rows: 0,
+      bindings: 2,
+      inbound: { count: 7, lastAt: new Date('2026-09-19T08:00:00.000Z') },
+    };
+    const res = await post({});
+    const said = JSON.stringify(await res.json());
+    expect(said).toContain('PROJECTION_EMPTY');
+    expect(said).toContain('Forge has recorded 7 inbound deliveries');
+    expect(said).toContain('2026-09-19T08:00:00.000Z');
+  });
+
+  it('names the number where the projection does hold rows and this one is not among them', async () => {
+    openPullRequests = [];
+    pipe = { projectId: PROJECT_ID, rows: 12, bindings: 1, inbound: { count: 3, lastAt: null } };
+    const res = await post({ pullRequest: 534 });
+    expect(res.status).toBe(422);
+    const said = JSON.stringify(await res.json());
+    expect(said).toContain('NO_PULL_REQUEST');
+    expect(said).toContain('#534');
+    expect(said).not.toContain('PROJECTION_EMPTY');
   });
 
   it('answers 404 for an issue that is not there', async () => {

@@ -1,14 +1,3 @@
-/**
- * ISS-1036 — authenticating as a Google service account.
- *
- * Two hops, like the GitHub App path beside it: an assertion signed with the
- * account's own private key proves which account this is, and only that
- * assertion mints the access token every Sheets call carries. No Google SDK —
- * the assertion is `node:crypto` and the exchange is one `fetch`, which is the
- * shape `integrations/github/app-auth.ts` and `integrations/sentry/adapter.ts`
- * already use for their providers.
- */
-
 import { createHash, createSign } from 'node:crypto';
 import { GoogleAuthError, type ServiceAccountKey } from './types.js';
 
@@ -21,7 +10,6 @@ const JWT_BEARER_GRANT = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
 const KEY_SHAPE_REFUSAL =
   'the stored Google credential is not a service-account key file — expected JSON with "type":"service_account", "client_email" and "private_key". Re-enter the key file Google issued, unchanged.';
 
-// cm:guard `token_uri` is operator-supplied JSON and it is where core POSTs a SIGNED assertion, so an unchecked value is an SSRF door a project admin can open — and worse than a plain one, because the request carries a credential this deployment minted. Refuse a foreign host by name rather than quietly substituting Google's: a key file pointing somewhere else is not a key file with a stray field, it is a different credential than the operator thinks they pasted.
 const FOREIGN_TOKEN_URI_REFUSAL = `the key file's "token_uri" is not Google's. A service-account key issued by Google carries "${DEFAULT_TOKEN_URI}"; anything else would send a signed assertion somewhere Forge will not go. Re-download the key from the Google Cloud console.`;
 
 function b64url(input: Buffer | string): string {
@@ -59,7 +47,6 @@ export function parseServiceAccountKey(json: string): ServiceAccountKey {
   return key as unknown as ServiceAccountKey;
 }
 
-// cm:guard `iat` is backdated by 60 seconds on purpose — Google rejects an assertion whose `iat` sits in its own future, which is what a box with a clock a few seconds fast produces, and it presents as an unexplained invalid_grant on a credential that is fine. The same backdating is on `integrations/github/app-auth.ts` for the same reason.
 export function buildAssertion(
   key: ServiceAccountKey,
   scope: string,
@@ -97,7 +84,6 @@ export interface GoogleAccessToken {
   expiresAt: number;
 }
 
-// cm:guard the cache key carries a fingerprint of the KEY FILE, not just the connection and scope. A connection rotated from account A to account B keeps its id, so a key of (connectionId, scope) hands back A's token for the rest of its hour and every read and write runs as the account the operator just replaced.
 function credentialFingerprint(serviceAccountJson: string): string {
   return createHash('sha256').update(serviceAccountJson).digest('hex').slice(0, 16);
 }
@@ -127,7 +113,6 @@ interface TokenResponse {
 }
 
 function describeTokenFailure(status: number): GoogleAuthError {
-  // cm:guard Google's own error body is NOT echoed to the caller — it is a third party's response and has carried the assertion back in `error_description` on a malformed grant. The status and a sentence Forge wrote are what a caller gets (the same rule the Coolify log path states).
   const rejected = status === 400 || status === 401 || status === 403;
   if (rejected) {
     return new GoogleAuthError(

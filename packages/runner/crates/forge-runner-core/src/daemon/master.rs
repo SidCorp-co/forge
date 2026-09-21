@@ -38,43 +38,27 @@ use crate::daemon::run_record;
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::close_loop;
-use crate::runner::ledger::{Ledger, Run};
+use crate::runner::ledger::{Ledger, MasterStanding, Run};
 use crate::runner::terminate;
 use crate::transport::admissible::{self, AdmissibleIssue, DISPATCH_GATING_KIND};
 use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
 use tokio::sync::mpsc;
 
-/// How often the box asks whether any work exists.
-// cm:why this interval IS the latency from an issue opening to an agent touching it, and it is the whole budget: nothing pushes any more, so a job queued one tick after a poll waits a full interval before anything looks. 30s was chosen against the old push path's measured dispatch lag on epodsystem (queue→dispatch of 17m, 23m, 46m and 2h08 on 2026-09-04) — an order of magnitude of headroom, at one cheap request per project per half minute.
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
 
-/// The closest together two wake-driven sweeps may run.
-// cm:guard this is a COALESCING FLOOR, never a rate limit that drops work. A wake inside the window waits out the remainder and then sweeps; it is not discarded. Core publishes one `master.wake` per issue arrival, so promoting five drafts or closing a batch delivers five frames in about as many milliseconds, and a sweep per frame would be five `/me/runners` reads plus five pool reads per project to find what the first one already found. The channel is capacity 1 and extra frames are dropped ON PURPOSE while one is pending — the sweep that follows reads the WHOLE pool, so a dropped frame costs nothing a later read does not already cover.
 const WAKE_FLOOR: Duration = Duration::from_secs(5);
 
-/// The longest a master may go un-nudged while the work in front of it is unchanged.
-// cm:guard a CEILING ON SILENCE, never a gate: an unchanged pool still reaches the master on this period, so a pass lost to a wedged pane, an ignored line or a limit cleared out of band is retried without an operator. The same reason `LIMITED_POLL_INTERVAL` is a backoff and not a blackout — read it as permission to stop nudging and the fleet cannot self-heal.
-// cm:guard the pane costs REAL MONEY per nudge, which is why this exists at all: one nudge is one full agent pass, measured at ~$0.18 on forge-vm 2026-09-08, and 1,354 nudges over 95 minutes bought 0 claims and $245 while every runner sat rate-limited. An unconditional nudge on every sweep is a spend proportional to sweeps rather than to work.
 pub(crate) const NUDGE_REFRESH: Duration = Duration::from_secs(5 * 60);
 
-/// Sweep spacing once every project this box serves is rate-limited.
-// cm:guard this is a BACKOFF, never a blackout, and the distinction is the whole design. Core clears a limit only when a job SUCCEEDS (`clearRunnerLimit`), so a master that declines to sweep while limited removes the only thing that can clear the stamp, and an operator who fixes the account out of band is left watching an idle fleet forever. Slowing down costs a few minutes of latency; stopping costs the self-heal.
 pub(crate) const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
-/// The first thing a resident master is told, once, when its session starts.
-// cm:guard name the skill and STOP. Restating its RULES here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half. The owner policy block below is the one thing that is not a copy: the skill holds the defaults and defers to it by name, and it exists nowhere in the binary.
-// cm:guard that rule is now ENFORCED and was not before, which is why it failed. This string used to carry "There is no job pool and no second terminal: the lease `forge claim` takes on the issue is the whole record of a run" — true on 2026-09-13, false from ISS-1080 on 2026-09-17, which updated the skill file a person would naturally edit and missed this literal. A master then held two texts contradicting each other on exactly the two points ISS-1094 is about, with this one in context every turn and the skill only read when the model chose to; the masters that resolved it toward this string did not declare. `the_standing_brief_is_only_what_a_wave_cannot_know` is the golden text that makes reintroducing any of it fail, paraphrase included.
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the division is the contract: every rule about how a run works belongs to that file and nothing about it may be restated here. The two ship in one binary and are the pair ISS-1080 broke.
-// cm:guard this is the STANDING brief and the pass prompt is the wave, and the split is what makes residency worth anything. Folding the two back together sends the whole brief every 30 seconds — the cold start this change removed, arriving as tokens instead of as a process.
-// cm:guard the policy is spliced VERBATIM and is never summarised, reordered or merged into the sentences around it. It is the project owner speaking, this box is a courier, and a courier that paraphrases is how an instruction that was typed correctly arrives wrong. The heading is what lets the skill defer to it by name.
-// cm:edge contract -> packages/core/src/devices/me-runners.ts — the text arrives as `masterPolicy` on `/me/runners`, from the `master-policy` projectFact. `None` means the project set none, and the skill's own defaults stand; it never means "brief nothing".
-// cm:edge contract -> packages/core/src/devices/mcp-servers-routes.ts — `dropped` is that route's `droppedNames`, the servers this project declared that core could not supply; an empty list says nothing rather than saying all is well.
 fn standing_prompt(
     project: &str,
     base_branch: Option<&str>,
     master_policy: Option<&str>,
     dropped: &[String],
     servers_unreadable: bool,
+    reach: &crate::mcp::config::PaneReach,
 ) -> String {
     let mut out = format!(
         "Use the `forge-master` skill. You are the resident master for project `{project}` on \
@@ -85,7 +69,10 @@ this box, and you will be woken again in this same session rather than started f
             "\nYou are standing in this project's checkout, on its base branch `{base}`.\n"
         ));
     }
-    // cm:guard the UNREADABLE case gets its own sentence and never borrows the dropped-names one. "This project declares nothing" and "this box could not find out what it declares" lead a master to opposite acts — the first says build here, the second says do not trust the tool inventory — and a master told the first while the second is true dispatches runs into an empty pane and reads the emptiness as the project's own shape.
+    // The reach is what this pane HOLDS, read off the two files it will be
+    // started with. `dropped` and `servers_unreadable` below are what core
+    // ASKED for; a pane told only those two still cannot say what it has.
+    out.push_str(&reach.brief());
     if servers_unreadable {
         out.push_str(
             "\nThis box could NOT read this project's declared MCP servers from core, so this \
@@ -94,7 +81,6 @@ incomplete: an issue whose work needs a project MCP server cannot be judged buil
 master starts on a pane that could read them.\n",
         );
     }
-    // cm:guard say it ONCE, here, and never let it become a park three hours later. A declared server that resolved to nothing is the shape this project was unbuildable in for days: the panel says `Connected`, the agent has no tools, and the only reader who can act on it is the master about to spend money dispatching runs into it.
     if !dropped.is_empty() {
         out.push_str(&format!(
             "\nThis project declares MCP server(s) this box could NOT supply: {}. Work you hand \
@@ -116,10 +102,6 @@ is re-sent to every master this box starts, so it survives this session.\n\n",
     out
 }
 
-/// What this box knows about each project's resident master.
-// cm:guard one master per PROJECT, and the key is the project id rather than the box. Two masters on one project read the same queue and both dispatch: core refuses the second lease on the same ISSUE, but two runs on two issues would each cut a worktree from a checkout neither master knows the other is standing in. Two masters on DIFFERENT projects are fine and are the point — they share no tree.
-// cm:guard this map is now an OPTIMISATION, not the bound. The bound moved to two places that survive this process: tmux refuses a second session under a name that exists, and core refuses a second live `agent_sessions` row for the same (device, project). It had to move, because a session parented by the multiplexer is invisible to any in-process set — which is exactly the hole ISS-919 B1 names. Never re-derive the bound from this map alone: a daemon restart empties it while every master is still running.
-// cm:guard this bounds masters and NOTHING ELSE, and nothing else on the box bounds them either: `duplex_max_sessions` sizes a permit pool no spawn takes from any more. Adding a project adds a claude process with nothing counting it, and each one now dispatches its own runs inside itself; measured on dev1 2026-09-05 at load 17.26 on 12 cores with CPU pressure some=52%. A box-level bound is owed and is not this map.
 #[derive(Default)]
 pub struct Masters(Arc<Mutex<Registry>>);
 
@@ -133,11 +115,6 @@ struct Registry {
     unplaced: HashMap<String, Unplaced>,
 }
 
-/// What this box knows about which projects it serves.
-// cm:guard THREE states and never two, because "not in the set" and "no set" send an operator to
-// opposite places. A daemon that has not yet read `/me/runners`, or whose last read failed, knows
-// nothing about any project — and answering that with an empty set would tell a live master "this
-// box does not serve you" on the strength of a network error (ISS-1092 criteria 4, 6).
 #[derive(Default, Clone, PartialEq, Eq)]
 pub(crate) enum Served {
     /// No sweep has read the list yet.
@@ -149,32 +126,44 @@ pub(crate) enum Served {
     Read(Vec<String>),
 }
 
-/// Why this box did not place a project's master pane on its last sweep.
-///
-/// Each is a precondition of adoption that did not hold, named so a refusal can
-/// carry it and an operator can act on it.
-// cm:guard every variant names a condition SOMETHING has to change, and none of them names a
-// deadline. The sentence this replaces promised re-adoption "within thirty seconds" on every one of
-// these paths, and on a project with nothing admissible that promise never came true for 14 hours
-// (ISS-1092). A variant added here that resolves on its own belongs in the sweep, not in a refusal.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum Unplaced {
     /// The runner row refuses new work, so this sweep placed no pane for it.
-    Draining { status: String },
+    Draining {
+        status: String,
+    },
     /// Core serves this project to this box but nothing here says where the
     /// checkout is.
     NoRepoPath,
     /// This box has no terminal multiplexer, so it can host no master at all.
     NoTerminal,
     /// Core refused the registration this pane's identity comes from.
-    RegisterFailed { detail: String },
+    RegisterFailed {
+        detail: String,
+    },
     /// The pane could not be given the skill it runs on, so none was started.
-    SkillMissing { detail: String },
-    /// Nothing is claimable and no pane is running, so none was started.
-    // cm:guard this is the ONE variant that is not a fault, and it is recorded anyway. It is what
-    // `NOTHING admissible starts no master` looks like from the outside, and a master pane cannot
-    // exist in this state — so a declaration that meets it is a pane the daemon did not start.
+    SkillMissing {
+        detail: String,
+    },
     NothingAdmissible,
+    /// An owner stood this project's master down, so this box places none
+    /// until somebody stands it up again (ISS-1118).
+    ///
+    /// `pane` is the session running against that stand-down, where one is.
+    /// It is part of the value rather than a second map because the two states
+    /// are two different things to tell an operator, and a value that cannot
+    /// tell them apart cannot report the move from one to the other either.
+    StoodDown {
+        by: String,
+        why: Option<String>,
+        slug: String,
+        pane: Option<String>,
+    },
+    /// This box could not read whether its owner stood this project down, so
+    /// it placed nothing rather than deciding it was driving.
+    StandingUnreadable {
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for Unplaced {
@@ -204,7 +193,137 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "it has nothing claimable and no pane of its own running, so this box started none"
             ),
+            Self::StoodDown {
+                by,
+                why,
+                slug,
+                pane,
+            } => {
+                write!(f, "its master was stood down by {by}")?;
+                if let Some(w) = why {
+                    write!(f, " ({w})")?;
+                }
+                match pane {
+                    None => write!(
+                        f,
+                        " — this box places none for it and nudges none. `forge-runner master stand-up {slug}` is the one act that lets it be placed again"
+                    ),
+                    Some(pane) => write!(
+                        f,
+                        " — nothing here adopts it as this box's master, nudges it or ends it. Either `tmux kill-session -t {pane}` to make the box's two answers agree, or `forge-runner master stand-up {slug}` to put the project back under this box's authority"
+                    ),
+                }
+            }
+            Self::StandingUnreadable { detail } => write!(
+                f,
+                "this box cannot read whether its owner stood this project down ({detail}), so it places no master rather than deciding it is driving. A box that cannot tell a stood-down project from a driving one must not decide it is driving"
+            ),
         }
+    }
+}
+
+impl Unplaced {
+    /// What to say before the reason.
+    ///
+    /// Every reason but one is a report that no pane was placed. The
+    /// contradiction is a report that one IS running and this box will not
+    /// drive it, and leading that with "no master pane placed" states the
+    /// opposite of what an operator finds on the box (ISS-1118 criterion 20).
+    fn lead(&self) -> String {
+        match self {
+            Self::StoodDown {
+                pane: Some(pane), ..
+            } => format!("{pane} is RUNNING and this box is not driving it"),
+            _ => "no master pane placed".to_string(),
+        }
+    }
+
+    /// Whether this is a state an operator has to act on before the box's two
+    /// answers agree.
+    ///
+    /// Two of them are. A pane running against a stand-down is the nine-hour
+    /// silence this issue was filed over; a standing this box could not read
+    /// is a box that cannot say what it is doing. Everything else here is a
+    /// pane absent for a reason the box is content with.
+    fn is_error(&self) -> bool {
+        matches!(
+            self,
+            Self::StoodDown { pane: Some(_), .. } | Self::StandingUnreadable { .. }
+        )
+    }
+}
+
+/// What this sweep could establish about one project's standing.
+///
+/// Three values and not two. Folding "the ledger could not be asked" into "no
+/// stand-down" is what would let a box whose ledger is unreadable place the
+/// very pane its owner withheld, and it would do it in silence.
+enum StandingRead {
+    /// The ledger answered, with a row or with nothing.
+    Known(Option<MasterStanding>),
+    /// It could not be asked, or it refused, and this is what to say.
+    Unreadable(String),
+}
+
+fn read_standing(ledger: Option<&Ledger>, project_id: &str) -> StandingRead {
+    let Some(led) = ledger else {
+        return StandingRead::Unreadable(
+            "this box's ledger could not be opened at all, so nothing here can say what its owner decided about this project".into(),
+        );
+    };
+    match led.master_standing(project_id) {
+        Ok(row) => StandingRead::Known(row),
+        Err(e) => StandingRead::Unreadable(format!("the standing could not be read: {e}")),
+    }
+}
+
+/// What a project's recorded standing says this sweep may do about its pane
+/// (ISS-1118).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Placed {
+    /// Nothing withholds a pane: place it on the same terms as always.
+    Proceed,
+    /// Stood down and no pane is up. This sweep places none.
+    Withheld,
+    /// Stood down and a pane is up anyway. This sweep reports it and neither
+    /// adopts it as a driving master nor nudges it; it does not end it either,
+    /// because the daemon stopped killing master panes (ISS-933).
+    Contradicted,
+}
+
+/// The whole of the stand-down decision, as a function of the two facts it
+/// turns on.
+///
+/// A lifted stand-down proceeds: `stand-up` restores a project to the gates
+/// every other project answers to rather than to a guaranteed pane.
+fn stood_down_reason(
+    standing: Option<&MasterStanding>,
+    slug: &str,
+    pane: Option<&str>,
+) -> Unplaced {
+    Unplaced::StoodDown {
+        by: standing.map_or_else(|| "somebody".to_string(), |s| s.stood_down_by.clone()),
+        why: standing.and_then(|s| s.why.clone()),
+        slug: slug.to_string(),
+        pane: pane.map(str::to_string),
+    }
+}
+
+/// How long a lifted stand-down held, for the pane placed after it. `None`
+/// while it still stands, and `None` on a row whose two stamps cannot make an
+/// interval — a clock that went backwards is not a fact to tell a master.
+fn stood_down_interval(standing: &MasterStanding) -> Option<Duration> {
+    let up = standing.stood_up_at?;
+    u64::try_from(up - standing.stood_down_at)
+        .ok()
+        .map(Duration::from_secs)
+}
+
+fn placement_under(standing: Option<&MasterStanding>, pane_alive: bool) -> Placed {
+    match standing {
+        Some(s) if s.stands() && pane_alive => Placed::Contradicted,
+        Some(s) if s.stands() => Placed::Withheld,
+        _ => Placed::Proceed,
     }
 }
 
@@ -216,10 +335,11 @@ struct MasterState {
     /// The work this master was last nudged about, when, and what its own hooks
     /// had reported by then.
     last_nudge: Option<Nudge>,
-    /// Whether this process has already said that the live pane's MCP
-    /// configuration is behind what core resolves.
-    // cm:guard in-process ON PURPOSE, and a daemon restart deliberately re-reports once. The alternative is a file, which would have to be swept and could outlive the pane it describes; a duplicate line after a restart costs a reader one glance, while a silence costs the operator the reason their master reaches no tools.
     mcp_stale_reported: bool,
+    /// The last thing this box said about the capability the pane holds, so a
+    /// pane stuck in one state is reported on the sweep that finds it and not
+    /// on all forty-five after it.
+    capability_said: Option<&'static str>,
 }
 
 /// One nudge, and the evidence a later sweep judges it by.
@@ -234,12 +354,8 @@ struct Nudge {
     prompts: Option<u64>,
 }
 
-/// What the master did with the nudge it was last sent, as its own hooks said.
-// cm:guard every arm here is something the AGENT reported through `forge-runner hook`, never something read off the pane. That distinction is the whole of `agent_activity`'s existence and the whole of ISS-933 criteria 17 and 18: transcript growth, a byte count and a quiet window are all a guess about a process, and a `UserPromptSubmit` frame is the process saying so. Adding an arm derived from anything but a hook frame puts the deleted quiet gate back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SinceNudge {
-    /// This session has never reported anything, so there is no evidence either way.
-    // cm:guard this is also what a WINDOWS box reads, and the degradation is the safe one by construction rather than by luck. `control::serve` is `#[cfg(not(unix))] -> Err`, so no hook frame ever reaches `Activities` there, every session reads `Unreported`, `retry_owed` answers true, and `NUDGE_REFRESH` behaves exactly as it did before ISS-1100 — the ceiling on the clock. A box that cannot report its turns is told about its work too often, never too rarely.
     Unreported,
     /// Not one prompt submitted since the nudge: it is sitting in a composer, or
     /// the pane never ran it.
@@ -265,7 +381,6 @@ fn since_nudge(seen: Option<&agent_activity::Activity>, sent_at: Option<u64>) ->
     match now.doing() {
         agent_activity::Doing::Working => SinceNudge::Working,
         agent_activity::Doing::AwaitingPermission => SinceNudge::AwaitingPermission,
-        // cm:guard `turn_ended_failed` and NOT `last_event`: every frame overwrites `last_event`, so a lead turn that dies on a limit while a child is outstanding is followed by that child's own `SubagentStop` and reads as a clean finish — which withholds the retry in exactly the case the ceiling exists for. Found by review on ISS-1100 and pinned by `a_turn_that_died_while_a_child_was_outstanding_still_reads_as_failed`.
         agent_activity::Doing::Idle => {
             if now.turn_ended_failed {
                 SinceNudge::Failed
@@ -276,9 +391,6 @@ fn since_nudge(seen: Option<&agent_activity::Activity>, sent_at: Option<u64>) ->
     }
 }
 
-/// Whether the ceiling owes this master the same work a second time.
-// cm:guard the ceiling itself is NOT deleted and must not be — `9a7c34b99` states why it exists, and the two cases it exists for are both here: a pass lost to a wedged pane is `NoTurn`, and a pass that died on an account limit which has since cleared out of band is `Failed`. What changed in ISS-1100 is only what justifies the repeat. Collapsing this to `true` restores a pass every five minutes for as long as a blocker stands (1,630 in 24h, measured on forge-vm 2026-09-19); collapsing it to `false` abandons both recoveries with no operator anywhere to notice.
-// cm:guard `Unreported` retries, and every unknown must keep doing so: a master whose hooks are not installed, and one this daemon has restarted under, both read that way, and a mistake here has to cost a duplicate pass rather than a missed one.
 fn retry_owed(since: SinceNudge) -> bool {
     match since {
         SinceNudge::Unreported | SinceNudge::NoTurn | SinceNudge::Failed => true,
@@ -286,17 +398,6 @@ fn retry_owed(since: SinceNudge) -> bool {
     }
 }
 
-/// What the master is being asked to look at, as one comparable value.
-///
-/// Every input the master's own eligibility reads, and nothing else: the issue's
-/// identity, its status, and the blocker facts on it. A title or a priority
-/// moving is not new work and a digest that tracked them would nudge on every
-/// edit an operator makes in the UI.
-// cm:guard ORDER-INDEPENDENT by construction (the lines are sorted before hashing) because the route promises no stable order: `readAdmissibleIssues` runs one query per project, so hashing the sequence would report new work every time two rows swapped. The blocker facts of ONE issue are sorted for the same reason — `json_agg` fixes no order either.
-// cm:guard this was identity ALONE until ISS-1100, and widening it is that issue's other half rather than a nicety. Core offers rows the master then refuses — forge-dev admits `developed`, `testing`, `tested` and `awaiting_release`, none of which `TAKEABLE` contains — and it offers a row whose `blocks` edge has expired, which the master's own reading still refuses. In every one of those the refusal LIFTS without the id set moving: the row reaches `reopen`, or the blocker reaches `developed`. Under the clock that was covered by the next refresh; under `retry_owed` it is not, so an identity-only digest strands the work silently and for good. What the master decides on has to be what the digest is taken over.
-// cm:guard exactly the fields the master's own reading takes and NOT everything the route happens to send. `RELATIONS` in `devices/admissible.ts` returns every incoming edge of every kind with its merge stamp and expiry, and `holdsBack` reads none of that but the kind and the blocker's status: a `relates` edge appearing, a blocker's `merged_at` being stamped, an expiry being moved are all changes the master would answer identically, and hashing them buys back the spend this issue exists to remove — at once, because a changed digest skips the ceiling. An expiry that MATTERS moves the row in or out of the set instead, which the id half already carries.
-// cm:edge contract -> packages/core/src/devices/admissible.ts — `RELATIONS` is where these fields come from, and a field added there is not automatically one to hash here
-// cm:guard and it is still not a `takeable` boolean computed here. The digest says WHETHER the inputs moved, never what they mean — deciding that is the master's, and a box that pre-answered it would be the second opinion `devices/admissible.ts` spent ISS-1100 collapsing into one.
 fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut lines: Vec<String> = Vec::with_capacity(admissible.len());
@@ -329,9 +430,6 @@ fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     h.finish()
 }
 
-/// Whether the master should hear about this pool now.
-// cm:guard TRUE is the safe answer and every unknown returns it: a master with no recorded nudge is nudged, and changed work is nudged immediately rather than waiting out the period.
-// cm:guard CHANGED work never consults the evidence, and that order is the answer rather than an optimisation: new work is new whatever the pane is doing, and asking `retry_owed` about it would let a master that happens to be mid-turn miss an issue that appeared while it ran.
 fn nudge_due(prev: Option<Nudge>, digest: u64, now: Instant, since: SinceNudge) -> bool {
     match prev {
         None => true,
@@ -345,8 +443,6 @@ impl Masters {
         Self::default()
     }
 
-    /// The session id and pane of the master this box has up for a project.
-    // cm:guard returns the pane NAME with the session id rather than the id alone, because every caller has to ask tmux whether that pane is still there — a registry entry outlives the process it names by design (the ISS-919 B1 hole), so an answer that could not be checked would be a claim this struct cannot make.
     pub fn live_for_project(&self, project_id: &str) -> Option<(String, String)> {
         self.get(project_id)
     }
@@ -395,12 +491,25 @@ impl Masters {
         }
     }
 
-    /// Decide whether to nudge this project now, and record having done so.
+    /// Record what this box now says about a pane's capability, and answer
+    /// whether that is a change from what it last said.
     ///
-    /// One call, because a check that did not record would nudge on every
-    /// sweep exactly as before.
-    // cm:guard the activity is read by the CALLER and handed in, rather than this method reaching into `Activities` while it holds the registry lock. Two leaf mutexes taken in one order here and the other order anywhere else is a deadlock that appears under load and never in a test.
-    // cm:guard ONE reading of that activity answers both halves — what the last nudge produced, and the mark the NEXT one is judged against. Reading it twice would let a turn that began between the two reads be counted against a nudge that had not been sent yet.
+    /// Only for a project THIS process placed or adopted a pane for: the state
+    /// lives on the `reg.live` entry, so a project absent from it answers
+    /// `false` and whatever the caller guards is never said. That is sound for
+    /// a capability, which is a fact about a pane in `reg.live` and nothing
+    /// else. It was not sound for the two ISS-1118 reports about a project
+    /// that reaches no pane at all, which is why they use `note_unplaced`.
+    fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some(m) = reg.live.get_mut(project_id) else {
+            return false;
+        };
+        let changed = m.capability_said != Some(said);
+        m.capability_said = Some(said);
+        changed
+    }
+
     fn claim_nudge(
         &self,
         project_id: &str,
@@ -435,10 +544,6 @@ impl Masters {
         reg.live.remove(project_id).map(|m| m.session_id)
     }
 
-    /// Which project's master a session id is, for a declaration this box is
-    /// about to bound.
-    // cm:guard the REVERSE of `pane_for_session`, and it is a local read of a map already keyed by project — it does NOT ask core which project a session belongs to, which is the thing the guard below says core neither knows nor says on a frame. The two answer opposite questions and neither is the other's fallback (ISS-1050 criterion 7).
-    // cm:guard `None` is REFUSED by the caller and never guessed. This map is an optimisation rather than the bound, so a daemon restart empties it while every master is still running: a declaration arriving in that window has to be refused, and `why_unplaced` is what says why rather than promising a sweep. Deriving a project from the only entry present, or from the frame's own claim, is how a pane on one project opens a run over another's issue.
     pub fn project_for_session(&self, session_id: &str) -> Option<String> {
         let reg = self.0.lock().expect("masters poisoned");
         reg.live
@@ -454,11 +559,6 @@ impl Masters {
         reg.served = served;
     }
 
-    /// Record why this project's master pane was not placed, answering whether
-    /// that reason is new or changed.
-    // cm:guard the bool is what keeps this out of the log every sweep. A project with nothing
-    // admissible is unplaced on every one of the ~2,880 sweeps a day, and a line per sweep is a
-    // line an operator learns to scroll past — including on the sweep where the reason changed.
     pub(crate) fn note_unplaced(&self, project_id: &str, why: Unplaced) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let changed = reg.unplaced.get(project_id) != Some(&why);
@@ -472,18 +572,6 @@ impl Masters {
         reg.unplaced.remove(project_id);
     }
 
-    /// Why a declaration for this project cannot be served, in words its caller
-    /// can act on.
-    ///
-    /// Reached only when the caller's capability names no session this box
-    /// holds a master under, so every arm refuses.
-    // cm:guard the project id is read for the DIAGNOSIS and for nothing else: this answers a
-    // string, never a project, and no caller of it may treat its output as a bound. Deriving what a
-    // pane serves from what the pane claims is what ISS-1050 criterion 7 refuses, and that refusal
-    // is the whole reason this function exists in this shape.
-    // cm:guard NO arm carries a number of seconds. The sentence this replaces promised thirty of
-    // them on every path, and on the one measured in the field the promise could never come true —
-    // a deadline the code does not enforce is worse than no deadline (ISS-1092 criterion 9).
     pub fn why_unplaced(&self, project_id: &str) -> String {
         let reg = self.0.lock().expect("masters poisoned");
         if let Some(m) = reg.live.get(project_id) {
@@ -514,8 +602,6 @@ impl Masters {
         }
     }
 
-    /// The pane name for a master session id, for the inbox's terminal arm.
-    // cm:guard keyed by SESSION id, not project id. Core addresses a master by the `agent_sessions` row it registered, which is the only identity a `session.send` frame carries — a lookup by project would need core to know which project a session belongs to and to say so on the frame, and it does neither.
     pub fn pane_for_session(&self, session_id: &str) -> Option<String> {
         let reg = self.0.lock().expect("masters poisoned");
         reg.live
@@ -525,8 +611,6 @@ impl Masters {
     }
 }
 
-/// Why a sweep is happening now, when it is not the timer.
-// cm:guard a wake carries NO work — not an issue, not a token, not a decision. It says "look now", and the master then reads the queue through the same path the timer uses and decides for itself. A wake that carried the work would be a second dispatcher, and this box would hold two sources of truth about what to run with nothing reconciling them.
 #[derive(Debug, Clone)]
 pub enum Wake {
     /// Core published `master.wake` on this box's device room (ISS-933).
@@ -553,11 +637,6 @@ pub fn wake_channel() -> (mpsc::Sender<Wake>, mpsc::Receiver<Wake>) {
     mpsc::channel(1)
 }
 
-/// Keep every served project's master alive, on the timer OR on a wake.
-///
-/// The timer is the floor and the wake is the latency cut. Both call the same
-/// `sweep`; there is no second path and no second dispatcher.
-// cm:guard the TIMER MUST STAY, and this is the only place that says so on this side. Core's publish is fire-and-forget — `ws/rooms.ts:publish` skips any socket that is not OPEN and buffers nothing — so a wake sent while this box's websocket is down is gone with nothing recording that it happened. Deleting the timer here turns one dropped frame into work that sits forever with nothing reporting why; keeping it makes the same drop cost 30 seconds. The reconnect catch-up covers the same hole from the other end and is not a substitute for either.
 pub async fn run(
     client: CoreClient,
     cfg: Config,
@@ -571,9 +650,7 @@ pub async fn run(
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
-    // cm:guard ONE memo for the box rather than one per project, because core's limit route fans out to every runner binding of the device — there is one Claude account here and therefore one thing to remember about it. It is deliberately in-process: a restart re-reads the conversations and re-decides, and core's own `limitReason` is what a clear is gated on, so nothing is lost by starting empty.
     let mut account_limit_said: Option<String> = None;
-    // cm:guard a ledger that will not open is announced and the box keeps sweeping. It is the input to ONE decision — whether an idle master may leave — and a daemon that refused to dispatch over it would trade every project's work for a housekeeping question.
     let mut ledger = match Ledger::default_path().and_then(|p| Ledger::open(&p)) {
         Ok(l) => Some(l),
         Err(e) => {
@@ -581,10 +658,16 @@ pub async fn run(
             None
         }
     };
+    let tokens = session_tokens::default_path().map(session_tokens::SessionTokens::at);
+    if tokens.is_none() {
+        tracing::error!(
+            "[master] the control capability map cannot be resolved on this box — no master pane can be minted a capability, and none will be started"
+        );
+    }
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -594,7 +677,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -603,23 +686,17 @@ pub async fn run(
     }
 }
 
-/// Whether a project's runner row on this box still wants new work.
+/// Whether a runner row's status lets this box take work for its project, and
+/// so whether it places a master for it at all.
 ///
-/// The drain an operator reaches for when moving a project onto another box:
-/// set the runner `draining` (or `disabled`), and this box stops STARTING work
-/// while everything already running finishes untouched.
-// cm:guard only an EXPLICIT stop counts, and `offline` deliberately does not. That status is written by the heartbeat and lags a live box by up to its interval, so gating on `online` would have a box refuse its own work over a stale row. Two statuses mean an operator decided; every other value, known or added later, keeps working.
-// cm:guard this is the ONLY thing that reads the status, and until 2026-09-05 nothing did: `/me/runners` returned it, `MeRunner` parsed it, and no code looked. `retire` and every status change were therefore silent no-ops against a box that kept claiming — measured on epodsystem while moving it off dev1. Core cannot enforce this instead: `pool.ts` joins `runners` on (project, device) with no status filter, and adding one there would hide work from a master rather than let the box decline it.
-fn accepts_new_work(status: &str) -> bool {
+/// Public because `forge-runner master status` answers the same question to an
+/// operator, and two copies of this rule is a box that says one thing and does
+/// another. `draining` and `disabled` both land here, which is why neither is
+/// the control that stops a resident master (ISS-1118).
+pub fn accepts_new_work(status: &str) -> bool {
     !matches!(status, "draining" | "disabled")
 }
 
-/// How long to wait before the next sweep, given what core just reported.
-///
-/// Fast by default; stretched only when EVERY project that would take work is
-/// rate-limited, so one limited project never slows down a healthy one.
-// cm:guard the stretch requires ALL of them, and `any` here would be a throughput bug rather than a pacing one: this box serves several projects, and one account hitting its window would idle the rest for five minutes at a time.
-// cm:guard `Some(0)` counts as NOT limited. An expired stamp is the normal steady state, because core only clears the column on a successful job — treating a lapsed limit as live is how a backoff becomes permanent.
 fn next_poll_delay(served: &[runners::MeRunner]) -> Duration {
     let mut soonest: Option<u64> = None;
     for r in served.iter().filter(|r| accepts_new_work(&r.status)) {
@@ -636,8 +713,6 @@ fn next_poll_delay(served: &[runners::MeRunner]) -> Duration {
     }
 }
 
-/// One look at every project this device serves.
-// cm:guard the project list comes from `/me/runners`, NEVER from `config.toml` bindings. Core is the source of truth for what a device serves and for where the checkout lives (`resolve_repo` reads the local binding only as a fallback), and the two disagree in practice: dev1 serves epodsystem-core with no local binding for it at all, so a sweep driven by the config file would leave that project's pool unread forever with nothing reporting why.
 async fn sweep(
     client: &CoreClient,
     cfg: &Config,
@@ -647,6 +722,7 @@ async fn sweep(
     job_records: &dyn Records,
     adopted: &tokio::sync::watch::Receiver<bool>,
     ledger: &mut Option<Ledger>,
+    tokens: Option<&session_tokens::SessionTokens>,
     account_limit_said: &mut Option<String>,
 ) -> Duration {
     let now_unix = master_limit::now_unix();
@@ -655,10 +731,6 @@ async fn sweep(
         Ok(rs) => rs,
         Err(e) => {
             tracing::warn!("[master] cannot read this box's projects: {e}");
-            // cm:guard the failure is RECORDED and not merely logged, because the refusal a master
-            // gets on the control socket is the only place most of these are ever read. A box with
-            // no answer must say it has no answer — reading "not in the set" off a network error
-            // would tell a live master this box does not serve it (ISS-1092 criterion 6).
             masters.note_served(Served::Unreadable(e.to_string()));
             return POLL_INTERVAL;
         }
@@ -666,12 +738,6 @@ async fn sweep(
     masters.note_served(Served::Read(
         served.iter().map(|r| r.project_id.clone()).collect(),
     ));
-    // cm:guard the listing is AUTHORITATIVE here and only here — the `Err` arm
-    // above returned rather than falling through, so this is never a defaulted
-    // or partial set. It is the one place on the box that knows which projects
-    // it serves, and therefore the only route a session config has off disk:
-    // `sweep_stale` never touches them, because a live master stops rewriting
-    // its file whenever core is unreachable.
     match crate::mcp::config::sweep_orphaned_sessions(
         &served.iter().map(|r| r.slug.clone()).collect::<Vec<_>>(),
     ) {
@@ -707,21 +773,26 @@ async fn sweep(
                 runner.slug,
                 runner.status
             );
-            // cm:guard a drained project is recorded as unplaced even though a master may still be
-            // running on it from before the drain. What the record answers is whether THIS sweep
-            // would place one, which is what a refused declaration needs to know; the pane that is
-            // already there is still supervised on the line below.
-            masters.note_unplaced(
-                &runner.project_id,
-                Unplaced::Draining {
-                    status: runner.status.clone(),
-                },
-            );
-            // cm:guard a drained runner still gets `supervise`, and only the START of new work is skipped. A master already running on a project being moved off this box must still be watched and still have its row closed when it dies — a drain that stopped watching would leave a dead master's session live in core with nothing reporting why, which is the drain doing damage rather than nothing.
-            supervise(client, masters, &runner.project_id, &runner.slug).await;
+            // A box taking no work still meets the contradiction, and the
+            // louder reason wins the one slot this project has: `draining`
+            // explains an absent pane, never a pane that is up and never a
+            // standing this box could not read. Overwriting either would hide
+            // it AND make every unchanged sweep look like a change, which is
+            // the repetition `note_unplaced` exists to stop.
+            let read = read_standing(ledger.as_ref(), &runner.project_id);
+            let verdict = standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
+            if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
+                masters.note_unplaced(
+                    &runner.project_id,
+                    Unplaced::Draining {
+                        status: runner.status.clone(),
+                    },
+                );
+            }
+            supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
             continue;
         }
-        supervise(client, masters, &runner.project_id, &runner.slug).await;
+        supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
         take_pool_job(
             client,
             cfg,
@@ -729,23 +800,53 @@ async fn sweep(
             job_panes,
             job_records,
             adopted,
+            tokens,
             runner,
         )
         .await;
 
-        // cm:guard an unreadable read is EMPTY, not fatal — this project goes quiet for a pass rather than the box going quiet on every project at once. It is now the ONLY thing that tells the daemon a project has work, so a failure here must cost one pass and never a master.
+        // The owner's veto, read off the ledger this sweep already holds and
+        // decided before anything is asked of core. A stand-down governs the
+        // resident master and nothing else, which is why it sits AFTER
+        // `take_pool_job`: the box goes on taking pool jobs for a project whose
+        // master is stood down (ISS-1118).
+        let read = read_standing(ledger.as_ref(), &runner.project_id);
+        let Some((placed, standing)) =
+            standing_verdict(masters, read, &runner.project_id, &runner.slug).await
+        else {
+            continue;
+        };
+        match placed {
+            Placed::Proceed => {}
+            Placed::Withheld => {
+                say_unplaced(
+                    masters,
+                    &runner.project_id,
+                    &runner.slug,
+                    stood_down_reason(standing.as_ref(), &runner.slug, None),
+                );
+                continue;
+            }
+            Placed::Contradicted => continue,
+        }
+        let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
+        let lifted_interval = standing.as_ref().and_then(stood_down_interval);
+
         let admissible = admissible::admissible(client, Some(&runner.project_id))
             .await
             .unwrap_or_default();
-        // cm:guard NOTHING admissible starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
-        // cm:guard the bound is STARTING one, and it used to be written as skipping the rest of the
-        // pass — which also skipped the `register` that keeps a live pane's session row beating, so
-        // core reaped the row of a master that was running perfectly and the pane's capability was
-        // orphaned for good. `Placement::AdoptOnly` is the same bound with the registration kept
-        // (ISS-1092 criteria 10, 13).
         let placement = placement_for(&admissible);
         if placement == Placement::AdoptOnly {
-            if retire_if_idle(client, masters, ledger, &runner.project_id, &runner.slug).await {
+            if retire_if_idle(
+                client,
+                masters,
+                ledger,
+                tokens,
+                &runner.project_id,
+                &runner.slug,
+            )
+            .await
+            {
                 continue;
             }
         } else {
@@ -755,11 +856,6 @@ async fn sweep(
         let resolved = match resolve_repo(&served, cfg, &runner.project_id) {
             Ok(r) => r,
             Err(slug) => {
-                // cm:guard refuse by NAME rather than falling back to some other directory. A master started in the wrong tree reads one repo and claims work for another, and every diff it produces lands where nobody looks — the silent substitution this repo forbids, and unrecoverable by the time anyone notices.
-                // cm:guard the ERROR keeps its condition — work waiting with nowhere to run it — and
-                // the record is written either way. A project with no claimable work and no repo
-                // path is not an emergency, but it is still the reason its master pane is not
-                // there, and a pane asking why is owed it (ISS-1092 criterion 5).
                 if !admissible.is_empty() {
                     tracing::error!(
                         "[master] {slug} has claimable work but no repo path on this box — no master will run for it; bind it or set the runner's repo_path"
@@ -770,15 +866,10 @@ async fn sweep(
             }
         };
 
-        // cm:guard read into an OWNED `Option<String>` before the await below. `Ledger` wraps
-        // `rusqlite` behind a `RefCell` and is not `Sync`, so a borrow held across `ensure_master`
-        // makes this future non-`Send` and the `tokio::spawn` in `daemon/mod.rs` refuses it.
         let stored_conversation = ledger
             .as_ref()
             .and_then(|led| led.master_for_project(&runner.project_id).ok().flatten())
             .and_then(|row| row.conversation_id);
-        // cm:guard built HERE, into owned rows, because `Ledger` is not `Sync` and a borrow held
-        // across `ensure_master`'s awaits makes this future non-`Send`.
         let inherited: Vec<InheritedRun> = masters
             .get(&runner.project_id)
             .map(|(sid, _)| sid)
@@ -788,20 +879,98 @@ async fn sweep(
                     .map(|led| inherited_runs(led, &sid, &runner.project_id))
             })
             .unwrap_or_default();
+        let told = std::sync::atomic::AtomicBool::new(false);
         let pane = ensure_master(
             client,
             masters,
             &runner.project_id,
             &resolved,
-            stored_conversation.as_deref(),
-            &inherited,
+            &Carryover {
+                conversation: stored_conversation.as_deref(),
+                inherited: &inherited,
+                stood_down_for: lifted_interval,
+                stood_down_told: &told,
+            },
             placement,
+            tokens,
         )
         .await;
         if pane == PaneState::Absent {
             continue;
         }
-        // cm:why collected here, on the path a project with a live pane takes, and NOT on the drained branch above. A drained runner starts no work, so a cap on it changes no dispatch decision — and reading it there would cost a `resolve_repo` and a ledger read on a path that exists to do less. The cost is stated rather than hidden: a box where EVERY project is drained reports no cap, and is also dispatching nothing. Since ISS-1092 this also runs for a project with a live pane and an empty pool, which is correct rather than incidental: that pane is a `claude` process spending the same account whether or not anything is claimable.
+        if told.load(std::sync::atomic::Ordering::Relaxed) {
+            if let Some(led) = ledger.as_ref() {
+                if let Err(e) = led.forget_lifted_standing(&runner.project_id) {
+                    tracing::warn!(
+                        "[master] {}: cannot clear the lifted stand-down a pane has now been told about: {e} — the next pane placed will be told the same interval again",
+                        resolved.slug
+                    );
+                }
+            }
+        }
+        // A stand-down can be written while this sweep is starting a pane. The
+        // owner's act was already on the record when the placement finished, so
+        // this sweep withdraws the pane IT placed rather than leaving one
+        // running until the next pass. A pane it merely adopted is never ended
+        // here: that one is somebody else's and ISS-933 took this daemon out of
+        // the business of killing panes it did not start.
+        let mut standing_unknown = false;
+        if matches!(pane, PaneState::ColdStarted | PaneState::Resumed) {
+            // An unreadable standing withholds a placement but never withdraws
+            // one: withholding places nothing, and withdrawing ends a pane
+            // nobody may have stood down. The next sweep meets the same
+            // unreadable ledger at the gate above and withholds there. What it
+            // does forfeit is the nudge, below — driving a pane while unable to
+            // say whether the project is stood down is the fail-open this whole
+            // read exists to close, one step later.
+            let since = match read_standing(ledger.as_ref(), &runner.project_id) {
+                StandingRead::Known(s) => s,
+                StandingRead::Unreadable(detail) => {
+                    tracing::error!(
+                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end — and it is NOT being nudged either. If it was stood down, `tmux kill-session -t {pane_name}`.",
+                        runner.slug
+                    );
+                    standing_unknown = true;
+                    None
+                }
+            };
+            if since.as_ref().is_some_and(MasterStanding::stands) {
+                tracing::error!(
+                    "[master] {}: {pane_name} was stood down while this sweep was starting it — withdrawing the pane this sweep placed. `forge-runner master stand-up {}` puts the project back under this box's authority.",
+                    resolved.slug,
+                    resolved.slug
+                );
+                // A withdrawal that failed leaves the pane up, so the reason
+                // recorded against the project has to be the one that says a
+                // pane is running — not the one that says none was placed.
+                let mut left_running = None;
+                if let Err(e) = terminal::kill(&pane_name).await {
+                    tracing::error!(
+                        "[master] {}: could not withdraw {pane_name}: {e} — it is running against a stand-down and `tmux kill-session -t {pane_name}` is what ends it",
+                        resolved.slug
+                    );
+                    left_running = Some(pane_name.clone());
+                }
+                if let Some((session_id, _)) = masters.get(&runner.project_id) {
+                    end_master(
+                        client,
+                        masters,
+                        tokens,
+                        &runner.project_id,
+                        &session_id,
+                        "stood down while this sweep was placing it",
+                    )
+                    .await;
+                }
+                say_unplaced(
+                    masters,
+                    &runner.project_id,
+                    &resolved.slug,
+                    stood_down_reason(since.as_ref(), &resolved.slug, left_running.as_deref()),
+                );
+                continue;
+            }
+        }
         if let Some(said) = account_verdict(
             &resolved.repo_path,
             stored_conversation.as_deref(),
@@ -809,10 +978,6 @@ async fn sweep(
         ) {
             account_said.push(said);
         }
-        // cm:guard the obligation is written by the RESUME, in the same pass that made it. A pane
-        // resumed over runs its predecessor left is the one thing that makes a choice owed, and
-        // marking anywhere else — on the declaration, on the sweep, on a timer — would either owe a
-        // choice for a pane's own fresh work or owe none at all (ISS-1050 criterion 29).
         if pane == PaneState::Resumed {
             let pane_boot = crate::runner::inflight::boot_identity().unwrap_or_default();
             if let (Some(led), Some((session_id, _))) =
@@ -836,11 +1001,14 @@ async fn sweep(
             continue;
         }
 
-        // cm:guard read through the master's OWN session id, off the shared `Activities` the
-        // control socket writes into — `run_exit` carries the same guard and for the same reason: a
-        // second map here would answer `None` for every session forever, which `retry_owed` reads
-        // as "never reported" and re-nudges on, so the fix would be inert, green, and
-        // indistinguishable from working.
+        if pane == PaneState::StaleCapability {
+            continue;
+        }
+
+        if standing_unknown {
+            continue;
+        }
+
         let reported = masters
             .get(&runner.project_id)
             .and_then(|(session_id, _)| activity.get(&session_id));
@@ -853,24 +1021,12 @@ async fn sweep(
         }
     }
 
-    // cm:guard AFTER the project loop and never inside it, and that placement IS the decision. One account serves every pane on this box and core's route fans out to every binding of the device, so a report sent per project would let an older success on one delete the stamp a newer refusal on another had just written — with the winner decided by the order `/me/runners` happened to return the rows in.
     report_account_limit(client, &served, &account_said, account_limit_said, now_unix).await;
 
-    // cm:guard BEFORE `give_back_lost_runs` and at the same brace depth, both deliberately. A run
-    // declared this sweep has no core session yet, and `reconcile` reads a row with none as a run
-    // that never started and closes the loop over it — so the row has to reach core first or a
-    // master's freshly declared work is given back from under the subagent it was just handed to
-    // (ISS-1050 criteria 5, 8).
     let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
     let sessions = run_record::CoreSessions(client);
     let opened = run_record::open_declared_runs(&sessions, ledger, &boot).await;
     let closed = run_record::close_ended_runs(&sessions, ledger, &boot).await;
-    // cm:guard AFTER `close_ended_runs` and BEFORE `give_back_lost_runs`, and both ends matter. A
-    // run this sweep is about to close is not a held checkout yet, so reporting before the close
-    // would name a hold that ends seconds later. Running before the release attempt is what makes
-    // the report describe the state the release is about to refuse — and when the release succeeds
-    // instead, the tree is gone and the next sweep finds nothing to report, which is the correct
-    // silence (ISS-1050 criterion 33).
     let choices_said = say_resume_choices(&CoreChoice(client), ledger, &boot).await;
     if choices_said > 0 {
         tracing::info!("[master] {choices_said} resume choice(s) said on their issues");
@@ -906,11 +1062,6 @@ async fn sweep(
     delay
 }
 
-/// What this project's master's own conversation says about the account now.
-///
-/// `None` where the box has no conversation recorded for the pane yet, which is
-/// every sweep between a cold start and that pane's first hook event.
-// cm:guard the path comes from `conversation_transcript`, the SAME resolver `--resume` uses, and never from a second encoding of Claude Code's layout. Two copies of somebody else's on-disk convention drift apart in silence, and the half that rots is the one that runs less often.
 fn account_verdict(
     repo: &std::path::Path,
     conversation: Option<&str>,
@@ -922,16 +1073,8 @@ fn account_verdict(
     master_limit::newest_decisive(&tail, now_unix)
 }
 
-/// Longest either half of a limit report may hold the sweep.
-///
-/// Derived rather than chosen: it has to be comfortably under [`POLL_INTERVAL`],
-/// because a report that outlasts the sweep spacing has stopped being a report
-/// and started being the thing that decides how often this box sweeps at all.
-// cm:guard `CoreClient` wraps a bare `reqwest::Client::new()`, which sets NO request timeout, so a core that accepts the connection and never answers holds this await forever. That is not a report failing, it is the sweep stopping: everything after this call — `reconcile`, `give_back_lost_runs`, the next sweep, the cancel branch — is behind it. The guard one line below promises a failed report costs only a report, and without this bound that promise is false.
 const REPORT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// One limit call, with the deadline the client itself does not impose.
-// cm:why the elapsed case is folded into the SAME `Err` the transport already returns, rather than given an arm of its own: every caller's answer to both is identical — say so in the log, leave the memo alone, try again next sweep — and a third state would be a distinction no reader could act on.
 async fn bounded<F>(call: F) -> crate::error::Result<()>
 where
     F: std::future::Future<Output = crate::error::Result<()>>,
@@ -945,10 +1088,6 @@ where
     }
 }
 
-/// Tell core what this box's Claude account said, once for the whole device.
-// cm:guard this path reports and does NOTHING else. A cap is not a fault: it must not change a runner's status, must not end a master, must not touch an issue, and must not stop the sweep — work already running finishes and only the STARTING of new turns backs off, which the existing `next_poll_delay` does on its own once the row is stamped.
-// cm:guard `core_limited` is read off core's own rows rather than off a memo, and the clear is authorised by nothing finer. One Claude account serves every pane, every job and every chat on this box — one `~/.claude`, one credential — so a master's successful turn is proof the account works whoever stamped the row, exactly as a successful JOB already clears a stamp the master lane wrote. Making the clear conditional on who stamped it would strand a box whose account an operator had just fixed, which is the one failure `LIMITED_POLL_INTERVAL` is a backoff rather than a blackout to avoid. The condition that ends this: per-project Claude credentials on one box, which would make "the account" ambiguous and this read wrong.
-// cm:guard `now_unix` is the SWEEP's instant, taken once at the top and passed down, never re-read here. The verdicts were classified against it and the two freshness bounds are distances from it, so reading the clock a second time would judge those verdicts against an instant they were not measured from — and the gap is the whole project loop, network calls to core included.
 async fn report_account_limit(
     client: &CoreClient,
     served: &[runners::MeRunner],
@@ -983,7 +1122,6 @@ async fn report_account_limit(
                     );
                     *memo = Some(uuid);
                 }
-                // cm:guard the memo is written ONLY on the Ok, and that is what makes the next sweep send the same refusal again. Recording it here would leave a cap core never heard, under a box that had stopped trying to tell it.
                 Err(e) => tracing::warn!(
                     "[master] could not tell core this box's account is capped: {e} — sending it again next sweep"
                 ),
@@ -1003,16 +1141,6 @@ async fn report_account_limit(
     }
 }
 
-/// Take one pool job for this project, if there is one and this box has room.
-///
-/// The four kinds with no issue — `release_batch`, `smoke`, `reconcile`,
-/// `verify_skill` — never reach a master: core mints them into the JOBS pool and
-/// `pool_jobs` opens a pane per job here. Until ISS-1080 nothing read that pool
-/// at all, and a release sat `queued` while its whole roster waited at
-/// `releasing`.
-// cm:guard the pool is read on every sweep of a runner that accepts work, INDEPENDENTLY of whether anything is admissible. The two sets do not overlap — `devices/pool.ts:readPool` serves the issue-less kinds and `admissible` serves issues — so gating this on a non-empty admissible set would leave a project whose only work is a release with its pool unread forever, which is the defect rather than the fix.
-// cm:guard this deliberately does NOT feed `retire_if_idle`. A pool job runs in a pane of its own and needs no master, so counting the pool as work would keep a resident `claude` process up for something it does not do — against the residency bound one guard above, and against the ~$0.18-per-nudge spend that bound exists for.
-// cm:guard the drained branch above returns before this call, so a runner core has taken off work claims nothing new here while a pane already open still finishes. That is the same split `supervise` makes, and for the same reason: a drain stops the START of work, never the watching of it.
 async fn take_pool_job(
     client: &CoreClient,
     cfg: &Config,
@@ -1020,21 +1148,16 @@ async fn take_pool_job(
     job_panes: &Arc<JobPanes>,
     job_records: &dyn Records,
     adopted: &tokio::sync::watch::Receiver<bool>,
+    tokens: Option<&session_tokens::SessionTokens>,
     runner: &runners::MeRunner,
 ) {
-    // cm:guard nothing is claimed until adoption has run, and the reason is in `pool_jobs::adopt`: it reads what this box recorded and what it is running as two snapshots, and a claim landing between them looks to it exactly like a job whose pane died. Claiming first would make a fresh release the most likely thing this box reports dead.
     if !*adopted.borrow() {
         return;
     }
     let bound = cfg.runner.max_job_panes.max(1) as usize;
-    // cm:guard the local binding is the FALLBACK only, exactly as the guard on the project list says: core's `repoPath` on the prepared job is the answer, and a box with no binding for a project core says it serves is a real configuration this fleet runs. `take_one` refuses by name when neither exists rather than opening a pane in the daemon's own directory.
     let fallback = resolve_repo(served, cfg, &runner.project_id)
         .ok()
         .map(|r| r.repo_path);
-    // cm:guard the SAME map the control socket resolves frames against, and a box that cannot
-    // resolve it still claims: what is lost is only this box's ability to tell a job whose agent
-    // never started from one that is working, which `open_channel` says by name.
-    let tokens = session_tokens::default_path().map(session_tokens::SessionTokens::at);
     let took = pool_jobs::take_one(
         &pool_jobs::CorePool { client, limit: 20 },
         &pool_jobs::TmuxPanes,
@@ -1045,7 +1168,7 @@ async fn take_pool_job(
         job_panes.session_id(),
         fallback.as_deref(),
         bound,
-        tokens.as_ref(),
+        tokens,
     )
     .await;
     if let pool_jobs::Took::AtBound = took {
@@ -1057,9 +1180,6 @@ async fn take_pool_job(
     }
 }
 
-/// What a sweep needs to take a run back: who this box serves (so a project's
-/// repo can be resolved), and the two separate process questions.
-// cm:guard `procs` and `killer` are DIFFERENT ports and merging them would be a category error with teeth: one answers "is this pid gone" where only a positive refutation may say yes, the other signals a process group. A single port would let a box that cannot ask about a pid still kill one.
 struct Reclaim<'a> {
     served: &'a [runners::MeRunner],
     cfg: &'a Config,
@@ -1068,9 +1188,6 @@ struct Reclaim<'a> {
     closer: &'a dyn close_loop::RunCloser,
 }
 
-/// Give back the worktree a dead run still holds, so its close loop can finish.
-// cm:why the deadlock this breaks, and why nothing already in the loop breaks it: `end_run` is reached only through `close.is_closed()`, that needs `worktree_gone`, that mark is set only by observing the tree gone, and the sole remover — the reap — refuses every tree whose run is `ended_by IS NULL`. Nothing lowers that for a session that ended outside `terminate`, so the run keeps its checkout and its leases forever (forge-vm 2026-09-10: 24 runs, 24 trees, the pool empty under them).
-// cm:guard the release lives HERE rather than in `recovery` because it needs the project's repo path, and `resolve_repo` is the one reader of that: a repo derived from the worktree path instead would answer differently across a symlink or a bind mount than every other caller on this box, and the fleet's checkouts are bind-mounted.
 async fn release_held_tree(
     led: &mut Ledger,
     r: &recovery::Recovered,
@@ -1086,7 +1203,6 @@ async fn release_held_tree(
         );
         return false;
     };
-    // cm:guard refuse by NAME and reclaim nothing when the repo is unknown, exactly as the dispatch half does. Releasing a tree through some other repo runs `git worktree remove` against a checkout that never owned it.
     let resolved = match resolve_repo(world.served, world.cfg, project) {
         Ok(v) => v,
         Err(slug) => {
@@ -1125,7 +1241,6 @@ async fn release_held_tree(
             );
             forced.close.is_closed()
         }
-        // cm:guard a refused release leaves the run exactly as it was and says so — `force_terminal` aborts before touching the tree when the diff could not be preserved, and an operator who reads "reclaimed" over that has lost the diff and does not know it yet.
         Err(e) => {
             tracing::warn!("[master] run {} could not be released: {e}", r.run_id);
             false
@@ -1133,21 +1248,6 @@ async fn release_held_tree(
     }
 }
 
-/// Tell core a run's process is gone, so its session stops being guessed at.
-// cm:guard `Died` is the outcome, and `closeRunSession` returns this run's issues to the status they were claimed from on exactly that value — which is the point: the work stopped mid-turn, so leaving the issues at `in_progress` strands them behind a run nothing is doing (ISS-457 stood there 18 hours).
-// cm:guard this sets NO local mark. `session_terminal` is still earned by `close_loop` reading core's row back on the next sweep, so a report whose response was dropped and one that never landed are indistinguishable here, as criterion 13 requires.
-// cm:guard the checkpoint is built HERE, on the death report, because this is the case the evidence
-// exists for: the run died mid-turn and its own testimony is whatever it managed to write before it
-// stopped. A `Died` close that carried no reconstruction would leave the only copy of what the run
-// left on a disk nobody reads (ISS-1050).
-// cm:guard a run the ledger can no longer name still gets its close, carrying no checkpoint. The
-// close is what stops core guessing at the session from silence, and trading that away for the
-// evidence would leave the issues held for the full ten minutes to save a block nobody could have
-// filled anyway.
-// cm:guard the run row is looked up by the CALLER and handed in owned, never `&Ledger`. `Ledger`
-// wraps a `rusqlite` connection behind a `RefCell` and is therefore not `Sync`, so a reference held
-// across the `.await` below makes the whole master future non-`Send` and `tokio::spawn` refuses it
-// — at the spawn site in `daemon/mod.rs`, hundreds of lines from the cause.
 async fn report_run_death(run: Option<Run>, r: &recovery::Recovered, world: &Reclaim<'_>) {
     let Some(session_id) = r.session_id.as_deref() else {
         return;
@@ -1173,8 +1273,6 @@ async fn report_run_death(run: Option<Run>, r: &recovery::Recovered, world: &Rec
     }
 }
 
-/// The box's own activity map, read as the run-liveness port.
-// cm:guard reads the SHARED map the control socket writes into, never a copy. A second `Activities` here would answer `None` for every session forever, which `run_exit` reads as "never reported" — so every run would keep being beaten and the fix would be inert, green, and indistinguishable from working.
 struct PaneActivity<'a> {
     activity: &'a agent_activity::Activities,
 }
@@ -1190,11 +1288,6 @@ impl recovery::RunActivity for PaneActivity<'_> {
     }
 }
 
-/// End a run that reported itself finished, so its close loop can start.
-// cm:guard the process is signalled and NOTHING else is written here. The three marks are `close_loop`'s and each is set by reading the world back, so a kill that also stamped `session_terminal` would be this repo's one forbidden move — a box declaring an outcome core has not confirmed. The next sweep sees the pid refuted and takes the run through the same path a crashed run takes.
-// cm:guard `&mut` and not `&`, though nothing here writes: the borrow is held across the kill, and `&Ledger` is `Send` only if `Ledger` is `Sync` — which rusqlite's `RefCell` connection is not, so the shared borrow makes the whole master loop's future non-`Send` and the daemon stops compiling at `tokio::spawn`.
-// cm:guard the KILL happens first and the close is told afterwards, never the reverse. A close that lands over a pane the kill then fails to end leaves core reading `completed` while the agent is still writing to the worktree; this order's failure mode is the one this box already survives — the close does not land, and core's ten-minute sweep closes the row as it did before this verb existed.
-// cm:guard the outcome is `KilledIdle` and NOT `Died`: this box decided to end a run whose work was finished, so returning its issues would undo whatever the last turn landed. `closeRunSession` keys the issue return off exactly this distinction.
 async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
     let Ok(Some(run)) = led.run(run_id) else {
         return;
@@ -1226,9 +1319,6 @@ async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
     }
 }
 
-/// Beat what this box still holds, and close the loop on what it does not.
-// cm:guard runs AFTER the per-project loop, and the order is the assertion. `ensure_master` re-registers every live master into `Masters` on each pass, and `PaneMasters` reads that map for the pane NAME — placed before the loop, a daemon restart would meet an empty map and read every live run on the box as orphaned (ISS-933 criterion 16).
-// cm:guard the beat rides in this same call and is not separable: core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take back every healthy run on the box (ISS-933 criteria 16 and 25a).
 async fn give_back_lost_runs(
     boot_id: &str,
     live: &dyn recovery::MasterLiveness,
@@ -1239,7 +1329,6 @@ async fn give_back_lost_runs(
     ledger: &mut Option<Ledger>,
 ) {
     let Some(led) = ledger.as_mut() else { return };
-    // cm:guard an unreadable boot id means NO reconcile, and that refusal is the safe direction. The boot is what separates "the master died within this boot" from "everything recorded before a reboot belongs to a stranger"; an empty one matches nothing recorded, so every live run on the box would read as orphaned and lose its worktree (ISS-933 criterion 16). Windows is not hypothetical here: `boot_identity` answers `None` there.
     if boot_id.is_empty() {
         tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
         return;
@@ -1247,16 +1336,13 @@ async fn give_back_lost_runs(
     match recovery::reconcile(led, boot_id, live, world.procs, sessions, leases, watch).await {
         Ok(done) => {
             for r in done {
-                // cm:guard answered FIRST and with a `continue`, because a run named for the idle exit has none of the other marks yet by construction — its process is still up, so `owed_release` is false and `is_closed` is false, and falling through to the report below would file a "partially closed" complaint about a run this sweep is in the middle of ending.
                 if r.owed_idle_exit {
                     end_idle_run(led, &r.run_id, world).await;
                     continue;
                 }
-                // cm:guard reported BEFORE the release is attempted and WITHOUT a `continue`: `owed_release` needs `session_terminal`, core alone writes that mark, and until this report lands the only writer is core's ten-minute silence sweep — so every orphan on this box waited it out and landed in `runner_unreachable` whether or not the box was reachable (forge-vm 2026-09-12, ~95% of 203 sessions over 7 days on two projects). The release still waits for the next sweep to read the row back, which is criterion 13 and not a delay worth trading away.
                 if r.owed_death_report {
                     report_run_death(led.run(&r.run_id).ok().flatten(), &r, world).await;
                 }
-                // cm:guard the release is attempted BEFORE the report and its result decides whether one is printed, because a run recovery just reclaimed is not a run an operator has anything to do about. Report first and every reclaimed run also files a complaint about the state it was reclaimed out of.
                 if r.owed_release
                     && release_held_tree(led, &r, boot_id, world, sessions, leases).await
                 {
@@ -1265,7 +1351,6 @@ async fn give_back_lost_runs(
                 if r.state.is_closed() {
                     continue;
                 }
-                // cm:guard say WHICH marks are missing, never "partially closed". A run holding two of three leases and one holding none are different operator problems, and a line that does not separate them is the report this whole loop exists to replace.
                 tracing::warn!(
                     "[master] run {} is partially closed: session_terminal={} worktree_gone={} leases={}/{}",
                     r.run_id,
@@ -1280,9 +1365,6 @@ async fn give_back_lost_runs(
     }
 }
 
-/// The master's own process, versioned with this binary.
-// cm:guard the skill text ships INSIDE the runner and is written to the project checkout before every session starts. Nothing else delivers it — `skill_sync` seeds only what a project's manifest lists — and a master told to "use the forge-master skill" with nothing on disk loads nothing and improvises the one process this design depends on, silently. It SURVIVES `skill_sync`'s converge-on-delete only because `find_prunable` skips a directory with no `.hash` marker and this writes none; seed it through `write_skill_tree` and the next sync deletes it as an unmanifested skill. The price of embedding is real and is the trade: editing the master's process now needs a runner release, where a project skill needs only a push. The checkout copy is GENERATED OUTPUT and `.claude/` is ignored wholesale — an edit made there is overwritten by the next spawn.
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — that file is SOURCE for this binary, not local config, and it lives under `packages/runner/**` so ci.yml's `runner` path filter and check-runner-gates.mjs's own scope both reach it with no special case: a skill-only edit that skipped the runner job would ship an unbuilt master through a green `ci-passed`.
 const MASTER_SKILL: &str = include_str!("../../assets/forge-master-skill.md");
 
 /// Write the skill where the session about to start will look for it.
@@ -1292,8 +1374,6 @@ fn install_skill(repo: &std::path::Path) -> std::io::Result<()> {
     std::fs::write(dir.join("SKILL.md"), MASTER_SKILL)
 }
 
-/// Register the daemon's hooks for the session about to start, and say so.
-// cm:guard the exe is read from `current_exe` and never hardcoded, because the hook command has to name a binary that will still be there: this box runs `forge-runner` out of `~/.local/bin`, an update replaces it in place, and a command naming anything else is a hook that fires into nothing.
 fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
     let Ok(exe) = std::env::current_exe() else {
         tracing::warn!("[master] {slug}: cannot name this binary — starting without hooks, so this session reports no turn boundaries");
@@ -1340,13 +1420,6 @@ impl ChoiceReporter for CoreChoice<'_> {
     }
 }
 
-/// Carry every recorded resume choice onto the issues its run holds.
-///
-/// Answers how many it said. Never fails: one core would not take is tried
-/// again next sweep, because the obligation is still recorded.
-// cm:guard the local mark is cleared only once core ANSWERED. Marking first would turn one
-// unreachable minute into a decision that exists on this box and nowhere else, which is the exact
-// silence this issue is about (ISS-1050 criterion 29).
 pub(crate) async fn say_resume_choices(
     reporter: &impl ChoiceReporter,
     ledger: &mut Option<Ledger>,
@@ -1367,15 +1440,6 @@ pub(crate) async fn say_resume_choices(
     };
     let mut said = 0;
     for run in owed {
-        // cm:guard a run with no core session is SAID rather than skipped, and that is the whole of
-        // the change here. This was a bare `continue`: a master's recorded choice about a run whose
-        // subagent never started was dropped, every sweep, for the life of the boot, with nothing
-        // logged — and "the pane died before the subagent was ever dispatched" is the commonest
-        // thing a resumed master inherits, so it is the case that mattered most. The choice IS in
-        // the ledger; what cannot happen is the report, because
-        // `POST /api/devices/me/run-sessions/{session_id}/resume-choice` is keyed on a core session
-        // this run never had. A route that is not session-keyed is core's to add, so the residual is
-        // named here rather than guessed at (ISS-1050 criterion 29).
         let Some(choice) = run.resume_choice.clone() else {
             continue;
         };
@@ -1409,9 +1473,6 @@ pub(crate) async fn say_resume_choices(
     said
 }
 
-/// Every run still open under this master, as raw fields.
-// cm:guard reads by MASTER SESSION and not by project alone: two projects' masters may be up on one
-// box, and a pane handed another project's runs would be asked to judge work it has never seen.
 fn inherited_runs(led: &Ledger, master_session_id: &str, _project_id: &str) -> Vec<InheritedRun> {
     let Ok(runs) = led.unclosed_runs() else {
         return Vec::new();
@@ -1433,15 +1494,6 @@ fn inherited_runs(led: &Ledger, master_session_id: &str, _project_id: &str) -> V
         .collect()
 }
 
-/// One run a resumed pane inherited, as the fields the box can state and nothing else.
-// cm:guard there is NO recommendation field and there will not be one. The box preserves, the
-// kernel retracts what became false, and the MASTER decides whether work continues or restarts —
-// a surface that handed over a pre-computed verdict would have moved that judgement into the box
-// through a second door, which is the one thing this issue's owner ruled out (ISS-1050 criterion
-// 28).
-// cm:guard the fields are RAW and are not summarised, scored or ordered by anything but the
-// ledger's own order. "3 commits ahead, tree dirty" is a fact; "probably worth restarting" is a
-// verdict wearing a fact's clothes.
 pub(crate) struct InheritedRun {
     pub run_id: String,
     pub issue_keys: Vec<String>,
@@ -1452,9 +1504,30 @@ pub(crate) struct InheritedRun {
     pub ended_by: Option<String>,
 }
 
-/// The block a resumed pane is handed: every run still open under it, raw.
-// cm:guard says it was RESUMED in the first line (criterion 27). A pane cannot tell from inside
-// whether it is new or continuing, and one that assumes it is new re-declares work already running.
+/// What a pane placed after a stand-down was lifted is told about the gap.
+///
+/// The brief's first line asserts the reader is this project's master, and a
+/// resumed conversation carries a transcript that ends mid-work. Without this,
+/// a master stood down for nine hours wakes believing it was driving the whole
+/// time (ISS-1118).
+pub(crate) fn stood_up_brief(stood_down_for: Duration) -> String {
+    let mins = stood_down_for.as_secs() / 60;
+    let span = if mins >= 120 {
+        format!("{} hours", mins / 60)
+    } else if mins >= 1 {
+        format!("{mins} minutes")
+    } else {
+        format!("{} seconds", stood_down_for.as_secs())
+    };
+    format!(
+        "\nThis project was STOOD DOWN for {span} and has just been stood up again. This box \
+placed no master for it over that interval and nudged none, so nothing you remember doing \
+happened during it — whatever was decided about this project in that time was decided by \
+somebody else, and the tracker is where it is written rather than in anything you recall. Read \
+the board before you act on any intention you are carrying from before the gap.\n"
+    )
+}
+
 pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun]) -> String {
     let mut out = format!(
         "\nThis pane was RESUMED, not started fresh: it is continuing conversation `{conversation}`, \
@@ -1495,11 +1568,6 @@ words: the record is what the next reader has.\n",
     out
 }
 
-/// What `ensure_master` did about this project's pane on this pass.
-// cm:guard `Resumed` is distinguished from `ColdStarted` because only a resume creates an
-// obligation: the runs the previous pane left are now this one's to answer for, and a cold start
-// inherits a conversation it cannot read and therefore cannot be asked about (ISS-1050 criteria
-// 27, 29).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PaneState {
     /// No master is up for this project and none could be started.
@@ -1510,21 +1578,12 @@ pub(crate) enum PaneState {
     ColdStarted,
     /// A pane was started on the conversation its predecessor had.
     Resumed,
+    /// A pane was already running and this daemon adopted it, but the
+    /// capability it holds names a session this box no longer has. It is up and
+    /// it is refused, so it is not worth a nudge.
+    StaleCapability,
 }
 
-/// Where Claude Code keeps the conversation for a directory, if it keeps one.
-///
-/// Answers the path it would be at, which may not exist.
-// cm:guard this encodes Claude Code's OWN on-disk layout, which is not ours and carries no promise.
-// Verified against claude 2.1.273 on forge-vm 2026-09-16: conversations live at
-// `~/.claude/projects/<cwd with every `/` and `.` replaced by `-`>/<conversation-id>.jsonl`, e.g.
-// `/home/forge/projects/apiflow/.worktrees/ISS-16` -> `-home-forge-projects-apiflow--worktrees-ISS-16`.
-// cm:guard every failure direction here is COLD START, never a resume. If this layout changes, the
-// file stops being found, `resume_for` answers `None`, and every master cold-starts while saying
-// which conversation and which path it could not reach — noisy and recoverable. The other direction
-// would pass `--resume` for a conversation that is not there, which kills the pane on spawn and
-// leaves the next sweep to rebuild and kill it again, with no line naming anything (ISS-1050
-// criterion 18).
 pub(crate) fn conversation_transcript(
     cwd: &std::path::Path,
     conversation_id: &str,
@@ -1543,20 +1602,18 @@ pub(crate) fn conversation_transcript(
     )
 }
 
-/// The conversation this project's pane should be resumed from, if this box can
-/// actually reach it.
-///
-/// Says so in the log when it cannot, naming the conversation and the path.
-// cm:guard takes the id OWNED and does no ledger read of its own, because `Ledger` is not `Sync`:
-// a `&Ledger` held across the `.await` in `ensure_master` makes the master future non-`Send` and
-// `tokio::spawn` refuses it. The caller reads the row into a `String` before any await.
 pub(crate) fn resume_for(
     slug: &str,
     repo: &std::path::Path,
     stored: Option<&str>,
 ) -> Option<String> {
     let id = stored.filter(|s| !s.is_empty())?;
-    let path = conversation_transcript(repo, id)?;
+    let Some(path) = conversation_transcript(repo, id) else {
+        tracing::warn!(
+            "[master] {slug}: conversation {id} is recorded for this project but this box cannot say where a transcript for it would live — it has no home directory to look under. Starting cold, so this pane begins with no memory of what its predecessor was doing"
+        );
+        return None;
+    };
     if path.is_file() {
         tracing::info!("[master] {slug}: resuming conversation {id}");
         return Some(id.to_string());
@@ -1568,23 +1625,12 @@ pub(crate) fn resume_for(
     None
 }
 
-/// Where a project's master keeps what only it can say.
-// cm:guard per PROJECT, never one file for the box. Masters on two projects run at the same time by design, and a single log would interleave two sessions into a transcript that reads as one confused master.
-// cm:guard APPEND, and the filename says so. This used to be `last-pass.log`, truncated on every spawn — measured 2026-09-05, the master's account of why it claimed ISS-917 was gone three minutes later, overwritten by the ISS-918 pass. B5 is that fix: a pane piped with `>>` into one file per project, so the judgement layer this design calls its entire value outlives the pass that produced it.
 fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
     let dir = Config::path().ok()?.with_file_name("master").join(slug);
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join("transcript.log"))
 }
 
-/// This project's declared MCP servers, resolved by core, or `None` when the
-/// box could not ask.
-///
-/// A failure is NOT fatal and is NOT silent: the box carries on and starts a
-/// master with no project servers, having said which project lost them and
-/// why. Refusing to start over this would take the reader off the box along
-/// with the tools.
-// cm:guard `None` and an EMPTY result are different answers and the type is what keeps them apart. "Core said this project declares nothing" is a fact two callers act on — one tells an operator to kill a live pane, the other removes the pane's config file — and a failed fetch flattened into `default()` would make a five-second core blip order an operator to end a correctly configured master. The log line alone cannot stop that, because neither caller reads logs.
 async fn project_mcp_servers(
     client: &CoreClient,
     project_id: &str,
@@ -1613,9 +1659,6 @@ enum LaunchRecord {
     Lying,
 }
 
-/// The launch decision, separated from the filesystem and the log so the one
-/// state that must refuse can be asserted.
-// cm:guard `Lying` is the ONLY refusal and it must stay the only one. `NoneAndSaysSo` has to start: a box whose MCP directory went read-only would otherwise lose every master on it, including for the projects that declare no servers and lose nothing, and the master is the one reader who could report the problem. `Lying` must not start: `session_matches` reads that surviving file as proof the live pane carries those servers, so the stale-pane report criterion 5 exists for goes silent for the whole life of the pane — and a pane cannot be told a new config, so nothing recovers it but an operator who was never told.
 fn launch_record(wrote: bool, cleared: bool) -> LaunchRecord {
     match (wrote, cleared) {
         (true, _) => LaunchRecord::Truthful,
@@ -1635,9 +1678,6 @@ enum PaneConfig {
     Stale,
 }
 
-/// The whole decision, separated from the filesystem and the log so the one
-/// case that costs a live master can be asserted.
-// cm:guard `Unknown` must never collapse into `Stale`. The report `Stale` prints is an instruction to `tmux kill-session` a running master, and a box that could not reach core for five seconds knows nothing about what the pane is missing — a version answering `Stale` there would end a correctly configured master, mid-pass, on every core blip.
 fn pane_config(
     asked: Option<&mcp_servers::ProjectMcpServers>,
     on_disk_matches: bool,
@@ -1649,13 +1689,6 @@ fn pane_config(
     }
 }
 
-/// Say, once, that a pane already running does not carry what core now resolves.
-///
-/// A pane reads `--mcp-config` at startup and can never be told a new one, and
-/// this daemon does not kill a live master to re-spawn it: a pass in flight is
-/// worth more than a same-sweep correction. So the answer is a line an operator
-/// can act on, repeated only when what it says changes.
-// cm:guard REPORT, never kill. `ensure_master` runs every sweep, so a version that restarted a mismatched pane would end a master mid-turn every time a project's declaration changed — and once, unrecoverably, for every pane on the box the first time this shipped.
 fn report_stale_pane_config(
     masters: &Arc<Masters>,
     project_id: &str,
@@ -1690,13 +1723,6 @@ fn report_stale_pane_config(
     );
 }
 
-/// How far this sweep may go for one project.
-// cm:guard `AdoptOnly` is what keeps `NOTHING admissible starts no master` true while still
-// registering a pane that already exists. Registering is not starting: the pane is there either
-// way, and the call is what keeps core's row for it beating. Skipping the whole of `ensure_master`
-// for a quiet project is what let core reap a live master's session row after a daemon restart, so
-// that when work returned `register` minted a SECOND row and the running pane's capability named
-// the dead one for good (ISS-1092, measured on forge-vm 2026-09-17).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Placement {
     /// Adopt a live pane, and start one where there is none.
@@ -1705,10 +1731,6 @@ pub(crate) enum Placement {
     AdoptOnly,
 }
 
-/// How far this sweep may go for a project, from what its pool holds.
-// cm:guard an empty pool answers `AdoptOnly` and never "skip this project". The two were the same
-// thing until ISS-1092, and the difference is the `register` call that keeps a live pane's core
-// session row beating: skipping it let core reap the row of a master that was running perfectly.
 pub(crate) fn placement_for(admissible: &[AdmissibleIssue]) -> Placement {
     if admissible.is_empty() {
         Placement::AdoptOnly
@@ -1717,19 +1739,35 @@ pub(crate) fn placement_for(admissible: &[AdmissibleIssue]) -> Placement {
     }
 }
 
-/// Make sure this project has a live, registered master, and return its id.
-// cm:guard register with core on EVERY sweep, not only when the pane is created. The row is what `jobs.held_by` carries, so a cached id would keep claiming onto a session core had already reaped — holds nobody can see, under an identity nobody is beating for. `ensureMasterSession` is idempotent precisely so this can be unconditional.
+/// What a pane this sweep places carries over from whatever stood before it:
+/// the conversation it resumes, the runs that conversation holds, and the
+/// interval its project spent stood down.
+pub(crate) struct Carryover<'a> {
+    conversation: Option<&'a str>,
+    inherited: &'a [InheritedRun],
+    /// Set only for a pane placed after a stand-down was lifted, so a resumed
+    /// conversation is not told merely that it is master again (ISS-1118).
+    stood_down_for: Option<Duration>,
+    /// Raised when the brief carrying `stood_down_for` actually reached a
+    /// pane. The sweep forgets the lifted record only on this, because a pane
+    /// that was adopted rather than started was sent no brief at all, and one
+    /// whose brief failed to land was told nothing — forgetting on either
+    /// would drop the interval undelivered.
+    stood_down_told: &'a std::sync::atomic::AtomicBool,
+}
+
 async fn ensure_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
     project_id: &str,
     resolved: &crate::daemon::dispatch::Resolved,
-    stored_conversation: Option<&str>,
-    inherited: &[InheritedRun],
+    carry: &Carryover<'_>,
     placement: Placement,
+    tokens: Option<&session_tokens::SessionTokens>,
 ) -> PaneState {
+    let stored_conversation = carry.conversation;
+    let inherited = carry.inherited;
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
-    // cm:guard refuse by name when tmux is missing rather than falling back to the per-pass `claude -p` this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of the liveness, the transcript or the addressable pane exist on it.
     if !terminal::available() {
         tracing::error!(
             "[master] {}: tmux is not installed on this box — no master will run for it; install tmux (`forge-runner doctor` checks for it)",
@@ -1739,9 +1777,6 @@ async fn ensure_master(
         return PaneState::Absent;
     }
 
-    // cm:guard the liveness question comes BEFORE the registration on this branch and only on this
-    // branch. `register` creates a row where none is live, so asking core first under `AdoptOnly`
-    // would open a master session for a project this sweep is about to start no master for.
     if placement == Placement::AdoptOnly && !terminal::alive(&name).await {
         say_unplaced(
             masters,
@@ -1769,45 +1804,45 @@ async fn ensure_master(
     };
 
     let asked = project_mcp_servers(client, project_id, &resolved.slug).await;
-    // cm:guard an unreadable answer is NOT "declares nothing". The pane is still
-    // given nothing — the box has nothing to give it — but the file on disk is
-    // made to say so, and the master is told, so the silence ISS-1043 was filed
-    // from cannot come back wearing a core outage.
     let declared = asked.clone().unwrap_or_default();
 
     if terminal::alive(&name).await {
         report_stale_pane_config(masters, project_id, &name, &resolved.slug, asked.as_ref());
         if masters.get(project_id).is_none() {
-            // cm:guard adopt a pane this daemon did not create rather than killing it. The master survives a `forge-runner` restart by design, and a daemon that started by clearing what it does not remember would make every deploy an outage for every project on the box.
             tracing::info!(
                 "[master] {}: adopting the resident session {name}",
                 resolved.slug
             );
-            // cm:guard `created` while the pane is ALIVE is core saying it found no live row to
-            // reuse — `ensureMasterSession` reuses only a non-terminal one — so the pane running
-            // here holds a capability minted for a session core has since failed, and every frame
-            // it sends is refused for the rest of its life. Say it at error, because the only
-            // recovery is ending the pane and nothing on this box will do that on its own
-            // (ISS-1092 criteria 17, 18).
-            if session.created {
-                tracing::error!(
-                    "[master] {}: adopted the resident session {name} onto a master session core created fresh ({}) — whatever capability that pane was started with names a session this box no longer holds, so its declarations are refused until it is replaced. A pane cannot be handed a new capability: `tmux kill-session -t {name}` and the next sweep starts one that carries the current session.",
-                    resolved.slug,
-                    session.session_id
-                );
-            }
             remember(masters, project_id, &session);
         }
         masters.clear_unplaced(project_id);
-        return PaneState::Adopted;
+        return match capability_of(tokens, &session.session_id) {
+            Capability::Current => {
+                masters.note_capability(project_id, "current");
+                PaneState::Adopted
+            }
+            Capability::Stale => {
+                if masters.note_capability(project_id, "stale") {
+                    tracing::error!(
+                        "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `tmux kill-session -t {name}`, and a master carrying the current capability starts in its place. It is not being nudged while it stands like this.",
+                        resolved.slug,
+                        session.session_id
+                    );
+                }
+                PaneState::StaleCapability
+            }
+            Capability::Unknown(why) => {
+                if masters.note_capability(project_id, "unknown") {
+                    tracing::warn!(
+                        "[master] {}: cannot tell whether {name}'s capability is current: {why}. Saying nothing about it rather than calling it stale — an unreadable map is not evidence about any pane.",
+                        resolved.slug
+                    );
+                }
+                PaneState::Adopted
+            }
+        };
     }
 
-    // cm:guard the SECOND adopt-only return, and it is not the first one repeated. The first is an
-    // optimisation — it avoids asking core for a session this sweep will not use. This one is the
-    // bound: the pane was alive at that check and is not alive at this one, which is a pane that
-    // exited while `register` and `project_mcp_servers` were awaited, and without this the code
-    // falls straight through into minting a capability and starting a master for a project with
-    // nothing claimable. Found by review of ISS-1092 (F1), not by a failing sweep.
     if placement == Placement::AdoptOnly {
         say_unplaced(
             masters,
@@ -1818,7 +1853,6 @@ async fn ensure_master(
         return PaneState::Absent;
     }
 
-    // cm:guard refuse to start when the skill cannot be written, rather than starting without it. A master with no skill still starts, still claims, and runs the whole orchestration off a four-line prompt — work that looks like it is being managed and is not.
     if let Err(e) = install_skill(&resolved.repo_path) {
         tracing::error!(
             "[master] {}: could not install the forge-master skill into {}: {e} — not starting a master",
@@ -1836,16 +1870,13 @@ async fn ensure_master(
         return PaneState::Absent;
     }
 
-    // cm:guard hooks are installed but a failure does NOT stop the master, and the asymmetry with the skill above is deliberate: a master with no skill improvises the whole process, while a master with no hooks is exactly what every box ran before this channel existed — blind, and working. Trading the pass for the telemetry would be the wrong way round.
     install_hooks_logged(&resolved.repo_path, &resolved.slug);
 
-    // cm:guard the pane is the ONE session this runner opens on a TTY, and a TTY is the only place Claude Code shows the workspace-trust prompt. An unanswered prompt is a session that ends without doing anything and takes the breaker above with it, so the stamp belongs immediately before the spawn — `workspace::provision` covers a fresh box, this covers every box provisioned before it shipped (ISS-928, forge-vm 2026-09-06).
     crate::workspace::trust::pre_trust_logged(&resolved.repo_path, &resolved.slug);
 
     let transcript = transcript_path(&resolved.slug);
-    // cm:guard mint on the SPAWN path only, never on the adopt path above. A pane carries its capability in its environment and cannot be told a new one, so re-minting for a master this daemon merely adopted would refuse every frame that master sends for the rest of its life (ISS-964 criterion 29).
     let mut env = terminal::pane_env();
-    match session_tokens::default_path().map(session_tokens::SessionTokens::at) {
+    match tokens {
         Some(store) => match store.mint(&session.session_id) {
             Ok(token) => env.push((session_tokens::TOKEN_ENV.to_string(), token)),
             Err(e) => {
@@ -1868,8 +1899,6 @@ async fn ensure_master(
     {
         Ok(path) => path,
         Err(e) => {
-            // cm:guard start ANYWAY and say so. A master that refused to exist over its MCP config would take out every project on a box whose config directory went read-only, including the ones that declare no servers at all — and the master is the one reader who could report the problem.
-            // cm:guard clear the file in the same breath, and REFUSE this one spawn when the clear also fails. Starting is right when the record can be made to say "this pane was given nothing" — a box whose config directory went read-only keeps its masters, and the master is the one reader who could report the problem. It is wrong when a record of OTHER servers survives: `session_matches` would later read an identical declaration as a match and go permanently silent on a pane that has none of them, which is criterion 5 failing in exactly the direction it exists to catch. The refusal is narrow by construction — `clear_session` answers Ok when there is no file, so every project with no previous record, including every project that declares no servers, still starts.
             let cleared = crate::mcp::config::clear_session(&resolved.slug);
             tracing::error!(
                 "[master] {}: could not write the pane's MCP config: {e} — {}",
@@ -1904,9 +1933,6 @@ async fn ensure_master(
             path.display()
         );
     }
-    // cm:guard resolved on the SPAWN path only. A pane this daemon adopted is already running its
-    // own conversation and returned above; deciding a resume for it would be deciding for a pane
-    // that cannot be told anything (ISS-1050 criterion 17).
     let resume = resume_for(&resolved.slug, &resolved.repo_path, stored_conversation);
     match terminal::ensure(
         &name,
@@ -1935,23 +1961,40 @@ async fn ensure_master(
     remember(masters, project_id, &session);
     masters.clear_unplaced(project_id);
 
-    // cm:guard the standing brief is typed ONCE, into a pane that has just started, and the wait inside `brief_new_pane` is not decoration — the next sweep would otherwise prompt a master that was never briefed.
+    let reach = crate::mcp::config::pane_reach(&resolved.repo_path, mcp_config.as_deref());
+    match reach.forge() {
+        crate::mcp::config::ForgeReach::Declared => {
+            tracing::info!("[master] {}: pane {}", resolved.slug, reach.verdict())
+        }
+        _ => tracing::warn!(
+            "[master] {}: pane {} — the pane is told this in its own brief, which is the only \
+surface it reads",
+            resolved.slug,
+            reach.verdict()
+        ),
+    }
     let brief = standing_prompt(
         &resolved.slug,
         resolved.base_branch.as_deref(),
         resolved.master_policy.as_deref(),
         &declared.dropped_names,
         asked.is_none(),
+        &reach,
     );
-    // cm:guard the resumed block is APPENDED to the standing brief rather than replacing it. A
-    // resumed pane still needs the base branch, the policy and the MCP warnings; a pane told only
-    // what it inherited would decide three runs' fates and then work the project blind.
     let brief = match resume.as_deref() {
         Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited)),
         None => brief,
     };
-    if let Err(e) = terminal::brief_new_pane(&name, &brief).await {
-        tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug);
+    let brief = match carry.stood_down_for {
+        Some(down) => format!("{brief}{}", stood_up_brief(down)),
+        None => brief,
+    };
+    match terminal::brief_new_pane(&name, &brief).await {
+        Ok(()) => carry.stood_down_told.store(
+            carry.stood_down_for.is_some(),
+            std::sync::atomic::Ordering::Relaxed,
+        ),
+        Err(e) => tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug),
     }
     match resume {
         Some(_) => PaneState::Resumed,
@@ -1959,14 +2002,114 @@ async fn ensure_master(
     }
 }
 
-/// Record why this project's pane was not placed, and say it once.
-// cm:guard the log is gated on the reason CHANGING and never on the sweep. This is reached on every
-// sweep of every project that has no pane — on a box serving 28 projects that is thousands of lines
-// a day, and a reader who learns to scroll past them misses the one where a live pane went unplaced
-// (ISS-1092 criteria 15, 16).
+/// What this box can say about the capability the resident master pane holds.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Capability {
+    /// Some capability this box minted names the session it now holds.
+    Current,
+    /// None does, so the pane is running on a token for a session that is gone
+    /// and every frame it sends will be refused.
+    Stale,
+    /// This box cannot read its own map, so it says nothing about any pane.
+    Unknown(String),
+}
+
+/// Judge a resident pane's capability from this box's own record of what it
+/// minted.
+///
+/// The pane's token lives in its environment and is out of reach here, but the
+/// map is not: `mint` leaves exactly one entry naming the session it was called
+/// for, and `retire` removes by session. So a map holding nothing for the
+/// session core now gives us is a map that was never minted for it — which is
+/// precisely a pane adopted onto a session row core replaced, whether it was
+/// replaced at this call or at one three restarts ago.
+///
+/// `session.created` answers only the first of those, which is why one project
+/// of seven was reported on 2026-09-18 and the one that was actually stuck was
+/// not (ISS-1099).
+fn capability_of(tokens: Option<&session_tokens::SessionTokens>, session_id: &str) -> Capability {
+    let Some(store) = tokens else {
+        return Capability::Unknown(
+            "this box could not resolve where its capability map lives".to_string(),
+        );
+    };
+    match store.holds_session(session_id) {
+        Ok(true) => Capability::Current,
+        Ok(false) => Capability::Stale,
+        Err(e) => Capability::Unknown(e.to_string()),
+    }
+}
+
+/// The owner's veto for one project: what the ledger says, whether a pane
+/// contradicts it, and the report where one does.
+///
+/// Called from both branches of the sweep's per-project loop. A runner that
+/// takes no new work is a reason to place nothing; it is not a reason to stop
+/// looking, and a pane running against a stand-down on a `draining` box was
+/// reported by no daemon at all before this (ISS-1118 criterion 4). The read
+/// is the local ledger's, so the branch that asks core nothing still pays
+/// nothing.
+///
+/// `None` where the standing could not be read: the caller places nothing, and
+/// the reason is already recorded.
+///
+/// Takes the read rather than the ledger, because a `Ledger` held across the
+/// `terminal::alive` await below makes this future non-`Send` and the daemon
+/// spawns it.
+async fn standing_verdict(
+    masters: &Arc<Masters>,
+    read: StandingRead,
+    project_id: &str,
+    slug: &str,
+) -> Option<(Placed, Option<MasterStanding>)> {
+    let standing = match read {
+        StandingRead::Known(s) => s,
+        StandingRead::Unreadable(detail) => {
+            say_unplaced(
+                masters,
+                project_id,
+                slug,
+                Unplaced::StandingUnreadable { detail },
+            );
+            return None;
+        }
+    };
+    let stands = standing.as_ref().is_some_and(MasterStanding::stands);
+    // The pane is only looked for where something might contradict it: a
+    // project nobody stood down answers `Proceed` either way, and asking tmux
+    // about every project on every sweep buys that answer nothing.
+    let pane_name = terminal::session_name(terminal::MASTER_PREFIX, slug);
+    let pane_alive = stands && terminal::alive(&pane_name).await;
+    let placed = placement_under(standing.as_ref(), pane_alive);
+    if placed == Placed::Contradicted {
+        say_unplaced(
+            masters,
+            project_id,
+            slug,
+            stood_down_reason(standing.as_ref(), slug, Some(&pane_name)),
+        );
+    }
+    Some((placed, standing))
+}
+
+/// Say why a project got no pane, once per change of reason and at the level
+/// the reason earns.
+///
+/// The de-duplication is `note_unplaced`'s, which is keyed on `reg.unplaced`
+/// and asks nothing of `reg.live`. That distinction is the whole of ISS-1118
+/// criterion 4: `reg.live` holds the panes THIS process placed, so a report
+/// gated on it is unreachable on a daemon that has just started — and a
+/// stood-down project never reaches `ensure_master`, so it is in `reg.live` on
+/// no daemon at all once one restarts.
 fn say_unplaced(masters: &Arc<Masters>, project_id: &str, slug: &str, why: Unplaced) {
-    if masters.note_unplaced(project_id, why.clone()) {
-        tracing::warn!("[master] {slug}: no master pane placed — {why}");
+    if !masters.note_unplaced(project_id, why.clone()) {
+        return;
+    }
+    let lead = why.lead();
+    if why.is_error() {
+        tracing::error!("[master] {slug}: {lead} — {why}");
+    } else {
+        tracing::warn!("[master] {slug}: {lead} — {why}");
     }
 }
 
@@ -1979,20 +2122,15 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
             last_work: Instant::now(),
             last_nudge: None,
             mcp_stale_reported: false,
+            capability_said: None,
         },
     );
 }
 
-/// The whole of one pass prompt: go, and who you are.
-// cm:guard the queue is NOT embedded here, and that absence is what let the quiet gate go. Dispatch reads it itself with its own ranking verb, so a snapshot typed at the master is a second copy already stale by the time the turn reaches it — and a prompt that queued behind a turn then acted on that copy is exactly what the deleted quiet gate existed to prevent (ISS-933 criterion 17).
-// cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill hands every pass to `forge:dispatch`, and this prompt is what must not contradict it by naming a phase, a width or a queue of its own (ISS-964 criterion 29).
 fn nudge() -> String {
     "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.".into()
 }
 
-/// Tell a master there is something to look at.
-// cm:guard nothing gates this on the master LOOKING idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). `claim_nudge` is NOT that gate and must not become it. What it reads is the admissible WORK's identity, and — since ISS-1100, and only to decide whether to REPEAT a nudge for work it has already sent — what the master's own hooks reported through `forge-runner hook`. The pane is still never read: a `UserPromptSubmit` frame is the agent saying a turn began, which is the one thing a screen could never tell anybody, and it is why `agent_activity` exists at all.
-// cm:guard an extra nudge costs a full agent pass, NOT a line in a composer — ~$0.18 measured on forge-vm 2026-09-08, where 1,354 unconditional nudges over 95 minutes bought 0 claims and $245. That is why the caller gates on `claim_nudge`; a new call site that skips it reinstates a spend proportional to sweeps.
 async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
     let Some((_, name)) = masters.get(project_id) else {
         return;
@@ -2003,13 +2141,13 @@ async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
     }
 }
 
-/// The dead-master detector, re-homed from the control socket to the pane.
-///
-/// B3: the daemon is no longer the master's parent, so a dead master drops no
-/// socket. What it does do is stop existing as a tmux session, and this is the
-/// thing that notices — one sweep, not the three minutes core's reaper costs.
-// cm:guard this closes the ROW on the fast path, one sweep instead of the three minutes core's reaper costs. There is nothing to release alongside it any more — a master's runs are subagents of its own process and their leases lapse with the pane — so a caller tempted to add a release here is reaching for a hold this box no longer takes.
-async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str, slug: &str) {
+async fn supervise(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    tokens: Option<&session_tokens::SessionTokens>,
+    project_id: &str,
+    slug: &str,
+) {
     let Some((session_id, name)) = masters.get(project_id) else {
         return;
     };
@@ -2019,6 +2157,7 @@ async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str
         end_master(
             client,
             masters,
+            tokens,
             project_id,
             &session_id,
             "terminal session vanished",
@@ -2027,12 +2166,11 @@ async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str
     }
 }
 
-/// Let an idle master go, if the ledger says its children are done.
-// cm:guard both halves are asked EVERY time, and the ledger read is not skipped when nothing is admissible. No admissible work is the idle half already — reading the children is the half that is easy to drop, and dropping it is what abandons a run's close loop to core's ten-minute reaper.
 async fn retire_if_idle(
     client: &CoreClient,
     masters: &Arc<Masters>,
     ledger: &mut Option<Ledger>,
+    tokens: Option<&session_tokens::SessionTokens>,
     project_id: &str,
     slug: &str,
 ) -> bool {
@@ -2061,6 +2199,7 @@ async fn retire_if_idle(
             end_master(
                 client,
                 masters,
+                tokens,
                 project_id,
                 &session_id,
                 "idle, children done",
@@ -2074,6 +2213,7 @@ async fn retire_if_idle(
 async fn end_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
+    tokens: Option<&session_tokens::SessionTokens>,
     project_id: &str,
     session_id: &str,
     reason: &str,
@@ -2081,8 +2221,7 @@ async fn end_master(
     if let Err(e) = master_api::close(client, session_id, reason).await {
         tracing::warn!("[master] could not close session {session_id}: {e}");
     }
-    // cm:guard the capability dies with the session it names. A token left in the map outlives the master and is a live way onto the socket held by whatever can still read the pane's environment — a dead master's tmux buffer among them (ISS-964 criterion 29).
-    if let Some(store) = session_tokens::default_path().map(session_tokens::SessionTokens::at) {
+    if let Some(store) = tokens {
         store.retire(session_id);
     }
     masters.forget(project_id);
@@ -2211,8 +2350,6 @@ mod tests {
         );
     }
 
-    /// The claim is bounded by the box's own number and by nothing core said.
-    // cm:guard core has NO capacity signal and must not grow one: `runner_full` was a hold nothing enforced and was removed on 2026-09-05. This asserts the bound is read from config here, which is what makes the box the only place that knows it.
     #[test]
     fn the_job_pane_bound_comes_from_this_boxs_own_config() {
         let body = THIS_SOURCE
@@ -2249,7 +2386,6 @@ mod tests {
     /// receiving suite reads.
     const WIRE: &str = include_str!("../../assets/master-limit-wire.json");
 
-    // cm:guard the seconds are taken off the WIRE fixture rather than typed here, which is what makes this the far end of one chain: the captured refusal produced that number, core stores it as an instant, `/me/runners` hands it back as seconds, and this is where it becomes the backoff. A literal would assert `next_poll_delay`'s arithmetic and nothing about the report.
     #[test]
     fn the_stamp_a_master_reports_is_what_widens_this_boxs_own_sweep() {
         let wire: serde_json::Value = serde_json::from_str(WIRE).unwrap();
@@ -2268,13 +2404,11 @@ mod tests {
         );
     }
 
-    // cm:guard the wake floor must stay BELOW the poll interval, or a wake is strictly worse than doing nothing: core publishes to cut the latency from an issue arriving to a box looking, and a floor at or above `POLL_INTERVAL` would make every wake wait longer than the timer it was meant to beat.
     #[test]
     fn a_wake_cuts_latency_rather_than_adding_it() {
         assert!(WAKE_FLOOR < POLL_INTERVAL);
     }
 
-    // cm:guard capacity ONE is the coalescing, and this is the assertion that fails if someone widens the channel to "not lose any". Widening it queues one sweep per arriving issue, and every sweep after the first re-reads a pool the first already covered — five promoted drafts would cost five `/me/runners` reads plus five pool reads per project to learn nothing new.
     #[tokio::test]
     async fn a_burst_of_wakes_coalesces_into_one_pending_sweep() {
         let (tx, mut rx) = wake_channel();
@@ -2303,7 +2437,6 @@ mod tests {
         );
     }
 
-    // cm:guard the operator has to be able to tell which trigger fired, because a box waking only on reconnect is one whose `master.wake` frames are being dropped somewhere — a fault with no other symptom, since the timer keeps the work moving.
     #[test]
     fn a_wake_says_which_trigger_fired() {
         assert!(Wake::Core {
@@ -2314,7 +2447,6 @@ mod tests {
         assert!(Wake::Reconnect.describe().contains("catch-up"));
     }
 
-    // cm:guard this is the test that has to fail if anyone turns the backoff into a skip. A limited fleet must still be swept, because core clears the limit only on a job that SUCCEEDS — the delay may grow, but it is bounded and the sweep always happens.
     #[test]
     fn a_limited_fleet_is_slowed_down_and_never_stopped() {
         let d = next_poll_delay(&served(&[("online", Some(3600))]));
@@ -2325,14 +2457,12 @@ mod tests {
         );
     }
 
-    // cm:guard one limited project must not slow down a healthy sibling — this box serves several, and `any` in place of `all` would idle the rest five minutes at a time.
     #[test]
     fn one_limited_project_does_not_slow_a_healthy_one() {
         let mixed = served(&[("online", Some(3600)), ("online", None)]);
         assert_eq!(next_poll_delay(&mixed), POLL_INTERVAL);
     }
 
-    // cm:guard an EXPIRED stamp is the normal steady state, not a live limit: core clears the column only on a successful job, so reading a lapsed limit as live turns the backoff permanent.
     #[test]
     fn an_expired_limit_polls_at_full_speed() {
         assert_eq!(
@@ -2341,20 +2471,17 @@ mod tests {
         );
     }
 
-    // cm:guard an older core sends no field at all, and absent must mean "poll normally" — the permissive direction, opposite to `kind`. A cautious default here would idle every box talking to a core that predates the field.
     #[test]
     fn a_core_that_does_not_report_limits_polls_at_full_speed() {
         assert_eq!(next_poll_delay(&served(&[("online", None)])), POLL_INTERVAL);
     }
 
-    // cm:guard a drained runner must not hold the whole box at full speed, nor drag it into a backoff: it is not a candidate for work at all, so it is excluded before the decision.
     #[test]
     fn a_drained_runner_is_not_counted_either_way() {
         let mix = served(&[("draining", None), ("online", Some(3600))]);
         assert!(next_poll_delay(&mix) > POLL_INTERVAL);
     }
 
-    // cm:guard the registry is per PROJECT, and the second assertion is the whole test: a box-wide flag would leave every project after the first unserved for as long as any one master lived.
     #[test]
     fn one_master_per_project_and_projects_do_not_block_each_other() {
         let masters = Masters::new();
@@ -2374,10 +2501,6 @@ mod tests {
         assert!(masters.get("p1").is_none());
     }
 
-    /// Criterion 5, the half that decides how often it is said. The comparison
-    /// itself lives in `mcp::config::session_matches` and is tested there; this
-    /// is the gate that keeps a true report from becoming a line every sweep.
-    // cm:guard a pane this process did NOT start must report. `ensure_master` adopts panes across a daemon restart, and those are exactly the panes most likely to predate their project's declaration — a version reading an absent registry entry as "already said" would go permanently silent on the only case the criterion is about.
     #[test]
     fn a_stale_pane_is_reported_once_per_process_and_an_adopted_one_is_always_reported() {
         let masters = Arc::new(Masters::new());
@@ -2418,8 +2541,6 @@ mod tests {
         assert!(masters.claim_mcp_stale("p1"));
     }
 
-    // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — `forge record decision` is the plugin's verb, not this binary's, and the skill is the only place a master is told it exists: dispatch names no recording verb, so dropping it here leaves the decided/asked ratio with a denominator of zero (ISS-964 criteria 1, 2).
     #[test]
     fn the_brief_tells_the_master_to_record_what_it_decided_rather_than_asked() {
         assert!(
@@ -2432,9 +2553,34 @@ mod tests {
         );
     }
 
-    /// Criterion 34. The skill quotes the refusal a master will actually meet,
-    /// and the quote is taken from the refusal itself so the two cannot drift.
-    // cm:guard the substring is DERIVED from `dispatch_gate::REFUSAL` rather than written out here. A quoted sentence typed into this test is a third copy of the same text, and this whole issue is about what happens when one copy of something moves and another does not.
+    /// Criterion 12. Until this change a master that had been taken over by a
+    /// person could only say so in prose, in a pane nothing reads, and went on
+    /// answering nudges for nine hours (ISS-1118 comment 3d208f73).
+    #[test]
+    fn the_skill_tells_a_master_somebody_else_is_driving_to_stand_itself_down() {
+        assert!(
+            MASTER_SKILL.contains("forge-runner master stand-down"),
+            "a master whose project a person has taken over has no verb to reach for, so it keeps being nudged and keeps writing `Holding.` into a transcript nobody reads"
+        );
+        assert!(
+            MASTER_SKILL.contains("forge-runner master stand-up"),
+            "and the way back is named beside it, or the verb reads as one-way and is not taken"
+        );
+        let section = MASTER_SKILL
+            .split("## When the project is not yours to drive")
+            .nth(1)
+            .expect("the skill carries the section that names the verb")
+            .split("\n## ")
+            .next()
+            .unwrap();
+        for flag in ["--why", "--force", "--fresh"] {
+            assert!(
+                !section.contains(flag),
+                "this file states no command's flags: it and the CLI answering it ship on different clocks, so `{flag}` written here is a flag that will be wrong on some box on some day"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_quotes_the_refusal_it_will_meet() {
         let first_sentence = crate::daemon::dispatch_gate::REFUSAL
@@ -2462,8 +2608,6 @@ mod tests {
         );
     }
 
-    /// Criteria 35, 36. No flag list in a file released on another clock.
-    // cm:guard the check is for the FLAG SYNTAX and not for the verb names, which a master must know exist. `--project`, `--issue` and `--worktree` were spelled out in this file while the CLI that serves them ships separately; that is the drift the issue names, and `-h` is the surface that cannot have it.
     #[test]
     fn the_skill_carries_no_flags_and_points_at_the_surface_that_cannot_go_stale() {
         for flag in [
@@ -2487,7 +2631,14 @@ mod tests {
     #[test]
     fn the_owner_policy_reaches_the_brief_verbatim() {
         let policy = "Budget: 5 sessions.\nDrafts are eligible work.\nGroup related issues.";
-        let brief = standing_prompt("forge-dev", Some("main"), Some(policy), &[], false);
+        let brief = standing_prompt(
+            "forge-dev",
+            Some("main"),
+            Some(policy),
+            &[],
+            false,
+            &healthy_reach("the_owner_policy_reaches_the_brief_verbatim"),
+        );
         assert!(
             brief.contains(policy),
             "the policy must be spliced whole: {brief}"
@@ -2498,31 +2649,99 @@ mod tests {
         );
     }
 
-    /// The whole of the standing brief for a project that has set nothing.
+    /// A [`PaneReach`] over two real files, which is the only way one is built.
     ///
-    /// Everything a master needs to know that is NOT in the skill file, and
-    /// nothing else. A sentence added here — however true, however well meant —
-    /// fails this test, which is the point: ISS-1080 added its sentence to the
-    /// skill and left this string saying the opposite, and nothing compared them.
-    // cm:guard a GOLDEN TEXT and not a vocabulary check, because the failure it has to catch is a paraphrase. "There is no second terminal" and "the pool on this box is not a thing you use" carry the same wrong claim and share no word; only asserting the whole string catches both. The vocabulary check below is a second layer over the same text, never the first.
+    /// The directory carries the test's own label and this process's id: two
+    /// `cargo test` runs on one box must not share a path (ISS-1073).
+    struct ReachFiles(std::path::PathBuf);
+
+    impl ReachFiles {
+        fn new(label: &str, repo: Option<&str>, session: Option<&str>) -> Self {
+            let dir =
+                std::env::temp_dir().join(format!("forge-reach-{label}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("temp reach dir");
+            if let Some(body) = repo {
+                std::fs::write(dir.join(".mcp.json"), body).expect("repo .mcp.json");
+            }
+            if let Some(body) = session {
+                std::fs::write(dir.join("session.json"), body).expect("session config");
+            }
+            Self(dir)
+        }
+
+        fn reach(&self, has_pat: bool) -> crate::mcp::config::PaneReach {
+            let session = self.0.join("session.json");
+            crate::mcp::config::pane_reach_in(
+                &self.0,
+                session.exists().then_some(session.as_path()),
+                has_pat,
+            )
+        }
+    }
+
+    impl Drop for ReachFiles {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn declares(names: &[&str]) -> String {
+        let body: Vec<String> = names
+            .iter()
+            .map(|n| format!("\"{n}\": {{ \"type\": \"http\", \"url\": \"https://x/mcp\" }}"))
+            .collect();
+        format!("{{ \"mcpServers\": {{ {} }} }}", body.join(", "))
+    }
+
+    fn reach_of(
+        label: &str,
+        repo: Option<&[&str]>,
+        session: Option<&[&str]>,
+        has_pat: bool,
+    ) -> crate::mcp::config::PaneReach {
+        ReachFiles::new(
+            label,
+            repo.map(declares).as_deref(),
+            session.map(declares).as_deref(),
+        )
+        .reach(has_pat)
+    }
+
+    /// The reach of a box that is provisioned: `forge` from the checkout,
+    /// `playwright` from the session config, an operator PAT stored.
+    fn healthy_reach(label: &str) -> crate::mcp::config::PaneReach {
+        reach_of(label, Some(&["forge"]), Some(&["playwright"]), true)
+    }
+
     const STANDING_BRIEF: &str = "Use the `forge-master` skill. You are the resident master for project `forge-dev` on this box, and you will be woken again in this same session rather than started fresh.\n\nYou are standing in this project's checkout, on its base branch `main`.\n";
 
     #[test]
     fn the_standing_brief_is_only_what_a_wave_cannot_know() {
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false);
+        let reach = healthy_reach("the_standing_brief_is_only_what_a_wave_cannot_know");
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
         assert_eq!(
-            brief, STANDING_BRIEF,
+            brief,
+            format!("{STANDING_BRIEF}{}", reach.brief()),
             "the standing brief may say only what the skill cannot: which project, which box, \
-             which branch. Every rule about how a run works belongs in forge-master-skill.md, and \
+             which branch, and which MCP servers this box's two config files put within this \
+             pane's reach. Every rule about how a run works belongs in forge-master-skill.md, and \
              a copy here is the pair ISS-1080 broke"
         );
     }
 
-    /// Criteria 29, 30. The two claims that were false on every box, named.
-    // cm:guard these two are asserted BY NAME on top of the golden text, because they are the specific damage: a master reading either did not declare, and a reader six months from now needs the sentences spelled out to know what this test is defending.
     #[test]
     fn the_brief_no_longer_carries_the_two_claims_that_stopped_masters_declaring() {
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false);
+        let brief = standing_prompt(
+            "forge-dev",
+            Some("main"),
+            None,
+            &[],
+            false,
+            &healthy_reach(
+                "the_brief_no_longer_carries_the_two_claims_that_stopped_masters_declaring",
+            ),
+        );
         assert!(
             !brief.contains("no job pool") && !brief.contains("second terminal"),
             "the job pool and its second terminal came back with ISS-1080 and are on every box: {brief}"
@@ -2533,9 +2752,6 @@ mod tests {
         );
     }
 
-    /// Criterion 31. The mechanism the skill owns is named in the skill and nowhere else.
-    // cm:guard PHRASES and not bare words, which is the difference between a check and a nuisance: the brief legitimately says a project "declares MCP server(s)", a different sense of the same verb, and a list holding `declare` would refuse that true sentence while catching nothing a paraphrase could not slip past anyway. The golden text above is the defence; this layer names the specific vocabulary whose appearance here has already cost the fleet once.
-    // cm:guard run over the brief WITHOUT the owner's policy, and that exclusion is not a loophole: the policy is the project owner speaking and is spliced verbatim by contract, so a check over it would refuse an owner who wrote "declare every run" in their own instruction.
     #[test]
     fn the_brief_states_no_rule_the_skill_file_owns() {
         let brief = standing_prompt(
@@ -2544,6 +2760,7 @@ mod tests {
             None,
             &["playwright".into()],
             true,
+            &healthy_reach("the_brief_states_no_rule_the_skill_file_owns"),
         )
         .to_lowercase();
         for owned in [
@@ -2566,15 +2783,20 @@ mod tests {
     #[test]
     fn the_owner_policy_survives_words_the_brief_itself_may_not_use() {
         let policy = "Declare every run. Two subagents at a time, each in its own worktree.";
-        let brief = standing_prompt("forge-dev", Some("main"), Some(policy), &[], false);
+        let brief = standing_prompt(
+            "forge-dev",
+            Some("main"),
+            Some(policy),
+            &[],
+            false,
+            &healthy_reach("the_owner_policy_survives_words_the_brief_itself_may_not_use"),
+        );
         assert!(
             brief.contains(policy),
             "the owner is a courier's cargo, not this box's prose to police: {brief}"
         );
     }
 
-    /// F1. The one launch state that refuses, and the two that must not.
-    // cm:guard `NoneAndSaysSo` starting is half the assertion, and it is the half a defensive rewrite loses first: refusing whenever the config write failed takes out every master on a box with a read-only MCP directory, including the projects that declare no servers and would have been correct with nothing.
     #[test]
     fn only_a_record_that_would_lie_about_a_pane_refuses_the_spawn() {
         assert_eq!(launch_record(true, false), LaunchRecord::Truthful);
@@ -2592,8 +2814,6 @@ mod tests {
         }
     }
 
-    /// The three verdicts, and the one that must NOT be the kill instruction.
-    // cm:guard the `Unknown` case is the whole of this test. `Stale` prints `tmux kill-session` at an operator, and the answer that reaches it after a failed fetch used to be an empty `ProjectMcpServers` — indistinguishable from a project that declares nothing, which on a box holding a config file from a live master reads as a mismatch and orders that master ended.
     #[test]
     fn a_pane_core_could_not_be_asked_about_is_unknown_and_never_stale() {
         let declared = mcp_servers::ProjectMcpServers {
@@ -2622,10 +2842,16 @@ mod tests {
         );
     }
 
-    // cm:guard a project whose servers core COULD be read must not carry the unreadable sentence, and the unreadable one must not borrow the dropped-names sentence. These are the two ways the fix for the flattened fetch goes silently wrong: one tells every master on the fleet its tools may be missing, the other leaves a master on a blipped box believing its empty pane is what the project asked for.
     #[test]
     fn a_box_that_could_not_read_the_declaration_says_so_in_its_own_words() {
-        let unreadable = standing_prompt("mowment", Some("main"), None, &[], true);
+        let unreadable = standing_prompt(
+            "mowment",
+            Some("main"),
+            None,
+            &[],
+            true,
+            &healthy_reach("a_box_that_could_not_read_the_declaration_says_so_in_its_own_words"),
+        );
         assert!(
             unreadable.contains("could NOT read this project's declared MCP servers"),
             "{unreadable}"
@@ -2635,18 +2861,175 @@ mod tests {
             "an unreadable declaration must not be reported as a named shortfall: {unreadable}"
         );
 
-        let readable = standing_prompt("mowment", Some("main"), None, &[], false);
+        let readable = standing_prompt(
+            "mowment",
+            Some("main"),
+            None,
+            &[],
+            false,
+            &healthy_reach("a_box_that_could_not_read_the_declaration_says_so_in_its_own_words-b"),
+        );
         assert!(
             !readable.contains("could NOT read"),
             "a project core answered for must be told nothing about readability: {readable}"
         );
     }
 
-    // cm:guard name the SERVERS, not a count. The master's next act is deciding whether an issue can be built here, and "1 server unavailable" is not something it can weigh against an issue that needs the storefront.
+    /// ISS-1114, the measured state: a checkout with no `.mcp.json`, a session
+    /// config declaring `playwright` alone, and no operator PAT on the box.
+    ///
+    /// The assertions are on the EXPLANATION and not on the word `forge`, so a
+    /// brief that merely announced the server would fail this too.
+    #[test]
+    fn the_cold_pane_is_told_forge_is_absent_and_why() {
+        let reach = reach_of(
+            "the_cold_pane_is_told_forge_is_absent_and_why",
+            None,
+            Some(&["playwright"]),
+            false,
+        );
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        assert!(
+            brief.contains("The `forge` MCP server is in NEITHER half"),
+            "a pane whose union holds no `forge` is told nothing about it: {brief}"
+        );
+        assert!(
+            brief.contains("forge_github"),
+            "the pane is not told which capability went with it: {brief}"
+        );
+        assert!(
+            brief.contains("Absent is not refused"),
+            "the pane is not told absent and refused are different, which is the whole \
+             finding: {brief}"
+        );
+        assert!(
+            brief.contains("no operator PAT is stored on this box either")
+                && brief.contains("forge-runner login --pat"),
+            "the pane is not given the cause or the one command that ends it: {brief}"
+        );
+        assert!(
+            brief.contains("playwright"),
+            "the pane is not told what it DOES hold: {brief}"
+        );
+    }
+
+    /// The false alarm the issue body's own Rule would have shipped: this box,
+    /// on the day it was measured, had `forge` in its checkout and `playwright`
+    /// alone in its session config. A gate keyed to the session writer fires
+    /// here, where nothing is wrong.
+    #[test]
+    fn a_provisioned_pane_is_told_its_union_and_nothing_is_raised() {
+        let reach = healthy_reach("a_provisioned_pane_is_told_its_union_and_nothing_is_raised");
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        assert!(
+            brief.contains("forge, playwright"),
+            "a healthy pane is not told the union it holds: {brief}"
+        );
+        for alarm in [
+            "NEITHER half",
+            "ABSENT",
+            "forge-runner login",
+            "UNDETERMINED",
+            "could NOT be determined",
+        ] {
+            assert!(
+                !brief.contains(alarm),
+                "`{alarm}` is an alarm on a box where `forge` is present the whole time: {brief}"
+            );
+        }
+    }
+
+    /// Presence is a declaration and never a working route. A `forge` entry
+    /// carrying a credential that would answer 401 is still declared, and the
+    /// brief must claim nothing more than that about it.
+    #[test]
+    fn a_declared_forge_is_never_reported_as_a_working_one() {
+        let reach = healthy_reach("a_declared_forge_is_never_reported_as_a_working_one");
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        assert!(
+            brief.contains("That is what those two files DECLARE")
+                && brief.contains("Nothing here has checked that any of them answers"),
+            "the brief must say these servers are declared, not that they work: {brief}"
+        );
+    }
+
+    /// A stored PAT changes the cause and not the verdict: the entry should be
+    /// in the checkout and is not, so the checkout is what has to be fixed.
+    #[test]
+    fn a_stored_pat_with_no_forge_entry_names_the_unprovisioned_checkout() {
+        let reach = reach_of(
+            "a_stored_pat_with_no_forge_entry_names_the_unprovisioned_checkout",
+            Some(&["playwright"]),
+            None,
+            true,
+        );
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        assert!(
+            brief.contains("The `forge` MCP server is in NEITHER half"),
+            "{brief}"
+        );
+        assert!(
+            brief.contains("DOES hold an operator PAT")
+                && brief.contains("Re-provision this checkout on this box"),
+            "a box with a PAT must be sent to its checkout, not to `login`: {brief}"
+        );
+        assert!(
+            !brief.contains("forge-runner login"),
+            "a box that is already paired must not be told to pair: {brief}"
+        );
+    }
+
+    /// A half that could not be read is not a half that declares nothing, and
+    /// a diagnosis built on it would be the very substitution this issue is
+    /// about, one layer along.
+    #[test]
+    fn an_unreadable_half_is_undetermined_rather_than_absent() {
+        let files = ReachFiles::new(
+            "an_unreadable_half_is_undetermined_rather_than_absent",
+            Some("{ this is not json"),
+            Some(&declares(&["playwright"])),
+        );
+        for has_pat in [false, true] {
+            let brief = standing_prompt(
+                "forge-dev",
+                Some("main"),
+                None,
+                &[],
+                false,
+                &files.reach(has_pat),
+            );
+            assert!(
+                brief.contains("could NOT be determined"),
+                "an unreadable half must be reported as unknown: {brief}"
+            );
+            assert!(
+                !brief.contains("NEITHER half") && !brief.contains("is ABSENT from this pane"),
+                "an unreadable half must never be reported as an absence: {brief}"
+            );
+            for cause in [
+                "forge-runner login",
+                "Re-provision this checkout",
+                "What is observed",
+            ] {
+                assert!(
+                    !brief.contains(cause),
+                    "`{cause}` is a cause for an absence nobody established: {brief}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn a_declared_server_this_box_cannot_supply_is_named_in_the_brief() {
         let dropped = vec!["epodsystem".to_string(), "postman".to_string()];
-        let brief = standing_prompt("mowment", Some("main"), None, &dropped, false);
+        let brief = standing_prompt(
+            "mowment",
+            Some("main"),
+            None,
+            &dropped,
+            false,
+            &healthy_reach("a_declared_server_this_box_cannot_supply_is_named_in_the_brief"),
+        );
         assert!(brief.contains("epodsystem, postman"), "{brief}");
         assert!(
             brief.contains("could NOT supply"),
@@ -2715,9 +3098,6 @@ mod give_back_tests {
         Some(led)
     }
 
-    // cm:guard criterion 29's second half: the choice has to reach the ISSUE, not just the ledger.
-    // A decision recorded on one box and nowhere a human reads is the silence this whole issue is
-    // about, one level up.
     #[tokio::test]
     async fn a_recorded_choice_is_carried_to_core_with_its_reason() {
         let mut led = a_run_that_chose("restart", "the branch has nothing on it");
@@ -2734,8 +3114,6 @@ mod give_back_tests {
         assert_eq!(why, "the branch has nothing on it");
     }
 
-    // cm:guard said ONCE. The sweep runs every thirty seconds and the obligation is cleared only
-    // after core answered, so a decision must not become a comment a minute forever.
     #[tokio::test]
     async fn a_choice_core_has_taken_is_not_said_again() {
         let mut led = a_run_that_chose("leave", "somebody else's to settle");
@@ -2747,8 +3125,6 @@ mod give_back_tests {
         assert_eq!(spy.seen.lock().unwrap().len(), 1, "one report, one comment");
     }
 
-    // cm:guard the mark is cleared only once core ANSWERED. Marking first turns one unreachable
-    // minute into a decision that exists on this box and nowhere else.
     #[tokio::test]
     async fn a_choice_core_refused_is_said_again_on_the_next_sweep() {
         let mut led = a_run_that_chose("continue", "the work stands");
@@ -2778,8 +3154,6 @@ mod give_back_tests {
             .collect()
     }
 
-    // cm:guard criterion 27: a pane cannot tell from inside whether it is new or continuing, and
-    // one that assumes it is new re-declares work already running.
     #[test]
     fn a_resumed_pane_is_told_that_it_was_resumed() {
         let brief = resumed_brief("conv-abc", &three_inherited());
@@ -2787,9 +3161,6 @@ mod give_back_tests {
         assert!(brief.contains("conv-abc"), "{brief}");
     }
 
-    // cm:guard criterion 28, and it is the owner's rule rather than a style preference: the box
-    // preserves, the kernel retracts, the MASTER decides. A recommendation here moves that
-    // judgement into the box through a second door.
     #[test]
     fn the_inherited_block_carries_no_recommendation_and_no_suggested_action() {
         let brief = resumed_brief("conv-abc", &three_inherited());
@@ -2809,8 +3180,6 @@ mod give_back_tests {
         }
     }
 
-    // cm:guard every inherited run appears, with the fields the box can state. A block that named
-    // only the first would have the master decide three fates from one row.
     #[test]
     fn every_inherited_run_appears_as_raw_fields() {
         let brief = resumed_brief("conv-abc", &three_inherited());
@@ -2828,8 +3197,6 @@ mod give_back_tests {
         assert!(brief.contains("leave"), "{brief}");
     }
 
-    // cm:guard a resumed pane holding nothing must not be asked to decide anything, or every
-    // restart of a quiet project costs a round of prose about an empty list.
     #[test]
     fn a_resumed_pane_holding_nothing_is_asked_for_nothing() {
         let brief = resumed_brief("conv-abc", &[]);
@@ -2837,12 +3204,6 @@ mod give_back_tests {
         assert!(brief.contains("nothing to decide"), "{brief}");
     }
 
-    // cm:guard criterion 18: a stored conversation this box cannot reach must COLD START and say so
-    // naming the conversation. The temptation is to pass `--resume` anyway and let claude decide —
-    // which kills the pane on spawn, and the next sweep rebuilds it and kills it again, a loop whose
-    // only trace is a pane that keeps disappearing (ISS-1050).
-    /// What the daemon log SAYS when a recorded conversation cannot be resumed.
-    // cm:why captured through a real subscriber rather than asserted on a returned string: `resume_for` answers `None` for "nothing stored" and for "stored but unreachable" alike, so a test reading only the return value passes just as happily when the warning is deleted — and that warning is the whole difference between a pane that silently forgot what it was doing and one whose operator can see why.
     pub(super) fn logged_while(f: impl FnOnce()) -> String {
         use std::sync::{Arc, Mutex};
         #[derive(Clone)]
@@ -2862,14 +3223,34 @@ mod give_back_tests {
             .with_writer(move || made.clone())
             .with_ansi(false)
             .finish();
+        // Why a capture needs this: `crate::daemon::keep_tracing_capturable`.
+        crate::daemon::keep_tracing_capturable();
         tracing::subscriber::with_default(sub, f);
         let out = buf.0.lock().unwrap().clone();
         String::from_utf8_lossy(&out).into_owned()
     }
 
     #[test]
+    fn no_path_out_of_resume_for_starts_a_pane_cold_in_silence() {
+        let body = THIS_SOURCE
+            .split("pub(crate) fn resume_for(")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .expect("resume_for is gone");
+        assert!(
+            !body.contains("conversation_transcript(repo, id)?"),
+            "`?` here returns None with nothing logged when this box has no home directory, so a pane that lost its predecessor's memory looks exactly like one that never had a conversation — and the test that reads this log answers with an empty string rather than a failure it can name: {body}"
+        );
+        assert_eq!(
+            body.matches("tracing::warn!").count(),
+            2,
+            "there are two ways to start a pane cold while a conversation IS recorded — no home directory to look under, and no transcript at the path — and each one says so; a count below this is a path that goes quiet: {body}"
+        );
+    }
+
+    #[test]
     fn a_conversation_this_box_cannot_reach_is_named_in_the_log_it_starts_cold_from() {
-        let repo = std::env::temp_dir().join("forge-resume-log");
+        let repo = std::env::temp_dir().join(format!("forge-resume-log-{}", std::process::id()));
         let out = logged_while(|| {
             assert_eq!(
                 resume_for("some-slug", &repo, Some("conv-9f3a-unreachable")),
@@ -2877,12 +3258,6 @@ mod give_back_tests {
             );
         });
 
-        // cm:why the TRANSCRIPT PATH is what is asserted, not a bare mention of the id. The id
-        // appears in this line twice over — once as itself and once inside the path, which is
-        // `<conversation>.jsonl` — so an assertion on the id alone stays green when the explicit
-        // mention is deleted, and cannot tell the two apart. Planting exactly that proved it: the
-        // message was stripped of `{id}` and this test did not notice. The path is also the half
-        // that is actually worth naming, because it is the thing an operator goes and looks at.
         assert!(
             out.contains("conv-9f3a-unreachable.jsonl"),
             "the transcript it could not reach must be named by PATH, so an operator can go and \
@@ -2901,10 +3276,8 @@ mod give_back_tests {
 
     #[test]
     fn a_pane_with_nothing_recorded_starts_cold_quietly() {
-        // cm:guard the absence of a warning is asserted too. A box that has never resumed anything
-        // has no conversation to fail to reach, and warning there would put a line in every
-        // operator's log on every cold start, which is how the real one stops being read.
-        let repo = std::env::temp_dir().join("forge-resume-log-quiet");
+        let repo =
+            std::env::temp_dir().join(format!("forge-resume-log-quiet-{}", std::process::id()));
         let out = logged_while(|| {
             assert_eq!(resume_for("some-slug", &repo, None), None);
         });
@@ -2916,7 +3289,7 @@ mod give_back_tests {
 
     #[test]
     fn a_conversation_with_no_transcript_on_this_box_starts_cold() {
-        let repo = std::env::temp_dir().join("forge-resume-none");
+        let repo = std::env::temp_dir().join(format!("forge-resume-none-{}", std::process::id()));
         assert_eq!(
             resume_for("slug", &repo, Some("conv-that-was-never-here")),
             None,
@@ -2938,8 +3311,6 @@ mod give_back_tests {
         assert_eq!(got.as_deref(), Some(id.as_str()));
     }
 
-    // cm:guard nothing stored and an empty string are both cold, and the empty string matters: the
-    // ledger column is nullable and a hook that carried a blank conversation would write one.
     #[test]
     fn nothing_stored_is_a_cold_start_and_so_is_an_empty_string() {
         let repo = std::env::temp_dir().join("forge-resume-empty");
@@ -2947,8 +3318,6 @@ mod give_back_tests {
         assert_eq!(resume_for("slug", &repo, Some("")), None);
     }
 
-    // cm:guard the encoding is Claude Code's, verified on this box, and this is the test that fails
-    // if it drifts rather than every master silently cold-starting forever.
     #[test]
     fn the_transcript_path_is_the_one_claude_code_actually_uses() {
         let home = dirs_next::home_dir().expect("a home directory");
@@ -3058,11 +3427,11 @@ mod give_back_tests {
     struct Leases(Mutex<Vec<String>>);
     #[async_trait::async_trait]
     impl LeaseKeeper for Leases {
-        async fn release(&self, issue_key: &str) -> R<()> {
+        async fn release(&self, _project_id: Option<&str>, issue_key: &str) -> R<()> {
             self.0.lock().unwrap().push(issue_key.to_string());
             Ok(())
         }
-        async fn is_returned(&self, issue_key: &str) -> R<bool> {
+        async fn is_returned(&self, _project_id: Option<&str>, issue_key: &str) -> R<bool> {
             Ok(self.0.lock().unwrap().iter().any(|k| k == issue_key))
         }
     }
@@ -3084,7 +3453,6 @@ mod give_back_tests {
         led
     }
 
-    // cm:guard the discriminating assertion is that core is TOLD, not that the pid was killed. A build that kills the pane and says nothing still passes every other test in this file, and that build is what this box shipped for weeks: core's ten-minute sweep then wrote `runner_unreachable` over a box that had ended the run deliberately, which is ~95% of a 203-session failure bucket nobody can now decompose.
     #[tokio::test]
     async fn ending_an_idle_run_tells_core_the_box_did_it() {
         let led = a_ledger_holding_one_run();
@@ -3122,8 +3490,6 @@ mod give_back_tests {
             ("core-sess-1", close_loop::Outcome::KilledIdle),
             "an idle reap must reach core as its own outcome, not as silence"
         );
-        // cm:guard the checkpoint RIDES the close. Without it the only copy of what the run left is
-        // on a disk nobody reads, which is the whole failure this issue exists to end (ISS-1050).
         assert_eq!(
             checkpoint.as_ref().and_then(|c| c["source"].as_str()),
             Some("reconstructed_from_box"),
@@ -3132,7 +3498,6 @@ mod give_back_tests {
         assert_eq!(killed.0.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
-    // cm:guard the discriminating assertion is the BEAT, not that a run was closed. Core reaps a run session silent for ten minutes, so a sweep that reconciled without beating would take every healthy run on this box back after ten minutes — a test that only watched the closing half would go green on exactly that build (ISS-933 criteria 16 and 25a).
     #[tokio::test]
     async fn a_sweep_beats_the_runs_this_box_still_holds() {
         let mut ledger = Some(a_ledger_holding_one_run());
@@ -3204,7 +3569,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard the branch Windows actually took: `inflight::boot_identity` answers `None` there, and `unwrap_or_default` hands this an empty string. An empty boot matches NO recorded run, so a build without this refusal reads every live run on the box as orphaned and takes its worktree — the two tests above went red on CI's windows-latest before this branch existed.
     #[tokio::test]
     async fn a_box_that_cannot_name_its_boot_reconciles_nothing() {
         let mut ledger = Some(a_ledger_holding_one_run());
@@ -3299,7 +3663,6 @@ mod give_back_tests {
         (repo, wt)
     }
 
-    // cm:guard the assertion is that core hears it FROM THE BOX. Without this call the only thing that ever flips the session is core's ten-minute silence sweep, which writes `runner_unreachable` over a box that is plainly reachable — it is talking to core in this very sweep — and holds the run's issues for those ten minutes (forge-vm 2026-09-12: every failure on two projects showed ~10 minutes between `last_heartbeat_at` and `updated_at`, ~95% of 203 sessions in that one bucket).
     #[tokio::test]
     async fn reclaiming_a_dead_run_tells_core_it_died_rather_than_waiting_to_be_reaped() {
         let (repo, wt) = a_repo_with_a_live_worktree().await;
@@ -3355,16 +3718,8 @@ mod give_back_tests {
             ("core-sess-1", close_loop::Outcome::Died),
             "a run whose process this box refuted must reach core as a death, from the box, now"
         );
-        // cm:guard a DEATH is the case the evidence exists for, so this is the close that must
-        // never lose it.
         let cp = checkpoint.as_ref().expect("a death carries the box's half");
         assert_eq!(cp["source"].as_str(), Some("reconstructed_from_box"));
-        // cm:guard the branch asserted is the RUN's worktree branch and deliberately not the one
-        // this test process is standing in. Every `git` in `checkpoint.rs` runs with
-        // `current_dir(worktree)`, so a relative or empty path resolves against the daemon's own
-        // cwd and the payload would confidently describe a different checkout entirely — which an
-        // equality on `source` alone would not catch. This fixture's branch differs from the
-        // repository this suite runs inside, which is what makes the assertion mean anything.
         assert_eq!(
             cp["branch"].as_str(),
             Some("ISS-957"),
@@ -3379,7 +3734,6 @@ mod give_back_tests {
         let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
     }
 
-    // cm:guard the assertions are the CHECKOUT off the disk and `ended_by` written, never that a warning changed: the deadlock this closes is invisible to every mark-level assertion, because all three marks are exactly what a stuck run already has. `close_loop::close` alone leaves this run untouched forever — it observes, and the tree is still there to observe (forge-vm 2026-09-10: 24 runs, 24 trees, every lease held under them).
     #[tokio::test]
     async fn a_dead_runs_worktree_is_given_back_and_its_run_ended() {
         let (repo, wt) = a_repo_with_a_live_worktree().await;
@@ -3448,7 +3802,6 @@ mod give_back_tests {
         let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
     }
 
-    // cm:guard the DIFF is asserted on the remote, not merely that the tree went away: `force_terminal` aborts before touching a worktree whose work could not be preserved, so a build that released this one anyway would pass every assertion about disk and `ended_by` while having thrown away an agent's uncommitted work. Every stuck run measured on forge-vm 2026-09-10 was carrying one.
     #[tokio::test]
     async fn a_dead_run_carrying_uncommitted_work_has_it_preserved_before_the_tree_goes() {
         let (repo, wt) = a_repo_with_a_live_worktree().await;
@@ -3551,7 +3904,6 @@ mod give_back_tests {
         None
     }
 
-    // cm:guard depth 1 is the assertion and a mere `contains` is NOT enough: measured while writing this, `if false { give_back_lost_runs(...) }` passed a containment check, so the scan agreed with a build in which no run on the box is ever beaten. A call sitting under any condition is a call an operator cannot rely on.
     #[test]
     fn the_sweep_reconciles_unconditionally() {
         assert_eq!(
@@ -3561,10 +3913,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard the same source scan as its neighbour, and for the same reason a `contains` check
-    // would not do: a declaration reaches core only here, so behind a condition it reaches core on
-    // some sweeps and not others, and a master's run row would sit unpublished for as long as that
-    // condition held while the master dispatched against it (ISS-1050 criterion 5).
     #[test]
     fn the_sweep_tells_core_about_declared_runs_unconditionally() {
         assert_eq!(
@@ -3579,10 +3927,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard ORDER, not merely presence. `reconcile` reads a row with no core session as a run
-    // that never started and closes the loop over it, so a declaration made this sweep has to reach
-    // core BEFORE the reconciler sees it — otherwise a master's freshly declared work is given back
-    // from under the subagent it was just handed to (ISS-1050 criteria 5, 8).
     #[test]
     fn a_declaration_reaches_core_before_the_reconciler_reads_it() {
         let body = THIS_SOURCE
@@ -3601,7 +3945,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard depth 1 and exactly one occurrence: the report is taken ONCE for the box, after every project has been read. Core's limit route fans out to every runner binding of the device, so a call moved inside the project loop would let an older success on one project delete the stamp a newer refusal on another had just written — decided by whatever order `/me/runners` returned the rows in.
     #[test]
     fn the_account_is_reported_once_for_the_box_and_never_per_project() {
         assert_eq!(
@@ -3613,7 +3956,7 @@ mod give_back_tests {
         let sweep = production
             .split("async fn sweep(")
             .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
+            .and_then(|r| r.split("\nasync fn ").next())
             .expect("sweep is gone");
         assert_eq!(
             sweep.matches("report_account_limit(").count(),
@@ -3622,7 +3965,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard the collection is what feeds that one decision, and it sits INSIDE the loop by design — one verdict read per project, one decision taken for the device.
     #[test]
     fn a_verdict_is_read_for_every_project_whose_pane_is_up() {
         assert!(
@@ -3632,18 +3974,19 @@ mod give_back_tests {
     }
 
     /// The reporting path's own source, bounded to it.
+    ///
+    /// The closing boundary is the function's own brace at column zero. It used
+    /// to be the next doc comment, which put this slice's end in prose: delete
+    /// or move a comment and the slice widens into the next function, silently
+    /// changing what every assertion below counts.
     fn reporting_path() -> &'static str {
         THIS_SOURCE
             .split("async fn report_account_limit(")
             .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
+            .and_then(|r| r.split("\n}").next())
             .expect("the reporting path is gone")
     }
 
-    // cm:guard THREE separate guards rather than one list, because they are three different
-    // promises and a caller breaks them one at a time: a cap that retires the box, a cap that
-    // rewrites the runner row, and a cap that moves somebody's work are each their own regression,
-    // and a single assertion would report whichever one it met first as all of them.
     #[test]
     fn reporting_a_cap_ends_no_master() {
         for banned in [
@@ -3675,7 +4018,6 @@ mod give_back_tests {
         }
     }
 
-    // cm:guard ONE clock for the whole sweep. The verdicts are classified against the instant taken at the top of `sweep`, and both freshness bounds are DISTANCES from it — so a second reading here would judge those verdicts against an instant they were never measured from, with the whole project loop and its calls to core in between.
     #[test]
     fn the_decision_is_taken_against_the_sweeps_own_instant() {
         assert!(
@@ -3688,7 +4030,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard BOTH calls, named separately, because the two arms are written apart and a later edit adds one back unbounded without touching the other. `CoreClient` has no request timeout of its own, so an unbounded call here is the sweep's deadline, not the report's.
     #[test]
     fn every_limit_call_on_the_reporting_path_carries_a_deadline() {
         let path: String = reporting_path()
@@ -3703,7 +4044,6 @@ mod give_back_tests {
         }
     }
 
-    // cm:guard a core that ACCEPTS and then says nothing, which is the case no `Err` arm covers: the transport only returns once the request resolves, and without a deadline it never does. Measured as a hang rather than a failure, everything behind this await — `reconcile`, `give_back_lost_runs`, the next sweep, the cancel branch — is stopped with it.
     #[tokio::test(start_paused = true)]
     async fn a_core_that_accepts_and_never_answers_does_not_hold_the_sweep() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -3739,7 +4079,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard the nudge stays INSIDE the loop and is not gated on anything the report decides. Backing off is not stopping: core clears a limit only on a turn that succeeds, so a box that stopped nudging while capped would remove the only thing that can end its own window.
     #[test]
     fn a_box_that_reported_a_cap_still_nudges_its_masters() {
         let nudge = depth_of_call_in_sweep("nudge_master(").expect("the nudge is gone");
@@ -3794,7 +4133,6 @@ mod give_back_tests {
         assert!(nudge_due(None, 7, Instant::now(), SinceNudge::Ran));
     }
 
-    // cm:guard the falsifying case: everything else here passes against the unconditional nudge this replaced.
     #[test]
     fn the_same_work_twice_in_a_row_is_not_nudged_twice() {
         let now = Instant::now();
@@ -3806,7 +4144,6 @@ mod give_back_tests {
         ));
     }
 
-    // cm:guard NEW work is nudged whatever the pane is doing, and this arm is the one that must not learn to consult the evidence: an issue that appears while the master is mid-turn is still an issue it has not been told about.
     #[test]
     fn changed_work_is_nudged_without_waiting_out_the_period() {
         let now = Instant::now();
@@ -3822,7 +4159,6 @@ mod give_back_tests {
         }
     }
 
-    // cm:guard the ceiling on silence, and the test that has to fail if anyone turns this backoff into a skip. Unchanged work must STILL reach the master past `NUDGE_REFRESH` where the last nudge produced no completed turn, because a pass lost to a wedged pane or a limit cleared out of band is otherwise never retried (`9a7c34b99`).
     #[test]
     fn unchanged_work_is_nudged_again_where_the_last_one_produced_no_turn() {
         assert!(nudge_due(
@@ -3843,7 +4179,6 @@ mod give_back_tests {
         ));
     }
 
-    // cm:guard the limit-cleared-out-of-band half of the ceiling. Claude Code emits `StopFailure` INSTEAD of `Stop` after a model or API error, so a turn that died on the account's window reads here and nowhere else; without this arm the one thing the ceiling was built for is the one thing it would stop doing.
     #[test]
     fn unchanged_work_is_nudged_again_where_the_turn_died_on_an_error() {
         assert!(nudge_due(
@@ -3854,7 +4189,6 @@ mod give_back_tests {
         ));
     }
 
-    // cm:guard THE case ISS-1100 is about: the pass ran, in full, and decided. Repeating it buys a second identical answer at the price of a full agent pass — 1,630 of them in 24h on forge-vm, 258 to a project whose whole candidate set was blocked.
     #[test]
     fn unchanged_work_is_withheld_where_the_last_nudge_produced_a_turn() {
         for since in [
@@ -3869,7 +4203,6 @@ mod give_back_tests {
         }
     }
 
-    // cm:guard a permission stop withholds, and the reason is not only cost: `nudge_master` types a line and presses Enter, so a keystroke sent into a pane holding a permission question ANSWERS that question with the pass prompt. The human still owes an answer either way, and nothing here may supply one.
     #[test]
     fn a_master_stopped_on_a_permission_question_is_left_alone() {
         let a = reported(&[
@@ -3895,7 +4228,6 @@ mod give_back_tests {
         assert!(retry_owed(SinceNudge::Unreported));
     }
 
-    // cm:guard the evidence is a PROMPT submitted, not any hook frame. A child of an earlier pass finishing bumps `sequence` while the nudge still sits unsubmitted in the composer; reading that as a turn would strand the wedged pane this ceiling exists to rescue.
     #[test]
     fn a_child_of_an_earlier_pass_is_not_a_turn_the_nudge_produced() {
         let a = reported(&[
@@ -3922,10 +4254,6 @@ mod give_back_tests {
         assert!(!retry_owed(SinceNudge::Ran));
     }
 
-    // cm:guard THE sequence review found on ISS-1100: the lead turn dies on the account limit while
-    // a child is still outstanding, and the child's own `SubagentStop` arrives after it. Read off
-    // `last_event` this is a clean finish and the nudge is never repeated, so the limit clearing out
-    // of band is never picked up — the one recovery `NUDGE_REFRESH` was built for, lost.
     #[test]
     fn a_turn_that_died_while_a_child_was_outstanding_still_reads_as_failed() {
         let a = reported(&[
@@ -3944,12 +4272,6 @@ mod give_back_tests {
         ));
     }
 
-    // cm:guard the other half of the same field: a turn that failed and then a LATER turn that ran
-    // cleanly is not still failed, or one bad turn would re-nudge this project for the rest of the
-    // pane's life. The clearing is the `Stopped` arm's, and there is deliberately no second clear on
-    // `PromptSubmitted`: one was written, and removing it turned no test red because every path out
-    // of a turn assigns this field on the way. A write no assertion can reach is a second live path,
-    // not a belt and braces.
     #[test]
     fn a_clean_turn_after_a_failed_one_reads_as_ran() {
         let a = reported(&[
@@ -3985,7 +4307,6 @@ mod give_back_tests {
         assert_ne!(one, work_digest(&[]));
     }
 
-    // cm:guard a title and a priority moving is not new work, and a digest that tracked them would nudge on every edit an operator makes in the UI.
     #[test]
     fn the_digest_ignores_what_the_master_does_not_decide_on() {
         let plain: AdmissibleIssue =
@@ -4007,11 +4328,6 @@ mod give_back_tests {
         .expect("admissible fixture")
     }
 
-    // cm:guard THE stranding ISS-1100's review found. Core admits statuses the master does not take
-    // — forge-dev admits `developed`, `testing`, `tested`, `awaiting_release` — so a row can sit in
-    // the set for days being correctly refused. When it reaches one the master DOES take, the id set
-    // has not moved. Under the clock the next refresh picked it up; under `retry_owed` an
-    // identity-only digest never would, and the work is stranded with nothing anywhere saying why.
     #[test]
     fn the_digest_moves_when_a_rows_own_status_does() {
         let held: AdmissibleIssue =
@@ -4023,10 +4339,6 @@ mod give_back_tests {
         assert_ne!(work_digest(&[held]), work_digest(&[takeable]));
     }
 
-    // cm:guard the same stranding through the blocker rather than the row. Core hides a row behind
-    // an unsettled blocker, so the ordinary release moves the id set — but core also OFFERS a row
-    // whose edge has expired while the master still refuses it, and that one is released by the
-    // blocker moving with the id set unchanged.
     #[test]
     fn the_digest_moves_when_a_blockers_status_does() {
         let blocked = with_blocker(
@@ -4050,11 +4362,6 @@ mod give_back_tests {
         assert_ne!(work_digest(&[blocked]), work_digest(&[freed]));
     }
 
-    // cm:guard the widening is bounded by what `holdsBack` reads, and these three are the boundary.
-    // A `relates` edge is not an ordering; a blocker's merge stamp gates nothing anywhere; and an
-    // expiry the master never consults either moves the row in or out of the set or means nothing.
-    // Hashing any of them re-nudges immediately — a changed digest skips the ceiling entirely — and
-    // buys back the spend this issue exists to remove.
     #[test]
     fn the_digest_ignores_a_relation_that_orders_nothing() {
         let bare: AdmissibleIssue =
@@ -4112,8 +4419,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard order-independence has to survive the widening: `json_agg` promises no order for the
-    // relations of one issue any more than the route promises one for the rows.
     #[test]
     fn the_digest_does_not_move_when_two_blockers_swap_places() {
         let one = serde_json::json!({ "kind": "blocks", "dependsOnKey": "ISS-1", "blockerStatus": "waiting" });
@@ -4153,9 +4458,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard the whole of ISS-1100's box half, end to end through the real registry: the same
-    // work, past the ceiling, with the master's own hooks saying it answered. Delete the evidence
-    // term and this is the assertion that goes red.
     #[test]
     fn a_master_that_answered_the_last_nudge_is_not_nudged_again_for_the_same_work() {
         let masters = Arc::new(Masters::new());
@@ -4202,7 +4504,6 @@ mod give_back_tests {
         assert!(!masters.claim_nudge("nobody", 7, None));
     }
 
-    // cm:guard the repeat decision reads what the AGENT reported and nothing else. The gate ISS-933 deleted read a pane's bytes, and the one thing keeping this from being that gate under a new name is that every input to it comes off a hook frame.
     #[test]
     fn the_repeat_decision_reads_only_what_the_agent_reported() {
         let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
@@ -4230,7 +4531,6 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard the ratchet on the call SITE, not the helper: `claim_nudge` is worth nothing if a later edit calls `nudge_master` beside it rather than inside it, and that mistake restores a spend proportional to sweeps with every unit test still green.
     #[test]
     fn every_nudge_in_the_sweep_is_gated_on_claim_nudge() {
         let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
@@ -4253,15 +4553,8 @@ mod give_back_tests {
     }
 }
 
-// cm:guard this `#[cfg(test)]` block is at the END of the file and must stay there. Three tests in
-// this module read their subject by splitting the source on the FIRST `#[cfg(test)]` and scanning
-// what precedes it, so a test-only item placed above `sweep` or `nudge` truncates the half they
-// read — `the_sweep_reconciles_unconditionally` and its neighbours then answer about a body that is
-// not there. All three fail loudly when that happens, which is how this block ended up down here.
 #[cfg(test)]
 impl Masters {
-    /// Put a master in the registry without spawning one.
-    // cm:guard test-only, so no production path can register a pane nothing started: adoption goes through `ensure_master`, which asks tmux first.
     pub fn remember_for_test(&self, project_id: &str, session_id: &str, name: &str) {
         self.remember(
             project_id,
@@ -4271,6 +4564,7 @@ impl Masters {
                 last_work: Instant::now(),
                 last_nudge: None,
                 mcp_stale_reported: false,
+                capability_said: None,
             },
         );
     }
@@ -4296,39 +4590,21 @@ mod unplaced_tests {
             .expect("sweep must be findable")
     }
 
+    /// `ensure_master`'s own source, bounded by its own closing brace.
+    ///
+    /// Not by the next `async fn`: the item after `ensure_master` is a plain
+    /// `fn`, so that token would widen this by two hundred lines. Not by the
+    /// next doc comment either — that put the boundary in prose, where a lint
+    /// pass free to delete comments can move it.
     fn ensure_master_body() -> &'static str {
-        production()
+        let rest = production()
             .split("\nasync fn ensure_master(")
             .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
-            .expect("ensure_master must be findable")
+            .expect("ensure_master must be findable");
+        let end = block_end(rest, 0).expect("ensure_master must close");
+        &rest[..end]
     }
 
-    // cm:guard the three helpers below scan SOURCE TEXT, and what that can and cannot catch is
-    // stated here rather than left for a reader to infer. It catches the thing removed, renamed or
-    // reworded — every ISS-1092 mutation that got past the assertions this replaced. It does NOT
-    // catch a behaviour change that leaves the text standing: a branch made unreachable above it, a
-    // returned value ignored, a call whose effect is undone further down. It also reds on a
-    // refactor that moves no behaviour, which is a real cost paid by whoever edits `sweep` or
-    // `ensure_master` next.
-    //
-    // It is used here because these four criteria are not reachable any other way: criteria 11 and
-    // 12 live inside `sweep` and criteria 17 and 18 inside `ensure_master`, and both need a live
-    // tmux pane and a core client to run at all. Where a criterion IS reachable it is NOT scanned —
-    // criterion 15's `say_unplaced` is a free function, so
-    // `an_unplaced_pane_is_reported_once_and_names_its_project_and_reason` drives it through a real
-    // subscriber and asserts the emitted level and fields, which is how a demotion from `warn!` to
-    // `info!` is caught. A source scan for the format string would not catch that one, which is the
-    // measure of the difference.
-    /// Where a block opened at `indent` spaces closes, in `rest`.
-    ///
-    /// Matches the newline BEFORE the closing brace and never the one after
-    /// it: a checkout with CRLF endings holds `}\r\n`, so a pattern carrying
-    /// the trailing `\n` finds nothing and every block-scoped assertion below
-    /// panics on its `expect` instead of running. Measured on CI, which builds
-    /// this crate on windows-latest beside ubuntu and macos; the three tests
-    /// that read these regions went red there and green here on the same
-    /// commit.
     fn block_end(rest: &str, indent: usize) -> Option<usize> {
         rest.find(&format!("\n{}}}", " ".repeat(indent)))
     }
@@ -4348,21 +4624,183 @@ mod unplaced_tests {
         &rest[..end]
     }
 
-    /// The `session.created` report inside `ensure_master`'s adopt branch, on
-    /// its own.
+    /// The stale-capability report in `ensure_master`'s adopt branch, on its
+    /// own.
     ///
-    /// Scoped to the one `if` block. `ensure_master` holds eight further
+    /// Scoped to the one match arm. `ensure_master` holds eight further
     /// `tracing::error!` calls, and both `{name}` and `session.session_id`
     /// appear again further down it — so an assertion over the rest of the
     /// function body holds whatever this report is written as.
     fn adopt_report() -> &'static str {
         let body = ensure_master_body();
         let start = body
-            .find("if session.created {")
-            .expect("the adopt branch must gate its report on session.created");
+            .find("Capability::Stale => {")
+            .expect("the adopt branch must have an arm for a stale capability");
         let rest = &body[start..];
-        let end = block_end(rest, 12).expect("the session.created report must close");
+        let end = block_end(rest, 12).expect("the stale-capability arm must close");
         &rest[..end]
+    }
+
+    /// A capability map of this run's own, never this box's.
+    fn temp_map(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-cap-{tag}-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir.join("control-tokens.json")
+    }
+
+    #[test]
+    fn a_capability_minted_for_the_session_this_box_holds_reads_current() {
+        let path = temp_map("current");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        store.mint("sess-A").expect("mint");
+        assert_eq!(capability_of(Some(&store), "sess-A"), Capability::Current);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_map_that_names_only_other_sessions_reads_stale() {
+        let path = temp_map("stale");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        store.mint("sess-OLD").expect("mint");
+        assert_eq!(
+            capability_of(Some(&store), "sess-NEW"),
+            Capability::Stale,
+            "this is the whole defect: the pane is up on a token for sess-OLD while core has replaced it with sess-NEW, and `session.created` is false because the replacement happened in an earlier sweep"
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_map_that_was_never_written_reads_stale_rather_than_current() {
+        let path = temp_map("absent");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        assert_eq!(
+            capability_of(Some(&store), "sess-A"),
+            Capability::Stale,
+            "a box that has minted nothing can resolve nothing, so a pane running on it is refused; an absent map is an answer, unlike an unreadable one"
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_map_this_box_cannot_read_is_never_reported_as_a_stale_capability() {
+        let path = temp_map("torn");
+        std::fs::write(&path, b"{\"07ccaad6\": ").expect("plant a half-written map");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        match capability_of(Some(&store), "sess-A") {
+            Capability::Unknown(why) => assert!(
+                !why.is_empty(),
+                "the verdict has to carry why this box could not tell"
+            ),
+            other => panic!(
+                "an unreadable map is not evidence about any pane; calling it {other:?} would report every master on the box as unplaceable at once"
+            ),
+        }
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_box_that_cannot_resolve_its_map_at_all_says_unknown() {
+        match capability_of(None, "sess-A") {
+            Capability::Unknown(_) => {}
+            other => panic!("no map to ask is not an answer about the pane: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_pane_that_stays_stale_is_reported_on_the_sweep_that_finds_it_and_not_after() {
+        let masters = Masters::new();
+        masters.remember_for_test("proj-1", "sess-NEW", "pane-1");
+        assert!(
+            masters.note_capability("proj-1", "stale"),
+            "the sweep that first finds it has to report it"
+        );
+        for _ in 0..45 {
+            assert!(
+                !masters.note_capability("proj-1", "stale"),
+                "45 passes against a pane in one unchanged state is the cost this defect charged for four hours on 2026-09-18"
+            );
+        }
+        assert!(
+            masters.note_capability("proj-1", "current"),
+            "a state that changes is reported again, or a pane that recovers is never heard from"
+        );
+    }
+
+    #[test]
+    fn a_pane_whose_capability_is_stale_is_not_nudged() {
+        let body = sweep_body();
+        let guard = body
+            .find("if pane == PaneState::StaleCapability {")
+            .expect("the sweep has to notice a pane it already knows will be refused");
+        let nudge = body
+            .find("nudge_master(")
+            .expect("the sweep must still nudge the panes that can act");
+        assert!(
+            guard < nudge,
+            "the guard is only a guard if it is reached first"
+        );
+        assert!(
+            body[guard..nudge].contains("continue;"),
+            "the guard has to leave the iteration; a nudge to a pane whose declarations are refused spends a full master pass to produce a report nobody can act on"
+        );
+    }
+
+    #[test]
+    fn nothing_under_the_sweep_resolves_this_boxs_real_capability_map() {
+        let production = production();
+        assert_eq!(
+            production.matches("session_tokens::default_path()").count(),
+            1,
+            "`default_path()` resolves the operator's live map, so every call under `sweep` is one `cargo test` away from minting into it. It is resolved once and passed down"
+        );
+        let rest = production
+            .split("\npub async fn run(")
+            .nth(1)
+            .expect("the daemon loop must be findable");
+        let run_body = &rest[..block_end(rest, 0).expect("run must close")];
+        assert!(
+            run_body.contains("session_tokens::default_path()"),
+            "the one site is the daemon loop's own, beside the ledger it already resolves there — not anything a test can reach"
+        );
+        for reached in [
+            "async fn sweep(",
+            "async fn ensure_master(",
+            "async fn take_pool_job(",
+        ] {
+            let f = production
+                .split(reached)
+                .nth(1)
+                .expect("the function must be findable");
+            assert!(
+                !f[..f.find("\n}").unwrap_or(f.len())].contains("session_tokens::default_path()"),
+                "`{reached}` runs on every sweep, so it takes the store it was given"
+            );
+        }
+    }
+
+    #[test]
+    fn ensure_masters_source_stops_at_its_own_closing_brace() {
+        let body = ensure_master_body();
+        for beyond in [
+            "async fn supervise(",
+            "async fn retire_if_idle(",
+            "async fn nudge_master(",
+            "async fn end_master(",
+        ] {
+            assert!(
+                !body.contains(beyond),
+                "`{beyond}` is a later function, and a slice carrying it lets one of its tokens satisfy an assertion written about `ensure_master`"
+            );
+        }
+        assert!(
+            body.contains("adopting the resident session"),
+            "the slice still has to carry the adopt branch it exists to measure"
+        );
     }
 
     fn issue(id: &str) -> AdmissibleIssue {
@@ -4381,9 +4819,6 @@ mod unplaced_tests {
         }
     }
 
-    // cm:guard the STALE-CAPABILITY arm, and it is the one the field incident landed in. The daemon
-    // had adopted the pane and logged that it had; what it held was the session core minted to
-    // replace the one the pane's token names, and no sweep will ever reconcile the two.
     #[test]
     fn a_pane_whose_capability_names_a_replaced_session_is_told_that_and_not_told_to_wait() {
         let masters = Masters::new();
@@ -4405,8 +4840,6 @@ mod unplaced_tests {
         carries_no_deadline(&why);
     }
 
-    // cm:guard an unread list answers "I do not know" and never "you are not served". The two send
-    // an operator to opposite places, and a network error would otherwise read as a decommission.
     #[test]
     fn a_box_that_has_not_read_its_projects_says_so_rather_than_denying_the_project() {
         let masters = Masters::new();
@@ -4481,8 +4914,6 @@ mod unplaced_tests {
         carries_no_deadline(&why);
     }
 
-    // cm:guard the ONE arm that may promise a sweep, and it may only because the sweep really does
-    // place a pane for a served project with nothing recorded against it.
     #[test]
     fn only_a_served_project_with_nothing_against_it_is_promised_the_next_sweep() {
         let masters = Masters::new();
@@ -4495,9 +4926,6 @@ mod unplaced_tests {
         carries_no_deadline(&why);
     }
 
-    // cm:guard the bool is the whole of the once-ness. A reason that repeats is a line per sweep on
-    // a box that sweeps every thirty seconds, which is the silence this issue is about wearing a
-    // different face.
     #[test]
     fn a_reason_is_reported_when_it_arrives_and_when_it_changes_and_never_in_between() {
         let masters = Masters::new();
@@ -4542,9 +4970,6 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard an empty pool answers `AdoptOnly`, NOT "skip". The distinction is the `register`
-    // call, and it is the whole of the field incident: 14 hours of skipped sweeps let core reap the
-    // session row of a master that was running the entire time.
     #[test]
     fn an_empty_pool_still_places_a_pane_that_already_exists() {
         assert_eq!(
@@ -4559,8 +4984,6 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard the bound this replaces was written as a `continue`, and reinstating one here
-    // reinstates the whole defect. What remains is `AdoptOnly`, which starts nothing.
     #[test]
     fn the_empty_pool_branch_no_longer_skips_the_registration() {
         let body = sweep_body();
@@ -4578,10 +5001,6 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard the liveness question comes BEFORE `register` on the adopt-only path. Asking core
-    // first would open a master session row for a project this sweep is about to start no master
-    // for — a row nothing beats for, which is the reaping this change exists to stop, arriving
-    // through the fix.
     #[test]
     fn adopt_only_answers_absent_before_it_asks_core_for_a_session() {
         let body = ensure_master_body();
@@ -4597,16 +5016,12 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard the adopt-only path may not reach the spawn at all, and the window this closes is a
-    // pane that was alive at the first check and gone by the second — the awaits between them are
-    // a core call and an MCP read. Without this return the sweep starts a master for a project with
-    // nothing claimable, which is the bound above failing through the fix meant to keep it.
     #[test]
     fn adopt_only_cannot_fall_through_to_the_spawn_when_the_pane_dies_mid_registration() {
         let body = ensure_master_body();
         let adopted = body
-            .find("return PaneState::Adopted;")
-            .expect("the adopt branch must return");
+            .find("return match capability_of(")
+            .expect("the adopt branch must return on the capability verdict");
         let spawn = body
             .find("install_skill(&resolved.repo_path)")
             .expect("the spawn path must start with the skill install");
@@ -4617,22 +5032,20 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard `created` while a pane is ALIVE is the daemon proving the running pane's capability
-    // is orphaned, and it is reported at ERROR because nothing on this box will clear it.
-    // cm:guard scoped to `adopt_report` and never to the rest of `ensure_master`. The version this
-    // replaces sliced the function from its first `tracing::error!` onward, and the function holds
-    // eight more of them plus later uses of both `{name}` and `session.session_id` — so it stayed
-    // green when the report was demoted to `info!` and when it named neither the pane nor the
-    // session (ISS-1092 criteria 17, 18, measured by planting exactly those three).
     #[test]
-    fn adopting_a_pane_onto_a_freshly_created_session_is_reported() {
+    fn every_adopted_pane_is_judged_against_this_boxs_own_capability_map() {
         let body = ensure_master_body();
         let adopt = body
             .find("adopting the resident session")
             .expect("the adopt branch must be findable");
+        let after = &body[adopt..];
         assert!(
-            body[adopt..].contains("if session.created {"),
-            "a pane adopted onto a session core created fresh holds a capability for the session that one replaced, and nothing else on this box can notice it"
+            after.contains("capability_of(tokens, &session.session_id)"),
+            "every adopt asks the map what this box actually minted; that is the only question whose answer is the same for all seven panes on a box"
+        );
+        assert!(
+            !after.contains("session.created"),
+            "`session.created` is true only when core minted the row at this very call, so a pane whose row was replaced in an earlier sweep is adopted in silence and refused forever — one project of seven was reported on 2026-09-18 and the stuck one was not (ISS-1099)"
         );
         let report = adopt_report();
         assert!(
@@ -4649,11 +5062,6 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard the drained branch LEAVES the iteration, and the assertion is scoped to the branch.
-    // The sweep holds four later `continue`s, so an ordering test over the whole body stays green
-    // when this one is deleted — measured at a40f4bdab, where removing it let a drained project
-    // fall through to `resolve_repo` and `ensure_master` with all 737 tests still passing
-    // (ISS-1092 criterion 11).
     #[test]
     fn a_drained_runner_has_no_master_pane_placed_for_it() {
         let branch = drain_branch();
@@ -4678,9 +5086,6 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard the SWEEP's own call, which `a_recorded_reason_reaches_the_pane_that_asked` does not
-    // reach: that test records a Draining reason by hand and proves only that `why_unplaced` reads
-    // one back. Deleting this call left all 737 tests green (ISS-1092 criterion 12).
     #[test]
     fn a_drained_runner_records_its_status_as_the_reason_no_pane_was_placed() {
         let branch = drain_branch();
@@ -4698,13 +5103,6 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard the WARNING itself, through a real subscriber, and NOT the source text of
-    // `say_unplaced` nor the bool that gates it. This is the one of ISS-1092's log criteria that a
-    // behavioural test can reach — `say_unplaced` is a free function over `Arc<Masters>` and needs
-    // no tmux and no core — so it is reached that way. `a_reason_is_reported_when_it_arrives_...`
-    // asserts what `note_unplaced` ANSWERS, which stayed green when the `tracing::warn!` was
-    // deleted outright (ISS-1092 criteria 15, 16, measured at a40f4bdab: 737 passed with no log
-    // line emitted at all).
     #[test]
     fn an_unplaced_pane_is_reported_once_and_names_its_project_and_reason() {
         let masters = Arc::new(Masters::new());
@@ -4758,6 +5156,556 @@ mod unplaced_tests {
             changed.contains("WARN") && changed.contains("checkout"),
             "a DIFFERENT reason is a different thing for an operator to do, so it is reported \
              again; log was: {changed}"
+        );
+    }
+}
+
+/// A master an owner stood down stays down, and the box tells its two answers
+/// apart (ISS-1118).
+#[cfg(test)]
+mod stand_down_tests {
+    use super::*;
+
+    const SOURCE: &str = include_str!("master.rs");
+
+    fn production() -> &'static str {
+        SOURCE.split("\n#[cfg(test)]").next().unwrap()
+    }
+
+    fn sweep_body() -> &'static str {
+        production()
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("sweep must be findable")
+    }
+
+    fn ensure_master_body() -> &'static str {
+        let rest = production()
+            .split("\nasync fn ensure_master(")
+            .nth(1)
+            .expect("ensure_master must be findable");
+        &rest[..rest.find("\n}").expect("ensure_master must close")]
+    }
+
+    /// The veto's own source. The decision moved out of `sweep` so both
+    /// branches of its loop could reach it — the one that takes work and the
+    /// one that does not.
+    fn verdict_body() -> &'static str {
+        production()
+            .split("\nasync fn standing_verdict(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .and_then(|r| r.split("\nfn ").next())
+            .expect("standing_verdict must be findable")
+    }
+
+    /// The part of the loop reached only for a runner this box takes work for,
+    /// which is where a pane may actually be placed.
+    fn admitting_branch() -> &'static str {
+        let body = sweep_body();
+        let at = body
+            .find("take_pool_job(")
+            .expect("the admitting branch still takes pool jobs");
+        &body[at..]
+    }
+
+    fn stood_down() -> MasterStanding {
+        MasterStanding {
+            project_id: "proj-1".into(),
+            slug: "forge-dev".into(),
+            stood_down_at: 1_000,
+            stood_down_by: "owner".into(),
+            why: Some("a human is driving it".into()),
+            stood_up_at: None,
+        }
+    }
+
+    fn lifted() -> MasterStanding {
+        MasterStanding {
+            stood_up_at: Some(5_000),
+            ..stood_down()
+        }
+    }
+
+    #[test]
+    fn a_project_nobody_stood_down_is_placed_exactly_as_it_is_today() {
+        assert_eq!(placement_under(None, false), Placed::Proceed);
+        assert_eq!(
+            placement_under(None, true),
+            Placed::Proceed,
+            "a live pane under no stand-down is the ordinary case and this decision must not touch it"
+        );
+    }
+
+    #[test]
+    fn a_stood_down_project_gets_no_pane_placed() {
+        assert_eq!(
+            placement_under(Some(&stood_down()), false),
+            Placed::Withheld,
+            "an owner who stood a master down and killed its pane gets it back on the next sweep, resuming the same conversation, because nothing between the ledger and ensure_master reads the stand-down (ISS-1118)"
+        );
+    }
+
+    #[test]
+    fn a_pane_alive_under_a_stand_down_is_a_contradiction_and_not_a_placement() {
+        assert_eq!(
+            placement_under(Some(&stood_down()), true),
+            Placed::Contradicted,
+            "a pane running against a stand-down is reported, never adopted as a driving master and never nudged"
+        );
+    }
+
+    #[test]
+    fn standing_a_master_up_restores_it_to_the_gates_and_not_to_a_pane() {
+        assert_eq!(
+            placement_under(Some(&lifted()), false),
+            Placed::Proceed,
+            "a lifted stand-down withholds nothing; whether a pane is placed is then the usual question of admissible work and a runner that accepts it"
+        );
+        assert_eq!(placement_under(Some(&lifted()), true), Placed::Proceed);
+    }
+
+    #[test]
+    fn the_sweep_reads_the_stand_down_before_it_places_a_pane() {
+        let body = sweep_body();
+        let reads = body.find("read_standing(").expect(
+            "the sweep places a pane for every project it serves and consults no record of one \
+             being stood down, so the kill and the restart are the same lever: `master kill` \
+             removes the pane, touches no ledger row, and the next sweep hands the stored \
+             conversation id back to --resume (ISS-1118)",
+        );
+        let places = body
+            .find("ensure_master(")
+            .expect("the sweep must still be the one thing that places a pane");
+        assert!(
+            reads < places,
+            "the standing is read AFTER the pane is placed, which places the very pane it exists to withhold"
+        );
+    }
+
+    /// Criterion 15. The owner's act is a ledger write and the sweep's answer
+    /// to it must not depend on anything off this box — otherwise a box that
+    /// cannot reach core replaces the pane its owner withheld.
+    #[test]
+    fn the_stand_down_is_read_off_the_ledger_and_decided_before_core_is_asked_anything() {
+        let branch = admitting_branch();
+        let reads = branch
+            .find("read_standing(")
+            .expect("the admitting branch must consult the standing");
+        assert!(
+            branch[reads..].starts_with("read_standing(ledger.as_ref()"),
+            "the standing is read off the same ledger handle the sweep already reads the conversation id from, never off a field on the runner row or a fresh core call"
+        );
+        let reader = production()
+            .split("fn read_standing(")
+            .nth(1)
+            .expect("read_standing must be findable");
+        assert!(
+            reader[..reader.find("\n}").unwrap_or(reader.len())].contains("led.master_standing("),
+            "and `read_standing` asks the ledger and nothing else"
+        );
+        for gating in [
+            "admissible::admissible(",
+            "master_api::register(",
+            "resolve_repo(",
+        ] {
+            assert!(
+                !branch[..reads].contains(gating),
+                "`{gating}` is reached before the standing is, so a project whose owner stood its master down still pays for it — and a box that cannot reach core decides nothing (ISS-1118 criterion 15)"
+            );
+        }
+        assert!(
+            !verdict_body().contains("client")
+                && !verdict_body().contains("admissible::")
+                && !verdict_body().contains("master_api::"),
+            "and the veto itself asks core nothing: no network call stands between the owner's act and the pane not returning"
+        );
+        assert!(
+            sweep_body()[..sweep_body()
+                .find("take_pool_job(")
+                .expect("the sweep still takes pool jobs")]
+                .contains("standing_verdict("),
+            "the draining branch consults the veto too, or a pane running against a stand-down on a box taking no work is reported by no daemon at all (ISS-1118 criterion 4)"
+        );
+    }
+
+    /// Criterion 4, the third place the report was unreachable. A runner that
+    /// takes no new work is a reason to place nothing; it is not a reason to
+    /// stop looking at a pane that is already up.
+    #[test]
+    fn a_box_taking_no_work_still_reports_a_pane_running_against_a_stand_down() {
+        let body = sweep_body();
+        let at = body
+            .find("if !accepts_new_work(&runner.status) {")
+            .expect("the branch for a runner taking no new work must be findable");
+        let rest = &body[at..];
+        let end = rest.find("\n        }").expect("that branch must close");
+        let branch = &rest[..end];
+        assert!(
+            branch.contains("standing_verdict("),
+            "a stood-down project whose box is `draining` never reached the veto, so its contradicted pane was named nowhere: {branch}"
+        );
+        assert!(
+            branch.contains("Placed::Proceed | Placed::Withheld"),
+            "and the louder reason wins the one slot this project has — `draining` explains an absent pane, never a pane that is up and never a standing this box could not read: {branch}"
+        );
+        assert!(
+            !branch.contains("ensure_master(") && !branch.contains("nudge_master("),
+            "looking is not placing: the branch still places nothing and nudges nothing"
+        );
+    }
+
+    /// The other half of that slot. A standing this box could NOT read is the
+    /// loudest thing it has to say about the project; overwriting it with
+    /// `draining` hides it and makes every unchanged sweep after it look like
+    /// a change, which is the repetition `note_unplaced` exists to stop.
+    #[test]
+    fn an_unreadable_standing_is_not_overwritten_by_the_drained_reason() {
+        let masters = Masters::new();
+        let unreadable = Unplaced::StandingUnreadable {
+            detail: "the standing could not be read: disk is gone".into(),
+        };
+        assert!(masters.note_unplaced("proj-1", unreadable.clone()));
+        let drained = Unplaced::Draining {
+            status: "draining".into(),
+        };
+        assert!(
+            masters.note_unplaced("proj-1", drained.clone()),
+            "the two ARE different values, which is exactly why the branch must not write the second over the first"
+        );
+        assert!(
+            masters.note_unplaced("proj-1", unreadable),
+            "and writing them alternately on every sweep is a fresh report every 30s from a box whose state never changed"
+        );
+        let _ = drained;
+    }
+
+    #[test]
+    fn the_sweep_does_not_end_a_pane_it_found_rather_than_placed() {
+        let body = sweep_body();
+        let start = body
+            .find("Placed::Contradicted")
+            .expect("the contradicted branch must be findable");
+        let branch = &body[start..start + 600.min(body.len() - start)];
+        assert!(
+            !branch.contains("terminal::kill"),
+            "the daemon deliberately stopped killing master panes (ISS-933); a pane alive under a stand-down is reported, never terminated by the sweep"
+        );
+    }
+
+    /// Criterion 5. `Contradicted` reports and leaves; anything after it in
+    /// the loop would adopt the pane as this box's master or nudge it.
+    #[test]
+    fn a_pane_alive_under_a_stand_down_is_neither_adopted_nor_nudged() {
+        let body = admitting_branch();
+        let at = body
+            .find("Placed::Contradicted =>")
+            .expect("the contradicted arm must be findable");
+        let rest = &body[at..];
+        let end = rest.find("\n        }").expect("the match must close");
+        let branch = &rest[..end];
+        assert!(
+            branch.contains("continue"),
+            "the arm has to leave the iteration: falling through reaches `ensure_master`, which adopts a live pane as this box's master, and then the nudge: {branch}"
+        );
+        for reached in ["ensure_master(", "nudge_master(", "masters.note_work("] {
+            assert!(
+                !branch.contains(reached),
+                "`{reached}` inside the contradicted arm drives a pane its owner stood down"
+            );
+        }
+        assert!(
+            !verdict_body().contains("ensure_master(")
+                && !verdict_body().contains("nudge_master("),
+            "and the verdict that reports the contradiction places nothing and nudges nothing either"
+        );
+    }
+
+    /// Criterion 17. A pane this sweep started and then ended is two acts an
+    /// operator did not see; the log is the only place either of them exists.
+    #[test]
+    fn the_withdrawal_of_a_pane_this_sweep_placed_is_named_in_the_log() {
+        let body = sweep_body();
+        let at = body
+            .find("was stood down while this sweep was starting it")
+            .expect("the withdrawal must say what it is doing");
+        let before = &body[at.saturating_sub(120)..at];
+        assert!(
+            before.contains("tracing::error!"),
+            "a pane started and then withdrawn inside one sweep is not an info line: {before}"
+        );
+        let after = &body[at..at + 900.min(body.len() - at)];
+        assert!(
+            after.contains("stand-up"),
+            "and it names the act that stops the withdrawal happening again: {after}"
+        );
+        assert!(
+            after.contains("could not withdraw"),
+            "a withdrawal that FAILS is louder still — the pane is up, running against a stand-down, and only the log can say so"
+        );
+    }
+
+    /// Criterion 4, and the defect the reopen was filed for.
+    ///
+    /// `Masters::new()` is not a convenience here — it IS the state a daemon
+    /// that has just started holds, and it is the state EVERY daemon holds for
+    /// a stood-down project, because such a project `continue`s before
+    /// `ensure_master` and `ensure_master` is the only thing that ever puts a
+    /// project in `reg.live`. The report this arm makes must therefore ask
+    /// nothing of `reg.live`. It used to, through `note_capability`, and the
+    /// consequence was zero ERROR lines for the whole life of a daemon meeting
+    /// a pane running against a stand-down.
+    #[test]
+    fn a_contradiction_is_reported_by_a_daemon_that_never_placed_the_pane() {
+        let masters = Masters::new();
+        let contradicted = stood_down_reason(
+            Some(&stood_down()),
+            "judgeproj",
+            Some("forge-master-judgeproj"),
+        );
+        assert!(
+            contradicted.is_error(),
+            "a master driving a project its owner stood down is the one state this change exists to make impossible to miss, so it is not a warn line (ISS-1118 criterion 4)"
+        );
+        assert!(
+            masters.note_unplaced("proj-1", contradicted.clone()),
+            "a daemon that never placed this pane meets it under the stand-down and says nothing — which is the nine-hour silence this issue was filed over, returning on every auto-update restart (ISS-1118 criterion 4)"
+        );
+        assert!(
+            !masters.note_unplaced("proj-1", contradicted),
+            "and it says it once, not on all forty-five sweeps after (ISS-1118 criterion 29)"
+        );
+    }
+
+    /// Criterion 4, the other half: the arm may not go back to gating its
+    /// report on the registry of panes this process placed.
+    #[test]
+    fn the_contradicted_arm_gates_its_report_on_nothing_this_process_placed() {
+        let body = sweep_body();
+        let start = body
+            .find("Placed::Contradicted")
+            .expect("the contradicted branch must be findable");
+        let branch = &body[start..start + 600.min(body.len() - start)];
+        assert!(
+            !branch.contains("note_capability"),
+            "`Masters::note_capability` opens `reg.live.get_mut(project_id)` and returns false for a project that is not there; a stood-down project is in `reg.live` on no daemon that did not place its pane, so a report gated on it is unreachable by its own report: {branch}"
+        );
+    }
+
+    /// Criterion 20. Withheld and contradicted are two different things to
+    /// tell an operator, and one `Unplaced` value for both says the wrong one.
+    #[test]
+    fn a_stood_down_project_with_a_pane_up_is_not_reported_as_having_no_pane() {
+        let withheld = stood_down_reason(Some(&stood_down()), "judgeproj", None);
+        let contradicted = stood_down_reason(
+            Some(&stood_down()),
+            "judgeproj",
+            Some("forge-master-judgeproj"),
+        );
+        assert!(
+            withheld.lead().contains("no master pane placed"),
+            "a project withheld with no pane up is exactly that: {}",
+            withheld.lead()
+        );
+        assert!(
+            !contradicted.lead().contains("no master pane placed"),
+            "the line that survives a contradicted sweep asserted the opposite of what an operator finds: a pane alive, holding a session, reported as none placed: {}",
+            contradicted.lead()
+        );
+        assert!(
+            contradicted.lead().contains("forge-master-judgeproj"),
+            "and it names the pane, which is what `tmux kill-session` needs: {}",
+            contradicted.lead()
+        );
+        assert!(
+            !withheld.is_error(),
+            "a stand-down the box is honouring with no pane up is the owner's own act working, not a fault"
+        );
+        let masters = Masters::new();
+        masters.note_unplaced("proj-1", withheld);
+        assert!(
+            masters.note_unplaced("proj-1", contradicted),
+            "a project that goes from withheld to contradicted — somebody started a pane by hand — is a change, and one value for both states makes it invisible"
+        );
+    }
+
+    #[test]
+    fn a_pane_this_sweep_placed_under_a_stand_down_written_since_is_withdrawn_by_it() {
+        let body = sweep_body();
+        let first = body
+            .find("read_standing(")
+            .expect("the sweep must consult the standing before it places");
+        let after_place = body
+            .find("ensure_master(")
+            .expect("the sweep must still place a pane");
+        let second = body[after_place..]
+            .find("read_standing(")
+            .map(|i| i + after_place);
+        assert!(
+            second.is_some_and(|s| s > first),
+            "a stand-down written while this sweep was starting a pane leaves the pane running until the NEXT sweep, and an owner watching for it to stop sees it not stop (ISS-1118 criterion 16)"
+        );
+    }
+
+    /// F1 from the ISS-1118 review. Folding "could not ask" into "no
+    /// stand-down" is a fail-open: a box whose ledger is unreadable would
+    /// place the pane its owner withheld, and would do it in silence.
+    #[test]
+    fn a_standing_that_cannot_be_read_is_not_read_as_no_stand_down() {
+        assert!(
+            matches!(read_standing(None, "proj-1"), StandingRead::Unreadable(_)),
+            "a box with no ledger at all cannot say what its owner decided, and must not answer that nothing was decided"
+        );
+        let led = Ledger::open_in_memory().expect("an in-memory ledger opens");
+        assert!(
+            matches!(
+                read_standing(Some(&led), "proj-1"),
+                StandingRead::Known(None)
+            ),
+            "a ledger that answers `no row` is a real answer and stays one"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_standing_withholds_the_pane_and_says_which_it_could_not_read() {
+        let body = verdict_body();
+        let at = body
+            .find("StandingRead::Unreadable(detail)")
+            .expect("the veto must handle the unreadable case by name");
+        let branch = &body[at..at + 900.min(body.len() - at)];
+        assert!(
+            branch.contains("return None;"),
+            "the verdict has to refuse rather than answer, and every caller places nothing on a refusal — carrying on to `ensure_master` would place the pane an owner may have withheld"
+        );
+        for call in [
+            "standing_verdict(",
+            "else {\n            continue;\n        };",
+        ] {
+            assert!(
+                sweep_body().contains(call),
+                "and the sweep consumes that refusal by leaving the iteration: `{call}` is missing"
+            );
+        }
+        assert!(
+            !branch.contains("note_capability"),
+            "gating this report on the registry of panes this process placed makes it unreachable on a daemon that placed none, which is every daemon that restarts (ISS-1118 criterion 4): {branch}"
+        );
+        let unreadable = Unplaced::StandingUnreadable {
+            detail: "the standing could not be read: disk is gone".into(),
+        };
+        assert!(
+            unreadable.is_error(),
+            "a box that cannot say whether it is driving a project is reported loudly, on every daemon that meets it"
+        );
+        let why = unreadable.to_string();
+        assert!(
+            why.contains("disk is gone"),
+            "and the reason a pane is absent names what could not be read, not merely that something could not be: {why}"
+        );
+    }
+
+    /// The same unreadable answer must NOT withdraw. Withholding places
+    /// nothing; withdrawing ends a pane nobody may have stood down.
+    #[test]
+    fn an_unreadable_read_back_reports_and_never_withdraws() {
+        let body = sweep_body();
+        let after = body
+            .find("ensure_master(")
+            .expect("the sweep must still place a pane");
+        let recheck = &body[after..];
+        let at = recheck
+            .find("StandingRead::Unreadable(detail)")
+            .expect("the read-back must handle the unreadable case by name");
+        let branch = &recheck[at..at + 900.min(recheck.len() - at)];
+        assert!(
+            branch.contains("NOT being withdrawn"),
+            "the two directions are not symmetric and the log has to say which one this is: {branch}"
+        );
+        assert!(
+            !branch[..branch.find("=> ").map_or(branch.len(), |i| i + 400)].contains("terminal::kill"),
+            "ending a pane on a record this box could not read would take work nobody decided to end"
+        );
+    }
+
+    /// The remainder of F1, found by the recheck. Refusing to withdraw on an
+    /// unreadable record is right; going on to NUDGE the pane is the same
+    /// fail-open one step later — driving a master while unable to say whether
+    /// its project is stood down.
+    #[test]
+    fn a_pane_whose_standing_could_not_be_read_back_is_not_nudged_either() {
+        let body = sweep_body();
+        let sets = body
+            .find("standing_unknown = true;")
+            .expect("the unreadable read-back must mark what it could not establish");
+        let skips = body
+            .find("if standing_unknown {")
+            .expect("and something must act on that mark");
+        let nudges = body
+            .find("nudge_master(masters,")
+            .expect("the sweep still nudges");
+        assert!(
+            sets < skips && skips < nudges,
+            "the mark is set on the unreadable read-back and consumed before the nudge, or a pane is driven under a standing this box could not read"
+        );
+        let branch = &body[skips..nudges];
+        assert!(
+            branch.contains("continue;"),
+            "and it leaves the iteration rather than falling through: {branch}"
+        );
+    }
+
+    /// F3 from the review. The interval is spent when a pane is TOLD it, not
+    /// when a pane exists: an adopted pane was sent no brief at all.
+    #[test]
+    fn the_lifted_interval_is_forgotten_only_once_a_pane_has_been_told_it() {
+        let body = sweep_body();
+        assert!(
+            body.contains("if told.load("),
+            "forgetting on `lifted_interval.is_some()` drops the interval undelivered whenever the pane was adopted rather than started, or its brief failed to land"
+        );
+        let brief = ensure_master_body();
+        assert!(
+            brief.contains("stood_down_told.store("),
+            "and the acknowledgement is raised where the brief is actually delivered, not where one was assembled"
+        );
+        let at = brief
+            .find("stood_down_told.store(")
+            .expect("the acknowledgement must be findable");
+        let window = &brief[at.saturating_sub(200)..at];
+        assert!(
+            window.contains("Ok(()) =>"),
+            "it is raised on a delivered brief only — a failed one told the pane nothing: {window}"
+        );
+    }
+
+    #[test]
+    fn the_unplaced_reason_names_the_act_that_reverses_it() {
+        let why = Unplaced::StoodDown {
+            by: "owner".into(),
+            why: Some("a human is driving it".into()),
+            slug: "forge-dev".into(),
+            pane: None,
+        }
+        .to_string();
+        assert!(
+            why.contains("stand-up forge-dev"),
+            "whatever stops a master reads as reversible from the same surface; the reason a pane is absent names the one command that brings it back: {why}"
+        );
+        assert!(
+            why.contains("owner") && why.contains("a human is driving it"),
+            "who stood it down and why are what tell a deliberate stand-down from a fault: {why}"
+        );
+        let bare = Unplaced::StoodDown {
+            by: "owner".into(),
+            why: None,
+            slug: "forge-dev".into(),
+            pane: None,
+        }
+        .to_string();
+        assert!(
+            bare.contains("stand-up forge-dev") && !bare.contains("()"),
+            "a stand-down with no reason given still names the way back, and does not print an empty one: {bare}"
         );
     }
 }

@@ -1,5 +1,3 @@
-// web-v2 feature module: feedback — REST surface.
-// Routes verified against `packages/core/src/feedback/routes.ts`.
 import { apiClient } from "@/lib/api/client";
 import type { FeedbackFilters, FeedbackReport } from "./types";
 

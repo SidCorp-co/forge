@@ -96,7 +96,6 @@ const pushInputSchema = z
 type SkillCatalogRow = SkillListRow & {
   shadowsGlobal: boolean;
   shadowedGlobalSkillId: string | null;
-  // cm:guard adoption provenance, read by humans deciding whether to re-adopt — NOT a drift signal. Nothing compares it to `basedOnGlobalVersion` any more: the lane that did was deleted with the staged pipeline, so a gap here triggers nothing and must not be re-wired into one without a consumer that acts on it.
   templateVersion: number | null;
 };
 

@@ -28,6 +28,7 @@ import { ActiveOrgProvider } from "@/features/orgs/active-org";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
+import { ForgeVersion } from "@/features/version";
 import { useUnblockCascadeToasts } from "@/features/issues/use-unblock-cascade";
 import { useOpenCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
@@ -107,8 +108,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // project/Workspace (ISS-685). False from the TopBar menu button.
   const [mobileNavProjectFirst, setMobileNavProjectFirst] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  // cm:why the dock's open state and width are per TAB and not per account: opening a conversation in one tab must not pop the panel open in every other one, which is what `useConversationDock`'s `syncTabs: false` buys (ISS-500)
-  // cm:guard the SAME conversation surface is mounted TWICE below and the two are kept exclusive by width alone — the overlay inside the content column is `md:hidden`, `ConversationDock` is `hidden md:flex` — so a breakpoint changed on one and not the other mounts both and a person types into whichever React rendered second
   const { chatOpen, setChatOpen, chatWidth, setChatWidth } = useConversationDock();
   const mainRef = useRef<HTMLElement>(null);
   // Hover-open coordination for the expanded-rail project switcher: the trigger
@@ -354,6 +353,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onWhatsNew={() => router.push("/whats-new")}
             whatsNewBadge={whatsNewUnseen ? 1 : 0}
             onDocs={() => router.push("/docs")}
+            version={<ForgeVersion className="text-9-5 leading-tight" />}
           />
         ) : (
           <>
@@ -374,6 +374,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               user={userInitials ? { initials: userInitials } : undefined}
               orgSwitcher={<OrgSwitcher variant="expanded" />}
               onToggleCollapsed={sidebar.toggleCollapsed}
+              version={<ForgeVersion className="fg-caption truncate" />}
             />
             {/* Searchable project switcher for the expanded rail. */}
             <ProjectFlyout
@@ -406,6 +407,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onOpenProject={(s) => router.push(`/projects/${s}`)}
         onCreateProject={() => router.push("/projects?new=1")}
         onViewAllProjects={() => router.push("/projects")}
+        version={<ForgeVersion className="fg-caption" />}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -452,9 +454,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               fitBody
               hideHeader
             >
-              {/* cm:guard the phone mounts the same `ConversationPanel` the dock does rather than
-                  the chat alone: the two widths are one behaviour, and a history control that
-                  existed on desktop only would leave the phone exactly where ISS-1028 found it. */}
               <ConversationPanel projectId={railProject.id} onClose={() => setChatOpen(false)} />
             </SlideOver>
           </div>

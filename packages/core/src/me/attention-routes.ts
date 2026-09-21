@@ -34,14 +34,11 @@ interface AttentionItem {
   projectSlug?: string;
   projectName?: string;
   /** Awaiting-input only: who can end the wait, and what it costs meanwhile. */
-  // cm:guard OPTIONAL and set by `awaitingItem` alone. `needsReview` is not a wait anybody is paying for, so a cost of three zeros there would read as a measured zero rather than as not-applicable — and the bucket ordered by cost is the only one whose rank needs explaining (ISS-964 criterion 53).
   blockerKind?: string | null;
-  // cm:guard the id of the open question, or null for a park a person entered by hand. It is what lets the row say a DECISION is waiting rather than only that a human is — and a null here on a `waiting` issue is not a missing lookup, it is the honest answer (ISS-980 criterion 25).
   questionId?: string | null;
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
 }
 
-// cm:edge contract -> packages/web-v2/src/features/attention/types.ts — that file mirrors this response verbatim and says so ("do NOT guess field names"); the two move together or the screen renders a bucket the API stopped sending.
 interface AttentionResponse {
   needsReview: AttentionItem[];
   awaitingInput: AttentionItem[];
@@ -69,7 +66,6 @@ function issueItem(kind: AttentionKind, r: AttentionIssueRow): AttentionItem {
   };
 }
 
-// cm:guard wraps `issueItem` rather than replacing it, so the six shared fields have ONE writer: an awaiting row that drifted from the others would show a different link or a different `since` for the same issue depending on which bucket a reader found it in.
 function awaitingItem(r: AttentionAwaitingRow): AttentionItem {
   return {
     ...issueItem('awaiting_input', r),
@@ -153,7 +149,6 @@ meAttentionRoutes.get('/attention', async (c) => {
   const unseenDrafts = unseenDraftRows.map((r) => issueItem('unseen_draft', r));
   const unseenDraftsTotal = Number(unseenDraftCountRows[0]?.total ?? 0);
 
-  // cm:guard `total` counts the ROWS returned, never `unseenDraftsTotal` — the rail badge and the screen both derive from it, and a badge that counts rows the response did not send cannot be reconciled with what the user sees.
   const response: AttentionResponse = {
     needsReview,
     awaitingInput,

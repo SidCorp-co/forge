@@ -1,10 +1,5 @@
 import type { StorageAdapter } from './types.js';
 
-/**
- * Stub S3 adapter. Wired through the env-driven factory so deployments can
- * select `STORAGE_DRIVER=s3` once the implementation lands. Until then any
- * call throws — there is no silent fall-through to local storage.
- */
 export class S3Storage implements StorageAdapter {
   constructor(
     readonly bucket: string,

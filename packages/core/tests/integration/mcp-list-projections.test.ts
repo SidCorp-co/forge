@@ -80,15 +80,11 @@ describe('MCP list projections', () => {
     `);
     const sessionId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, title, status, messages)
-      VALUES (${sessionId}, ${project.id}, ${user.id}, ${runId}, 'chat', 'completed', ${messages}::jsonb)
+      INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, title, kind, status,
+                                  messages)
+      VALUES (${sessionId}, ${project.id}, ${user.id}, ${runId}, 'chat', 'chat', 'completed',
+              ${messages}::jsonb)
     `);
-    // cm:guard ISS-1023 — the ledger rows are part of the fixture now, because `messageCount` is
-    // counted from `agent_session_turns` rather than from the transcript. A session written with a
-    // `messages` array and no turn rows is the LEGACY shape, and it reports `null` rather than a
-    // length; that case has its own assertion in `agent-session-tail.test.ts`. Seeding the turns
-    // here keeps this case about what it was always about — that the row reaches an agent with a
-    // length and without a transcript.
     for (const turnIndex of [0, 1, 2]) {
       await harness.db.execute(sql`
         INSERT INTO agent_session_turns (agent_session_id, turn_index, role, content)
@@ -101,7 +97,6 @@ describe('MCP list projections', () => {
     expect(row).toBeDefined();
     expect(Object.keys(row ?? {})).not.toContain('messages');
     expect(row?.messageCount).toBe(3);
-    // cm:guard `diff` and the three `pipeline*` jsonb columns are unbounded too, and the REST list carries them while this one must not — asserting only `messages` would let the next widening through the one gap it actually costs an agent its turn to hit.
     for (const heavy of [
       'diff',
       'usage',

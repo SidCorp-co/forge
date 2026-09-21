@@ -31,7 +31,6 @@ export interface TranscriptSearchToolOptions {
 }
 
 /** A tool's JSON arguments as an object, or the refusal a caller is owed. */
-// cm:guard `null` and a bare scalar are valid JSON and not an object, and a read of `.query` off them throws out of the tool instead of refusing by name — the same guard every adapter's own `readToolArgs` carries, for the same reason.
 function readArgs(argsJson: string): { args: Record<string, unknown> } | { error: string } {
   if (!argsJson.trim()) return { args: {} };
   let parsed: unknown;
@@ -48,7 +47,6 @@ function readArgs(argsJson: string): { args: Record<string, unknown> } | { error
 /**
  * Build the room's transcript-search tool.
  */
-// cm:guard the CONVERSATION and the PRINCIPAL are closed over and are not parameters: a room id the model could name is a room the model could name somebody else's, and the fence would then be the only thing between a turn and another room's text. A bound the model is asked to keep is not a bound, so the call budget lives in this closure and the result bounds live in the search (ISS-1090 rule 6).
 export function buildTranscriptSearchToolset(opts: TranscriptSearchToolOptions): ChatToolset {
   let calls = 0;
 
@@ -64,7 +62,6 @@ export function buildTranscriptSearchToolset(opts: TranscriptSearchToolOptions):
     if ('error' in read) return toolError(read.error);
     const query = typeof read.args.query === 'string' ? read.args.query.trim() : '';
     if (!query) return toolError(`${TRANSCRIPT_SEARCH_TOOL_NAME} needs a non-empty \`query\``);
-    // cm:guard a long query is REFUSED and never cut to fit: a clipped query is a different question, and answering it as though it were the one asked is the silent substitution this whole file exists to avoid.
     if (query.length > SEARCH_QUERY_CAP) {
       return toolError(
         `${TRANSCRIPT_SEARCH_TOOL_NAME} takes a query of at most ${SEARCH_QUERY_CAP} characters and this one is ${query.length}; ask a shorter question rather than a cut one`,
@@ -81,7 +78,6 @@ export function buildTranscriptSearchToolset(opts: TranscriptSearchToolOptions):
       });
       return { content: [{ type: 'text', text: JSON.stringify(await withLinks(result, opts)) }] };
     } catch (err) {
-      // cm:guard the FENCE's own sentence reaches the model, because it names which of the four refusals this was — no authority, no scope, out of scope, not in the room — and a turn told "nothing matched" would go on to answer from the room it cannot read as though the room were empty (ISS-1090 rule 1).
       return toolError(refusalText(err));
     }
   };
@@ -125,7 +121,6 @@ function refusalText(err: unknown): string {
 /**
  * Attach a link to every source the venue can build one for.
  */
-// cm:guard a source with no usable transport id gets NO link and the search's own limitation already names it: inventing a room-level link for a message nobody can address would send a person to the top of a six-month channel and call it a citation (ISS-1090 rule 6).
 async function withLinks(
   result: Awaited<ReturnType<typeof searchConversationTranscript>>,
   opts: TranscriptSearchToolOptions,

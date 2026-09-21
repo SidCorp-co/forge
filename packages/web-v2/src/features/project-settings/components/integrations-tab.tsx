@@ -12,6 +12,7 @@ import {
   Card,
   CardContent,
   Field,
+  SectionTitle,
   Select,
   type SelectOption,
 } from "@/design";
@@ -57,9 +58,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const [connectionId, setConnectionId] = useState<string>("");
   const [role, setRole] = useState<BindingRole>("service");
   const [stages, setStages] = useState<DeployStage[]>([]);
-  // cm:guard the closed answer is the initial state and is re-seeded on every successful bind:
-  // a grant carried over from the previous connection in this same form would hand a credential to
-  // a runner box on the strength of an answer given about a different one.
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -87,11 +85,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const agentPathKind = provider ? (providerModule(provider)?.agentPathKind ?? "none") : "none";
   const isOrgAdmin = useIsOrgAdmin(projectId);
 
-  // cm:guard the role picker CLEARS the stages it hides rather than leaving them in
-  // state: a hidden control whose value still submits is how a service binding
-  // reaches the server carrying a stage, which the database refuses by constraint
-  // (`integration_bindings_role_stages_chk`) — a 500 where the form could have
-  // simply not sent it.
   function chooseRole(next: BindingRole) {
     setRole(next);
     setFormError(null);
@@ -105,11 +98,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
 
   function submit() {
     if (!connectionId) return;
-    // cm:guard both refusals are the FORM's, and neither is the check. The server
-    // refuses a deploy role on a provider with no deploy adapter
-    // (`integrations/connection-routes.ts`) and the database refuses a deploy
-    // binding with no stage; these two say so before the round trip, and say which
-    // provider, because "400 Bad Request" names neither.
     if (role === "deploy" && !canDeploy) {
       setFormError(
         `Forge cannot deploy to ${providerName} — it has no deploy adapter. Share it as a service, or pick a connection Forge can deploy to.`,
@@ -145,7 +133,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-1">Share an existing connection</h2>
+        <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
         <p className="fg-body-sm mb-4 text-muted">
           Bind one of your connections to this project without re-entering the credential. The
           connection&apos;s owner keeps it; this project gets a webhook secret of its own.

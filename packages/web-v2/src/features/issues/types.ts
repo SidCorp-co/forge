@@ -1,14 +1,3 @@
-// web-v2 feature module: issues (Issues view + Issue detail) — ISS-293/294.
-//
-// Types are re-typed to match the exact rows core returns. The canonical row
-// types live in `@forge/contracts` (`Issue`, `Comment`, `ActivityLog`, …) but
-// those derive from Drizzle `$inferSelect` and so type date columns as `Date`,
-// whereas the REST JSON wire format serializes them as ISO strings. The search
-// endpoint serves `pipelineHealth` only when the caller opts in with
-// `withPipelineHealth=1` (ISS-903 — see `packages/core/src/issues/search.ts`).
-// So the list row is re-typed locally with string dates + optional
-// `pipelineHealth`, mirroring how
-// `features/sessions/types.ts` re-typed the flat `agent_sessions` row.
 
 import type { BodyNode, ForgeRecordView, RecordLens } from "@forge/contracts";
 import {
@@ -34,10 +23,6 @@ export const ISSUE_COMPLEXITIES: IssueComplexity[] = [...REGISTRY_ISSUE_COMPLEXI
 /** Agent run status hydrated by the search endpoint (`withAgentSessions=1`). */
 export type IssueAgentStatus = "running" | "queued" | "completed" | "failed" | null;
 
-/** Hydrated agent session summary (search endpoint, `withAgentSessions`). The
- *  runner/heartbeat fields (ISS-377) are optional for back-compat — an older
- *  server that predates the hydrator extension simply omits them, and the
- *  live-agent panel degrades (hides device, falls back to `updatedAt`). */
 export interface IssueAgentSession {
   id: string;
   status: string;
@@ -67,20 +52,9 @@ export interface IssueFailureInfo {
   failedAt: string;
 }
 
-/**
- * One issue row from `GET /api/projects/:id/issues/search`. A projection of the
- * `issues` row — every scalar, none of the body columns (ISS-1016) — plus
- * `displayId` (`ISS-<issSeq>`) and, when `withAgentSessions=1`,
- * `agentSessions[]` + `agentStatus`. `pipelineHealth` arrives only under
- * `withPipelineHealth=1`; without it, per-row pipeline stage is derived from
- * `status` and a queued-but-undispatched step is invisible (ISS-903).
- */
 /** A label's taxonomy role. Modules ARE labels; `kind` is the only thing that separates them. */
-// cm:edge contract -> packages/core/src/db/schema.ts#labelKinds — a third kind added there and not here renders as neither a module nor a label
 export type LabelKind = "label" | "module";
 
-// cm:edge contract -> packages/contracts/src/rows.ts — the rollup shapes are core's, re-exported
-// here so every issues-feature import of a module type comes from one place.
 export type {
   ModuleAttributionCounts,
   ModuleCounts,
@@ -89,7 +63,6 @@ export type {
 } from "@forge/contracts";
 
 /** One module attributed to an issue. Primary first in every array core sends. */
-// cm:edge contract -> packages/core/src/issues/label-service.ts#ModuleAttribution — re-typed rather than imported, as every other core payload on this screen is
 export interface ModuleAttribution {
   labelId: string;
   name: string;
@@ -119,23 +92,13 @@ export interface IssueRow {
   updatedAt: string;
   agentSessions?: IssueAgentSession[];
   agentStatus?: IssueAgentStatus;
-  /** ISS-437 — per-issue usage rollup in USD, present when the search call
-   *  opts in with `withCost=1` (the list always does). 0 = no usage recorded. */
   estimatedCost?: number;
   failureInfo?: IssueFailureInfo | null;
   /** ISS-764 — set when a batch release has claimed this issue. Non-null means
    *  the issue is locked into a batch and cannot be selected for a new one. */
   releaseBatchRunId?: string | null;
-  /** ISS-903 — present when the search call opts in with
-   *  `withPipelineHealth=1` (the list and the board both do). */
   pipelineHealth?: PipelineHealth;
-  /** ISS-594 — present when the search call opts in with `withModules=1` (the
-   *  list does). Primary first; `[]` when the issue has no module. */
   modules?: ModuleAttribution[];
-  /** ISS-1017 — present when the search call opts in with
-   *  `withDependencies=1` (the list does), and the list row's ONLY source of
-   *  edges since it stopped fetching one `GET /issues/:id/dependencies` per
-   *  row. Both arrays are always present; empty means no edges. */
   dependencies?: IssueDependencies;
 }
 
@@ -143,6 +106,10 @@ export interface IssueRow {
 export interface ProjectMember {
   userId: string;
   email: string;
+  /** The name an admin or the member typed; null until somebody has. */
+  displayName: string | null;
+  /** ISS-1137 — an agent account is a project member like any other. */
+  kind: "human" | "agent";
   role: string;
   createdAt: string;
 }
@@ -167,11 +134,6 @@ export type IssueDependencyKind =
   | "parent"
   | "decomposes";
 
-/** One dependency edge from `GET /api/issues/:id/dependencies`. Each edge is
- *  enriched (ISS-331) with both endpoints' friendly `displayId` (`ISS-<seq>`),
- *  title, and status so relation chips render a clickable `ISS-X` link without
- *  extra fetches. The enrichment fields are optional/nullable for back-compat
- *  (a deleted endpoint or an older server omits them). */
 export interface IssueDependencyEdge {
   id: string;
   fromIssueId: string;
@@ -192,12 +154,6 @@ export interface IssueDependencies {
   incoming: IssueDependencyEdge[];
 }
 
-/** Client-side filter tabs → server `status`/`statusNot` arrays. `all` means
- *  literally every issue INCLUDING drafts (ISS-360 reverses the ISS-236 "All
- *  excludes drafts" rule). `draft` and `done` are explicit buckets (ISS-438) —
- *  unlike the removed ISS-236 "All + drafts" split, they narrow rather than
- *  change what "All" means. */
-// cm:guard the tabs ask WHO HOLDS THE WORK, never which rung it is on. The rungs move — `tested` left the ladder with ISS-897 and a tab naming it kept offering a bucket nothing could fill — but "a person must act" and "a machine is acting" do not. Each bucket is resolved through `statusesForLabels`, so a status added to the kernel lands in a tab without anyone editing a tuple here.
 export type IssueFilter = "all" | "draft" | "findings" | "you" | "agent" | "done";
 
 /** Client-side grouping for the list. */
@@ -236,7 +192,6 @@ export interface IssueSearchOpts {
 
 /** Full issue row from `GET /api/issues/:id` — includes `pipelineHealth`,
  *  joined `labels[]`, `mergedAt`, `reopenCount`, `metadata`, `plan`, AC. */
-// cm:edge contract -> packages/core/src/labels/routes.ts#labelColumns — `GET /projects/:id/labels` projects exactly these; the issue-detail join answers the same row plus `isPrimary` and without `projectId`
 export interface IssueLabel {
   id: string;
   projectId?: string;
@@ -252,10 +207,6 @@ export interface IssueLabel {
 }
 
 export interface IssueDetail extends IssueRow {
-  // cm:guard ISS-1016 — `description` is a DETAIL field and not a list one. The two list endpoints
-  // select a projection that never reads it off disk, so a list row declaring it would promise a
-  // field the server does not send; the single-issue reads (`GET /api/issues/:id`, the PATCH and
-  // transition returns) are the only payloads that carry it.
   description: string | null;
   plan: string | null;
   acceptanceCriteria: string | null;
@@ -263,7 +214,6 @@ export interface IssueDetail extends IssueRow {
   descriptionFormat?: string | null;
   /** ISS-898 — the root component name, null for prose and every markdown row. */
   descriptionTemplate?: string | null;
-  // cm:edge contract -> packages/core/src/issues/routes.ts#serializeIssue — the tree comes from `parseBody` WITHOUT `validateBody`, so a `forge-*` name this build never heard of arrives as an ordinary element. `<BodyView>` draws it; code here that assumes a known name draws nothing (ISS-967).
   descriptionNodes?: BodyNode[] | null;
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
@@ -279,7 +229,6 @@ export type WaitingReason =
   | "runner_stale"
   | "runner_too_old";
 
-// cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`, the AUTHORED kind an agent or human writes alongside `status='waiting'`; it is never derived, so an absent kind must render the generic copy rather than a guessed one
 export type WaitingCause = "needs_decision" | "needs_resource";
 
 /** ISS-903 — the queued candidate, as core projects it. */
@@ -299,11 +248,6 @@ export interface PipelineHealth {
   activeSession?: { id: string; status: "queued" | "running"; skill: string };
   waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
   queuedAt?: string;
-  /** ISS-903 — WHAT has not dispatched (`waitingOn` says why). Present whenever
-   *  the issue has a queued job, gated or not; a queued job has no
-   *  `agent_sessions` row, so this is the only signal the live-agent panel and
-   *  the board card have for a step that exists but is not running. */
-  // cm:edge contract -> packages/core/src/issues/pipeline-health-types.ts — this interface is a hand-mirror of core `PipelineHealth`, not an import; a field added there is invisible here until it is added here too
   queuedStep?: PipelineHealthQueuedStep;
   /** Only set when `stage === "waiting"`. */
   waitingCause?: { kind: WaitingCause };
@@ -313,11 +257,6 @@ export interface PipelineHealth {
   pausedRun?: PipelineHealthPausedRun;
 }
 
-/** ISS-853 — core's `PipelineHealthPausedRun`, hand-mirrored like the rest of
- *  this interface. `resumer` is who ENDS the pause and the only thing the
- *  banner's copy may branch on; core derives it in `run-pause.ts#describePause`
- *  from the kind lists that module owns. */
-// cm:edge lockstep -> packages/core/src/pipeline/run-pause.ts — `PauseResumer` is the authority on this union; a fourth resumer added there and not here arrives as an unrecognised string and `pausedRunView` in ./waiting falls through to the sweeper case, which is the one that tells the reader nobody needs to act
 export type PauseResumer = "operator" | "machine" | "sweeper";
 
 export interface PipelineHealthPausedRun {
@@ -368,12 +307,6 @@ export interface CommentAttachment {
   createdAt: string;
 }
 
-/**
- * Resolved actor identity (ISS-519) — server-resolved `(type,id)` → display
- * identity. `user` → a human member (email); `device` → an agent (device name,
- * `isAgent: true`, optionally the owning member's email). An unresolvable actor
- * degrades to `displayName: "Unknown"`. Mirrors core `actor-resolution.ts`.
- */
 export interface ResolvedActor {
   type: "user" | "device";
   id: string;
@@ -394,14 +327,9 @@ export interface CommentNode {
   record: (ForgeRecordView & { lens: RecordLens }) | null;
   /** ISS-932 wave 4 — the BOX a credential was issued to. Answers *where*, never *who*. */
   authorDeviceId?: string | null;
-  /** ISS-969 — who was at the keyboard, from the credential. NULL is "no evidence", not 'human'.
-   *  The rendered marker is `author.isAgent`, which the server has already OR'd this into
-   *  (ISS-1093); this field is here so a reader can tell an un-evidenced row from a human one. */
-  authorAgency?: "human" | "agent" | null;
   body: string;
   /** `markdown` (the default and every pre-existing row) or `html` (ISS-898). */
   format: string;
-  /** Root component name when `format` is `html`; null for a markdown body. */
   template: string | null;
   parentId: string | null;
   createdAt: string;
@@ -461,8 +389,6 @@ export interface CreatedIssue extends IssueRow {
   attachmentErrors?: AttachmentErrorEntry[];
 }
 
-/** Attachment row from `GET /api/issues/:id/attachments` — `url` is the
- *  download path, render through `coreFileUrl`. */
 export interface AttachmentRow {
   id: string;
   issueId: string;

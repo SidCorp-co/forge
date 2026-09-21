@@ -1,6 +1,4 @@
-/** Slug helpers shared by create-org / create-project forms. */
 
-/** Name → slug: lowercase, non-alphanumerics → hyphens, collapse + trim, ≤64. */
 export function slugify(name: string): string {
   return name
     .toLowerCase()

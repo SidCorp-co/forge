@@ -6,7 +6,16 @@
 // NAVIGATES to the existing destination (issue-detail / review / relations) —
 // no new mutations, no duplication of ISS-377/366.
 import { useRouter } from "next/navigation";
-import { Button, Card, CardContent, EmptyState, Icon, type IconName, MonoTag } from "@/design";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardTitle,
+  EmptyState,
+  Icon,
+  MonoTag,
+  type IconName,
+} from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import { formatRelativeTime } from "@/features/projects/derive";
 import type { AttentionActionKind, DashboardAttentionItem } from "../derive";
@@ -39,11 +48,11 @@ export function AttentionQueue({ items, now }: { items: DashboardAttentionItem[]
     <Card className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-line-subtle px-5 py-3.5">
         <Icon name="inbox" size={16} className="text-subtle" />
-        <h3 className="fg-h3">Needs your attention</h3>
+        <CardTitle>Needs your attention</CardTitle>
         {items.length > 0 && (
           <span
             className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-            style={{ fontSize: 11, lineHeight: "16px", color: "var(--accent-text)", background: "var(--flame-50)" }}
+            style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--accent-text)", background: "var(--flame-50)" }}
           >
             {items.length}
           </span>
@@ -63,7 +72,7 @@ export function AttentionQueue({ items, now }: { items: DashboardAttentionItem[]
                 >
                   <span
                     className="inline-flex flex-none items-center gap-1 whitespace-nowrap rounded-pill px-1.5 py-0.5 font-semibold"
-                    style={{ color: m.fg, background: m.bg, fontSize: 11 }}
+                    style={{ color: m.fg, background: m.bg, fontSize: "var(--text-11)" }}
                   >
                     <Icon name={m.icon} size={12} style={{ color: m.fg }} />
                     {m.tag}

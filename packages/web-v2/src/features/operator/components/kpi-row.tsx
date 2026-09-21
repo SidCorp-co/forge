@@ -27,7 +27,6 @@ export function KpiRowSkeleton() {
   );
 }
 
-// cm:edge contract -> packages/core/src/admin/aggregate-routes.ts — `kpis.openAlerts` is now counted there from the SHARED `computeAlerts`, the same five alerts the feed one card below renders, so this tile reads it directly (ISS-654). It must never go back to a locally derived count: two definitions is how "0 · nothing needs you" came to print above a red crit row, the state-lies failure VISION №10 forbids.
 export function KpiRow({ overview }: { overview: AdminOverview }) {
   const { counts, kpis } = overview;
   const spendDelta = formatDelta(

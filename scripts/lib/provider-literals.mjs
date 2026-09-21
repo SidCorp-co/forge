@@ -1,42 +1,3 @@
-// Where an integration provider's NAME is allowed to be written down.
-//
-// ISS-1071's rule is that one declaration describes a provider and every generic
-// path asks the registry instead of naming it. A `provider === 'coolify'` in a
-// status card, a `['epodsystem','postman','sentry']` in an MCP resolver and a
-// per-provider branch in a web drawer are all the same defect wearing three
-// shapes: adding the eighth provider means editing all of them, and forgetting
-// one is silent — the generic path keeps working for the seven it knows.
-//
-// A type cannot hold this. `IntegrationProvider` makes `'coolify'` legal
-// EVERYWHERE the union is in scope, which is the whole point of the union; what
-// is wrong is not the value but the place. So the rule is about location, and
-// the check is a scan.
-//
-// ## The two bounds this scan has, stated rather than discovered later
-//
-// 1. It matches a literal whose WHOLE content is the provider name, case
-//    sensitively. `'Coolify'` is a display label and `'coolify: healthcheck
-//    failed'` is a log line; neither dispatches on anything. Measured across the
-//    three scan roots on 2026-09-17: the exact rule named 70 files, and widening
-//    it to "the name appears as a word anywhere in the literal" added 51 more —
-//    `"Continue with GitHub"`, `"next/font/google"`, `"@/lib/sentry"`,
-//    `"coolify.confirm"` span names and every `<provider>-section.tsx` label.
-//    That is the shape `check-pat-surface`'s own guard names as worse than no
-//    checker: at 95% noise a reader learns to skip the report.
-//    What the bound costs: `startsWith('epodsystem_')` is a provider name and
-//    this rule does not see it. It is a real hole and it is priced here rather
-//    than papered over — every file carrying such a prefix today also carries
-//    the bare value, so nothing is currently hidden by it.
-// 2. Quotes inside a regex literal are not distinguished from a string, because
-//    telling `/['"]/` from division needs a parser. The scan aborts a quoted run
-//    that reaches a newline unclosed and resumes at the next character, so the
-//    damage is bounded to one line and shows up as a missed literal, never as an
-//    invented one.
-
-// cm:guard the tokenizer skips comments BEFORE matching, and that is load-bearing rather than
-// tidy: this repo's `cm:guard` and `cm:why` prose quotes the very literals the rule forbids —
-// `registry.ts` explains the retired `startsWith('epodsystem_')` gate by writing it out — and a
-// scan that accused its own documentation would be uninhabitable within a week.
 /**
  * Every quoted string literal in a TypeScript source, comments excluded.
  *
@@ -104,9 +65,6 @@ export function stringLiterals(text) {
     if (c === "'" || c === '"') {
       const quoted = readQuoted(text, i, c);
       if (quoted === null) {
-        // cm:guard an unterminated run is NOT emitted and advances exactly one character. That is
-        // what keeps a regex literal's own quote from swallowing the rest of the file: the scan
-        // realigns at the next newline instead of reading code as string.
         i++;
         continue;
       }
@@ -156,11 +114,6 @@ function readQuoted(text, start, quote) {
   return null;
 }
 
-// cm:guard `**` spans path separators and a single `*` does not, which is the difference between
-// `packages/core/src/db/**` (a subtree, and what the manifest means) and `packages/*/src`. Every
-// other character is escaped, so a glob carrying a `.` matches a dot and not any character — a
-// pattern language that quietly accepted regex metacharacters would let one allowlist entry admit
-// far more than its author read.
 /** A repo-relative glob supporting `*` and `**`, anchored at both ends. */
 export function globToRegExp(glob) {
   const body = glob
@@ -180,11 +133,6 @@ export function isAllowed(path, allowed) {
   return allowed.some((entry) => globToRegExp(entry.glob).test(path));
 }
 
-// cm:guard an entry with no `why` is a CONFIG fault and exits 2, never a silently honoured
-// exemption. An allowlist is where a rule goes to die quietly: each line removes a subtree from
-// the scan, and a line nobody can read the reason for is one nobody can retire either. The
-// requirement is ISS-1071's own acceptance criterion — each declared allowed location carries the
-// reason it is allowed — so it is enforced here rather than reviewed by eye.
 /** @returns one sentence per malformed `allowed` entry; empty when the list is well formed. */
 export function allowedFaults(allowed) {
   if (!Array.isArray(allowed)) return ['checkers.provider-literals.allowed is not an array'];
@@ -202,11 +150,6 @@ export function allowedFaults(allowed) {
   return faults;
 }
 
-// cm:guard this is what stops a provider leaving the scan by being forgotten. `agent` is out of
-// the scanned set on purpose and says so in `unscannable`; the difference between that and a
-// provider quietly dropped from `providers` is exactly this function. Every name the code declares
-// must appear in one list or the other, and an eighth provider added to the union with neither
-// entry takes the checker to exit 2 rather than to a smaller scan nobody notices.
 /** @returns one sentence per declared provider that is in neither the scanned nor the excused set. */
 export function coverageFaults(declared, providers, unscannable) {
   const excused = new Set((unscannable ?? []).map((u) => u?.provider));

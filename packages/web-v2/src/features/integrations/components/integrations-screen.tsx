@@ -19,6 +19,7 @@ import {
   Input,
   NativeSelect,
   PageContainer,
+  PageTitle,
   Skeleton,
 } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
@@ -148,7 +149,6 @@ export function IntegrationsScreen() {
       : activeOrg.name
     : "this workspace";
 
-  // cm:guard three empty states, never one — "no connections yet" was rendered for a scope that merely HID them, which reads as data loss to anyone who created the credential under a different org
   function renderEmpty() {
     if (inScope.length > 0) {
       return (
@@ -188,7 +188,7 @@ export function IntegrationsScreen() {
     <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="fg-h2">Connections</h1>
+          <PageTitle className="fg-h2">Connections</PageTitle>
           <p className="fg-body-sm text-muted">
             Credentials in {scopeName}, shared across projects. Configure a project&apos;s
             integrations in its settings → Integrations.
@@ -259,7 +259,6 @@ export function IntegrationsScreen() {
       )}
 
       {
-        // cm:guard mount the drawer only while a card is selected — it opens its own binding and org queries on mount, so rendering it always (hidden behind an `open` prop) fires them on every visit to the directory
         selected && <ConnectionEditDrawer connection={selected} onClose={closeDrawer} />
       }
     </PageContainer>

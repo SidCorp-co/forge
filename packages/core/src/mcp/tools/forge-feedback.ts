@@ -29,13 +29,10 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
 const inputSchema = z
   .object({
     action: z.enum(['submit', 'list', 'review', 'get']),
-    // cm:guard optional in the SCHEMA and required by the `submit` arm — `list`, `get` and `review` legitimately resolve the caller's project, so making it required here would refuse three working calls to fix one (ISS-992)
     projectId: z.uuid().optional(),
-    // cm:why scope: 'project' (default, caller's resolved project) or 'all' (every project the principal can see) — applies to list and bulk review.
     scope: z.enum(['project', 'all']).optional(),
     reportId: z.uuid().optional(),
     reviewed: z.boolean().optional(),
-    // cm:guard the issue this report was curated INTO, distinct from the report's own `issueId`, which is the issue it was observed on.
     linkedIssueId: z.uuid().optional(),
     // bulk-review field: stamp every report sharing this signalKey
     signalKey: z.string().max(500).optional(),
@@ -118,7 +115,6 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     switch (input.action) {
       case 'submit': {
-        // cm:guard submit REFUSES an omitted projectId and never resolves the caller's current one — a read that looks at the wrong feed is visibly empty, a write into it is invisible, and the response named no project, so a defect about another project landed where nobody triaging it would look (ISS-992). `list`, `get` and `review` keep resolving, deliberately.
         if (!input.projectId) {
           throw new Error(
             'BAD_REQUEST: projectId is required for submit — a report is filed against the project whose defect it describes, and the server will not guess which that is. ' +
@@ -132,14 +128,12 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.target) throw new Error('BAD_REQUEST: target is required for submit');
         if (!input.summary) throw new Error('BAD_REQUEST: summary is required for submit');
 
-        // cm:guard the pipeline context is SERVER-resolved from the job this token was minted for and is never taken from the caller's input — that is what makes it attribution rather than a claim. A person's PAT names no job, so every context field stays null instead of borrowing whatever job that box ran last, which is what the pre-ISS-931 device lookup did.
         const resolved = await resolvePipelineContext(principal);
         const active = resolved.ok ? resolved.context : null;
         const jobId = active?.jobId ?? null;
         const runId = active?.runId ?? null;
         const issueId = active?.issueId ?? null;
         const stage = active?.stage ?? null;
-        // cm:guard ISS-557 — a steward run is a schedule session with NO job row, and its report must still carry a session id. That is why `resolvePipelineContext` resolves the SESSION and left-joins the job: reading the session off the job would drop every steward report's attribution.
         const sessionId = active?.agentSessionId ?? null;
 
         // Per-job rate-limit (server-enforced). Interactive callers (no jobId)
@@ -235,14 +229,12 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'review': {
         const reviewed = input.reviewed ?? true;
 
-        // cm:guard one resolution per call, shared by the scope condition and the link lookup: a bulk review with `scope="all"` and a `linkedIssueId` ran `loadVisibleProjectIdsForPrincipal` TWICE, the same join over `projects`/`project_members`/`organization_members` asked and answered a second time inside `resolveLinkedIssue` (ISS-1025). Memoized on the promise, not the value, so two awaits in flight still share one query.
         let visibleIdsOnce: Promise<string[]> | null = null;
         const visibleIds = (): Promise<string[]> => {
           visibleIdsOnce ??= loadVisibleProjectIdsForPrincipal(principal);
           return visibleIdsOnce;
         };
 
-        // cm:why a report records WHERE the defect was observed, not who owns the fix — which almost always lands in the Forge project itself, so linkedIssueId resolves against every project the caller can SEE rather than the report's own project; requiring same-project made the field unusable for exactly the reports it exists to close, and caller visibility still bounds the lookup
         const resolveLinkedIssue = async (linkedIssueId: string): Promise<string> => {
           const ids = await visibleIds();
           if (ids.length === 0) {
@@ -253,7 +245,6 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           return linkedIssueId;
         };
-        // cm:why bulk and single share this so a signalKey fold and a one-off fold can never drift on what a valid link is
         const linkPatch = async (): Promise<{ linkedIssueId?: string | null }> => {
           if (!reviewed) return { linkedIssueId: null };
           if (!input.linkedIssueId) return {};
@@ -310,10 +301,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsMember(principal, projectId);
         if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
 
-        // cm:why ISS-712 — linking is explicit only; nothing here auto-stamps a link by heuristic
         const patch = await linkPatch();
 
-        // cm:why omitting the field leaves an existing link untouched (back-compat); only reviewed:false clears it
         const [updated] = await stampReviewed(
           [eq(feedbackReports.id, input.reportId), eq(feedbackReports.projectId, projectId)],
           { reviewedAt: reviewed ? new Date() : null, ...patch },

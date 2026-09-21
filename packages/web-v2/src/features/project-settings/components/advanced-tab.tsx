@@ -6,6 +6,7 @@ import {
   CardContent,
   Field,
   Input,
+  SectionTitle,
   Select,
   type SelectOption,
 } from "@/design";
@@ -49,7 +50,7 @@ export function AdvancedTab({
 
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-1">Archive project</h2>
+          <SectionTitle className="fg-h3 mb-1">Archive project</SectionTitle>
           {isArchived ? (
             <>
               <p className="fg-caption mb-4 text-muted">
@@ -175,7 +176,7 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-1">Move to organization</h2>
+        <SectionTitle className="fg-h3 mb-1">Move to organization</SectionTitle>
         <p className="fg-caption mb-4 text-muted">
           Transfer this project to another organization you administer. Owners
           and admins of the destination org will manage the project; per-project

@@ -36,10 +36,6 @@ function Kind({ record }: { record: ForgeRecordView }): ReactNode {
 }
 
 function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }): ReactNode {
-  // cm:guard the label follows the ACTUAL disclosure state and not the lens it started in. Native
-  // `<details>` opens and closes without React, so a label derived from the prop alone tells an
-  // expanded product field to "Show all" and a collapsed technical one to "Fold" — the summary
-  // naming the opposite of what pressing it does (codex F4).
   const [shown, setShown] = useState(open);
   const body = (
     <div className="fg-body-sm whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
@@ -47,19 +43,11 @@ function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }):
     </div>
   );
   return (
-    // cm:guard the value cell carries `min-w-0`, and without it the card overflows its own column at
-    // 375: a grid item's `min-width` defaults to `auto`, which refuses to shrink below the content's
-    // minimum, so one long path in a `where:` field made the card 476px wide inside a 265px column.
-    // Measured on the walk at 2026-09-17; `[overflow-wrap:anywhere]` on the text alone does not
-    // reach it, because the constraint is the track's and not the text's.
     <div className="grid grid-cols-[minmax(4.5rem,max-content)_minmax(0,1fr)] gap-x-3 gap-y-1 border-b border-line-subtle px-3 py-2 last:border-b-0">
       <div className="fg-caption min-w-0 break-words pt-0.5 font-mono text-muted [overflow-wrap:anywhere]">
         {fieldLabel(field.key)}
       </div>
       {field.over > 0 ? (
-        // cm:guard `<details>` and not a height clamp: the whole value is in the DOM either way, so
-        // a reader searching the page finds it and a copy takes all of it. A clamp that renders
-        // fewer characters is the truncation this card exists not to do.
         <details
           className="min-w-0"
           open={shown}
@@ -90,9 +78,6 @@ function keyed(
 }
 
 export function RecordCard({ record, lens = "product", className }: RecordCardProps): ReactNode {
-  // cm:guard a record carrying no `lead` draws NO lead line and nothing standing in for one. Taking
-  // the first field's text as a headline is the substitution the parse refuses to make one layer
-  // down, and it would put a sentence in the reader's eye that no writer composed.
   const lead = record.lead;
   return (
     <section
@@ -107,12 +92,6 @@ export function RecordCard({ record, lens = "product", className }: RecordCardPr
       <div>
         {keyed(record.fields).map(([id, field]) => (
           <Field
-            // cm:guard the key counts how many fields of this name came BEFORE it, rather than
-            // being the array index or the bare key. A key repeated inside one fence is two fields,
-            // which is what the writer wrote, so `field.key` alone is a duplicate React key across
-            // siblings: both rows still draw, which is why it is easy to ship, and what goes wrong
-            // is reconciliation — on a re-render React may match a row to the wrong sibling and an
-            // open fold moves to a field the reader did not open.
             key={id}
             field={field}
             open={lens === "technical"}

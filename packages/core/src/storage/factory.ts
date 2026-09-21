@@ -5,11 +5,6 @@ import type { StorageAdapter } from './types.js';
 
 let cached: StorageAdapter | null = null;
 
-/**
- * Returns the singleton storage adapter selected by `STORAGE_DRIVER`.
- * `local` (default) writes to `UPLOADS_DIR`. `s3` returns the (currently
- * stubbed) S3 adapter — calls throw until the implementation lands.
- */
 export function getStorage(): StorageAdapter {
   if (cached) return cached;
   if (env.STORAGE_DRIVER === 's3') {

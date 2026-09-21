@@ -1,8 +1,3 @@
-/**
- * Who reads a message. Two values ship; a third is a row rather than surgery,
- * which is the property ISS-997 exists to prove rather than assert.
- */
-
 import type { Audience } from './contract.js';
 
 export interface AudienceSpec {
@@ -20,11 +15,6 @@ export const NO_ROLE: Audience = 'public';
 /**
  * The same role holder, read through the lens their organization assigns them.
  */
-// cm:guard these are AUDIENCES and not a flag on a rule, because the lens says who is reading and
-// that is what an audience is. The id carries a colon on purpose: `doors.ts:cellPair` cuts a cell
-// id at its LAST colon, and its own guard says it does so precisely because `Audience` is an open
-// string nothing forbids one in — so `role:product:report` resolves to this audience and the
-// `report` intent without a change to the carve (ISS-1089).
 export const ROLE_PRODUCT: Audience = 'role:product';
 export const ROLE_TECHNICAL: Audience = 'role:technical';
 
@@ -44,7 +34,6 @@ const SHIPPED: readonly AudienceSpec[] = [
 
 const registry = new Map<Audience, AudienceSpec>(SHIPPED.map((a) => [a.id, a]));
 
-// cm:guard registration is the whole of adding an audience, and no code in `screen.ts` branches on an audience value — that is what makes a third one configuration. A `switch` on an id anywhere under this directory undoes it.
 export function registerAudience(spec: AudienceSpec): void {
   registry.set(spec.id, spec);
 }

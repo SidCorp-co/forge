@@ -91,7 +91,6 @@ export async function runUnifiedSearch(input: {
     return { knowledge: knowledgeHits, memory: memoryHits, degraded: true };
   }
 
-  // cm:guard the two stores are scored independently and NEVER blended or de-duplicated across — each hit carries its `origin` so the caller can tell them apart, and a fused list would put a knowledge cosine and a memory RRF value on one scale.
   const tasks: Promise<void>[] = [];
 
   if (needsKnowledge) {

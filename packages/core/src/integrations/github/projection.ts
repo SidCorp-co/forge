@@ -72,7 +72,6 @@ export interface ReviewPayload {
     /** What the reviewer wrote. Nothing here reads it; `review-note.ts` records it (ISS-1074). */
     body?: string | null;
   };
-  // cm:guard the head REF is carried even though the projection writes only `number`, and ISS-1074 is why: a review's tracker record is written onto the issue the head branch names, and that resolution must not depend on a `repo_pull_requests` row — GitHub delivers unordered, so a review can arrive before the `pull_request` delivery that would have created one, and the first review on a pull request Forge has never seen is the case a record matters most for.
   pull_request?: { number?: number; head?: { ref?: string } };
 }
 
@@ -88,15 +87,34 @@ export function stateOf(pr: NonNullable<PullRequestPayload['pull_request']>) {
 }
 
 /**
+ * Which of the two routes to this writer a payload came down.
+ *
+ * `delivery` is a `pull_request` webhook, ordered against what is stored on GitHub's `updated_at`.
+ * `creation` is the answer to `POST /pulls` — the FIRST state that pull request ever had, which is
+ * why it has an ordering rule of its own rather than the same one.
+ */
+export type PullRequestWriteMode = 'delivery' | 'creation';
+
+/**
  * Store what a `pull_request` delivery said.
  *
  * One statement, because the head-change rule and the out-of-order rule are two
  * conditions over the same row and splitting them into a read and a write opens
  * a window where a second delivery lands between the two.
+ *
+ * ISS-1123 — `mode` picks the conflict rule and nothing else; there is still one statement and one
+ * writer. A delivery wins on `>=` because a redelivery of the SAME event carries the same timestamp
+ * and must still land. A creation answer must not: `updated_at` has second resolution, so any
+ * change to the request inside the second it was opened produces a delivery whose timestamp TIES
+ * the creation answer's, and a creation write arriving after it would overwrite that delivery's
+ * state, head and merge evidence on the strength of the tie. There is no stored row a creation
+ * answer is newer than — it describes the request at the instant it began — so it never overwrites
+ * one, and the caller reads the zero rows back as `superseded`.
  */
 export async function applyPullRequestEvent(
   ctx: ProjectionContext,
   payload: PullRequestPayload,
+  mode: PullRequestWriteMode = 'delivery',
 ): Promise<number> {
   const pr = payload.pull_request;
   const number = pr?.number;
@@ -109,8 +127,6 @@ export async function applyPullRequestEvent(
   const issueId = await resolveIssueForHeadRef({ projectId: ctx.projectId, headRef });
   const updatedAt = pr.updated_at ? new Date(pr.updated_at) : null;
 
-  // cm:guard `excluded.*` against the STORED values, not against anything read a statement ago — the four refresh columns and `refreshed_for_head` describe one head ON ONE BASE, so they are cleared in the very statement that moves either. Read-then-write here would leave a behind-by from the old target beside the new one for as long as the gap, and a number that reads current and is not is the failure this projection exists to remove.
-  // cm:guard the BASE is half of it. A pull request retargeted from `main` to `release` keeps its head, so a head-only comparison would carry a behind-by computed against `main` onto a row that now says `release` — the same wrong number, arrived at without anyone pushing anything.
   const sameTarget = sql`${repoPullRequests.headSha} = excluded.head_sha AND ${repoPullRequests.baseRef} = excluded.base_ref`;
 
   const rows = await db
@@ -156,8 +172,10 @@ export async function applyPullRequestEvent(
         refreshError: sql`CASE WHEN ${sameTarget} THEN ${repoPullRequests.refreshError} END`,
         updatedAt: new Date(),
       },
-      // cm:guard the ONLY ordering evidence for these scalars. Without it a retried or delayed `synchronize` rewinds `head_sha`, and every check the row holds for the real head is then read as belonging to a head the row no longer names.
-      setWhere: sql`${repoPullRequests.payloadUpdatedAt} IS NULL OR excluded.payload_updated_at IS NULL OR excluded.payload_updated_at >= ${repoPullRequests.payloadUpdatedAt}`,
+      setWhere:
+        mode === 'creation'
+          ? sql`false`
+          : sql`${repoPullRequests.payloadUpdatedAt} IS NULL OR excluded.payload_updated_at IS NULL OR excluded.payload_updated_at >= ${repoPullRequests.payloadUpdatedAt}`,
     })
     .returning({ id: repoPullRequests.id });
   return rows.length;
@@ -182,7 +200,6 @@ async function rowsForCheckRun(
         ),
       );
   }
-  // cm:guard the head-sha fallback is not redundant: GitHub sends `pull_requests: []` on a check run for a fork's branch and on one whose check suite it has not associated yet, and without this such a delivery is dropped while the pull request it belongs to sits in the projection with no checks.
   if (!run.head_sha) return [];
   return db
     .select({ id: repoPullRequests.id })
@@ -217,7 +234,6 @@ export async function applyCheckRunEvent(
   const targets = await rowsForCheckRun(ctx, run);
   let written = 0;
   for (const target of targets) {
-    // cm:guard the read and the fold and the write are ONE transaction over a locked row, because two check runs on one pull request finish within milliseconds of each other and a read-modify-write without the lock loses whichever of them commits first.
     written += await db.transaction(async (tx) => {
       const [row] = await tx
         .select({ checks: repoPullRequests.checks, headSha: repoPullRequests.headSha })
@@ -237,7 +253,6 @@ export async function applyCheckRunEvent(
   return written;
 }
 
-/** Store what a `pull_request_review` delivery said, under its own ordering rule. */
 export async function applyReviewEvent(
   ctx: ProjectionContext,
   payload: ReviewPayload,

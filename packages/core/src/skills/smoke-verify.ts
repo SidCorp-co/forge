@@ -7,32 +7,11 @@ import {
   skillRegistrations,
   skills,
 } from '../db/schema.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { loadProjectSkillSyncStatus, type ProjectSkillSyncStatus } from './effective.js';
-
-/**
- * ISS-455 (Onboarding C2) — per-project skill smoke-verify.
- *
- * Produces a PER-STAGE PASS/FAIL report grounded in evidence, never in the
- * registration `synced` badge:
- *
- *   - Tier-1 (static, zero agent cost): for each pipeline stage, (a) a
- *     `scope='project'` skill is registered, and (b) a bound runner device has
- *     reported an `installedHash` matching the registry's effective hash
- *     (`device_skills` via `loadProjectSkillSyncStatus`). Known false-negative:
- *     desktop devices never report installs, so "no report" is its own
- *     WARN-style FAIL reason (`no_device_report`) — we refuse to guess.
- *
- *   - Tier-2 (opt-in canary): dispatches a real `smoke` job per stage through
- *     the normal enqueue → dispatch → runner → lifecycle path. The job is
- *     SYNTHETIC: no issue row, a one-shot `kind='system'` pipeline_run
- *     (metadata-flagged), and a prompt that forbids repo/issue mutation. The
- *     terminal result is read back off the jobs row — terminal flips happen
- *     ONLY in the existing lifecycle chokepoint (`applyKernelTransition` via
- *     lifecycle routes / sweepers); this module never writes job status.
- */
 
 // ── report shapes ───────────────────────────────────────────────────────────
 
@@ -99,7 +78,6 @@ export function computeTier1Entries(args: {
   const checkedAt = (args.now ?? new Date()).toISOString();
   const syncByName = new Map(args.sync.skills.map((s) => [s.name, s]));
 
-  // cm:guard walk the project's OWN registration rows, never a fixed stage table. The nine-rung `PIPELINE_STEPS` this used to iterate was the staged lane and went with it (ISS-895); iterating a fixed list would report `not_registered` for every stage on every project — a report that is all FAIL is read as broken tooling, not as a finding.
   const ordered = [...args.registrations].sort((a, b) => a.stage.localeCompare(b.stage));
 
   return ordered.map((reg) => {
@@ -175,7 +153,6 @@ export function computeTier1Entries(args: {
   });
 }
 
-/** Load registrations + device sync status and compute the tier-1 entries. */
 export async function loadSmokeVerifyTier1(projectId: string): Promise<SmokeTier1Entry[]> {
   const registrations = (await db
     .select({
@@ -390,7 +367,7 @@ export async function dispatchSmokeCanaries(args: {
       and(
         eq(jobs.projectId, projectId),
         eq(jobs.type, 'smoke'),
-        inArray(jobs.status, ['queued', 'dispatched', 'running']),
+        inArray(jobs.status, [...UNHELD_LIVE_JOB_STATUSES]),
       ),
     )) as Array<{ payload: unknown }>;
   const activeStages = new Set(

@@ -1,19 +1,7 @@
-// web-v2 feature module: activity — types + pure derive helpers.
-//
-// A cross-project feed of agent Q&A turns. The standalone workspace Activity
-// page was removed in ISS-359 (replaced by Usage); no screen renders these
-// today — `lib/ws/event-router.ts` still invalidates their `['chat-logs']` key.
-// Row shape mirrors the exact projection `GET /api/chat-logs` returns (a
-// drizzle `select()` over the `chat_logs` table — camelCase keys), verified
-// against `packages/core/src/chat-logs/routes.ts` + `db/schema.ts` (do not
-// guess field names).
 
 export const QA_RATINGS = ["good", "bad", "flagged"] as const;
 export type QaRating = (typeof QA_RATINGS)[number];
 
-/** `chat_logs.usage` as core writes it — `run-turn-core.ts:usageForLog`: the
-    summed provider usage plus, only when non-zero, what `context-budget.ts`
-    elided. Older rows may be `null` or partial. */
 export interface ChatLogUsage {
   promptTokens?: number;
   completionTokens?: number;

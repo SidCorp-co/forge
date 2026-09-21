@@ -3,14 +3,6 @@ import { loadOrgRole } from '../../lib/authz.js';
 import { listOrgMembers, listOrgsForUser } from '../../orgs/service.js';
 import { type ContextScopedMcpToolFactory, principalUserId, zodToMcpSchema } from './lib.js';
 
-/**
- * Org-tier read surface over MCP. Orgs own projects (projects.orgId) and can
- * own integration connections (ownerType='org'); org owner/admin hold
- * implicit project admin on every project of the org. Management (create,
- * members CRUD) stays on REST `/api/orgs` — agents only need to discover
- * which org to target (e.g. `forge_projects.create { orgId }`).
- */
-
 const listInputSchema = z.object({}).strict();
 
 export const forgeOrgsListTool: ContextScopedMcpToolFactory = (ctx) => ({

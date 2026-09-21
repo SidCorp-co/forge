@@ -20,8 +20,6 @@ pub struct ProjectMcpServers {
     /// The names in `mcp_servers`, as core resolved them.
     #[serde(default)]
     pub resolved_names: Vec<String>,
-    /// Declared and NOT supplied — a sentinel with no active integration behind it.
-    // cm:guard the ABSENT case must stay EMPTY, never "unknown": this list is what the master is briefed with and what `forge-runner doctor` refuses on, so reading a missing field as a problem would report every project on an older core as broken.
     #[serde(default)]
     pub dropped_names: Vec<String>,
 }
@@ -34,10 +32,6 @@ impl ProjectMcpServers {
     }
 }
 
-/// Fetch one project's resolved servers. A core that does not serve this route
-/// answers nothing rather than failing, so an older deployment leaves every
-/// master starting exactly as it did before this existed.
-// cm:edge contract -> packages/core/src/devices/mcp-servers-routes.ts — that route is the only producer of this shape, and its `droppedNames` is half of why the call is made at all.
 pub async fn fetch(client: &CoreClient, project_id: &str) -> Result<ProjectMcpServers> {
     let url = client.url(&format!(
         "/api/devices/me/mcp-servers?projectId={project_id}"
@@ -52,7 +46,6 @@ pub async fn fetch(client: &CoreClient, project_id: &str) -> Result<ProjectMcpSe
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
-    // cm:why a server too old to serve this route must degrade to "no servers", not wedge the master this box is about to start
     if resp.status().as_u16() == 404 {
         return Ok(ProjectMcpServers::default());
     }

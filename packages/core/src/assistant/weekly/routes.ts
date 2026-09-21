@@ -18,9 +18,6 @@ import { realDeps, runAssistantWeeklyForProject } from './run.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
-// cm:why refusals are answered with `c.json` in the error handler's `{ code, message }` shape rather than thrown: `hono/http-exception` is a subpath the archmap cannot resolve, the repo sits exactly at its 200-edge ceiling, and one more file importing it turns the conformance audit red (R7)
-
-// cm:why a router of its own, mounted at `/api/projects` from `index.ts` beside `gitCredentialRoutes` and NOT under `projectRoutes`: that file already coordinates six modules and the archmap contract refuses a seventh; so this one carries its own auth pair, the same two `projectRoutes` applies
 export const assistantWeeklyRoutes = new Hono<{ Variables: AuthVars }>();
 assistantWeeklyRoutes.use('*', requireAuth(), assertEmailVerified());
 

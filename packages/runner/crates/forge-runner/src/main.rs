@@ -47,11 +47,13 @@ enum Command {
     Gate(cmd::gate::Args),
     /// Install/uninstall the OS service (systemd/launchd).
     Service(cmd::service::Args),
+    /// Take this box from installed to running work: pair, bind, service, doctor.
+    Setup(cmd::setup::Args),
     /// Declare what a master is about to hand a subagent, and close it after.
     Run(cmd::run::Args),
     /// List runners registered for this device.
     Runners(cmd::runners::Args),
-    /// Look at, talk to, and end this box's resident masters.
+    /// Look at, talk to, stand down and end this box's resident masters.
     Master(cmd::master::Args),
     /// Pull the latest skills for bound projects now (on-demand, one-shot).
     Sync(cmd::sync::Args),
@@ -83,17 +85,16 @@ async fn main() -> anyhow::Result<()> {
         Command::Config(a) => cmd::config::run(ctx, a).await,
         Command::Doctor(a) => cmd::doctor::run(ctx, a).await,
         Command::GitCredential(a) => cmd::git_credential::run(ctx, a).await,
-        // cm:guard takes no `ctx` and discards the outcome, and both are the point: this verb runs on every tool call of every pane, holds no credential and reaches nothing but the local socket. A `?` here would put a hook's exit code in the agent's critical path.
         Command::Hook(a) => {
             cmd::hook::run(a).await;
             Ok(())
         }
-        // cm:guard the same shape as `Hook` above and for the same reason: no `ctx`, no credential, and the outcome discarded. This one answers rather than reports, and a deliberate deny travels in what it PRINTS — never in an exit code, which Claude Code reads as the hook itself having broken.
         Command::Gate(a) => {
             cmd::gate::run(a).await;
             Ok(())
         }
         Command::Service(a) => cmd::service::run(ctx, a).await,
+        Command::Setup(a) => cmd::setup::run(ctx, a).await,
         Command::Run(a) => cmd::run::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Master(a) => cmd::master::run(ctx, a).await,

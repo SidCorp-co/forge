@@ -22,7 +22,6 @@ const forbidden = (message: string) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-// cm:why a project that does not exist answers 404 while a non-member answers 403, so the two cases stay distinguishable to a member and indistinguishable to everyone else — answering 403 for a missing project would confirm the row exists to someone with no right to know it
 async function assertProjectMember(projectId: string, userId: string): Promise<void> {
   const access = await effectiveProjectRole(userId, projectId);
   if (!access) throw notFound('project not found');
@@ -34,7 +33,6 @@ const querySchema = z.object({
   projectId: z.uuid().optional(),
 });
 
-// cm:guard ISS-1022 — `days` is NOT optional decoration: without it this route ran two window functions over every `issue.statusChanged` row of every visible project, which on beta was a Seq Scan of `activity_log` yielding 40,671 rows at cost 9,119 per request. The bound is the same 1..90 with a default of 30 that every sibling schema in this file carries, so a caller reading one route's window vocabulary can read them all.
 const cycleTimeQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).optional().default(30),
   projectId: z.uuid().optional(),
@@ -52,7 +50,6 @@ async function loadVisibleProjectIdsScoped(userId: string, scopedTo?: string): P
   return ids.includes(scopedTo) ? [scopedTo] : [];
 }
 
-// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
 export const pipelineAnalyticsRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -73,7 +70,6 @@ pipelineAnalyticsRoutes.get(
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
     if (projectIds.length === 0) return c.json([]);
 
-    // cm:why the cutoff is computed SQL-side because postgres-js refuses to bind a JS Date through a parameter (ISS-267)
     const rows = await db
       .select({
         projectId: issues.projectId,
@@ -148,18 +144,6 @@ pipelineAnalyticsRoutes.get(
   },
 );
 
-/**
- * ISS-104 — per-step pipeline durations. Sourced from the
- * `pipeline_run_step_durations` view (created 0055, reshaped 0057; 0128 —
- * ISS-516 — guards `duration_seconds` to a CASE that is non-NULL only for a
- * successfully-completed, non-inverted span). This endpoint is duration-only,
- * so it filters `duration_seconds IS NOT NULL` to drop the non-`done` rows the
- * view now keeps (so cost consumers see full spend); the surviving rows are
- * exactly the completed steps and `duration_seconds` is never negative.
- * `issueId` is null for runs of kind `pm`/`interactive`/`system`. Capped at
- * 1000 rows so a careless caller can't dump the whole window into a single
- * response.
- */
 pipelineAnalyticsRoutes.get(
   '/step-durations',
   zValidator('query', stepDurationsQuerySchema, (r) => {
@@ -207,7 +191,6 @@ pipelineAnalyticsRoutes.get(
       finishedAt: r.finished_at,
       durationSeconds: Number(r.duration_seconds),
       costUsd: Number(r.cost_usd),
-      // cm:why per-state runner pools mean one step's rows can span several boxes and model tiers; without these two the per-box comparison the pool exists to enable cannot be read back out
       deviceId: r.device_id,
       modelUsed: r.model_used,
     }));
@@ -280,17 +263,6 @@ pipelineAnalyticsRoutes.get(
   },
 );
 
-/**
- * W2.2.1 — per-project cost analytics. Mounted under `/api/projects/:id` so
- * the URL reads as a project-scoped sub-resource. Project-member-only; CEO
- * bypass mirrors `loadVisibleProjectIds`. Data sourced from the
- * `pipeline_run_step_durations` view (created 0055, reshaped 0057; 0128 —
- * ISS-516 — guards only `duration_seconds`, NOT the row set, so `cost_usd`
- * still rolls up ALL finished jobs incl. failed/cancelled that burned tokens;
- * 0075 was orphaned/never applied and is deleted). The view keeps the
- * 8-column contract — cost_usd is summed from usage_records; cache-token
- * analytics read usage_records directly (see src/metrics/queries.ts).
- */
 export const projectCostAnalyticsRoutes = new Hono<{ Variables: AuthVars }>();
 projectCostAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -508,7 +480,6 @@ projectCostAnalyticsRoutes.get(
   },
 );
 
-// cm:edge contract -> packages/core/src/pipeline/driver-comparison.ts — the two north-star metrics; this route only scopes them to what the caller may see
 pipelineAnalyticsRoutes.get(
   '/driver-comparison',
   zValidator('query', querySchema, (r) => {

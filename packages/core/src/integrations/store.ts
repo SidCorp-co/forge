@@ -53,9 +53,6 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
  * since a coolify deploy target and a coolify service facility are different declarations about
  * the same credential. The two must admit exactly the same rows.
  */
-// cm:edge contract -> packages/core/src/db/schema.ts — `integration_bindings_service_uq` is this
-// query in Postgres; a role filter added to one and not the other is a 409 with no constraint
-// behind it, or a constraint violation with no 409 in front of it.
 export async function findActiveServiceBinding(
   projectId: string,
   provider: IntegrationProvider,
@@ -80,23 +77,6 @@ export async function findActiveServiceBinding(
   return rows[0] ?? null;
 }
 
-/**
- * The active SERVICE binding at one label, which is `integration_bindings_service_uq` exactly.
- *
- * The index is `(project_id, provider, label) WHERE role = 'service'`, and this is its pre-flight
- * side. Both halves of that key matter and both were being dropped somewhere:
- *
- *   - Without the ROLE filter, adding an epodsystem service binding to a project that already has
- *     an epodsystem DEPLOY binding at the same label is refused although the index admits the pair
- *     — and after ISS-1046 that is the common shape, since all three fleet epodsystem bindings are
- *     `deploy`.
- *   - Without the LABEL filter, a second NAMED storefront is refused although the index admits it.
- *     `label` is the multi-store slug; `''` is the unlabelled binding every other provider carries,
- *     so one rule covers them all.
- */
-// cm:edge contract -> packages/core/src/db/schema.ts `integration_bindings_service_uq` — this query
-// and that partial index must admit exactly the same rows. A preflight looser than the index 500s
-// on a constraint violation; one tighter refuses a pair the model permits, which is what it did.
 export async function findActiveServiceBindingAtLabel(
   projectId: string,
   provider: IntegrationProvider,
@@ -154,7 +134,6 @@ export async function listActiveDeployBindingsForProvider(
     .orderBy(asc(integrationBindings.createdAt));
 }
 
-/** Active binding (+ its connection) for a project + provider, whatever its role. */
 export async function findActiveBinding(
   projectId: string,
   provider: IntegrationProvider,
@@ -187,62 +166,45 @@ export async function listActiveBindingsForProjectProvider(
   projectId: string,
   provider: IntegrationProvider,
 ): Promise<BindingWithConnection[]> {
-  return (
-    db
-      .select({ binding: integrationBindings, connection: integrationConnections })
-      .from(integrationBindings)
-      .innerJoin(
-        integrationConnections,
-        eq(integrationBindings.connectionId, integrationConnections.id),
-      )
-      .where(
-        and(
-          eq(integrationBindings.projectId, projectId),
-          eq(integrationBindings.provider, provider),
-          eq(integrationBindings.active, true),
-          eq(integrationConnections.active, true),
-        ),
-      )
-      // cm:guard never drop this ORDER BY — the MCP resolvers inject row [0] into the single `mcpServers.<provider>` slot, so an unordered pick lets a newly added second binding silently flip which credential agents receive (ISS-431); mcp-preview's `shadowed` reason mirrors oldest-first
-      .orderBy(asc(integrationBindings.createdAt))
-  );
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .orderBy(asc(integrationBindings.createdAt));
 }
 
-/**
- * Every active DEPLOY binding a project has at one stage, across all providers.
- *
- * The release path asks "what ships this project", which is a question about the stage rather than
- * about any one provider — and the answer is the whole SET, never its first row. Core hands the set
- * to the release agent with each binding's own `instructions`; it does not choose among them.
- */
-// cm:guard `role = 'deploy'` is not decoration on top of the stage test: a `service` binding carries
-// no stage at all, so a stage predicate alone would already exclude it — the role is asserted anyway
-// because this is the query the release gate rests on, and a reader has to see that a chat room and
-// an error tracker are not candidates here whatever their stages column happens to hold.
 export async function listActiveDeployBindingsForStage(
   projectId: string,
   stage: DeployStage,
 ): Promise<BindingWithConnection[]> {
-  return (
-    db
-      .select({ binding: integrationBindings, connection: integrationConnections })
-      .from(integrationBindings)
-      .innerJoin(
-        integrationConnections,
-        eq(integrationBindings.connectionId, integrationConnections.id),
-      )
-      .where(
-        and(
-          eq(integrationBindings.projectId, projectId),
-          eq(integrationBindings.role, 'deploy'),
-          sql`${stage} = ANY(${integrationBindings.stages})`,
-          eq(integrationBindings.active, true),
-          eq(integrationConnections.active, true),
-        ),
-      )
-      // cm:edge protocol -> packages/core/src/integrations/store.ts — same oldest-first rule as listActiveBindingsForProjectProvider. It is no longer a TIE-BREAK here, since the release path takes the whole set; it stays so the set's order is stable across calls and a prompt listing three channels lists them the same way twice.
-      .orderBy(asc(integrationBindings.createdAt))
-  );
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.role, 'deploy'),
+        sql`${stage} = ANY(${integrationBindings.stages})`,
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .orderBy(asc(integrationBindings.createdAt));
 }
 
 /** Decrypt a connection's secrets blob, or `{}` when it has none. */
@@ -378,9 +340,6 @@ export async function createBinding(input: CreateBindingInput): Promise<Integrat
       integrationSecret: input.integrationSecret ?? null,
       label: input.label ?? '',
       active: true,
-      // cm:guard the default is CLOSED, and it is written here rather than left to the column so
-      // the one place a binding comes into existence says what it grants. A connect that forgets to
-      // ask must not hand a project's credential to a runner (ISS-1071 rule 4).
       agentAccess: input.agentAccess ?? AGENT_ACCESS_CLOSED,
     })
     .returning();
@@ -409,6 +368,8 @@ export interface UpdateBindingPatch {
   label?: string;
   instructions?: string | null;
   agentAccess?: AgentAccess;
+  /** `deploy` only, and never empty there — the DB check refuses the other shapes. */
+  stages?: DeployStage[];
 }
 
 export async function updateBinding(
@@ -422,6 +383,7 @@ export async function updateBinding(
   if (patch.label !== undefined) set.label = patch.label;
   if (patch.instructions !== undefined) set.instructions = patch.instructions;
   if (patch.agentAccess !== undefined) set.agentAccess = patch.agentAccess;
+  if (patch.stages !== undefined) set.stages = patch.stages;
   const [row] = await db
     .update(integrationBindings)
     .set(set)
@@ -464,7 +426,6 @@ export async function listBindingsForProject(projectId: string): Promise<Binding
  * Connection rows only, no join: the directory already holds the connections
  * it asked about.
  */
-// cm:guard one query for the whole page, never one per card — the connections directory renders every credential a principal can see (17 on forge-beta today), and a per-card fetch is an N+1 that also arrives out of order
 export async function listBindingsByConnectionIds(
   connectionIds: string[],
 ): Promise<Map<string, IntegrationBindingRow[]>> {
@@ -483,7 +444,6 @@ export async function listBindingsByConnectionIds(
   return out;
 }
 
-/** All bindings (+ connections) for one connection, any active state, newest first. */
 export async function listBindingsForConnection(
   connectionId: string,
 ): Promise<BindingWithConnection[]> {

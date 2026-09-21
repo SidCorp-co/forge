@@ -92,7 +92,6 @@ export function contentWords(text: string): string[] {
   return [...new Set(words)].filter((w) => !STOPWORDS.has(w));
 }
 
-/** The task whose intent and id hold the largest share of the intent's content words. */
 export function coverage(
   intent: string,
   tasks: readonly Task[],
@@ -220,7 +219,6 @@ export function harvest(
       skipped.push({ chatLogId: row.chatLogId, reason: 'query too short' });
       continue;
     }
-    // cm:why a retry row's query is the door's corrective instruction, not a person's words: history marks it screen_repair (grade-row.ts) and a task built on it would send the model a system check
     if (row.query.trimStart().startsWith(CORRECTIVE_PREFIX)) {
       skipped.push({ chatLogId: row.chatLogId, reason: "retry row, not a person's query" });
       continue;

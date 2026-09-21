@@ -1,9 +1,3 @@
-// cm:guard every EXPLAIN here runs the object PRODUCTION runs — `issueListPageQuery` is what both
-// REST handlers call, and `buildIssueSearchCondition` is the predicate they compose — never a copy
-// of its SQL written out here. A plan test over a reconstruction goes green while the handler's own
-// query regresses, which is how a claimed index can be unused for as long as the counters run
-// (ISS-1016, and the shape ISS-1015 shipped and caught in review).
-
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -24,12 +18,6 @@ let buildIssueSearchCondition: typeof import('../../src/issues/search-predicate.
 let matchedSearchFieldsSql: typeof import('../../src/issues/search-predicate.js').matchedSearchFieldsSql;
 let buildIssueOrderBy: typeof import('../../src/issues/sort.js').buildIssueOrderBy;
 
-// cm:guard the fixture holds SIX projects and the project under test is one sixth of the rows,
-// because that is the only shape in which these plans are the ones production picks. Measured while
-// writing this: with every row in one project the `project_id = $1` arm selects the whole table and
-// a sequential scan is genuinely cheapest, so the assertions below went red against a schema that
-// was right — a fixture red, not a code red. Six projects is also what the beta database looks like
-// (34 projects, the largest 1,656 of 6,651 rows).
 const PROJECTS = 6;
 const ROWS_PER_PROJECT = 1000;
 const CASCADE_ROWS = 20;
@@ -41,9 +29,6 @@ class PlanTaken extends Error {
   }
 }
 
-// cm:why one transaction, aborted: `harness.db` is a pool, so a bare `SET` would leak the planner
-// setting onto whichever later query picked up the same connection, and the abort is also what lets
-// the negative case drop four indexes and put them straight back.
 async function explain(
   query: { toSQL: () => { sql: string; params: unknown[] } },
   setup: string[] = [],
@@ -83,9 +68,6 @@ describe('the page queries and the search predicate are index-served (ISS-1016)'
     process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
     process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
 
-    // cm:why dynamic, after DATABASE_URL is set, matching every other file in this suite. Since
-    // ISS-1067 a static import would also work — `config/env.ts` and `db/client.ts` do their work on
-    // the first property read rather than at import — so this is convention, not necessity.
     ({ issues } = await import('../../src/db/schema.js'));
     ({ issueListPageQuery } = await import('../../src/issues/list-projection.js'));
     ({ buildIssueSearchCondition, matchedSearchFieldsSql } = await import(
@@ -104,12 +86,6 @@ describe('the page queries and the search predicate are index-served (ISS-1016)'
     projectId = projectIds[0] as string;
     await createTestProjectMember(harness.db, { userId, projectId, role: 'admin' });
 
-    // cm:guard the 20 cascade rows carry the identifier in `plan` and NOWHERE else, and no other
-    // row carries the literal `cascade` at all — otherwise the term stops being selective and the
-    // planner is entitled to a different plan, which would make this file's red a false one.
-    // cm:guard the bodies are long enough to be TOASTed, which is what the production rows are:
-    // a short body sits in the heap, inflates the page count, and makes a sequential scan look
-    // expensive for a reason that has nothing to do with this change.
     for (const [index, id] of projectIds.entries()) {
       await harness.db.execute(sql`
         INSERT INTO issues (project_id, created_by_id, iss_seq, title, description, plan, created_at, updated_at)
@@ -156,16 +132,6 @@ describe('the page queries and the search predicate are index-served (ISS-1016)'
     expect(plan).not.toContain('Sort');
   });
 
-  // cm:guard the project conjunct is deliberately NOT in this `where`, and the planner is told to
-  // prefer an index, both for measured reasons. Under `project_id = $1` at fixture scale there is a
-  // second very cheap route — `issues_project_created_via_idx` at cost 15.78 — and filtering that
-  // project's 1,000 rows beats five GIN scans by about 24 cost units, so the planner takes it and is
-  // right to; at the beta deployment's shape the same predicate under the same conjunct DOES plan as
-  // this BitmapOr, and that EXPLAIN is recorded on ISS-1016 against a replica of those rows. What
-  // belongs in a suite is the claim that does not turn on a cost margin: that this predicate is
-  // index-servable AT ALL. The case below is this one's own planted red — it drops the four trigram
-  // indexes and watches the same query fall back to a sequential filter with the identifier index
-  // unnamed, which is the state the beta database was in with a 14 MB index it had never used.
   const INDEX_PREFERRED = ['SET LOCAL enable_seqscan = off'];
 
   const searchPage = () =>
@@ -181,9 +147,6 @@ describe('the page queries and the search predicate are index-served (ISS-1016)'
     const plan = await explain(searchPage(), INDEX_PREFERRED);
     expect(plan).toContain('BitmapOr');
     expect(plan).not.toContain('Seq Scan');
-    // cm:guard the identifier index is the point. The four trigram indexes are what let the planner
-    // reach it — an OR is index-served only when every arm is — so a plan naming the trigram
-    // indexes but not this one means the identifier arm went back to being a filter.
     expect(plan).toContain('issues_ident_search_idx');
     for (const trigram of [
       'issues_title_trgm_idx',
@@ -214,9 +177,6 @@ describe('the page queries and the search predicate are index-served (ISS-1016)'
       matchedFields: matchedSearchFieldsSql('cascade'),
     }).toSQL();
     const selected = text.slice(0, text.indexOf(' from '));
-    // cm:guard the three body columns may appear in the WHERE and in the `case when` arms that
-    // build `matchedFields` — what may never appear is a SELECTED column, because that is the read
-    // this projection exists to stop. Hence the slice at ` from `.
     for (const column of ['"description"', '"plan"', '"acceptance_criteria"', '"ident_search"']) {
       expect(selected).not.toContain(`${column},`);
     }

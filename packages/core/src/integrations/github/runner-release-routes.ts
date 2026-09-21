@@ -25,7 +25,6 @@ import { findById, listForProject } from './runner-release-store.js';
 const projectParamSchema = z.object({ projectId: z.uuid() });
 const releaseParamSchema = z.object({ projectId: z.uuid(), id: z.uuid() });
 
-// cm:guard `.strict()` and a version that is a STRING, not a tag: the tag is Forge's to build (`tagForVersion`), and a caller allowed to send `runner-v0.13.3` would sooner or later send `v0.13.3` and cut a tag the install channel cannot see.
 const startBodySchema = z
   .object({
     version: z.string().min(1).max(64),
@@ -42,7 +41,6 @@ const notFound = (message: string) =>
 export const runnerReleaseRoutes = new Hono<{ Variables: AuthVars }>();
 runnerReleaseRoutes.use('*', requireAuth(), assertEmailVerified());
 
-// cm:guard a refusal is a 4xx carrying the SENTENCE, never a bare code: `middleware/error.ts` copies only `code`, `details` and `wwwAuthenticate` out of `cause`, so what an operator needs has to be in the message itself. The release row travels in `details` so a caller can read `tagState` without a second request — which after a `cut_tag` that timed out is the only thing that says whether a tag may exist.
 const REFUSAL_STATUS = {
   no_repository: 409,
   bad_version: 400,
@@ -104,7 +102,6 @@ runnerReleaseRoutes.get(
     const access = await loadProjectAccess(projectId, c.get('userId'));
     if (!access) throw notFound('project not found');
     const release = await findById(id);
-    // cm:guard the project is checked on the ROW and not taken from the path: an id from another project would otherwise be served to whoever can read this one, and a 404 naming the id is the same answer a caller gets for one that never existed.
     if (!release || release.projectId !== projectId) throw notFound('runner release not found');
     return c.json({ release });
   },

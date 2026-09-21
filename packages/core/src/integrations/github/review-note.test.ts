@@ -102,7 +102,6 @@ describe('the comment a review becomes', () => {
 });
 
 describe('an id that is not GitHub s', () => {
-  // cm:guard this is the reason the check exists: `%` in the id would make the duplicate LIKE match some OTHER review's comment and silently drop this one. Refused before anything is read.
   it('is refused by name before any row is touched', async () => {
     await expect(
       noteReviewOnIssue({

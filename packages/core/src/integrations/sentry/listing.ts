@@ -1,34 +1,11 @@
-/**
- * ISS-1085 slice 3 — the vocabulary and the pure decisions of a Sentry issue LISTING.
- *
- * Split out of `issues.ts` when that file crossed its 500-line budget, and the seam is a real one
- * rather than a convenient place to cut: everything here is decided WITHOUT talking to Sentry —
- * what to ask for, how far to walk, and whether an answer belongs to the target that was named.
- * The call itself stays in `issues.ts` beside the other two, because it shares their delivery row,
- * their token rotation and their health verdict.
- */
-
 import type { OutboundDispatchResult } from '../types.js';
 import type { ResolvedSentryTarget } from './targets.js';
 import type { SentryIssueDetail } from './types.js';
 
 /** What a pull asks Sentry for when the caller names nothing narrower. */
 export const SENTRY_LIST_DEFAULT_QUERY = 'is:unresolved';
-// cm:why the default IS the maximum page, not a polite 25. This listing walks at most
-// SENTRY_LIST_MAX_PAGES pages and does not resume where it stopped, so the default limit is the
-// whole of how far one tick can see: at 25 that was 250 issues per target, and the ones past it are
-// the same ones on every tick forever. At 100 it is 1,000, which is the most this shape can honestly
-// offer without a resumable cursor.
 export const SENTRY_LIST_DEFAULT_LIMIT = 100;
 export const SENTRY_LIST_MAX_LIMIT = 100;
-/**
- * How many pages one listing will walk before it stops and SAYS it stopped.
- *
- * A bound is needed — an unbounded follow of a provider's own cursor is a loop whose length the
- * provider chooses. What must never happen is the bound being reached quietly: Sentry orders by
- * last seen, so the issues past the last page are the same ones on every tick, and a pull that
- * stopped short without saying so is a permanent blind spot wearing the word `success`.
- */
 export const SENTRY_LIST_MAX_PAGES = 10;
 
 /** One listing's request, and the same shape its delivery row records. */
@@ -39,13 +16,6 @@ export interface SentryListRequest {
   limit?: number;
 }
 
-/**
- * One answer this listing would not hand on, and why.
- *
- * Kept per answer rather than counted, because an operator whose target is mis-declared has to know
- * WHICH Sentry project answered before they can fix it — a number tells them only that something
- * did (ISS-1085 slice 3).
- */
 export interface SentryListRefusal {
   issueId: string;
   shortId: string | null;
@@ -67,13 +37,6 @@ export interface SentryIssueListing {
   truncated: boolean;
 }
 
-/**
- * Sentry's cursor for the NEXT page, or `null` where there is not one.
- *
- * Sentry paginates by `Link` header rather than by a field in the body, and it always emits a
- * `rel="next"` — `results="true"` is the only thing that says the page is real. Reading the
- * presence of the header as "there is more" would make every listing loop to its page bound.
- */
 export function nextSentryCursor(link: string | null): string | null {
   if (!link) return null;
   for (const part of link.split(/,\s*(?=<)/)) {
@@ -107,13 +70,6 @@ export function listQuery(query: string | undefined, target: ResolvedSentryTarge
   return `${base} project:${target.projectSlug}`;
 }
 
-/**
- * Why this answer is not this target's, or `null` where it is.
- *
- * Same rule as `assertTargetHoldsIssue`, which refuses one addressed issue; this one reports rather
- * than throws, because a listing that threw on the first foreign answer would take the whole pull
- * down over one mis-scoped row instead of naming it.
- */
 export function confinementRefusal(
   issue: SentryIssueDetail,
   target: ResolvedSentryTarget,
@@ -128,15 +84,6 @@ export function confinementRefusal(
   return null;
 }
 
-/**
- * A listing that failed PART WAY, carrying what it had already decided.
- *
- * cm:guard the partial goes on the ERROR rather than being swallowed into a successful-looking
- * return. A listing that walked two pages, named six confinement refusals and then met an HTTP 500
- * on page three has done two things: it failed, and it learned six things somebody needs. Throwing
- * a bare error loses the six; returning a partial as if it were whole loses the failure. Both are
- * the silent substitution this repo refuses, so the throw carries the findings with it.
- */
 export class SentryListingFailed extends Error {
   constructor(
     message: string,

@@ -9,15 +9,16 @@
 // screen derives nothing it was not sent.
 
 import {
-	Badge,
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	ErrorState,
-	MonoTag,
-	ProjectLoader,
-	Skeleton,
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ErrorState,
+  MonoTag,
+  PageTitle,
+  ProjectLoader,
+  Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useReleaseRunState } from "../hooks";
@@ -163,7 +164,7 @@ function Roster({ state }: { state: ReleaseRunState }) {
 				{roster.baseBranch ? <MonoTag>{roster.baseBranch}</MonoTag> : null}
 				{roster.channel ? <span>channel {roster.channel}</span> : null}
 				{roster.releaseRunnerLabel ? (
-					<span>label {roster.releaseRunnerLabel}</span>
+					<span>prefers {roster.releaseRunnerLabel}</span>
 				) : null}
 			</div>
 			<ul className="flex flex-col gap-1">
@@ -217,7 +218,7 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 	return (
 		<div className="flex flex-col gap-4 p-6">
 			<header className="flex flex-wrap items-center gap-2">
-				<h1 className="fg-h2">Release run</h1>
+				<PageTitle className="fg-h2">Release run</PageTitle>
 				<MonoTag>{data.runId}</MonoTag>
 				<Badge tone={data.runStatus === "running" ? "cobalt" : "neutral"}>
 					{data.runStatus}

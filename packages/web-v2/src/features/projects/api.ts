@@ -1,6 +1,3 @@
-// web-v2 feature module: projects — REST surface. All calls go through the
-// shared `apiClient` (no raw fetch). Routes verified against
-// `packages/core/src/projects/routes.ts` for ISS-288.
 import { apiClient } from '@/lib/api/client';
 import type {
   CreatedProject,
@@ -12,15 +9,9 @@ import type {
 } from './types';
 
 export const projectApi = {
-  /** `GET /api/projects` — the caller's projects (with membership role).
-   *  `includeArchived` adds `?archived=1` to return archived projects too
-   *  (ISS-353) — used by Project Settings to keep an archived project
-   *  reachable for unarchive. */
   list: (opts?: { includeArchived?: boolean }) =>
     apiClient<ProjectListItem[]>(`/projects${opts?.includeArchived ? '?archived=1' : ''}`),
 
-  /** `POST /api/projects` — create a project (caller becomes owner). 201 on
-   *  success; 409 `SLUG_TAKEN` when the slug collides. */
   create: (body: CreateProjectInput) =>
     apiClient<CreatedProject>('/projects', {
       method: 'POST',
@@ -33,10 +24,6 @@ export const projectApi = {
   /** `GET /api/projects/:id` — full project detail (members/labels/devices). */
   getById: (id: string) => apiClient<ProjectDetail>(`/projects/${id}`),
 
-  /** `POST /api/projects/:id/onboard` — the "Build Project Brain" trigger
-   *  (ISS-733): opens a fresh chat session that runs `forge-onboard` as its
-   *  first turn. Requires the project to own an install-only `forge-onboard`
-   *  copy. Returns the new session id to open in chat. */
   onboard: (id: string) =>
     apiClient<OnboardResult>(`/projects/${id}/onboard`, { method: 'POST' }),
 };

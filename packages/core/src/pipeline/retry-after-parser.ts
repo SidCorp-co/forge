@@ -1,24 +1,3 @@
-/**
- * RFC 7231 §7.1.3 Retry-After header parser (ISS-197).
- *
- * Pure: no I/O, no database, no Date.now() side effects beyond computing a
- * future timestamp. Two accepted forms:
- *   • delta-seconds: "600"            → now + 600s
- *   • HTTP-date:     "Wed, 21 Oct 2026 07:28:00 GMT" → that absolute instant
- *
- * Defensive against misconfigured providers:
- *   • negative delta-seconds          → null
- *   • NaN / unparseable HTTP-date     → null
- *   • past HTTP-date                  → null (provider already finished)
- *   • delta > 24h                     → clamped to now + 24h
- *   • absolute date > 24h ahead       → clamped to now + 24h
- *
- * The cooldown floor (60s) is exported as `MIN_RETRY_COOLDOWN_MS` so the
- * retry engine can apply it without redefining the literal. Kept in this
- * file (pipeline/) rather than jobs/ so the clean-break grep
- * (`60_000` in packages/core/src/jobs/) stays empty.
- */
-
 export const MIN_RETRY_COOLDOWN_MS = 60_000;
 export const MAX_RETRY_AFTER_CAP_MS = 24 * 60 * 60 * 1000;
 

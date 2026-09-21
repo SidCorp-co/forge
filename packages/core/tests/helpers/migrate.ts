@@ -8,11 +8,6 @@ const MIGRATIONS_FOLDER = resolve(
   new URL('../../drizzle/migrations', import.meta.url).pathname,
 );
 
-/**
- * Run Drizzle migrations against the supplied test DB. No-op when the
- * migrations folder does not exist yet (Phase 2.1 is still scaffolding the
- * schema — downstream issues will generate migrations).
- */
 export async function runMigrations(
   db: PostgresJsDatabase<Record<string, unknown>>,
 ): Promise<void> {

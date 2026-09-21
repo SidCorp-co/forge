@@ -1,8 +1,3 @@
-// cm:why against a real Postgres and not a mocked drizzle: every claim here is about what the
-// DATABASE returns for a projection and about how ILIKE matches, and a mock of ILIKE agrees with
-// itself whatever it is told. The JS `issueSearchMatchedFields` this replaces was unit-tested that
-// way and could not have caught a disagreement with the predicate it sits beside (ISS-1016).
-
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -98,10 +93,6 @@ describe('the REST issue lists answer with a projection (ISS-1016)', () => {
     process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
     process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
 
-    // cm:why dynamic, after DATABASE_URL is set, matching every other file in this suite. Since
-    // ISS-1067 a static import would also work — `config/env.ts` and `db/client.ts` do their work on
-    // the first property read rather than at import — so this is the suite's convention now and no
-    // longer a necessity; it stays because moving one file off it is a change to all of them.
     ({ REST_ISSUE_LIST_OMITTED: omitted } = await import('../../src/issues/list-projection.js'));
     const { issueProjectRoutes } = await import('../../src/issues/routes.js');
     const { searchRoutes } = await import('../../src/issues/search.js');
@@ -137,10 +128,6 @@ describe('the REST issue lists answer with a projection (ISS-1016)', () => {
       plan: 'A plan about applyTransition.',
       acceptanceCriteria: 'A criterion about snake_case names.',
     });
-    // cm:why the identifier-only row: `LITELLM API` is a literal substring of nothing here, and
-    // `forge_identifier_words` splits both the query and `LITELLM_API_URL` to `litellm api`, so the
-    // `@@` arm is the only arm that can return it — which is what makes `matchedFields: []` a real
-    // answer rather than a default.
     await seedIssue(3, {
       title: 'The LITELLM_API_URL fact',
       description: 'A body with no clause.',
@@ -210,11 +197,6 @@ describe('the REST issue lists answer with a projection (ISS-1016)', () => {
         `/api/projects/${projectId}/issues/search?q=${encodeURIComponent('100%_done')}`,
       );
       expect(literal.items.map((r) => r.matchedFields)).toEqual([['acceptanceCriteria']]);
-      // cm:guard the same row, one character apart, is what separates escaped from not: the seeded
-      // criteria hold `100%_done`, so an UNESCAPED `%100%done%` matches it — `%` standing in for
-      // `%_` — and would answer `['acceptanceCriteria']` here. Escaped, no field matches; the row
-      // still comes back because the identifier arm splits `100%done` to a word the row carries,
-      // so the empty array and not an empty page is the tell.
       const wildcard = await get(
         `/api/projects/${projectId}/issues/search?q=${encodeURIComponent('100%done')}`,
       );

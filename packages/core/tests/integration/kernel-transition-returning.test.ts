@@ -28,10 +28,6 @@ const deliverAgentChatReplyOnce = vi.fn(async (_row: unknown) => {});
 vi.mock('../../src/integrations/rocketchat/escalation-bridge.js', () => ({
   deliverEscalationReplyOnce: (row: unknown) => deliverEscalationReplyOnce(row as never),
 }));
-// cm:guard the module under this mock is the LEGACY shim, and that is the point of these two cases
-// after ISS-1039: a session dispatched before the rename still carries `metadata.agentChat`, and the
-// bridge list still has to hydrate its whole row and deliver it exactly once. A mock pointed at the
-// new marker's bridge would pass while every in-flight Rocket.Chat turn went silent (criteria 34, 35).
 vi.mock('../../src/integrations/rocketchat/legacy-agent-chat-bridge.js', () => ({
   deliverLegacyAgentChatReplyOnce: (row: unknown) => deliverAgentChatReplyOnce(row as never),
 }));
@@ -97,9 +93,9 @@ async function idleSession(metadata: unknown = { type: 'chat' }): Promise<string
   const id = randomUUID();
   const long = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
   await harness.db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, messages, metadata,
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, messages, metadata,
                                 started_at, last_heartbeat_at, updated_at, created_at)
-    VALUES (${id}, ${projectId}, ${runId}, 'running',
+    VALUES (${id}, ${projectId}, ${runId}, 'chat', 'running',
             ${JSON.stringify([{ role: 'assistant', content: 'z'.repeat(5000) }])}::jsonb,
             ${JSON.stringify(metadata)}::jsonb,
             ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz)
@@ -213,7 +209,6 @@ describe('ISS-1014 · a bulk sweep never touches the transcript', () => {
     expect(rows.map((r) => r.status)).toEqual(['completed', 'completed', 'completed']);
     expect(rows.map((r) => r.id).sort()).toEqual([...ids].sort());
     expect(await auditRows()).toBe(3);
-    // cm:why one publish per session, not two: these rows carry no device, so the device room is skipped.
     const statusPublishes = publish.mock.calls.filter(
       (c) => (c[1] as { event?: string } | undefined)?.event === 'agent-session.status',
     );
@@ -236,7 +231,6 @@ describe('ISS-1014 · a bridge-marked session still gets its whole row', () => {
       status?: string;
       failureReason?: unknown;
     };
-    // cm:guard the WHOLE row, not the five-column projection — the bridge reads all three of these.
     expect(row.messages).toBeDefined();
     expect(row.status).toBe('completed');
     expect(row).toHaveProperty('failureReason');
@@ -271,9 +265,10 @@ describe('ISS-1014 · the zombie sweep keeps its broadcast and its wedge', () =>
     const id = randomUUID();
     const long = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata,
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata,
                                   dispatched_at, updated_at, created_at)
-      VALUES (${id}, ${projectId}, ${runId}, 'queued', ${JSON.stringify({ type: 'pipeline' })}::jsonb,
+      VALUES (${id}, ${projectId}, ${runId}, 'pipeline', 'queued',
+              ${JSON.stringify({ type: 'pipeline' })}::jsonb,
               ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz)
     `);
 

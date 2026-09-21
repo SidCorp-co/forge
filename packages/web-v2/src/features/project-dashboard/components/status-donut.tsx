@@ -1,6 +1,11 @@
 // Open-issues-by-status donut (ISS-379, AC#4). Pure-CSS conic-gradient ring +
 // legend — no chart lib. Light-first (kit color tokens).
-import { Card, CardContent, Icon } from "@/design";
+import {
+  Card,
+  CardContent,
+  CardTitle,
+  Icon,
+} from "@/design";
 import { conicGradient, type StatusDonutData } from "../derive";
 
 export function StatusDonut({ data }: { data: StatusDonutData }) {
@@ -9,7 +14,7 @@ export function StatusDonut({ data }: { data: StatusDonutData }) {
     <Card className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-line-subtle px-5 py-3.5">
         <Icon name="board" size={16} className="text-subtle" />
-        <h3 className="fg-h3">Open issues by status</h3>
+        <CardTitle>Open issues by status</CardTitle>
       </div>
       <CardContent className="flex-1">
         {total === 0 ? (

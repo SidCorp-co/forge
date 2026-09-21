@@ -1,12 +1,3 @@
-// Which test files a changed-selection runs, as a decision separated from the
-// running of it. `test-changed.mjs` collects the three inputs — every test file
-// in the package, the ones vitest's graph reached, the ones that read the tree —
-// and this says what to do with them.
-//
-// Pure on purpose: the bug this file exists to hold is an ordering one (a lane
-// dropped at the last step), and an ordering bug is only provable where the
-// decision can be called without a repo, a base revision or a vitest.
-
 /**
  * @param {{ all: string[], selected: string[], always: string[], fullRunShare: number }} input
  * @returns {{ skip: boolean, full: boolean, files: string[], union: string[] }}
@@ -16,7 +7,6 @@
 export function selectionFor({ all, selected, always, fullRunShare }) {
   const union = [...new Set([...selected, ...always])].sort();
 
-  // cm:guard skipping needs BOTH lanes empty, never `selected` alone: the always lane reads the source TREE rather than importing it, so a change no test imports — a new file, a config, a renamed export — is exactly what it catches and exactly what a skip on `selected` would drop in silence. That is the hole the two-lane split exists to close, and it was reopened at this last step.
   if (union.length === 0) return { skip: true, full: false, files: [], union };
 
   const full = union.length > all.length * fullRunShare;

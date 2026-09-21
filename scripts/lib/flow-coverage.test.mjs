@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fnHitsAt, lookup, mergeSites, parseSites, stmtHitsAt } from './flow-coverage.mjs';
 
-// cm:why the fixture is tryDispatchCoolifyRelease reduced: `f`=3 with the annotated statement's `s`=0 is the real shape ISS-955 found, so a change that makes these two agree here has merged the levels rather than fixed the fixture
 const entry = {
   fnMap: {
     0: {
@@ -45,7 +44,6 @@ describe('stmtHitsAt', () => {
 });
 
 describe('lookup', () => {
-  // cm:guard this is the distinction ISS-955 exists to keep visible: `state` is the GATE's verdict and stays function-level, `stmt` is the advisory. If a change makes these two agree on this fixture, the two evidence levels have been merged and the report is back to overstating itself.
   it('reports a function entered whose annotated statement never ran as covered AND statement-uncovered', () => {
     const r = lookup(source({ '/repo/packages/core/src/a.ts': entry }), {
       file: 'packages/core/src/a.ts',
@@ -84,11 +82,6 @@ describe('lookup', () => {
     expect(r.state).toBe('covered');
   });
 
-  // cm:guard `nofn` must stay its OWN state and never collapse into `uncovered`. An annotation in a
-  // file header belongs to no function, and while the two shared a verdict the gate printed "no test
-  // enters it at all" for a step whose function the integration suite entered eight times — ISS-1073
-  // spent a CI round trip writing a test that was already there. check-flow-coverage refuses this
-  // state by name; that refusal is only reachable while these two answers differ.
   it('says nofn, not uncovered, for an annotation that sits inside no function', () => {
     const r = lookup(source({ '/repo/packages/core/src/a.ts': entry }), {
       file: 'packages/core/src/a.ts',
@@ -118,7 +111,7 @@ describe('mergeSites', () => {
 });
 
 describe('parseSites', () => {
-  // cm:guard build the marker at runtime, never as a literal — check-flow-coverage finds its sites with `git grep cm:flow` over TRACKED files, so a literal here is a real annotation to the gate the moment this file is committed. It cost one red CI run: the fixture's `release/tick` made the step scan find 5 where `cm flow release` reports 4, and the checker exits 2 on that disagreement.
+  // build the marker at runtime, never as a literal — check-flow-coverage finds its sites with `git grep cm:flow` over TRACKED files, so a literal here is a real annotation to the gate the moment this file is committed. It cost one red CI run: the fixture's `release/tick` made the step scan find 5 where `cm flow release` reports 4, and the checker exits 2 on that disagreement.
   const MARK = `cm${':'}flow`;
 
   it('keeps only the flows it was asked for', () => {

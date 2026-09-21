@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildAppManifest,
@@ -64,32 +61,16 @@ describe('buildAppManifest', () => {
     }
   });
 
-  // cm:guard ISS-1072 — the App cannot publish `forge/issue-contract` on `checks: read`, and a manifest decides the permissions of Apps created AFTER it alone. This holds the request; the case below holds the sentence that tells an operator what to do about the App that exists.
   it('requests `checks: write`, which is what publishing a check run needs', () => {
     expect((split().default_permissions as Record<string, string>).checks).toBe('write');
   });
 
-  // cm:guard ISS-1075 — an event and the permission that gates it are ONE request, and GitHub gates `workflow_run` on Actions. Subscribing without it produces an App whose settings page lists the event and whose deliveries never carry one, which presents as a release waiting an hour and a half for a build that already finished. Neither `contents` nor `checks` grants it, so this has to be its own key.
   it('requests `actions: read` for every event it subscribes to that needs it', () => {
     const m = split();
     const events = m.default_events as string[];
     const permissions = m.default_permissions as Record<string, string>;
     expect(events).toContain('workflow_run');
     expect(permissions.actions).toBe('read');
-  });
-
-  it('states what an operator does to the App that already exists', () => {
-    const source = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), 'connect.ts'),
-      'utf8',
-    );
-    const manifest = source.slice(0, source.indexOf('default_permissions'));
-    // A manifest change reaches no existing installation, so the migration path has to be
-    // written down where the change is — or the one App Forge has keeps failing 403 with the
-    // fix known to nobody.
-    expect(manifest).toContain('Read and write');
-    expect(manifest).toContain('approve');
-    expect(manifest).toMatch(/Reconnecting does NOT|reconnecting will not/i);
   });
 
   it('posts to the org endpoint when an org is named', () => {

@@ -25,6 +25,8 @@ import {
   usageRecords,
   users,
 } from '../db/schema.js';
+import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { listResponse } from '../lib/pagination.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -55,9 +57,6 @@ import {
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:edge naming -> packages/core/src/projects/health-routes.ts — mirrors NON_OPEN_STATUSES there; keep the excluded-status set aligned
-const NON_OPEN_STATUSES = new Set(['awaiting_release', 'closed', 'draft']);
-
 const overviewQuerySchema = z.object({ window: z.enum(GLANCE_WINDOWS).default('24h') });
 
 export const adminAggregateRoutes = new Hono<{ Variables: AuthVars }>();
@@ -72,7 +71,6 @@ adminAggregateRoutes.get(
     const { window } = c.req.valid('query');
     const spec = WINDOW_SPECS[window];
     const now = new Date();
-    // cm:edge contract -> packages/core/src/admin/alert-queries.ts — `openAlerts` is the count of non-`ok` alerts from the SHARED `computeAlerts`, never a second definition: the tile used to approximate A2 alone (running jobs past a hardcoded 600s) and printed "0 · nothing needs you" above a red A1/A3/A4/A5 row, the state-lies failure VISION №10 forbids.
     const thresholds = await readThresholds();
     const openAlerts = (await computeAlerts({ now, thresholds })).filter(
       (a) => a.status !== 'ok',
@@ -105,7 +103,7 @@ adminAggregateRoutes.get(
       db
         .select({ n: count() })
         .from(jobs)
-        .where(inArray(jobs.status, ['queued', 'dispatched', 'running'])),
+        .where(inArray(jobs.status, [...UNHELD_LIVE_JOB_STATUSES])),
       db
         .select({ v: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)::float` })
         .from(usageRecords)
@@ -116,7 +114,6 @@ adminAggregateRoutes.get(
         .where(
           sql`${usageRecords.recordedAt} >= ${baseStart} AND ${usageRecords.recordedAt} < ${cutoff}`,
         ),
-      // cm:guard mapped over GLANCE_METRIC_NAMES rather than written out per metric — the five names appear ONCE, in `types.ts`, so the glance and the series route cannot come to measure different things (ISS-975). Spelling a name here again is what the shared union removed.
       Promise.all(
         GLANCE_METRIC_NAMES.map(
           async (name) =>

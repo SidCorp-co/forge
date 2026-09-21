@@ -142,7 +142,6 @@ knowledgeIngestRoutes.post(
     }
 
     let processed = 0;
-    // cm:guard one batch is one outcome — a failure names EVERY document it carried as `index_failed`, because a multi-row upsert either lands or does not and reporting a subset as processed would tell the caller a document is stored that is not.
     if (accepted.length > 0) {
       try {
         await upsertKnowledgeEntries(accepted.map((a) => a.input));

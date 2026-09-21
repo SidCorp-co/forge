@@ -1,10 +1,5 @@
 "use client";
 
-// Active-org context (ISS-469) — the single source of truth for "which org am
-// I working in". Sourced from useOrgs() (full membership, incl. empty orgs) and
-// the server-side preference (user_preferences.active_org_id via /me/preferences).
-// The chrome switcher reads `activeOrg`/`orgs` and calls `setActiveOrg`; the
-// projects console scopes itself to `activeOrgId`.
 import { createContext, useContext, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
@@ -47,10 +42,6 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
 
   const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
 
-  // Resolve the active org: the stored preference when it still points at an
-  // org the caller belongs to, otherwise the personal org, otherwise the first.
-  // This gracefully handles null (no choice yet) and stale ids (membership
-  // removed after it was set).
   const activeOrg = useMemo(() => {
     if (orgs.length === 0) return null;
     const stored = prefs?.activeOrgId ?? null;
@@ -79,11 +70,6 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
-  // React Query's `mutate` is referentially stable across renders; the wrapping
-  // `mutation` object is NOT (new identity every render). Depend on `mutate`
-  // alone so the context value (and `setActiveOrg`) only changes identity when
-  // `orgs`/`activeOrg` change — otherwise consumers' effects keyed on
-  // `setActiveOrg` re-run every render and can storm React #185 (ISS-472).
   const { mutate } = mutation;
   const value = useMemo<ActiveOrgContextValue>(
     () => ({

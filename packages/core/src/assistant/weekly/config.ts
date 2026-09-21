@@ -1,10 +1,3 @@
-/**
- * ISS-1056 — who opted in: `pipelineConfig.assistantWeekly` on the project's `agentConfig`,
- * declared in `pipeline/pipeline-config-schema.ts` and written through `updatePipelineConfig`
- * only. Absent means OFF, as `knowledgePromotion` does, so a cron nobody watches never reads a
- * project that did not ask for it.
- */
-
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';

@@ -52,7 +52,6 @@ beforeEach(() => {
 });
 
 describe('requireAdmin', () => {
-  // cm:guard the two gates behind ONE read is the whole of ISS-1012: queue a second row and this passes whatever the admin gate reads, which is how the fan-out went unnoticed.
   it('reads users once for the email gate and the admin gate together', async () => {
     const token = await signUserToken('uuid-admin');
     selectLimit.mockResolvedValueOnce([{ email: ADMIN_EMAIL, emailVerifiedAt: new Date() }]);
@@ -81,7 +80,6 @@ describe('requireAdmin', () => {
     );
   });
 
-  // cm:guard exercised with NO email gate in front, because on `/api/admin/*` the email gate meets the missing row first and answers 403 — the 401 this proves is then unreachable and the case silently stops testing the admin gate.
   it('401 UNAUTHENTICATED when the userId resolves to no users row', async () => {
     const token = await signUserToken('uuid-ghost');
     selectLimit.mockResolvedValueOnce([]);
@@ -107,7 +105,6 @@ describe('requireAdmin', () => {
     await expect(res.json()).resolves.toMatchObject({ code: 'ADMIN_ONLY' });
   });
 
-  // cm:guard the memo holds the row and never the verdict, so a second mount refuses exactly as the first did. A pass-flag memo passes this only by never being asked twice; invoking the gate twice on one context is what asks it (ISS-1012).
   it('refuses ADMIN_ONLY on every invocation, having read the row once', async () => {
     const token = await signUserToken('uuid-outsider');
     selectLimit.mockResolvedValueOnce([

@@ -68,9 +68,24 @@ Wait ~30 seconds for services to become healthy.
 A device is any machine that will run `claude` for your projects (commonly your dev laptop or a headless box). Forge pairs devices with the **`forge-runner`** daemon:
 
 ```bash
-# Install
+# Install — writes the core URL it was served from into the config
 curl -fsSL http://localhost:8080/install.sh | sh
 
-# Pair — opens a browser to approve (use --code on a headless host)
-forge-runner login
+# Everything else: pair, pick the project, get a checkout, install the service
+forge-runner setup
 ```
+
+`setup` checks `claude`/`git`/`tmux` before it pairs, prints the approval URL
+(`--open` launches a browser), waits for the device to be assigned a project in
+the web UI, has the server provision a checkout under `projects_root` — or
+takes `--path` for one you already have — installs the service, and ends on
+`doctor`, exiting non-zero when the verdict is FAIL. Every question has a flag,
+so an unattended install is the same command:
+
+```bash
+forge-runner setup --yes --code <CODE> --project <slug> --projects-root ~/forge
+```
+
+The device installs the first-party `forge` plugin — the pipeline's driver
+skill — on its own. `forge-runner config set plugins.enabled false` opts a
+machine out.

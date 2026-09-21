@@ -1,8 +1,5 @@
 "use client";
 
-// web-v2 feature: What's New — the in-app Forge release feed (ISS-384).
-// Product-global source (Forge's CHANGELOG via GitHub), NOT the per-project
-// docs API. The per-user "seen" marker rides the existing preferences row.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type ChangelogRelease,

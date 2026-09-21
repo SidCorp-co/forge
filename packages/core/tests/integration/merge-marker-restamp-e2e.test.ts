@@ -85,7 +85,6 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     expect(await mergedAtOf(issue.id)).not.toBeNull();
   });
 
-  // cm:guard this is the ISS-925 shape and the assertion that matters: the SECOND call must not answer `merged`. Before this change both calls answered identically while only the first wrote, which is the whole defect.
   it('answers `already_merged` for a second call, and does not move the timestamp', async () => {
     const issue = await insertIssue();
     await mark(issue, 'probe');
@@ -111,7 +110,6 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     expect(rows[1]?.body).toMatch(/unmark/);
   });
 
-  // cm:guard the failure this is planted to catch: the advisory used to be joined onto the note with ` — `, and a note is a clause list its composer reads back by clause, each running to the next `;` or newline. So the advisory landed INSIDE the note's last clause: on ISS-1004 the mark's `landing wrote …/proactivity.test.ts` read back as that path with the whole advisory glued to it, and the run was told its change had grown to a path nobody had written. The assertion is that the note the caller gave is a line of its own, whole, whatever this module appends after it.
   it("leaves the caller's note whole on its own line when it does not stamp", async () => {
     const issue = await insertIssue();
     const note =

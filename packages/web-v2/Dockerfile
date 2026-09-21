@@ -11,7 +11,6 @@ FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /repo
 
-# cm:guard .npmrc MUST be copied: it declares `node-linker=hoisted`, and without it the image installs with pnpm's default isolated linker. next 16.3.1's standalone tracer then copies the `@swc/helpers` SYMLINK without its target, and `node server.js` dies on MODULE_NOT_FOUND before serving a single request (forge-beta, 2026-08-23).
 COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 
@@ -45,10 +44,6 @@ ARG WEB_V2_BASE_PATH=
 ENV WEB_V2_BASE_PATH=$WEB_V2_BASE_PATH
 ARG NEXT_PUBLIC_BASE_PATH=
 ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
-# cm:guard must stay ABOVE `RUN pnpm build`: `NEXT_PUBLIC_*` is inlined into the client
-# bundle by Next at build time, so a value arriving after this line reaches no browser.
-# cm:edge lockstep -> docker-compose.prod.yml — `web-v2.build.args.SOURCE_COMMIT` fills it,
-# the same argument core's build takes, so the two services cannot name different commits.
 ARG SOURCE_COMMIT=
 ENV NEXT_PUBLIC_SOURCE_COMMIT=$SOURCE_COMMIT
 RUN pnpm build

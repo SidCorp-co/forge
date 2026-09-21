@@ -2,13 +2,12 @@
  * Every fold the pulse response is assembled by, and nothing that reaches the
  * database.
  */
-// cm:guard every function here stays PURE — no db, no clock of its own, no I/O — because each one is a rule this surface is judged on (which bucket a status lands in, whether a backlog walk reads both directions, which lane a run kind belongs to) and one impure helper takes the whole module out of the reach of a test that needs no Postgres.
 
+import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import {
   PULSE_AWAITING_RELEASE_STATUSES,
   PULSE_FLOW_WEEKS,
   PULSE_HEARTBEAT_DAYS,
-  PULSE_HUMAN_BLOCKED_STATUSES,
   PULSE_IN_PROGRESS_STATUSES,
   PULSE_OPEN_STATUSES,
   type PulseFlowWeek,
@@ -19,7 +18,6 @@ import {
 } from './pulse-types.js';
 
 /** Whole seconds between `then` and `now`, never negative. */
-// cm:guard clamped at zero because a runner's clock can stamp ahead of the tracker's — this issue's own lease carried a renew time the CLI refused to place against the server's. A negative age renders as an outage in the future (ISS-988 criterion 7).
 export function ageSeconds(then: Date | string | null | undefined, now: Date): number | null {
   if (then == null) return null;
   const ms = now.getTime() - new Date(then).getTime();
@@ -37,7 +35,7 @@ const BUCKET_OF = new Map<string, keyof PulseWorkBuckets>();
 for (const s of PULSE_OPEN_STATUSES) BUCKET_OF.set(s, 'open');
 for (const s of PULSE_IN_PROGRESS_STATUSES) BUCKET_OF.set(s, 'inProgress');
 for (const s of PULSE_AWAITING_RELEASE_STATUSES) BUCKET_OF.set(s, 'awaitingRelease');
-for (const s of PULSE_HUMAN_BLOCKED_STATUSES) BUCKET_OF.set(s, 'humanBlocked');
+for (const s of HUMAN_PARK_STATUSES) BUCKET_OF.set(s, 'humanBlocked');
 
 /** Which of the four buckets a status belongs to, or null where it is finished. */
 export const bucketOfStatus = (status: string): keyof PulseWorkBuckets | null =>
@@ -106,7 +104,6 @@ export interface FlowEventCounts {
 }
 
 /** Walk the backlog forward from what stood before the window opened. */
-// cm:guard the walk reads BOTH directions: an issue that closes in one week and reopens in a later one is subtracted once and added back once, and counting only entries into terminal leaves it out of every later backlog for good (ISS-988 criterion 16).
 export function walkFlow(
   weekStarts: readonly string[],
   counts: FlowEventCounts,
@@ -130,7 +127,6 @@ const LANE_OF: Record<string, keyof PulseQuality['runFailure']> = {
 const emptyLane = (): PulseLane => ({ failed: 0, total: 0 });
 
 /** Failed-against-total per lane, by the run kind that wrote the row. */
-// cm:guard `pm` and `interactive` fall to `other` rather than into `scheduler`: `pm` is the coordinator and `interactive` is a person chatting, and folding either into the machinery lane prices someone closing a chat window as a scheduler failure (ISS-988 criterion 20).
 export function foldLanes(
   rows: Array<{ kind: string; failed: number; total: number }>,
 ): PulseQuality['runFailure'] {

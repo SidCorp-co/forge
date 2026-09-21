@@ -1,22 +1,3 @@
-/* Data-driven color meta for status / health / avatars.
-   These intentionally reference the raw brand palette (var(--green-500),
-   ...) because the color IS the datum — unlike app chrome, which must use
-   the semantic layer. Keep the status vocabulary fixed (design system):
-   queued · running · blocked · waiting · passed · failed · paused · done.
-
-   ISS-509 — ONE semantic-tone source of truth.
-   Color used to be picked independently in ~7 places, so the same meaning got
-   different colors and different meanings shared a color (a real `failed` job
-   and an `offline` runner both red; a benign `on_hold` issue red in a dashboard
-   but neutral in its chip; the pipeline "active" bead sharing the primary-action
-   flame). The fix: every status surface resolves through `TONE_META` below, and
-   the THREE concepts (issue chip · session chip · pipeline bead) stay
-   distinguishable by SHAPE + label, never by re-picking a color.
-
-   `SemanticTone` is the vocabulary. `STATUS_KEY_TONE` maps the fixed StatusKey
-   set onto it; `statusToTone` (features/issues/derive.ts) maps the 18 issue
-   lifecycle statuses through `statusToChip` so a status's tone is identical in
-   its chip and in every dashboard bucket. */
 
 export interface ColorMeta {
   label: string;
@@ -25,22 +6,6 @@ export interface ColorMeta {
   dot: string;
 }
 
-/**
- * The canonical semantic tones. Each = exactly ONE fg/bg/dot token. Reserve
- * `failure` (red) for a REAL failure only — a benign cleanup, a paused issue, a
- * blocked-by-dependency, or an offline runner must NEVER read red.
- *  - success   terminal-good (verified): passed / done / staging / healthy
- *  - shipped   released to production — a distinct "shipped" hue (flame), so a
- *              released issue is not confused with a merely-verified one
- *  - archived  closed / archived — calm, heavier ink than `blocked`, so a closed
- *              issue reads as "filed away", distinct from a parked `on_hold`
- *  - failure   a real failure: job `failed`, a live `zombie`/`stalled` session
- *  - active    machine working: running, in_progress, the review/test stages
- *  - attention a HUMAN must act: awaiting approval / info / your review
- *  - blocked   parked, not a failure: on_hold, blocked-by-dependency (calm ink)
- *  - neutral   backlog / idle / benign cleanup (`swept`, ISS-322)
- *  - infra     infrastructure down (runner offline) — distinct from a code failure
- */
 export type SemanticTone =
   | "success"
   | "shipped"
@@ -54,8 +19,6 @@ export type SemanticTone =
 
 export const TONE_META: Record<SemanticTone, ColorMeta> = {
   success: { label: "Success", fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
-  // `shipped` = released to prod, a distinct flame hue so it reads apart from a
-  // merely-verified (green) issue. ISS-511.
   shipped: { label: "Shipped", fg: "var(--flame-700)", bg: "var(--flame-50)", dot: "var(--flame-600)" },
   // `archived` = closed/filed-away. Heavier ink than `blocked` (ink-700/paper-200)
   // so a closed issue is distinct from a parked `on_hold`. ISS-511.
@@ -87,9 +50,6 @@ export type StatusKey =
   | "zombie"
   | "swept";
 
-/** The single mapping from the fixed StatusKey vocabulary onto a semantic tone.
- *  Everything that colors a StatusKey (issue + session chips) flows through here
- *  via `STATUS_META`, so the tone is the only place color is decided. */
 export const STATUS_KEY_TONE: Record<StatusKey, SemanticTone> = {
   running: "active",
   queued: "neutral",

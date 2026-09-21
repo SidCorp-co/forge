@@ -1,9 +1,3 @@
-/**
- * ISS-1061 — the run's figures grouped by what each task measures. The score rule is the
- * ladder's, applied per capability over the tasks that carry it; a capability no task walked is
- * absent rather than zero, and the judge stays a column here as it does on the ladder.
- */
-
 import type { TaskSide } from './compare.js';
 import type { Tally } from './judge.js';
 import { CAPABILITIES, type Capability } from './task.js';
@@ -24,7 +18,6 @@ export interface CapabilitySummary {
   lowest: Lowest | null;
   /** Tasks whose pass^k is 1. */
   fullTasks: number;
-  /** The judge's counts over the judged turns of these tasks; null where none was judged. */
   judge: Tally | null;
 }
 
@@ -71,9 +64,6 @@ export function summarizeCapabilities(tasks: SidedTask[]): CapabilitySummary[] {
   return CAPABILITIES.flatMap((capability) => {
     const all = tasks.filter((t) => t.capability === capability);
     if (all.length === 0) return [];
-    // cm:guard a task the project cannot supply a fixture for is charged to NO denominator: it left
-    // `full 2/3` and a thin mark on the ISS-1061 run of forge-plugin, which reads as a capability
-    // the assistant lacks rather than as a question this project cannot be asked (ISS-1066).
     const own = all.filter((t) => t.notApplicable === undefined);
     const { score, lowest } = passKMean(own);
     return [

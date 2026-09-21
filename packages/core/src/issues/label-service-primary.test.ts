@@ -107,7 +107,6 @@ describe('resolveLabelIdsForWrite — the primary module', () => {
     expect((err as InstanceType<typeof PrimaryModuleError>).code).toBe('MULTIPLE_PRIMARY');
   });
 
-  // cm:guard the count is checked BEFORE the lookup, so a set with two primaries is refused even when neither value resolves — otherwise the caller gets INVALID_LABELS and fixes the wrong half
   it('refuses two primaries before reporting either as unknown', async () => {
     projectRows = [];
     const err = await resolveLabelIdsForWrite('p', [

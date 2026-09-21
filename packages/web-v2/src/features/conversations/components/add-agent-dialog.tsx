@@ -40,11 +40,9 @@ export function AddAgentDialog({
     onClose();
   };
 
-  // cm:guard the dialogue stays OPEN and keeps the selection when the add is refused, and the refusal is rendered here rather than toasted away: the refusals this door makes name a project and a role, which is what the person has to act on, and a person whose choice was cleared has to find the agent again before they can read why (ISS-1011 criteria 42, 47).
   const confirm = () => {
     if (!picked) return;
     add.mutate(
-      // cm:guard the agent id goes only where there IS one: core offers a project whose agent has never been minted with a null id, and mints it on add under the name shown here. Passing the null through made the body fail the route's strict schema (ISS-1011, review F2).
       { userId: picked.userId, projectId: picked.project.id },
       { onSuccess: close },
     );

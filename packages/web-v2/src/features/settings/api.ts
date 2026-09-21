@@ -1,7 +1,3 @@
-// web-v2 feature module: settings — REST surface. All user-scoped. Routes
-// verified against core for ISS-299. PAT create/revoke require fresh auth
-// (≤5 min) → core returns 403 `FRESH_AUTH_REQUIRED`; callers re-auth via
-// `reauth(password)` then retry.
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type {
   AssistantPreferences,
@@ -16,10 +12,8 @@ import type {
 export const NOTIFICATIONS_PAGE_SIZE = 25;
 
 export const settingsApi = {
-  /** `GET /api/auth/me/preferences`. */
   getPreferences: () => apiClient<Preferences>(`/auth/me/preferences`),
 
-  /** `PATCH /api/auth/me/preferences` — partial. */
   updatePreferences: (
     patch: Partial<
       Pick<Preferences, "theme" | "language" | "notifyOnMention" | "lastSeenWhatsNew" | "activeOrgId">
@@ -29,17 +23,13 @@ export const settingsApi = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  // cm:guard the four calls below go to `/auth/preferences`, NOT `/auth/me/preferences`: the two routes are different files in core, and `/me/preferences` refuses `answerStyle` under a strict schema — a card wired to it saved nothing and listed nothing (codex F1).
-  /** `GET /api/auth/preferences` — the full row, the assistant fields included (ISS-1034). */
   getAssistantPreferences: () =>
     apiClient<Preferences & AssistantPreferences>(`/auth/preferences`),
-  /** `PATCH /api/auth/preferences` — the assistant fields, as the person. */
   updateAssistantPreferences: (patch: Partial<AssistantPreferences>) =>
     apiClient<Preferences & AssistantPreferences>(`/auth/preferences`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  /** `GET /api/auth/preferences/changes` — every write to how this person is answered. */
   listPreferenceChanges: () =>
     apiClient<{ items: PreferenceChange[] }>(`/auth/preferences/changes`).then((r) => r.items),
   /** `POST /api/auth/preferences/changes/:id/restore` — 409 `PREFERENCE_CHANGE_SUPERSEDED` when a later change moved the field. */

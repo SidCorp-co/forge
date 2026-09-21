@@ -350,7 +350,6 @@ describe('declarationFaults — canDispatch against what the adapter implements'
     expect(fault.reasons.join(' ')).toContain('canDispatch is true and the adapter implements no');
   });
 
-  // cm:guard the OTHER direction is not pedantry: a provider implementing a dispatch it declares false has a capability every generic path is told it does not have, so the method is reachable by nothing.
   it('fails a provider that implements a dispatch it declares false', () => {
     const decl = sound();
     decl.capabilities.canDispatch = false;

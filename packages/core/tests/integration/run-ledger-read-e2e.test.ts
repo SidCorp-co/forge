@@ -96,8 +96,16 @@ async function bind(deviceId: string, projectId: string): Promise<void> {
   `);
 }
 
-/** A run session as core mints one, so the join has something to read. */
-async function seedSession(projectId: string, heartbeat: string): Promise<string> {
+/**
+ * A run session as core mints one, so the join has something to read. A master
+ * is asked for by kind and by the box it sits on, because the owner edge is
+ * only accepted from a `master` core issued on that same device.
+ */
+async function seedSession(
+  projectId: string,
+  heartbeat: string,
+  opts: { kind?: string; deviceId?: string | null } = {},
+): Promise<string> {
   const runId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
@@ -106,8 +114,10 @@ async function seedSession(projectId: string, heartbeat: string): Promise<string
   const sessionId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO agent_sessions
-      (id, project_id, pipeline_run_id, status, last_heartbeat_at, title, created_at, updated_at)
-    VALUES (${sessionId}, ${projectId}, ${runId}, 'running', ${heartbeat}, 'run: grp-1', now(), now())
+      (id, project_id, pipeline_run_id, device_id, kind, status, last_heartbeat_at, title,
+       created_at, updated_at)
+    VALUES (${sessionId}, ${projectId}, ${runId}, ${opts.deviceId ?? null},
+            ${opts.kind ?? 'run_session'}, 'running', ${heartbeat}, 'run: grp-1', now(), now())
   `);
   return sessionId;
 }
@@ -142,7 +152,10 @@ async function read(projectId: string, token: string): Promise<Response> {
 describe('a member reading the fleet', () => {
   it('answers a member with the parent, the pid and the worktree the box reported', async () => {
     const m = await member();
-    const masterSessionId = await seedSession(m.projectId, '2026-09-08T09:00:00Z');
+    const masterSessionId = await seedSession(m.projectId, '2026-09-08T09:00:00Z', {
+      kind: 'master',
+      deviceId: m.deviceId,
+    });
     const sessionId = await seedSession(m.projectId, '2026-09-08T09:30:00Z');
     await applySnapshot({
       deviceId: m.deviceId,
@@ -241,7 +254,6 @@ describe('what one box reported', () => {
     expect(body.items.map((r) => r.runId)).toEqual(['run-1']);
   });
 
-  // cm:guard every paired box in the fleet holds a valid device token, so the project on a snapshot entry is a CLAIM. Without this check any box could put a worktree path and a pid into any project's read surface (ISS-934).
   it('drops a run naming a project this box is not bound to', async () => {
     const a = await member();
     const b = await member();
@@ -259,7 +271,6 @@ describe('what one box reported', () => {
   });
 });
 
-// cm:why criterion 52 wants the three close-loop marks rendered as THREE, and the UI can only render what this surface carries: `issues[].leaseReturned` was the only one of them here, so a screen built on today's shape could show one flag and would have to guess the other two. `snapshot` publishes unclosed runs only, which is exactly the window where the three disagree.
 describe('the three close-loop marks', () => {
   it('carries each mark separately, so a half-closed run reads as half-closed', async () => {
     const m = await member();

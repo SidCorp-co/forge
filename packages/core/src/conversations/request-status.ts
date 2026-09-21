@@ -34,8 +34,6 @@ export interface ExplicitAnchor {
 /**
  * Whether this window is somebody asking, and which message they asked with.
  */
-// cm:guard a DIRECT venue is always an explicit request and a GROUP one only where a message names a handle or replies to something the handle sent — the same reading `windowAddressesAHandle` gives the mention gate, taken per message here because the anchor is one message and not the window. Unsolicited group speech returns null and is owed nothing: no receipt, no status, however the turn ends (ISS-1088 criteria 2, 13).
-// cm:guard the LAST addressing message and not the first: a person who wrote "@babo can you check" and then "@babo the build, I mean" is answered under the newer one, which is the one still on their screen.
 export function explicitAnchor(
   venue: ConversationVenue,
   messages: readonly StoredConversationMessage[],
@@ -62,7 +60,6 @@ export type TerminalStatus = 'nothing-posted' | 'uncertain';
 /**
  * The silences a turn CHOSE, which owe the asker nothing.
  */
-// cm:guard three names and a closed set: `nothing-to-say` is the model declining, `not-mentioned` is the gate, `tool-not-called` is a tool-mode turn that chose not to post. Every other reason a turn ends with nothing sent — `turn-failed`, `screen-refused`, `empty-reply`, a provider error — is a failure the asker is told about (ISS-1088 criterion 16).
 const DELIBERATE_SILENCES: ReadonlySet<string> = new Set([
   'nothing-to-say',
   'not-mentioned',
@@ -72,8 +69,6 @@ const DELIBERATE_SILENCES: ReadonlySet<string> = new Set([
 /**
  * Which status, if any, a routed decision owes the person who asked.
  */
-// cm:guard read off the DECISION and not off the transport's error: `undetermined` is already where `decide` places an `undeliverable` turn, because a POST that timed out may have landed, and the status for it says so and retries nothing; `unreachable` and a failed decline are known to have sent nothing (ISS-1004 rule 4; ISS-1088 criteria 9, 11, 12; plan consult F5).
-// cm:guard `answered` includes a delivered code-authored fallback — the room already holds a line about this request, and a status after it would be a second one (ISS-1088 criterion 14). `handed-off` answers later by another path; `authority-refused` already told the room; a superseded `undetermined` is another holder's window, and the status is theirs to post.
 export function terminalStatusFor(routed: {
   decision: ConversationWindowDecision;
   detail?: unknown;
@@ -122,9 +117,6 @@ export interface PostStatusArgs {
 /**
  * Post the one status an explicit request is owed, and record it under the window's key.
  */
-// cm:guard delivered ONCE, under the window's own delivery key and behind its reservation, exactly like the answer: a core that posts the status and dies before the close is re-claimed, finds the row under the key, and closes without a second turn or a second status (ISS-1004 rule 2; ISS-1088 criteria 12, 15).
-// cm:guard anchored on the asking message and the TRANSPORT decides what that means — a thread under it on Rocket.Chat, nothing on a transport with no such thing — because the kernel does not build venue ids (ISS-1088 criteria 9, 11; `ports.ts:DeliveryOptions`).
-// cm:guard a status that cannot be delivered is logged, captured for the operator, and LEFT: the asker was owed one message, and a retry loop on the door that just refused is how one silence becomes a stream of them (ISS-1088 criterion 17).
 export async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
   const base = { status: args.status, anchor: args.anchor.messageId };
   if (!args.transport) {
@@ -166,7 +158,6 @@ export async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
 /**
  * What the route knows about the request while the turn runs, for the status that follows.
  */
-// cm:guard filled by `route-window.ts:decide` the moment the anchor is resolved and read by `routeWindow`'s catch: a throw after that point closes `unreachable`, and the person who asked is owed the nothing-posted status then too — but only where the anchor WAS resolved, because before it nobody knows whether the window was somebody asking (ISS-1088 criteria 9, 15).
 export interface RequestTrack {
   anchor: ExplicitAnchor | null;
   venue: ConversationVenue | null;
@@ -176,7 +167,6 @@ export interface RequestTrack {
   /**
    * Whether the turn came back with an outcome, so the status question has been asked of it.
    */
-  // cm:guard set the moment the outcome is known and read by the catch: a throw AFTER that point — the transcript, the close — is not evidence that nothing was posted, because the turn may well have delivered, and a nothing-posted status after a delivered answer tells the asker to ask again for an answer they have (whole-set review, pass A F1).
   outcomeKnown: boolean;
 }
 
@@ -197,7 +187,6 @@ export async function statusAfterThrow(
   claim: WindowClaim,
   track: RequestTrack,
 ): Promise<PostedStatus | null> {
-  // cm:guard a throw before the outcome is known is a turn that never delivered — `runConversationTurn` catches its own delivery and transcript failures and reports them as outcomes, so what escapes it happened before anything was sent; a throw after the outcome is known has already had its status judged (whole-set review, pass A F1).
   if (!track.anchor || !track.venue || !track.handleName || track.posted || track.outcomeKnown) {
     return null;
   }
@@ -228,7 +217,6 @@ export async function statusAfterThrow(
 /**
  * Post the status a routed decision owes, where it owes one, and fold what happened into the detail.
  */
-// cm:guard read only where the track holds an anchor: a window that addressed nobody is owed nothing whatever its outcome (ISS-1088 criterion 13).
 export async function withTerminalStatus<
   T extends { decision: ConversationWindowDecision; detail?: unknown; superseded?: true },
 >(

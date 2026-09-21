@@ -23,8 +23,6 @@ const TONE_COLOR = {
 
 const MAX_BODY_CHARS = 1200;
 
-// cm:why 24-hour, not the locale default: `11:34:30 PM` wraps to two lines in
-// the timestamp column and doubles the height of all 146 rows.
 function clockOf(ts: number | undefined): string {
   if (!ts) return "";
   return new Date(ts).toLocaleTimeString(undefined, {
@@ -86,7 +84,7 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
             {body}
           </p>
         ) : (
-          <pre className="fg-mono mx-3 mb-2 overflow-x-auto rounded-md bg-sunken px-3 py-2 text-[11.5px] leading-[1.5]">
+          <pre className="fg-mono mx-3 mb-2 overflow-x-auto rounded-md bg-sunken px-3 py-2 text-11-5 leading-snug-1-5">
             {body}
           </pre>
         ))}

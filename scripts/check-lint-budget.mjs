@@ -44,8 +44,6 @@ import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'lint-baseline.json');
 
-// cm:guard ORTHOGONAL to the files-scanned guard, and both must stay. A disabled linter scans every file and reports nothing, so it passes a scanned-count check while emptying this checker's input — measured 2026-08-27: flipping `linter.enabled` to false in packages/web-v2/biome.json made --all exit 0 at "0 / 226 original (100% drained)" and made --update-baseline DELETE 95 files and 210 frozen diagnostics at exit 0, which compareDown accepts because it only faults on a rise. Counting diagnostics cannot tell that from a scope legitimately drained to zero; only the config can, which is why this reads the config instead.
-// cm:guard follow `extends`, and REFUSE what cannot be followed. Reading only the scope's own biome.json left the identical hole one file away: a base config carrying `linter.enabled: false` and an `extends` pointing at it reproduced the whole failure — --all exit 0 at "100% drained", --update-baseline deleting all 95 web-v2 entries. A partial read of a config chain is not a weaker check, it is the same absent one wearing the previous fix's name.
 function effectiveLinterEnabled(file, stack = []) {
   if (stack.includes(file)) return { error: `${relative(ROOT, file)} is part of an extends cycle` };
   let doc;
@@ -56,7 +54,6 @@ function effectiveLinterEnabled(file, stack = []) {
   }
   let enabled;
   const extend = doc?.extends;
-  // cm:guard a STRING `extends` is biome's package form (e.g. "//some-pkg"), which this cannot resolve from the filesystem — so it is an error, never a skip. Treating an unresolvable parent as "nothing to see" is how a config chain hides the one line that matters.
   if (extend !== undefined) {
     if (!Array.isArray(extend)) {
       return {
@@ -87,14 +84,11 @@ function linterFault(scope) {
   return null;
 }
 
-// cm:edge contract -> packages/web-v2/biome.json — reads whatever that config decides to report. Turning the linter off there empties this checker's input; `linterFault` makes that an exit 2 by resolving the `extends` chain, so a base config one file away is caught too and an `extends` it cannot resolve is itself the error. The files-scanned guard below covers the different case of a scope that matched no files at all.
-// cm:edge contract -> packages/core/biome.json — same for the second scope: `noNonNullAssertion` / `noExplicitAny` / the test override's `noUnsafeOptionalChaining` are `warn` there, which is exactly why they need a baseline — biome exits 0 on a warning, so the blocking `core` lint step passed over 280 of them (measured 2026-08-27)
 function collect(scopes) {
   const measured = {};
   const scopeOf = new Map();
   const silent = [];
 
-  // cm:guard name the absent TOOL before spawning it. Without biome on disk this function reports `biome output in <scope> was not JSON` — a sentence about biome's behaviour, from which a reader concludes the reporter broke rather than that nothing was installed (ISS-938).
   const missing = absentPrerequisites(ROOT, ['deps']);
   if (missing.length > 0) return { error: `could not run — ${remedyLines(missing)[0]}` };
 
@@ -129,12 +123,10 @@ function collect(scopes) {
       return { error: `biome output in ${scope.cwd} was not JSON` };
     }
     const diags = parsed.diagnostics ?? [];
-    // cm:guard count FILES SCANNED, never diagnostics found. Keying the empty-scope guard off an empty report made "this scope drained to zero" — the outcome the drain rule exists to produce — indistinguishable from "this scope stopped matching", so the success condition of the whole initiative was a build that exits 2. biome's own summary separates them; a scope that scanned files and found nothing is clean.
     const summary = parsed.summary ?? {};
     const scanned = (summary.changed ?? 0) + (summary.unchanged ?? 0);
     if (!Number.isFinite(scanned) || scanned === 0) silent.push(scope.cwd);
 
-    // cm:guard `internalError/*` is biome saying it could not READ the scope, not a violation in it. Counted as debt it lands under a nonsense file key and exits 1, so the run blames the code for a registry that points at nothing — and it prints a drained percentage first, which for a scope biome never opened reads as 100%.
     const broken = diags.find((d) => String(d.category ?? '').startsWith('internalError'));
     if (broken) {
       return { error: `biome could not read ${scope.cwd}: ${broken.category}` };
@@ -151,7 +143,6 @@ function collect(scopes) {
     }
   }
 
-  // cm:guard PER SCOPE, never "any scope was scanned". With two scopes a global flag lets a healthy sibling vouch for a broken one, which reads as that whole package having drained to zero and lets every drain payment pass unpaid.
   if (silent.length > 0) {
     return {
       error: `biome scanned no files in ${silent.join(', ')} — scope matched nothing`,
@@ -172,7 +163,6 @@ function git(args) {
   }
 }
 
-// cm:guard drain needs a base that is not HEAD, and a push to `main` has none — origin/main IS HEAD there, so the delta is empty and every drainable file would look untouched. Freeze still runs; drain is skipped and the skip is PRINTED, because an unprinted skip reads exactly like a pass and that is how the prose gate ran over zero files while printing success.
 function branchDelta() {
   const head = git(['rev-parse', 'HEAD']);
   const base = git(['merge-base', 'origin/main', 'HEAD']);
@@ -180,7 +170,6 @@ function branchDelta() {
   if (!base) return { skip: 'no origin/main to compare against (shallow or detached checkout)' };
   if (base === head) return { skip: `merge-base is HEAD (${base.slice(0, 8)}) — no branch delta` };
 
-  // cm:guard a git command that FAILED must not read as an empty delta. `git()` returns null on failure and `null ?? ''` is the same value as a clean tree, so a broken diff would judge zero files while the run printed that drain had been judged — the difference between "nothing to pay" and "we never looked".
   const names = git(['diff', '--name-only', base]);
   const renames = git(['diff', '--diff-filter=R', '-M', '--name-status', base]);
   if (names === null || renames === null) return { error: `git diff against ${base} failed` };
@@ -235,13 +224,11 @@ if (mode === '--update-baseline') {
     console.error(`check-lint-budget: ${BASELINE_PATH} is unreadable — refusing to overwrite it`);
     process.exit(2);
   }
-  // cm:guard a re-freeze that DELETES a scope's whole debt needs saying out loud, because that is what every bypass found in review looked like from here: 95 files and 210 frozen diagnostics gone at exit 0, accepted by `improves: down` since it only faults on a rise. Draining a scope to zero is a real achievement and must stay recordable, so this is a confirmation rather than a refusal — but never the default, and never silent.
   const previous = { files: previousDoc.files ?? {}, original: previousDoc.original ?? {} };
   const emptied = emptiedScopes(
     currentByScope,
     totalsByScope(previous.files, new Map(), cfg.scopes),
   );
-  // cm:guard the confirmation NAMES its scope, because one bare flag accepted both at once and deleted all 487 frozen diagnostics across 175 files at exit 0. The realistic shape is a contributor genuinely draining scope A on a branch where a config change or a bad merge emptied scope B — an unqualified yes answers a question nobody read.
   const accepted = new Set(
     process.argv
       .filter((a) => a.startsWith('--accept-emptied-scope='))
@@ -276,7 +263,6 @@ if (baselineDoc === null) {
 }
 const baseline = { files: baselineDoc.files ?? {}, original: baselineDoc.original ?? {} };
 
-// cm:guard this is the guard that does NOT enumerate, and it is why the two config-reading guards above are a second opinion rather than the defence. Whatever stops biome linting a scope — a rule set emptied, an `overrides` block, an ignore file, something biome ships next year — ends here, because a baseline holding debt against a measurement of zero is the one observable every version of the bypass shares. AC 8 word for word: zero diagnostics from a scope that should have some is an exit 2, never a clean report.
 const emptied = emptiedScopes(currentByScope, totalsByScope(baseline.files, new Map(), cfg.scopes));
 if (emptied.length > 0) {
   console.error(
@@ -299,7 +285,6 @@ if (mode === '--staged') {
 
 const failures = freezeFaults(measured, baseline.files, staged?.files ?? null);
 
-// cm:guard drain is an --all rule only. --staged exists for a pre-commit hook (none runs it today — .githooks/pre-commit runs check-source-language and check-test-signal only) and must not judge a payment against a half-staged tree; the branch delta this measures is what CI sees, and that is where the payment is due.
 let matchers;
 try {
   matchers = cfg.scopes.map(drainMatcher).filter(Boolean);
@@ -339,7 +324,6 @@ for (const [scope, n] of currentByScope)
 if (drainNote) console.log(`  ${drainNote}`);
 if (failures.length === 0) process.exit(0);
 
-// cm:guard one block per FILE, so the count is files-to-fix. Freeze and drain can both fault the same file — a new diagnostic in a file frozen at zero fails both — and printing it twice reported "2 file(s) failed" for one file, which is a checker overstating the work it is asking for.
 const byFile = new Map();
 for (const f of failures) {
   const reasons = byFile.get(f.file) ?? [];
@@ -359,7 +343,6 @@ console.error(
     'assertion behind a `// biome-ignore <rule>: <the invariant>` that states why it holds.\n' +
     'Never `biome check --write` these rules — it rewrites `a!.b` to `a?.b`, turning "throw\n' +
     'when the invariant is violated" into "silently undefined".\n' +
-    // cm:guard offer the re-freeze ONLY for a freeze fault. `--update-baseline` re-measures the file it is failing on, so against a drain fault it writes the unchanged count straight back and the next run fails identically — advice that cannot work reads as a broken checker, and a contributor who follows it twice concludes the gate is the bug.
     (drainFailed
       ? 'A drain has no re-freeze escape: --update-baseline re-measures the file and writes the\n' +
         'same count back, so the next run fails the same way. Remove one diagnostic.\n'

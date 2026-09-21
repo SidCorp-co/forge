@@ -1,20 +1,3 @@
-/**
- * Per-project Git access — a reference into the org's Private Keys pool
- * (ISS-628; `workspace_ssh_keys`, managed via `orgs/ssh-keys-routes.ts`).
- *
- * GET    /api/projects/:projectId/git-credential      — non-secret status:
- *        repo URL + the referenced pool key's public view. Any project member
- *        may read so they can copy the deploy key. NEVER returns the private
- *        key.
- * PUT    /api/projects/:projectId/git-credential       — admin only. Body
- *        `{ sshKeyId }` picks a key from the project's OWN org pool (a
- *        cross-org key is rejected 400 `WRONG_ORG`).
- * POST   /api/projects/:projectId/git-credential/test  — probes the
- *        referenced pool key against the project's SSH repo URL.
- * DELETE /api/projects/:projectId/git-credential        — admin only. Detaches
- *        the reference (does not delete the pool key itself).
- */
-
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -107,12 +90,6 @@ gitCredentialRoutes.put(
   },
 );
 
-/**
- * POST /:projectId/git-credential/test — probe the project's referenced pool
- * key against its SSH repo URL (git ls-remote). Non-mutating; any project
- * member may run it. Never returns the private key. Requires the repo URL to
- * be in SSH form (the deploy key isn't used for HTTPS remotes).
- */
 gitCredentialRoutes.post(
   '/:projectId/git-credential/test',
   zValidator('param', paramSchema),

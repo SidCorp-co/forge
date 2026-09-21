@@ -71,13 +71,11 @@ describe("PropertiesRail, while an agent is working the issue", () => {
     expect(control("Complexity")).toBeDisabled();
   });
 
-  // cm:guard the reason is RENDERED text, not a `title`: a disabled Select takes no focus, so a tooltip is unreachable by keyboard and absent on touch, and a rail that silently stops accepting a priority reads as broken
   it("states why, where a reader sees it without hovering", () => {
     render(rail("in_progress", "running"));
     expect(screen.getByText(HELD)).toBeInTheDocument();
   });
 
-  // cm:guard `needs_info` is the one park a person's answer restarts — the lock must never reach it on any surface
   it("accepts a priority change on a needs_info issue", () => {
     render(rail("needs_info", "running"));
     expect(control("Priority")).not.toBeDisabled();

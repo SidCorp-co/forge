@@ -1,8 +1,5 @@
 'use client';
 
-// Sidebar (NavRail) UI state: icon-only collapse + per-cluster open/closed.
-// NavRail itself stays presentational — this hook owns the persisted state and
-// the layout passes it down.
 import { useCallback } from 'react';
 import { usePersistedState } from '@/lib/utils/use-persisted-state';
 

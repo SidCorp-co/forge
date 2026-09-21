@@ -1,11 +1,3 @@
-/**
- * The repair round, counted in exactly one place.
- *
- * A door that owes somebody a reply may ask the writer to try again, at most
- * twice, and then posts a fixed fallback. A door that owes nobody anything is
- * not here at all: its refusal is the whole answer (ISS-997).
- */
-
 import type { DoorId, MessageVerdict } from './contract.js';
 import { doorPolicy } from './doors.js';
 
@@ -16,10 +8,6 @@ export interface RepairRound {
   readonly rewrite: (verdict: MessageVerdict) => Promise<readonly string[]>;
 }
 
-// cm:guard the PASSING verdict travels out with the segments, and it is not decoration: since ISS-978
-// an `ok` verdict is the only thing that can mint a `ProvenMessage`, so a caller that repaired its way
-// to a pass needs the verdict that passed to post what passed. Dropping it here would send every
-// repairing door back to hand-building a proof, which is the defect F5 names.
 export type RepairOutcome =
   | {
       readonly kind: 'passed';
@@ -32,7 +20,6 @@ export type RepairOutcome =
 /**
  * Run a door's repair budget over an attempt.
  */
-// cm:guard `rewrite` hands back what the WRITER produced and this function never touches a string: a layer that edited the text could turn `blocked: condition 3 was not met` into something friendlier and destroy the one fact the reader needed, which is the rule ISS-997 makes structural in `MessageVerdict` and keeps here.
 export async function withRepairs(
   door: DoorId,
   first: readonly string[],

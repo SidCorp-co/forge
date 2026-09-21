@@ -1,19 +1,3 @@
-// The backstop for a park whose runner never came back.
-//
-// Phase 2 exempted `awaiting_input` from the heartbeat hop, which is right — a
-// session waiting on a human is not wedged. But it left the park bounded by
-// exactly one thing: the runner's own idle ceiling. If that runner dies while a
-// session is parked, nothing on this side ever closes the row, and one of the
-// box's few duplex slots is gone until someone notices by hand.
-//
-// This is NOT a policy knob. It fires only when the runner failed to honour its
-// own deadline, which is why the bound is residency PLUS a grace — core and the
-// runner racing to close the same park would make the reason a coin flip.
-//
-// One clock, two thresholds: `lastHeartbeatAt` freezes at the last real
-// activity when a session parks (agent-sessions/routes.ts deliberately does not
-// bump it on `awaiting_input`), so it already IS the park clock.
-
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
@@ -21,15 +5,12 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { LoopScope } from './loop-monitor.js';
-import { NEVER_PARKED_METADATA_TYPES } from './session-kinds.js';
+import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
 
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number and `SESSION_IDLE_TIMEOUT` are ONE value in two places, and `resolve_residency` there reads the same `sessionResidencySeconds` with the same rule: absent or 0 means this default, never zero residency. Diverge and core reaps a park the runner still considers live, at which point `residency_expired` stops meaning "the runner is gone".
 const DEFAULT_RESIDENCY_SECONDS = 10 * 60;
 
-// cm:guard a grace, not a tuning margin — it exists so the runner always closes its own park first and core only sees the ones it could not. Shrinking it toward zero makes the two sides race and the recorded failureReason stop meaning "the runner is gone".
 const PARK_GRACE_SECONDS = 5 * 60;
 
-// cm:guard `agent_sessions.project_id` written LITERALLY, and the column list of `projects` is read by name — drizzle renders a column reference inside a raw `sql` template unqualified, and an unqualified `project_id` here would resolve against `projects` first. A wrong JSON path does NOT fail: COALESCE swallows it and every project silently falls back to the default, which is why `park-deadline-e2e.test.ts` asserts a project that CONFIGURED a long residency is left alone.
 const RESIDENCY_DEADLINE = sql`
   COALESCE(${agentSessions.lastHeartbeatAt}, ${agentSessions.createdAt})
     < now() - make_interval(secs => ${PARK_GRACE_SECONDS} + COALESCE((
@@ -37,12 +18,9 @@ const RESIDENCY_DEADLINE = sql`
         FROM projects p WHERE p.id = agent_sessions.project_id
       ), ${DEFAULT_RESIDENCY_SECONDS}))`;
 
-// cm:guard `blocker_kind = 'human'` is the whole discriminator and widening it to any open question is a BUG: `begin_question` is step one of BOTH arms of `runner/blocked.rs`, so a machine or master-or-peer park writes an open row too — and those keep their process, which is precisely the world residency's premise describes (ISS-964 criteria 5, 24).
-// cm:guard `agent_sessions.id` and `agent_questions` columns written LITERALLY for the same reason the deadline above is: drizzle renders a column reference inside a raw `sql` template unqualified, and an unqualified `id` here resolves against `agent_questions` first, which matches nothing and silently exempts NOTHING.
 /**
  * Whether the session at `sessionId` is parked on a person right now.
  */
-// cm:guard the ONE writer of this predicate, taking the session-id expression so a caller with its own alias reuses the rule instead of restating it. Three sweeps ask this question — residency here, the deadline below, and `pipeline/sweeper.ts`' one-shot orphan hop — and a fourth copy is how one of them keeps reaping the park the other two spare (ISS-964 criteria 24, 34).
 export const parkedOnAHuman = (sessionId: SQL): SQL => sql`
   EXISTS (
     SELECT 1 FROM agent_questions q
@@ -57,7 +35,6 @@ const NOT_A_PROCESSLESS_PARK = sql`NOT ${parkedOnAHuman(sql`agent_sessions.id`)}
  * Hop 3b — the residency deadline. A session parked past its runner's ceiling
  * plus a grace: the runner is presumed gone, so close the row and free the slot.
  */
-// cm:guard a reason of its own, never `heartbeat_timeout` — this session did not miss a heartbeat, it was exempt from that clock by design, and recording the wrong cause sends whoever reads it to the runner logs for a stall that is not there.
 export async function reapExpiredParks(
   now: Date = new Date(),
   scope: LoopScope = {},
@@ -88,8 +65,6 @@ export async function reapExpiredParks(
 /** One park past the deadline its asker set, and how long it went unanswered. */
 type UnansweredPark = { sessionId: string; questionId: string; days: number };
 
-// cm:guard the count is days SINCE THE QUESTION WAS ASKED, floored at one — not the width of the deadline window. The person reading `unanswered_2d` needs to know how long their answer was owed, and a park asked and expired inside a day reads `1d` rather than the `0d` a bare floor would produce.
-// cm:guard a NULL `park_deadline_at` is an UNBOUNDED wait and must never match: criterion 8 promises the human branch waits with no time limit, so reading NULL as expired would silently cap the one wait the design says has none.
 async function unansweredParks(now: Date, scope: LoopScope): Promise<UnansweredPark[]> {
   const at = now.toISOString();
   const rows = await db.execute<{
@@ -108,7 +83,7 @@ async function unansweredParks(now: Date, scope: LoopScope): Promise<UnansweredP
        AND q.park_deadline_at IS NOT NULL
        AND q.park_deadline_at < ${at}::timestamptz
        AND s.status = 'running'
-       AND COALESCE(s.metadata->>'type', '') NOT IN ${NEVER_PARKED_METADATA_TYPES}
+       AND s.kind NOT IN ${kindTuple(NEVER_PARKED_SESSION_KINDS)}
        ${scope.projectId ? sql`AND q.project_id = ${scope.projectId}` : sql``}
   `);
   return rows.map((r) => ({
@@ -126,8 +101,6 @@ async function unansweredParks(now: Date, scope: LoopScope): Promise<UnansweredP
  * loudly and leaving the question in the bucket flagged `expired` rather than
  * removed (ISS-964 criterion 34).
  */
-// cm:guard the question flip is LAST and is the whole of the idempotency: the sweep stops matching a row it has expired, so no marker column and no park closed twice. Flipping it first would drop the park's record if the session transition then failed, leaving a terminal session nobody can trace to a question.
-// cm:guard core does NOT release the worktree here, and adding that is the wrong repair: criterion 34 releases it only after the diff is preserved, and the preserve half is the runner's `Abandon`. Not releasing keeps the tree; releasing from here would drop a diff nothing has saved.
 export async function reapUnansweredParks(
   now: Date = new Date(),
   scope: LoopScope = {},
@@ -136,7 +109,6 @@ export async function reapUnansweredParks(
   let closed = 0;
 
   for (const park of parks) {
-    // cm:guard the SESSION carries one fixed cause and the QUESTION carries the duration, never the reverse: `failure_reason` is a closed taxonomy the metrics group by (`pipeline/failure-causes.ts`), so a per-row `unanswered_2d` there would land every park in `unclassified` and make the count unreadable. Its origin is `user`, which keeps a park nobody answered out of the real-failure rate.
     const endedReason = `unanswered_${park.days}d`;
     const moved = await applyKernelTransition(db, {
       entity: 'session',

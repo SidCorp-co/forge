@@ -72,7 +72,6 @@ const start = (over: Record<string, unknown> = {}) =>
 
 const row = () => rows.get('p1:runner-v0.13.3');
 
-// cm:guard the implementations are restored by hand, because `vi.clearAllMocks` clears CALLS and not `mockImplementation` — a Cargo.lock a preflight case rewrote would otherwise leak into every later case and stop the sequence two steps before the one under test, with the failure reading as a bug in `cut_tag`.
 beforeEach(() => {
   rows.clear();
   between.settleAndReadBack = null;
@@ -88,7 +87,6 @@ describe('the whole sequence when nothing is wrong', () => {
   it('cuts the tag and hands the release to the build', async () => {
     const outcome = await start();
     expect(outcome.started).toBe(true);
-    // cm:guard the MESSAGE travels with the create, because the artefact is an annotated tag and `forge-runner 0.13.3` is the wording every hand-cut `runner-v*` tag on this repository carries.
     expect(repo.createTagRef).toHaveBeenCalledWith(
       expect.anything(),
       'runner-v0.13.3',
@@ -99,7 +97,6 @@ describe('the whole sequence when nothing is wrong', () => {
     expect(row()?.step).toBe('await_build');
     expect(row()?.tagState).toBe('present');
     expect(row()?.commitSha).toBe('abc1234');
-    // cm:guard the tag Forge cut points at the commit Forge cut it at, and that is RECORDED from the act rather than inferred later from `commit_sha` — which is the commit this release asked for, equal here only because this is the path where Forge made the tag itself.
     expect(row()?.tagCommitSha).toBe('abc1234');
     expect(row()?.settledAt).toBeNull();
   });
@@ -157,10 +154,8 @@ describe('the preflights, each naming the step and that nothing was written', ()
     expect(String(row()?.failure)).toContain(
       'already exists on SidCorp-co/forge, pointing at olderco',
     );
-    // cm:guard both commits, labelled, and the truth sentence built from the OBSERVED one. A refusal that names `olderco` in its lead and then says the tag exists at `abc1234` contradicts itself in two consecutive sentences, and the second one is the reading an operator acts on.
     expect(String(row()?.failure)).toContain('this release resolved abc1234');
     expect(String(row()?.failure)).toContain('The tag `runner-v0.13.3` exists at olderco');
-    // cm:guard STORED, not only printed. The sentence above is written once; every later reader — the next start's refusal, the deadline pass, the API — rebuilds it off the row, and a row keeping only the requested commit rebuilds it naming a commit nobody saw the tag at.
     expect(row()?.tagCommitSha).toBe('olderco');
     expect(row()?.commitSha).toBe('abc1234');
     expect(repo.createTagRef).not.toHaveBeenCalled();
@@ -193,7 +188,6 @@ describe('the preflights, each naming the step and that nothing was written', ()
     expect(repo.createTagRef).not.toHaveBeenCalled();
   });
 
-  // cm:guard every act before `cut_tag` is a read, so a refusal there is EVIDENCE that nothing was written — which is what makes the same version runnable again afterwards. What it is NOT evidence of is the tag's absence: the lookup that would have said so is the one that failed.
   it('leaves the tag UNREAD when the lookup itself is refused, not absent', async () => {
     repo.readTagRef.mockRejectedValue(
       publishError({ op: 'lookup', status: 403, message: 'forbidden' }),
@@ -216,7 +210,6 @@ describe('the preflights, each naming the step and that nothing was written', ()
     expect(repo.readTagRef).not.toHaveBeenCalled();
   });
 
-  // cm:guard the other side of the same line: here the lookup ANSWERED and said the tag is not there, so `absent` is a reading and the sentence may say the tag does not exist.
   it('leaves the tag absent when the lookup answered before a later step stopped it', async () => {
     repo.readFileAtRef.mockImplementation(async () => '[workspace.package]\nversion = "0.13.2"\n');
     await start();
@@ -238,7 +231,6 @@ describe('the three things that can be true after a cut that did not answer', ()
     expect(String(row()?.failure)).toContain('the tag `runner-v0.13.3` does not exist');
   });
 
-  // cm:guard this is the row ISS-1075 point 3 exists for. A create that timed out may or may not have been taken, and calling it `absent` is what lets the next attempt cut over a tag that is already there.
   it('leaves the tag UNKNOWN when the create never answered', async () => {
     repo.createTagRef.mockRejectedValue(
       publishError({
@@ -265,13 +257,11 @@ describe('the three things that can be true after a cut that did not answer', ()
     );
     await start();
     expect(row()?.tagState).toBe('present');
-    // cm:guard the sentence says the tag EXISTS and does not say where. GitHub answering "the ref is already there" is not a reading of what it points at, and naming this attempt's own commit there would be the row asserting, off nothing, that somebody else's tag is at the commit Forge resolved.
     expect(String(row()?.failure)).toContain('The tag `runner-v0.13.3` exists');
     expect(String(row()?.failure)).not.toContain('exists at abc1234');
     expect(row()?.tagCommitSha).toBeUndefined();
   });
 
-  // cm:guard a 5xx is NOT a refusal that proves nothing was written: GitHub can commit the ref and then fall over answering, and `absent` here is what lets the next attempt cut over a tag that is already on the repository.
   it('leaves the tag UNKNOWN when the create answered 502', async () => {
     repo.createTagRef.mockRejectedValue(
       publishError({ op: 'create', status: 502, message: 'bad gateway' }),
@@ -281,7 +271,6 @@ describe('the three things that can be true after a cut that did not answer', ()
     expect(String(row()?.failure)).toContain('may or may not exist');
   });
 
-  // cm:guard the create SUCCEEDED here — GitHub answered 201 — and only reading the body failed, which `client.ts` reports as a `GitHubPublishError` carrying status 201. Any rule that reads "a status arrived" as "nothing was written" records the tag absent over a tag that exists.
   it('leaves the tag UNKNOWN when the create answered 201 and its body could not be read', async () => {
     repo.createTagRef.mockRejectedValue(
       publishError({
@@ -307,7 +296,6 @@ describe('the three things that can be true after a cut that did not answer', ()
 });
 
 describe('a row that went terminal under the sequence', () => {
-  // cm:guard the irreversible act may not outrun the record of the intent. `advance` is conditional on the row being non-terminal, so its `false` is the deadline pass or a delivery having settled this release a moment ago — and a tag created after that point is a ref on GitHub no row can ever record, because every write left is conditional too.
   it('sends no create request when the intent write was refused', async () => {
     repo.readFileAtRef.mockImplementation(async (_c: unknown, path: string) => {
       if (path.endsWith('Cargo.lock')) {
@@ -327,7 +315,6 @@ describe('a row that went terminal under the sequence', () => {
     expect(row()?.tagState).toBe('absent');
   });
 
-  // cm:guard the settle and the read-back are two statements, and another start can re-arm this row between them and be several steps into a release of its own. Pairing this call's "nothing was written, the tag does not exist" with that row's `building`/`present` is one answer asserting both — and the one a reader takes at face value is whichever they look at first.
   it('says so when the row was re-run between its settle and its read-back', async () => {
     repo.readFileAtRef.mockImplementation(async (_c: unknown, path: string) =>
       path.endsWith('Cargo.toml')
@@ -353,7 +340,6 @@ describe('a row that went terminal under the sequence', () => {
     expect(!outcome.started && outcome.release?.status).toBe('building');
   });
 
-  // cm:guard GitHub can take the ref and lose the response: the build's own delivery then settles this release — published, with a reading — while the create's error handler is still holding a timeout. Returning that handler's prose over the stored outcome tells an operator the tag "may or may not exist" about a release Forge has already recorded as published.
   it('answers with the stored outcome when a delivery settled the row mid-cut', async () => {
     repo.createTagRef.mockImplementation(async () => {
       const settling = rows.get('p1:runner-v0.13.3');
@@ -381,7 +367,6 @@ describe('a row that went terminal under the sequence', () => {
     expect(row()?.status).toBe('published');
   });
 
-  // cm:guard the caller is handed the STORED row and never a synthesis over the opening snapshot: the POST's answer and an immediate GET of the same release are two reads of one fact, and a synthesized one reports a step and a readings list the row does not carry.
   it('answers with the persisted row rather than the opening snapshot', async () => {
     const outcome = await start();
     expect(outcome.started).toBe(true);
@@ -413,7 +398,6 @@ describe('what a second attempt at one version may do', () => {
     expect(row()?.tagState).toBe('present');
   });
 
-  // cm:guard the first start leaves the row at `await_build`, which is a release RUNNING and not one that stopped. The refusal has to send the second caller to it rather than to the next version — advice to cut another version is how a second release gets started beside the first.
   it('is refused while the first is still running, and sends the caller to it', async () => {
     await start();
     const again = await start();

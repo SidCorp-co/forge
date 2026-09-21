@@ -1,23 +1,5 @@
-/**
- * ISS-526 — labelled Sentry targets resolution + rendering.
- *
- * A Sentry connection holds one host + one auth token but may map to SEVERAL
- * Sentry projects (backend / frontend / mobile). `targets[]` (jsonb on the
- * connection config) carries that labelled list. These helpers give the rest of
- * the codebase ONE place to read targets — handling the ISS-524 legacy shape
- * (single top-level `organizationSlug`/`projectSlug` pair) transparently so no
- * data migration is needed.
- */
-
 import type { SentryConfig, SentryTarget } from './types.js';
 
-/**
- * Resolve the labelled targets for a Sentry config:
- *  1. `config.targets[]` when present & non-empty (ISS-526);
- *  2. else the legacy single `(organizationSlug, projectSlug)` pair synthesized
- *     into one `'default'` target (ISS-524 back-compat — no migration);
- *  3. else `[]`.
- */
 export function resolveSentryTargets(config: SentryConfig | null | undefined): SentryTarget[] {
   if (!config) return [];
   if (Array.isArray(config.targets) && config.targets.length > 0) {

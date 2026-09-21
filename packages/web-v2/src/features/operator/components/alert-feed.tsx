@@ -39,8 +39,6 @@ const STATUS_DOT: Record<AdminAlertStatus, string> = {
   crit: TONE_META.failure.dot,
 };
 
-// cm:guard only A2 carries an action — A1 is a bookkeeping invariant a reap does not fix, and A3/A4/A5 name a project, a budget or a schedule, none of which is a job id `POST /jobs/:id/cancel` would accept
-// cm:guard the feed's order is crit > warn > ok and nothing else — an operator reads top-down and stops, so an alert sorted by id would bury a crit A5 under four ok rows
 const STATUS_RANK: Record<AdminAlertStatus, number> = { crit: 0, warn: 1, ok: 2 };
 
 export function sortAlerts(alerts: readonly AdminAlert[]): AdminAlert[] {

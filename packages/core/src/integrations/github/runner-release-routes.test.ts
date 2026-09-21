@@ -95,7 +95,6 @@ describe('starting one', () => {
     );
   });
 
-  // cm:guard `.strict()` on the body. A caller who sends `tag` has misread the interface — the tag is Forge's to build — and absorbing the key would be a second live path nobody documented.
   it('refuses a body carrying a key this interface does not have', async () => {
     const res = await post({ version: '0.13.3', tag: 'runner-v0.13.3' });
     expect(res.status).toBe(400);
@@ -148,7 +147,6 @@ describe('reading them back', () => {
     expect(await res.json()).toEqual({ release });
   });
 
-  // cm:guard the project is checked on the ROW. Taking it from the path would serve one project's release to whoever can read another, and a 404 is the same answer as for an id that never existed.
   it('refuses an id that belongs to another project as not found', async () => {
     service.findById.mockResolvedValue({
       ...release,

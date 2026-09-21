@@ -89,7 +89,6 @@ describe('the handle is a column, and the database is what keeps it unique', () 
     expect((await accounts.listAgentAccounts(orgA))[0]?.handle).toBe('forge-dev');
   });
 
-  // cm:guard the refusal must come from POSTGRES and not from a caller, so this writes the duplicate row with RAW SQL, around every service in this repo: a service-level check would pass a test that went through `createAgentAccount` and still let any other writer — a migration, a fixture, psql — put two `@forge-dev`s in one org. Drop `organization_members_org_handle_uniq` and this is what goes red.
   it('refuses a second agent of the same name in one org, by constraint, whoever writes it', async () => {
     const { agent } = await accounts.createAgentAccount({
       orgId: orgA,
@@ -111,7 +110,6 @@ describe('the handle is a column, and the database is what keeps it unique', () 
     expect(await accounts.listAgentAccounts(orgA)).toHaveLength(1);
   });
 
-  // cm:guard a room minting a handle is the OTHER writer of this column, and its insert must abort on the collision rather than skip it. `onConflictDoNothing` there is the shape that looks safe and is not: the only conflict a freshly created user can reach is this index, so swallowing it commits an agent holding a project membership and NO org membership, and the room then fails later at `loadHandle` with `HANDLE_HAS_NO_NAME` — a message about the wrong thing entirely, in a transaction that already succeeded. Found by review, F2. Restore `onConflictDoNothing()` on the membership insert in `resolveProjectHandle` and this goes red.
   it('aborts a room’s own handle mint on the collision instead of committing a nameless agent', async () => {
     const slug = `gamma-${randomUUID().slice(0, 8)}`;
     const project = await createTestProject(harness.db, ownerId, { slug, orgId: orgA });
@@ -139,7 +137,6 @@ describe('the handle is a column, and the database is what keeps it unique', () 
     expect(Number(agentsOn[0]?.n)).toBe(0);
   });
 
-  // cm:guard the constraint refuses, and the CALLER is told which field to change. Walked live on forge-beta at 74c3e4ec and it answered a bare 500 `INTERNAL_ERROR`: the index did its job and the person on the other end learned nothing, on the one route whose whole input is the handle. Before the column two agents of one name both succeeded, so the 500 is new with this change and is this change's to answer for.
   it('names the handle and the org when it refuses, rather than answering 500', async () => {
     await accounts.createAgentAccount({ orgId: orgA, projectIds: [projectA], handle: 'forge-dev' });
     const res = await app.request(`/api/orgs/${orgA}/agents`, {
@@ -157,14 +154,12 @@ describe('the handle is a column, and the database is what keeps it unique', () 
     expect(body.message).toContain(orgA);
     expect(await accounts.listAgentAccounts(orgA)).toHaveLength(1);
 
-    // cm:guard counted in `users`, NOT through `listAgentAccounts`: that list joins `organization_members`, so an agent whose user row committed and whose membership did not is invisible to it and this case would pass green over exactly the partial state the refusal exists to rule out. The transaction is what makes that impossible, and this is the assertion that watches the transaction rather than the list.
     const [{ n } = { n: 0 }] = await harness.db.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM users WHERE kind = 'agent'`,
     );
     expect(Number(n)).toBe(1);
   });
 
-  // cm:guard the other direction, and it is why the unique index is on `(org_id, handle)` rather than on `handle`: two organizations each holding a `@forge-dev` is the case the synthesized address's random suffix exists to make possible under `users.email`'s system-wide unique index.
   it('admits the same name in a different org', async () => {
     await accounts.createAgentAccount({ orgId: orgA, projectIds: [projectA], handle: 'forge-dev' });
     await accounts.createAgentAccount({ orgId: orgB, projectIds: [projectB], handle: 'forge-dev' });
@@ -173,11 +168,9 @@ describe('the handle is a column, and the database is what keeps it unique', () 
   });
 });
 
-// cm:guard the guard under test is READ OUT OF THE SHIPPED MIGRATION rather than restated here. A copy of the SQL in this file would go on passing after somebody edited the migration, which is the one failure a test of a migration exists to prevent.
 describe('the migration that names existing agents', () => {
   const MIGRATION = '../../drizzle/migrations/0242_agent_handle_and_display_name.sql';
 
-  // cm:guard slice from `DO $$` rather than testing `startsWith`: every statement in that file is preceded by the comment that prices it, so a `startsWith` filter matches nothing and the suite reports "no guards" as a passing zero rather than as a broken reader. The count assertion below is what makes that failure loud either way.
   function guardBlocks(): string[] {
     const text = readFileSync(new URL(MIGRATION, import.meta.url), 'utf8');
     return text
@@ -188,7 +181,6 @@ describe('the migration that names existing agents', () => {
       .filter((chunk) => chunk.length > 0);
   }
 
-  // cm:guard read the message off the DRIVER's error and not off drizzle's wrapper: the wrapper's own `message` is "Failed query: DO $$…", so an assertion against it passes for a block that raised nothing of what it was supposed to say and fails for one that said it perfectly.
   function raised(e: unknown): string {
     const cause = (e as { cause?: { message?: string } }).cause;
     return cause?.message ?? (e as { message?: string }).message ?? '';
@@ -218,7 +210,6 @@ describe('the migration that names existing agents', () => {
       .then(() => null)
       .catch(raised);
     expect(refusal).toContain('forge-dev');
-    // cm:guard BOTH ids, because the operator's next act is deciding which of the two keeps the name and a message naming one of them does not say what the other is.
     expect(refusal).toContain(first);
     expect(refusal).toContain(second);
   });
@@ -265,7 +256,6 @@ describe('a credential for an agent that already exists', () => {
     expect(listed?.activeTokens).toBe(0);
   });
 
-  // cm:guard the plaintext is verified through `verifyPat`, not merely returned: a route that answered 201 with a string the door then rejects is the shape this whole issue is about, and a test asserting only that a string came back cannot tell the two apart.
   it('mints one that the door actually accepts, bound to the agent’s project', async () => {
     const agentId = await tokenlessAgent('room-handle');
     const minted = await accounts.mintAgentCredential(orgA, agentId);
@@ -277,7 +267,6 @@ describe('a credential for an agent that already exists', () => {
     expect((await accounts.listAgentAccounts(orgA))[0]?.canAct).toBe(true);
   });
 
-  // cm:guard re-crediting the SAME agent is the ordinary case, not an edge one: revoke-then-mint is what the two routes are for, and a revoked token keeps its name under `pat_user_name_uniq`. Name the second mint `agent:<handle>` again and this is a 500 on the second click. Measured here before the fix landed.
   it('credentials the same agent again after a revoke, under a name of its own', async () => {
     const agentId = await tokenlessAgent('room-handle');
     const first = await accounts.mintAgentCredential(orgA, agentId);
@@ -289,7 +278,6 @@ describe('a credential for an agent that already exists', () => {
     expect((await accounts.listAgentAccounts(orgA))[0]?.canAct).toBe(true);
   });
 
-  // cm:guard `canAct` is BOTH halves — a live credential and a project for it to act on — and this is the row that separates them. The token is fenced to one project and `effectiveProjectRole` answers on the other side, so an agent whose project membership is removed after minting holds a credential that opens nothing. Reported as the credential fact alone, the console tells an admin to mint another one that will not help either, and the screen's own "belongs to no project" remedy is unreachable code. Found by review, F4. Make `canAct` `activeTokens > 0` again and this goes red.
   it('reports an agent with a live credential and no project as unable to act', async () => {
     const agentId = await tokenlessAgent('room-handle');
     await accounts.mintAgentCredential(orgA, agentId);
@@ -318,7 +306,6 @@ describe('a credential for an agent that already exists', () => {
     });
   });
 
-  // cm:guard `canAct` is unrevoked AND unexpired, and the expired case is the one the old `revoked_at IS NULL` count got wrong: `verifyPat` turns the token away while the console said the agent could act. Drop the expiry half of `patIsLive` and this is what goes red.
   it('reports an agent holding only an EXPIRED credential as unable to act', async () => {
     const agentId = await tokenlessAgent('room-handle');
     const minted = await accounts.mintAgentCredential(orgA, agentId);
@@ -336,7 +323,6 @@ describe('a credential for an agent that already exists', () => {
 
     const [listed] = await accounts.listAgentAccounts(orgA);
     expect(listed?.canAct).toBe(false);
-    // cm:guard the account is still THERE, with its memberships: this verb removes what the agent may act with, and `revokeAgentAccount` is the one that removes what it may act on. Collapse the two and an admin who meant "stop it for now" has retired the handle out of every room.
     expect(listed?.userId).toBe(agentId);
     expect(listed?.projects).toEqual([{ id: projectA, role: 'member' }]);
   });
@@ -379,7 +365,6 @@ describe('a name a person reads, over HTTP', () => {
     expect(((await read.json()) as { displayName: string }).displayName).toBe('Nguyễn Văn A');
   });
 
-  // cm:guard the member list returns the label AND the address as separate fields, because a service that folded them into one "name" would make that choice for every screen at once — and a mention picker showing a re-assignable label is the exact defect the two columns exist to keep apart (ISS-1003 criterion 10).
   it('returns the label beside the address on the org member list, null until one is typed', async () => {
     const jwt = await session();
     const before = await app.request(`/api/orgs/${orgA}/members`, {
@@ -433,7 +418,6 @@ describe('a name a person reads, over HTTP', () => {
     const { plaintext } = (await res.json()) as { plaintext: string };
     expect((await pat.verifyPat(plaintext))?.row.userId).toBe(agent.userId);
 
-    // cm:guard no later read hands the plaintext back — the row stores a hash and there is nothing to return. A list that carried it would turn one leak of a response body into every token.
     const list = await app.request(`/api/orgs/${orgA}/agents`, {
       headers: { authorization: `Bearer ${jwt}` },
     });

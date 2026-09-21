@@ -133,9 +133,6 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const version = await client.version();
   const project = await client.projectBySlug(f.project ?? '');
   const runId = deps.randomId();
-  // cm:guard the brief is read ONCE, before the first turn, and refuses by name where the credential
-  // cannot see the project's knowledge: a run that judged project answers against a silently empty
-  // brief is what ISS-1066 was filed about (`brief.ts:readProjectBrief`).
   const source = await readProjectBrief(client, project, deps.now);
   const brief = projectBrief(source);
   const runProject: RunProject = {
@@ -172,7 +169,6 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
       });
       model ??= trial.model;
       row.trials.push(trial.result);
-      // cm:guard a judge that is the model under test grades its own habits kindly; the trial it was refused on is kept whole (grades, room id) so the partial file still excludes that room from a history reading
       if (trial.judgeRefused) {
         results.push(row);
         await writeResult(deps, f, version, model, runId, k, results, judge, runProject);
@@ -180,7 +176,6 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
           `${task.id} trial ${i + 1}: ${trial.judgeRefused}; no further trial started, partial results written to ${f.out}`,
         );
       }
-      // cm:guard a restore that failed must not become the next trial's baseline: the next trial would read the moved value as the account's own and restore to it, and the run would end "clean" with the person's preference changed
       if (trial.result.cleanup.preferences.equal === false) {
         results.push(row);
         await writeResult(deps, f, version, model, runId, k, results, judge, runProject);

@@ -1,11 +1,3 @@
-/**
- * Shared helpers for the integrations route modules — the project-scoped
- * router (`routes.ts`) and the owner-scoped connection router
- * (`connection-routes.ts`) both import from here (never from each other, so
- * there is no module cycle): auth guards, HTTP error constructors, response
- * projections, and the shared tail of the two binding-creating endpoints.
- */
-
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -26,10 +18,6 @@ import {
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
 import { isVaultConfigured } from './vault.js';
 
-// `assertVaultBootSafety` lets core boot when the integration tables are empty,
-// so the first create/update attempt is the moment the missing-key
-// misconfiguration surfaces. Convert it into a structured 503 so operators see
-// a remediation message instead of a bare "Internal Server Error".
 export function assertVaultConfigured(): void {
   if (!isVaultConfigured()) {
     throw new HTTPException(503, {
@@ -57,11 +45,6 @@ export const alreadyExists = (
  * (project, provider) — 409 ALREADY_EXISTS on a clash. (Epodsystem creates check by label
  * instead — see the create route.)
  */
-// cm:edge contract -> packages/core/src/db/schema.ts — this is `integration_bindings_service_uq` read
-// in application code so the caller gets a 409 rather than a 500 from Postgres, and the two must admit
-// the same rows. A DEPLOY binding is deliberately unchecked: a stage may hold more than one and core
-// never picks among them (ISS-1046 rule 3), so refusing a second here would re-impose the uniqueness
-// the index dropped and eight fleet projects already violate with two coolify bindings apiece.
 export async function assertNoActiveBindingClash(
   projectId: string,
   provider: IntegrationProvider,
@@ -69,13 +52,6 @@ export async function assertNoActiveBindingClash(
   label = '',
 ): Promise<void> {
   if (role !== 'service') return;
-  // cm:guard the lookup is SERVICE-scoped AND LABEL-scoped, matching the partial index
-  // `(project_id, provider, label) WHERE role = 'service'` exactly. Dropping the role filter
-  // refused an operator adding a service binding to a project that already had a deploy one — a
-  // pair the index admits and rule 3 requires, since the two are different declarations about the
-  // same credential. Dropping the label filter refused a second NAMED storefront, which the index
-  // also admits. `label` is NOT NULL DEFAULT '', so one rule covers every provider and epodsystem
-  // needs no branch of its own.
   const clash = await findActiveServiceBindingAtLabel(projectId, provider, label);
   if (clash)
     throw alreadyExists(
@@ -108,12 +84,6 @@ export function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {
   if (role !== 'admin') throw forbidden();
 }
 
-/**
- * Project-facing integration summary, projected from a binding + its owning
- * connection. Field names are kept stable for the web client: `id` is the
- * BINDING id (== old project_integration id for backfilled rows); health/breaker
- * + secret-presence come from the connection; `config` is the effective overlay.
- */
 export function summarizeBinding(pair: BindingWithConnection) {
   const { binding, connection } = pair;
   return {
@@ -126,8 +96,6 @@ export function summarizeBinding(pair: BindingWithConnection) {
     config: effectiveConfig(pair),
     bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
     label: binding.label ?? '',
-    // cm:edge contract -> packages/contracts/src/integrations.ts — BindingSummary is the shape this returns; nothing type-checks the two against each other
-    // cm:why all three flags rather than just the AND: a project admin's binding PATCH can only write `bindingActive`, so a UI toggle bound to the AND writes one tier and reads another — it reports success and snaps back, which is how forge-dev's Rocket.Chat sat unbootable from the UI for two months
     active: binding.active && connection.active,
     bindingActive: binding.active,
     connectionActive: connection.active,
@@ -136,11 +104,6 @@ export function summarizeBinding(pair: BindingWithConnection) {
     breakerOpenedAt: connection.breakerOpenedAt,
     hasSecrets: connection.secretsEnc !== null,
     integrationSecretSet: binding.integrationSecret !== null,
-    // ISS-1071 — the grant, and what it would MEAN for this provider, projected together. A screen
-    // that only got `agentAccess` would have to decide for itself whether the switch is offerable,
-    // which is how the old sentinel ended up rendered as a catalog toggle on a settings tab that
-    // refused its only legal value. `none` here means the switch is not a question for this
-    // provider at all, and a screen renders the reason rather than a dead control.
     agentAccess: binding.agentAccess as AgentAccess,
     agentPathKind: getIntegration(binding.provider)?.capabilities.agentPath.kind ?? 'none',
     createdAt: binding.createdAt,
@@ -206,7 +169,6 @@ function str(config: Record<string, unknown>, key: string): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-// cm:guard name a connection at CREATE time, never only at render — two credentials of one provider are indistinguishable in every list, drawer and picker that shows them, and a card cannot invent a name the row does not carry. Measured on forge-beta 2026-09-06: 17 of 17 rows had displayName null, so every card read as its provider label.
 /**
  * A name for a connection its owner will recognise, from the non-secret config
  * they just typed. Returns null when the config says nothing distinguishing —
@@ -227,13 +189,6 @@ export function defaultConnectionDisplayName(
   return detail ? `${provider} · ${detail}` : null;
 }
 
-/**
- * Broadcast a binding mutation to the project room so web clients refresh the
- * integrations list/status + connections cache live (ISS-401/C). Fire-and-
- * forget — never let a publish failure surface on the mutation response. Only
- * binding mutations carry a `projectId`; owner-scoped connection mutations have
- * no project room and rely on client self-invalidation + reconnect replay.
- */
 export function broadcastIntegrationChanged(
   projectId: string,
   extra: { bindingId?: string; connectionId?: string } = {},
@@ -257,16 +212,6 @@ const INITIAL_PROBE_TIMEOUT_MS = 5_000;
  *  sweep's per-probe budget. */
 export const TEST_PROBE_TIMEOUT_MS = 10_000;
 
-/**
- * Best-effort immediate healthcheck after a binding is created or bound
- * (ISS-429): the operator gets a REAL health state right away instead of an
- * `unverified` card until someone presses Test. Adapter healthchecks persist
- * health onto the connection (epodsystem additionally fills store identity
- * into config), so callers should re-read the pair afterwards. Never throws —
- * a failed probe is a valid result, and a crashed probe must not undo a
- * successful create. Time-boxed: the adapter keeps running past the deadline
- * (its result still persists), only the response stops waiting.
- */
 async function runInitialHealthcheck(
   pair: BindingWithConnection,
 ): Promise<HealthCheckResult | null> {

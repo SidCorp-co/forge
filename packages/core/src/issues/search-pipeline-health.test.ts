@@ -11,7 +11,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('./issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -36,7 +35,6 @@ const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
 vi.mock('../db/client.js', () => ({ db: { select: dbSelect } }));
 
-// cm:why stubbed so this stays a serialization check — the derivation itself runs ~9 query shapes and is covered by pipeline-health*.test.ts plus tests/integration/pipeline-health-e2e.test.ts
 const safeHydratePipelineHealthForIssues = vi.fn(async () => new Map());
 vi.mock('./pipeline-health.js', () => ({ safeHydratePipelineHealthForIssues }));
 
@@ -70,7 +68,6 @@ beforeEach(() => {
 });
 
 async function authorizedRequest(qs: string) {
-  // cm:guard three queued rows in THIS order — assertEmailVerified reads users, then loadProjectAccess reads the project row and the member row; they share one FIFO, so a missing entry answers 401/404 rather than the case under test
   selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
   selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
   selectOffset.mockReturnValueOnce([
@@ -89,7 +86,6 @@ async function authorizedRequest(qs: string) {
   return { res, body };
 }
 
-// cm:why the board and the issues list both read THIS endpoint, so a gate reason absent here is a queued issue rendering as actively worked on both
 describe('withPipelineHealth (ISS-903)', () => {
   it('omitted → response shape unchanged, no hydration runs', async () => {
     const { res, body } = await authorizedRequest('');
@@ -131,7 +127,6 @@ describe('withPipelineHealth (ISS-903)', () => {
     expect(safeHydratePipelineHealthForIssues).toHaveBeenCalledTimes(1);
   });
 
-  // cm:why the wrapper's own catch is asserted in pipeline-health-queued-step.test.ts; what belongs here is the graft, not the catch
   it('grafts stage-only for every row when the hydration degrades to an empty map', async () => {
     safeHydratePipelineHealthForIssues.mockResolvedValueOnce(new Map());
     const { res, body } = await authorizedRequest('?withPipelineHealth=1');

@@ -51,7 +51,6 @@ vi.mock('./runner-release-repo.js', () => ({
 type Row = Record<string, unknown> & { id: string; settledAt: Date | null; attempt: number };
 let row: Row;
 let inFlight: Row[];
-// cm:guard each double carries the `attempt` fence the statement does, so a delivery settling a release proves the arm is passing the row's own attempt through rather than the double ignoring it.
 const settlePublished = vi.fn(
   async (id: string, attempt: number, patch: Record<string, unknown>) => {
     if (row.id !== id || row.settledAt || row.attempt !== attempt) return false;
@@ -106,7 +105,6 @@ const delivery = (over: Record<string, unknown> = {}, run: Record<string, unknow
   ...over,
 });
 
-// cm:guard the implementations are restored by hand: `vi.clearAllMocks` clears CALLS and leaves `mockImplementation` in place, so the case that makes `buildRepoClient` throw would otherwise leave every later case reading no release at all — and the arm under test would look as though it never asks.
 beforeEach(() => {
   vi.clearAllMocks();
   readReleaseForTag.mockImplementation(async () => WHOLE);
@@ -145,7 +143,6 @@ describe('a build that produced a whole release', () => {
     expect(String(row.publicationDetail)).toContain('forge-runner-aarch64-apple-darwin');
   });
 
-  // cm:guard criterion 14. The row is settled once and the second delivery answers 0 — the conditional write in the store is the guarantee, and this is the arm that reports it.
   it('settles once when the same delivery arrives twice', async () => {
     expect(await applyWorkflowRunEvent(ctx, delivery())).toBe(1);
     expect(await applyWorkflowRunEvent(ctx, delivery())).toBe(0);
@@ -164,7 +161,6 @@ describe('a build that produced a whole release', () => {
 });
 
 describe('a build that succeeded over a release that is not whole', () => {
-  // cm:guard criterion 16 and 17. `install/fetch-release.ts` ingests only a release that is neither draft nor prerelease and picks its assets by prefix, so a green build over a half-published release is a failed RELEASE however green the build was.
   it('fails at confirm_release when an asset is missing, naming what is there', async () => {
     readReleaseForTag.mockResolvedValue({
       ...WHOLE,
@@ -207,7 +203,6 @@ describe('a build that did not succeed', () => {
     expect(String(row.failure)).toContain('nothing is published');
   });
 
-  // cm:guard this is the reading that may not be inferred. A cancelled or failed workflow can have published a release before it died, and telling an operator "nothing is published" without looking is a claim nothing here supports.
   it('reads what GitHub holds even when the build failed, and reports it', async () => {
     readReleaseForTag.mockResolvedValue({
       ...WHOLE,
@@ -264,7 +259,6 @@ describe('the deliveries that settle nothing', () => {
     expect(row.settledAt).toBeNull();
   });
 
-  // cm:guard criterion 10 and 11, and the whole reason there is no `head_sha` fallback: the release IS in flight at this commit, so a matcher that fell back would settle it from a build that named no tag.
   it('settles nothing for a delivery naming no runner-v tag, and writes the fact onto the release', async () => {
     inFlight = [row];
     expect(await applyWorkflowRunEvent(ctx, delivery({}, { head_branch: null }))).toBe(0);
@@ -289,15 +283,12 @@ describe('the deliveries that settle nothing', () => {
     expect(row.settledAt).toBeNull();
   });
 
-  // cm:guard the repository is one of the four terms, so a delivery that does not carry it FAILS that term rather than skipping it. A comparison written as "compare it if it is there" settles a release on three terms whenever GitHub omits or renames the field, and the shape of a delivery is GitHub's to change.
-  // cm:guard a tag names a release; it does not prove the build that ran for it is the one this release cut. Between Forge reading the tag absent and cutting it, somebody else can cut the same tag at another commit — and that build's completion matches on repository, workflow, tag and status alike. Settling on it records this release published over a commit it never cut, with `commit_sha` saying one thing and every reported field coming from another.
   it('settles nothing when the build ran at a different commit from the one it cut', async () => {
     expect(await applyWorkflowRunEvent(ctx, delivery({}, { head_sha: 'deadbee' }))).toBe(0);
     expect(row.settledAt).toBeNull();
     expect(readReleaseForTag).not.toHaveBeenCalled();
   });
 
-  // cm:guard a release that has not reached its cut has no build of its own to hear about, so a completed build for its tag is somebody else's. Without this the row is settled at a step it never got to.
   it('settles nothing for a release that has not cut its tag yet', async () => {
     row.step = 'check_tag_absent';
     row.status = 'preflight';
@@ -325,7 +316,6 @@ describe('the deliveries that settle nothing', () => {
 });
 
 describe('what this arm asks GitHub', () => {
-  // cm:guard criterion 12. The ONE outbound call on this path is the release read, and it happens after the build reported rather than while it runs. A poll would be a second source of truth with its own staleness, which is the rule ISS-1062 set for the whole projection.
   it('asks nothing about the build itself, and reads the release exactly once', async () => {
     await applyWorkflowRunEvent(ctx, delivery());
     expect(readReleaseForTag).toHaveBeenCalledTimes(1);

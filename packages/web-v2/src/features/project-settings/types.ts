@@ -18,15 +18,8 @@ export interface ProjectUpdateInput {
 	/** ISS-609 — chat/RC-bot reply-style knob; scoped server-side write into
 	 *  `agentConfig.personaStyle`. null/'' clears it. */
 	personaStyle?: string | null;
-	/** ISS-727 — RC bot answer-engine knob; scoped server-side write into
-	 *  `agentConfig.rocketChatAnswerMode`. null clears it (reverts to `fast`). */
 	rocketChatAnswerMode?: "fast" | "agent" | null;
-	/** ISS-1070 — the project's own addition to the assistant system prompt; scoped server-side
-	 *  write into `agentConfig.systemPrompt`. null/'' clears it. No editor on this screen yet; the
-	 *  field exists because the wholesale `agentConfig` record that used to carry it is gone. */
 	systemPrompt?: string | null;
-	/** ISS-1070 — the issue categories this project offers, served by MCP `forge_config`; scoped
-	 *  server-side write into `agentConfig.categories`. `[]` stores an empty list, null clears. */
 	categories?: string[] | null;
 }
 
@@ -66,13 +59,6 @@ export interface LiveEnvironmentConfig {
 	[key: string]: unknown;
 }
 
-/**
- * The `environments` jsonb blob on a project — BOTH sides of a deployment plus the credentials
- * and the limits QA needs against either. Mirrors the known keys of `environmentsPatchSchema` in
- * `packages/core/src/projects/environments.ts`; the server schema is `.catchall(z.unknown())` at
- * every level, so unknown keys round-trip untouched (the Testing tab spreads the stored blob on
- * save to preserve them). `Project.environments` is untyped jsonb (`unknown`) — cast through this.
- */
 export interface EnvironmentsConfig {
 	preview?: PreviewEnvironmentConfig | null;
 	live?: LiveEnvironmentConfig | null;
@@ -102,11 +88,9 @@ export interface ProjectInvitationRow {
 }
 
 /** A label's taxonomy role — a module IS a label carrying `kind: 'module'`. */
-// cm:edge contract -> packages/core/src/db/schema.ts#labelKinds — a third kind added there and not here is a row the Modules tab shows as a plain label and the Labels tab shows as a module
 export type LabelKind = "label" | "module";
 
 /** A project label (`GET /api/projects/:id/labels`), modules included. */
-// cm:edge contract -> packages/core/src/labels/routes.ts#labelColumns — every route in that file projects exactly this set; `color` is NOT NULL in the schema and every projection carries it, so there is no null arm
 export interface ProjectLabel {
 	id: string;
 	name: string;
@@ -123,7 +107,6 @@ export interface ProjectLabel {
 
 /** Body for creating a label or a module. `color` may be omitted for a module — the server
  *  derives a stable one from the name; it is REQUIRED for a plain label. */
-// cm:guard `slug` is deliberately absent — the server derives it and refuses to accept one, so a field here would be silently dropped rather than honoured (ISS-947).
 export interface LabelCreateInput {
 	name: string;
 	color?: string;
@@ -178,6 +161,24 @@ export interface PluginDesignation {
 	autoUpdate?: boolean;
 }
 
+/** One reason a release will not start, and what to do about it — mirrors
+ *  `ReleaseBlocker` in core `release-batch/blocker-sentences.ts`. */
+export interface ReleaseBlocker {
+	code: string;
+	/** The one sentence an operator reads, carrying its own remedy. */
+	message: string;
+	details?: Record<string, unknown>;
+	/** False when this check could not be run at all. */
+	evaluated: boolean;
+}
+
+/** Something that changes how a release runs without being a reason it will not. */
+export interface ReleaseWarning {
+	code: string;
+	message: string;
+	details?: Record<string, unknown>;
+}
+
 /** What a project still has to declare — mirrors `ReleaseReadiness` in core
  *  `release-batch/readiness.ts`. `gaps` is what settings says out loud. */
 export interface ReleaseReadiness {
@@ -188,7 +189,6 @@ export interface ReleaseReadiness {
 	baseBranch: string;
 	/** Non-null only under `promote` — every other model reads no branch. */
 	liveBranch: string | null;
-	/** Declares a release model but has no live deploy binding to send it to. */
 	targetUndeclared: boolean;
 	/** Providers of EVERY live deploy binding; core never picks one. */
 	providers: string[];
@@ -196,6 +196,18 @@ export interface ReleaseReadiness {
 	rollback: string | null;
 	rollbackMode: "manual" | "coolify-image" | "unrepresentable" | null;
 	hasVerify: boolean;
+	/** False where the declaration could not be READ, which makes every field
+	 *  below a fallback rather than a reading (ISS-1127). */
+	declarationRead: boolean;
+	/** False where the live bindings could not be READ, which makes providers,
+	 *  rollback, hasVerify and the runner label fallbacks (ISS-1127). */
+	channelsRead: boolean;
+	/** Every reason a release would be refused RIGHT NOW — the declarations, and
+	 *  also the roster and the fleet, which `gaps` never looked at. Empty here
+	 *  means a release over this roster starts (ISS-1127). */
+	blockers: ReleaseBlocker[];
+	/** What changes how the release runs without stopping it. */
+	warnings: ReleaseWarning[];
 	gaps: (
 		| "build-commands"
 		| "test-commands"
@@ -211,17 +223,6 @@ export interface ReleaseReadiness {
 	)[];
 }
 
-/**
- * The `agentConfig` jsonb blob on a project. `Project.agentConfig` is untyped jsonb (`unknown`),
- * same reason `environments` needs `EnvironmentsConfig` — cast through this, as
- * `rocketchat-section.tsx:89` already does for `agentConfig.rocketChatAnswerMode`.
- *
- * ISS-1070 — the key set is DECLARED, and the index signature over `unknown` is gone with it. Six
- * keys survive and each has one write door; this mirrors `agentConfigSchema` in core
- * `projects/agent-config-schema.ts`, which is where the shape is stated. None of these is written
- * by sending an `agentConfig` object — `PATCH /api/projects/:id` no longer takes one and refuses a
- * body carrying one by naming the field or route that writes each key.
- */
 export interface ProjectAgentConfig {
 	pipelineConfig?: PipelineConfig;
 	plugins?: PluginDesignation[];
@@ -239,37 +240,13 @@ export interface ProjectAgentConfig {
  */
 export interface PipelineConfig {
 	enabled?: boolean;
-	/**
-	 * Project-default MCP servers seeded into every dispatched job's temp
-	 * `--mcp-config` (forge-runner `--strict-mcp-config` ignores the runner
-	 * box's own MCP config, so the project must declare the secret-free servers
-	 * it wants). Shorthand: `name: true` enables a catalog default (see
-	 * `MCP_CATALOG`); an object value is a raw custom spec; `false`/absent omits.
-	 * The dispatcher merges this as the base, with per-state `states[x].mcpServers`
-	 * layering on top. An integration is NOT reached from this map — the grant is
-	 * `agentAccess` on its binding.
-	 */
 	mcpServers?: Record<string, unknown>;
 	/**
 	 * Per-stage overrides, keyed by ISSUE STATUS (not step name) — mirrors
 	 * `statesConfigSchema` in core. See `PipelineStateConfig` above.
 	 */
 	states?: Record<string, PipelineStateConfig | undefined>;
-	/**
-	 * ISS-606 — per-project intake gate. When enabled, EVERY create that would
-	 * land at `open` (all channels, member-created included) parks at `draft`
-	 * + label `intake` until a human approves via draft→open. `notify`
-	 * (default true) pings the project owner on each gated arrival. Mirrors
-	 * `intakeGate` in core `pipeline/pipeline-config-schema.ts`.
-	 */
 	intakeGate?: { enabled: boolean; notify?: boolean };
-	/**
-	 * ISS-917 — per-project pool admission. Statuses whose issues a master agent
-	 * SEES as a backlog beside the claimable pool. Visible only: a backlog row
-	 * carries no job and cannot be claimed, and turning one into work is an
-	 * run session the master opens over them itself. Absent/empty = off.
-	 * Mirrors `poolBacklog` in core `pipeline/pipeline-config-schema.ts`.
-	 */
 	poolBacklog?: { statuses: string[]; limit?: number };
 	/**
 	 * Per-project knowledge promotion. When enabled, the nightly memory
@@ -282,13 +259,6 @@ export interface PipelineConfig {
 		candidatesPerRun?: number;
 		minRetrievals?: number;
 	};
-	/**
-	 * Per-project weekly assistant reading. When enabled, a daily 04:00 UTC job
-	 * grades the week's chat logs, judges them with `judgeModel` through the
-	 * registered provider `judgeProviderId`, and posts one report per ISO week on
-	 * `pinnedIssue` (Monday first; later days retry a failed week).
-	 * Absent = off. Mirrors `assistantWeekly` in core `pipeline/pipeline-config-schema.ts`.
-	 */
 	assistantWeekly?: {
 		enabled: boolean;
 		pinnedIssue: string;
@@ -296,13 +266,6 @@ export interface PipelineConfig {
 		judgeModel: string;
 		source?: string;
 	};
-	/**
-	 * When true, production Coolify deploys auto-dispatch on release instead of
-	 * parking at the manual human-confirm gate (mirrors `autoProdDeploy` in core
-	 * `pipeline/pipeline-config-schema.ts`). Absent/false (the default) keeps the
-	 * prod approval gate enforced — surfaced as a per-project toggle in the
-	 * Coolify integration drawer (see `integrations/components/coolify-section`).
-	 */
 	autoProdDeploy?: boolean;
 	[key: string]: unknown;
 }
@@ -345,7 +308,6 @@ export const MCP_CATALOG: Record<
 
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
 
-// cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — the same four STAGE_NAMES keys, same order; a stage added there needs a row here or the screen renders its raw status
 export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string }> = [
 	{ status: "open", label: "Queued" },
 	{ status: "in_progress", label: "Running" },
@@ -386,13 +348,6 @@ function splitPascalCase(raw: string): string[] {
 		.filter(Boolean);
 }
 
-/**
- * Tool id -> a human label, for both shapes seen in `disallowedTools`/`allowedTools`:
- *   - `mcp__<server>__<rest>` (every forge MCP tool) -> server + a de-prefixed,
- *     space-cased rest. `mcp__forge__forge_projects_archive` -> "Projects archive".
- *   - a bare Claude Code builtin, PascalCase -> space-cased. `CronCreate` -> "Cron create".
- * `raw` is always kept so a caller can offer it via `title=`.
- */
 export function humanizeToolName(raw: string): HumanizedToolName {
 	if (raw.startsWith("mcp__")) {
 		const parts = raw.split("__");
@@ -433,15 +388,12 @@ function stageHasOverride(sc: PipelineStateConfig): boolean {
 		(sc.allowedTools?.length ?? 0) > 0 ||
 		(sc.disallowedTools?.length ?? 0) > 0 ||
 		Object.keys(sc.mcpServers ?? {}).length > 0 ||
-		// cm:why a stage whose ONLY override is its runner pool must still render — otherwise pinning a stage to a box makes that stage vanish from the one screen an operator checks it on
 		(sc.deviceIds?.length ?? 0) > 0
 	);
 }
 
 /** Every `states[status]` that carries a permission-relevant override, in
  *  ladder order. */
-// cm:guard the rows are `PIPELINE_STATUS_ROWS` and nothing else. Both readers here used to append a row for any OTHER stored status, labelled with its raw key — but core's `statesConfigSchema` has been a `strictObject` since ISS-994, so such a key fails the whole document parse and no such row could ever render; what it could do, if one somehow arrived, was offer an editable row whose save 400s (ISS-1000). A new stage is added HERE, next to core's `STAGE_NAMES`.
-// cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — `STAGE_NAMES`; a stage added there and not here is a stage no operator can see or edit
 export function summarizeStageConfig(cfg: PipelineConfig): StagePermissionRow[] {
 	const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig>;
 	const rows: StagePermissionRow[] = [];
@@ -489,7 +441,6 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 	});
 }
 
-// cm:guard the ONLY writer of a single stage. `statesConfigSchema` has no passthrough and the PATCH replaces `states` wholesale, so anything building a `states` map from less than the fetched one DELETES the stages it left out — spread cfg, spread cfg.states, spread the stage, override nothing else.
 export function withStagePatch(
 	cfg: PipelineConfig,
 	status: string,
@@ -561,7 +512,6 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	},
 ];
 
-// cm:edge contract -> packages/core/src/app-config/memory-model-routes.ts — the five states, the counters and the estimate keys are decided there and by memory/chunk-reindex.ts; this screen only draws them
 
 export type MemoryModel = "flat" | "chunked";
 

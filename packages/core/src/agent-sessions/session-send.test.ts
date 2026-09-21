@@ -126,7 +126,6 @@ describe('resolveSessionSend', () => {
     expect(res.outcome).toBe('unknown');
   });
 
-  // cm:guard the terminal-session cases are the ONLY exit from `unknown` when the box keeps heartbeating — a runner too old to know the `session.send` arm is online and silent forever. Delete these and a lost answer looks exactly like a slow one.
   it.each(['completed', 'failed', 'completed_via_recovery', 'cancelled_stale'])(
     'is gone once the session has reached %s, however healthy the runner',
     async (status) => {

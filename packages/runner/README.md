@@ -34,7 +34,8 @@ lines below. They were listed here as deferred long after they landed.)
 | Command | What |
 |---|---|
 | `api` | Call any Forge REST endpoint with a personal access token (`gh api` shaped) |
-| `login` | Pair this device via browser approval; `--pat` stores a REST token instead |
+| `setup` | Installed → running work: check tools, pair, pick projects, get checkouts, install the service, end on `doctor` |
+| `login` | Pair this device: prints an approval URL (`--open` launches a browser); `--pat` stores a REST token instead |
 | `bind` | Bind a project slug to a local repo path |
 | `start` | Run the daemon — connect, register, accept jobs |
 | `status` | Connection + runner status |
@@ -94,16 +95,36 @@ without the `write` scope gets `INSUFFICIENT_SCOPE` on anything but a read.
 Skills reach a runner without a manual step: `[skills] auto_pull` is **on by
 default**, so a bound project's skills are pulled in the background as they are
 published or updated. `forge-runner sync` forces that now. Device-wide shared
-skills can also arrive over the Claude Code plugin-marketplace channel. What a
-runner actually ended up executing is reported back — see `observed_sha` /
+skills arrive over a second channel, the Claude Code plugin marketplace: every
+device installs the first-party `forge` plugin from `SidCorp-co/forge-plugin` —
+the `forge` CLI, the session hooks and the `issue-flow` driver skill a `drive`
+job runs. It is on by default; `forge-runner config set plugins.enabled false`
+opts a machine out, and `plugins.marketplace-repo` / `plugins.plugin-names`
+point it elsewhere. A config still naming the retired `forge-pipeline-skills`
+marketplace is moved onto the first-party one at load, with a warning naming
+the file. What a runner actually ended up executing is reported back — see `observed_sha` /
 `shadowed_by` on the device-skill row, which is what makes a green sync status
 mean the pushed body is the body that runs.
 
 ```bash
 cargo build --release
-./target/release/forge-runner doctor
-./target/release/forge-runner login --core-url <url> --code <CODE>
-./target/release/forge-runner bind <slug> --path <dir> --project-id <uuid>
+./target/release/forge-runner config set core-url <url>   # the installer does this for you
+./target/release/forge-runner setup                       # pair + bind + service + doctor
+```
+
+`setup` is the order the steps below go in, not a second implementation of
+them: pairing is `login`'s, the checkout is the server's provisioning path
+(`workspace/provision.rs`, the same one a web-UI assignment triggers), the
+service is `service install`'s and the verdict is `doctor`'s. Every question it
+asks has a flag, and with `--yes` or no tty it asks none — `--code`,
+`--project`, `--path`, `--projects-root`, `--service` / `--no-service`. It ends
+non-zero when doctor fails, so an unattended install fails where the gap is.
+
+The steps by hand, when you want them one at a time:
+
+```bash
+./target/release/forge-runner login                       # prints the approval URL; --open for a browser
+./target/release/forge-runner bind <slug> --path <dir>    # or --clone to have one provisioned
 ./target/release/forge-runner start
 ```
 

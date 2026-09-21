@@ -24,13 +24,6 @@ export interface SeedResult {
   inserted: number;
   updated: number;
   unchanged: number;
-  /**
-   * Per-skill change records for callers (e.g. boot wiring) that need to
-   * broadcast a `globalSkillUpdated` hook for each genuine content change.
-   * Excludes the stale-`skill_md` backfill where `contentHash` already
-   * matched the existing row — that path re-renders bytes without
-   * signalling a logical update to clients.
-   */
   changes: SeedChange[];
 }
 
@@ -92,15 +85,6 @@ interface SkillFile {
 /** Skip files larger than this so an accidental large binary cannot bloat the row/hash. */
 const MAX_SKILL_FILE_BYTES = 1024 * 1024;
 
-/**
- * Recursively walk a skill folder and load every file except the root
- * `SKILL.md` manifest (which lives in `skill_md`/`prompt`, not `files`) into
- * the `skills.files` shape. Text files are stored utf8 with CRLF normalised so
- * a cross-platform checkout hashes identically; binary files (NUL-byte
- * heuristic) are base64-encoded. The result is sorted by `path` so
- * `hashSkillBody` — which `JSON.stringify`s the array — is order-stable and the
- * seed stays idempotent across boots.
- */
 async function collectSkillFiles(skillDir: string): Promise<SkillFile[]> {
   const files: SkillFile[] = [];
 
@@ -204,11 +188,6 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     const contentHash = hashSkillBody(rawText, files);
     const prompt = body;
 
-    // Look up the current row (if any) and decide insert / update / unchanged.
-    // ISS-2: also pull `skill_md` so we can detect rows seeded by an older
-    // build that hashed the full file but only persisted `prompt` (body),
-    // leaving `skill_md` null. Those rows must re-emit content even when
-    // contentHash already matches.
     const existing = await db
       .select({
         id: skills.id,
@@ -247,14 +226,6 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
       continue;
     }
 
-    // ISS-2A: when the row's `skill_md` was null but `contentHash` matched
-    // the file, the desktop sync daemon's locally-cached hash equals the
-    // server hash and it short-circuits the install — leaving the local
-    // SKILL.md file empty even though the DB now has content. To force a
-    // one-time daemon resync, the backfill writes a salted hash that
-    // differs from the daemon's cached value. The salt is deterministic
-    // so once applied the row converges (subsequent boots accept either
-    // the natural or the salted hash as "current content").
     const saltedHash = sha256(`backfill-iss2a:${rawText}`);
     const skillMdMissing = !current.skillMd;
     const hashMatches = current.contentHash === contentHash || current.contentHash === saltedHash;
@@ -263,9 +234,6 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
       continue;
     }
 
-    // Bump version only when the underlying content actually changed; a pure
-    // skill_md backfill (hash already matches) re-renders bytes without
-    // signalling a logical update to clients.
     const versionChanged = !hashMatches;
     const writeContentHash = skillMdMissing && !versionChanged ? saltedHash : contentHash;
     const newVersion = versionChanged ? current.version + 1 : current.version;

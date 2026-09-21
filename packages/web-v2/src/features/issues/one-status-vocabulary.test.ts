@@ -59,8 +59,6 @@ describe("the lane word is not reachable under a status-label name", () => {
     expect(found).toEqual([]);
   });
 
-  // cm:guard the two names this issue retired, so the case above cannot be satisfied by a file that
-  // merely spells them differently. A comment recording what went is not a use, and is skipped.
   it("names neither retired symbol in any file's code", () => {
     const RETIRED = /\b(?:statusLabelFor|useStatusLabeller|StatusLabeller)\b/;
     const found = FILES.filter(({ text }) =>
@@ -77,14 +75,10 @@ describe("exactly one kernel-status-to-word map", () => {
   const HOME = "features/issues/derive.ts";
   // A DISPLAY-WORD map has to be total or nearly so: `statusLabel` is called for whatever status a
   // row holds, and a partial table shows raw enum values on the rest. So a second one is a literal
-  // over a large majority of the statuses.
-  //
-  // cm:guard this threshold deliberately does NOT catch a partial table over a handful of statuses,
-  // and two of those exist: `features/skills/types.ts` and `lib/api/error.ts` each map eight
-  // statuses to the pipeline STEP they dispatch ("Triage", "Auto triage"), which is a different word
-  // about the same key and each other's near-duplicate. That pair is a real duplication and it is
-  // not this map; ISS-1097 neither created it nor reaches it. Lowering this number to catch it would
-  // catch them for being the wrong vocabulary rather than for being a second copy of this one.
+  // over a large majority of the statuses. Twelve spares the two eight-status tables in
+  // `features/skills/types.ts` and `lib/api/error.ts`, which map a status to the pipeline STEP it
+  // dispatches: a different vocabulary about the same key, and a near-duplicate of each other
+  // rather than of this map. `docs/proposals/two-copies-of-the-status-to-step-table.md` holds it.
   const MAJORITY = 12;
 
   const statusesIn = (text: string): Set<string> => {

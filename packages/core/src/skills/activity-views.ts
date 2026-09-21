@@ -46,8 +46,6 @@ export interface SkillActivityPage {
  * The one bounded read behind all three views: the most recent `limit` events
  * matching `where`, handed back oldest-first.
  */
-// cm:guard the limit is read newest-first and REVERSED, not read oldest-first and cut: an unbounded history (there was no limit here at all until ISS-1025) truncated from the front would hide exactly the events a reader opening an activity log came for, and hide them silently. The order these three views answer in is unchanged — oldest-first — so only a result that would have been longer than the limit is affected at all.
-// cm:guard `limit + 1` rows are fetched so `truncated` is a fact rather than a guess: a page holding exactly `limit` events is indistinguishable from a cut one when only `limit` rows are asked for.
 async function readBounded(
   where: ReturnType<typeof and>,
   limit: number,
@@ -102,7 +100,6 @@ export async function listByPacket(packetId: string, limit: number): Promise<Ski
  * Per-event-type counts for a whole packet — the "N no-op / M changed / K
  * escalated" rollup line.
  */
-// cm:guard the rollup is COUNTED IN SQL over every event of the packet, never derived from the page `listByPacket` returned: the page is the most recent `limit` events and summing it would quietly turn the operational rollup into a rollup of whatever fitted (ISS-1025 review, F1). It is bounded by the event-type enum, not by the log.
 export async function summarizeByEventType(packetId: string): Promise<Record<string, number>> {
   const rows = await db
     .select({

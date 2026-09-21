@@ -119,7 +119,6 @@ describe('runner fault flags clear when the fault is over', () => {
   }
 
   describe('on a successful job (clearRunnerLimit)', () => {
-    // cm:guard the whole bug in one assertion — a box-scoped lastError carries NO limitReason, so a limit-only guard left it pinned through every later success
     it('clears a lastError that was never accompanied by a limit', async () => {
       const s = await seedRunner({ lastError: PREFLIGHT });
       await mods.clearRunnerLimit(s.runnerId, s.projectId);
@@ -174,7 +173,6 @@ describe('runner fault flags clear when the fault is over', () => {
       expect(h.last_error).toBeNull();
     });
 
-    // cm:guard this assertion is INVERTED from what it once said, on purpose — it used to demand that a heartbeat DROP the auth limit, which is the bug that let device dev1-ai013 burn 421 jobs in 5.5h (forge-beta 2026-08-14): the stamp was erased ~30s after every failure, so no dispatch gate ever saw it. A heartbeat proves the daemon is alive, never that its OAuth session is valid.
     it('KEEPS an auth limit — a heartbeat is not evidence the credentials were fixed', async () => {
       const s = await seedRunner({
         lastError: 'API Error: 401 invalid authentication credentials',
@@ -187,7 +185,6 @@ describe('runner fault flags clear when the fault is over', () => {
       expect(h.last_error).toBe('API Error: 401 invalid authentication credentials');
     });
 
-    // cm:guard `retire` writes `disabled` and this UPDATE reverted it inside one beat (measured 2026-08-14: retired 08:19:29, back online 08:19:59), which left no MCP-reachable way to take a bad runner out of the pool
     it('leaves a disabled runner disabled instead of forcing it back online', async () => {
       const s = await seedRunner({});
       await harness.db.execute(
@@ -218,7 +215,6 @@ describe('runner fault flags clear when the fault is over', () => {
       expect(h.last_error).toBe(SPEND_CAP);
     });
 
-    // cm:guard only the mirror expires here; a box-scoped failure recorded AFTER the stamp is a different string and must survive until a job actually succeeds
     it('keeps a box-scoped lastError written after the stamp while clearing the expired limit', async () => {
       const s = await seedRunner({
         lastError: PREFLIGHT,
@@ -249,7 +245,6 @@ describe('runner fault flags clear when the fault is over', () => {
       return user;
     }
 
-    // cm:why the caller for a non-admin role MUST be a second user — createTestProject seeds an org owned by its creator, and orgDerivedProjectRole promotes an org owner to project admin, so demoting the creator's project_members row proves nothing
     async function seedFaultedRunnerFor(role: 'admin' | 'member' | 'viewer') {
       const owner = await verifiedUser();
       const project = await createTestProject(harness.db, owner.id);
@@ -292,7 +287,6 @@ describe('runner fault flags clear when the fault is over', () => {
       return rows[0]?.quarantine_reason ?? null;
     }
 
-    // cm:guard an operator reset that leaves ANY fault column set is a button that does not work — a future rate_limited_until or a quarantine keeps the box out of dispatch on its own
     it('clears every fault column at once, including an unexpired limit and quarantine', async () => {
       const s = await seedFaultedRunnerFor('admin');
       const res = await post(
@@ -342,7 +336,6 @@ describe('runner fault flags clear when the fault is over', () => {
       expect((await healthOf(s.runnerId)).last_error).toBe(SPEND_CAP);
     });
 
-    // cm:guard the runner id must be checked against the projectId in the path — the tenant boundary is the pair, not the id (ISS-492 class)
     it('404s on a runner belonging to another project, leaving it faulted', async () => {
       const mine = await seedFaultedRunnerFor('admin');
       const theirs = await seedFaultedRunnerFor('admin');

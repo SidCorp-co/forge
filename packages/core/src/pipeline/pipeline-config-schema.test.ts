@@ -49,13 +49,11 @@ describe('PIPELINE_CONFIG_DEFAULTS', () => {
 });
 
 describe('pipelineConfigPatchSchema', () => {
-  // cm:why the patch schema IS `pipelineConfigSchema` — there are no patch-only extension fields, and the pair being one object is what stops a PATCH accepting a shape a GET can never return.
   it('accepts pipelineConfig fields', () => {
     const patch = { enabled: true };
     expect(pipelineConfigPatchSchema.parse(patch)).toEqual(patch);
   });
 
-  // cm:guard ISS-897 removed these from the object literal, and the strip is what DELETES them from a stored document on the next save. A regression that re-adds one silently re-animates staged configuration on 38 projects, so assert the drop rather than the absence of an error.
   it('strips every staged key it used to accept', () => {
     const staged = {
       enabled: true,
@@ -79,7 +77,6 @@ describe('pipelineConfigPatchSchema', () => {
   });
 
   it('silently drops legacy `runnerFallback` field (unknown keys ignored)', () => {
-    // cm:why Zod's default `.object()` strips unknown keys rather than throwing. The behaviour stays "permissive on input, strict on output" so v1 patches replaying via the same endpoint don't 400 — the dropped field simply has no effect on the merged document.
     const out = pipelineConfigPatchSchema.parse({
       enabled: true,
       runnerFallback: ['claude-code'],
@@ -87,7 +84,6 @@ describe('pipelineConfigPatchSchema', () => {
     expect(out).toEqual({ enabled: true });
   });
 
-  // cm:guard the strip is the DELETION MECHANISM for the removed concurrency cap — the schema drops unknown keys on parse, so a project's next settings save clears `maxConcurrentIssues` from the stored document. Migration 0205 does it for every project at once so the fleet is never half-stripped; this pins that the schema no longer answers with it.
   it('drops the removed concurrency cap rather than echoing it back', () => {
     const out = pipelineConfigPatchSchema.parse({ enabled: true, maxConcurrentIssues: 4 });
     expect(out).toEqual({ enabled: true });
@@ -106,7 +102,6 @@ describe('statesConfigSchema (ISS-110)', () => {
   });
 
   it('rejects unknown status keys at the schema boundary', () => {
-    // cm:why Review minor #3: prior `z.record(z.string(), ...)` accepted junk keys silently. Tighten to z.enum(issueStatuses) so typos surface as 400.
     const patch = {
       states: {
         not_a_status: { enabled: false },
@@ -134,7 +129,6 @@ describe('stageConfigSchema per-state overrides', () => {
     expect(parsed.states?.open?.timeoutSeconds).toBe(1800);
   });
 
-  // cm:guard ISS-1000 — the pair below is the whole retirement and neither half stands alone: the WRITE is refused by name so the removal is not a silent drop, and the stored document is still READ, because a canonical schema that refused a stored `skillName` would make every project holding one parse to `cfg = null` and dispatch nothing in silence. Same asymmetry ISS-994 established for `mode`.
   for (const stage of ['open', 'in_progress', 'needs_info', 'awaiting_release']) {
     it(`refuses a PATCH carrying states.${stage}.skillName`, () => {
       const result = pipelineConfigPatchSchema.safeParse({
@@ -287,7 +281,6 @@ describe('stageConfigSchema per-state overrides', () => {
 });
 
 describe('resume policy', () => {
-  // cm:guard `maxResumeReopenCycles` was dropped from this schema by ISS-895 and must stay out. The schema STRIPS unknown keys, so re-adding the assertion without re-adding the key would fail here rather than silently — but re-adding the KEY is the real risk: it would restore a settings knob backing a bound that reads `reopen_count`, a column this lane never moves.
   it('accepts a non-negative maxResumeTokens, 0 included, which disables the gate', () => {
     for (const maxResumeTokens of [200_000, 0]) {
       expect(pipelineConfigSchema.parse({ maxResumeTokens }).maxResumeTokens).toBe(maxResumeTokens);
@@ -356,7 +349,6 @@ describe('mergePipelineConfig', () => {
   });
 });
 
-// cm:why ISS-917 — per-project pool admission. The schema is the only place both transports (REST `PATCH /pipeline-config` and MCP `forge_config`) share, so what it refuses is what neither can store.
 describe('poolBacklog (ISS-917)', () => {
   it('is optional — an empty document still parses to {} (no backlog, no behaviour change)', () => {
     const out = pipelineConfigSchema.parse({ enabled: true });
@@ -370,7 +362,6 @@ describe('poolBacklog (ISS-917)', () => {
     expect(out.poolBacklog).toEqual({ statuses: ['draft', 'on_hold', 'waiting'], limit: 5 });
   });
 
-  // cm:guard AC2 — the driver statuses are the ones that already carry a run and a job, so a backlog row at one could never be promoted. Offering them would be a menu of values `promoteFromBacklog` refuses as `issue_busy` forever.
   it.each(['open', 'in_progress', 'needs_info', 'closed', 'dropped'])(
     'rejects the driver-owned status %s',
     (status) => {
@@ -395,7 +386,6 @@ describe('poolBacklog (ISS-917)', () => {
     ).toBe(false);
   });
 
-  // cm:guard AC3/B5 — the refusal must NAME both settings. A message that said only "invalid value" would send an operator to the status list looking for a typo in a value that is, on its own, perfectly legal.
   it('refuses intakeGate.enabled + draft together, naming both settings', () => {
     const out = pipelineConfigSchema.safeParse({
       intakeGate: { enabled: true },
@@ -441,7 +431,6 @@ describe('githubIntake (ISS-1076)', () => {
     expect(out.data.githubIntake).toEqual({ enabled: false });
   });
 
-  // cm:guard the default IS the safety property, so it must be the ABSENCE of the key and never a `.default()`: a document that arrives carrying `enabled: false` is an operator's answer, and one carrying nothing is a project that was never asked. Both read as closed, and only the reader decides that.
   it('gives an absent key no value of its own', () => {
     const out = pipelineConfigSchema.safeParse({});
     expect(out.success).toBe(true);

@@ -6,19 +6,20 @@
 // retry, toasts on every mutation, destructive confirm surfacing the 409
 // in-use list, copy feedback, keyboard + focus, 375px responsive.
 import {
-	Button,
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	ConfirmDialog,
-	EmptyState,
-	ErrorState,
-	Input,
-	MonoTag,
-	PageContainer,
-	SlideOver,
-	Skeleton,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  Input,
+  MonoTag,
+  PageContainer,
+  PageTitle,
+  Skeleton,
+  SlideOver,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -141,7 +142,7 @@ function PrivateKeyCard({
 			</div>
 			{sshKey.note && <p className="fg-body-sm text-subtle">{sshKey.note}</p>}
 			<div className="flex items-center justify-between gap-2">
-				<code className="min-w-0 flex-1 truncate font-mono text-[12px] text-subtle">
+				<code className="min-w-0 flex-1 truncate font-mono text-12 text-subtle">
 					{sshKey.publicKey}
 				</code>
 				<CopyButton value={sshKey.publicKey} />
@@ -194,7 +195,7 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 		<>
 			<div className="flex items-center justify-between gap-3">
 				<div>
-					<h1 className="fg-h2">Private keys</h1>
+					<PageTitle className="fg-h2">Private keys</PageTitle>
 					<p className="fg-body-sm text-muted">
 						SSH deploy keys shared across every project in this organization — create one and
 						reuse it, instead of a key per project.

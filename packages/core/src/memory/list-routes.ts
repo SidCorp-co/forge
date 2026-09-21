@@ -14,16 +14,13 @@ import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-serv
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
   source: z.enum(memorySources).optional(),
-  // cm:guard ISS-876 every field `runMemoryGet` filters on must be declared here — zValidator STRIPS an undeclared key silently, so `?sourceRef=x` used to return the whole store with `total` counting every row and no error, which reads as "nothing matched that ref" only if you never look at the count
   sourceRef: z.string().trim().min(1).max(512).optional(),
-  // cm:guard a query string carries no boolean — the literal must be parsed here, or `?includeArchived=true` arrives as the truthy string "true" on every request and the archived rows leak into the default read
   includeArchived: z
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
 });
 
-// cm:guard DERIVED from the service's own input schema, not retyped beside it — that is what the sibling list route above learned the hard way: `zValidator` strips a filter the query schema never declared, so `?sourceRef=x` answered with the whole store under a `total` that reads as a match. A filter added to `runMemoryRevisions` is declared here by construction; the query's own `limit`/`offset` come from `paginationSchema` because a query string carries strings.
 const revisionsQuerySchema = memoryRevisionsInputSchema
   .omit({ limit: true, offset: true })
   .extend(paginationSchema.shape);
@@ -65,7 +62,6 @@ memoryListRoutes.get(
   },
 );
 
-// cm:edge sideeffect -> packages/core/drizzle/migrations/0208_memory_revisions.sql — every row this route reads is written by the `memories_record_replacement` trigger and by no TypeScript at all, so a reader who greps for the INSERT that fills this table finds none and concludes the route answers empty by design
 memoryListRoutes.get(
   '/revisions',
   zValidator('query', revisionsQuerySchema, (r) => {

@@ -55,9 +55,6 @@ export function ConversationRow({
   const initials = projectInitials(project?.name ?? "?");
   const archived = row.archivedAt !== null;
 
-  // cm:guard the editor is a state of THIS row and the draft is seeded when it opens rather than on
-  // every render: a render-time seed would overwrite what somebody is typing the moment a websocket
-  // refetch landed a new `updatedAt` on the row, which is exactly while they are typing into it.
   const [editing, setEditing] = useState<string | null>(null);
   const draft = editing ?? "";
   const setDraft = (v: string) => setEditing(v);
@@ -72,8 +69,6 @@ export function ConversationRow({
     return (
       <div className="flex min-h-[44px] w-full items-center gap-2 rounded-lg border border-[color:var(--link)] px-2 py-1.5">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
-        {/* cm:why the field takes focus on mount because the editor only ever opens from a
-            deliberate press on this row's rename control — focus belongs where that press asked */}
         <Input
           autoFocus
           value={draft}
@@ -91,22 +86,12 @@ export function ConversationRow({
     );
   }
 
-  // cm:guard the actions are SIBLINGS of the open button and never nested inside it: a button
-  // inside a button is invalid HTML, React hoists it out of the parent, and the press that lands
-  // on the inner one opens the room as well as deleting it.
-  // cm:guard `focus-within` sits beside `group-hover` on every action, because a control revealed
-  // by hover alone is a control a keyboard cannot reach — it is focusable, receives the tab, and
-  // stays invisible while it holds focus.
   return (
     <div
       className={`group flex min-h-[44px] w-full items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors focus-within:border-[color:var(--link)] hover:bg-hover ${
         open ? "border-[color:var(--link)] bg-hover" : "border-transparent"
       }`}
     >
-      {/* cm:guard the open target carries an explicit label rather than leaving its name to its own
-          text: `ProjectMark` renders the project's initials as live text, so the computed name was
-          "ALRelease planAlpha" — a room announced to a screen reader by two letters nobody says out
-          loud, and a name no test could match without encoding that accident. */}
       <button
         type="button"
         onClick={onOpen}

@@ -21,12 +21,6 @@ interface IssueQuickActionsProps {
   onOpenIssue?: () => void;
 }
 
-/**
- * Pinned quick-action row for the run drawer. Inline status / priority
- * editing + "Open issue", reusing the list primitives so the mutation paths
- * (`usePatchIssue` / `useTransitionIssue`) and their cache invalidation are
- * shared — an edit here updates the board live exactly like editing a row.
- */
 export function IssueQuickActions({
   issueId,
   status,

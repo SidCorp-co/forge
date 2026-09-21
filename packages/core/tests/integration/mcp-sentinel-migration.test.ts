@@ -43,8 +43,6 @@ describe('0259 forward — reachability is preserved row by row', () => {
     expect(await grantOf(w.f.sql, w.binding.shopEpod ?? '')).toBe('all');
   });
 
-  // cm:guard `none` here would not preserve a state, it would TAKE AWAY a path that is open:
-  // `forge_coolify_deploy` answers any project member's agent today with nothing to read.
   it('grants a coolify binding that declared nothing, and says so in the deploy log', async () => {
     expect(await grantOf(w.f.sql, w.binding.coolify ?? '')).toBe('all');
     const forced = w.f.notices.filter((n) => /by FORCE/.test(n)).join('\n');
@@ -66,9 +64,6 @@ describe('0259 forward — reachability is preserved row by row', () => {
     expect(await grantOf(w.f.sql, w.binding.github ?? '')).toBe('none');
   });
 
-  // cm:guard the BOUNDARY of section 5's abort. Nothing was reachable — no binding at all —
-  // so `none` is exactly what was true and the sentinel is simply removed. An abort here
-  // would be the over-broad abort that crash-loops a deploy.
   it('accepts a stage-only sentinel over no binding, and removes it', async () => {
     expect(await mapAt(w.f.sql, w.project['stage-only'] ?? '', 'developed')).toBe('{}');
   });
@@ -91,9 +86,6 @@ describe('0259 forward — reachability is preserved row by row', () => {
     expect(await mapAt(w.f.sql, w.project['two-stores'] ?? '', 'default')).toBe('{}');
   });
 
-  // cm:guard only a literal boolean is the shorthand. An object under an integration name is
-  // a custom server somebody hand-wrote — `isIntegrationSentinelName` is about the NAME, and
-  // reading the name alone would delete a working server spec and grant on it at once.
   it('leaves a catalog name and every object spec alone, including one named `postman`', async () => {
     const stored = await mapAt(w.f.sql, w.project.custom ?? '', 'default');
     expect(JSON.parse(stored ?? 'null')).toEqual({
@@ -106,9 +98,6 @@ describe('0259 forward — reachability is preserved row by row', () => {
 });
 
 describe('0259 forward — what it refuses, and where the refusal stops', () => {
-  // cm:guard the refusal IS the deliverable. There is no safe default for a provider whose
-  // agent path this file cannot read: `none` silently closes a path that is open, `all`
-  // silently writes a credential onto a runner box.
   it('aborts naming a provider its vocabulary does not classify', async () => {
     const f = await fresh();
     try {
@@ -127,9 +116,6 @@ describe('0259 forward — what it refuses, and where the refusal stops', () => 
     }
   });
 
-  // cm:guard the one shape a binary column cannot hold: the credential reaches ONE stage
-  // today. `all` widens a live credential to stages that never had it; `none` breaks a lane
-  // somebody is working in. Neither is preservation, so the migration stops and asks.
   it('aborts naming the project and provider of a per-stage grant it cannot represent', async () => {
     const f = await fresh();
     try {
@@ -154,9 +140,6 @@ describe('0259 forward — what it refuses, and where the refusal stops', () => 
     }
   });
 
-  // cm:guard the same stage-only sentinel, one flag at a time off the binding. Each of these
-  // is a lane that is NOT open today, so nothing is taken away by leaving the grant closed —
-  // and an abort that fired on any of them would be the over-broad abort 0253 paid for.
   it.each([
     ['the binding is inactive', { active: false }],
     ['the connection is inactive', { connectionActive: false }],
@@ -186,9 +169,6 @@ describe('0259 forward — what it refuses, and where the refusal stops', () => 
     }
   });
 
-  // cm:guard a project default beside the stage declaration is NOT the unrepresentable shape:
-  // the project already opts in everywhere, so `all` is what is true and the stage entry adds
-  // nothing a column has to carry.
   it('does not abort where the project default declares the same provider', async () => {
     const f = await fresh();
     try {
@@ -335,9 +315,6 @@ describe('0259_down.sql — the way back', () => {
     }
   }, 120_000);
 
-  // cm:guard the image is a photograph of one moment, and a grant changed since is a decision
-  // it cannot speak for: the map it would restore is not the state that grant came from, and
-  // the column is about to be dropped, so nothing would record that the decision existed.
   it('refuses by name, changing nothing, when a grant moved after the forward run', async () => {
     const f = await fresh();
     try {

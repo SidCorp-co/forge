@@ -139,7 +139,6 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     await expect(admissible()).resolves.toEqual({ keys: ['ISS-99'], count: 1 });
   });
 
-  // cm:guard the other direction of the same clause, and the pair is the point: a filter that hid everything would pass the case above on its own.
   it('returns that same issue once its blocker reaches developed', async () => {
     const blocker = await issue(1, 'needs_info');
     const held = await issue(2);
@@ -151,8 +150,6 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     await expect(admissible()).resolves.toEqual({ keys: ['ISS-2'], count: 1 });
   });
 
-  // cm:guard each settled status judged on its own. A clause written against one of them, or against
-  // a range, goes green on `closed` alone while `developed` and `testing` still hide their dependents.
   it.each(['developed', 'testing', 'awaiting_release', 'closed'])(
     'releases the dependent when the blocker is %s',
     async (status) => {
@@ -164,10 +161,6 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     },
   );
 
-  // cm:guard the statuses that must KEEP holding, one at a time. `merged_at` is deliberately stamped
-  // on the blocker in each case: a merged-but-parked blocker still gates the master (`forge advance`
-  // reads the status), so a clause that reached for the stamp instead would pass every case above and
-  // fail exactly here.
   it.each([
     'draft',
     'open',
@@ -193,9 +186,6 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     },
   );
 
-  // cm:guard retraction has to work through this filter or the documented way out of a wrong edge
-  // (`forge_issues.update` with `validUntil` in the past, and the expiry `drop-cascade.ts` writes)
-  // hides its dependent from every master for good.
   it('admits an issue whose only blocks edge has already expired', async () => {
     const blocker = await issue(1, 'needs_info');
     const held = await issue(2);
@@ -215,8 +205,6 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     expect(keys).not.toContain('ISS-2');
   });
 
-  // cm:guard `blocks` is the only kind any dispatch decision may read. Widen the clause past it and
-  // every grouping label in the project becomes a blocker.
   it.each(['relates', 'decomposes', 'duplicates', 'parent'])(
     'admits an issue whose only edge is %s',
     async (kind) => {
@@ -228,8 +216,6 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     },
   );
 
-  // cm:guard direction. The edge is `from BLOCKS to`, so an issue that BLOCKS a parked issue is not
-  // itself blocked; an inverted clause passes every case above and silently empties the set.
   it('admits an issue that blocks a parked one rather than the other way round', async () => {
     const blocked = await issue(1, 'needs_info');
     const blocker = await issue(2);
@@ -286,9 +272,6 @@ describe('ISS-1100 the measurement, and the shape the box reads', () => {
     expect((await admissible()).keys).toEqual(['ISS-64']);
   });
 
-  // cm:guard the empty case has to reach the box as an EMPTY ARRAY and not as a 404, a null or an
-  // error: `placement_for` reads `admissible.is_empty()`, so anything else either starts a master for
-  // a project with nothing takeable or makes the whole sweep go quiet on that project.
   it('answers 200 with an empty items array rather than an error', async () => {
     const blocker = await issue(1, 'waiting');
     const held = await issue(2);

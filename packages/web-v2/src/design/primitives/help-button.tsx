@@ -79,7 +79,7 @@ export function HelpButton({
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 py-1.5 text-[13px] font-semibold transition-colors",
+          "inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 py-1.5 text-13 font-semibold transition-colors",
           "text-muted hover:bg-hover hover:text-fg",
         )}
       >

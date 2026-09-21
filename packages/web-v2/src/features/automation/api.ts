@@ -1,6 +1,3 @@
-// web-v2 feature module: automation → PM — REST surface. All calls go through
-// the shared `apiClient`. Routes verified against
-// `packages/core/src/pm/routes.ts` (mounted at `/api/projects`).
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type { PmConfig, PmConfigPatch, PmDecision } from "./types";
 

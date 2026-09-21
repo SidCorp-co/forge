@@ -8,7 +8,6 @@ const MAX_EMBED_CHARS = 8192;
 
 /** The text a knowledge entry is embedded from — title, blank line, body. */
 export const knowledgeEmbedText = (title: string, body: string): string => `${title}\n\n${body}`;
-// cm:guard the upsert and memory/embedding-backfill.ts embed the SAME string — a degraded upsert stores `embedding = NULL` and logs "for backfill", and the backfill's re-embed must be the vector the upsert would have written, or a backfilled entry ranks differently from a fresh one forever (ISS-907, extra fix)
 /** What is actually sent to the embeddings service: the embed text cut at MAX_EMBED_CHARS. */
 export const knowledgeEmbedInput = (title: string, body: string): string =>
   knowledgeEmbedText(title, body).slice(0, MAX_EMBED_CHARS);
@@ -32,10 +31,6 @@ export const slugSchema = z
   .min(1)
   .max(512)
   .regex(/^[a-z0-9][a-z0-9-]*$/, 'slug must be kebab-case');
-// cm:guard `.min(1)` alone lets a whitespace-only body through, and since ISS-1048 the presence of
-// a slug is what answers a project's knowledge obligations. The old `missingAutonomousFacts` read
-// the text and trimmed it, so `'   '` counted as unanswered there; without this refusal a project
-// could satisfy `build-commands` with three spaces and flip autonomous with nothing to run.
 export const bodySchema = z
   .string()
   .min(1)
@@ -68,7 +63,6 @@ export interface UpsertKnowledgeResult {
   truncated: boolean;
 }
 
-// cm:why an MCP list response is spent from the caller's context window, so the cap is a token budget rather than a payload limit — raising it makes every list cost more of the window it is read in.
 export const MAX_RESPONSE_CHARS = 38_000;
 
 export async function upsertKnowledgeEntry(
@@ -79,12 +73,10 @@ export async function upsertKnowledgeEntry(
   return row;
 }
 
-// cm:guard the key is `(projectId, slug)`, which is the conflict target the upsert names — keying on the slug alone drops one project's entry for another's of the same name and then hands both callers the surviving project's row id, which is a row in somebody else's project.
 const entryKey = (input: { projectId: string; slug: string }) =>
   `${input.projectId}\u0000${input.slug}`;
 
 /** The later of two inputs on one key, whole — a multi-row upsert may name a conflict target once. */
-// cm:guard the WHOLE later input wins, never a field-by-field merge: `knowledgeEmbedText` embeds title AND body, so keeping an earlier title beside a later body would store a vector for a string no row says. Ingest documents two doc ids kebabing to one slug as last-writer-wins (knowledge/ingest-routes.ts), and a batch that sent both to one `INSERT ... ON CONFLICT DO UPDATE` would raise `ON CONFLICT DO UPDATE command cannot affect row a second time` and fail the whole request instead.
 function lastPerKey(inputs: UpsertKnowledgeInput[]): UpsertKnowledgeInput[] {
   const byKey = new Map<string, UpsertKnowledgeInput>();
   for (const input of inputs) byKey.set(entryKey(input), input);
@@ -116,18 +108,11 @@ export async function upsertKnowledgeEntries(
     );
   }
 
-  // cm:guard `embeddings/index.js` is imported HERE and not at the top of the file. It imports
-  // `config/env.js`, which validates the WHOLE environment at module evaluation, so a static import
-  // made every module that merely READS this store fail to load without DATABASE_URL, JWT_SECRET and
-  // DEVICE_TOKEN_PEPPER — six of them appeared at once when ISS-1048 moved project prose in here.
-  // The error class is resolved the same way, from the same module, so a test that substitutes it by
-  // mocking `embeddings/index.js` still controls both halves of this path.
   let vectors: Array<number[] | null> = entries.map(() => null);
   let degraded = false;
   try {
     const { embedBatch } = await import('../embeddings/index.js');
     const embedded = await embedBatch(entries.map((e) => knowledgeEmbedInput(e.title, e.body)));
-    // cm:guard a short answer is REFUSED by name rather than spread over the rows: the missing slots would be written as `excluded.embedding = NULL` on a batch this path calls healthy, which overwrites good stored vectors with nothing and leaves the backfill no null to find.
     if (embedded.length !== embedTexts.length) {
       throw new Error(
         `knowledge.service: embeddings returned ${embedded.length} vectors for ${embedTexts.length} texts`,
@@ -171,7 +156,6 @@ export async function upsertKnowledgeEntries(
         confidence: sql`excluded.confidence`,
         authoredBy: sql`excluded.authored_by`,
         orderIndex: sql`excluded.order_index`,
-        // cm:guard the degraded re-write preserves the stored vector only when NEITHER half of the embed text moved: `knowledgeEmbedText` is title, blank line, body, so a title-only edit under an outage kept a vector for the superseded title until ISS-1024.
         embedding: degraded
           ? sql`CASE WHEN ${knowledgeEntries.body} = excluded.body AND ${knowledgeEntries.title} = excluded.title THEN ${knowledgeEntries.embedding} ELSE excluded.embedding END`
           : sql`excluded.embedding`,
@@ -242,7 +226,6 @@ const RESPONSE_ENVELOPE_CHARS = 11;
  * of truncated; the projection's own field caps (slug 512, title 500) put the
  * widest possible row near 1.2k characters, so nothing reaches it.
  */
-// cm:guard the running count and the whole-array `JSON.stringify` it replaced measure the SAME thing — JavaScript string length over the same serialisation, never UTF-8 bytes — because a title outside the BMP would otherwise drop a row from a response that used to carry it. The old loop re-serialised every kept row for each row it dropped; on a project over the cap that is quadratic in the payload (ISS-1025).
 function trimToResponseCap(rows: KnowledgeListRow[]): KnowledgeListRow[] {
   let used = RESPONSE_ENVELOPE_CHARS;
   for (let i = 0; i < rows.length; i += 1) {
@@ -263,7 +246,6 @@ export async function listKnowledgeEntries(
     ...(input.injection ? [eq(knowledgeEntries.injection, input.injection)] : []),
   ];
 
-  // cm:guard `count(*) over ()` rather than a second `count(*)` query: a window function is evaluated before LIMIT, so `total` is the number of matching entries in the table while the fetch stays bounded — one query for both, which is what the list contract asks for.
   const fetched = await db
     .select({
       id: knowledgeEntries.id,
@@ -387,17 +369,6 @@ export async function selectKnowledgeBodies(projectId: string): Promise<Record<s
 
 /** Every non-archived slug this project holds whose body is more than whitespace, whatever its
  *  injection setting — what `missingProjectKnowledge` measures the contract against. */
-// cm:guard the `~ '[^[:space:]]'` fence — the body holds at least one non-whitespace character —
-// is the whole reason this is not a plain slug select. It is a character class and not `btrim(body)
-// <> ''` because one-argument `btrim` strips spaces and nothing else: a body of newlines and tabs
-// passed that test, which is how
-// `tests/integration/knowledge-slug-obligation-body-e2e.test.ts` caught it.
-// Answering the contract from the PRESENCE of a slug is only sound while a present slug means real
-// text. `bodySchema` refuses a whitespace body at the door, but that guards FUTURE writes only:
-// migration 0254 copies every `agentConfig.projectFacts` value across unchanged, and the map it
-// copies from had no such rule. So a project that held `test-commands: "   "` would arrive holding
-// a row that answers its obligation with three spaces — where the contract this replaces read the
-// text and trimmed it, and reported the gap. A validator cannot repair rows that predate it.
 export async function selectAllSlugsFromKnowledge(projectId: string): Promise<string[]> {
   const rows = await db
     .select({ slug: knowledgeEntries.slug })

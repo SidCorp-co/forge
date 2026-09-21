@@ -9,7 +9,16 @@
 // the surface behind it: the difference is meant to be seen rather than read.
 
 import { useState } from "react";
-import { Avatar, Banner, Button, Icon, IconButton, SlideOver, Tooltip } from "@/design";
+import {
+  Avatar,
+  Banner,
+  Button,
+  Icon,
+  IconButton,
+  SectionTitle,
+  SlideOver,
+  Tooltip,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useRemoveParticipant } from "../hooks";
 import { agentsOf, initialsOf, peopleOf, removalClaim, scopeDerivation } from "../membership";
@@ -33,7 +42,6 @@ export function ConversationMembers({
 }) {
   const [addingAgent, setAddingAgent] = useState(false);
   const [addingPerson, setAddingPerson] = useState(false);
-  // cm:guard a refused removal is rendered ON THIS ROSTER and the member stays in the list: the two refusals a removal can meet — the last agent, and a one-to-one room's last person — each name what to do instead, and a row that vanished optimistically would take the reason with it (ISS-1011 criteria 44, 46).
   const remove = useRemoveParticipant(conversationId);
 
   const agents = agentsOf(room);
@@ -132,7 +140,7 @@ function Section({
     <section className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
-          <h2 className="fg-overline text-subtle">{title}</h2>
+          <SectionTitle className="fg-overline text-subtle">{title}</SectionTitle>
           <p className="fg-caption text-subtle">{hint}</p>
         </div>
         {action}
@@ -145,7 +153,6 @@ function Section({
 /**
  * One member, in the shape its kind gets.
  */
-// cm:guard an AGENT row is outlined and filled and a person's row is neither, and the glyph differs as well, because a difference that needs a second look is not a difference: the two hold different authority and see different data, and a roster where they read alike is the one place that matters least to notice and most to get wrong (ISS-1011 criteria 3, 4).
 function MemberRow({
   member,
   room,
@@ -159,7 +166,6 @@ function MemberRow({
   busy: boolean;
   onRemove: () => void;
 }) {
-  // cm:guard an agent that cannot act is REPORTED below and never hidden, which is the rule the participant row already carries: a revoked agent still sits in the room and the room stays readable around it, and a roster that dropped it would make a silent room look like an empty one (ISS-1003).
   const isAgent = member.kind === "handle";
   const project = (room.scopeProjects ?? []).find((p) => p.id === member.projectId);
   return (

@@ -30,7 +30,6 @@ export function OperatorShell({
   const { data } = useOperatorWhoami(initialWhoami);
   const lostAdmin = data?.isAdmin === false;
 
-  // cm:why refresh re-runs the middleware gate, which 307s a demoted session out of /admin — otherwise it sits on a navless console with no way back
   useEffect(() => {
     if (lostAdmin) router.refresh();
   }, [lostAdmin, router]);

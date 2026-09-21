@@ -74,7 +74,6 @@ describe('two sub-apps sharing one prefix', () => {
     app.route('/api/x', guardedSubApp());
     app.route('/api/x', publicSubApp());
 
-    // cm:why no Authorization header — the public handler would answer 400 (bad hash), so a 401 here proves the guard ran first
     const res = await app.request('/api/x/callback/NOT-A-HASH');
     expect(res.status).toBe(401);
     await expect(res.json()).resolves.toEqual({ code: 'UNAUTHENTICATED' });
@@ -105,7 +104,6 @@ describe('two sub-apps sharing one prefix', () => {
   });
 });
 
-// cm:edge lockstep -> packages/core/src/index.ts — these three cases encode the /api/issues mount contract; if the order or the guard scoping there changes, change this together
 describe('two sub-apps that BOTH carry a guard (the /api/issues shape)', () => {
   const deviceAuth = { Authorization: 'Bearer device-1' };
 
@@ -114,7 +112,6 @@ describe('two sub-apps that BOTH carry a guard (the /api/issues shape)', () => {
     app.route('/api/y', strictUserSubApp());
     app.route('/api/y', permissiveSubApp({ scoped: false }));
 
-    // cm:why a device token is exactly the caller requireAnyAuth exists to admit and requireAuth rejects, so a 401 UNAUTHENTICATED here proves the strict guard answered on a path it does not own
     const res = await app.request('/api/y/abc/attachments', {
       method: 'POST',
       headers: deviceAuth,
@@ -128,12 +125,10 @@ describe('two sub-apps that BOTH carry a guard (the /api/issues shape)', () => {
     app.route('/api/y', permissiveSubApp({ scoped: false }));
     app.route('/api/y', strictUserSubApp());
 
-    // cm:guard mounting a weaker guard first does NOT bypass a stricter one — both wildcards run in registration order, so the strict guard still rejects a device token on its own route; do not "fix" a shadowing bug by loosening a guard on the assumption that the later one is skipped
     const res = await app.request('/api/y/list', { headers: deviceAuth });
     expect(res.status).toBe(401);
     await expect(res.json()).resolves.toEqual({ code: 'UNAUTHENTICATED' });
 
-    // cm:why a real user token passes BOTH guards and reaches the strict router's handler — the composition is not a rejection-only path
     const ok = await app.request('/api/y/list', { headers: { Authorization: 'Bearer user-1' } });
     expect(ok.status).toBe(200);
     await expect(ok.json()).resolves.toEqual({ ok: 'strict-list' });
@@ -157,7 +152,6 @@ describe('two sub-apps that BOTH carry a guard (the /api/issues shape)', () => {
   });
 });
 
-// cm:edge lockstep -> packages/core/src/index.ts — the callback sub-app mounted at the broad `/api` prefix; if that mount moves, or its guard scope changes, change this together
 describe('a guarded sub-app at the BROAD /api prefix (the github-callback shape)', () => {
   const callbackSubApp = (scope: '*' | '/integrations/github/*') => {
     const sub = new Hono();
@@ -182,7 +176,6 @@ describe('a guarded sub-app at the BROAD /api prefix (the github-callback shape)
     app.route('/api', callbackSubApp('*'));
     app.route('/api/webhooks', webhookSubApp());
 
-    // cm:why the inbound webhook is authenticated by HMAC and must stay reachable without a session — a 401 here is a provider's delivery being rejected by a guard belonging to an unrelated feature
     const res = await app.request('/api/webhooks/in/demo', { method: 'POST' });
     expect(res.status).toBe(401);
     await expect(res.json()).resolves.toEqual({ code: 'UNAUTHENTICATED' });
@@ -202,7 +195,6 @@ describe('a guarded sub-app at the BROAD /api prefix (the github-callback shape)
   });
 });
 
-// cm:edge lockstep -> packages/core/src/index.ts — the `/api/projects` mount order: every deep `/:id/<segment>` module registers BEFORE `projectRoutes`, which carries `use('*')` and `GET /:id`; if that order or a deep module's guard scope changes, change this together
 describe('a deep /:id/<segment> module beside a param route (the /api/projects shape)', () => {
   const deepSubApp = (scope: '*' | '/:id/run-sessions') => {
     const sub = new Hono();
@@ -251,7 +243,6 @@ describe('a deep /:id/<segment> module beside a param route (the /api/projects s
     app.route('/api/projects', deepSubApp('*'));
     app.route('/api/projects', paramSubApp());
 
-    // cm:why `Bearer user-2` passes the param route's own guard, so a 401 here is the deep module's narrower guard answering on a path belonging to another module
     const res = await app.request('/api/projects/p1', {
       headers: { Authorization: 'Bearer user-2' },
     });

@@ -84,12 +84,6 @@ async function fleet() {
 }
 
 describe('0253 — the service rows `environment` was keeping apart', () => {
-  // cm:why section 6b landed on `main` during the 36-minute outage this migration caused, in three
-  // commits that changed only SQL and added no assertion. These are that assertion. The rule itself
-  // is sound and it is the one piece of this migration that DERIVES rather than transcribes — on
-  // purpose, because the two hand-written rosters each missed rows created after they were measured
-  // and a rule reading the database at migration time cannot.
-
   /**
    * A `staging` service row beside a DECLARED `prod` one of the same project and provider —
    * separated by nothing but `environment`, which step 7 is about to drop.
@@ -113,10 +107,6 @@ describe('0253 — the service rows `environment` was keeping apart', () => {
     return { db, g, host, prodId: sibling.id, stagingId };
   }
 
-  // cm:guard the row is KEPT, not deleted, and the DEFAULT binding is the one that keeps `''` —
-  // every lookup that asks for a project's postman binding without naming a label expects to find
-  // the prod one where it has always been. Deleting either row to make the index build is the
-  // failure this whole migration is written against.
   it('keeps both rows by moving the non-prod one to a label of its own', async () => {
     const { db, prodId, stagingId } = await stagingRowBesideADeclaredDefault();
     try {
@@ -135,9 +125,6 @@ describe('0253 — the service rows `environment` was keeping apart', () => {
     }
   });
 
-  // cm:guard a pair 6b cannot separate must ABORT BY NAME. Without the assertion that follows it,
-  // `CREATE UNIQUE INDEX` refuses with a bare 23505 naming one key and no row — every other
-  // refusal in this file names the rows a person has to decide about, and this one owes the same.
   it('aborts naming the pair when both already carry the same label', async () => {
     const { db, g, projects } = await fleet();
     try {
@@ -159,10 +146,6 @@ describe('0253 — the service rows `environment` was keeping apart', () => {
     }
   });
 
-  // cm:guard the way back undoes 6b, or the label becomes a permanent scar of a migration that was
-  // rolled back: with `environment` restored the label states the same fact twice, and the pre-0253
-  // unique index — (project, provider, environment, label) — would no longer find the default
-  // binding where it left it.
   it('gives the label back on the way down, once environment carries the distinction again', async () => {
     const { db, prodId, stagingId } = await stagingRowBesideADeclaredDefault();
     try {
@@ -184,12 +167,6 @@ describe('0253 — the service rows `environment` was keeping apart', () => {
 });
 
 describe('0253 backward — the way back is a file that has been run', () => {
-  // cm:guard the forward map is NOT injective, which is the whole reason the down migration reads
-  // the declared table instead of deriving an inverse. Three epodsystem 'prod' rows became
-  // {preview,live} while three others became `service`, and getcontent's coolify 'staging' became
-  // {live} — so a rule reading `preview ∈ stages → 'staging'` restores the first three wrongly and
-  // `{live} → 'prod'` restores getcontent wrongly. A round trip over the WHOLE declared fleet is
-  // what separates reading the declaration back from computing it.
   it('restores every binding to the exact environment it came in with', async () => {
     const { db, bindings } = await fleet();
     try {
@@ -237,10 +214,6 @@ describe('0253 backward — the way back is a file that has been run', () => {
     }
   });
 
-  // cm:guard the rollback raises rather than guessing, in the same direction as the forward run.
-  // A binding created AFTER the cutover has no declared environment to restore, and the file must
-  // name it for a person rather than invent one — deleting the row or defaulting it is how a
-  // rollback quietly loses a production binding somebody made.
   it('aborts naming a binding created after the cutover, rather than guessing its environment', async () => {
     const { db, g, projects } = await fleet();
     try {
@@ -266,12 +239,6 @@ describe('0253 backward — the way back is a file that has been run', () => {
   });
 });
 
-/**
- * Each constraint met with the one value it exists to refuse. The assertion is on
- * the constraint NAME in the error, not merely on rejection: a NOT NULL or a
- * foreign key would also throw, and a test that only asserts "it threw" passes
- * when the rule it names has been dropped and something else refused the row.
- */
 async function migrated() {
   const f = await fleet();
   await runForward(f.db.sql);
@@ -322,10 +289,6 @@ describe('0253 forward — the rules live in Postgres, and say no', () => {
     }
   });
 
-  // cm:guard THE counterexample for `cardinality` over `array_length`:
-  // `array_length('{}', 1)` is NULL, so the same rule written that way evaluates to
-  // NULL on the empty array and PASSES this row. This case is the only thing that
-  // separates the two spellings, and it goes green under the wrong one.
   it('refuses a deploy binding whose stage array is empty', async () => {
     const { db, g, projects } = await migrated();
     try {
@@ -484,9 +447,6 @@ describe('0253 forward — a project declares its release model, and Postgres ho
     }
   });
 
-  // cm:guard uniqueness survives for `service` rows ONLY. Both halves are asserted:
-  // dropping the index passes the first, and widening it to every row passes the
-  // second, so neither alone holds the rule the change actually made.
   it('holds one active service binding per project, provider and label — and no ceiling on deploy', async () => {
     const { db, g, projects } = await migrated();
     try {

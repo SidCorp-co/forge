@@ -1,18 +1,3 @@
-// Fleet unreviewed-feedback digest prompt builder — ISS-713 (child C of ISS-707).
-//
-// Builds the agent prompt for the standing feedback-triage-digest schedule run.
-// Like the knowledge drift-check and skill steward, this fires on EVERY cadence
-// run (no appliedMessageVersions gate) — it always has fresh signals to triage.
-//
-// Closes gap C from ISS-707: no scheduler surfaced unreviewed `forge_feedback`
-// reports fleet-wide, so triage depended on a human hand-scanning every project.
-// This agent gathers UNREVIEWED feedback across every project the runner
-// principal can see (`forge_feedback list scope='all' reviewed=false`), groups
-// it by target then severity, and files ONE draft issue into forge-dev
-// summarizing the backlog. It NEVER reviews or edits feedback reports itself —
-// propose-only, same guardrail as Dream (skill steward) / Doc-Sync
-// (knowledge-drift-check).
-
 import type { ScheduleMode } from '../../db/schema.js';
 
 // ── Constants (named and exported so tests can assert their exact values) ────
@@ -27,7 +12,6 @@ export const MAX_CLUSTERS_PER_DIGEST = 10;
 export const FEEDBACK_LIST_LIMIT = 200;
 
 /** `detectorKey` every digest issue carries, so the kernel keeps at most one open. */
-// cm:guard this string is the dedupe identity and must never change or be varied per run — the kernel guarantees at most one non-closed issue per (project, detectorKey), and a key that drifts by date or window silently turns that guarantee off. Prose dedupe was tried here first and measurably failed on the same schedule family: Dream's own prompt records 7 near-identical CHANGELOG drafts between 2026-07-15 and 2026-08-04, and this builder repeated the mistake — its first real run on 2026-09-05 filed a digest with `detector_key: null`.
 export const DIGEST_DETECTOR_KEY = 'feedback-digest/fleet-backlog';
 
 // ── Prompt builder ────────────────────────────────────────────────────────────

@@ -10,10 +10,6 @@ const windowExpr = sql`now() - (${PULSE_QUALITY_WINDOW_DAYS}::int * interval '1 
 /**
  * Finished issues split by whether anything says the code actually shipped.
  */
-// cm:guard `merged_at IS NOT NULL` is NOT shipped-evidence and must never be the test here: `markMergedOnClose` stamps it on EVERY close, so the bare column degenerates to "closed" and reports never-merged work as merged — which is the one figure section 5 exists to expose (ISS-817, re-met by ISS-988).
-// cm:edge lockstep -> packages/core/src/issues/progress.ts#computeProjectProgress — the same two disjuncts, and the same timestamp-identity trick for spotting the auto-stamp; a change to the evidence rule there is a change to this figure's meaning
-// cm:guard the two disjuncts are decided in ONE grouped pass over `activity_log`, not as four correlated `EXISTS` per issue, and the rule is unchanged: on beta the two forms returned identical counts over 5,059 issues across 34 projects, 222.3ms against 37.2ms (ISS-1022).
-// cm:guard each flag is COALESCEd to false ON ITS OWN, before the OR and before the NOT: coalescing the finished expression instead silently reclassifies an issue with no `activity_log` rows and a non-null `merged_at` from merged to unmerged, and such rows exist (`applyMergeMarker` on transitions predating the audit trail).
 async function readFinished(scope: ReturnType<typeof idList>) {
   const [row] = (await db.execute(sql`
     WITH scope_issues AS (
@@ -89,7 +85,6 @@ async function readLanes(scope: ReturnType<typeof idList>) {
 /**
  * Failed agent sessions of the window, grouped by what killed them.
  */
-// cm:guard a NULL `failure_reason` becomes the row `unclassified` and is never dropped: 66% of failures carried no reason on 2026-09-12, and a grouping that skips them reports the classified third as the whole (ISS-988).
 async function readSessionFailures(scope: ReturnType<typeof idList>) {
   const rows = (await db.execute(sql`
     SELECT coalesce(failure_reason, 'unclassified') AS reason, count(*)::int AS n

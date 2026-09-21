@@ -12,7 +12,16 @@
 
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Banner, HealthDot, Icon, MonoTag, Stat, StatusChip, useElapsed } from "@/design";
+import {
+  Banner,
+  CardTitle,
+  HealthDot,
+  Icon,
+  MonoTag,
+  Stat,
+  StatusChip,
+  useElapsed,
+} from "@/design";
 import {
   deriveSessionDisplayStatus,
   sessionStep,
@@ -22,8 +31,9 @@ import {
   type SessionRow,
 } from "@/features/sessions/types";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
+import { isJobDriven } from "@/features/sessions/types";
 import { useDevices } from "@/features/runners/hooks";
-import { deviceHealth } from "@/features/runners/types";
+import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
 
 const PLATFORM_LABEL: Record<string, string> = {
@@ -71,9 +81,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <section>
       {/* Sticky within the rail's own scroll so the section label stays visible
           while a long list (e.g. Files changed) scrolls past (ISS-351). */}
-      <h3 className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
+      <CardTitle className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
         {title}
-      </h3>
+      </CardTitle>
       {children}
     </section>
   );
@@ -90,8 +100,6 @@ export function ContextRail({
 }) {
   const router = useRouter();
   const display = deriveSessionDisplayStatus(session);
-  // cm:guard the Pipeline section is the status chip and nothing else — a tracker there draws beads for steps no row records, and `drive` is none of the seven, so it read bead 1 of 7 for every live session (ISS-999)
-  // cm:guard the chip names the step the session RECORDED or no step at all; `deriveStage` used to fold `drive` onto `code` here, which replaced the false tracker with a false word (ISS-999)
   const stage = sessionStep(session.metadata) ?? undefined;
   const live = display === "running" || display === "stalled";
   const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
@@ -105,7 +113,7 @@ export function ContextRail({
   const usage = session.usage ?? {};
   const files = deriveFilesChanged(items);
   const agentTasks = useMemo(() => deriveAgentTasks(items), [items]);
-  const isPipeline = session.metadata?.type === "pipeline" || session.metadata?.type === "pm";
+  const isPipeline = isJobDriven(session);
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 
   // Resolve the runner the session is bound to. The device may not be in the
@@ -115,8 +123,6 @@ export function ContextRail({
     ? devicesQ.data?.find((d) => d.id === session.deviceId)
     : undefined;
 
-  // cm:why filtered client-side on `metadata.issueId` off the existing list endpoint rather than through a new one: the rows are already in the shared cache the queue screen fills, so this costs no request and no `parentSessionId` column.
-  // cm:guard this list is EVERY session that worked the issue, in no order and with no total — it used to be described as "the other pipeline steps (triage/plan/code/…)", and an autonomous issue has one session that does all of it (ISS-999)
   const issueId = session.metadata?.issueId;
   const siblingsQ = useSessions({ projectId: session.projectId });
   const siblings = useMemo(() => {
@@ -157,12 +163,12 @@ export function ContextRail({
               </div>
               <span className="fg-caption">
                 {PLATFORM_LABEL[device.platform] ?? device.platform}
-                {device.agentVersion ? ` · v${device.agentVersion}` : ""}
+                {` · ${deviceVersionLabel(device.agentVersion)}`}
               </span>
               {session.repoPath && (
                 <div className="flex items-center gap-2 overflow-hidden">
                   <Icon name="folder" size={13} className="flex-none text-subtle" />
-                  <span className="flex-1 truncate font-mono" style={{ fontSize: 11.5 }} title={session.repoPath}>
+                  <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-11-5)" }} title={session.repoPath}>
                     {session.repoPath}
                   </span>
                 </div>
@@ -177,7 +183,7 @@ export function ContextRail({
               {session.repoPath && (
                 <div className="flex items-center gap-2 overflow-hidden">
                   <Icon name="folder" size={13} className="flex-none text-subtle" />
-                  <span className="flex-1 truncate font-mono" style={{ fontSize: 11.5 }} title={session.repoPath}>
+                  <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-11-5)" }} title={session.repoPath}>
                     {session.repoPath}
                   </span>
                 </div>
@@ -207,9 +213,6 @@ export function ContextRail({
               {fmtNum(usage.cacheRead)} / {fmtNum(usage.cacheWrite)} cache
             </Stat>
           )}
-          {/* Real per-session cost + model, aggregated from usage_records via
-              GET /agent-sessions/:id/cost (ISS-378). "—" only while loading or
-              when no usage rows exist yet. */}
           <Stat icon="dollar" title="Estimated cost (usage_records)">
             {cost ? fmtCost(cost.estimatedCost) : "—"} cost
           </Stat>
@@ -301,14 +304,14 @@ export function ContextRail({
             {files.map((f) => (
               <li key={f.path} className="flex items-center gap-2 overflow-hidden">
                 <Icon name={f.isNew ? "plus" : "branch"} size={13} className="flex-none text-subtle" />
-                <span className="flex-1 truncate font-mono" style={{ fontSize: 11.5 }} title={f.path}>
+                <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-11-5)" }} title={f.path}>
                   {f.path}
                 </span>
                 {f.added > 0 && (
-                  <span className="flex-none font-mono" style={{ fontSize: 11, color: "var(--green-600)" }}>+{f.added}</span>
+                  <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--green-600)" }}>+{f.added}</span>
                 )}
                 {f.removed > 0 && (
-                  <span className="flex-none font-mono" style={{ fontSize: 11, color: "var(--red-600)" }}>-{f.removed}</span>
+                  <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--red-600)" }}>-{f.removed}</span>
                 )}
               </li>
             ))}

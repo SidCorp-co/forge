@@ -18,7 +18,6 @@ let listByDevice: ActivityViews['listByDevice'];
 const deviceEvents = async (projectId: string, deviceId: string) =>
   (await listByDevice({ projectId, deviceId, limit: 1000 })).events;
 
-// cm:why exercises the real route handler (not a hand-crafted tx like skill-activity.test.ts) — the original gap was that nothing called this endpoint from a test at all.
 describe('device skills report -> activity log (ISS-798 fix)', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
@@ -308,10 +307,8 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
 
     const events = await deviceEvents(project.id, device.id);
     const applied = events.find((e) => e.eventType === 'device.skill.applied');
-    // cm:why applied always carries packetId because the packet DID reach the device (BLOCKER D)
     expect(applied?.packetId).toBe('packet-1');
     const shadowed = events.find((e) => e.eventType === 'device.skill.shadowed');
-    // cm:why shadowed withholds packetId because the shadow body is user-authored, not from the packet
     expect(shadowed?.packetId).toBeNull();
   });
 });

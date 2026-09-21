@@ -8,6 +8,7 @@ import {
   ErrorState,
   Field,
   Input,
+  SectionTitle,
   Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -53,7 +54,7 @@ export function OrgsTab() {
     <div className="space-y-6">
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-1">Organizations</h2>
+          <SectionTitle className="fg-h3 mb-1">Organizations</SectionTitle>
           <p className="fg-body-sm mb-4 text-muted">
             Every project lives in exactly one org. Org owners/admins manage all
             of its projects; org members still need a per-project invite.

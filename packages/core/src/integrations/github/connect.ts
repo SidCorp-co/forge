@@ -21,7 +21,6 @@ export interface ConnectState {
   orgId?: string;
 }
 
-// cm:guard the state carries the USER and is checked against the session on the way back — without that, the callback is a CSRF hole: an attacker who gets a signed state for their own App can have a victim's browser convert it and bind the attacker's App to the victim's project.
 export function signConnectState(secret: string, state: ConnectState, nowMs = Date.now()): string {
   const body = Buffer.from(JSON.stringify({ ...state, exp: nowMs + STATE_TTL_MS })).toString(
     'base64url',
@@ -49,7 +48,6 @@ export function verifyConnectState(
   }
   if (typeof parsed.exp !== 'number' || parsed.exp < nowMs) return null;
   if (!parsed.projectId || !parsed.userId) return null;
-  // cm:guard this return is a WHITELIST, not a pass-through — a field added to ConnectState and not named here is signed, survives the round trip, and is then silently dropped on the way back. `orgId` decides who owns the credential, so losing it would quietly make every org-owned App personal.
   return {
     projectId: parsed.projectId,
     userId: parsed.userId,
@@ -61,8 +59,6 @@ export function verifyConnectState(
  * The manifest GitHub renders as the App it is about to create. `redirect_url`
  * receives the conversion code; `hook_attributes.url` is where deliveries land.
  */
-// cm:edge contract -> packages/core/src/webhooks/inbound-routes.ts — `hook_attributes.url` must be the `/api/webhooks/in/:slug` this core actually serves. GitHub stores it ON THE APP at creation time, so a path changed here after an App exists does not move that App's deliveries and they keep arriving at the old URL until someone edits the App by hand.
-// cm:guard three of these four URLs are served by CORE and take `apiBaseUrl`; only `url` is the web app. Building them all from APP_BASE_URL is what shipped on 2026-09-06 and it 404s every one of them on a split-origin deploy — the redirect visibly, at the moment the operator has already created the App, and `hook_attributes` SILENTLY forever after.
 export function buildAppManifest(args: {
   appName: string;
   webBaseUrl: string;
@@ -79,17 +75,14 @@ export function buildAppManifest(args: {
     setup_url: `${api}/api/integrations/github/installed`,
     setup_on_update: true,
     public: false,
-    // cm:guard `checks: write` is what ISS-1072 needs to publish `forge/issue-contract`, and a manifest only decides the permissions of Apps created AFTER it. An App that already exists is unchanged by this line and keeps `checks: read`; its publishes fail 403, and `check-refusal.ts` names that 403 rather than guessing. The operator's way out is on the App itself: Settings -> Permissions & events -> Repository permissions -> Checks -> "Read and write", then approve the request GitHub raises on each installation. Reconnecting does NOT do it — the credential is not what is wrong — and neither does editing this file.
     default_permissions: {
       contents: 'write',
       issues: 'write',
       metadata: 'read',
       pull_requests: 'write',
       checks: 'write',
-      // cm:guard `actions: read` is what makes the `workflow_run` subscription below deliver anything. GitHub gates that event on the Actions permission and neither `contents` nor `checks` grants it, so an App subscribed without it hears no build — and the release that waits for one is named by the deadline pass an hour and a half later with nothing to say beyond "nobody reported". Subscribing to an event whose permission the manifest does not ask for is a channel that exists on the settings page and nowhere else (ISS-1075).
       actions: 'read',
     },
-    // cm:guard `workflow_run` is ISS-1075's half of the same sentence the `checks: write` guard above states: a manifest decides only the Apps created AFTER it, so an App that already exists stays unsubscribed and hears no build at all. There is no 403 to name that with — an unsubscribed event simply never arrives — so the sentence an operator reads is on the deadline instead (`runner-release-deadline.ts`), and the way out is the App's own Permissions & events page, under Subscribe to events -> Workflow run.
     default_events: [
       'issues',
       'pull_request',
@@ -140,7 +133,6 @@ export async function convertManifestCode(args: {
     slug?: string;
     html_url?: string;
   };
-  // cm:guard all three or none — a connection holding an appId with no key, or a key with no webhook secret, is an authorization that half-happened. It would pass every schema and then fail at the first call with a message about the wrong thing, so refuse it here where the cause is still visible.
   if (!body.id || !body.pem || !body.webhook_secret) {
     throw new Error('github: the manifest conversion returned an incomplete credential');
   }

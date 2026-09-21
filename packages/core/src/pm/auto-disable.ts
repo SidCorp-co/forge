@@ -55,21 +55,11 @@ export async function handlePmJobFailedAutoDisable(
       .limit(1);
     if (!project) return;
 
-    // cm:guard ISS-1063 — this insert bypasses `createNotification`, so it must
-    // consult the emission switch itself or it is a hole in the silence. It is not
-    // routed through `createNotification` because that would take the write out of
-    // this transaction, and the row must land with the `pmConfig` disable or with
-    // neither.
-    // cm:edge lockstep -> packages/core/src/notifications/emission-switch.ts — one of the two producers that write `notifications` directly; the other is admin/alert-sweeper.ts
     if (!emissionAllowed('pm_escalation')) {
       noteSuppressed('pm_escalation', 'PM cadence auto-disabled');
       return;
     }
 
-    // cm:why ISS-1063 — the record goes in this transaction and the DELIVERY does not,
-    // deliberately. The row and the cadence disable must land together or neither; who is
-    // told about it is a second fact, written after the commit by `deliverExisting`, and a
-    // delivery that fails must not roll back the disable it was announcing.
     const [record] = await tx
       .insert(notifications)
       .values({

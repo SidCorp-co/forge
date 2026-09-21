@@ -32,7 +32,6 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-  // cm:guard every core import here is DYNAMIC and happens after the env above is set — `db/client.ts` binds its pool at module load, so a static import resolves the wrong database before a case runs.
   ({ assignIssuePrefix } = await import('../../src/issues/issue-prefix-service.js'));
   ({ heldIssuePrefixes } = await import('../../src/issues/issue-prefix-read.js'));
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
@@ -89,7 +88,6 @@ describe('the issues API under a prefix', () => {
     return id;
   }
 
-  // cm:why criterion 1 — a project that has set no prefix is the case every other suite in the repo already runs under, and this is the one that says so on purpose.
   it('renders ISS-977 where the project has set no prefix', async () => {
     const a = await project();
     await issueIn(a.id, 977);
@@ -100,7 +98,6 @@ describe('the issues API under a prefix', () => {
     expect(issues[0]?.displayId).toBe('ISS-977');
   });
 
-  // cm:why criterion 3.
   it('renders FD-977 where the project holds FD', async () => {
     const a = await project();
     await assign(a.id, 'FD');
@@ -110,7 +107,6 @@ describe('the issues API under a prefix', () => {
     expect(issues.map((i) => i.displayId)).toEqual(['FD-977']);
   });
 
-  // cm:why criteria 4 and 5 — the legacy reference resolves forever, and the project's own resolves too.
   it.each(['ISS-977', 'FD-977'])('resolves ?key=%s on a project holding FD', async (key) => {
     const a = await project();
     await assign(a.id, 'FD');
@@ -121,7 +117,6 @@ describe('the issues API under a prefix', () => {
     expect(issues.map((i) => i.displayId)).toEqual(['FD-977']);
   });
 
-  // cm:why criterion 16 — a prefix this project has never held names a different issue somewhere else, and answering with this project's 977 is the confusion the issue exists to end.
   it('refuses ?key=FP-977 on a project holding FD, naming the prefix sent', async () => {
     const a = await project();
     await assign(a.id, 'FD');
@@ -148,7 +143,6 @@ describe('the project PATCH that sets a prefix', () => {
     };
   }
 
-  // cm:why criterion 2, through the door a person actually uses — every other prefix case arranges the row itself, so none of them proves the write works.
   it('persists a prefix named on its own and returns it', async () => {
     const a = await project();
     const out = await patch(a.id, { issuePrefix: 'FD' });
@@ -157,7 +151,6 @@ describe('the project PATCH that sets a prefix', () => {
     expect(await activePrefixOf(a.id)).toBe('FD');
   });
 
-  // cm:guard the prefix is written through a SECOND table, so it has to move in the same transaction as the rest of the patch — applied outside it, a request that then fails on a sibling field renames the project and answers the caller with an error (codex review of ISS-992)
   it('leaves the prefix unset when a later field in the same patch fails', async () => {
     const a = await project();
     const out = await patch(a.id, { issuePrefix: 'FD', defaultDeviceId: randomUUID() });
@@ -166,7 +159,6 @@ describe('the project PATCH that sets a prefix', () => {
     expect(await heldIssuePrefixes(a.id)).toEqual([]);
   });
 
-  // cm:why criterion 13 — the other half of the disclosure rule: a caller who can already see the holder is told which project it is, because withholding it there is an unhelpful refusal and no secret is kept.
   it('names the holder to a caller who can see it', async () => {
     const theirs = await project();
     await assign(theirs.id, 'FD');

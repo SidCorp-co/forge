@@ -95,7 +95,6 @@ describe('outbox graceful shutdown (ISS-830)', () => {
     };
   }
 
-  // cm:guard the property ISS-830 is about — a claim is a commitment the shutdown path must settle. If this fails, a rolling restart silently adds up to CLAIM_LEASE_MS of dispatch latency, which no alarm covers because delivery still succeeds eventually.
   it('leaves no row claimed-but-unprocessed once the worker has stopped', async () => {
     await seedRows(3);
     mods.registerOutboxWorker();

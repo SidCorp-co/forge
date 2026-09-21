@@ -11,14 +11,16 @@ import {
   Button,
   Card,
   CardContent,
+  CardTitle,
   ErrorState,
   Field,
   IconButton,
   Input,
+  SectionTitle,
   Select,
-  type SelectOption,
   Skeleton,
   SlideOver,
+  type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
@@ -87,7 +89,7 @@ function LensControl({
             aria-pressed={on}
             onClick={() => onToggle(o.value)}
             className={cn(
-              "rounded-pill border px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-50",
+              "rounded-pill border px-2 py-0.5 text-11 font-medium transition-colors disabled:opacity-50",
               on
                 ? "border-transparent bg-accent-tint text-accent-text"
                 : "border-line text-subtle hover:bg-hover hover:text-fg",
@@ -227,7 +229,7 @@ export function OrgMembersCard({
     <Card>
       <CardContent>
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="fg-h3">{org.name} — members</h2>
+          <SectionTitle className="fg-h3">{org.name} — members</SectionTitle>
           {isOwner && (
             <span className="flex shrink-0 items-center gap-2">
               <Button
@@ -341,7 +343,7 @@ export function OrgMembersCard({
         )}
 
         <div className="mt-4 space-y-3 border-t border-line pt-4">
-          <h3 className="fg-label text-fg">Projects</h3>
+          <CardTitle className="fg-label text-fg">Projects</CardTitle>
           {projectsQ.isLoading ? (
             <Skeleton className="h-9 w-full rounded-md" />
           ) : projectsQ.isError ? (
@@ -371,7 +373,7 @@ export function OrgMembersCard({
 
         {canManage && (
           <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <h3 className="fg-label text-fg">Pending invitations</h3>
+            <CardTitle className="fg-label text-fg">Pending invitations</CardTitle>
             {invitationsQ.isLoading ? (
               <Skeleton className="h-9 w-full rounded-md" />
             ) : invitationsQ.isError ? (

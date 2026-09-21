@@ -59,7 +59,6 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV = 'test';
-  // cm:guard this raises `patRead`/`patWrite` ONLY, and it is not the whole defence — the IP-keyed limiters are untouched, `authRegister` at 3/hour among them, so a second probe of an IP-limited route still 429s and it is the throw in `get()` that catches it rather than this line. What it does buy: at the stock 60/minute the two sweeps — 205 probes on one token — spend most of their run refused, and both loops read a 429 as "the route refused me", so the assertion that makes the allowlist trustworthy quietly stops touching the routes it names (measured 2026-09-01: 3.1s and 96 rate-limited log lines, against 8.4s and none, on the same route set). Three breaches in an hour also auto-revoke the token, after which the rest of the file passes on 401s. Set BEFORE `src/index.js` is imported, because `config/env.ts` reads it once at module load.
   process.env.RATE_LIMIT_PAT_READ_MAX = '100000';
   process.env.RATE_LIMIT_PAT_WRITE_MAX = '100000';
 
@@ -89,7 +88,6 @@ beforeAll(async () => {
   const { mintPat } = await import('../../src/auth/pat.js');
   boundToA = (await mintPat({ userId: user.id, name: 'bound-a', boundProjectId: projectA }))
     .plaintext;
-  // cm:why an unattended agent's credential is an ordinary bound PAT owned by a `kind:'agent'` user since ISS-932 wave 4, so the fence under test is `boundProjectId` — the same one a person's bound token carries.
   const agentUser = await createTestUser(harness.db, { kind: 'agent' });
   await harness.db.execute(
     sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectA}::uuid, ${agentUser.id}::uuid, 'admin')`,
@@ -135,7 +133,6 @@ async function get(path: string, token?: string) {
   return send('GET', path, token);
 }
 
-// cm:guard a 429 must never reach a sweep loop, which would score it as a refusal and skip the route. Throwing here is what turns "the limiter ate the sweep" from a silent green into a named failure — RATE_LIMIT_PAT_READ_MAX / RATE_LIMIT_PAT_WRITE_MAX and the store reset in `sweep` are what keep it from firing, and this is what happens when they stop working.
 async function send(method: string, path: string, token?: string) {
   const res = await app.request(path, {
     method,
@@ -150,7 +147,6 @@ async function send(method: string, path: string, token?: string) {
   return res;
 }
 
-// cm:guard the probes run CONCURRENTLY and that is a correctness property, not a speed one: serially the sweeps take ~14s on their own and blow the 30s timeout once the rest of the integration suite is competing for the same Postgres, and a sweep that dies half-way has asserted nothing about the routes it never reached. The store reset per batch is the other half: RATE_LIMIT_PAT_READ_MAX / RATE_LIMIT_PAT_WRITE_MAX lift `patRead`/`patWrite` only, so the IP-keyed limiters — `authRegister` at 3/hour among them, which the write sweep now walks into — would otherwise accumulate across batches and 429 the run.
 async function sweep<T>(paths: Iterable<string>, probe: (path: string) => Promise<T | null>) {
   const all = [...paths];
   const hits: T[] = [];
@@ -177,13 +173,11 @@ describe('PAT fence — which projects a token may name', () => {
     expect((await get(`/api/projects/${projectB}`, boundToA)).status).toBe(404);
   });
 
-  // cm:guard the INDIRECT case, and it is the one a URL-param middleware would have missed — nothing in this path names a project, the route resolves it from the issue row, and the fence only fires because it sits in `effectiveProjectRole` rather than in a middleware reading `:projectId`. Rewrite the fence anywhere higher and this is the test that goes red.
   it('a token bound to A cannot read an issue that lives in B', async () => {
     expect((await get(`/api/issues/${issueA}`, boundToA)).status).toBe(200);
     expect((await get(`/api/issues/${issueB}`, boundToA)).status).toBe(404);
   });
 
-  // cm:guard ISS-927 — a session token is a `boundProjectId` PAT and is fenced by the same code, but "the same code" is the assumption worth testing rather than stating. An unattended session runs unwatched on a box, so if the fence ever moved to somewhere that reads a `job:` name or a `jobs` row, this token would be the one that silently stopped being fenced.
   it('a session token is fenced to its own project, like any other bound token', async () => {
     expect((await get(`/api/issues/${issueA}`, agentBoundToA)).status).toBe(200);
     expect((await get(`/api/issues/${issueB}`, agentBoundToA)).status).toBe(404);
@@ -200,7 +194,6 @@ describe('PAT fence — which projects a token may name', () => {
     expect((await get(`/api/projects/${projectB}`, unscoped)).status).toBe(200);
   });
 
-  // cm:guard the list endpoints are the half `effectiveProjectRole` cannot defend — they name no project, so the per-project gate never fires and only the `loadVisibleProjectIds` intersection stands between a scoped token and every project id its owner can see
   it('the project list returns only the fenced project', async () => {
     const body = (await (await get('/api/projects', boundToA)).json()) as
       | { projects?: Array<{ id: string }> }
@@ -211,7 +204,6 @@ describe('PAT fence — which projects a token may name', () => {
     expect(ids).not.toContain(projectB);
   });
 
-  // cm:guard this case is here, in the fence file, because it defends the SAME predicate: `visibleProjectsWhere` carries both the archived filter and the fence as sibling conditions, so the unparenthesised `OR` that annulled one would have annulled the other. Nothing else in the suite asserts the list excludes an archived project, which is how that shape survived to 2026-09-01.
   it('the project list still excludes an archived project the caller is a member of', async () => {
     const body = (await (await get('/api/projects', unscoped)).json()) as
       | { projects?: Array<{ id: string }> }
@@ -222,7 +214,6 @@ describe('PAT fence — which projects a token may name', () => {
 });
 
 describe('PAT fence — the surface a token may reach', () => {
-  // cm:guard named explicitly rather than left to the sweep: a scoped token that can mint an unscoped one has no scope, so this is the single refusal whose absence collapses every other assertion in this file
   it('no PAT can reach the PAT-minting surface', async () => {
     for (const token of [boundToA, unscoped]) {
       const res = await get('/api/pat', token);
@@ -244,7 +235,6 @@ describe('PAT fence — the surface a token may reach', () => {
     expect(((await res.json()) as { code?: string }).code).toBe('INSUFFICIENT_SCOPE');
   });
 
-  // cm:guard `requireAnyAuth` is a SECOND auth entrypoint, and this case exists because it fenced nothing until 2026-09-01 — it read `userId` off the token row and went straight through, so a token bound to one project reached attachments and comments across every project its owner could see. The unit tests behind that router mock the middleware away; only a request through the real one shows the gate.
   it('a read-scoped token cannot write through requireAnyAuth either', async () => {
     const form = new FormData();
     form.append('file', new File(['x'], 'pic.png', { type: 'image/png' }));
@@ -272,7 +262,6 @@ describe('PAT fence — the surface a token may reach', () => {
       if (!patSurfaceCovers(route.path)) continue;
       if (!route.path.includes(':')) continue;
       attempts.push(foreignise(route.path));
-      // cm:guard a single-param route is probed with BOTH a project id and an issue id, because which entity the id names decides which lookup the handler takes to a project — an issue-shaped route handed a project id 404s on the lookup and would score clean without ever reaching the fence.
       const params = route.path.match(/:[A-Za-z0-9_]+/g) ?? [];
       if (params.length === 1) {
         for (const foreign of [projectB, issueB]) {
@@ -294,7 +283,6 @@ describe('PAT fence — the surface a token may reach', () => {
         'effectiveProjectRole, or it does not resolve one at all — and the second case means the ' +
         'prefix does not belong on PAT_ALLOWED_PREFIXES.',
     ).toEqual([]);
-    // cm:guard keep this timeout ABOVE the 30s config default and do not "tidy" it back — this sweep probes every allowlisted param route against two foreign ids, so its cost grows with the route table and it measured 22s alone / >30s under a full parallel run on 2026-09-01. At the default it reports a slow pass as a fence breach, which is the one failure nobody re-reads.
   }, 90_000);
 
   /**
@@ -360,7 +348,6 @@ describe('PAT fence — the surface a token may reach', () => {
       const [method, path] = probe.split(' ') as [string, string];
       const withPat = await send(method, path, boundToA);
       if (withPat.status === 401 || withPat.status === 403) return null;
-      // cm:guard a route that answers an ANONYMOUS caller the same way is public, and a public route has no fence to fail — deciding that by asking the route rather than by a hand-kept exemption list is what keeps this sweep from drifting as routes are added.
       const anonymous = await send(method, path);
       if (anonymous.status !== 401 && anonymous.status !== 403) return null;
       return `${probe} → ${withPat.status}`;
@@ -394,7 +381,6 @@ describe('PAT fence — the surface a token may reach', () => {
     const served = await sweep(new Set(probes), async (probe) => {
       const [method, path] = probe.split(' ') as [string, string];
       const res = await send(method, path, boundToA);
-      // cm:guard 204 is UNDECIDED, not served: a no-content response carries no evidence either way, and at least one route answers it deliberately for a caller it refuses — `DELETE /api/memory/:id` returns 204 for every unauthorised (id, caller) pair so that a 404 cannot be used to probe which ids exist. Scoring that as a leak would push someone to weaken the existence-hiding contract to make a sweep green; the named case below decides it properly instead, by seeding a row and checking it survived.
       if (res.status !== 204 && res.status >= 200 && res.status < 300) {
         return `${probe} → ${res.status}`;
       }
@@ -409,7 +395,6 @@ describe('PAT fence — the surface a token may reach', () => {
         'does not resolve one at all.',
     ).toEqual([]);
 
-    // cm:guard the empty body makes a 400 mean "the fence question never got asked", so those routes are counted rather than scored clean — and if EVERY probe lands there the sweep has stopped measuring while staying green, which is exactly what this comparison catches.
     expect(
       undecided.length,
       `every write probe was undecided (400/422/204) — the body validator now runs before the ` +

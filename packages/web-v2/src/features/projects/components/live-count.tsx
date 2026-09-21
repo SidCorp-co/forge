@@ -13,7 +13,7 @@ export function LiveCount({ n }: LiveCountProps) {
     <span
       title="Pipeline runs currently running or paused"
       className={cn(
-        'inline-flex items-center gap-1.5 font-mono text-[12.5px]',
+        'inline-flex items-center gap-1.5 font-mono text-12-5',
         live ? 'text-accent-text' : 'text-subtle',
       )}
     >

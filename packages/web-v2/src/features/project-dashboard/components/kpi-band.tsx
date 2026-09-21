@@ -49,7 +49,6 @@ export function KpiBand(props: KpiBandProps) {
       accent: props.needsYou > 0,
     },
     {
-      // cm:why no caption. It read "across N stages" until ISS-999, counting distinct values of a status→stage map against a seven-stage pipeline the kernel deleted in ISS-897. The donut beside this tile already shows how the open issues are distributed, and it does so over statuses that exist.
       icon: "board",
       label: "Open issues",
       value: String(props.openIssues),
@@ -75,7 +74,7 @@ export function KpiBand(props: KpiBandProps) {
         <Card key={k.label}>
           <CardContent>
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-[5px] text-subtle" style={{ fontSize: 12.5 }}>
+              <span className="inline-flex items-center gap-[5px] text-subtle" style={{ fontSize: "var(--text-12-5)" }}>
                 <Icon name={k.icon} size={14} style={{ color: "var(--fg-subtle)" }} />
                 {k.label}
               </span>

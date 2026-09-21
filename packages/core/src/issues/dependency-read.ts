@@ -32,13 +32,11 @@ export type IssueDependencyEdge = {
   toDisplayId: string | null;
 };
 
-// cm:guard `outgoing` is the edges where this issue is `from` — under the repo's `from BLOCKS to` convention that is "this issue blocks others", and `incoming` is "this issue is blocked-by others"; a UI or tool that labels outgoing as "Depends on" inverts the whole graph the reader acts on
 export type IssueDependencyEdges = {
   outgoing: IssueDependencyEdge[];
   incoming: IssueDependencyEdge[];
 };
 
-// cm:guard `projectId` is REQUIRED and must stay in the WHERE clause — `issue_dependencies` carries only the composite indexes `(project_id, from_issue_id)` and `(project_id, to_issue_id)` (schema.ts), so filtering on an endpoint alone constrains the NON-leading column and Postgres degrades to scanning every edge in the table. This read runs on `forge_issues get`, i.e. every agent turn. Measured 2026-08-28 on a 399-edge fixture: with `project_id` the plan is a BitmapOr over both indexes; on the endpoint alone it is a Seq Scan, 398 rows removed by filter.
 /** One prefix read per distinct project across the edge set, never one per row. */
 async function readPrefixes(projectIds: Array<string | null>): Promise<Map<string, string | null>> {
   const distinct = [...new Set(projectIds)].filter((id): id is string => typeof id === 'string');
@@ -63,8 +61,6 @@ export async function loadIssueDependencyEdges(
  * function above is this one called with a page of one, so the query, the
  * prefix resolution and the enrichment have exactly one writer.
  */
-// cm:guard `project_id` stays in the WHERE for the same reason the single-issue read keeps it, and the `OR` is over the two ENDPOINT columns so both composite indexes stay usable — a page's ids pushed into an endpoint-only filter constrains the non-leading column of both and Postgres degrades to scanning every edge in the table.
-// cm:guard every requested id gets an entry, `{ outgoing: [], incoming: [] }` included — a missing key is indistinguishable from a hydration that failed, and the caller would render a stale badge set from the previous page's cache.
 export async function loadIssueDependencyEdgesForIssues(
   issueIds: string[],
   projectId: string,
@@ -109,7 +105,6 @@ export async function loadIssueDependencyEdgesForIssues(
       ),
     );
 
-  // cm:guard each endpoint is named with ITS OWN project's prefix: `issue_dependencies.project_id` scopes the edge and constrains NEITHER endpoint, so an edge may cross projects, and naming a `FD` blocker under the dependent's `FX` reports `FX-7`, which is a different issue that exists (codex review of ISS-992)
   const prefixOf = await readPrefixes(
     rows.flatMap((r) => [r.fromProjectId, r.toProjectId]).concat(projectId),
   );
@@ -135,7 +130,6 @@ export async function loadIssueDependencyEdgesForIssues(
     };
   };
 
-  // cm:guard an edge whose BOTH endpoints are on the page is filed twice — outgoing on its `from` row and incoming on its `to` row — because each row answers for its own side; file it once and one of the two rows renders a badge the other one owns.
   for (const row of rows) {
     const edge = enrich(row);
     byIssue.get(row.fromIssueId)?.outgoing.push(edge);
@@ -160,7 +154,6 @@ export type IssueRelationDigest = {
 const isExpired = (edge: IssueDependencyEdge, now: number): boolean =>
   edge.validUntil != null && edge.validUntil.getTime() <= now;
 
-// cm:guard this digest reports what an edge IS, never whether it is holding anything back. `gatesDispatch` lived here until the dispatch gate it named was deleted; a field that answers "am I blocked" is a verdict, and the verdict is the master's to reach from `expired` plus the blocker's own status. Re-adding one puts a second opinion in front of the reader who is supposed to form the first.
 function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueRelationDigest {
   const outgoing = edge.fromIssueId === issueId;
   const expired = isExpired(edge, now);
@@ -201,8 +194,6 @@ export type IssueRelations = { blocks: IssueRelationDigest[]; blockedBy: IssueRe
  * single-issue function above is this one called with a set of one, so `digest()` stays the only
  * writer of what a relation says and the omission its doc promises cannot drift between callers.
  */
-// cm:guard every requested id gets an entry, `{ blocks: [], blockedBy: [] }` included — for the
-// reason the edge read keeps one: a missing key is indistinguishable from a hydration that failed.
 export async function loadIssueRelationsForIssues(
   issueIds: string[],
   projectId: string,

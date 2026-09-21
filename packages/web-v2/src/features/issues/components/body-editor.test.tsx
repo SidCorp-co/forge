@@ -62,7 +62,6 @@ afterEach(() => {
 });
 
 describe("the formatting toolbar", () => {
-  // cm:guard every tool is a real labelled BUTTON, because the toolbar is a row of identical glyphs: navigating by control, an unlabelled icon is a list of anonymous buttons that each change the document.
   it("offers every tool as a named control", () => {
     mount();
     for (const name of [
@@ -93,11 +92,9 @@ describe("the formatting toolbar", () => {
     fireEvent.mouseDown(screen.getByRole("button", { name: /^Bold/ }));
 
     expect(view.state.doc.toString()).toBe("make it **loud**");
-    // cm:guard the FIRST argument only — `@uiw/react-codemirror` calls back with `(value, viewUpdate)`, and a whole-arguments match here fails on the update object rather than on the text, which reads as the action being wrong.
     expect(onChange.mock.calls.at(-1)?.[0]).toBe("make it **loud**");
   });
 
-  // cm:guard the caret is left ON the text and not on the markers, and it is set by the SAME transaction as the change: a second transaction is a second undo step, so one press would take two undos to reverse.
   it("leaves the selection on the text, not on the markers", () => {
     const { view } = mount("make it loud");
     select(view, 8, 12);
@@ -107,7 +104,6 @@ describe("the formatting toolbar", () => {
     expect(view.state.doc.toString().slice(from, to)).toBe("loud");
   });
 
-  // cm:guard mousedown and not click, and the default MUST be prevented: a click moves focus out of the editor first, so the selection the action was about to format is already collapsed when the handler runs.
   it("acts on mousedown, so the selection still exists when it runs", () => {
     const { view } = mount("make it loud");
     select(view, 8, 12);
@@ -134,7 +130,6 @@ describe("the formatting toolbar", () => {
     expect(view.state.doc.toString()).toBe("make it loud");
   });
 
-  // cm:guard the MODIFIER is required, and this is the case that says so: the shortcut table is keyed on bare letters, so a handler that forgets to test ctrl/meta turns typing the letter `b` into a bold command and the editor stops accepting those letters at all.
   it("does not fire on the bare letter, only with ctrl or meta", () => {
     const { view, content } = mount("make it loud");
     select(view, 8, 12);
@@ -192,7 +187,6 @@ describe("the preview pane", () => {
   });
 });
 
-// cm:guard the composer offers NO way to insert component markup and reads the registry for nothing: the menu was the whole of ISS-967's authoring path and the owner cut it on 2026-09-14, so a re-added trigger is a decision to reverse rather than a control to restyle. The registry itself stays — the Pipeline settings tab's `requireComponent` select is its remaining caller.
 describe("the component insert that was removed", () => {
   it("offers no component insert, and does not read the registry at all", () => {
     mount("some prose");

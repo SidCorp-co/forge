@@ -1,29 +1,6 @@
-/**
- * The contract's answer, rendered as the check run GitHub shows.
- *
- * ISS-1072. Pure: it takes an answer and returns four strings, so every claim
- * about what a reader is told can be asserted without a network, a database or
- * an App.
- *
- * ## Why an unmet criterion is `failure` and not `neutral`
- *
- * Because it is a real shortfall and reporting one as `neutral` is the silent
- * substitution this repo forbids. `failure` gates nothing here: making this run
- * a required status-check context is an operator's act on a repository and is
- * explicitly out of ISS-1072's scope, so the honest conclusion costs a red tick
- * and no merge. Turning it down to `neutral` is one line, and the decision
- * record on ISS-1072 says so — but it would have to be taken on purpose rather
- * than arrived at by softening a report nobody liked.
- *
- * `neutral` is kept for the two answers that judge nothing: a status the project
- * declares no criteria for, and an answer that could not be computed. Those two
- * share a conclusion and never a sentence.
- */
-
 import { CONTRACT_SOURCE, type ContractAnswer } from './contract-answer.js';
 
 /** The one name this check is published under, on every head, forever. */
-// cm:edge contract -> packages/core/src/integrations/github/check-run.ts — the lookup that decides update-vs-create filters GitHub's check runs on exactly this string, so changing it does not rename the run: it publishes a second one beside every run already on a head and orphans the first.
 export const CHECK_RUN_NAME = 'forge/issue-contract';
 
 export type CheckConclusion = 'success' | 'failure' | 'neutral';
@@ -36,7 +13,6 @@ export interface CheckRunBody {
   text: string;
 }
 
-// cm:guard the reader is told which input can go stale with NO event behind it. `work-evidence.ts:hasChildIssues` admits a waiver on `valid_until IS NULL OR valid_until > now()`, so a waiver stops counting without anything being written anywhere — and ISS-1072 forbids the polling that would notice. Naming it beside the timestamp is the whole of what an event-driven check can honestly offer, and deleting this line makes an expired waiver indistinguishable from a live one.
 const LAPSE_NOTE =
   'This answer is as of the time above. Every input to it is re-read on an event — a new head, a ' +
   'status move, a record written, a dependency edge changed — except one: a `blocks` work-evidence ' +

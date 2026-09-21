@@ -1,11 +1,3 @@
-/**
- * The agent refusal for a login entrance that holds only a user id (ISS-932).
- *
- * Split from `agent-account.ts` so that module stays free of the database: it
- * is the pure half — the address shape and the refusal itself — and is imported
- * by callers that have the row already.
- */
-
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';

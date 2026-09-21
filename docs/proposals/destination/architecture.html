@@ -1,0 +1,764 @@
+<title>Destination Architecture</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1c1a17;--mut:#6b6559;--line:#ddd7cc;--card:#fff;--ok:#2f7a4f;--bad:#b3452c;--warn:#a8761f;--acc:#2c5c8f;--new:#7a3f9d;--soft:#f3f0ea}
+@media(prefers-color-scheme:dark){:root{--bg:#16150f;--fg:#ece7dd;--mut:#9a9280;--line:#332f26;--card:#1e1c16;--ok:#6fbf8f;--bad:#e08a70;--warn:#d6a851;--acc:#7aa9d8;--new:#c18ce0;--soft:#232019}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:44px 28px 110px}
+h1{font-size:31px;margin:0 0 6px;letter-spacing:-.025em}
+h2{font-size:19px;margin:52px 0 10px;letter-spacing:-.015em;padding-top:12px;border-top:1px solid var(--line)}
+p{margin:8px 0;max-width:74ch}
+.lead{color:var(--mut);max-width:74ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:16px 0;overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.cap{color:var(--mut);font-size:13px;margin-top:10px;max-width:none}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:color-mix(in oklab,var(--fg) 8%,transparent);padding:1px 5px;border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600}
+.key{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:var(--mut);margin:14px 0 0}
+.key b{color:var(--new)}
+.new{color:var(--new)}
+</style>
+<main>
+
+<svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+<marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--mut)"/></marker>
+<marker id="aa" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--acc)"/></marker>
+<marker id="ab" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--bad)"/></marker>
+<marker id="ag" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ok)"/></marker>
+<marker id="an" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--new)"/></marker>
+</defs></svg>
+
+<h1>Destination Architecture</h1>
+<p class="lead">Services and how they talk. Companion to <a href="vision.html">destination.html</a>.
+Revision 2 — adversarial review refuted four claims in revision 1; the ledger is in
+<a href="vision.html#s13">vision.html §13</a> and the fixes are in place here.
+Services marked ★ do not exist today in any form.</p>
+
+<div class="key">
+<span><b>★</b> does not exist today</span>
+<span style="color:var(--acc)">■ write path</span>
+<span style="color:var(--ok)">■ derived / read</span>
+<span style="color:var(--bad)">■ refusal</span>
+</div>
+
+<h2>1 · Service map</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 600" role="img" aria-label="Service map across five planes">
+
+<text x="30" y="32" font-size="11.5" font-weight="700" letter-spacing="1.3" fill="var(--acc)">LEDGER · write side · append-only</text>
+<rect x="30" y="42" width="172" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="116" y="68" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Principal</text>
+<text x="116" y="87" font-size="10.5" text-anchor="middle" fill="var(--mut)">human · agent · box</text>
+<text x="116" y="104" font-size="10.5" text-anchor="middle" fill="var(--mut)">signs every fact</text>
+
+<rect x="222" y="42" width="172" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="308" y="68" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Session Tree</text>
+<text x="308" y="87" font-size="10.5" text-anchor="middle" fill="var(--mut)">open · close · adopt</text>
+<text x="308" y="104" font-size="10.5" text-anchor="middle" fill="var(--mut)">3 close policies · finalizers</text>
+
+<rect x="414" y="42" width="172" height="80" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="500" y="68" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Fact Log</text>
+<text x="500" y="87" font-size="10.5" text-anchor="middle" fill="var(--mut)">observed_at · recorded_at</text>
+<text x="500" y="104" font-size="10.5" text-anchor="middle" fill="var(--mut)">policy_version stamped</text>
+
+<rect x="606" y="42" width="172" height="80" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="692" y="68" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Served-Input Index ★</text>
+<text x="692" y="87" font-size="10.5" text-anchor="middle" fill="var(--mut)">what the kernel SERVED</text>
+<text x="692" y="104" font-size="10.5" text-anchor="middle" fill="var(--mut)">never what an agent claims</text>
+
+<rect x="798" y="42" width="172" height="80" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="884" y="68" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Question ★</text>
+<text x="884" y="87" font-size="10.5" text-anchor="middle" fill="var(--mut)">dedup · route · T1/T2</text>
+<text x="884" y="104" font-size="10.5" text-anchor="middle" fill="var(--mut)">owns its own timers</text>
+
+<text x="30" y="152" font-size="11.5" font-weight="700" letter-spacing="1.3" fill="var(--ok)">DERIVATION · read side · no writers</text>
+<rect x="30" y="162" width="298" height="74" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="179" y="188" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Projection Engine</text>
+<text x="179" y="207" font-size="10.5" text-anchor="middle" fill="var(--mut)">IVM inside the writing txn</text>
+<text x="179" y="224" font-size="10.5" text-anchor="middle" fill="var(--mut)">status · load · attention · board</text>
+
+<rect x="351" y="162" width="298" height="74" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="500" y="188" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Custody Chain + Floor ★</text>
+<text x="500" y="207" font-size="10.5" text-anchor="middle" fill="var(--mut)">chain = attributable · floor = expensive</text>
+<text x="500" y="224" font-size="10.5" text-anchor="middle" fill="var(--mut)">refuse on the floor, never on presence</text>
+
+<rect x="672" y="162" width="298" height="74" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="821" y="188" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Scope Blocking ★</text>
+<text x="821" y="207" font-size="10.5" text-anchor="middle" fill="var(--mut)">an overturned answer → a bounded</text>
+<text x="821" y="224" font-size="10.5" text-anchor="middle" fill="var(--mut)">set, named as a lower bound</text>
+
+<text x="30" y="266" font-size="11.5" font-weight="700" letter-spacing="1.3" fill="var(--warn)">JUDGEMENT · who may assert what</text>
+<rect x="30" y="276" width="226" height="86" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="143" y="302" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Claim Registry ★</text>
+<text x="143" y="321" font-size="10.5" text-anchor="middle" fill="var(--mut)">claim class → minimum</text>
+<text x="143" y="338" font-size="10.5" text-anchor="middle" fill="var(--mut)">independence vector</text>
+<text x="143" y="354" font-size="10.5" text-anchor="middle" fill="var(--mut)">enforced at INSERT</text>
+
+<rect x="278" y="276" width="226" height="86" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="391" y="302" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Deterministic Floor</text>
+<text x="391" y="321" font-size="10.5" text-anchor="middle" fill="var(--mut)">held-out suite · mutation</text>
+<text x="391" y="338" font-size="10.5" text-anchor="middle" fill="var(--mut)">invariants · isolation</text>
+<text x="391" y="354" font-size="10.5" text-anchor="middle" fill="var(--bad)">no LLM may override</text>
+
+<rect x="526" y="276" width="226" height="86" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="639" y="302" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Demotion Ratchet ★</text>
+<text x="639" y="321" font-size="10.5" text-anchor="middle" fill="var(--mut)">lowered by evidence;</text>
+<text x="639" y="338" font-size="10.5" text-anchor="middle" fill="var(--mut)">raised only by a human,</text>
+<text x="639" y="354" font-size="10.5" text-anchor="middle" fill="var(--mut)">recorded as a Fact</text>
+
+<rect x="774" y="276" width="196" height="86" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="872" y="302" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Replay ★</text>
+<text x="872" y="321" font-size="10.5" text-anchor="middle" fill="var(--mut)">counterfactual</text>
+<text x="872" y="338" font-size="10.5" text-anchor="middle" fill="var(--mut)">→ causal locus,</text>
+<text x="872" y="354" font-size="10.5" text-anchor="middle" fill="var(--mut)">not the crash site</text>
+
+<text x="30" y="392" font-size="11.5" font-weight="700" letter-spacing="1.3" fill="var(--mut)">CONTROL · keeps the world matching the model</text>
+<rect x="30" y="402" width="226" height="58" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="143" y="426" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Reconciler</text>
+<text x="143" y="445" font-size="10.5" text-anchor="middle" fill="var(--mut)">level-triggered, ignores events</text>
+
+<rect x="278" y="402" width="226" height="58" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="391" y="426" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Broker</text>
+<text x="391" y="445" font-size="10.5" text-anchor="middle" fill="var(--mut)">credentials never reach an agent</text>
+
+<rect x="526" y="402" width="226" height="58" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="639" y="426" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Surface Compiler ★</text>
+<text x="639" y="445" font-size="10.5" text-anchor="middle" fill="var(--mut)">verbs computed per box·project·principal</text>
+
+<rect x="774" y="402" width="196" height="58" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="872" y="426" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Policy Registry</text>
+<text x="872" y="445" font-size="10.5" text-anchor="middle" fill="var(--mut)">SKILL.md · pinning</text>
+
+<text x="30" y="490" font-size="11.5" font-weight="700" letter-spacing="1.3" fill="var(--mut)">EDGE · your machine</text>
+<rect x="30" y="500" width="226" height="66" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+<text x="143" y="524" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Box daemon</text>
+<text x="143" y="542" font-size="10.5" text-anchor="middle" fill="var(--mut)">keep one master alive</text>
+<text x="143" y="558" font-size="10.5" text-anchor="middle" fill="var(--mut)">hold credential · reap</text>
+
+<rect x="278" y="500" width="226" height="66" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+<text x="391" y="524" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Adapter</text>
+<text x="391" y="542" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--mut)">start·send·abort·status·kind</text>
+<text x="391" y="558" font-size="10.5" text-anchor="middle" fill="var(--mut)">Claude Code · Codex · …</text>
+
+<rect x="526" y="500" width="226" height="66" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+<text x="639" y="524" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Memory</text>
+<text x="639" y="542" font-size="10.5" text-anchor="middle" fill="var(--mut)">Forge owns admission +</text>
+<text x="639" y="558" font-size="10.5" text-anchor="middle" fill="var(--mut)">verification, NOT storage</text>
+
+<rect x="774" y="500" width="196" height="66" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+<text x="872" y="524" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">OTel bridge</text>
+<text x="872" y="542" font-size="10.5" text-anchor="middle" fill="var(--mut)">emit spans,</text>
+<text x="872" y="558" font-size="10.5" text-anchor="middle" fill="var(--mut)">never store facts as spans</text>
+</svg>
+<p class="cap">Fourteen services, five planes. The four in <span class="new">purple</span> on the top two
+planes are what makes the rest mechanical rather than aspirational.</p>
+</div>
+
+<h2>2 · A fact lands</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 320" role="img" aria-label="Write path for a fact, through three gates">
+<rect x="26" y="126" width="120" height="52" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="86" y="157" font-size="12.5" text-anchor="middle" fill="var(--fg)">agent</text>
+
+<rect x="182" y="126" width="120" height="52" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="242" y="157" font-size="12.5" text-anchor="middle" fill="var(--fg)">Surface</text>
+
+<rect x="352" y="40" width="250" height="230" rx="10" fill="none" stroke="var(--acc)" stroke-width="1.8" stroke-dasharray="7 4"/>
+<text x="477" y="62" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1.1" fill="var(--acc)">ONE TRANSACTION</text>
+
+<rect x="372" y="76" width="210" height="44" rx="7" fill="var(--card)" stroke="var(--new)" stroke-width="1.7"/>
+<text x="477" y="96" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--new)">Claim Registry ★</text>
+<text x="477" y="112" font-size="10" text-anchor="middle" fill="var(--mut)">independence vector ≥ minimum?</text>
+
+<rect x="372" y="128" width="210" height="44" rx="7" fill="var(--card)" stroke="var(--line)"/>
+<text x="477" y="148" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Fact Log</text>
+<text x="477" y="164" font-size="10" text-anchor="middle" fill="var(--mut)">stamp policy_version · both clocks</text>
+
+<rect x="372" y="180" width="210" height="44" rx="7" fill="var(--card)" stroke="var(--new)" stroke-width="1.7"/>
+<text x="477" y="200" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--new)">Served-Input Index ★</text>
+<text x="477" y="216" font-size="10" text-anchor="middle" fill="var(--mut)">record what core served</text>
+
+<rect x="372" y="232" width="210" height="30" rx="7" fill="var(--card)" stroke="var(--ok)" stroke-width="1.6"/>
+<text x="477" y="252" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--ok)">IVM · projection updated</text>
+
+<path d="M150 152 L178 152" stroke="var(--mut)" stroke-width="1.4" marker-end="url(#ar)"/>
+<path d="M306 152 L348 130" stroke="var(--acc)" stroke-width="1.5" marker-end="url(#aa)"/>
+<path d="M477 120 L477 124" stroke="var(--acc)" stroke-width="1.4" marker-end="url(#aa)"/>
+<path d="M477 172 L477 176" stroke="var(--acc)" stroke-width="1.4" marker-end="url(#aa)"/>
+<path d="M477 224 L477 228" stroke="var(--acc)" stroke-width="1.4" marker-end="url(#aa)"/>
+
+<path d="M582 98 L700 98" stroke="var(--bad)" stroke-width="1.7" marker-end="url(#ab)"/>
+<rect x="704" y="76" width="266" height="44" rx="7" fill="var(--card)" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="837" y="96" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--bad)">REFUSED, by name</text>
+<text x="837" y="112" font-size="10" text-anchor="middle" fill="var(--mut)">"verdict author == code author"</text>
+
+<path d="M582 247 L700 247" stroke="var(--ok)" stroke-width="1.7" marker-end="url(#ag)"/>
+<rect x="704" y="225" width="266" height="44" rx="7" fill="var(--card)" stroke="var(--ok)" stroke-width="1.6"/>
+<text x="837" y="245" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--fg)">reads are already correct</text>
+<text x="837" y="261" font-size="10" text-anchor="middle" fill="var(--mut)">read-your-writes, indexed</text>
+
+<text x="26" y="300" font-size="11" fill="var(--bad)">A naive EXISTS check here is a write-skew hole — two concurrent inserts both pass. SERIALIZABLE, or lock the root row.</text>
+</svg>
+<p class="cap">The gate runs at <b>insert</b>, not in the projection. Checking later means the bad fact
+is already in the log.</p>
+</div>
+
+<h2>3 · A question, across services</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 400" role="img" aria-label="Question lifecycle across services">
+<text x="14" y="30" font-size="11" font-weight="650" fill="var(--mut)">Session</text>
+<text x="14" y="94" font-size="11" font-weight="650" fill="var(--new)">Question ★</text>
+<text x="14" y="158" font-size="11" font-weight="650" fill="var(--mut)">Memory</text>
+<text x="14" y="222" font-size="11" font-weight="650" fill="var(--mut)">Timers</text>
+<text x="14" y="286" font-size="11" font-weight="650" fill="var(--mut)">Inbox</text>
+<text x="14" y="350" font-size="11" font-weight="650" fill="var(--new)">Served ★</text>
+<line x1="96" y1="16" x2="96" y2="376" stroke="var(--line)"/>
+<line x1="96" y1="52" x2="990" y2="52" stroke="var(--line)" stroke-dasharray="3 4"/>
+<line x1="96" y1="116" x2="990" y2="116" stroke="var(--line)" stroke-dasharray="3 4"/>
+<line x1="96" y1="180" x2="990" y2="180" stroke="var(--line)" stroke-dasharray="3 4"/>
+<line x1="96" y1="244" x2="990" y2="244" stroke="var(--line)" stroke-dasharray="3 4"/>
+<line x1="96" y1="308" x2="990" y2="308" stroke="var(--line)" stroke-dasharray="3 4"/>
+
+<rect x="112" y="12" width="150" height="34" rx="6" fill="var(--card)" stroke="var(--line)"/>
+<text x="187" y="34" font-size="11" text-anchor="middle" fill="var(--fg)">must state a default</text>
+<path d="M187 46 L187 76" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+
+<rect x="112" y="78" width="150" height="34" rx="6" fill="var(--card)" stroke="var(--new)" stroke-width="1.6"/>
+<text x="187" y="100" font-size="11" text-anchor="middle" fill="var(--new)">dedup + coalesce</text>
+<path d="M262 95 L300 95" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+<path d="M310 112 L310 142" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+
+<rect x="300" y="144" width="150" height="34" rx="6" fill="var(--card)" stroke="var(--ok)" stroke-width="1.5"/>
+<text x="375" y="166" font-size="11" text-anchor="middle" fill="var(--ok)">auto_answer? cite it</text>
+<path d="M375 144 L375 114" stroke="var(--ok)" stroke-width="1.3" marker-end="url(#ag)"/>
+
+<rect x="464" y="78" width="150" height="34" rx="6" fill="var(--card)" stroke="var(--line)"/>
+<text x="539" y="100" font-size="11" text-anchor="middle" fill="var(--fg)">route by kind</text>
+<path d="M450 95 L460 95" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+<path d="M539 112 L539 206" stroke="var(--warn)" stroke-width="1.3" marker-end="url(#ar)"/>
+<path d="M614 95 L680 95 L680 272" stroke="var(--mut)" stroke-width="1.3" fill="none" marker-end="url(#ar)"/>
+
+<rect x="464" y="208" width="150" height="34" rx="6" fill="var(--card)" stroke="var(--warn)" stroke-width="1.6"/>
+<text x="539" y="230" font-size="11" text-anchor="middle" fill="var(--warn)">T1 reroute · T2 force</text>
+
+<rect x="604" y="272" width="160" height="34" rx="6" fill="var(--card)" stroke="var(--line)"/>
+<text x="684" y="294" font-size="11" text-anchor="middle" fill="var(--fg)">anyone in the role</text>
+<path d="M764 289 L810 289 L810 100" stroke="var(--ok)" stroke-width="1.4" fill="none" marker-end="url(#ag)"/>
+
+<rect x="800" y="78" width="170" height="34" rx="6" fill="var(--card)" stroke="var(--ok)" stroke-width="1.5"/>
+<text x="885" y="100" font-size="11" text-anchor="middle" fill="var(--ok)">answered → Fact</text>
+<path d="M885 112 L885 330" stroke="var(--new)" stroke-width="1.4" marker-end="url(#an)"/>
+
+<rect x="800" y="332" width="170" height="34" rx="6" fill="var(--card)" stroke="var(--new)" stroke-width="1.6"/>
+<text x="885" y="354" font-size="11" text-anchor="middle" fill="var(--new)">scope settled</text>
+
+<text x="112" y="386" font-size="11" fill="var(--mut)">The session ENDED at the top. The slot was freed. The answer starts a new one, seeded from the question's context packet.</text>
+</svg>
+<p class="cap">Only one thing here is ordinary product work. The dedup/coalesce box, the auto-answer
+citation, and the premise write have <b>no published prior art</b> — instrument the false-auto-answer
+rate from day one.</p>
+</div>
+
+<h2>4 · Scope blocking — what an overturned answer reaches</h2>
+<p class="cap" style="margin-top:0">Revision 1 called this an <i>exact</i> set derived from agent-declared premises. Refuted — the set was a lower bound labelled as exact, and the declaration was unverifiable self-report. What the kernel has instead is what it <b>served</b>, and the blocking unit is the question's <code>scope</code>.</p>
+
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="An overturned premise and its blast radius">
+<rect x="26" y="120" width="180" height="60" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.8"/>
+<text x="116" y="146" font-size="12" font-weight="650" text-anchor="middle" fill="var(--new)">answer overturns</text>
+<text x="116" y="164" font-size="12" font-weight="650" text-anchor="middle" fill="var(--new)">premise P</text>
+
+<path d="M210 150 L266 150" stroke="var(--new)" stroke-width="1.6" marker-end="url(#an)"/>
+
+<rect x="270" y="110" width="190" height="80" rx="8" fill="var(--soft)" stroke="var(--new)" stroke-width="1.8"/>
+<text x="365" y="138" font-size="12" font-weight="650" text-anchor="middle" fill="var(--new)">Served-Input Index ★</text>
+<text x="365" y="158" font-size="10.5" text-anchor="middle" fill="var(--mut)">who was SERVED P?</text>
+<text x="365" y="176" font-size="10.5" text-anchor="middle" fill="var(--mut)">→ a lower bound, named as one</text>
+
+<path d="M464 132 L530 62" stroke="var(--mut)" stroke-width="1.4" marker-end="url(#ar)"/>
+<path d="M464 150 L530 150" stroke="var(--warn)" stroke-width="1.4" marker-end="url(#ar)"/>
+<path d="M464 168 L530 238" stroke="var(--bad)" stroke-width="1.4" marker-end="url(#ab)"/>
+
+<rect x="534" y="34" width="436" height="56" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="552" y="56" font-size="12" font-weight="650" fill="var(--fg)">outside the answer's scope</text>
+<text x="552" y="76" font-size="10.5" fill="var(--mut)">keep running — scope is issue · project · repo, never "no record found"</text>
+
+<rect x="534" y="122" width="436" height="56" rx="8" fill="var(--card)" stroke="var(--warn)" stroke-width="1.7"/>
+<text x="552" y="144" font-size="12" font-weight="650" fill="var(--warn)">in scope, still in flight</text>
+<text x="552" y="164" font-size="10.5" fill="var(--mut)">recall: park, re-seed with the answer, resume</text>
+
+<rect x="534" y="210" width="436" height="56" rx="8" fill="var(--card)" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="552" y="232" font-size="12" font-weight="650" fill="var(--bad)">in scope, already merged</text>
+<text x="552" y="252" font-size="10.5" fill="var(--mut)">compensation owed: an OWNER at creation, ageing, and a chain link</text>
+</svg>
+<p class="cap"><b>The default is block.</b> The bucket is named <i>outside the answer's scope</i>, never
+<i>"no record of reading it"</i> — absence of a record is not evidence of safety, and an exemption is a
+priced amnesty with a named end condition rather than a computation. Until the compensation is paid the
+projection reads <code>shipped_with_open_compensation</code>, not <code>shipped</code>.</p>
+</div>
+
+<h2>5 · Custody chain of a merge — and the floor beside it</h2>
+<p class="cap" style="margin-top:0">Revision 1 called this a proof chain. Refuted — it checks shape, not substance, and only two of its seven links are load-bearing. It stays, priced as audit; the substance lives in the floor below it.</p>
+
+<div class="card">
+<svg viewBox="0 0 1000 250" role="img" aria-label="The evidence chain required for a merge">
+<rect x="20" y="70" width="112" height="62" rx="8" fill="var(--card)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="76" y="97" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Intent</text>
+<text x="76" y="114" font-size="9.5" text-anchor="middle" fill="var(--mut)">owner: human</text>
+
+<rect x="152" y="70" width="112" height="62" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="208" y="97" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--fg)">plan</text>
+<text x="208" y="114" font-size="9.5" text-anchor="middle" fill="var(--mut)">declared</text>
+
+<rect x="284" y="70" width="112" height="62" rx="8" fill="var(--card)" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="340" y="95" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--bad)">RED</text>
+<text x="340" y="112" font-size="9" text-anchor="middle" fill="var(--mut)">same test_id as GREEN</text>
+<text x="340" y="124" font-size="9" text-anchor="middle" fill="var(--mut)">cause == assertion</text>
+
+<rect x="416" y="70" width="112" height="62" rx="8" fill="var(--card)" stroke="var(--ok)" stroke-width="1.7"/>
+<text x="472" y="97" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--ok)">GREEN</text>
+<text x="472" y="114" font-size="9.5" text-anchor="middle" fill="var(--mut)">held-out gap ≤ floor</text>
+
+<rect x="548" y="70" width="140" height="62" rx="8" fill="var(--card)" stroke="var(--new)" stroke-width="1.8"/>
+<text x="618" y="93" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--new)">verdict</text>
+<text x="618" y="109" font-size="9.5" text-anchor="middle" fill="var(--mut)">independence vector</text>
+<text x="618" y="123" font-size="9.5" text-anchor="middle" fill="var(--mut)">≥ class minimum</text>
+
+<rect x="708" y="70" width="126" height="62" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="771" y="97" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--fg)">merge</text>
+<text x="771" y="114" font-size="9.5" text-anchor="middle" fill="var(--mut)">one writer</text>
+
+<rect x="854" y="70" width="126" height="62" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="917" y="97" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--fg)">deploy</text>
+<text x="917" y="114" font-size="9.5" text-anchor="middle" fill="var(--mut)">witnessed</text>
+
+<path d="M134 101 L148 101" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M266 101 L280 101" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M398 101 L412 101" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M530 101 L544 101" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M690 101 L704 101" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M836 101 L850 101" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+
+<rect x="20" y="168" width="960" height="52" rx="8" fill="none" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="40" y="190" font-size="12.5" font-weight="650" fill="var(--bad)">Refuse on the FLOOR, never on presence — a refusal that names a missing receipt teaches the agent to emit it.</text>
+<text x="40" y="210" font-size="11" fill="var(--mut)">The chain makes a lie attributable. The floor makes it expensive. Neither makes it impossible — see vision.html §0.</text>
+</svg>
+</div>
+
+<h2>6 · Demotion ratchet — autonomy is lost automatically, never granted</h2>
+<p class="cap" style="margin-top:0">Revision 1 had a closed loop that raised and lowered a trust budget. Refuted — granting autonomy is the act of not checking, so the loop destroys the label supply that feeds it. At this project's volume one cell needs about 41 years.</p>
+
+<div class="card">
+<svg viewBox="0 0 1000 290" role="img" aria-label="The autonomy governor closed loop">
+<rect x="40" y="36" width="230" height="64" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="155" y="62" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Replay ★ + Harness</text>
+<text x="155" y="82" font-size="10.5" text-anchor="middle" fill="var(--mut)">verdict accuracy — needs labels that today are n=0</text>
+
+<path d="M274 68 L396 68" stroke="var(--acc)" stroke-width="1.6" marker-end="url(#aa)"/>
+
+<rect x="400" y="36" width="230" height="64" rx="9" fill="var(--card)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="515" y="62" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--new)">Demotion Ratchet ★</text>
+<text x="515" y="82" font-size="10.5" text-anchor="middle" fill="var(--mut)">pooled on claim class × independence level</text>
+
+<path d="M634 68 L756 68" stroke="var(--acc)" stroke-width="1.6" marker-end="url(#aa)"/>
+
+<rect x="760" y="36" width="200" height="64" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="860" y="62" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Claim Registry ★</text>
+<text x="860" y="82" font-size="10.5" text-anchor="middle" fill="var(--mut)">minimum moves UP only; down needs a human</text>
+
+<path d="M860 104 L860 150 L515 150" stroke="var(--mut)" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+
+<rect x="330" y="158" width="370" height="60" rx="9" fill="var(--soft)" stroke="var(--line)"/>
+<text x="515" y="182" font-size="12.5" font-weight="650" text-anchor="middle" fill="var(--fg)">what a session may decide alone, today</text>
+<text x="515" y="202" font-size="10.5" text-anchor="middle" fill="var(--mut)">a human-set tier, lowered by evidence, raised only by sign-off</text>
+
+<path d="M330 188 L200 188 L200 106" stroke="var(--ok)" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+
+<rect x="40" y="238" width="920" height="38" rx="8" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+<text x="60" y="262" font-size="12" fill="var(--fg)">Hard sampling floor: budget ≤ 0.9, so ≥10% of autonomous decisions are audited whatever the score. Without it the estimate freezes optimistic.</text>
+</svg>
+</div>
+
+<h2>7 · What is new, and why it must exist</h2>
+
+<table>
+<thead><tr><th style="width:20%">Service</th><th style="width:38%">Exists to</th><th style="width:42%">Without it</th></tr></thead>
+<tbody>
+<tr><td class="new"><b>Served-Input Index</b></td><td>persist what the kernel <i>served</i> a session — resolved fact-inputs and answered questions, stamped at open</td><td>a parked question either blocks everything or blocks nothing. Agent-declared premises cannot fill this role: under-declaration is silent, free and undetectable</td></tr>
+<tr><td class="new"><b>Scope Blocking</b></td><td>turn an overturned answer into a bounded set of affected sessions, named as a lower bound</td><td>correction is manual archaeology, and an already-merged case is found weeks later</td></tr>
+<tr><td class="new"><b>Claim Registry</b></td><td>declare the minimum independence vector per claim class, enforced at insert</td><td>principal separation is a boolean that is right in 2027 and useless in 2028</td></tr>
+<tr><td class="new"><b>Custody Chain</b></td><td>assemble intent → deploy as one walkable record of who claimed what</td><td>a lie is unattributable. It does <b>not</b> make the work correct — that is the floor's job</td></tr>
+<tr><td class="new"><b>Substance Floor</b></td><td>held-out gap · mutation kill-rate on diff-touched lines · RED-cause · oracle isolation, declared per claim class</td><td>a complete chain can be entirely empty — the measured visible/held-out gap reaches 100 points</td></tr>
+<tr><td class="new"><b>Demotion Ratchet</b></td><td>lower autonomy automatically on evidence; raising it is a human act recorded as a Fact</td><td>an estimator that grants its own autonomy starves itself of labels and freezes optimistic</td></tr>
+<tr><td class="new"><b>Replay</b></td><td>resample one step to find the causal locus</td><td>blame lands on the crash site — and 4 in 5 failures originate upstream of it</td></tr>
+<tr><td class="new"><b>Surface Compiler</b></td><td>compute the verb list per box · project · principal, read at runtime</td><td>procedure drifts into prompts and binaries; an agent improvises, and nobody reviews improvisation</td></tr>
+<tr><td class="new"><b>Question</b></td><td>own dedup, routing, timers, defaults and promotion</td><td>the measured default failure: agents ask 1–2% of the time and are corrected 44% of the time</td></tr>
+</tbody>
+</table>
+
+<p class="cap">Nine services, none a rename of something already running. The rest of the map is scaffolding
+that holds these up. <b>Claim Registry is the only one that needs no ground truth and can ship alone.</b></p>
+
+
+<h2>8 · Three artifacts, three clocks</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 420" role="img" aria-label="Three artifacts and their release cadences">
+<rect x="20" y="30" width="300" height="250" rx="10" fill="var(--card)" stroke="var(--line)"/>
+<text x="170" y="58" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">forge-plugin</text>
+<text x="170" y="76" font-size="10.5" text-anchor="middle" fill="var(--mut)">separate repo · POLICY</text>
+<line x1="40" y1="90" x2="300" y2="90" stroke="var(--line)"/>
+<text x="40" y="112" font-size="11.5" fill="var(--fg)">SKILL.md · AGENTS.md</text>
+<text x="40" y="132" font-size="11.5" fill="var(--fg)">roles · rubrics · decidability rule</text>
+<text x="40" y="152" font-size="11.5" fill="var(--fg)">the master brief</text>
+<text x="40" y="180" font-size="10.5" fill="var(--mut)">ships by: <tspan font-family="ui-monospace,monospace" fill="var(--ok)">git push</tspan></text>
+<text x="40" y="198" font-size="10.5" fill="var(--mut)">reaches a box: on next session open</text>
+<text x="40" y="216" font-size="10.5" fill="var(--mut)">rollback: pin an older version</text>
+<rect x="40" y="232" width="260" height="34" rx="6" fill="var(--soft)" stroke="var(--ok)"/>
+<text x="170" y="254" font-size="11" text-anchor="middle" fill="var(--ok)">fastest clock · minutes</text>
+
+<rect x="350" y="30" width="300" height="250" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="1.8"/>
+<text x="500" y="58" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">core</text>
+<text x="500" y="76" font-size="10.5" text-anchor="middle" fill="var(--mut)">cloud · KERNEL + DERIVATION + JUDGEMENT</text>
+<line x1="370" y1="90" x2="630" y2="90" stroke="var(--line)"/>
+<text x="370" y="112" font-size="11.5" fill="var(--fg)">the fourteen services</text>
+<text x="370" y="132" font-size="11.5" fill="var(--fg)">the only durable writer</text>
+<text x="370" y="152" font-size="11.5" fill="var(--fg)">compiles the CLI surface</text>
+<text x="370" y="180" font-size="10.5" fill="var(--mut)">ships by: <tspan font-family="ui-monospace,monospace" fill="var(--warn)">deploy</tspan></text>
+<text x="370" y="198" font-size="10.5" fill="var(--mut)">reaches everyone: at once</text>
+<text x="370" y="216" font-size="10.5" fill="var(--mut)">rollback: image + migration</text>
+<rect x="370" y="232" width="260" height="34" rx="6" fill="var(--soft)" stroke="var(--warn)"/>
+<text x="500" y="254" font-size="11" text-anchor="middle" fill="var(--warn)">middle clock · hours</text>
+
+<rect x="680" y="30" width="300" height="250" rx="10" fill="var(--card)" stroke="var(--line)"/>
+<text x="830" y="58" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">forge-runner</text>
+<text x="830" y="76" font-size="10.5" text-anchor="middle" fill="var(--mut)">Rust binary · YOUR machine</text>
+<line x1="700" y1="90" x2="960" y2="90" stroke="var(--line)"/>
+<text x="700" y="112" font-size="11.5" fill="var(--fg)">daemon: keep alive · broker · reap</text>
+<text x="700" y="132" font-size="11.5" fill="var(--fg)">adapter: the 5 methods</text>
+<text x="700" y="152" font-size="11.5" fill="var(--fg)">holds the box credential</text>
+<text x="700" y="180" font-size="10.5" fill="var(--mut)">ships by: <tspan font-family="ui-monospace,monospace" fill="var(--ok)">binary release + self-update</tspan></text>
+<text x="700" y="198" font-size="10.5" fill="var(--mut)">reaches a box: when it updates</text>
+<text x="700" y="216" font-size="10.5" fill="var(--mut)">rollback: pin a version, per box</text>
+<rect x="700" y="232" width="260" height="34" rx="6" fill="var(--soft)" stroke="var(--bad)"/>
+<text x="830" y="254" font-size="11" text-anchor="middle" fill="var(--ok)">MEASURED FASTEST — 77 tags / 113 days (see §13)</text>
+
+<rect x="20" y="306" width="960" height="92" rx="10" fill="none" stroke="var(--new)" stroke-width="1.9"/>
+<text x="42" y="332" font-size="13" font-weight="700" fill="var(--new)">The single design rule that governs all three — REVISED, see §13</text>
+<text x="42" y="356" font-size="12.5" fill="var(--fg)">The fast clock may never outrun the slow one. Core admits a policy version or refuses it by name;</text>
+<text x="42" y="376" font-size="12.5" fill="var(--fg)">the box keeps the last admitted one. Core gates policy admission — policy gates nothing. §13</text>
+</svg>
+<p class="cap">The slow clock is uneven on purpose: boxes are machines people own, and they update when
+they update. Anything whose correctness depends on the fleet being current is already broken.</p>
+</div>
+
+<h2>9 · Boundaries, and who refuses</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 400" role="img" aria-label="Protocol boundaries and the refuser at each one">
+<rect x="26" y="150" width="130" height="58" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="91" y="175" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">human</text>
+<text x="91" y="193" font-size="10" text-anchor="middle" fill="var(--mut)">or any principal</text>
+
+<rect x="216" y="150" width="130" height="58" rx="8" fill="var(--card)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="281" y="175" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">CLI</text>
+<text x="281" y="193" font-size="10" text-anchor="middle" fill="var(--mut)">thin — verbs are served</text>
+
+<rect x="406" y="140" width="150" height="78" rx="8" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.9"/>
+<text x="481" y="168" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">core</text>
+<text x="481" y="188" font-size="10" text-anchor="middle" fill="var(--mut)">the only durable</text>
+<text x="481" y="203" font-size="10" text-anchor="middle" fill="var(--mut)">writer, anywhere</text>
+
+<rect x="616" y="150" width="130" height="58" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="681" y="175" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">daemon</text>
+<text x="681" y="193" font-size="10" text-anchor="middle" fill="var(--mut)">holds the credential</text>
+
+<rect x="806" y="96" width="168" height="58" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="890" y="121" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">master</text>
+<text x="890" y="139" font-size="10" text-anchor="middle" fill="var(--mut)">one pane per project</text>
+
+<rect x="806" y="204" width="168" height="58" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="890" y="229" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">subagent</text>
+<text x="890" y="247" font-size="10" text-anchor="middle" fill="var(--mut)">in the master's process</text>
+
+<path d="M160 179 L212 179" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M350 179 L402 179" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M560 179 L612 179" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M750 168 L802 134" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M890 154 L890 200" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M890 262 Q890 330 560 200" stroke="var(--acc)" stroke-width="1.5" fill="none" marker-end="url(#aa)"/>
+<text x="700" y="322" font-size="10.5" fill="var(--acc)">facts go straight to core, never via the box</text>
+
+<text x="216" y="140" font-size="10" fill="var(--mut)">compiled surface</text>
+<text x="406" y="130" font-size="10" fill="var(--mut)">HTTPS · scoped token</text>
+<text x="600" y="140" font-size="10" fill="var(--mut)">device transport</text>
+<text x="742" y="112" font-size="10" fill="var(--mut)">control socket</text>
+<text x="900" y="180" font-size="10" fill="var(--mut)">assignment</text>
+</svg>
+
+<table>
+<thead><tr><th style="width:20%">Boundary</th><th style="width:26%">Carrier</th><th style="width:26%">Refuses a violation</th><th style="width:28%">Strength</th></tr></thead>
+<tbody>
+<tr><td>principal → CLI</td><td>compiled verb table, fetched per invocation</td><td>core, by not serving the verb</td><td class="ok">strong — an unserved verb cannot be typed</td></tr>
+<tr><td>CLI → core</td><td>HTTPS, token scoped to one principal</td><td>core</td><td class="ok">strong</td></tr>
+<tr><td>core ⇄ daemon</td><td>device transport; credential carries <code>device_id</code></td><td>core</td><td class="ok">strong</td></tr>
+<tr><td>daemon ⇄ master</td><td>unix socket, typed frames</td><td>the frame decoder</td><td class="ok">strong</td></tr>
+<tr><td>master → subagent</td><td>in-process call</td><td><b>the master, by validating the report</b></td><td class="bad">weak — no decoder sits between them. This is the price of the tree.</td></tr>
+<tr><td>agent → core</td><td>facts, over the same scoped token</td><td>core's insert-time gates</td><td class="ok">strong — and this is why the weak edge above is survivable</td></tr>
+</tbody>
+</table>
+<p class="cap">One edge is weak, and it is the one the whole tree rests on. The compensation is that
+<b>a subagent's claims do not travel through its parent</b> — they go to core and meet the same gates
+as anyone's.</p>
+</div>
+
+<h2>10 · Coupling — the defect to design out</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 330" role="img" aria-label="What a change costs today versus at the destination">
+<text x="30" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--bad)">TODAY — a change needs two clocks, and nothing checks the pair</text>
+
+<rect x="30" y="40" width="430" height="46" rx="7" fill="var(--card)" stroke="var(--bad)" stroke-width="1.5"/>
+<text x="46" y="60" font-size="11.5" fill="var(--fg)">change the driver's phase vocabulary</text>
+<text x="46" y="78" font-size="10.5" fill="var(--bad)">core deploy + plugin push · nothing records the coupling</text>
+
+<rect x="30" y="94" width="430" height="46" rx="7" fill="var(--card)" stroke="var(--bad)" stroke-width="1.5"/>
+<text x="46" y="114" font-size="11.5" fill="var(--fg)">add a CLI verb</text>
+<text x="46" y="132" font-size="10.5" fill="var(--bad)">plugin push + runner release, because the brief names the verbs</text>
+
+<rect x="30" y="148" width="430" height="46" rx="7" fill="var(--card)" stroke="var(--bad)" stroke-width="1.5"/>
+<text x="46" y="168" font-size="11.5" fill="var(--fg)">change what a phase means to the projection</text>
+<text x="46" y="186" font-size="10.5" fill="var(--bad)">core deploy, and every in-flight session silently changes meaning</text>
+
+<text x="540" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--ok)">DESTINATION — one clock each</text>
+
+<rect x="540" y="40" width="430" height="46" rx="7" fill="var(--card)" stroke="var(--ok)" stroke-width="1.5"/>
+<text x="556" y="60" font-size="11.5" fill="var(--fg)">phases are opaque strings to core</text>
+<text x="556" y="78" font-size="10.5" fill="var(--ok)">plugin push only — meaning is defined by the pinned policy</text>
+
+<rect x="540" y="94" width="430" height="46" rx="7" fill="var(--card)" stroke="var(--ok)" stroke-width="1.5"/>
+<text x="556" y="114" font-size="11.5" fill="var(--fg)">the brief names no verbs at all</text>
+<text x="556" y="132" font-size="10.5" fill="var(--ok)">core only — Surface Compiler serves the list at runtime</text>
+
+<rect x="540" y="148" width="430" height="46" rx="7" fill="var(--card)" stroke="var(--ok)" stroke-width="1.5"/>
+<text x="556" y="168" font-size="11.5" fill="var(--fg)">projection is a function OF policy_version</text>
+<text x="556" y="186" font-size="10.5" fill="var(--ok)">in-flight sessions keep the meaning they opened under</text>
+
+<rect x="30" y="216" width="940" height="96" rx="9" fill="none" stroke="var(--new)" stroke-width="1.9"/>
+<text x="52" y="242" font-size="12.5" font-weight="700" fill="var(--new)">The one coupling that survives — and a fork in the road</text>
+<text x="52" y="266" font-size="12" fill="var(--fg)">Supporting a new CLI coding agent still means a runner release, because the adapter is compiled in.</text>
+<text x="52" y="288" font-size="11.5" fill="var(--mut)">Option A · keep it compiled — fast, typed, one binary, and every new vendor waits on the slowest clock.</text>
+<text x="52" y="306" font-size="11.5" fill="var(--mut)">Option B · adapter as a separate process over a tiny line protocol — a new vendor is a new small binary. Slower, looser, and vendor-neutral for real.</text>
+</svg>
+<p class="cap">Every item on the left is a change that shipped half-done at least once. The rule in §8 is
+what removes the category, not more care.</p>
+</div>
+
+<h2>11 · Where each service actually runs</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="Services mapped onto the three artifacts">
+<rect x="20" y="30" width="300" height="240" rx="10" fill="var(--card)" stroke="var(--line)"/>
+<text x="170" y="56" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">forge-plugin</text>
+<rect x="40" y="72" width="260" height="30" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="170" y="92" font-size="11" text-anchor="middle" fill="var(--fg)">the decidability rule</text>
+<rect x="40" y="110" width="260" height="30" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="170" y="130" font-size="11" text-anchor="middle" fill="var(--fg)">claim-class definitions</text>
+<rect x="40" y="148" width="260" height="30" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="170" y="168" font-size="11" text-anchor="middle" fill="var(--fg)">rubrics the harness scores with</text>
+<rect x="40" y="186" width="260" height="30" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="170" y="206" font-size="11" text-anchor="middle" fill="var(--fg)">question shapes &amp; routing table</text>
+<text x="170" y="242" font-size="10.5" text-anchor="middle" fill="var(--mut)">declares WHAT is required — and core</text>
+<text x="170" y="258" font-size="10.5" text-anchor="middle" fill="var(--bad)">REFUSES a version it cannot evaluate</text>
+
+<rect x="350" y="30" width="300" height="240" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="1.8"/>
+<text x="500" y="56" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">core</text>
+<rect x="370" y="72" width="260" height="26" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="500" y="90" font-size="10.5" text-anchor="middle" fill="var(--fg)">Principal · Session Tree · Fact Log</text>
+<rect x="370" y="104" width="260" height="26" rx="6" fill="var(--soft)" stroke="var(--new)"/><text x="500" y="122" font-size="10.5" text-anchor="middle" fill="var(--new)">Served-Input Index · Question</text>
+<rect x="370" y="136" width="260" height="26" rx="6" fill="var(--soft)" stroke="var(--new)"/><text x="500" y="154" font-size="10.5" text-anchor="middle" fill="var(--new)">Custody Chain · Substance Floor</text>
+<rect x="370" y="168" width="260" height="26" rx="6" fill="var(--soft)" stroke="var(--new)"/><text x="500" y="186" font-size="10.5" text-anchor="middle" fill="var(--new)">Claim Registry · Demotion Ratchet</text>
+<rect x="370" y="200" width="260" height="26" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="500" y="218" font-size="10.5" text-anchor="middle" fill="var(--fg)">Projection · Reconciler · Broker</text>
+<text x="500" y="250" font-size="10.5" text-anchor="middle" fill="var(--mut)">ENFORCES everything the plugin declares</text>
+
+<rect x="680" y="30" width="300" height="240" rx="10" fill="var(--card)" stroke="var(--line)"/>
+<text x="830" y="56" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">forge-runner</text>
+<rect x="700" y="72" width="260" height="30" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="830" y="92" font-size="11" text-anchor="middle" fill="var(--fg)">keep one master alive</text>
+<rect x="700" y="110" width="260" height="30" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="830" y="130" font-size="11" text-anchor="middle" fill="var(--fg)">hold the credential · broker</text>
+<rect x="700" y="148" width="260" height="30" rx="6" fill="var(--soft)" stroke="var(--line)"/><text x="830" y="168" font-size="11" text-anchor="middle" fill="var(--fg)">reap when the master dies</text>
+<rect x="700" y="186" width="260" height="30" rx="6" fill="var(--soft)" stroke="var(--warn)"/><text x="830" y="206" font-size="11" text-anchor="middle" fill="var(--warn)">adapter — 5 methods</text>
+<text x="830" y="242" font-size="10.5" text-anchor="middle" fill="var(--mut)">stores NOTHING that matters;</text>
+<text x="830" y="258" font-size="10.5" text-anchor="middle" fill="var(--mut)">a wiped box loses no fact</text>
+</svg>
+<p class="cap">The test for the right split: <b>wipe any box and lose nothing but time.</b> The moment the
+runner holds a fact core does not, the second ledger is back.</p>
+</div>
+
+
+<h2>12 · Revision 2 — what the adversarial round changed here</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 330" role="img" aria-label="Three services redrawn after review">
+<text x="30" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--bad)">REVISION 1</text>
+<text x="540" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--ok)">REVISION 2</text>
+
+<rect x="30" y="40" width="430" height="74" rx="8" fill="var(--card)" stroke="var(--bad)" stroke-width="1.6"/>
+<text x="48" y="63" font-size="12.5" font-weight="650" fill="var(--bad)">Premise Index — the session declares what it relied on</text>
+<text x="48" y="84" font-size="11" fill="var(--mut)">under-declaration is silent, free, undetectable</text>
+<text x="48" y="102" font-size="11" fill="var(--mut)">"never read P → keep running" turns absence into safety</text>
+
+<rect x="540" y="40" width="430" height="74" rx="8" fill="var(--card)" stroke="var(--ok)" stroke-width="1.6"/>
+<text x="558" y="63" font-size="12.5" font-weight="650" fill="var(--ok)">Served-Input Index — the kernel records what IT served</text>
+<text x="558" y="84" font-size="11" fill="var(--mut)">resolved fact-inputs + answered questions, stamped at open</text>
+<text x="558" y="102" font-size="11" fill="var(--mut)">bucket renamed "no record of reading P" · default BLOCK</text>
+
+<rect x="30" y="126" width="430" height="74" rx="8" fill="var(--card)" stroke="var(--bad)" stroke-width="1.6"/>
+<text x="48" y="149" font-size="12.5" font-weight="650" fill="var(--bad)">Evidence Chain — proof from intent to merge</text>
+<text x="48" y="170" font-size="11" fill="var(--mut)">checks shape; 2 of 7 links load-bearing</text>
+<text x="48" y="188" font-size="11" fill="var(--mut)">refusal names the receipt to forge</text>
+
+<rect x="540" y="126" width="430" height="74" rx="8" fill="var(--card)" stroke="var(--ok)" stroke-width="1.6"/>
+<text x="558" y="149" font-size="12.5" font-weight="650" fill="var(--ok)">Custody Chain + Substance Floor (two services)</text>
+<text x="558" y="170" font-size="11" fill="var(--mut)">chain = who claimed what, priced as audit</text>
+<text x="558" y="188" font-size="11" fill="var(--mut)">floor = held-out gap · mutation · RED-cause · isolation</text>
+
+<rect x="30" y="212" width="430" height="74" rx="8" fill="var(--card)" stroke="var(--bad)" stroke-width="1.6"/>
+<text x="48" y="235" font-size="12.5" font-weight="650" fill="var(--bad)">Autonomy Governor — closed loop, raises and lowers</text>
+<text x="48" y="256" font-size="11" fill="var(--mut)">autonomy destroys the label supply that feeds it</text>
+<text x="48" y="274" font-size="11" fill="var(--mut)">41 years per cell at this project's volume</text>
+
+<rect x="540" y="212" width="430" height="74" rx="8" fill="var(--card)" stroke="var(--ok)" stroke-width="1.6"/>
+<text x="558" y="235" font-size="12.5" font-weight="650" fill="var(--ok)">Demotion Ratchet — lowers automatically, never raises</text>
+<text x="558" y="256" font-size="11" fill="var(--mut)">hard sampling floor: budget ≤ 0.9, ≥10% always audited</text>
+<text x="558" y="274" font-size="11" fill="var(--mut)">pooled on (claim class × independence), not per principal</text>
+
+<path d="M466 77 L534 77" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M466 163 L534 163" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M466 249 L534 249" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+
+<text x="30" y="312" font-size="11.5" fill="var(--mut)">Claim Registry survives unchanged and ships alone — it is a deterministic policy check and needs no ground truth.</text>
+</svg>
+</div>
+
+<h2>13 · The clocks, measured</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 250" role="img" aria-label="Measured release cadence of the three artifacts">
+<text x="30" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--mut)">RELEASES PER 113 DAYS — MEASURED, NOT ASSUMED</text>
+
+<text x="30" y="62" font-size="12.5" fill="var(--fg)">forge-runner</text>
+<rect x="150" y="48" width="700" height="22" rx="4" fill="var(--ok)"/>
+<text x="864" y="64" font-size="12.5" font-weight="650" fill="var(--ok)">77 tags</text>
+<text x="150" y="86" font-size="11" fill="var(--mut)">~1 every 1.5 days, self-update already in place — the FASTEST artifact, not the slowest</text>
+
+<text x="30" y="128" font-size="12.5" fill="var(--fg)">core</text>
+<rect x="150" y="114" width="300" height="22" rx="4" fill="var(--warn)"/>
+<text x="464" y="130" font-size="12.5" font-weight="650" fill="var(--warn)">per deploy</text>
+<text x="150" y="152" font-size="11" fill="var(--mut)">reaches everyone at once; rollback is image + migration</text>
+
+<text x="30" y="194" font-size="12.5" fill="var(--fg)">forge-plugin</text>
+<rect x="150" y="180" width="760" height="22" rx="4" fill="var(--acc)"/>
+<text x="924" y="196" font-size="12.5" font-weight="650" fill="var(--acc)">per push</text>
+<text x="150" y="218" font-size="11" fill="var(--mut)">but reaches a box only through core admission — never a box-side pull</text>
+
+<text x="30" y="242" font-size="11.5" fill="var(--bad)">Revision 1 called the runner "the slowest clock, days and uneven." That was assumed. It is wrong.</text>
+</svg>
+</div>
+
+<div class="rule" style="background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:17px 21px;margin:18px 0;font-size:16px">
+<b>The fast clock may never outrun the slow one.</b><br>
+<span style="font-size:13.5px;color:var(--mut)">A policy version declaring a predicate this core build cannot evaluate is refused at registration,
+naming the predicate; the box keeps the last admitted version. Revision 1 said "no change may require
+two clocks", which is unachievable: splitting <i>declare</i> from <i>enforce</i> across repos is itself
+a two-clock generator.</span>
+</div>
+
+<h2>14 · Version skew — the minimum policy</h2>
+
+<table>
+<thead><tr><th style="width:22%">Copied from</th><th style="width:34%">Rule</th><th>Why this one</th></tr></thead>
+<tbody>
+<tr><td><b>Kubernetes</b></td><td>core is never older than anything; runner may lag core by up to 3 minors; policy within ±1. Core <b>refuses a registration outside the window</b> rather than serving it degraded.</td><td>published windows are what make an N×M×K matrix a testable surface instead of an unbounded one</td></tr>
+<tr><td><b>Terraform providers</b></td><td>a declared <code>protocol_version</code> exchanged at handshake; a mismatch <b>fails at spawn, before any RPC</b></td><td>the failure lands before work starts, not halfway through it</td></tr>
+<tr><td><b>Protobuf</b></td><td>fact-type tags never reused, retired ones reserved, unknown fields preserved on round-trip, enums open</td><td>core must read facts written under three policy versions without carrying every historical interpreter forever</td></tr>
+<tr><td><b>Kubernetes deprecation</b></td><td>a publish-time gate (policy admission) strictly ahead of the runtime gate</td><td>refusing at registration is cheap; refusing mid-run is an intervention</td></tr>
+</tbody>
+</table>
+
+<div class="price" style="border-left:3px solid var(--bad);padding-left:15px;margin:18px 0">
+<b>And one migration rule falls out of it.</b>
+A migration backing a fact type referenced by any <i>admitted</i> policy version is <b>forward-only</b>.
+Roll it back and you destroy the only interpreter for facts that in-flight sessions are still writing
+under their pinned version. Which means the capability manifest above is not optional — it is what
+tells you which migrations are pinned by live policy.
+</div>
+
+<h2>15 · Two rules that close the remaining holes</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 220" role="img" aria-label="The sole-witness rule and the assignment token">
+<rect x="20" y="24" width="470" height="180" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="42" y="50" font-size="13" font-weight="700" fill="var(--acc)">No fact may have the box as its sole witness</text>
+<text x="42" y="76" font-size="11.5" fill="var(--mut)">git push returns 200 · the core write dies · the box is wiped</text>
+<text x="42" y="96" font-size="11.5" fill="var(--bad)">→ GitHub says merged, core says in flight, and the witness id</text>
+<text x="58" y="114" font-size="11.5" fill="var(--bad)">lived only on the dead machine</text>
+<text x="42" y="142" font-size="11.5" fill="var(--fg)">Every box-observed fact carries an externally re-queryable</text>
+<text x="42" y="160" font-size="11.5" fill="var(--fg)">witness id — commit SHA, PR number, deployment id.</text>
+<text x="42" y="186" font-size="11" fill="var(--mut)">Write-before-return becomes an optimisation, not the guarantee.</text>
+
+<rect x="510" y="24" width="470" height="180" rx="10" fill="var(--card)" stroke="var(--warn)" stroke-width="1.7"/>
+<text x="532" y="50" font-size="13" font-weight="700" fill="var(--warn)">The assignment is a core-issued token</text>
+<text x="532" y="76" font-size="11.5" fill="var(--mut)">§9 claimed the weak master→subagent edge is compensated</text>
+<text x="532" y="96" font-size="11.5" fill="var(--mut)">because claims go straight to core. True for CLAIMS.</text>
+<text x="532" y="122" font-size="11.5" fill="var(--bad)">False for the ASSIGNMENT: a drifting master hands the wrong</text>
+<text x="532" y="140" font-size="11.5" fill="var(--bad)">issue, branch or premise, and core sees a well-formed fact</text>
+<text x="532" y="158" font-size="11.5" fill="var(--bad)">about the wrong work.</text>
+<text x="532" y="186" font-size="11.5" fill="var(--fg)">Core issues it, core verifies it. Not an in-process call.</text>
+</svg>
+</div>
+
+<h2>16 · Adapter — decided</h2>
+
+<div class="rule" style="background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:8px;padding:17px 21px;margin:18px 0;font-size:16px">
+<b>A′ — keep the adapter compiled in. Vendor #2 arrives as an ACP client inside the same binary.</b><br>
+<span style="font-size:13.5px;color:var(--mut)">Forge consumes ACP; it never publishes a protocol.</span>
+</div>
+
+<table>
+<thead><tr><th style="width:30%">Why B loses</th><th>Measured</th></tr></thead>
+<tbody>
+<tr><td>nothing to extract</td><td><code>dyn Runner</code> appears <b>0</b> times; 7 call sites hold the concrete type and reach for <code>send_resident</code>, <code>checkpoint_and_close</code>, <code>note_head</code> — methods the trait does not have</td></tr>
+<tr><td>the wire schema churns</td><td><code>runner/mod.rs</code> changed <b>24 times in 113 days</b>, one breaking. No third party versions a contract that moves every 4.7 days. rustc carried its plugin API as perma-unstable for 8 years and then deleted it</td></tr>
+<tr><td>it removes zero clocks</td><td><code>runnerTypes</code> is a Postgres enum feeding <code>RUNNER_CAPABILITIES</code> — a new vendor costs a migration + core deploy under <b>both</b> options, and B adds a fourth artifact</td></tr>
+<tr><td>ACP is real but not a drop-in</td><td>registry since Jan 2026, native in Zed/JetBrains, carries turn boundaries and resident sessions — but <b>no subagent primitive, no failure taxonomy, no rate-limit signal</b>. Claude Code is not native ACP; routing it through a third-party bridge would delete the usage-limit classification</td></tr>
+<tr><td>the box ceiling breaks</td><td><code>session_sem</code> lives inside the adapter; two vendor plugin processes would each admit <code>session_cap</code> with neither able to see the other</td></tr>
+</tbody>
+</table>
+
+<p class="cap">Only ~300 of <code>claude_code.rs</code>'s 1,358 impl lines are vendor parsing. The other
+~78% — permits, residency, checkpoint, ledger, terminate — is box policy that stays host-side either way.</p>
+
+<div class="inv" style="border-left:3px solid var(--acc);padding-left:15px;margin:16px 0">
+<b>The prerequisite, and it doubles as the measurement</b>
+Make the trait load-bearing <i>before</i> vendor #2, not during it: push the three missing methods onto
+<code>Runner</code>, lift <code>session_sem</code> into the daemon, get one <code>dyn Runner</code> into
+the daemon. <b>If that refactor is hard, that is the proof B was never affordable.</b>
+</div>
+
+<h3>Where a normalised adapter will lie, and how it must refuse</h3>
+<table>
+<thead><tr><th style="width:18%">Leak</th><th style="width:40%">Today</th><th>Refuse by name</th></tr></thead>
+<tbody>
+<tr><td><b>Usage limit</b></td><td>string match on <code>"out of extra usage"</code>; Gemini signals via <b>exit code 53</b>; Codex/Cursor/Amp unconfirmed</td><td>a vendor with no classifier emits <code>Permanent</code> + <code>[NO_USAGE_LIMIT_CLASSIFIER &lt;vendor&gt;]</code>, never <code>Transient</code> — misclassification retries into a wall</td></tr>
+<tr><td><b>Subagents</b></td><td><code>parent_tool_use_id</code>; Codex <code>exec --json</code> has no sub-thread item type at all</td><td><code>RunnerKind</code> declares <code>supports_subagents</code>; core refuses to dispatch a fan-out step to a runner answering false</td></tr>
+<tr><td><b>Permission mode</b></td><td>a Claude string passed through; Codex needs two independent axes</td><td>typed enum; a mode the vendor cannot express fails the spawn naming the mode — never falls back to the vendor default (Cursor's <code>-p</code> defaults to full write)</td></tr>
+<tr><td><b>Required MCP down</b></td><td>matches <code>"forge("</code> in Claude's init payload; Aider has no MCP at all</td><td>a vendor that cannot report MCP state is rejected at registration, not run blind</td></tr>
+<tr><td><b>Resume</b></td><td>one flag; ACP splits replay from no-replay; Amp's threads are server-side</td><td><code>ResumeFailed</code> must distinguish "resumed without history" from "resumed" — presenting the first as the second breaks <code>state-never-lies</code> at the seam</td></tr>
+</tbody>
+</table>
+
+<p class="cap">Open question the owner must answer: <b>is vendor #2 actually coming, and which one?</b> If
+the answer is "none within two quarters", A′ needs no work at all beyond deleting the
+<code>// Codex,</code> comments.</p>
+
+</main>

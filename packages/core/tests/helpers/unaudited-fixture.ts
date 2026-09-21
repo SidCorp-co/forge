@@ -43,7 +43,10 @@ export interface UnauditedFixture {
     status?: string,
     opts?: { runId?: string | null; issueId?: string | null; payload?: unknown; type?: string },
   ): Promise<string>;
-  insertSession(status?: string, opts?: { runId?: string; metadata?: unknown }): Promise<string>;
+  insertSession(
+    status?: string,
+    opts?: { runId?: string; kind?: string; metadata?: unknown },
+  ): Promise<string>;
   insertIssuelessRun(): Promise<string>;
   detected(): Promise<Detected[]>;
 }
@@ -93,7 +96,6 @@ export async function createUnauditedFixture(): Promise<UnauditedFixture> {
       `);
     },
 
-    // cm:guard `jobs_active_unique` is on (issue_id, type) for ACTIVE rows, so two fixture jobs on one issue must differ in `type` or one insert fails on a constraint that has nothing to do with what the test is asserting.
     async insertJob(status = 'queued', opts = {}) {
       const id = randomUUID();
       const run = opts.runId === undefined ? ids.runId : opts.runId;
@@ -107,12 +109,13 @@ export async function createUnauditedFixture(): Promise<UnauditedFixture> {
       return id;
     },
 
-    // cm:guard `agent_sessions.pipeline_run_id` is NOT NULL, so a session cannot be created without a run — which is why the `metadata.issueId` resolution path is reached through `insertIssuelessRun`, never through a null run.
     async insertSession(status = 'idle', opts = {}) {
       const id = randomUUID();
       await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, status, metadata)
-        VALUES (${id}, ${ids.projectId}, ${ids.ownerId}, ${opts.runId ?? ids.runId}, ${status},
+        INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status,
+                                    metadata)
+        VALUES (${id}, ${ids.projectId}, ${ids.ownerId}, ${opts.runId ?? ids.runId},
+                ${opts.kind ?? 'pipeline'}, ${status},
                 ${JSON.stringify(opts.metadata ?? {})}::jsonb)
       `);
       return id;

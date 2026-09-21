@@ -48,7 +48,6 @@ describe('awaiting input reaches only a caller with a role on the project (real 
     await harness.cleanup();
   });
 
-  // cm:guard the project is created by SOMEBODY ELSE and the caller is added to nothing. `createTestProject` seeds a fresh org with its creator as org `owner`, which derives project admin — so a fixture that creates the project as the caller has silently granted the very role these cases exist to withhold.
   beforeEach(async () => {
     await truncateAll(harness.db);
     seq = 0;
@@ -102,7 +101,6 @@ describe('awaiting input reaches only a caller with a role on the project (real 
       expect(await bucketFor(outsider)).toEqual([]);
     });
 
-    // cm:guard absent, never redacted. A masked or empty-fielded entry still discloses that the issue exists, which is the disclosure this bucket was leaking in the first place.
     it('receives the row as ABSENT and not as a masked entry', async () => {
       const hidden = await blockedIssue();
       await question(hidden, { claims: 3 });
@@ -121,7 +119,6 @@ describe('awaiting input reaches only a caller with a role on the project (real 
   });
 
   describe('a caller who does hold a role keeps every row they had', () => {
-    // cm:guard `viewer` is in this list deliberately: the predicate is "holds ANY role", not "may write". A read-only member is owed the questions addressed to them exactly as a member is.
     for (const role of ['viewer', 'member', 'admin'] as const) {
       it(`keeps the row for an explicit project ${role}`, async () => {
         await createTestProjectMember(harness.db, { projectId, userId: outsider, role });
@@ -131,7 +128,6 @@ describe('awaiting input reaches only a caller with a role on the project (real 
       });
     }
 
-    // cm:guard the org half is not an extra: `effectiveProjectRole` is max(explicit, org-derived), so a predicate reading `project_members` alone would lock out the org admins who reach the project on every other surface. These two cases are what make that half falsifiable.
     for (const role of ['owner', 'admin'] as const) {
       it(`keeps the row for an org ${role} with no project_members row`, async () => {
         await createTestOrgMember(harness.db, { orgId, userId: outsider, role });
@@ -162,7 +158,6 @@ describe('awaiting input reaches only a caller with a role on the project (real 
     });
   });
 
-  // cm:guard the row's cost and its `questionId` are read by correlated subqueries of their own, and the WHERE predicate above does not reach inside them. A crossed question row would otherwise hand this caller — who may see THIS project — a cost and an id belonging to a decision of another one (ISS-989).
   it('takes no cost and no question id from a question row naming another project', async () => {
     await createTestProjectMember(harness.db, { projectId, userId: outsider });
     const mine = await blockedIssue();
@@ -179,7 +174,6 @@ describe('awaiting input reaches only a caller with a role on the project (real 
     expect(row?.blockerKind).toBe('human');
   });
 
-  // cm:guard the predicate is a WHERE term and the cap is the database's, so a permitted caller gets a FULL page. Were it a filter over the returned rows, the invisible project's rows would consume slots inside the limit and this caller would be handed a short page instead of a fenced one.
   it('fills the cap from the rows the caller may see, never a page shortened by rows they may not', async () => {
     const { AWAITING_INPUT_CAP } = await import('../../src/me/attention-buckets.js');
     await createTestProjectMember(harness.db, { projectId, userId: outsider });
@@ -202,7 +196,6 @@ describe('awaiting input reaches only a caller with a role on the project (real 
     expect(rows.every((r) => visible.includes(r.id))).toBe(true);
   });
 
-  // cm:guard asserted for a caller who DOES hold the role, so what this pins is "the predicate landed on this query and not on the shared `issueFields` projection every bucket selects through". Asserting it for a caller with NO role would pin `needsReview`'s own missing predicate as expected behaviour — the same defect this issue fixed one function up — and turn fixing that bucket into a red test somebody has to argue with (ISS-989).
   it('leaves the needs-review bucket answering exactly as it did', async () => {
     const { selectNeedsReview } = await import('../../src/me/attention-buckets.js');
     await createTestProjectMember(harness.db, { projectId, userId: outsider });

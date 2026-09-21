@@ -1,11 +1,6 @@
 import type { NotificationType } from '../db/schema.js';
 import { createNotification } from './routes.js';
 
-// Contract default severity per notification type. Inlined here on purpose:
-// `@forge/contracts` is a TYPE-ONLY surface and is NOT present in core's
-// production runtime image, so core must never import a runtime VALUE from it
-// (doing so crashed boot with ERR_MODULE_NOT_FOUND — ISS-510). Keep in sync
-// with packages/contracts/src/notifications.ts → NOTIFICATION_CONTRACT.
 const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   issue_status_changed: 'info',
   mention: 'info',
@@ -24,26 +19,8 @@ function defaultSeverityForType(type: NotificationType): string {
   return DEFAULT_SEVERITY_BY_TYPE[type] ?? 'info';
 }
 
-/**
- * The single emission path for notifications (ISS-510).
- *
- * Every producer (`notify-transitions`, `notify-mentions`,
- * `forge-pm-write-decision`, …) routes through here instead of hand-building a
- * `notifications` row, so severity + channel semantics stay consistent with the
- * `@forge/contracts` notification contract. When the caller does not pass an
- * explicit `severity` (e.g. `issue_status_changed`, whose severity depends on
- * the target status) it defaults to the contract severity for the type.
- *
- * Thin wrapper over {@link createNotification}: the mention delivery-preference
- * gate, the row insert, and the `notificationCreated` hook all still live there.
- */
 export interface EmitNotificationInput {
-  /** One recipient. Prefer `recipients` where a condition is told to several people. */
   userId?: string;
-  /**
-   * ISS-1063 — everybody told about this ONE record. A condition told to six project
-   * admins is one row here and six deliveries, where it used to be six rows.
-   */
   recipients?: string[];
   projectId?: string | null;
   type: NotificationType;

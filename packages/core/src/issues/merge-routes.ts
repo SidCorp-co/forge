@@ -34,6 +34,10 @@ import {
   MergeInputError,
   mergeStoredPullRequest,
 } from '../integrations/github/merge.js';
+import {
+  describeEmptyProjection,
+  projectionPipeReport,
+} from '../integrations/github/projection-health.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
@@ -48,20 +52,17 @@ const notFound = (message: string) =>
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
-// cm:edge ordering -> packages/core/src/index.ts — this router carries `use('*', requireAuth(), ...)`, which covers EVERY /api/issues path once registered, so it must mount after issueAttachmentRoutes for the same reason issueExtrasRoutes does: registration order is what decides, not disjoint paths (ISS-719).
 issueMergeRoutes.use('*', requireAuth(), assertEmailVerified());
 
 const mergeMarkerBodySchema = z
   .object({
     target: z.string().trim().min(1).max(200).optional(),
     note: z.string().trim().min(1).max(2000).optional(),
-    // cm:edge contract -> packages/core/src/mcp/tools/forge-issues.ts — the same field on the MCP door, sharing this schema so one surface cannot accept a sha shape the other refuses
     commit: mergedCommitShaSchema.optional(),
     mergedAt: z.iso.datetime().optional(),
   })
   .strict();
 
-// cm:guard `merged_at` is the feature-branch barrier's release signal (jobs/queued-gates.ts reads it to unblock every `blocks` dependent), so these two are a shipped-work CLAIM, not a field edit — which is why they route through `applyMergeMarker` rather than patching the column, and why `member` is the floor. They exist so the CLI can make that claim over REST without `forge_issues.mark_merged`; a hand-rolled second implementation here would be the copy that forgets the evidence gate.
 async function runMergeMarker(
   c: Context<{ Variables: AuthVars }>,
   op: 'mark' | 'unmark',
@@ -135,12 +136,30 @@ const kernelMergeBodySchema = z
   })
   .strict();
 
+/**
+ * The refusal for an issue with no row, with the two states told apart.
+ *
+ * ISS-1123: `NO_PULL_REQUEST` reads as "you named the wrong number", and for the first year of this
+ * route's life it was never once true — the projection had a single writer nothing reached, so
+ * EVERY pull request on EVERY project answered that sentence. A projection holding nothing at all
+ * is reported as what it is, under its own code, before the number is blamed.
+ */
+async function noRowRefusal(
+  projectId: string,
+  about: string,
+): Promise<{ refusal: string; code: 'NO_PULL_REQUEST' | 'PROJECTION_EMPTY' }> {
+  const empty = describeEmptyProjection(await projectionPipeReport(projectId));
+  return empty
+    ? { refusal: empty, code: 'PROJECTION_EMPTY' }
+    : { refusal: about, code: 'NO_PULL_REQUEST' };
+}
+
 /** The stored pull request this call is about, or the sentence saying why there is none. */
-// cm:guard an issue with SEVERAL open pull requests is refused rather than merged into the oldest. That is the shape that made a master misread ISS-1027 on 2026-09-17 — a landing PR and a follow-up on one issue — and picking for the caller here would merge whichever the ordering happened to put first.
 async function resolveStoredPullRequest(
+  projectId: string,
   issueId: string,
   number: number | undefined,
-): Promise<{ id: string } | { refusal: string }> {
+): Promise<{ id: string } | { refusal: string; code: string }> {
   if (number !== undefined) {
     const [row] = await db
       .select({ id: repoPullRequests.id })
@@ -149,27 +168,27 @@ async function resolveStoredPullRequest(
       .limit(1);
     return row
       ? { id: row.id }
-      : {
-          refusal: `this issue has no pull request #${number} on Forge's projection of the repository`,
-        };
+      : noRowRefusal(
+          projectId,
+          `this issue has no pull request #${number} on Forge's projection of the repository`,
+        );
   }
   const open = await openPullRequestsForIssue(issueId);
   if (open.length === 0) {
-    return {
-      refusal:
-        "this issue has no open pull request on Forge's projection of the repository — name one with `pullRequest`, or check that the branch names this issue",
-    };
+    return noRowRefusal(
+      projectId,
+      "this issue has no open pull request on Forge's projection of the repository — name one with `pullRequest`, or check that the branch names this issue",
+    );
   }
   if (open.length > 1) {
     return {
       refusal: `this issue has ${open.length} open pull requests and Forge will not choose between them — name the one to merge with \`pullRequest\``,
+      code: 'NO_PULL_REQUEST',
     };
   }
   return { id: open[0] as string };
 }
 
-// cm:guard `member`, the same floor as the mark beside it, and the reason is which of the two is actually the dangerous one INSIDE Forge: a mark releases every `blocks` dependent as if the work had shipped, on nobody's evidence, and it has stood at `member` since ISS-786. This one cannot release anything that did not land — GitHub decides whether the merge happens, and the base branch's own protection is not bypassed here — so raising the floor above the claim's would refuse the safer of the two operations to the people trusted with the other.
-// cm:guard the caller is the AUTHENTICATED principal and is never read off the body. A `requestedBy` a caller could name would make the attribution this route exists to record into another field the caller fills in, which is the testimony ISS-1073 replaced.
 issueMergeRoutes.post(
   '/:id/merge-pull-request',
   zValidator('param', idParamSchema, (r) => {
@@ -193,11 +212,11 @@ issueMergeRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'member');
 
-    const stored = await resolveStoredPullRequest(issueId, body.pullRequest);
+    const stored = await resolveStoredPullRequest(issue.projectId, issueId, body.pullRequest);
     if ('refusal' in stored) {
       throw new HTTPException(422, {
         message: stored.refusal,
-        cause: { code: 'NO_PULL_REQUEST' },
+        cause: { code: stored.code },
       });
     }
 
@@ -211,7 +230,6 @@ issueMergeRoutes.post(
         ...(body.method ? { method: body.method } : {}),
       });
       if (!outcome) throw notFound('pull request not found');
-      // cm:guard a refusal is a 422 with the sentence GitHub's own state earned, never a 200 with a `refused` field. A caller that asked for a merge and did not get one has to be able to tell that from a 2xx without reading the body, because the thing it does next — dispatch the dependents — turns on it.
       if (outcome.kind === 'refused') {
         throw new HTTPException(422, {
           message: outcome.detail,

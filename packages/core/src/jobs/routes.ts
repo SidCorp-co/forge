@@ -48,7 +48,6 @@ const jobCreateSchema = z
   })
   .strict();
 
-// cm:guard PATCH never carries a status — every status change goes through the enqueue and lifecycle endpoints, which is what keeps this route out of the kernel-marker obligation (`db/kernel-marker-guard.test.ts`).
 const jobPatchSchema = z
   .object({
     payload: z.record(z.string(), z.unknown()).optional(),
@@ -86,13 +85,6 @@ async function loadJob(jobId: string) {
 // `usage_records.session_id::uuid = jobs.id` — usage rows are tagged with the
 // job id, not the observability agent_sessions row id. Returns null when no
 // rows match.
-/**
- * ISS-1015 — keyed on the AGENT SESSION and not the job. `usage_records.session_id`
- * holds an `agent_sessions.id`; this read used to pass `job.id`, which matched
- * nothing on beta (0 of 24,085 rows) and reported every job's actual usage as
- * null. `null` still means no session or no rows, which is what the caller shows
- * as "no actual usage yet".
- */
 async function loadActualUsage(agentSessionId: string): Promise<ActualUsage | null> {
   const [row] = await db
     .select({
@@ -273,7 +265,6 @@ jobRoutes.patch(
       throw conflict('jobs can only be patched while queued', 'JOB_NOT_QUEUED');
     }
 
-    // cm:why a literal SET list rather than a built object, for the reason `jobs/session-transcript.ts` states: `kernel-marker-guard.test.ts` can prove a literal carries no `status` and cannot prove it of a variable, so the shape is what saves this route a marker it does not need.
     const [updated] = await db
       .update(jobs)
       .set({

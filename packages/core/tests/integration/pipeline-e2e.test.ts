@@ -11,8 +11,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard the src imports MUST stay dynamic and inside `beforeAll`: `process.env.DATABASE_URL` has to be set to the harness URL before any src module loads `config/env.ts`, which binds `db/client.ts` once. Hoist one of them to a top-level import and the subscribers write to whatever database that binding found first — a different schema, silently, with every assertion here still passing.
-
 type PipelineMods = {
   HooksBus: typeof import('../../src/pipeline/hooks.js').HooksBus;
   // biome-ignore format: esbuild's TS transform cannot parse a line break inside import(); keep on one line
@@ -31,7 +29,6 @@ describe('F6 pipeline E2E', () => {
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
-    // cm:guard ORDERING — DATABASE_URL carries the harness's search_path pin and must be set BEFORE any `src` import loads env.ts, which reads it once at module scope: bind late and the app's db client points at the base URL, so every write in this suite lands in the wrong schema and the assertions read an empty one.
     process.env.DATABASE_URL = harness.url;
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
@@ -181,7 +178,6 @@ describe('F6 pipeline E2E', () => {
       const bus = new mods.HooksBus();
       mods.registerActivitySubscribers(bus);
 
-      // cm:guard the LIVE chain, not the staged ladder: this read `open→confirmed→clarified→approved` until 2026-09-10, and a fixture that walks retired rungs keeps them looking legal to whoever reads this suite for the shape of a transition.
       type S = Parameters<typeof mods.canTransition>[0];
       const chain = ['open', 'in_progress', 'developed', 'testing', 'awaiting_release'] as S[];
       for (let i = 1; i < chain.length; i += 1) {
@@ -278,7 +274,6 @@ describe('F6 pipeline E2E', () => {
       await insertIssue(project.id, user.id, { title: '100% done', description: null });
       await insertIssue(project.id, user.id, { title: '50 percent', description: null });
 
-      // cm:why `%` is escaped because LIKE would otherwise read it as a wildcard and match both rows, which is the bug this case exists to catch.
       const res = await authedGet(
         `/api/projects/${project.id}/issues/search?q=${encodeURIComponent('100%')}`,
         user.id,

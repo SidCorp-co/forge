@@ -1,17 +1,9 @@
 import type { AnswerStyle } from "@forge/contracts";
-// web-v2 feature module: settings (workspace-global, user-scoped). Shapes
-// verified against `packages/core/src/auth/me.ts`, `pat/routes.ts`,
-// `notifications/routes.ts`, and `auth/reauth.ts` for ISS-299.
 export type ThemePref = "system" | "light" | "dark";
 export type LanguagePref = "en" | "vi";
 
 export type { AnswerStyle, PreferenceChange } from "@forge/contracts";
 
-/**
- * How the assistant answers this person, on every surface (ISS-1034). Read and
- * written at `/api/auth/preferences`, a different route from `/me/preferences`.
- */
-// cm:edge contract -> packages/core/src/auth/preferences.ts — `readFull` is the GET body and the PATCH schema is what `updateAssistantPreferences` may send; `auth/me.ts` serves `/me/preferences` with a strict schema that refuses these two fields (codex F1).
 export interface AssistantPreferences {
   answerStyle: AnswerStyle;
   /** Standing instructions the assistant follows in every reply to this person; null when none. */
@@ -21,11 +13,7 @@ export interface AssistantPreferences {
 export interface Preferences {
   theme: ThemePref;
   language: LanguagePref;
-  /** Notification delivery preference: when false, in-app `mention`
-   *  notifications are suppressed server-side (gated in createNotification). */
   notifyOnMention: boolean;
-  /** Identity of the newest "What's New" entry the user has seen (changelog
-   *  version or `unreleased:<hash>`); null until they first open the feed. */
   lastSeenWhatsNew: string | null;
   /** The org the user is currently "working in" (ISS-469 global org switcher);
    *  null = no explicit choice (client resolves to the personal org). */
@@ -66,9 +54,6 @@ export interface CreatePatInput {
   boundProjectId?: string | null;
 }
 
-// ISS-1063 — `GET /api/notifications` returns one row per DELIVERY. `id` is the
-// delivery's id, `readAt` is when this person opened it, and `openMembers` counts
-// the records it carries that are still true.
 export interface NotificationRow {
   id: string;
   notificationId: string;

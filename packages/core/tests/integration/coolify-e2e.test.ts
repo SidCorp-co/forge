@@ -1,22 +1,3 @@
-/**
- * ISS-234 — Coolify deploy integration E2E, against real Postgres.
- *
- *   1. dispatchOutbound posts to Coolify (fetch mocked) and writes an
- *      `integration_deliveries` row carrying the deployment_uuid.
- *   2. ISS-922 — the deploy's CONFIRMATION HOLD lands on the run's metadata by
- *      a real `jsonb_set` on a real jsonb column, and is refused on a run that
- *      already went terminal. The gate that reads these holds is proved in
- *      `pipeline/deploy-confirmations.test.ts`; the inbound router no longer
- *      routes coolify at all.
- *   3. Repeated outbound failures inside the breaker window flip the owning
- *      `integration_connections.active=false`.
- *
- * The credential lives on `integration_connections` and the per-project+env
- * config on `integration_bindings` (ISS-410); the adapter pairs them through
- * `findBindingWithConnectionById` + `buildContextFromBinding`, and
- * breaker/health mutations target the connection.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,7 +11,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:why the adapter enqueues a confirmation poll per target and pg-boss is not part of what this suite proves, so the send is a spy.
 vi.mock('../../src/integrations/coolify/confirm.js', () => ({
   enqueueCoolifyConfirm: vi.fn(),
 }));
@@ -233,7 +213,6 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
       }
     }
 
-    // Breaker/active state lives on the CONNECTION (the credential), not the binding.
     const afterConnection = await mods.findConnectionById(seed.connectionId);
     expect(afterConnection?.active).toBe(false);
     expect(afterConnection?.breakerOpenedAt).not.toBeNull();
@@ -290,7 +269,6 @@ describe('ISS-922 — the deploy a run has to prove before it may close', () => 
     });
     expect(mods.resolveDeployGate(after).verdict).toBe('clear');
 
-    // cm:guard the deferral marker and the holds are siblings under ONE jsonb column, so a write to either that rebuilds the whole map erases the other — this assertion is the only thing that catches it.
     expect(await mods.isCloseDeferred(seed.runId)).toBe(true);
     expect(Object.values(after)).toHaveLength(1);
   });

@@ -44,7 +44,6 @@ export interface GoogleClientArgs {
   fetchImpl?: typeof fetch;
 }
 
-// cm:guard 401 and 403 are different verdicts and must never be collapsed — Google answers 401 for a token it will not accept and 403 for an account it accepts and refuses this spreadsheet, and the two name different operator actions: replace the credential, or share the sheet with the account. The same guard is on `coolify/adapter.ts` and `github/adapter.ts` (ISS-924).
 function describeSheetsFailure(
   status: number,
   route: string,
@@ -74,17 +73,6 @@ function describeSheetsFailure(
   return new GoogleApiError(status, route, `the Google Sheets API answered HTTP ${status}`);
 }
 
-/**
- * Mint for one operation, falling back once to the key the rotation window
- * retained.
- *
- * cm:guard the fallback belongs HERE and not only in the adapter's healthcheck.
- * With it in one place, an operator who rotates to a key Google has not
- * propagated yet sees a green card — the healthcheck recovers — while every
- * agent call fails `ACCOUNT_REJECTED`, which is a directory saying the opposite
- * of what the surface does. The two paths recover on the same terms or the
- * health verdict is a claim about a code path nobody uses (ISS-1036).
- */
 async function mintFor(args: GoogleClientArgs, access: SheetsAccess): Promise<string> {
   const scope = scopeFor(access);
   const fetchOpt = args.fetchImpl ? { fetchImpl: args.fetchImpl } : {};
@@ -174,7 +162,6 @@ export async function readValues(
   return { spreadsheetId, range: body.range ?? range, values: body.values ?? [] };
 }
 
-// cm:why USER_ENTERED, not RAW — an operator maintaining a roster by hand expects `2026-09-16` to land as a date and `=SUM(...)` as a formula, which is what the same value typed into the cell would do. RAW would store both as text and the sheet would silently stop computing.
 const VALUE_INPUT_OPTION = 'USER_ENTERED';
 
 export async function updateValues(

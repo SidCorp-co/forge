@@ -19,9 +19,6 @@ describe('declaresRepository', () => {
     expect(declaresRepository(NOTHING)).toBe(false);
   });
 
-  // cm:guard whitespace is the settings form's empty. Reading it as a declared repository owes the
-  // project build and test commands for a checkout that does not exist, and the gap it then reports
-  // is one nobody can close.
   it('counts a whitespace-only column as no repository', () => {
     expect(declaresRepository({ ...NOTHING, repoPath: '   ' })).toBe(false);
     expect(declaresRepository({ ...NOTHING, repoUrl: '\n\t' })).toBe(false);
@@ -57,8 +54,6 @@ describe('requiredProjectKnowledge', () => {
     expect(owed[2]?.because).toContain('promote');
   });
 
-  // cm:guard a slug the reserved set already resolves is unwritable: `{{project:<key>}}` answers it
-  // from a project column, so the obligation would demand an entry the author has no way to create.
   it('owes no slug that the reserved project keys already resolve', () => {
     const reserved = new Set<string>(RESERVED_PROJECT_FACT_KEYS);
     const everyOwed = requiredProjectKnowledge({ ...REPO, releaseModel: 'promote' });
@@ -82,9 +77,6 @@ describe('missingProjectKnowledge', () => {
     ).toEqual([]);
   });
 
-  // cm:guard the contract is about the text existing, not about how it is delivered. An entry set to
-  // `on_demand` or `none` still answers it; treating only always-injected entries as present would
-  // report a gap on a project that has written exactly what was asked for.
   it('accepts an owed slug whatever its injection setting, because presence is the question', () => {
     expect(missingProjectKnowledge(REPO, new Set(['build-commands', 'test-commands']))).toEqual([]);
   });

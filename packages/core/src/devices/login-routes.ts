@@ -229,7 +229,6 @@ deviceLoginRoutes.post(
  * at approval time: only an org admin of the agent's own org may hand a
  * machine that agent's identity.
  */
-// cm:guard org `admin` on the AGENT's org, and NOT "the approver can see this agent". Pairing a box as an agent hands that machine every project the agent is a member of, for as long as the box holds the token — the same authority `POST /api/orgs/:orgId/agents` needs to create one, checked again here because this is a second route that dispenses it.
 async function resolveApprovableAgent(raw: unknown, approverId: string): Promise<string | null> {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== 'string' || !UUID_PATTERN.test(raw)) {
@@ -373,7 +372,6 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       });
     }
 
-    // cm:guard the box's principal is `holderId`, which is the chosen AGENT when the approval named one, and `devices.ownerId` follows it. That is the whole point of ISS-932: a master session on this box now has a real principal to write as, instead of core inventing `device.ownerId` because no `user_id` existed. Pointing the row at the approver while the token belongs to the agent would put the two back out of step.
     const holderId = row.agentUserId ?? user.id;
     const device = await registerDevice({
       ownerId: holderId,
@@ -381,11 +379,6 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       platform: row.devicePlatform as LoginPlatform,
       machineId: row.machineId,
     });
-    // cm:guard the agent flag is `row.agentUserId != null` — the approval's own record of what
-    // was chosen — and never a re-read of `users.kind` here. The approve step already proved the
-    // id is an agent of an org the approver administers (`resolveApprovableAgent`); asking again
-    // at poll time is a second authorization decision in a handler that has no approver to check
-    // it against, and the two could answer differently for a row written minutes earlier.
     const plaintext = await issueDeviceCredential({
       deviceId: device.id,
       holderUserId: holderId,

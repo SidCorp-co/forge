@@ -99,7 +99,6 @@ describe('the rollup reads the current head, grouped by app and name', () => {
     expect(rollupOf(checks, HEAD)).toEqual({ total: 1, success: 1, failure: 0, pending: 0 });
   });
 
-  // cm:guard the id is compared WHOLE. The first shape of this was `t * 1e6 + id % 1e6`: epoch milliseconds times 1e6 is past `Number.MAX_SAFE_INTEGER`, and the modulo put 2000000 below 1999999 — so the answer was arrival order again, silently, exactly where this function claims to refuse it.
   it('takes the higher id across a million boundary, where a packed key inverted it', () => {
     const at = '2026-09-17T01:00:00Z';
     const lower = run({ id: '1999999', conclusion: 'failure', startedAt: at });

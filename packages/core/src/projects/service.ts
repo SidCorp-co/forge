@@ -94,9 +94,6 @@ export function generateApiKey(): string {
   return `fk_${randomBytes(24).toString('hex')}`;
 }
 
-// cm:guard the project row and the creator's `admin` membership land in ONE transaction. A project whose creator is not a member is invisible to its own owner — `loadVisibleProjectIds` reads membership — so a failure between the two would strand a slug nobody can reach or reclaim.
-// cm:guard ISS-274 — `baseBranch` defaults to 'main' HERE, at create. `resolveIssueBranches` deliberately has no 'main' fallback (branches/resolve.ts), so a null column does not surface until pipeline time, on an issue, as a failure nobody connects to project creation.
-// cm:guard `liveBranch` does NOT get that default, and the asymmetry is the point (ISS-1046). `baseBranch` has a second job outside release — it is the ref every ISS-* branch is cut from, so every project needs one. `liveBranch` is read only under `releaseModel: 'promote'`, and a new project declares `none`: defaulting it to 'main' is how 25 fleet projects came to carry a production branch they never promote to, including projects with no repository at all.
 export async function createProject(input: NewProject) {
   try {
     return await db.transaction(async (tx) => {
@@ -137,7 +134,6 @@ export async function createProject(input: NewProject) {
       return project;
     });
   } catch (err) {
-    // cm:guard disambiguate by CONSTRAINT NAME, never by "it was a 23505". Three unique indexes can raise here — the slug, the api key, and any future one on `projects` — and reporting an apiKey collision as SLUG_TAKEN sends the caller to rename a slug that was never the problem. The REST path did exactly that until both transports came through here.
     if (isUniqueViolation(err) && uniqueViolationConstraint(err) === 'projects_slug_unique') {
       throw new ProjectSlugTakenError();
     }
@@ -168,17 +164,6 @@ export type VisibleProjectWithRole = {
   orgRole: OrgMemberRole | null;
 };
 
-/**
- * Every project the user can see, with the raw role columns beside it — the
- * ONE query behind `forge_projects.list` (ISS-1025). The visibility predicate
- * is `lib/authz.ts`'s own `visibleProjectsWhere()`, and the caller derives the
- * effective role through that module's `maxProjectRole` /
- * `orgDerivedProjectRole`, so this widens the projection without restating the
- * rule. The list tool used to run this join for the ids, a second query for
- * the columns, and then `effectiveProjectRole` once per row — a third visit to
- * these same two tables per project, serialised.
- */
-// cm:why no DISTINCT: `project_members` is PRIMARY KEY (user_id, project_id) and `organization_members` is PRIMARY KEY (org_id, user_id), so each left join matches at most one row and the wider projection is already one row per project. `loadVisibleProjectIds` keeps its `selectDistinct` because narrowing to `projects.id` alone is where duplicates would be visible if either key ever widened.
 export async function listVisibleProjectsWithRole(
   userId: string | null | undefined,
 ): Promise<VisibleProjectWithRole[]> {
@@ -299,8 +284,6 @@ export async function readProjectWithConfig(projectId: string) {
 }
 
 /** The two jsonb fields a per-issue branch override can live on, scoped to a project so an id from elsewhere reads as absent. */
-// cm:guard both jsonb fields are selected because `extractIssueBranchOverride` reads `metadata.branchConfig` FIRST and only falls back to `sessionContext` — omit `metadata` and the caller silently resolves the project default for an issue that carries an override (ISS-936, found with the column already shipped and this select still on `sessionContext` alone).
-// cm:edge contract -> packages/core/src/branches/resolve.ts — this row IS `extractIssueBranchOverride`'s argument shape; a field added to that precedence has to be selected here
 export async function readIssueBranchInputs(issueId: string, projectId: string) {
   const [row] = await db
     .select({ id: issues.id, metadata: issues.metadata, sessionContext: issues.sessionContext })

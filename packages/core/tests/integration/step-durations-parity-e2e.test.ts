@@ -76,8 +76,9 @@ describe('step-duration view parity E2E', () => {
 
     if (sessionId) {
       await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
-        VALUES (${sessionId}, ${projectId}, ${runId}, 'completed',
+        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, started_at,
+                                    metadata)
+        VALUES (${sessionId}, ${projectId}, ${runId}, 'pipeline', 'completed',
                 now() - make_interval(mins => ${startMinutesAgo}), '{}'::jsonb)
       `);
     }
@@ -120,7 +121,6 @@ describe('step-duration view parity E2E', () => {
     expect(await difference('phase_step_durations', 'pipeline_run_step_durations')).toEqual([]);
   });
 
-  // cm:guard the inverted span is the case 0128 was written for: a reaped job whose finished_at predates its start must yield NULL duration in BOTH views — clamping to 0 in either one drags every p50 down and the EXCEPT above would not catch it if only one view were tested
   it('agrees that an inverted span has no duration rather than a zero one', async () => {
     await insertStep('code', 'done', 10, 30);
 
@@ -144,7 +144,6 @@ describe('step-duration view parity E2E', () => {
     expect(rows[0]).toMatchObject({ duration_seconds: null, cost_usd: 3.5 });
   });
 
-  // cm:guard the ONLY thing separating the two phase-name eras (ISS-921). A date cannot do it — the fix was a seed, not a gate, so an ordinal written next week must still read as unnamed. Both halves are asserted here or a regex that matches everything, or nothing, passes silently.
   it('marks an ordinal phase name unnamed and a descriptive one named', async () => {
     const declare = async (phase: string) =>
       harness.db.execute(sql`

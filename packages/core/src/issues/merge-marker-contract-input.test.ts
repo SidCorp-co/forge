@@ -23,7 +23,6 @@ const updateWhere = vi.fn(() => ({
   then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r),
 }));
 const update = vi.fn(() => ({ set: () => ({ where: updateWhere }) }));
-// cm:guard the read chain offers BOTH `.limit()` and `.orderBy().limit()` — `merge-record.ts` reads the row back through the first and looks for an observed merge on the projection through the second, so a mock short of either throws for a caller that never staged a value
 const select = vi.fn(() => ({
   from: () => ({
     where: () => ({ limit: async () => [], orderBy: () => ({ limit: async () => [] }) }),
@@ -85,7 +84,6 @@ describe('a merged mark announces its own contract input', () => {
     ]);
   });
 
-  // cm:guard the CLEAR announces too, and it is the direction that matters most: a check left saying `success` because of a mark that has since been retracted is a green that is now a claim about nothing.
   it('announces an unmark in its own words, never the mark`s', async () => {
     await applyMergeMarker({
       issue: { ...issue, mergedAt: new Date() },

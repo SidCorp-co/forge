@@ -1,9 +1,3 @@
-// The session tape — one tick per transcript event, in order. Reading it is
-// the fastest way to see the SHAPE of a run: where the errors cluster, whether
-// the agent read for two minutes before writing anything.
-//
-// Ticks share the column height (`flex-1`) rather than carrying a fixed one, so
-// a 40-call run and a 1,000-call run both fit the card they sit beside.
 
 import type { TapeTick } from "../../run-report";
 
@@ -35,7 +29,7 @@ export function Tape({ ticks }: { ticks: TapeTick[] }) {
         <i
           // biome-ignore lint/suspicious/noArrayIndexKey: the tape IS the event order; there is no other identity
           key={i}
-          className="block min-h-px flex-1 rounded-[1px]"
+          className="block min-h-px flex-1 rounded-1"
           style={{ background: TICK_COLOR[tick] }}
           title={TICK_LABEL[tick]}
         />

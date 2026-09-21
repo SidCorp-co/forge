@@ -11,7 +11,7 @@ export function HealthDot({ health, withLabel = true }: HealthDotProps) {
     <span
       className="inline-flex items-center gap-1.5 rounded-pill font-semibold"
       style={{
-        fontSize: 12,
+        fontSize: "var(--text-12)",
         color: m.fg,
         padding: withLabel ? "3px 9px" : 0,
         background: withLabel ? m.bg : "transparent",

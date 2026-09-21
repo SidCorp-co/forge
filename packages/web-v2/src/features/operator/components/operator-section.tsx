@@ -1,7 +1,6 @@
 import { EmptyState } from "@/design";
 import type { OperatorSectionKey } from "../types";
 
-// cm:guard a section stays in this map only until its own screen lands, and leaves it in the same change — `overview` left in ISS-653, because a placeholder shipping beside the thing it stood in for is a second live path no reader can tell apart
 type PlaceholderSection = Exclude<OperatorSectionKey, "overview">;
 
 const SECTION_COPY: Record<PlaceholderSection, { title: string; message: string }> = {

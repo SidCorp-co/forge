@@ -1,16 +1,3 @@
-// What a conversation is about: the projects its handles were added FOR.
-//
-// A room has no project of its own; it has the set its live handles carry. Each
-// handle records that project at the door, because the door already resolved it
-// to check the caller's role — so the room's scope is read back rather than
-// recomputed from a table that answers a different question.
-//
-// It WAS recomputed, from `project_members`, which is the row revoking an agent
-// deletes. A revoke therefore emptied the scope of every room where that agent
-// was the only handle, and two correct rules closed on each other: an empty
-// scope is refused to every reader, and a room's last handle may not be
-// removed. No supported call reopened it (ISS-1003).
-
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
@@ -26,8 +13,6 @@ const forbidden = (message: string, code: string) =>
  * The project ids this conversation is about, sorted so two reads of one
  * unchanged room compare equal.
  */
-// cm:guard read the PARTICIPANT's project and never join `project_members` again. ISS-1001's guard here refused a cached scope on the grounds that it would be a second copy of a membership a revocation does not reach, and it was right about a cache — but the column this reads is not one: `project_members` answers what the agent may DO and `conversation_participants.project_id` answers what the ROOM is about, and it was folding those two questions into one row that let a revoke empty a room (ISS-1003). Authority is still read live, below, through `effectiveProjectRole` on every project in the set — which is the half that must never be cached.
-// cm:guard a REMOVED handle is excluded and a room with no live handle still derives the empty set that `assertConversationRole` refuses. That refusal is not the defect this replaced: a room really about nothing is readable by nobody, and `participants.ts:removeParticipant` is what stops a caller creating one.
 export async function derivedScope(
   conversationId: string,
   tx: Executor = defaultDb,
@@ -50,7 +35,6 @@ export async function derivedScope(
  * The caller may read this conversation, or a refusal naming what is missing.
  * Returns the scope it checked, so a caller that needs it does not read twice.
  */
-// cm:guard an EMPTY scope is refused, never granted: the check is "a role on every project in the set", and an `every` over nothing is true — so a room whose last handle went would become readable by anyone rather than by nobody. `participants.ts` refuses the removal that would create one, and this is the second half of that pair (ISS-1001 criteria 11, 42).
 export async function assertConversationReadable(
   conversationId: string,
   userId: string | null | undefined,
@@ -62,7 +46,6 @@ export async function assertConversationReadable(
 /**
  * The caller may CHANGE this conversation — rename it, delete it — or a refusal.
  */
-// cm:guard writing takes `member` on every project in the room, and reading takes `viewer`: a viewer is somebody who may look at a project, and renaming or deleting a shared room is not looking. Opening one already takes `member`, so a read-level write check would make the rules disagree with each other — the cheaper one winning (ISS-1001).
 export async function assertConversationWritable(
   conversationId: string,
   userId: string | null | undefined,
@@ -71,14 +54,12 @@ export async function assertConversationWritable(
   return assertConversationRole(conversationId, userId, 'member', tx);
 }
 
-// cm:guard the scope is read on the CALLER's executor where one is given, so a caller holding the conversation row's lock reads the scope its own write is about to change rather than one another transaction is mid-way through moving. The authority below is deliberately NOT on that executor: `effectiveProjectRole` answers what a role IS right now, and reading it inside somebody's snapshot is how a revoked role keeps working for the length of a transaction (ISS-1011, review F5).
 async function assertConversationRole(
   conversationId: string,
   userId: string | null | undefined,
   min: ProjectMemberRole,
   tx: Executor = defaultDb,
 ): Promise<string[]> {
-  // cm:guard a caller naming NO user forgot to, and is refused as that rather than as "you hold no role": reading null as an anonymous reader made one missing argument silence every room
   if (!userId) {
     throw forbidden(
       `conversation ${conversationId} was reached with no authority named; a turn or a read names the user it runs as, and nothing here is anonymous`,

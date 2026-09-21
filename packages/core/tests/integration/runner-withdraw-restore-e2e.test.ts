@@ -100,7 +100,6 @@ describe('a withdrawn runner and the way back', () => {
       expect(await statusOf(s.runnerId)).toBe('online');
     });
 
-    // cm:guard this is the assertion the `online` decision rests on — a restore writing `offline` leaves a box whose device is heartbeating admitted by the pool and still invisible to the picker, so the operator sees the toggle go on and no work arrive (ISS-990).
     it('is not restored by `offline`, which the picker rejects on a live box', async () => {
       const s = await seed();
       await mods.setRunnerStatus(s.runnerId, 'disabled');
@@ -110,7 +109,6 @@ describe('a withdrawn runner and the way back', () => {
       expect(await mods.onlineCapableDeviceIds(s.projectId)).not.toContain(s.deviceId);
     });
 
-    // cm:guard the pool predicate and the picker must BOTH readmit — they are separate SQL and a restore satisfying only one leaves the box admitted by the claim path and invisible to dispatch, which is the shape `offline` would have shipped (ISS-990).
     it('readmits the runner to the pool predicate as well as the picker', async () => {
       const s = await seed();
       const runId = randomUUID();

@@ -3,24 +3,6 @@ import { db } from '../db/client.js';
 import { deviceSkills, devices, runners, skillRegistrations, skills } from '../db/schema.js';
 import { hashSkillBody } from './hash.js';
 
-/**
- * Skill-scope resolution. The one rule that matters here:
- *
- *   Only `scope='project'` skills are USABLE — installed on a device, bundled
- *   for a runner, dispatched in a pipeline. `global` skills are org-level
- *   TEMPLATES that only appear in the *catalog* read
- *   (`resolveEffectiveSkillsForProject`) as adoptable rows. They are NEVER a
- *   runtime fallback.
- *
- * - `resolveRegisteredEffectiveSkills` → the usable set: the project rows that
- *   are registered to a stage or flagged `installOnly`. The device sync
- *   manifest + skills-zip resolve from this, hashed uniformly via
- *   `hashSkillBody(effectiveMd, files)`.
- * - `resolveEffectiveSkillsForProject` → the catalog: project rows + global
- *   templates, deduped by name (the `shadowsGlobal` flag is a catalog hint,
- *   never a resolution rule).
- */
-
 export interface SkillFile {
   path: string;
   content: string;
@@ -55,7 +37,6 @@ export interface EffectiveSkill {
   shadowsGlobal: boolean;
   /** The same-name global's skill id (null when none). Catalog hint only. */
   shadowedGlobalSkillId: string | null;
-  // cm:guard adoption provenance on project rows only (globals and unshadowed rows carry null): `basedOnGlobalVersion` is the template version this copy was taken from, null when it predates tracking; `templateVersion` is what the template carries now. Nothing compares the two — the lane that did was deleted with the staged pipeline — so neither may be re-read as drift without a consumer that acts on it.
   basedOnGlobalVersion: number | null;
   templateVersion: number | null;
   /**
@@ -84,9 +65,7 @@ export interface SkillBodyRow {
   prompt: string;
   files: unknown;
   installOnly: boolean;
-  /** ISS-605 lineage; optional so pure helpers accept legacy fixtures. */
   basedOnGlobalVersion?: number | null;
-  /** ISS-802; optional so pure helpers accept legacy fixtures. */
   pinned?: boolean;
   pinnedReason?: string | null;
 }
@@ -105,19 +84,6 @@ export function globalEffectiveMd(skill: {
   return skill.prompt ?? '';
 }
 
-/**
- * Resolve the effective body + hash for one skill. Pure — no DB access — so the
- * hash rule is unit-testable in isolation.
- *
- * - Legacy skills (seeded pre-v0.1) have `skill_md = NULL` and only `prompt`
- *   populated; fall back to `prompt` so the device never installs a 0-byte
- *   SKILL.md.
- * - `effectiveHash` is ALWAYS recomputed from the effective body so it matches
- *   exactly what the runner echoes back as `installedHash`.
- *
- * Shadow fields default to "not shadowing"; `resolveRawEffectiveSkillsForProject`
- * sets them when a project skill shadows a same-name global.
- */
 export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
   const files = (Array.isArray(skill.files) ? skill.files : []) as SkillFile[];
   const md = globalEffectiveMd(skill);
@@ -195,9 +161,6 @@ export function dedupEffectiveSkills(rows: SkillBodyRow[]): EffectiveSkill[] {
   return result;
 }
 
-/** Raw effective skills, deduped by NAME (project shadows same-name global).
- *  Used internally so the two public resolvers expand with the right per-skill
- *  stage context. */
 async function resolveRawEffectiveSkillsForProject(projectId: string): Promise<EffectiveSkill[]> {
   const rows = (await db
     .select(skillBodyProjection)
@@ -207,32 +170,12 @@ async function resolveRawEffectiveSkillsForProject(projectId: string): Promise<E
   return dedupEffectiveSkills(rows);
 }
 
-/**
- * The CATALOG read: every skill visible to a project (its own project-scoped
- * skills + all global templates), deduped by name (project wins, `shadowsGlobal`
- * flags a same-name global as a hint). This is a browse/adopt surface — NOT
- * what a device installs. Only the `scope='project'` rows here are usable; the
- * `scope='global'` rows are adoptable templates (clone via `applyGlobalSkillDefault`).
- * Skill bodies are NOT templated: Forge facts + project context are injected
- * into the system prompt at dispatch (`prompt/system.ts`), so a synced SKILL.md
- * is exactly what the author wrote.
- */
 export async function resolveEffectiveSkillsForProject(
   projectId: string,
 ): Promise<EffectiveSkill[]> {
   return resolveRawEffectiveSkillsForProject(projectId);
 }
 
-/**
- * The device-sync manifest set: the project's USABLE (project-scoped) skills
- * that are EITHER (a) registered to a stage by name, OR (b) flagged
- * `installOnly` (manual / user-invocable utilities force-synced without a stage
- * binding — they enter the manifest but the dispatcher never auto-runs them,
- * since stage dispatch keys off `skill_registrations`, not this set). Globals
- * never enter this set — a registration that still points at a global (legacy
- * data; the register API now rejects it) contributes nothing unless the project
- * owns a same-name project skill.
- */
 export async function resolveRegisteredEffectiveSkills(
   projectId: string,
 ): Promise<EffectiveSkill[]> {
@@ -241,7 +184,6 @@ export async function resolveRegisteredEffectiveSkills(
     .from(skillRegistrations)
     .where(eq(skillRegistrations.projectId, projectId));
 
-  // cm:guard resolve registered ids to NAMES and match on those: a legacy registration still pointing at a global keeps working IFF the project has adopted a same-name project skill, and the global itself is never returned.
   const registeredIds = [...new Set(regs.map((r) => r.skillId))];
   let registeredNames = new Set<string>();
   if (registeredIds.length > 0) {
@@ -252,7 +194,6 @@ export async function resolveRegisteredEffectiveSkills(
     registeredNames = new Set(nameRows.map((n) => n.name));
   }
 
-  // cm:guard the registered-name set and the `installOnly` flag are put into the WHERE rather than applied to loaded rows: this is a BODY projection — `skill_md`, `prompt` and the base64 `files` — and `computeEffectiveSkill` sha256s every row it is handed, so filtering afterwards transferred and hashed every skill the project owns on each sync-status call to keep the few that are registered (ISS-1025). The two conditions are the same two facts the in-memory filter tested, so a legacy registration that resolves to a same-name project skill, and an `installOnly` skill under an empty registration set, both still come back.
   const nameCondition =
     registeredNames.size > 0
       ? or(inArray(skills.name, [...registeredNames]), eq(skills.installOnly, true))
@@ -266,15 +207,6 @@ export async function resolveRegisteredEffectiveSkills(
   return rows.map(computeEffectiveSkill);
 }
 
-/**
- * Platform-managed META skills: global, user-invocable tooling (not bound to a
- * pipeline stage) that Forge owns and serves LIVE as MCP prompts (see
- * `resolveManagedMetaPrompts`) — the always-latest, zero-disk-sync channel.
- * They are NOT installed into the device manifest; a session connected to the
- * Forge MCP server reads them as prompts. A project that ADOPTS one (creates a
- * same-name project skill) owns its copy and serves that instead.
- */
-// cm:guard `forge-message-shape` is served HERE and nowhere else on purpose: it is the contract every agent-written message is judged against, and a copy synced to a device's disk would be the version an agent reads while core refuses it by a newer one. The always-latest prompt channel is the only delivery a screen's own rules may use (ISS-997).
 export const MANAGED_META_SKILLS: readonly string[] = ['forge-skills', 'forge-message-shape'];
 
 export interface ManagedMetaPrompt {
@@ -312,7 +244,6 @@ export async function resolveManagedMetaPrompts(
     .from(skills)
     .where(and(inArray(skills.name, names), scopeCond));
 
-  // cm:guard the project's own copy wins over the global template, by name, and this is the ONLY place that decides it — `forge-message-shape` is served through here, so a project that adopted the document and tightened its own message rules must not be handed the built-in text describing rules it does not run (ISS-997).
   const byName = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
     const cur = byName.get(r.name);
@@ -325,7 +256,6 @@ export async function resolveManagedMetaPrompts(
   }));
 }
 
-// cm:guard `unknown` (not `synced`) whenever observedSha is null — a runner that never reported observation must never be reported synced
 export type DeviceSkillStatusValue =
   | 'synced'
   | 'outdated'
@@ -351,7 +281,6 @@ interface InstalledRow {
   installedHash: string;
   installedVersion: number | null;
   syncedAt: Date | string | null;
-  // cm:why null below runner 0.7.1 — 0.7.0 shipped before observation, so the version string alone cannot discriminate; absence of the field is the signal
   observedSha: string | null;
   shadowedBy: string | null;
 }
@@ -376,7 +305,6 @@ export function computeDeviceSkillStatus(
     } else if (row.installedHash !== e.effectiveHash) {
       status = 'outdated';
     } else if (row.shadowedBy !== null) {
-      // cm:guard checked before the null-observedSha branch — a shadow with no .hash marker must be 'shadowed', not 'unknown'
       status = 'shadowed';
     } else if (row.observedSha === null) {
       status = 'unknown';
@@ -498,12 +426,6 @@ export function pivotProjectSkillSyncStatus(
   return { devices: deviceList, skills: skillEntries };
 }
 
-/**
- * Load the aggregated, skill-major sync status for a project: every bound
- * device (derived from the `runners` table) × every registered effective
- * skill, diffed against the real `device_skills` install rows. One pass over
- * the project's install rows, grouped by device, then pivoted.
- */
 export async function loadProjectSkillSyncStatus(
   projectId: string,
 ): Promise<ProjectSkillSyncStatus> {

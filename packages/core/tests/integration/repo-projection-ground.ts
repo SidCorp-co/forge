@@ -37,6 +37,8 @@ type Mods = {
   readPullRequestsForIssues: typeof import('../../src/integrations/repo-projection.js').readPullRequestsForIssues;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   applyProjectedEvent: typeof import('../../src/integrations/github/projection-events.js').applyProjectedEvent;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  projectOpenedPullRequest: typeof import('../../src/integrations/github/opened-pull-request.js').projectOpenedPullRequest;
   basePushCap: number;
   capReason: string;
 };
@@ -71,7 +73,6 @@ function loadEnv(url: string): void {
 /** Registers the hooks in the calling `describe` and hands back the live state. */
 export function projectionGround(): ProjectionGround {
   const g: ProjectionGround = {
-    // cm:why these six are filled by the hooks below and read only from inside an `it`, so a placeholder is what lets the whole object be typed without a cast that would hide a field the hooks forget to set.
     harness: undefined as unknown as TestDatabase,
     mods: undefined as unknown as Mods,
     projectId: '',
@@ -123,6 +124,7 @@ export function projectionGround(): ProjectionGround {
     const refresh = await import('../../src/integrations/github/projection-refresh.js');
     const read = await import('../../src/integrations/repo-projection.js');
     const events = await import('../../src/integrations/github/projection-events.js');
+    const opened = await import('../../src/integrations/github/opened-pull-request.js');
     g.mods = {
       applyPullRequestEvent: projection.applyPullRequestEvent,
       applyCheckRunEvent: projection.applyCheckRunEvent,
@@ -130,6 +132,7 @@ export function projectionGround(): ProjectionGround {
       storeRefresh: refresh.storeRefresh,
       readPullRequestsForIssues: read.readPullRequestsForIssues,
       applyProjectedEvent: events.applyProjectedEvent,
+      projectOpenedPullRequest: opened.projectOpenedPullRequest,
       basePushCap: refresh.BASE_PUSH_REFRESH_CAP,
       capReason: refresh.CAP_REACHED_REASON,
     };

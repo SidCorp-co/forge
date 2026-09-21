@@ -31,7 +31,6 @@ const COPY: Record<ReasonStatus, CopySpec> = {
   waiting: {
     title: "Park this issue for a human",
     confirm: "Park",
-    // cm:guard plain prose only — this string renders in a bare <p>, so markdown backticks reach the user as literal characters (caught on forge-beta 2026-08-14); the same applies to every blurb and placeholder in this file
     blurb:
       "Parking stops the pipeline until a person acts, so it has to say what that person is being asked for. Nobody can answer a question that was never written down.",
     placeholder: "e.g. need a Stripe test account with 3DS enabled — I cannot create one",
@@ -82,7 +81,6 @@ export function TransitionReasonDialog({
       <div className="flex h-full flex-col gap-4">
         <p className="fg-body-sm text-muted">{copy.blurb}</p>
         {status === "waiting" && (
-          // cm:guard default the RADIO, never the SUBMITTED value — the control starts on `needs_decision` so the form is usable, but core must still receive an explicit choice; a dialog that silently sends a kind the user never looked at is the derivation RFC 0002 deleted, wearing a form
           <Field label="What is needed" required>
             <RadioGroup
               name="waitingKind"

@@ -35,14 +35,6 @@ type Mods = {
 
 type NotifRow = { user_id: string; type: string; resolution_key: string; read: boolean };
 
-/**
- * One row per (record, recipient) — what the single table used to hold directly.
- *
- * ISS-1063 — a strand is now ONE record with a delivery per admin, so `user_id` and `read`
- * come off the join. The cases below read almost unchanged, which is the point: who was
- * told, and whether they looked, are still answerable; they are just no longer the same
- * row as "is this still true".
- */
 async function readNotifs(harness: TestDatabase, issueId: string): Promise<NotifRow[]> {
   const r = await harness.db.execute(sql`
     SELECT d.user_id, n.type, n.resolution_key, (d.read_at IS NOT NULL) AS read
@@ -54,7 +46,6 @@ async function readNotifs(harness: TestDatabase, issueId: string): Promise<Notif
   return r as unknown as NotifRow[];
 }
 
-// cm:why the re-notify cases drive the dedupe by editing the alarm rather than by waiting — `state`, `resolved_at` and `created_at` are the exact three the predicate reads, and one helper keeps the column a case is ABOUT on its own line
 async function patchAlarm(harness: TestDatabase, issueId: string, set: SQL): Promise<void> {
   await harness.db.execute(sql`UPDATE notifications SET ${set} WHERE issue_id = ${issueId}`);
 }
@@ -126,7 +117,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     const owner = await createTestUser(harness.db);
     const org = await seedOrg(harness.db, owner.id);
     const project = await createTestProject(harness.db, owner.id, { orgId: org.id });
-    // cm:why two distinct routes to admin — explicit project_members admin AND the org owner seedOrg registers — because projectAdminUserIds unions both and a regression could drop either
     const projAdmin = await createTestUser(harness.db);
     await createTestProjectMember(harness.db, {
       userId: projAdmin.id,
@@ -134,7 +124,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
       role: 'admin',
     });
 
-    // cm:why a plain member is seeded on purpose: the alarm must reach only people who can actually unpark the issue
     const plain = await createTestUser(harness.db);
     await createTestProjectMember(harness.db, {
       userId: plain.id,
@@ -150,7 +139,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
       VALUES (${issueId}, ${project.id}, 'stranded probe', ${opts.status ?? 'waiting'},
               ${owner.id}, ${mergedAt}, 762)
     `);
-    // cm:guard age the row by DEFAULT. ISS-895 removed the `merged_at` arm with the staged lane, so `updated_at` is the only clock this pass has — a fixture that leaves it at `now()` seeds a row inside the grace window and every assertion about detection reads 0, which is indistinguishable from the pass being switched off.
     const updatedAgo = opts.updatedAgoMs ?? 48 * HOUR;
     const updatedAt = new Date(Date.now() - updatedAgo).toISOString();
     await harness.db.execute(
@@ -178,7 +166,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect(notified.has(s.plain.id)).toBe(false);
   });
 
-  // cm:guard this is the pass's load-bearing test — the sweep runs every tick, so a detector that re-notifies on each pass is worse than none: the bell fills with duplicates and stops being read at all
   it('notifies once and then stays quiet while the alarm is unread', async () => {
     const s = await seed();
     const first = await announce(harness, mods.detectStrandedIssues);
@@ -192,7 +179,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await readNotifs(harness, s.issueId)).length).toBe(first.notified);
   });
 
-  // cm:guard reading the alarm must NOT re-arm it on the next 60s tick — the predicate matches every `waiting` park past the grace window rather than the rare merged-and-parked contradiction the deleted staged arm needed, so a dedupe that a read could clear turns one read into a ping every minute for the life of the park. ISS-1063 is what makes this structural rather than a window: the read is on the delivery and the record cannot see it.
   it('stays quiet after a read, because a read is not something the record can see', async () => {
     const s = await seed();
     const first = await announce(harness, mods.detectStrandedIssues);
@@ -205,7 +191,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await readNotifs(harness, s.issueId)).length).toBe(first.notified);
   });
 
-  // cm:guard the dedupe must suppress only while the alarm is UNRESOLVED. A resolved row is a strand that ENDED — the human moved the issue off `waiting` and auto-resolve stamped it — so a later re-strand is a NEW one and is owed its own alarm at once. Dedupe on anything that outlives the resolution and it is muted, which is silence a caller cannot tell from "nothing is wrong".
   it('re-notifies a RESOLVED strand that recurred, at once', async () => {
     const s = await seed();
     const first = await announce(harness, mods.detectStrandedIssues);
@@ -248,7 +233,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0, notified: 0 });
   });
 
-  // cm:guard `merged_at` must NOT gate this any more. It was the staged arm's whole clock and ISS-895 deleted that arm; a park in this lane never merges anything, so a pass that still required a merge would report zero forever — which reads as "nothing is stranded", not as "this pass stopped looking".
   it('surfaces a waiting park whose code never merged', async () => {
     await seed({ mergedAgoMs: null });
     await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 1 });
@@ -270,8 +254,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await readNotifs(harness, theirs.issueId)).length).toBe(0);
   });
 
-  // cm:why ISS-886 — the park itself is the signal: no next step notices it and `answer-resume` restarts `needs_info` only, so a `waiting` issue stops dead until a human acts. kinetrak ISS-4's split had sat 11 days on 2026-08-30 with nobody told.
-  // cm:guard NO project is excluded any more. The predicate carried a `coalesce(mode, 'autonomous') <> 'staged'` arm until ISS-895 removed `mode` from the schema entirely; every project reaches this pass now, and a row still carrying the legacy key in its jsonb is data the parser drops, not a project to skip. Re-adding a project filter here switches the net off for whoever it excludes — silently, because a pass that finds nothing and a pass that looks at nothing both report 0.
   it('surfaces an unmerged park on every project, whatever legacy config the row carries', async () => {
     const stripped = await seed({ mergedAgoMs: null });
     const legacy = await seed({ mergedAgoMs: null });
@@ -286,7 +268,6 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await readNotifs(harness, legacy.issueId)).length).toBeGreaterThan(0);
   });
 
-  // cm:guard the grace window still applies — a park is only stranded once it has outlasted a legitimate answer-and-move pass, or every fresh question would alarm the owner within the minute.
   it('stays silent inside the grace window too', async () => {
     await seed({ mergedAgoMs: null, updatedAgoMs: 1 * HOUR });
     await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });

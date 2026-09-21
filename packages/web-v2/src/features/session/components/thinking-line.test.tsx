@@ -32,9 +32,6 @@ describe("the collapsed label", () => {
     expect(thinkingLabel({ text: "hmm" })).toBe("Thought");
   });
 
-  // cm:why the present tense only while the block is still open: a duration exists exactly once the
-  // block has closed, so "Thinking…" and a duration are mutually exclusive by construction rather
-  // than by a second flag anybody has to keep in step.
   it("speaks in the present tense while the block is still open", () => {
     expect(thinkingLabel({ text: "let me", streaming: true })).toBe("Thinking…");
     expect(thinkingLabel({ text: "let me", durationMs: 400, streaming: true })).toBe(
@@ -65,10 +62,6 @@ describe("a pause with reasoning to read", () => {
   });
 });
 
-// cm:guard THE affordance this component was specified to refuse: an expandable "Thought" that
-// opens onto nothing. Every Claude Code pause is this case, and so is every block a provider
-// encrypted, so it is the common shape rather than the edge one — and a disabled-looking chevron
-// would be the same defect wearing a hint (ISS-1079).
 describe("a pause with nothing to read", () => {
   it("offers no control at all when there is only a count", () => {
     render(<ThinkingLine count={3} />);

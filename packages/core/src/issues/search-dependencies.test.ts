@@ -13,7 +13,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('./issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -94,7 +93,6 @@ beforeEach(() => {
 });
 
 async function authorizedRequest(qs: string) {
-  // cm:guard three queued rows in THIS order — assertEmailVerified reads users, then loadProjectAccess reads the project row and the member row; they share one FIFO, so a missing entry answers 401/404 rather than the case under test
   selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
   selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
   selectOffset.mockReturnValueOnce([
@@ -113,7 +111,6 @@ async function authorizedRequest(qs: string) {
   return { res, body };
 }
 
-// cm:why this flag is what the issues list renders its badges from, so a row missing the key is a row whose chips come from whatever the cache still holds
 describe('withDependencies (ISS-1017)', () => {
   it('omitted → no dependencies key, and the read does not run', async () => {
     const { res, body } = await authorizedRequest('');
@@ -143,7 +140,6 @@ describe('withDependencies (ISS-1017)', () => {
     expect(loadIssueDependencyEdgesForIssues).toHaveBeenCalledWith([ISSUE_A, ISSUE_B], PROJECT_ID);
   });
 
-  // cm:guard the ISS-437 rule: a row with no edges carries both arrays, never a missing key, so a client cannot read "not hydrated" as "no relations"
   it('a row the read omits still carries both arrays', async () => {
     loadIssueDependencyEdgesForIssues.mockResolvedValueOnce(
       new Map<string, unknown>([[ISSUE_A, { outgoing: [EDGE], incoming: [] }]]),
@@ -175,7 +171,6 @@ describe('withDependencies (ISS-1017)', () => {
     });
   });
 
-  // cm:why the route's schema is `.strict()`, and this endpoint refusing an unknown parameter by name is the contract its sibling list route was made to match (ISS-991)
   it('refuses a misspelled flag by name rather than ignoring it', async () => {
     const { res } = await authorizedRequest('?withDependency=1');
     expect(res.status).toBe(400);

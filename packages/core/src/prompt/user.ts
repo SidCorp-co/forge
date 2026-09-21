@@ -90,13 +90,6 @@ const DEFAULT_FIELD_CAPS: Record<IssueField, number> = {
   acceptanceCriteria: 4000,
 };
 
-/**
- * Default sessionContext depth. `Number.POSITIVE_INFINITY` so callers that
- * do NOT supply a `userPromptPolicy.sessionContext.depth` retain the original
- * per-field SESSION_CAPS limits (decisions:10, filesModified:15,
- * errorsResolved:5, reviewFeedback:5) instead of being narrowed to a single
- * shared cap. Operators who want narrower history pass an explicit depth.
- */
 const DEFAULT_SESSION_DEPTH = Number.POSITIVE_INFINITY;
 
 const SESSION_CAPS = {
@@ -106,18 +99,6 @@ const SESSION_CAPS = {
   reviewFeedback: 5,
 } as const;
 
-/**
- * Per-state issue fields inlined into the user prompt. Default is EMPTY for
- * every state (fetch-via-tool): the agent calls `forge_step_start` first, which
- * returns a lean index (manifest of which fields exist and their sizes) on large
- * issues, or the full body on small ones. Either way the prompt stays thin — it
- * carries only a one-line pointer (see `formatIssueSnapshot`) so the agent can
- * pull only the fields it needs via `forge_issues.get { fields: [...] }`. This
- * avoids burning prompt tokens on a second, staler copy of the issue body.
- * Operators who want a field re-inlined for a state set
- * `appConfig.pipeline.states[state].userPromptPolicy.includeFields` — the
- * override still flows through `resolveIssueFields`.
- */
 const ISSUE_FIELDS_PER_STATE: Record<JobType, IssueField[]> = {
   triage: [],
   clarify: [],
@@ -144,13 +125,6 @@ interface SessionFieldPolicy {
   reviewFeedback: boolean;
 }
 
-/**
- * Per-state `sessionContext` fields inlined into the prompt. Default is now ALL
- * OFF (fetch-via-tool): `forge_step_start` / `forge_issues.get` return the full
- * `sessionContext`, so the agent reads it from the tool bundle rather than from
- * a prompt copy. Operators re-enable per state via
- * `appConfig.pipeline.states[state].userPromptPolicy.sessionContext.fields`.
- */
 const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
   triage: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   clarify: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
@@ -277,13 +251,6 @@ function formatIssueSnapshot(
   snapshot: IssueSnapshot,
   jobType: JobType,
   policy?: UserPromptPolicyOverride | null,
-  /**
-   * Set of HandoffSteps whose handoffs are present in this prompt. When a
-   * step's handoff is injected, the overlapping raw field is dropped:
-   *   triage handoff → drop raw `description`
-   *   plan handoff   → drop raw `plan`
-   * Other handoffs (code/review/test/fix) are additive — no overlap.
-   */
   injectedSteps?: ReadonlySet<HandoffStep>,
 ): string {
   const fields = resolveIssueFields(jobType, policy?.includeFields);
@@ -326,7 +293,6 @@ function formatIssueSnapshot(
     lines.push(
       '',
       'Description:',
-      // cm:guard ISS-898 — project BEFORE truncate, or the cap is spent on tag names. An `html` component description is ~25-40% heavier than the markdown it replaced, so a raw body would let the 8,000-char cap hold materially fewer requirements than it did before component bodies existed.
       markUntrusted(
         truncate(
           bodyText(snapshot.description, snapshot.descriptionFormat),
@@ -349,7 +315,6 @@ function formatIssueSnapshot(
       }),
     );
   }
-  // cm:guard the pointer must name the lane's OWN transport, and `drive` is why this is a fork rather than one sentence: the autonomous driver is told everywhere else to reach Forge through `forge-runner api`, so the staged text made this the third name for one read. Its MCP client works — the 2026-09-02 commit that first said otherwise overclaimed — measured on the audit log as 4,806 `forge_step_start` calls from agents, every one on an autonomous project, against a driver skill that names no MCP tool at all.
   lines.push(
     '',
     jobType === 'drive'
@@ -368,7 +333,6 @@ function formatSessionContext(
   const { policy, depth } = resolveSessionPolicy(jobType, policyOverride);
   const lines: string[] = ['## Previous Session Context'];
 
-  // cm:guard the staleness banner goes ABOVE the narrative, not below it. The footer already carried `last updated`, and on ISS-698 a release step read the FAIL verdict at the top and acted on it — a timestamp printed after the thing it qualifies is read too late to change a decision.
   if (supersededBy && supersededBy.count > 0) {
     const plural = supersededBy.count === 1 ? 'step has' : 'steps have';
     lines.push(
@@ -418,32 +382,6 @@ function formatSessionContext(
   return lines.join('\n');
 }
 
-/**
- * Build the user prompt for a job.
- *
- * Per-state policy overrides (from `appConfig.pipeline.states[state].userPromptPolicy`)
- * tune which issue fields to include, sessionContext depth/fields, field caps,
- * and truncation strategy.
- *
- * `turnLevelSystemPrompt` is used by PR-5b session-group resume path: when
- * resuming a Claude CLI session via `--resume`, the CLI may ignore
- * `--append-system-prompt` (undocumented), so we redundantly embed the state's
- * system prompt at the top of the user prompt as turn-level rules. The agent
- * follows the rules either way; cache may miss for that turn.
- */
-/**
- * Inject a "Pipeline Rules (this turn)" block into an already-built prompt
- * string. Used at dispatch time (NOT enqueue time) when we discover the
- * job is resuming a prior CLI session — embeds the current state's system
- * prompt redundantly into the user message so the agent follows it even if
- * the Claude CLI ignores `--append-system-prompt` on `--resume`
- * (behavior undocumented).
- *
- * Inserts the block immediately after the first line (the `/<skill> <id>`
- * invocation) so the agent reads the rules before any issue context.
- *
- * Returns the input unchanged when `turnLevelSystemPrompt` is empty.
- */
 export function injectTurnLevelRules(
   promptString: string,
   turnLevelSystemPrompt: string | null | undefined,
@@ -465,10 +403,6 @@ export function injectTurnLevelRules(
   return `${promptString.slice(0, firstNl)}${block}${promptString.slice(firstNl)}`;
 }
 
-/**
- * Splice a block in immediately after the first line (the `/<skill> <id>` invocation), so the
- * agent reads it before any issue context. Returns the prompt unchanged when `block` is empty.
- */
 export function injectAfterInvocation(promptString: string, block: string): string {
   const b = block.trim();
   if (b.length === 0) return promptString;
@@ -485,23 +419,7 @@ export function buildJobPromptString(args: {
   issueSnapshot?: IssueSnapshot | null;
   policy?: UserPromptPolicyOverride | null;
   turnLevelSystemPrompt?: string | null;
-  /**
-   * ISS-232 — merge-required injection. The staged builder that produced
-   * this text was removed with its lane; the field survives for callers
-   * that still pass one. Historically resolved from the project's
-   * `pipelineConfig.mergeStates` + the job's `stageStatus`; when non-null,
-   * it is spliced in immediately after the `/<skill> <issueId>` line so the
-   * skill reads it before any issue context. Whitespace-only strings are
-   * treated as null.
-   */
   mergeRequiredText?: string | null;
-  /**
-   * Step-handoff injection (proposal Y). Pre-fetched by the caller from
-   * `issue_step_contexts` (kind='handoff') for the current issue. When
-   * `policy.handoffs.enabled`, the prompt renders these under
-   * `## Prior step handoffs` and drops overlapping raw fields (triage drops
-   * `description`, plan drops `plan`).
-   */
   priorHandoffs?: PriorHandoff[] | null;
   /**
    * Step-handoff scope literals for the `## Termination protocol` block.
@@ -566,8 +484,6 @@ export function buildJobPromptString(args: {
     lines.push('', formatPriorHandoffs(handoffsToRender));
   }
 
-  // cm:guard append this LAST, after every body block — an agent reads top-down and acts on what it read most recently, so a termination contract placed above the work is one it has stopped holding by the time it finishes.
-  // cm:guard fork on `drive`, and `jobType` is a sound proxy for the lane because `autonomousStepFor` is the ONLY producer of that type and `POST /:id/run-pipeline-step` takes no stage at all — a drive job cannot be enqueued outside the autonomous lane. The staged block sends the agent to "the next state in the Pipeline Rules ladder", which this mode does not have, and offers `waiting` and `reopen`, which `issues/autonomous-park.ts` then rewrites on every session.
   if (handoffsEnabled && isHandoffStep(args.jobType) && args.handoffScope) {
     lines.push(
       '',

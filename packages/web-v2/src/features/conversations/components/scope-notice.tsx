@@ -19,12 +19,10 @@ export function ScopeNotice({
 }) {
   const [open, setOpen] = useState(true);
   const refusal = composerRefusal(room);
-  // cm:guard an answer carrying no scope renders NOTHING, for the reason `composerRefusal` gives: a tab open across the deploy of the half that added the field holds a payload without it, and a notice built from an absent list would name projects nobody put in the room.
   const scopeProjects = room.scopeProjects ?? [];
   if (scopeProjects.length === 0) return null;
 
   const spans = scopeProjects.length > 1;
-  // cm:guard a one-project room shows the derivation as a quiet line and a multi-project room shows the standing condition, and neither of them is dismissible: what a room is about is a fact about the room, and a notice a person can make vanish is a fact the next reader will not have (ISS-1011 criteria 30, 32).
   return (
     <div
       data-testid="scope-notice"

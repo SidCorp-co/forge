@@ -1,44 +1,11 @@
-/**
- * ISS-1030 — the one conversion from a legacy `role`/`contentBlocks` transcript
- * entry to the canonical one.
- *
- * Two shapes used to coexist in `agent_sessions.messages`: the desktop runner
- * and edited turns wrote `role` + `contentBlocks`, the derive writes `type` +
- * ordered `blocks`. Two readers existed to read both. This file is what lets
- * those readers lose their branch, and it has exactly one implementation on
- * purpose: the backfill migration calls it, and so does the live amnesty on
- * `PATCH /api/agent-sessions/:id`, because a converter the migration used and the
- * live door did not would let an un-upgraded daemon write entries nothing left
- * in the product could read.
- *
- * A row it cannot represent is REFUSED by name. It is never dropped, never
- * guessed at, and never widened to fit: the migration aborts naming the entry
- * and the PATCH answers 400 naming the entry, because an entry quietly discarded
- * to make a deploy succeed is a person's conversation gone missing.
- */
-
 /** What a conversion answers with. */
 export type CanonicalConversion =
   | { ok: true; entry: Record<string, unknown>; converted: boolean }
   | { ok: false; why: string };
 
 /** The key the original entry is kept under when one was actually rewritten. */
-// cm:guard the original is KEPT, and that is what makes the migration's inverse a
-// rewrite rather than a guess: the backfill edits `agent_sessions.messages` in
-// place, so restoring the legacy readers does not restore the rows, and the
-// inverse has to put back what stood rather than re-derive it from the canonical
-// form. Dropping this key makes the rollback lossy, which is the one property
-// `The way back` on this issue is built on.
 export const LEGACY_ENTRY_KEY = '__legacyEntry';
 
-/**
- * The five kinds a canonical entry may be, and the whole of what the readers
- * left in the product can draw.
- *
- * cm:edge lockstep -> packages/core/src/agent-sessions/turns-helpers.ts — `messageRoleToTurnRole`
- * cm:edge lockstep -> packages/web-v2/src/features/session/types.ts — `entryRole`
- * cm:edge lockstep -> packages/core/src/lib/agent-stream-parser.ts — `AgentMessage['type']`, the producer
- */
 export const CANONICAL_ENTRY_TYPES = [
   'user',
   'assistant',
@@ -53,11 +20,6 @@ const ROLE_TO_TYPE: Readonly<Record<string, string>> = {
   user: 'user',
   assistant: 'assistant',
   system: 'system',
-  // cm:why a legacy `role: 'tool'` becomes `tool_result` rather than `tool_use`:
-  // both map to the same turn role on both sides (`turns-helpers.ts` and the web
-  // formatter fold `system`, `tool_use` and `tool_result` into `tool`), so the
-  // two readings render identically, and `tool_result` is the one that carries
-  // captured output — which is what a stored legacy tool entry holds.
   tool: 'tool_result',
 };
 
@@ -101,14 +63,6 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
   const entry = raw as Record<string, unknown>;
   const hasRole = entry.role !== undefined;
   const hasLegacyBlocks = Array.isArray(entry.contentBlocks);
-  // cm:guard an entry carrying neither legacy field is NOT canonical by
-  // elimination — it is canonical when its `type` names one of the five kinds,
-  // and `{ content: 'hello' }` or `{ type: 'moderator' }` names none of them.
-  // Passing those through as "already canonical" is the silent substitution this
-  // file exists to refuse: `messageRoleToTurnRole` answers null for them, the
-  // turn sync drops them, and a person's line leaves the conversation with a 200
-  // on the wire. The refusal is the deliverable — the caller is told which entry
-  // and what a valid one looks like.
   if (!hasRole && !hasLegacyBlocks) {
     const type = entry.type;
     if (typeof type !== 'string' || !CANONICAL_TYPES.has(type)) {
@@ -141,9 +95,6 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
         why: `entry has \`role: ${JSON.stringify(role)}\`, which names no canonical kind`,
       };
     }
-    // cm:guard an entry carrying BOTH `role` and `type` keeps its `type`: the
-    // derive wrote that one, and a `role` beside it is the older reader's
-    // annotation rather than a second claim about what the entry is.
     if (out.type === undefined) out.type = type;
   }
 
@@ -155,18 +106,9 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
       if (!converted.ok) return { ok: false, why: converted.why };
       blocks.push(converted.block);
     }
-    // cm:guard canonical `blocks` already on the entry WIN. An entry that has
-    // both is one the derive wrote and something older annotated; rebuilding its
-    // ordered blocks from the annotation would put the derive's interleaving back
-    // to the flattened one.
     if (out.blocks === undefined) out.blocks = blocks;
   }
 
-  // cm:guard the same check on the way OUT: a legacy entry carrying
-  // `contentBlocks` and no `role` reaches here with whatever `type` it already
-  // had, which may be none. A rewrite that produces an entry the readers cannot
-  // draw is the thing this conversion exists to prevent, so it is refused with
-  // the same sentence rather than stored because it passed through a converter.
   const producedType = out.type;
   if (typeof producedType !== 'string' || !CANONICAL_TYPES.has(producedType)) {
     return {

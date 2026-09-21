@@ -73,7 +73,6 @@ refreshRoutes.post('/refresh', async (c) => {
   if (!raw) throw invalid();
   const prefix = refreshTokenPrefix(raw);
 
-  // cm:guard replay and race detection return a SENTINEL rather than throwing, so the mass-invalidate runs AFTER this transaction commits. Thrown from inside, it rolls the invalidation back with the rest of the transaction and the replay defence silently does nothing — the token stays live and the attacker keeps it.
   const outcome: RefreshOutcome = await db.transaction(async (tx) => {
     const candidates = await tx
       .select()

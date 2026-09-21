@@ -2,12 +2,6 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 
-/**
- * The issue row as the table defines it. Both transports previously kept their
- * own hand-written subset of these columns — `mcp/tools/forge-issues.ts` had
- * `source`/`externalId`/`mergedAt`/`reopenCount`/`sessionContext`, REST had
- * `createdVia`/`metadata`, and neither could see a column the other read.
- */
 export type IssueRow = typeof issues.$inferSelect;
 
 /**

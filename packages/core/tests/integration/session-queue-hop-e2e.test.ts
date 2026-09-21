@@ -103,9 +103,9 @@ async function queuedSession(opts: {
   `);
   await harness.db.execute(sql`
     INSERT INTO agent_sessions
-      (id, project_id, pipeline_run_id, status, metadata, dispatched_at, last_heartbeat_at,
+      (id, project_id, pipeline_run_id, kind, status, metadata, dispatched_at, last_heartbeat_at,
        created_at, updated_at)
-    VALUES (${id}, ${projectId}, ${runId}, 'queued',
+    VALUES (${id}, ${projectId}, ${runId}, 'pipeline', 'queued',
             ${JSON.stringify({ type: 'pipeline' })}::jsonb,
             ${ago(opts.dispatchedAgo)}::timestamptz,
             ${opts.heardAgo === null ? null : ago(opts.heardAgo)}::timestamptz,
@@ -126,8 +126,6 @@ const QUEUE = () => getLoopThresholds().queueMs;
 const QUIET = () => getLoopThresholds().heartbeatMs;
 
 describe('the queue hop, split on whether anything ever reported', () => {
-  // cm:guard the arm whose wedge sentence — "no worker claimed the session within the queue
-  // timeout" — is only true of THIS row. It is the one that must keep firing unchanged.
   it('fails a session nothing has ever reported on with queue_timeout', async () => {
     const id = await queuedSession({ dispatchedAgo: QUEUE() + 1_000, heardAgo: null });
 
@@ -136,10 +134,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
     expect(await statusOf(id)).toEqual({ status: 'failed', reason: 'queue_timeout' });
   });
 
-  // cm:guard THE false positive this change exists to prevent, and the whole reason the queue
-  // predicate had to grow an activity term: until now the status flip was serving as one, and
-  // narrowing that flip took it away. A worker holding a pane with a pasted prompt beats every tick
-  // and does not move `dispatched_at` by a millisecond.
   it('leaves a session alone while it is still reporting, however old its dispatch', async () => {
     const id = await queuedSession({ dispatchedAgo: QUEUE() * 10, heardAgo: 1_000 });
 
@@ -148,7 +142,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
     expect(await statusOf(id)).toEqual({ status: 'queued', reason: null });
   });
 
-  // cm:guard the second arm, and the reason it is not `queue_timeout`: a worker DID claim this one.
   it('fails a session that reported and then went quiet with turn_never_reported', async () => {
     const id = await queuedSession({ dispatchedAgo: QUIET() * 2, heardAgo: QUIET() + 1_000 });
 
@@ -157,9 +150,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
     expect(await statusOf(id)).toEqual({ status: 'failed', reason: 'turn_never_reported' });
   });
 
-  // cm:guard the rule stated as a rule rather than as one row: no session core has ever heard from
-  // may carry the reason that says nobody picked it up. A single predicate over both arms passes
-  // every other test in this file and fails this one.
   it('never writes queue_timeout on a session that carries a heartbeat', async () => {
     const heard = [1_000, QUEUE() + 1_000, QUIET() + 1_000, QUIET() * 100];
     const ids = await Promise.all(
@@ -172,8 +162,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
     expect(reasons).not.toContain('queue_timeout');
   });
 
-  // cm:guard the boundary, both sides of it in one test — a cutoff asserted from one side only
-  // passes just as well when the comparison is inclusive as when it is not.
   it('spares a session exactly on the quiet cutoff and fails one a millisecond past it', async () => {
     const onIt = await queuedSession({ dispatchedAgo: QUIET() * 2, heardAgo: QUIET() });
     const pastIt = await queuedSession({ dispatchedAgo: QUIET() * 2, heardAgo: QUIET() + 1 });
@@ -184,8 +172,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
     expect((await statusOf(pastIt)).status).toBe('failed');
   });
 
-  // cm:guard both arms in ONE sweep, because a fix that split the predicate but left the first arm
-  // matching everything would still pass each single-row test above.
   it('separates the two in one sweep rather than taking the batch one way', async () => {
     const neverHeard = await queuedSession({ dispatchedAgo: QUEUE() * 3, heardAgo: null });
     const heardThenQuiet = await queuedSession({
@@ -203,8 +189,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
     expect(result.turnNeverReported).toBe(1);
   });
 
-  // cm:guard the sentence an operator reads. `queue_timeout`'s wedge tells them to check the fleet
-  // for an online runner, which is false and wasted advice about a row a runner is plainly holding.
   it('writes a wedge that names the silence and not an unclaimed session', async () => {
     await queuedSession({ dispatchedAgo: QUIET() * 2, heardAgo: QUIET() + 1_000 });
 
@@ -218,9 +202,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
     expect(wedges[0]?.hop).toBe('heartbeat');
   });
 
-  // cm:guard the reason names what core OBSERVED. Core cannot see the pane, so a cause asserting
-  // the agent never started would be the same over-assertion `events-routes.ts` was just stopped
-  // from making, one column over — and it would be false whenever the reports were simply lost.
   it('does not claim the agent never started, only that nothing reported a turn', async () => {
     await queuedSession({ dispatchedAgo: QUIET() * 2, heardAgo: QUIET() + 1_000 });
 
@@ -232,8 +213,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
     expect(wedges[0]?.reason).not.toMatch(/no worker claimed/i);
   });
 
-  // cm:guard the scoping the split must not have dropped: both arms are pipeline/pm only, and a
-  // chat session queued for a week is nobody's to fail here.
   it('leaves a non-pipeline session out of both arms', async () => {
     const id = randomUUID();
     const runId = randomUUID();
@@ -241,8 +220,10 @@ describe('the queue hop, split on whether anything ever reported', () => {
       INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${projectId}, 'interactive', 'running')
     `);
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata, dispatched_at, last_heartbeat_at)
-      VALUES (${id}, ${projectId}, ${runId}, 'queued', ${JSON.stringify({ agentChat: {} })}::jsonb,
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata,
+                                  dispatched_at, last_heartbeat_at)
+      VALUES (${id}, ${projectId}, ${runId}, 'chat', 'queued',
+              ${JSON.stringify({ agentChat: {} })}::jsonb,
               ${ago(QUIET() * 100)}::timestamptz, ${ago(QUIET() * 100)}::timestamptz)
     `);
 
@@ -253,9 +234,6 @@ describe('the queue hop, split on whether anything ever reported', () => {
 });
 
 describe('the demoted alarm mirrors both arms', () => {
-  // cm:guard the mirror exists to say "the loop missed a row this tick". Matching rows the loop
-  // deliberately leaves alone turns a coverage proof into a minute-by-minute false alarm, which is
-  // the failure mode nobody notices because the alarm is only a log line.
   it('alarms nothing while a queued session is still reporting', async () => {
     await queuedSession({ dispatchedAgo: QUEUE() * 10, heardAgo: 1_000 });
 
@@ -265,9 +243,6 @@ describe('the demoted alarm mirrors both arms', () => {
     expect(result.turnNeverReported).toBe(0);
   });
 
-  // cm:guard the mirror against the LOOP, not against a re-reading of the same intent: the counts
-  // are compared row for row over one snapshot, which is the only assertion that catches the two
-  // drifting apart.
   it('counts exactly what the loop would fail, on both arms', async () => {
     await queuedSession({ dispatchedAgo: QUEUE() * 3, heardAgo: null });
     await queuedSession({ dispatchedAgo: QUEUE() * 3, heardAgo: QUIET() + 1 });
@@ -294,7 +269,6 @@ describe('the demoted alarm mirrors both arms', () => {
  * because the two name one member.
  */
 describe('core and the box agree on the reason, in either order', () => {
-  // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/turn_evidence.rs — `never_started_reason`, pasted whole. A reword there and not in `failure-patterns.ts` drops this to `unclassified` and this test is what says so.
   const BOX_SAYS =
     "the job's pane `forge-job-3d93cbab` was opened and its prompt delivered, but the agent " +
     'never reported submitting it, or anything else, in 120s — tmux accepted the keystroke and ' +
@@ -338,8 +312,6 @@ describe('core and the box agree on the reason, in either order', () => {
       status: 'failed',
       reason: 'turn_never_reported',
     });
-    // cm:guard the session left `queued` on the box's report, so core's arm had nothing to match —
-    // which is the half of the argument that does not depend on the two agreeing.
     expect(result.turnNeverReported).toBe(0);
   });
 
@@ -413,10 +385,6 @@ describe('a box that keeps saying `starting` is neither flipped nor failed', () 
     };
   }
 
-  // cm:guard THE case the issue names, and it needs BOTH halves to pass: the flip must not happen
-  // (`events-routes.ts`) and the queue arm must not fire on the row that leaves (`queue-hop.ts`).
-  // The dispatch age is ten times the queue threshold and the beats run past it, which is what makes
-  // this a statement about the two clocks rather than about one tick.
   it('is still queued, and unfailed, after beating past ten times the queue threshold', async () => {
     const { sessionId, jobId } = await seedWithJob(QUEUE() * 10);
 
@@ -439,10 +407,6 @@ describe('a box that keeps saying `starting` is neither flipped nor failed', () 
     });
   });
 
-  // cm:guard the other direction on the same row: once the beats STOP it is bounded, and by the
-  // reason that is true of it. Without this the case above is only half a claim — "never failed" and
-  // "never failed for the right reason" are different, and a row nothing ever reaps is the wedged
-  // session `VISION: state-never-lies` forbids just as much as a row reaped wrongly.
   it('is failed as turn_never_reported once the beats stop, never as queue_timeout', async () => {
     const { sessionId, jobId } = await seedWithJob(QUEUE() * 10);
     expect((await beat(jobId, [starting])).status).toBe(200);
@@ -459,9 +423,6 @@ describe('a box that keeps saying `starting` is neither flipped nor failed', () 
     expect(after.reason).toBe('turn_never_reported');
   });
 
-  // cm:guard the flip is not merely delayed — a turn REPORTED after all that silence still earns it,
-  // and `started_at` is stamped then and not at dispatch. A rule that just refused `starting` for
-  // ever would pass both cases above and leave every session queued for its whole life.
   it('flips the moment a turn is reported, however long the starting beats ran', async () => {
     const { sessionId, jobId } = await seedWithJob(QUEUE() * 10);
     for (let i = 0; i < 3; i++) {

@@ -1,18 +1,3 @@
-/**
- * ISS-387 — Epodsystem integration adapter.
- *
- * Like Postman, Epodsystem is an MCP-injection-only provider: all store/theme
- * mutation is driven by the official Epodsystem MCP server injected into the
- * runner (see `resolver.ts`). Core's only direct calls are the test-connection
- * GraphQL probes, which validate the `crmk_` key and surface non-secret store
- * identity back to the config UI. No outbound/inbound delivery surface exists.
- *
- * Probe 1 (`apiKeyContext`) validates the key + resolves org/scopes/store.
- * Probe 2 (best-effort: `storeThemes` + `storeDomains`) enriches the display
- * with the live theme NAME and the real primary DOMAIN — data apiKeyContext
- * itself does not carry. A failure of probe 2 never fails the connection.
- */
-
 import { logger } from '../../logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
@@ -43,7 +28,6 @@ const CONTEXT_TIMEOUT_MS = 15_000;
 const API_KEY_CONTEXT_QUERY =
   'query ForgeApiKeyContext { apiKeyContext { organization_id scopes stores { id slug name commerce_enabled active_theme_id } } }';
 
-// Enrichment (best-effort): the live theme NAME + the real primary domain.
 const STORE_CONTEXT_QUERY =
   'query ForgeStoreContext($sid: ID!) { storeThemes(store_id: $sid) { id name role is_active } storeDomains(store_id: $sid) { domain is_primary } }';
 
@@ -166,9 +150,6 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
       const orgId = apiCtx?.organization_id ?? null;
       const scopes = Array.isArray(apiCtx?.scopes) ? apiCtx.scopes : null;
 
-      // Best-effort enrichment: resolve the live theme NAME + the real primary
-      // domain. apiKeyContext gives only the theme id and no domain. A failure
-      // here must NOT fail the connection — we still have a valid key.
       let themeName: string | null = null;
       let domain: string | null = null;
       if (store?.id != null) {
@@ -200,21 +181,6 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
         }
       }
 
-      // Persist the resolved store identity into config (non-secret) so the
-      // settings badge + Theme panel and `forge_storefront_target` show the real
-      // store/theme without re-running the healthcheck. Only overwrite a field
-      // when actually resolved, so a partial response never wipes prior values.
-      // `draftThemeId` is build-time (created by customize_theme), not here.
-      // The crmk_ key is NEVER written here.
-      // cm:guard read the CONNECTION's own config here, never `ctx.config`.
-      // `ctx.config` is `effectiveConfig(pair)` — the connection overlaid with
-      // THIS project's binding — and writing it back promotes the binding's own
-      // keys onto the credential every other project bound to it inherits. The
-      // three release-channel keys are binding-tier for exactly that reason, so
-      // health-checking project A's binding would hand A's `releaseRunnerLabel`
-      // and `verify` probes to project B as its fallback. Same defect as
-      // ISS-1036's F1 on the Google adapter, and already measured in the field
-      // on pixelight's epodsystem binding, 2026-09-04.
       const connection = await findConnectionById(ctx.connectionId);
       const resolved: Record<string, unknown> = {
         ...((connection?.config ?? {}) as Record<string, unknown>),
@@ -320,7 +286,6 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
     label: 'Epodsystem',
     alwaysStageKeyed: false,
     neverCheckedDetail: 'never test-connected',
-    // cm:guard non-secret store identity ONLY — the `crmk_` key must never reach a status card, which is an unauthenticated-to-the-provider read any project member can make
     cardMeta: (config) => {
       const cfg = config as { storeSlug?: string; storeName?: string };
       return { storeSlug: cfg.storeSlug ?? null, storeName: cfg.storeName ?? null };

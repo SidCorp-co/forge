@@ -16,16 +16,17 @@ import {
   EmptyState,
   ErrorState,
   Icon,
-  type MenuItem,
   Menu,
   MonoTag,
   ProgressBar,
+  SectionTitle,
+  SlideOver,
   Spinner,
   Stat,
   StatusChip,
-  SlideOver,
   Tabs,
   Tooltip,
+  type MenuItem,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -65,7 +66,6 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-// cm:edge naming -> packages/web-v2/src/features/issues/components/issue-row-actions.tsx — its PriorityCell holds this same priority→tone table, so a priority recoloured on one side leaves the drawer and the row disagreeing about one issue
 const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
   critical: "red",
   high: "amber",
@@ -107,7 +107,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
       () => toast({ title: "Couldn't copy link", tone: "error" }),
     );
   }
-  // cm:guard the RUN's own currentStep, never a stage derived from the issue's status — that fallback named a pipeline stage on a drawer opened where no run existed (ISS-999)
   const chipStep = run?.currentStep ?? undefined;
   const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = issue?.title ?? "Pipeline run";
@@ -210,7 +209,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
               branch / run cost), so the panel answers "what is this and where
               does it stand" before offering controls (ISS-436). */}
           <div className="flex flex-col gap-2.5">
-            <h2 className="fg-h2 leading-tight">{title}</h2>
+            <SectionTitle className="leading-tight">{title}</SectionTitle>
             <div className="flex flex-wrap items-center gap-2.5">
               {issue && issue.priority !== "none" && (
                 <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
@@ -376,7 +375,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
             <div className="min-w-0 flex-1 pb-4">
               <div className="flex items-center gap-2.5">
                 <span
-                  className="font-mono text-[12.5px] font-bold"
+                  className="font-mono text-12-5 font-bold"
                   style={{
                     color:
                       state === "running"
@@ -430,7 +429,7 @@ function TasksTab({ issueId, open }: { issueId: string | null; open: boolean }) 
             className="flex items-center gap-3 rounded-md border border-line-subtle bg-app px-3.5 py-3"
           >
             <span
-              className="flex size-[18px] flex-none items-center justify-center rounded-[5px]"
+              className="flex size-[18px] flex-none items-center justify-center rounded-5"
               style={{
                 background: done ? "var(--green-500)" : "var(--bg-surface)",
                 border: `1.5px solid ${done ? "var(--green-500)" : "var(--border-strong)"}`,
@@ -467,7 +466,7 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-baseline gap-2">
-        <span className="font-sans text-[34px] font-extrabold leading-none tracking-tight text-fg">
+        <span className="font-sans text-34 font-extrabold leading-none tracking-tight text-fg">
           {formatUsd(c.estimatedCost)}
         </span>
         <span className="fg-body-sm text-subtle">
@@ -487,13 +486,13 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
           <p className="fg-overline">Step durations</p>
           {steps.map((s, i) => (
             <div key={`${s.jobType}-${i}`} className="flex items-center gap-2.5">
-              <span className="w-14 flex-none font-mono text-[12px] text-muted">{s.jobType}</span>
+              <span className="w-14 flex-none font-mono text-12 text-muted">{s.jobType}</span>
               <ProgressBar
                 className="flex-1"
                 value={((s.durationMs ?? 0) / maxDur) * 100}
                 tone="cobalt"
               />
-              <span className="w-16 flex-none text-right font-mono text-[12px] text-fg">
+              <span className="w-16 flex-none text-right font-mono text-12 text-fg">
                 {formatDurationMs(s.durationMs)}
               </span>
             </div>

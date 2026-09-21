@@ -13,7 +13,7 @@ export function parseLabels(raw: string): string[] {
 	return [...seen];
 }
 
-/** Pool labels on one runner. A production binding's `releaseRunnerLabel` names one of these. */
+/** Pool labels on one runner. A production binding's `releaseRunnerLabel` prefers one of these. */
 export function RunnerLabels({
 	projectId,
 	runnerId,
@@ -46,7 +46,7 @@ export function RunnerLabels({
 					value={draft}
 					onChange={(e) => setDraft(e.target.value)}
 					placeholder="release, gpu"
-					className="h-7 w-56 text-[12px]"
+					className="h-7 w-56 text-12"
 				/>
 				<Button type="submit" size="sm" variant="secondary" loading={save.isPending}>
 					Save labels

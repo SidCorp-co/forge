@@ -1,17 +1,10 @@
-// web-v2 feature module: session (detail) — REST surface for the RUN thread.
-// All calls go through the shared `apiClient` (no raw fetch). Routes verified
-// against `packages/core/src/agent-sessions/routes.ts` for ISS-292.
-//
-// cm:guard what is here is run-shaped and stays that way: reading a run's turns, sending into one, truncating and re-dispatching it, forking it, cancelling it. The chat bootstrap that used to sit beside them — create, the interactive list, the runner pin, rename, archive and delete — left with the chat surface at ISS-1004 step 5, because each named a session a person's chat was STORED in rather than a run, and a conversation is stored in `/api/conversations` now.
 
 import { apiClient, apiMultipart } from "@/lib/api/client";
 import type { SessionRow } from "@/features/sessions/types";
 import type { SessionAttachment, TurnRow, TurnsResponse } from "./types";
 
 export interface GetTurnsOpts {
-  /** Cursor — a turn id; returns turns *after* it. */
   after?: string;
-  /** Page size (server clamps to ≤ 500). */
   limit?: number;
 }
 
@@ -19,7 +12,6 @@ export interface SendOpts {
   sessionId: string;
   message: string;
   claudeSessionId?: string | null;
-  /** ISS-499 — ids of already-uploaded session attachments to attach to this turn. */
   attachmentIds?: string[];
 }
 
@@ -58,11 +50,6 @@ export const sessionApi = {
       }),
     }),
 
-  /**
-   * `POST /:sessionId/attachments` — multipart upload of one chat attachment
-   * (ISS-499). Returns the persisted attachment metadata; its `id` is then sent
-   * in the next `send` as `attachmentIds`.
-   */
   uploadAttachment: (sessionId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);

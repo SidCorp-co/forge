@@ -1,37 +1,9 @@
-/**
- * The reads an event invalidated, and nothing else.
- *
- * Two of the things the projection holds cannot be taken from a payload. GitHub
- * computes mergeability lazily and sends `mergeable: null` with it, and no
- * payload carries how far a head is behind its base at all — a base push that
- * puts every open branch behind sends one `push` delivery and says nothing
- * about any pull request.
- *
- * So this reads. It is not a poll: nothing here runs on a timer, a tick or an
- * interval, and a read happens only because a delivery said the answer moved.
- * The rule ISS-1062 states is against a SECOND SOURCE OF TRUTH with a staleness
- * of its own, which is what a sweep would be; a read triggered by the event that
- * invalidated it has the event's own freshness.
- *
- * Everything written here is fenced on the head it answered for, and a failure
- * is recorded on the row rather than thrown.
- */
-
 import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { logger } from '../../logger.js';
 import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
 
-/**
- * How many open pull requests one base push refreshes.
- *
- * A base push invalidates the behind-by of every open branch on that base, and
- * a repository with hundreds would otherwise turn one delivery into hundreds of
- * API calls inside a webhook handler. The ones past the cap are not silently
- * skipped: they carry the cap as their `refresh_error`, so a reader meets the
- * truncation on the row rather than inferring it from a stale number.
- */
 export const BASE_PUSH_REFRESH_CAP = 25;
 
 export const CAP_REACHED_REASON = `not refreshed: this base push moved more than ${BASE_PUSH_REFRESH_CAP} open pull requests, and this one is past the cap — its behind-by is from before the push`;
@@ -83,14 +55,11 @@ export async function readRefreshFacts(
 ): Promise<RefreshOutcome> {
   try {
     const pull = await client.get<PullRead>(`/repos/${client.fullName}/pulls/${args.number}`);
-    // cm:guard the pull read answers for whatever target GitHub holds NOW, which may already be ahead of the row — a synchronize whose delivery has not arrived, or a retarget. The compare below is explicitly for the head we asked about, so accepting that mergeability would stamp one head's verdict beside another head's counts, and the database fence could not see it because the row still names the old head. Refuse the pair rather than store a mixture; the delivery for the new target asks again.
     const mismatch = targetMismatch(args, pull);
     if (mismatch) return { ok: false, reason: mismatch };
-    // cm:why the compare is against the base REF and not the stored base sha: what "behind" means is how far this head trails the base branch as it is now, and the stored sha is the base as it was when a payload last mentioned it — which a base push does not update.
     const cmp = await client.get<CompareRead>(
       `/repos/${client.fullName}/compare/${encodeURIComponent(args.baseRef)}...${encodeURIComponent(args.headSha)}`,
     );
-    // cm:guard the two reads are not one snapshot, and this is the only evidence that they saw the same base. A push landing between them pairs mergeability computed against one base revision with counts computed against another, and the row would then carry a `clean` from before the push beside a behind-by from after it — a mixture no single moment ever produced.
     const moved = baseMoved(pull, cmp);
     if (moved) return { ok: false, reason: moved };
     return {
@@ -132,26 +101,6 @@ function targetMismatch(args: RefreshTarget, pull: PullRead): string | null {
   return null;
 }
 
-/**
- * Write a refresh onto the row it answered for, or do nothing.
- *
- * The fence is the head AND the base, and it covers the error arm as well as the
- * value arm: a slow read for a target the row has since left knows nothing about
- * the target it now carries, so neither its counts nor its complaint belongs
- * there. Nothing is a correct amount to write.
- *
- * The base is in the fence because a retarget moves it without moving the head —
- * `main` to `release` on the same commits — and a behind-by computed against
- * `main` landing on a row that says `release` is the same wrong number a stale
- * head would give, reached without anybody pushing anything.
- *
- * `startedAt` is the third half of it, and it is when the read STARTED rather
- * than when it finished. Two pushes to one base start two refreshes for the same
- * row at the same target, and they may finish in either order; the row keeps the
- * answer of the one that started last, whichever returned first. Keying on the
- * finish time would make the loser's completion look newer and let a read of an
- * older base overwrite a read of a newer one.
- */
 export async function storeRefresh(
   rowId: string,
   target: { headSha: string; baseRef: string; startedAt?: Date },
@@ -246,7 +195,6 @@ export async function markRefreshCapped(rowIds: string[]): Promise<number> {
   const rows = await db
     .update(repoPullRequests)
     .set({ refreshError: CAP_REACHED_REASON, refreshedAt: new Date(), updatedAt: new Date() })
-    // cm:guard `inArray`, not a hand-written `= ANY(${rowIds})`: drizzle spreads a JS array into one placeholder PER ELEMENT, so that form reaches Postgres as `ANY(($1, $2))` and fails with 42809 for ANY length. It shipped that way and no test had ever run this function against a database — the unit suite only asserted the sentence it writes.
     .where(inArray(repoPullRequests.id, rowIds))
     .returning({ id: repoPullRequests.id });
   return rows.length;

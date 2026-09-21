@@ -45,7 +45,6 @@ describe('retention policy: the stated rules', () => {
     }
   });
 
-  // cm:guard `metrics/queries.ts` caps its own window at 90 days and reads both of these through it, so a floor under 90 lets an operator empty the tail of a chart that then reports zero rather than reporting nothing. The floor IS the cap for these two on purpose.
   it('floors the two tables the 90-day metrics window reads at 90 days', () => {
     expect(ruleFor('queue_snapshots').floorDays).toBe(90);
     expect(ruleFor('runner_events').floorDays).toBe(90);
@@ -100,7 +99,6 @@ describe('retention policy: resolving the window', () => {
     expect(resolved.rejected).toBeNull();
   });
 
-  // cm:guard an unswept table has no variable ON PURPOSE, so nothing in the environment may switch its sweep on: `mcp_audit_log` is unswept because the MCP deletion rule reads a count over the whole table as a lifetime count, which an operator setting a variable would not know.
   it('ignores the environment entirely for a table with no window', () => {
     const resolved = resolveRetention(ruleFor('mcp_audit_log'), {
       RETENTION_MCP_AUDIT_LOG_DAYS: '30',

@@ -17,14 +17,6 @@ export interface EnqueueJobInput {
   issueId?: string | null;
 }
 
-/**
- * ISS-196 — `singletonKey` is `${issueId}:${jobType}` for issue-pipeline
- * jobs (rather than `jobId`), so two outbox workers picking up two outbox
- * rows for the same (issue, jobType) within pg-boss's singleton window
- * collapse to one queued message. Project-only jobs (no issueId) fall
- * back to `${jobId}:${jobType}` — still per-message-unique. The DB-layer
- * `jobs_active_unique` index (migration 0009) is the final guard.
- */
 export async function enqueueJob(input: EnqueueJobInput, opts: EnqueueOptions = {}): Promise<void> {
   const singletonKey = input.issueId
     ? `${input.issueId}:${input.type}`
@@ -40,11 +32,6 @@ export async function enqueueJob(input: EnqueueJobInput, opts: EnqueueOptions = 
 }
 
 export async function enqueuePmJob(pmJobId: string, opts: EnqueueOptions = {}): Promise<void> {
-  // PM-queue uniqueness is enforced at the DB level by
-  // `jobs_pm_per_project_unique_idx` (Epic 1, ISS-17); the pg-boss
-  // singletonKey just needs to be globally unique per message, so using the
-  // job's UUID is sufficient. Issue-pipeline jobs route through `enqueueJob`
-  // above with `${issueId}:${type}` for cross-process dedup.
   await boss.send(
     PM_QUEUE_NAME,
     { jobId: pmJobId },

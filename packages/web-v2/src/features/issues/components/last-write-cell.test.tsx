@@ -89,10 +89,6 @@ describe("the column says what it measures", () => {
     }
   });
 
-  // cm:guard the two readings the old copy asserted and the figure cannot support: "No movement in
-  // 2d" and "Last moved 2h ago", both shipped, both false of `now - updated_at`. Naming a status
-  // move among the writes that DO reset the figure is not one of them, which is why this forbids
-  // the claim rather than the word.
   it("claims neither movement nor time-in-status, on either branch", () => {
     for (const stale of [true, false]) {
       const said = titleOf(stale);
@@ -115,9 +111,6 @@ describe("the column heading", () => {
     expect(headings.length).toBeGreaterThan(5);
   });
 
-  // cm:guard the heading beside STATUS may not be any kernel status's own word. It was "Waiting",
-  // and since the column beside it now prints "Waiting" for the `waiting` status, the old heading
-  // was a collision as well as a claim the figure cannot support.
   it("is no kernel status's word", () => {
     const words = new Set(ISSUE_STATUSES.map(statusLabel));
     const beside = headings[headings.indexOf("Status") + 1];

@@ -1,7 +1,11 @@
 "use client";
 
-// cm:guard tab state lives in `?tab=` through the shared `useTabParam` hook and never in component state, because a tab nobody can link to cannot be put in a bug report, a runbook or a message to a colleague — every other tabbed screen here is reachable that way and one that is not reads as broken (ISS-349). The 'Sessions' tab is deliberately absent rather than disabled: a tab that opens on nothing is a promise the product does not keep (ISS-299).
-import { PageContainer, ScreenTabs, type TabItem } from "@/design";
+import {
+  PageContainer,
+  PageTitle,
+  ScreenTabs,
+  type TabItem,
+} from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { AgentsTab } from "@/features/agent-accounts/components/agents-tab";
 import { OrgsTab } from "@/features/orgs/components/orgs-tab";
@@ -22,7 +26,6 @@ const TABS: TabItem[] = [
   { value: "notifications", label: "Notifications" },
 ];
 
-// cm:guard the SHELL is the shared wide column and the form inside it is capped separately: the strip has to line up with every other screen's, while a text input stretched to 1700px is unusable. Cap the shell instead and this screen stops matching the ones beside it.
 export function SettingsScreen() {
   const [tab, setTab] = useTabParam<SettingsTab>(TAB_VALUES, "account");
 
@@ -34,7 +37,7 @@ export function SettingsScreen() {
         onChange={(v) => setTab(v as SettingsTab)}
         header={
           <header className="mb-6">
-            <h1 className="fg-h2">Settings</h1>
+            <PageTitle className="fg-h2">Settings</PageTitle>
             <p className="fg-body-sm mt-1">Your account, tokens, and notifications.</p>
           </header>
         }

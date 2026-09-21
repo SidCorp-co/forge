@@ -1,11 +1,5 @@
 "use client";
 
-// ISS-1071 — the ONE place a person answers "may agents on this project use this integration".
-//
-// It replaced a sentinel key in `pipelineConfig.mcpServers`, a different namespace on a different
-// settings tab that no connect surface could write. Measured 2026-09-17: 6 of 9 MCP-capable
-// bindings on the fleet were active, credentialed and healthy, reached no agent, and rendered as
-// "connected · healthy" everywhere in this UI.
 
 import { useState } from "react";
 import type { AgentAccess, AgentPathKind } from "@forge/contracts";
@@ -19,11 +13,6 @@ export const AGENT_ACCESS_CLOSED: AgentAccess = "none";
 
 export const GRANT_LABEL = "Agents on this project may use this";
 
-// cm:guard the two sentences are not two phrasings of one fact. `direct-mcp` hands the project's
-// stored credential to the runner box and the agent calls the provider itself, with Forge outside
-// the call path and unable to see or stop the call; `core-mediated` means Forge holds the credential
-// and makes the call. A person granting the first is accepting something the second does not ask
-// for, so the control must never render one wording for both.
 const KIND_COPY: Record<
   Exclude<AgentPathKind, "none">,
   { granted: string; withheld: string }
@@ -41,16 +30,6 @@ const KIND_COPY: Record<
   },
 };
 
-/**
- * The grant as a request-body fragment: `{ agentAccess }` where the provider HAS an agent path,
- * and `{}` where it does not.
- *
- * Spread into a connect or bind body so the key appears exactly where `AgentAccessChoice` rendered
- * a switch. A provider declaring `none` shows no control, so a body carrying `agentAccess: 'none'`
- * for it would be the screen answering a question it never asked — and the server refuses a real
- * grant on such a provider by name, so the two sides would disagree about whether the field means
- * anything.
- */
 export function agentAccessBody(
   pathKind: AgentPathKind,
   value: AgentAccess,
@@ -58,23 +37,11 @@ export function agentAccessBody(
   return pathKind === "none" ? {} : { agentAccess: value };
 }
 
-/**
- * May this caller write the grant, and if not, who can.
- *
- * cm:edge contract -> packages/core/src/integrations/agent-access.ts — one calculation for every
- * door, mirroring `agentAccessTier`. A screen that decides this some other way offers an action the
- * server answers 403 to, or hides one it would have accepted; both were happening before ISS-1071
- * gave the two tiers different answers.
- */
 export function mayWriteAgentAccess(
   pathKind: AgentPathKind,
   perms: { canEditProject: boolean; isOrgAdmin: boolean },
 ): boolean {
   if (pathKind === "none") return false;
-  // Both hold, and the org-admin arm does NOT replace the project one: being an org admin is an
-  // ESCALATION on top of editing this project's integrations, not a way around it. Dropping the
-  // first half let a read-only member's switch render enabled, which the existing
-  // `AgentAccessControl` case caught.
   if (!perms.canEditProject) return false;
   return pathKind === "direct-mcp" ? perms.isOrgAdmin : true;
 }
@@ -111,9 +78,6 @@ export function AgentAccessChoice({
   busy?: boolean;
   failure?: string | null;
 }) {
-  // cm:guard fails CLOSED on a kind this build has no wording for — a fourth `AgentPath` arm added
-  // in core reaches here as a value with no entry, and a switch whose consequence the screen cannot
-  // state is worse than no switch. The binding simply stays ungranted until the web knows the kind.
   const copy = pathKind === "none" ? undefined : KIND_COPY[pathKind];
   if (!copy) return null;
 

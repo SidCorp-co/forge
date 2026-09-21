@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard PAT-SHAPED, because a box now presents an ordinary `forge_pat_*` carrying `device_id` (ISS-932). An opaque string here never reaches the device branch at all — `requireUserOrDevice` routes on `isPatLike` — so the mock would go unconsulted and the suite would prove nothing about the device path.
 const DEVICE_PAT = `forge_pat_dev_${'a'.repeat(64)}`;
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
@@ -68,7 +67,6 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));
 
-// cm:guard the default is null — REJECTED — and a test that wants the device path must opt in per call. Defaulted the other way, every suite in this file would authenticate as a box and the device-scoped reads (ISS-462) would prove nothing about who may see a session.
 const verifyDeviceCredentialMock = vi.fn(async (_token: unknown) => null as { id: string } | null);
 vi.mock('../auth/device-credential.js', () => ({
   verifyDeviceCredential: (token: unknown) => verifyDeviceCredentialMock(token),
@@ -562,7 +560,6 @@ describe('PATCH /api/agent-sessions/:id — ISS-733 fix: unexpanded skill detect
 });
 
 describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the runner row', () => {
-  // cm:why these stamp only from a DEVICE-principal PATCH — a member PATCH with a crafted `messages` array must never mis-stamp a healthy runner (round-4 review blocker 1)
   it("stamps the deviceId's runner row when a device-authored failure classifies as a usage limit", async () => {
     verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([

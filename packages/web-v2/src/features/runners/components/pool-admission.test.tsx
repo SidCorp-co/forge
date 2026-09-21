@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 //
-// cm:guard `disabled` must stay operable here — the toggle was locked on exactly the status it would fix, so the only control that returns a retired box refused precisely when it was needed and its caption sent the operator to a re-registration the unique index refuses (ISS-990).
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +69,31 @@ describe("PoolAdmission at `disabled`", () => {
 		const caption = screen.getByText(/Retired by an operator/);
 		expect(caption.textContent).toMatch(/switch this back on/i);
 		expect(caption.textContent).not.toMatch(/re-register/i);
+	});
+});
+
+/**
+ * Criterion 25, and the defect this issue reproduces. The owner turned this
+ * control off expecting the resident master session to stop, and it kept
+ * running — because this control governs jobs offered from the pool and
+ * nothing that is already up.
+ */
+describe("PoolAdmission and the resident master it does not reach", () => {
+	it("says that switching it off ends no resident master session already running", () => {
+		mount("online");
+
+		const said = screen.getByText(/does not end a resident master session/i);
+		expect(said.textContent).toMatch(/already\s+running/i);
+	});
+
+	it("says it at every status, because the reader is looking at whichever one they are in", () => {
+		for (const status of ["online", "draining", "disabled"]) {
+			mount(status);
+			expect(
+				screen.getByText(/does not end a resident master session/i),
+			).toBeTruthy();
+			cleanup();
+		}
 	});
 });
 

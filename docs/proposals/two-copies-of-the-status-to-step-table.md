@@ -21,7 +21,7 @@ exists to prevent, one axis over: it owns *which nine buckets a status reads as*
 ISS-1097's `one-status-vocabulary.test.ts` deliberately does not catch these — its threshold is
 twelve statuses, because a display-word map has to be total or near-total to be usable, and lowering
 the number would catch these two for being the wrong vocabulary rather than for being a second copy
-of the right one. The `cm:guard` above that threshold says so, and names both files.
+of the right one. The comment above that test's `MAJORITY` constant says so, and names both files.
 
 What it would take: one derivation, from whatever declares the step a status dispatches, with the
 `"Auto "` prefix applied at the error surface rather than baked into a second table.

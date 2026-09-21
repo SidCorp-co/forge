@@ -2,21 +2,6 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
 
-/**
- * Project-scoped time-series metrics (ISS-380, Part 1). Every series is
- * derived from data that already exists — no new collection (Part 2 lives in
- * ISS-381). The SQL idioms here mirror `src/projects/health-routes.ts` and
- * `src/mcp/tools/forge-metrics.ts`:
- *   - window cutoffs are computed SQL-side as `now() - (${days}::int * interval
- *     '1 day')` because postgres-js cannot bind a JS `Date` into a parameterized
- *     query (ISS-267).
- *   - `bucket` ('day' | 'hour') is passed as a BOUND text parameter to
- *     `utcDateTrunc` — never string-interpolated — so it is injection-safe even
- *     though it is enum-validated upstream. The truncation is pinned to UTC
- *     because `bucketTimestamps` below floors to UTC (ISS-942).
- *   - percentiles use `percentile_disc(p) WITHIN GROUP (ORDER BY …)`.
- */
-
 export const METRICS = [
   'cost',
   'throughput',
@@ -27,7 +12,6 @@ export const METRICS = [
   // ISS-381 (Part 2) — backed by the new collection tables:
   'pass_rate', // issue_step_contexts.verdict, step='test'
   'approve_rate', // issue_step_contexts.verdict, step='review'
-  // cm:edge sideeffect -> packages/core/src/pipeline/sweeper.ts — `queue_depth` reads `queue_snapshots`, which only the sweeper writes; a stalled sweeper reads as a flat queue rather than as missing data.
   'queue_depth',
   'runner_uptime', // runner_events (status-change audit)
 ] as const;
@@ -132,7 +116,6 @@ export interface TimeseriesResult {
   series: TimeseriesPoint[];
 }
 
-// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
 /**
  * Run the aggregation for one metric and return a dense, chart-ready series.
  * Read-only; every query is bounded by the `days` window (capped 1..90 by the
@@ -203,7 +186,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     }
 
     case 'cycle_time': {
-      // cm:guard work-start is the first transition into in_progress/approved and NOT `issues.created_at` (ISS-380 AC #3), falling back to `created_at` only for issues predating those transitions, so older resolved issues still contribute rather than dropping out of the series.
       const rows = (await db.execute(sql`
         WITH resolved AS (
           SELECT al.issue_id,
@@ -216,7 +198,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
             AND al.created_at >= ${cutoff}
           GROUP BY al.issue_id
         ),
-        -- cm:guard ISS-1022 - scoped to the issues the resolved CTE above selected,
         -- and that changes no figure: the outer query LEFT JOINs this on exactly
         -- those ids, so every row it used to compute for another tenant's issue was
         -- discarded. Without the scope it aggregated every transition in the table.
@@ -276,7 +257,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     }
 
     case 'runner_utilization': {
-      // cm:why `jobs` has no started_at, so dispatched_at stands in for the busy interval's start — utilization is overstated by the dispatch-to-start gap, never understated
       const windowSeconds = BUCKET_SECONDS[bucket];
       const rows = (await db.execute(sql`
         SELECT ${utcDateTrunc(bucket, sql`dispatched_at`)} AS bucket,
@@ -302,17 +282,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     }
 
     case 'cache_hit_rate': {
-      // Computed directly from usage_records (project-scoped, windowed, served by
-      // the (project_id, recorded_at) index) rather than the
-      // pipeline_run_step_durations view: the deployed view (0057 shape; 0128 —
-      // ISS-516 — guards only duration_seconds, leaving the row set/cost_usd
-      // untouched) keeps the 8-column contract and lacks the cache-token
-      // columns (0075 was orphaned/never applied — it
-      // references the dropped jobs.started_at — and is now deleted), so reading
-      // cache_read_tokens off the view 500s on live (ISS-380 forge-test FAIL).
-      // usage_records carries the same tokens.
-      // total input = input_tokens + cache_read_tokens (cache reads are billed
-      // input that bypassed fresh processing).
       const rows = (await db.execute(sql`
         SELECT ${utcDateTrunc(bucket, sql`recorded_at`)} AS bucket,
                (sum(cache_read_tokens)::float / NULLIF(sum(input_tokens + cache_read_tokens), 0)) AS cache_hit_rate,
@@ -392,17 +361,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     }
 
     case 'runner_uptime': {
-      // ISS-381 (2.3) — reconstruct each runner's online fraction per bucket from
-      // the runner_events transition log. We fetch in-window events plus the
-      // latest pre-window event per runner (the state entering the window), then
-      // clip each online segment to bucket boundaries in JS — mirrors how
-      // `throughput` computes its cumulative in JS rather than SQL.
-      // The pre-window carry-in MUST be the LATEST event before the cutoff.
-      // DISTINCT ON (runner_id) keeps the first row per runner only when the
-      // query's OWN leftmost ORDER BY matches the DISTINCT ON expressions — a
-      // trailing ORDER BY on the UNION does NOT bind to the sub-SELECT. So the
-      // DISTINCT ON lives in its own ordered subquery; otherwise Postgres keeps
-      // an arbitrary pre-cutoff event and the leading-edge onlinePct is wrong.
       const rows = (await db.execute(sql`
         SELECT runner_id, new_status, ts FROM runner_events
         WHERE project_id = ${projectId} AND ts >= ${cutoff}
@@ -422,13 +380,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
   return { metric, bucket, days, groupBy: groupByStep ? 'step' : null, series };
 }
 
-/**
- * ISS-381 (2.3) — compute per-(bucket × runner) online fraction from the raw
- * runner_events rows. Each row is `{ runner_id, new_status, ts }`; a runner holds
- * `new_status` from its `ts` until the next event (or `now`). Online segments are
- * clipped to each bucket window and summed; `onlinePct` is online-ms / bucket-ms,
- * clamped 0..1. Runners with no events in or before the window do not appear.
- */
 export function computeRunnerUptime(
   buckets: string[],
   rows: Array<Record<string, unknown>>,
@@ -530,9 +481,6 @@ export async function stepDurationsForProject(
 /**
  * The bounded rescue set: `retry_rescues_since`, called safely.
  */
-// cm:guard the ONE place the function is called from, so its argument contract lives here and not in three callers: a NULL project list means EVERY project and an empty list means NO rows, so passing `null` for "I have no visible projects" hands that caller the whole fleet (ISS-1022).
-// cm:guard each id is bound as its own parameter through `sql.join`, never interpolated as a JS array — drizzle expands an interpolated array as a ROW CONSTRUCTOR, so `= ANY(tuple)` is a malformed array literal that throws at Bind time. Same idiom as `me/pulse-sql.ts#idList`.
-// cm:edge contract -> packages/core/drizzle/migrations/0250_bounded_read_indexes.sql — the function's signature and its null/empty and inclusive-`since` semantics are defined there
 export function retryRescuesSince(projectIds: readonly string[] | null, since: SQL): SQL {
   const scope =
     projectIds === null
@@ -569,7 +517,6 @@ export type SessionFailureAggRow = {
   last_at: string | Date | null;
 };
 
-// cm:guard the OR is load-bearing: a session at any other status that still carries a `failure_reason` must come back too, so the caller can report it instead of dropping it. That is the ISS-759 completed-yet-failed shape plus the live rows the I1 trigger stamped, and narrowing this to the two failed statuses makes them invisible rather than absent.
 export async function sessionFailures(
   projectId: string,
   days: number,
@@ -587,8 +534,6 @@ export async function sessionFailures(
 
 export type ResumeDropRow = { drop_reason: string | null; sessions: number | string };
 
-// cm:guard `priorClaudeSessionId IS NOT NULL` is what defines the denominator, and it must stay in the WHERE rather than move to the caller. It is what keeps attempt 1 out: an attempt with no prior session to continue is the normal shape of a first try, and folding those in makes the drop rate shrink as the project does MORE fresh work.
-// cm:guard this must NOT inherit the failure histogram's status filter. A resume is dropped on healthy dispatches too — restricting it to `failed`/`cancelled_stale` would measure the drop rate of attempts that later died, report it as the drop rate, and leave both numbers wrong.
 export async function resumeDropsForProject(
   projectId: string,
   days: number,

@@ -27,13 +27,11 @@ import { scheduleAck } from './conversation-agent-ack.js';
 type SessionRow = typeof agentSessions.$inferSelect;
 
 /** The metadata key a session carries when its answer belongs to a conversation. */
-// cm:edge contract -> packages/core/src/agent-sessions/terminal-effects.ts — the terminal-session bridge list fans out on exactly this key, so a rename here without one there hangs every runner-hosted conversation reply silently.
 export const CONVERSATION_AGENT_MARKER = 'conversationAgent';
 
 export const TITLE_MAX = 80;
 
 /** What the venue is shown when this lane has no model answer to give it. */
-// cm:guard the sentences are the CALLER's and not this module's, and that is what keeps one lane serving two venues: a Rocket.Chat room is answered in Vietnamese by a named bot and a Forge UI thread in English beside a state label, and a module holding both would be choosing between them on something it would have to be told anyway.
 export interface ConversationAgentReplies {
   /** A turn is already running in this room. */
   dedup: string;
@@ -87,12 +85,6 @@ export interface ConversationAgentMeta {
   /**
    * When the bridge took this turn's delivery, which is NOT when it was delivered.
    */
-  // cm:guard two stamps and not one, because they answer different questions and only the second is
-  // a fact about the room: `claimedAt` fences the two terminal writers so exactly one of them does
-  // the screening and the post, and `deliveredAt` says the reply is in the transcript. Serving
-  // `delivered` off the claim shows a person a finished turn with no answer under it, and a crash
-  // in between makes that lie durable — which is the state a claim is taken to prevent, told
-  // backwards (ISS-1039, commit consult F1).
   claimedAt: string | null;
   deliveredAt: string | null;
   /** Which failure the venue was told about, stamped by the bridge; null while none. */
@@ -100,7 +92,6 @@ export interface ConversationAgentMeta {
   failover?: { attempt: number; triedDeviceIds: string[] } | undefined;
 }
 
-// cm:guard never coerce a missing field to a default — an absent venue or window means "not a conversation-agent session", and defaulting one turns that into a delivery attempt against a room nobody named.
 export function readConversationAgentMeta(metadata: unknown): ConversationAgentMeta | null {
   const raw = (metadata as Record<string, unknown> | null)?.[CONVERSATION_AGENT_MARKER];
   if (!raw || typeof raw !== 'object') return null;
@@ -134,9 +125,6 @@ export function readConversationAgentMeta(metadata: unknown): ConversationAgentM
       ack: typeof replies.ack === 'string' ? replies.ack : null,
     },
     ackAfterMs: typeof m.ackAfterMs === 'number' ? m.ackAfterMs : null,
-    // cm:guard a row written before the split carries `deliveredAt` and no `claimedAt`, and it reads
-    // as claimed: the one thing that stamp meant then was "a bridge has this", which is what
-    // `claimedAt` means now. Reading it as unclaimed would re-open it to a second delivery.
     claimedAt:
       typeof m.claimedAt === 'string'
         ? m.claimedAt
@@ -152,8 +140,6 @@ export function readConversationAgentMeta(metadata: unknown): ConversationAgentM
 /**
  * At most one live runner-hosted turn per room.
  */
-// cm:guard keyed on the CONVERSATION and never on a transport's room id: a Rocket.Chat thread and its parent channel are two conversations and may each hold a turn, while one browser room may not hold two — which is exactly what `projectId` + `rid` + `tmid` meant and could only say in one transport's terms (ISS-987's reason, ISS-1039's vocabulary).
-// cm:guard DB-backed, never an in-memory Set: it must be instance-independent and self-clear the moment the session goes terminal by ANY writer.
 export async function hasInFlightConversationAgentTurn(
   projectId: string,
   conversationId: string,
@@ -175,14 +161,6 @@ export async function hasInFlightConversationAgentTurn(
 /**
  * The session already answering this window, if one was dispatched for it.
  */
-// cm:guard `route-window.ts` asks this when it finds a reservation and no delivered row, which is the state a core that died between the dispatch and the close leaves behind: without it that window reopens as `undetermined` — "a reply was sent and never confirmed" — about an answer no session has written yet (ISS-1039, plan consult F5).
-// cm:guard it does NOT filter on status: a window whose session has already finished is still a window that was handed off, and reading only the running ones would make the recovery answer depend on how long the crash lasted.
-// cm:guard it DOES require the dispatch to have been accepted, which is what `startedAt` records:
-// `createChatSessionRow` commits the row and its marker before `dispatchChatTurn` does anything, so
-// a core that died between the two leaves a session that names this window and was never sent
-// anywhere. Reading that as a handoff closes the window announcing a box working on an answer no box
-// was asked for, and the reservation then stops the recovery dispatching it — a room waiting forever
-// on nothing (ISS-1039, commit consult F2).
 export async function conversationAgentTurnForWindow(
   windowId: string,
 ): Promise<{ sessionId: string } | null> {
@@ -213,7 +191,6 @@ export interface ConversationAgentTurnRow {
 /**
  * Every runner-hosted turn this room has held, newest last.
  */
-// cm:guard the four states are SERVED and never derived on the client, for the reason the membership capability is: the split between `dispatched` and `running` is a session's status and the split between `delivered` and `failed` is a metadata stamp, and a screen computing either would be guessing at rows it cannot see. A blank thread that means all four is this feature failing in the field, which is the whole of ISS-1039's screen rule.
 export async function readConversationAgentTurns(
   conversationId: string,
 ): Promise<ConversationAgentTurnRow[]> {
@@ -236,7 +213,6 @@ export async function readConversationAgentTurns(
     out.push({
       windowId: meta.windowId,
       sessionId: row.id,
-      // cm:guard `failure` and not the session's status decides between the last two: a session can end `completed` and still have produced nothing the screen could pass, and one that ended `failed` has had its reply delivered as the failure sentence — so what a person was SHOWN is the stamp the bridge wrote, not how the process exited.
       state: turnState(row, meta),
       reason: meta.failure ?? (interruptedDelivery(meta) ? DELIVERY_INTERRUPTED : null),
     });
@@ -247,10 +223,6 @@ export async function readConversationAgentTurns(
 /**
  * How long a claimed-but-undelivered turn is read as being delivered rather than lost.
  */
-// cm:guard the work between the claim and the stamp is one screening turn and one post, so the bound
-// is generous by two orders of magnitude and still finite: past it, the process that held the claim
-// is gone and no other will take it, because the claim is exactly what stops one. Reading it as
-// `running` forever is a room told a box is working, indefinitely, on a turn nothing holds.
 const DELIVERY_INTERRUPTED_AFTER_MS = 10 * 60 * 1000;
 
 /** What the venue is told when a delivery was claimed and then never finished. */
@@ -262,11 +234,6 @@ function interruptedDelivery(meta: ConversationAgentMeta): boolean {
   return Number.isFinite(at) && Date.now() - at > DELIVERY_INTERRUPTED_AFTER_MS;
 }
 
-// cm:guard `running` is the RUNNER's word and never core's: `dispatchChatTurn` commits
-// `status: 'running'` before it has published anything, so a session waiting for a box to pick it up
-// is already `running` in this table. `runtimeState` is written only where the principal is a device
-// (`agent-sessions/routes.ts`), which makes it the one piece of evidence that a box actually has
-// this turn — and telling the two apart is criterion 19 (ISS-1039, commit consult F6).
 function turnState(
   row: { status: string; runtimeState: string | null },
   meta: ConversationAgentMeta,
@@ -282,22 +249,11 @@ function turnState(
 /**
  * Whether a box could take a turn for this project right now.
  */
-// cm:guard the SAME resolver `startConversationAgentTurn` uses and not a second answer of its own:
-// the composer offers Agent disabled on the strength of this, and a probe that disagreed with the
-// dispatcher would either grey out a control that would have worked or offer one that refuses a
-// second later — which is the lie ISS-1039 offers the disabled control to avoid.
-// cm:guard it is a claim about NOW and never a guarantee: a device can go between this read and the
-// send, which is why the send refuses by name rather than trusting it (ISS-1039).
 export async function conversationAgentDeviceAvailable(projectId: string): Promise<boolean> {
   const client = await resolveChatDevice({ projectId, deviceId: null, metadata: null }, undefined);
   return Boolean(client.deviceId);
 }
 
-/**
- * Hand one conversation turn to a Claude Code session on a paired device.
- */
-// cm:guard this module never delivers anything itself — `conversation-agent-bridge.ts` is the only path its output reaches a venue, and a post from here would race the bridge's at-most-once claim.
-// cm:guard on a dispatch throw the session MUST be marked failed through `applyKernelTransition`: that fires the completion bridges like any other terminal writer, which is the only reason the venue still gets one honest sentence.
 export async function startConversationAgentTurn(
   args: ConversationAgentTurnArgs,
 ): Promise<ConversationAgentTurnResult> {
@@ -311,7 +267,6 @@ export async function startConversationAgentTurn(
   );
   if (!client.deviceId) return { started: false, reason: 'no-device' };
 
-  // cm:why the snapshot NUMBERS are stored and not just the rendered block, so the bridge screens the reply against what this session was told rather than a fresh re-query that could skew if an issue closes mid-session (ISS-818).
   const progress = await computeProjectProgress(args.venue.projectId);
   const progressFacts: ProgressFacts | null = progress
     ? {
@@ -383,8 +338,6 @@ export async function startConversationAgentTurn(
 /**
  * The prompt a runner-hosted conversation turn runs.
  */
-// cm:guard it must keep telling the session its reply is delivered VERBATIM: there is no synthesis turn downstream to reshape it, unlike escalation.
-// cm:why this lane does not go through `buildSystemPrompt`, so the progress block every other external turn gets is injected here by hand.
 export function buildConversationAgentPrompt(args: {
   persona: string;
   conversationContext?: string | null | undefined;

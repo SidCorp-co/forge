@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard the queue mock is order-sensitive: each db.select().from().where() consumes the NEXT queued result, awaited directly or via .limit(). A test that adds a query without queueing a row for it silently steals the next test's row instead of failing where the gap is.
 const selectQueue: unknown[][] = [];
 const labelInsertMock = vi.fn();
 const issueLabelInsertMock = vi.fn();
@@ -105,7 +104,6 @@ describe('admitGithubIssue (ISS-1076)', () => {
     });
   });
 
-  // cm:guard `enabled` is read for the boolean `true` and not for truthiness: the schema refuses a string, but this reader stands over a jsonb column an older document could have been written to before the schema declared the key, and `'false'` is truthy.
   it('a truthy non-boolean does not open the door', async () => {
     selectQueue.push([{ agentConfig: { pipelineConfig: { githubIntake: { enabled: 'false' } } } }]);
     expect(await admitGithubIssue(PROJECT)).toEqual({
@@ -138,7 +136,6 @@ describe('admitGithubIssue (ISS-1076)', () => {
     });
   });
 
-  // cm:guard the two settings are read from ONE document, so an intakeGate on its own never opens this door. A reader that fell back to intakeGate would admit on three of the fleet's projects that turned the gate on and were never asked about GitHub at all.
   it('an intake gate on its own opens nothing', async () => {
     selectQueue.push([{ agentConfig: { pipelineConfig: { intakeGate: { enabled: true } } } }]);
     expect(await admitGithubIssue(PROJECT)).toEqual({
@@ -147,7 +144,6 @@ describe('admitGithubIssue (ISS-1076)', () => {
     });
   });
 
-  // cm:guard ONE select for both settings, counted rather than inferred from the queue: an exhausted queue returns `[]` rather than throwing, so a second read would drain the queue and still leave it empty. The count is what can go red.
   it('reads the project document once', async () => {
     selectQueue.push([{ agentConfig: { pipelineConfig: { githubIntake: { enabled: true } } } }]);
     await admitGithubIssue(PROJECT);

@@ -1,22 +1,4 @@
-// Shared connection/binding REST contract surface (ISS-400, EPIC ISS-398).
-//
-// One typed contract for the integrations REST surface so web + dev consume it
-// instead of local duplicates (CLAUDE.md conventions.cross-app-parity). Mirrors
-// the merged cutover-A REST (ISS-399, `packages/core/src/integrations/routes.ts`):
-//   - `summarizeBinding`  → BindingSummary    (project-facing; `id` is the binding id)
-//   - `summarizeConnection` → ConnectionSummary (owner-facing credential)
-//   - `StatusCard` / status route → IntegrationStatusCard / IntegrationsStatus
-//   - raw `integration_deliveries` rows → IntegrationDeliveryRow
-//   - adapter `healthcheck()` → IntegrationHealthResult
-//   - connection/binding CRUD + test/rotate request + response envelopes
-//
-// Secret bytes are excluded BY CONSTRUCTION: every summary/response is a fresh
-// interface listing only non-secret fields (`hasSecrets` / `integrationSecretSet`
-// booleans signal presence), never `Omit<Row, 'secretsEnc'>`. Timestamps are
-// `string` (ISO) because these are the JSON-serialized client shapes.
-
 import type { IntegrationProvider, schema } from '@forge/core/public';
-
 
 /** Re-exported, never re-declared — `INTEGRATION_PROVIDERS` in core is the list. */
 import type { AgentPathKind } from '@forge/core/public';
@@ -35,14 +17,6 @@ export type {
 export const AGENT_ACCESS_VALUES = ['none', 'all'] as const;
 export type AgentAccess = (typeof AGENT_ACCESS_VALUES)[number];
 
-/**
- * The deploy capability — which providers a binding may take `role: 'deploy'` on — lives in
- * `./deploy-capability.js` and is reached as `@forge/contracts/deploy-capability`, NOT through this
- * module or the barrel. This file imports `@forge/core/public` for its types, which a browser build
- * cannot resolve, so a runtime value placed here is unreachable from web-v2 at build time however
- * well it type-checks.
- */
-
 /** `'user' | 'org'` — the connection owner namespace. */
 export type IntegrationOwnerType = schema.IntegrationOwnerType;
 /** `'deploy' | 'service'` — what a binding is FOR. */
@@ -53,7 +27,6 @@ export type DeployStage = schema.DeployStage;
 export type IntegrationDeliveryDirection = schema.IntegrationDeliveryDirection;
 /** `'pending' | 'ok' | 'failed'` — delivery status. */
 export type IntegrationDeliveryStatus = schema.IntegrationDeliveryStatus;
-
 
 /**
  * Owner-facing connection summary — the credential, owned by a principal.
@@ -117,12 +90,6 @@ export interface BindingSummary {
   hasSecrets: boolean;
   /** True when the binding carries an inbound-webhook HMAC secret. */
   integrationSecretSet: boolean;
-  /**
-   * ISS-1071 — whether an agent working this project may use this integration. `none` is the
-   * closed answer and the default; `all` grants every tool the provider's declared agent path
-   * offers. This is the ONLY switch: it replaced a sentinel key in `pipelineConfig.mcpServers`
-   * on a different settings tab that no connect surface could write.
-   */
   agentAccess: AgentAccess;
   /**
    * The declared risk class of this provider's agent path, so a screen can say what the grant
@@ -134,14 +101,6 @@ export interface BindingSummary {
   updatedAt: string;
 }
 
-
-/**
- * Coarse card-status bucket for the composed status read model.
- * - `disabled`   — a binding/connection EXISTS but was switched off (distinct
- *                  from `not_configured`, which means nothing is set up).
- * - `unverified` — active binding whose connection has never been health-checked
- *                  (no signal ≠ degraded). ISS-429.
- */
 export type IntegrationCardStatus =
   | 'connected'
   | 'attention'
@@ -166,7 +125,6 @@ export interface IntegrationsStatus {
   cards: IntegrationStatusCard[];
 }
 
-
 /**
  * Webhook/dispatch delivery row (`GET .../integrations/:id/deliveries`). Raw
  * `integration_deliveries` row with Date columns serialized to ISO strings.
@@ -187,16 +145,7 @@ export interface IntegrationDeliveryRow {
   completedAt: string | null;
 }
 
-
-/**
- * Result of the test-connection (`POST .../test`) call — an adapter `HealthCheckResult`.
- * `needs_reauth` (ISS-409 / F4) signals the stored credential was rejected and
- * the rotation fallback did not recover; a consumer (F3) prompts re-authorization.
- * It is surfaced verbatim on `lastHealthStatus`; `IntegrationCardStatus` stays a
- * 4-value coarse bucket (needs_reauth maps to `attention`).
- */
 export interface IntegrationHealthResult {
-  // cm:guard `needs_scope` is NOT a flavour of `needs_reauth` and must stay in this union — core's `HealthStatus` has carried it since ISS-924 and this contract did not, so a 403 arrived over the wire as a value no consumer's type admitted. One says replace the credential, the other says the credential is fine and its permissions are not (ISS-1036 restored the member).
   status: 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
   message?: string;
   /** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
@@ -219,7 +168,6 @@ export interface ConfirmProdDeployResult {
   integrationId: string;
 }
 
-
 /** One Coolify deploy target (a single application UUID). `id` is server-assigned
  *  when omitted; a write replaces the whole `targets` array. */
 export interface CoolifyTargetInput {
@@ -227,7 +175,6 @@ export interface CoolifyTargetInput {
   label: string;
   resourceUuid: string;
   /** Absolute URL of this application's health endpoint; absent = no post-deploy health gate. */
-  // cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — the zod target schema is the other half, and a form that sends a target without this key CLEARS a health gate an operator set, because a config PATCH replaces the whole `targets` array (ISS-971)
   healthUrl?: string;
 }
 
@@ -275,14 +222,6 @@ export type EpodsystemSecretsInput = {
   apiKey: string;
 };
 
-/**
- * One labelled Sentry target under a connection (ISS-526). A Forge project that
- * spans several Sentry projects (backend / frontend / mobile) records one target
- * per stack; `label` is the human name the agent disambiguates on, the optional
- * slugs scope which org/project a Sentry MCP call hits, `environment` is a free
- * display label, and `notes` is free-text guidance for the agent. All targets
- * share ONE host + auth token (the token already reads every project it can see).
- */
 export interface SentryTargetInput {
   label: string;
   organizationSlug?: string;
@@ -291,20 +230,11 @@ export interface SentryTargetInput {
   notes?: string;
 }
 
-/**
- * Sentry non-secret config (`connection.config`). `host` is the Sentry instance
- * (self-hosted, e.g. `logs.canawan.com`, or SaaS `sentry.io`) without scheme;
- * `targets` is the labelled list of org/project the operator works against
- * (ISS-526). The legacy top-level `organizationSlug`/`projectSlug` (ISS-524) are
- * kept optional for back-compat reads of pre-ISS-526 connections. The `sntryu_`
- * auth token is the secret.
- */
 export type SentryConfigInput = {
   host: string;
   targets?: SentryTargetInput[];
   /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   organizationSlug?: string;
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   projectSlug?: string;
 };
 export type SentrySecretsInput = {
@@ -357,7 +287,6 @@ export type GoogleSecretsInput = {
   serviceAccountJson: string;
 };
 
-
 /**
  * What a binding is FOR, and — for a `deploy` one — which stages it serves.
  *
@@ -407,14 +336,6 @@ export interface IntegrationBindingUpdateInput {
   agentAccess?: AgentAccess;
 }
 
-/**
- * Body for `POST /integration-connections` — one envelope, not a per-provider union.
- *
- * ISS-1071: `config` and `secrets` are validated against the schemas the provider's own
- * declaration carries, resolved from the registry at request time. A union here repeated the
- * provider list a third time and made adding a provider a breaking type change for every caller;
- * the server names the rejected provider and the declared set instead.
- */
 export interface ConnectionCreateInput {
   provider: IntegrationProvider;
   displayName?: string;
@@ -424,7 +345,6 @@ export interface ConnectionCreateInput {
   orgId?: string;
 }
 
-/** Body for `PATCH /integration-connections/:id` — re-validated against the existing provider. */
 export interface ConnectionUpdateInput {
   displayName?: string;
   config?: Record<string, unknown>;
@@ -451,10 +371,8 @@ export interface BindExistingConnectionRequest {
    *  connection deploys different apps in this project. Connection-tier keys
    *  (baseUrl) are dropped server-side. */
   config?: Record<string, unknown>;
-  /** ISS-1071 — omitted means the closed answer. */
   agentAccess?: AgentAccess;
 }
-
 
 /** `{ connection }` — connection list items, create (201) + update. */
 export interface ConnectionResponse {
@@ -476,8 +394,6 @@ export interface BindingResponse {
   health?: IntegrationHealthResult | null;
 }
 
-// cm:why these list routes answer with a bare `{ items }` object rather than the X-Total-Count + bare-array convention `ListResponse<T>` wraps, so the envelopes below declare `items` and nothing else
-
 /**
  * Where one connection is actually used. The directory lists credentials that
  * are otherwise indistinguishable — several Coolify tokens differ only by the
@@ -489,8 +405,7 @@ export interface ConnectionUsage {
     id: string;
     projectId: string;
     role: BindingRole;
-  /** Empty for `service`; one or both stages for `deploy`. */
-  stages: DeployStage[];
+    stages: DeployStage[];
     label: string;
     active: boolean;
   }>;
@@ -501,7 +416,6 @@ export interface ConnectionDirectoryItem extends ConnectionSummary {
   usage: ConnectionUsage;
 }
 
-// cm:edge contract -> packages/core/src/integrations/connection-routes.ts — `usage` is carried by the LIST route alone; create/update answer with a bare ConnectionSummary, so widening ConnectionResponse to expect it would break both
 /** List envelope for connections (`GET /integration-connections`). */
 export interface ConnectionListResponse {
   items: ConnectionDirectoryItem[];
@@ -520,29 +434,6 @@ export interface ConnectionBindingsResponse {
   items: BindingSummary[];
 }
 
-
-/**
- * One entry of `GET /:projectId/integrations/mcp-preview` — exactly what the
- * dispatch-time resolver will inject into a runner's `mcpServers` for this
- * project (same builders + filters server-side, so the URL cannot drift).
- * `headers.Authorization` is redacted BY CONSTRUCTION — the real key is never
- * rendered into the preview.
- *
- * `reason`:
- * - `ok`             — this binding's entry WILL be injected on the next dispatch.
- * - `not_configured` — no binding exists for the provider (synthetic row).
- * - `disabled`       — binding or connection is switched off.
- * - `no_credential`  — active but the connection stores no secret.
- * - `shadowed`       — active with credential, but another binding of the same
- *                      provider wins the single `mcpServers.<provider>` slot.
- * - `not_granted`    — ISS-1071: active with credential and would otherwise
- *                      win the slot, but the binding's `agentAccess` is the
- *                      closed answer, so no agent on this project may use it.
- *                      A connected, healthy integration does NOT reach an agent
- *                      until somebody grants it — `lastHealthStatus` does not
- *                      gate the grant, so this is distinct from a credential
- *                      problem (`no_credential`) or a health/reauth issue.
- */
 export interface McpServerPreviewEntry {
   provider: IntegrationProvider;
   serverName: string;

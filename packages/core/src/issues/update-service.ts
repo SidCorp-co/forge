@@ -26,14 +26,6 @@ export type IssueUpdateInput = {
   actor: Actor;
 };
 
-/**
- * The single field+label writer behind REST `PATCH /api/issues/:id` and MCP
- * `forge_issues.update`. Both previously carried their own copy of this
- * transaction and had already drifted: the MCP copy capped the existing-label
- * read at 500 rows, so an issue past that cap computed its delta against a
- * truncated `oldSet` and re-inserted labels it never removed.
- */
-// cm:guard the label delta and its activity rows commit in ONE transaction with the field update — a partial commit leaves `issue.labeled` claiming a label the issues row does not carry, and the activity feed is the only record of who changed a label
 export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const row = await writeIssueFields(input);
   await announceContractInput(input.issueId, row.projectId, input.updates);
@@ -45,6 +37,9 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const guard = expect ? [sessionContextGuard(expect.sessionContext)] : [];
 
   return db.transaction(async (tx) => {
+    if (updates.sessionContext !== undefined && !expect) {
+      await refuseUnreadSessionContextDrop(tx, issueId, updates.sessionContext);
+    }
     const [row] = await tx
       .update(issues)
       .set(updates)
@@ -63,7 +58,6 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       const oldSet = new Set(existing.map((r) => r.labelId));
       const newSet = new Set(labelIds.map((l) => l.labelId));
 
-      // cm:guard the delete and the re-insert are what make a primary swap atomic — the old primary row is gone before the new one lands, so `issue_labels_primary_uq` never sees two true rows for the issue and no caller has to clear the old designation first.
       await tx.delete(issueLabels).where(eq(issueLabels.issueId, issueId));
       if (labelIds.length > 0) {
         await tx
@@ -93,17 +87,6 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   });
 }
 
-/**
- * ISS-1072 — tell whatever publishes the contract that one of its inputs moved.
- *
- * Here rather than on `issueUpdated`, because this is where BOTH field surfaces
- * converge and `issueUpdated` covers only one of them: `issues/patch-fields.ts`
- * records the drift — REST emits it, MCP's update deliberately does not — and
- * MCP's update is the door `forge record plan` and `forge record criteria` come
- * through. Subscribing to `issueUpdated` would miss exactly the writes a
- * contract check is most about.
- */
-// cm:guard fired AFTER the transaction has returned, never inside it. A subscriber of this reaches GitHub over the network; running it inside would hold the issue's row lock across an HTTP call, and a throw would roll back a field write that succeeded.
 async function announceContractInput(
   issueId: string,
   projectId: string,
@@ -118,8 +101,41 @@ async function announceContractInput(
   });
 }
 
-// cm:guard the precondition is a term in the UPDATE's OWN `WHERE`, never a SELECT above it — a read-then-write is the exact race this closes, and two writers that both read the same value would both pass a check placed there. `IS NOT DISTINCT FROM` rather than `=` so an absent field is an expressible expectation: `= null` is NULL in SQL and would refuse every legitimate first claim.
-// cm:why the jsonb parameter carries an explicit `::jsonb` cast — a bare `sql`${json}`` is an untyped parameter whose type Postgres cannot infer, which was a live 500 on forge-beta for the sibling `merged_at` write (issues/merge-marker.ts)
+/**
+ * A `sessionContext` write replaces the field whole, so one that omits a key the
+ * field already holds destroys it — there is no history to read it back from.
+ * A caller that sent `expect` read the current value and means the removal, so
+ * it passes. One that did not is refused by name, naming the keys it would have
+ * dropped, because the alternative is the write landing silently: a probe body
+ * of `{ probe: 1 }` took `landing`, `lease` and `worklog` off ISS-1127 in one
+ * call on 2026-09-21, and the landing checkpoint underneath was unrecoverable.
+ */
+async function refuseUnreadSessionContextDrop(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  issueId: string,
+  next: unknown,
+): Promise<void> {
+  const [current] = await tx
+    .select({ sessionContext: issues.sessionContext })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  const held = current?.sessionContext;
+  if (!held || typeof held !== 'object' || Array.isArray(held)) return;
+
+  const kept = next && typeof next === 'object' && !Array.isArray(next) ? next : {};
+  const dropped = Object.keys(held).filter((k) => !(k in (kept as Record<string, unknown>)));
+  if (dropped.length === 0) return;
+  throw new SessionContextDropsUnreadKeys(dropped);
+}
+
+export class SessionContextDropsUnreadKeys extends Error {
+  constructor(readonly dropped: string[]) {
+    super('SESSION_CONTEXT_DROPS_UNREAD_KEYS');
+    this.name = 'SessionContextDropsUnreadKeys';
+  }
+}
+
 function sessionContextGuard(expected: Record<string, unknown> | null) {
   const expr = expected === null ? sql`null::jsonb` : sql`${JSON.stringify(expected)}::jsonb`;
   return sql`${issues.sessionContext} is not distinct from ${expr}`;

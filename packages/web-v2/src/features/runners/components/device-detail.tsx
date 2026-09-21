@@ -83,10 +83,10 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 				</MetaRow>
 				<MetaRow label="Agent version">
 					<span className="inline-flex items-center gap-2">
-						{device.agentVersion ? `v${device.agentVersion}` : "—"}
+						{device.agentVersion ? `v${device.agentVersion}` : "Not reported"}
 						{device.agentOutdated && (
 							<span
-								className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+								className="inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
 								title={
 									device.latestAgentVersion
 										? `Update pending — latest is v${device.latestAgentVersion}`
@@ -159,12 +159,6 @@ function ProjectPoolRow({
 	);
 }
 
-/**
- * Device detail slide-over — device-global concerns only (rename, status). The
- * "project pools" list is now a read-only roll-up: assigning a device to a
- * project, its repo path, and provisioning all live on the project's Runners
- * screen. Attaches to the Runners destination; no new route.
- */
 export function DeviceDetail({
 	device,
 	onClose,

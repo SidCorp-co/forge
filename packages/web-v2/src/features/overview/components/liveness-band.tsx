@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, Heartbeat } from "@/design";
+import {
+  Card,
+  CardContent,
+  Heartbeat,
+  SectionTitle,
+} from "@/design";
 import { formatElapsed, silenceMark } from "../derive";
 import type { PulseLiveness, PulseThresholds } from "../types";
 import { RecordPanel } from "./record-panel";
@@ -19,7 +24,6 @@ export interface LivenessBandProps {
 }
 
 /** Section 1 — is the control plane executing? */
-// cm:guard the heartbeat renders on series LENGTH, never on a value in it — an all-zero window is a flatline and the single most important thing this surface says; a `some(v > 0)` test here hides three silent days behind an empty frame (ISS-988 criteria 26, 48).
 export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
   const [panel, setPanel] = useState<"liveJobs" | "stuckRuns" | null>(null);
   const mark = silenceMark(liveness.silenceSeconds, thresholds);
@@ -34,7 +38,7 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
     <Card>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="fg-h3">Is it alive?</h2>
+          <SectionTitle className="fg-h3">Is it alive?</SectionTitle>
           <p className={`fg-body-sm ${MARK_TEXT[mark]}`}>
             {silenceText}
             {mark === "alarm" ? " — past the alarm mark" : null}

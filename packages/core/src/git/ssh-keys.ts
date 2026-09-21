@@ -1,19 +1,3 @@
-/**
- * Per-project git SSH deploy keys (optional, opt-in).
- *
- * Forge can mint an ed25519 keypair for a project: the private key is encrypted
- * at rest (vault, INTEGRATION_MASTER_KEY) and the public key is surfaced for the
- * user to add to their repo as a deploy key. Any device bound to the project
- * then clones/pushes with the same key — add once, scale to N runners. Users who
- * prefer their own key paste a private key instead (`user_provided`); we derive
- * its public half + fingerprint and encrypt the private the same way.
- *
- * Keys are generated with the system `ssh-keygen` so the on-disk format the
- * runner writes is exactly what OpenSSH/git expects — no hand-rolled OpenSSH
- * private-key encoding. The private key is decrypted only at provision dispatch
- * and delivered to the runner once over the wire (mirrors ISS-305).
- */
-
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -41,12 +25,6 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
-/**
- * Parse the SHA256 fingerprint out of `ssh-keygen -l -f <pub>` output.
- * Returns `null` (not `''`) on a regex miss — the partial-unique index on
- * `(org_id, fingerprint)` only ignores `NULL`, so an empty string would
- * spuriously collide two parse-failed keys as duplicates.
- */
 function parseFingerprint(out: string): string | null {
   // Format: "256 SHA256:xxxxx comment (ED25519)"
   const m = out.match(/(SHA256:[A-Za-z0-9+/=]+)/);
@@ -107,14 +85,6 @@ function firstLine(s: string): string {
   return (line ?? '').slice(0, 300);
 }
 
-/**
- * Probe whether `repoUrl` (an SSH clone URL) is reachable + authorised using
- * `privateKey`, by running `git ls-remote` with a scoped GIT_SSH_COMMAND. This
- * exercises the real deploy-key → repo path host-agnostically (GitHub, GitLab,
- * Bitbucket, self-hosted) and never mutates anything. The key is written to a
- * throwaway 0600 file; known_hosts is scoped to the temp dir so we neither
- * prompt nor pollute the host. Requires `git` + `ssh` on PATH.
- */
 export async function testSshConnection(repoUrl: string, privateKey: string): Promise<SshConnTest> {
   return withTempDir(async (dir) => {
     const keyPath = join(dir, 'id_deploy');
@@ -122,10 +92,6 @@ export async function testSshConnection(repoUrl: string, privateKey: string): Pr
       mode: 0o600,
     });
     const knownHosts = join(dir, 'known_hosts');
-    // IdentitiesOnly => use only this key (ignore agent/defaults); accept-new +
-    // a temp known_hosts => auto-trust the host key without a prompt or global
-    // pollution; BatchMode => never prompt for a passphrase (fail instead);
-    // ConnectTimeout bounds the TCP dial.
     const sshCmd = [
       'ssh',
       '-i',
@@ -145,11 +111,6 @@ export async function testSshConnection(repoUrl: string, privateKey: string): Pr
     ].join(' ');
     try {
       const { stdout } = await execFileAsync('git', ['ls-remote', repoUrl, 'HEAD'], {
-        // GIT_ALLOW_PROTOCOL pins the transport allow-list to ssh only, so a
-        // repoUrl this call didn't expect (e.g. `ext::…`) can't spawn an
-        // arbitrary subprocess via git's ext:: transport even if a caller
-        // upstream forgot the classifyGitRemote guard — defense in depth
-        // alongside the callers' own SSH-form validation (ISS-628 review).
         env: {
           ...process.env,
           GIT_SSH_COMMAND: sshCmd,

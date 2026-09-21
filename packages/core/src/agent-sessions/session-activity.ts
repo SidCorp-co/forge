@@ -10,12 +10,6 @@ export function extractIssueId(metadata: unknown): string | null {
   return raw;
 }
 
-/**
- * Best-effort `agent-session.created` audit shared by every session-creating
- * handler. activity_log requires an issue FK, so this only records when the
- * session's metadata carries a valid issueId; safeRecordActivity swallows
- * errors.
- */
 export async function recordSessionCreatedActivity(
   session: { id: string; title: string | null; metadata: unknown },
   actor: Actor,

@@ -1,34 +1,3 @@
-/**
- * ISS-1063 — the loop that asks "is this still true?".
- *
- * A condition with nobody re-deriving it only ever accumulates. `pipeline_wedge` is what
- * that looks like: 2161 rows on the production replica and 124 of them resolved, 6%, over
- * three months. Its eight clearers are all event-driven — `jobs/hold.ts` on a release,
- * `jobs/retry.ts` on capacity returning, the runner fault paths, `inv7-alarms.ts` on a
- * resumed pause — so a wedge whose subject ended by a route nobody wired stays lit for
- * ever. This pass is the route nobody wired.
- *
- * Three things happen here and they are deliberately the only three:
- *
- * 1. A firing `pipeline_wedge` whose subject reached a terminal state is resolved. The
- *    subject is re-derived from the database, never from a clock — `wedge.ts` says in
- *    terms that a bell emptied on a schedule is emptied on a schedule rather than on a
- *    fact, and that rule still holds.
- * 2. An inhibited condition whose root has resolved goes back to `pending`. It is NOT
- *    delivered: the root clearing says nothing about the child, so the child's own
- *    producer has to see it again before anybody hears about it. Otherwise inhibition
- *    would trade one burst of alarms for one burst of all-clears.
- * 3. A `pending` record whose producer stopped emitting is dropped undelivered. Its
- *    condition cleared inside its own `for` window, which is what the `for` is for.
- *
- * cm:why this lives in `pipeline/` rather than in `notifications/`, beside the two other
- * detectors that write notifications (`stranded-issues.ts`, `issue-run-invariant.ts`): it
- * is a sweeper pass, and `sweeper.ts` reaching into `core-notifications` directly put that
- * file over the `no-coordinator-blob` fan-out limit — 7 modules against a limit of 6. The
- * check named the design rather than an accident: the sweeper coordinates pipeline passes,
- * and a pass that happens to write notifications is still a pipeline pass.
- */
-
 import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
@@ -45,16 +14,6 @@ export interface ReevaluateResult {
   dropped: number;
 }
 
-/**
- * Wedges whose subject the database says is finished.
- *
- * `wedgeResolutionKey` is `wedge:<entityId>`, and the entity is a job, session, run,
- * outbox row, issue, runner or a synthetic capacity/rounds/paused key. The uuid-shaped
- * ones are decidable here: a job or a pipeline run that reached a terminal status is not
- * wedged, whatever ended it. The synthetic keys (`capacity:`, `rounds:`, `paused:`) and
- * the runner ids are NOT decidable from this table and are deliberately left firing —
- * their own clearers own them, and guessing here would empty the bell on a guess.
- */
 async function endedWedges(): Promise<string[]> {
   const rows = await db.execute<{ resolution_key: string }>(sql`
     SELECT n.resolution_key FROM notifications n
@@ -80,10 +39,6 @@ export async function reevaluateConditions(now: Date = new Date()): Promise<Reev
       result.resolved += await resolveNotifications(key);
     }
 
-    // cm:guard back to `pending`, NEVER straight to `firing`. The root resolving is
-    // evidence about the root and about nothing else; a child that cleared while it was
-    // suppressed would otherwise be delivered as news the moment the root cleared, which
-    // is one burst of alarms traded for one burst of all-clears.
     const released = await db.execute<{ id: string }>(sql`
       UPDATE notifications n
          SET state = 'pending', inhibited_by = NULL, pending_since = ${now.toISOString()}::timestamptz

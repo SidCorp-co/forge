@@ -12,10 +12,8 @@ use std::time::Duration;
 
 use crate::error::Result;
 use crate::runner::close_loop;
-use crate::runner::ledger::Ledger;
+use crate::runner::ledger::{Ledger, MasterRow};
 
-/// How long a master may go without work before it is allowed to leave.
-// cm:guard an hour, and it is a floor on IDLENESS rather than on residency. Restarting a master costs a cold context and a skill install, so leaving after one empty sweep would trade the whole point of residency for a pane; leaving never makes a box serving six quiet projects carry six permanent processes.
 pub const MASTER_IDLE_BEFORE_EXIT: Duration = Duration::from_secs(60 * 60);
 
 /// One child run, reduced to the only thing this decision asks of it.
@@ -40,8 +38,70 @@ pub enum StayReason {
     ChildrenUnfinished(Vec<String>),
 }
 
-/// Read this master's children out of the ledger.
-// cm:guard the ledger answers this, never a job counter (ISS-933 criterion 20). `pool load` reported `jobsRunning: 1` while six agents ran, and a master that trusted that number would have exited over five live runs; the ledger is the only thing on the box that knows what it started.
+/// One run a resident master still holds, named the way an operator who is
+/// about to end that master needs it named.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldRun {
+    pub run_id: String,
+    /// The master session the run answers to. Printed because a stand-down
+    /// that named a project's runs rather than this master's would ask an
+    /// operator to force past work belonging to somebody else.
+    pub master_session_id: String,
+    pub issues: Vec<String>,
+}
+
+/// What this box can say about the runs one project's resident master holds.
+///
+/// Three answers and not two. A `masters` row written before the session id
+/// was recorded makes the question structurally unanswerable, and reporting
+/// that as zero is what would let a stand-down end a pane holding work nobody
+/// checked (ISS-1118).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Holding {
+    /// The master's identity is known and no run of its is still open.
+    Nothing,
+    /// The master's identity is known and these runs are still open.
+    These(Vec<HeldRun>),
+    /// The identity could not be established, so no count is possible. Carries
+    /// what it was that could not be established.
+    Unknown(String),
+}
+
+/// The runs a project's master holds, from the `masters` row that names it.
+pub fn holding(ledger: &Ledger, row: Option<&MasterRow>) -> Result<Holding> {
+    let Some(row) = row else {
+        return Ok(Holding::Unknown(
+            "this box holds no ledger row for that project's master pane, so the session id its runs are keyed by is not known here".into(),
+        ));
+    };
+    let Some(session) = row.session_id.as_deref() else {
+        return Ok(Holding::Unknown(format!(
+            "the ledger row for {} was written by a runner build that did not record the master's session id, so which runs that pane holds cannot be established on this box",
+            row.pane_name
+        )));
+    };
+    let mut held = Vec::new();
+    for run in ledger.runs_for_master(session)? {
+        if close_loop::state(ledger, &run.run_id)?.is_closed() {
+            continue;
+        }
+        held.push(HeldRun {
+            run_id: run.run_id.clone(),
+            master_session_id: session.to_string(),
+            issues: ledger
+                .issues(&run.run_id)?
+                .into_iter()
+                .map(|m| m.issue_key)
+                .collect(),
+        });
+    }
+    if held.is_empty() {
+        Ok(Holding::Nothing)
+    } else {
+        Ok(Holding::These(held))
+    }
+}
+
 pub fn children(ledger: &Ledger, master_session_id: &str) -> Result<Vec<Child>> {
     let mut out = Vec::new();
     for run in ledger.runs_for_master(master_session_id)? {
@@ -54,8 +114,6 @@ pub fn children(ledger: &Ledger, master_session_id: &str) -> Result<Vec<Child>> 
     Ok(out)
 }
 
-/// Both halves, in one answer.
-// cm:guard BOTH conditions, and the conjunction is the deliverable (ISS-933 criterion 19). Idleness alone is the failure this replaces: a master that leaves while a child run is open takes the only process that would have closed that run's loop, and the run then waits out core's ten-minute heartbeat reaper instead of ending on the box that owns it.
 pub fn verdict(idle_for: Duration, children: &[Child]) -> Verdict {
     if idle_for < MASTER_IDLE_BEFORE_EXIT {
         return Verdict::Stay(StayReason::RecentWork);
@@ -79,6 +137,91 @@ mod tests {
     use std::path::PathBuf;
 
     const SOURCE: &str = include_str!("master_exit.rs");
+
+    fn row(session: Option<&str>) -> MasterRow {
+        MasterRow {
+            project_id: "proj-1".into(),
+            pane_name: "forge-master-forge-dev".into(),
+            conversation_id: Some("conv-abc".into()),
+            session_id: session.map(str::to_string),
+            boot_id: "boot-a".into(),
+            cold_started_at: 1,
+            last_seen_at: 1,
+        }
+    }
+
+    /// Criterion 19. Zero and "cannot tell" are different answers, and only
+    /// one of them is safe to end a pane on.
+    #[test]
+    fn a_master_row_with_no_session_id_reads_as_unknown_and_never_as_nothing() {
+        let led = Ledger::open_in_memory().unwrap();
+        match holding(&led, Some(&row(None))).unwrap() {
+            Holding::Unknown(why) => assert!(
+                why.contains("session id"),
+                "the refusal names the identity it could not establish: {why}"
+            ),
+            other => panic!(
+                "a row written before the column existed cannot answer this question, and answering `{other:?}` would let a stand-down end a pane holding work nobody checked"
+            ),
+        }
+    }
+
+    #[test]
+    fn no_master_row_at_all_is_unknown_too() {
+        let led = Ledger::open_in_memory().unwrap();
+        assert!(
+            matches!(holding(&led, None).unwrap(), Holding::Unknown(_)),
+            "a pane this box has never heard from holds runs it cannot count, which is not the same as holding none"
+        );
+    }
+
+    #[test]
+    fn a_master_holding_nothing_reads_as_nothing_and_one_holding_a_run_names_it() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        assert_eq!(
+            holding(&led, Some(&row(Some("sess-a")))).unwrap(),
+            Holding::Nothing,
+            "a known master with no open run is safe to end without --force"
+        );
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "sess-a".into(),
+            worktree_path: PathBuf::from("/tmp/forge-run-1"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1201".into()],
+        })
+        .unwrap();
+        let Holding::These(held) = holding(&led, Some(&row(Some("sess-a")))).unwrap() else {
+            panic!("an open run under this master must be named");
+        };
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].run_id, "run-1");
+        assert_eq!(
+            held[0].master_session_id, "sess-a",
+            "the run is named WITH the master session holding it, so an operator can tell this master's work from the project's"
+        );
+        assert_eq!(held[0].issues, vec!["ISS-1201".to_string()]);
+    }
+
+    #[test]
+    fn another_masters_runs_are_not_counted_against_this_one() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "theirs".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "sess-somebody-else".into(),
+            worktree_path: PathBuf::from("/tmp/forge-theirs"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1202".into()],
+        })
+        .unwrap();
+        assert_eq!(
+            holding(&led, Some(&row(Some("sess-a")))).unwrap(),
+            Holding::Nothing,
+            "counting a PROJECT's runs rather than this master's would ask an operator to force past work belonging to somebody else"
+        );
+    }
 
     fn child(id: &str, closed: bool) -> Child {
         Child {

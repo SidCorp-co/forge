@@ -30,9 +30,6 @@ pub struct Held {
 }
 
 impl Held {
-    /// The body of `POST /me/run-sessions/:id/held-worktree`.
-    // cm:edge contract -> packages/core/src/devices/run-evidence.ts — `heldWorktreeSchema` there is
-    // `.strict()`, so a key added here that it does not declare is a 400 on the whole report.
     pub fn to_json(&self) -> serde_json::Value {
         let mut v = serde_json::json!({
             "worktree": self.worktree,
@@ -65,18 +62,8 @@ impl HeldReporter for CoreHeld<'_> {
     }
 }
 
-/// What this box is holding for one run, if it is holding anything at risk.
-// cm:guard `Published` answers `None` and says nothing at all. A tree kept for some other reason — a
-// repo that could not be resolved, a process still up — is not this pass's subject, and reporting
-// every held tree would put a comment on an issue whose run is simply still working.
-// cm:guard `Unknown` DOES report, and says it does not know rather than saying the work is unsafe.
-// A box that cannot reach its remote has learned nothing about durability, and the reader needs the
-// difference: one of these is work to publish, the other is a box to look at.
 pub async fn at_risk(run: &Run) -> Option<Held> {
     let worktree = run.worktree_path.as_path();
-    // cm:guard the same absolute-path refusal `daemon/checkpoint.rs` makes, for the same reason: a
-    // relative path resolves against the daemon's own directory, and this pass would then report
-    // some other checkout's commits as this run's work at risk.
     if !worktree.is_absolute() || !worktree.exists() {
         return None;
     }
@@ -125,18 +112,6 @@ async fn git_line(dir: &std::path::Path, args: &[&str]) -> Option<String> {
     }
 }
 
-/// Report every checkout this box is holding whose work is on no remote.
-///
-/// Answers how many it reported. Never fails: a report core would not take is
-/// tried again on the next sweep, because the tree is still held.
-// cm:guard only runs whose process has EXITED. A run that is still working has a dirty tree and
-// unpushed commits as a matter of course, and reporting those would put a comment on every issue
-// being worked right now — the noise that makes a real report unreadable.
-// cm:guard the report is made idempotent AT CORE, on the session and the head commit together, so
-// this may run every sweep without saying anything twice while a run that commits again while held
-// does get a second report. That keying lives in `devices/run-evidence.ts` rather than here because
-// core is the side that can see whether the comment already exists; a box-side memory of what it
-// had said would be lost on every restart, which is when a box says everything twice.
 pub async fn report_held_worktrees(
     reporter: &impl HeldReporter,
     ledger: &mut Option<Ledger>,
@@ -316,9 +291,6 @@ mod tests {
         );
     }
 
-    // cm:guard the case that keeps this pass readable. A run still working has a dirty tree and
-    // unpushed commits as a matter of course, so reporting one would comment on every issue being
-    // worked right now — and a report that fires on healthy work is one a reader learns to skip.
     #[tokio::test]
     async fn says_nothing_about_a_run_whose_process_is_still_up() {
         let (root, wt) = a_box_with_a_worktree("live");
@@ -356,9 +328,6 @@ mod tests {
         assert!(spy.seen.borrow().is_empty());
     }
 
-    // cm:guard `Unknown` reports and says it does not know. A box that cannot reach its remote has
-    // learned nothing about durability, and the reader needs that told apart from work it can see
-    // is unpublished: one is work to publish, the other is a box to look at.
     #[tokio::test]
     async fn reports_a_remote_it_cannot_reach_as_not_knowing_rather_than_as_unsafe() {
         let (root, wt) = a_box_with_a_worktree("unreachable");
@@ -389,9 +358,6 @@ mod tests {
         );
     }
 
-    // cm:guard a report core would not take leaves the tree held and is tried again, because the
-    // tree being held is itself the retry condition. Counting it as said would leave a hold whose
-    // only record is this box's journal — the silence this pass exists to end.
     #[tokio::test]
     async fn a_report_core_refuses_is_not_counted_as_said() {
         let (root, wt) = a_box_with_a_worktree("refusedbycore");
@@ -412,9 +378,6 @@ mod tests {
         assert_eq!(spy.seen.borrow().len(), 1, "but it was attempted");
     }
 
-    // cm:guard the payload is what core's `.strict()` schema declares and nothing more. A key it
-    // does not know is a 400 on the whole report, which turns a silence this pass exists to end
-    // into a different silence.
     #[test]
     fn the_payload_carries_only_what_core_declares() {
         let held = Held {

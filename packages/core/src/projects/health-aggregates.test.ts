@@ -53,7 +53,6 @@ beforeEach(() => {
 });
 
 describe('readHealthAggregates', () => {
-  // cm:guard this asserts the PEAK while the reads are outstanding. The route's own test resolves its mock immediately, so it reads the same either way — this is the case that goes red if the ten reads go back to being awaited in sequence (ISS-1018).
   it('has more than one read outstanding at once, rather than awaiting them in sequence', async () => {
     const done = readHealthAggregates(PROJECT_IDS);
     await tick();
@@ -72,7 +71,6 @@ describe('readHealthAggregates', () => {
     expect(healthReadLoad.inFlight).toBe(0);
   });
 
-  // cm:guard the pool is `max: 10` in db/client.ts, so two overlapping requests must still not ask for more than four connections BETWEEN them — which is what a module-scoped limiter buys and a per-request one does not.
   it('bounds two overlapping requests together, not one at a time', async () => {
     const first = readHealthAggregates(PROJECT_IDS);
     const second = readHealthAggregates(PROJECT_IDS);
@@ -92,7 +90,6 @@ describe('readHealthAggregates', () => {
     expect(started).toBe(20);
   });
 
-  // cm:guard the shape, not the figure: the correlated `min()` this replaced ran once per qualifying activity_log row, and the figures themselves are proved against a real Postgres in tests/integration/health-routes.test.ts.
   it('computes the cycle figure in one pass, with no correlated subquery per row', async () => {
     const done = readHealthAggregates(PROJECT_IDS);
     await tick();

@@ -19,7 +19,6 @@ export interface DotStripProps {
 /**
  * One dot per record, placed by age.
  */
-// cm:guard one dot per item and never a bucketed histogram: the question this answers is "how old is the oldest one", and a count-per-bin drops the single 103-day outlier that is the whole reason to look (ISS-988 criterion 31).
 export function DotStrip({ items, axisLabels, className }: DotStripProps) {
   if (items.length === 0) return null;
 

@@ -1,18 +1,3 @@
-/**
- * ISS-1009 — `forge` as one chat tool, in place of a wrapper per verb.
- *
- * The description is deliberately short: `DESCRIPTION_CAP` is 1024 and
- * `forge_issues` already loses 76% of its own text to it. The forms the model
- * repeats every turn ARE carried (`forge-cli-forms.ts`), held to the bundled
- * `-h` by a whole-form test; everything else is `forge <verb> -h`, one call
- * away and the copy that cannot go stale (ISS-1041).
- *
- * This description no longer OPENS a task with `-h`. It used to, and measured over beta's 146-turn
- * QA window at 45d92580 the round-trip was paid on 25 of them — `forge issue -h` 15, `forge -h` 11,
- * `forge new -h` 3, `forge guide -h` 2 — with the same sentence standing in the method text the
- * model also reads. Carrying `new` and `comment` beside the reads is what lets it go (ISS-1057).
- */
-
 import { z } from 'zod';
 import type { ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 import { runForgeCli } from './forge-cli.js';
@@ -50,12 +35,10 @@ export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: z.toJSONSchema(input) as Record<string, unknown>,
   handler: async (raw: Record<string, unknown>) => {
     const args = input.parse(raw);
-    // cm:guard the verb is admitted BEFORE a credential is minted: a refused verb costs no token row and no revoke, and the refusal names what is open so the model's next call is a real one (ISS-1009).
     const closed = admitVerb(args.argv);
     if (closed) return { exitCode: 2, stdout: '', stderr: closed, _mcpIsError: true };
     const userId = ctx.principal?.userId;
     const projectId = ctx.boundProjectId;
-    // cm:guard refused rather than defaulted: without a user there is no credential to mint and the only way to still run is a shared one, which is the borrowed authority this tool is built to avoid (ISS-1009).
     if (!userId || !projectId || !ctx.projectSlug) {
       throw new Error(
         'the forge CLI runs as a signed-in person on a bound project, and this turn names none',
@@ -68,7 +51,6 @@ export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({
       projectId,
       projectSlug: ctx.projectSlug,
     });
-    // cm:guard stderr and the exit code are handed BACK rather than thrown: the CLI says what it refused and how to clear it — that refusal IS the answer the model needs, and turning it into a generic tool error deletes the one sentence that names the way out. `_mcpIsError` rides beside it on a non-zero exit so the audit record still reads the call as refused, which is what `detectStateConfab` partitions on (ISS-1009).
     return {
       exitCode: out.code,
       stdout: out.stdout,

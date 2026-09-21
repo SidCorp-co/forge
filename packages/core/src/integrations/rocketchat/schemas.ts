@@ -1,13 +1,3 @@
-/**
- * The shapes a Rocket.Chat connection and binding are allowed to hold (ISS-609, moved here by
- * ISS-1071).
- *
- * Connection-tier config is the server URL; the room ids (`rids`) are BINDING-tier so one org bot
- * credential serves N project channels and one project can listen on several rooms — the same
- * pattern as coolify's `targets[]`; migration 0146 rewrote legacy single-`rid` rows. Secrets are
- * the bot PAT (X-Auth-Token / DDP resume) plus its user id.
- */
-
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 

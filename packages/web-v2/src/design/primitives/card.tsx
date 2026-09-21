@@ -1,5 +1,6 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils/cn";
+import { rampOr } from "./heading";
 
 /** White surface, 1px warm border, soft low shadow — rests on the paper bg. */
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -21,7 +22,7 @@ export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
 }
 
 export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn("fg-h3", className)} {...props} />;
+  return <h3 className={rampOr("fg-h3", className)} {...props} />;
 }
 
 export function CardContent({ className, style, ...props }: HTMLAttributes<HTMLDivElement>) {

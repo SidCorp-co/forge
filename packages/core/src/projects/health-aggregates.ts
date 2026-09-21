@@ -11,7 +11,6 @@ import { createLimiter } from '../lib/bounded-concurrency.js';
  * round trips.
  */
 
-// cm:guard the limiter is MODULE-scoped on purpose, so it bounds health traffic as a whole rather than one request at a time: `db/client.ts` opens the pool at `max: 10`, and a per-request bound of four still lets three overlapping requests ask for twelve and starve everything else (ISS-1018).
 export const HEALTH_READ_CONCURRENCY = 4;
 const healthReadLimiter = createLimiter(HEALTH_READ_CONCURRENCY);
 
@@ -35,7 +34,6 @@ export type BlockerRow = {
   status: string;
 };
 
-// cm:guard build a parenthesised parameter list and use `IN (...)`: embedding a JS array directly in a drizzle template expands it as a record tuple ($1, $2, ...), so `= ANY(...)` / `ANY(...::uuid[])` is a malformed array literal and 500s the whole endpoint — two prior live FAILs.
 function idList(projectIds: string[]) {
   return sql.join(
     projectIds.map((id) => sql`${id}`),
@@ -54,7 +52,6 @@ const readStatusRows = (projectIds: string[]) =>
     .where(inArray(issues.projectId, projectIds))
     .groupBy(issues.projectId, issues.status);
 
-// cm:guard the ORDER BY (project, updatedAt DESC) is required, not cosmetic: the caller caps this list per project, so without it one noisy project's blockers starve every other project's out of the response.
 const readBlockerRows = (projectIds: string[]) =>
   db
     .select({
@@ -72,8 +69,6 @@ const readBlockerRows = (projectIds: string[]) =>
     )
     .orderBy(issues.projectId, sql`${issues.updatedAt} DESC`);
 
-// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
-// cm:guard the 7-day cutoff is computed in SQL (`now() - interval '7 days'`) and never bound as a JS Date: postgres-js refuses to serialize a Date through a parameterized query and throws `ERR_INVALID_ARG_TYPE` from Buffer.byteLength at Bind time (ISS-267).
 const readThroughputRows = (projectIds: string[]) =>
   db
     .select({
@@ -94,8 +89,6 @@ const readThroughputRows = (projectIds: string[]) =>
 
 export type CycleRow = { project_id: string; avg_days: number | null };
 
-// cm:guard `work_start` is the FIRST transition into `in_progress`/`approved`, never `issues.createdAt` — reading creation time measures LEAD time and overstates cycle time by however long the issue sat in the backlog (ISS-380). The COALESCE onto `createdAt` is only for issues that predate those transitions.
-// cm:guard the work-start relation is bounded by ISSUE and never by TIME — the seven days are the COMPLETION window, and restricting this side to them measures an issue started earlier from its creation date instead, silently and in the same direction every time (ISS-1018).
 const readCycleRows = (projectIds: string[]) =>
   db.execute(sql`
     WITH completions AS (
@@ -149,7 +142,6 @@ const readRunnerRows = (projectIds: string[]) =>
 
 export type SpendRow = { project_id: string; spend: number };
 
-// cm:why the pipeline_run_step_durations view is the same source the per-project cost-summary route reads, so the two figures cannot disagree.
 const readSpendRows = (projectIds: string[]) =>
   db.execute(sql`
     SELECT project_id, COALESCE(SUM(cost_usd), 0)::float AS spend
@@ -159,7 +151,6 @@ const readSpendRows = (projectIds: string[]) =>
     GROUP BY project_id
   `) as unknown as Promise<SpendRow[]>;
 
-// cm:guard ordered by (projectId, createdAt) because the caller caps the avatar list per project: unordered, which five members get an avatar changes between requests.
 const readMemberRows = (projectIds: string[]) =>
   db
     .select({

@@ -80,7 +80,6 @@ describe('the two answers that judge nothing are not the same answer', () => {
     expect(answer.kind).toBe('none-declared');
   });
 
-  // cm:guard this is the assertion the whole discriminated result exists for. Were the read swallowed the way the gate swallows it, this same input would answer `none-declared` — a published sentence about a project's settings, built out of a database that did not answer.
   it('is `unreadable` where the declaration could not be read, never `none-declared`', async () => {
     readStrict.mockRejectedValue(new Error('connection terminated'));
     const answer = await contractAnswerForIssue(ISSUE_ID);
@@ -114,7 +113,6 @@ describe('the two answers that judge nothing are not the same answer', () => {
 });
 
 describe('the answer never costs the check run', () => {
-  // cm:guard `contractAnswerForIssue` is called mid-publish, inside the advisory lock. A throw there aborts the publish, so the failure to read the contract would cost the whole check run — and a missing check run is the silence this change exists to remove.
   it('does not throw for anything the reads can do', async () => {
     readStrict.mockRejectedValue('a string, not an Error');
     const answer = await contractAnswerForIssue(ISSUE_ID);
@@ -133,7 +131,6 @@ describe('the answer never costs the check run', () => {
 });
 
 describe('which connection the reads run on', () => {
-  // cm:guard the caller's executor reaches EVERY read here. `check-run.ts` hands this the transaction holding the advisory lock, and a read that went to the pool instead would need a second connection while the first is held across three HTTP calls — ten concurrent publishes would then be the whole pool waiting on itself.
   it('runs the issue read and the criteria read on the executor it was given', async () => {
     const tx = { select } as never;
     await contractAnswerForIssue(ISSUE_ID, tx);

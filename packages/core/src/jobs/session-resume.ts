@@ -1,10 +1,3 @@
-// Resume bounds, and where they come from.
-//
-// The (issue, sessionGroup) lookup this module was built around left with
-// `pipelineConfig.sessionGroups` (ISS-897) — one dispatching status has no
-// group of stages to share a session across. What survives is the per-project
-// bound a retry-resume is still judged against.
-
 import { eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -16,16 +9,6 @@ export interface ResumeBounds {
   maxResumeTokens: number;
 }
 
-/**
- * ISS-580 — load the project's session-resume bound from pipelineConfig.
- * Defaults to 150k tokens when absent or on DB error. The `maxResumeReopenCycles`
- * half went with the staged lane (ISS-895): it was measured against `reopen_count`,
- * a column this lane never moves.
- * Mirrors the loadOnResumeFailPolicy pattern from handle-resume-failed.ts.
- *
- * Pass `cachedAgentConfig` (already fetched by the caller) to skip the DB
- * round-trip — the dispatcher fetches it on the non-forced dispatch path.
- */
 export async function loadResumeBounds(
   projectId: string,
   cachedAgentConfig?: Record<string, unknown>,
@@ -62,8 +45,6 @@ export async function loadResumeBounds(
  * Exported so the index test can EXPLAIN the query `estimateIssueContextTokens`
  * actually runs, rather than a copy of it that cannot observe a regression here.
  */
-// cm:guard scoped to the ISSUE since ISS-897 removed session groups, and that is deliberately BROADER than the resume it guards: a retry resumes one parent attempt, but every session of an issue shares the transcript that attempt would reload, so the widest peak is the honest bound. Narrowing it to one session id would let a chain of small attempts resume past a peak that has already forced a compaction.
-// cm:guard `usage_records.session_id` is an `agent_sessions.id` in a TEXT column, constrained since ISS-1015 to null or a canonical lowercase uuid, so this joins `ur.session_id = s.id::text` — the uuid column cast to text, never the text column cast to uuid. Casting the indexed side is what made every rollup sequentially scan the table (ISS-1015), and this join was missed by that issue's own call-site sweep because it builds raw SQL outside the `usageSessionMatch` helper.
 export function issueContextPeakQuery(issueId: string): SQL {
   return sql`
     SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak

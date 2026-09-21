@@ -51,9 +51,9 @@ const row = (
     complexity: null,
     assigneeId: null,
     createdById: "u",
-    creatorEmail: null,
+    creatorEmail: "master@agents.local",
     creatorIsAgent: true,
-    creatorLabel: "Forge Agent",
+    creatorLabel: "master",
     reopenCount: 0,
     mergedAt: null,
     createdAt: QUEUED_AT,
@@ -88,11 +88,9 @@ describe("issue list row · queued chip", () => {
     expect(screen.queryByText("Waiting for me")).not.toBeInTheDocument();
   });
 
-  // cm:guard ISS-903's rule, re-anchored by ISS-999: the cell used to carry a mini tracker whose indeterminate sweep had to be suppressed while a step sat queued, and the tracker is gone. The rule survives on the chips — an `in_progress` issue with nothing dispatched shows its lifecycle label and the gate, and NOTHING claiming a live session.
   it("adds no session chip while a step is only queued", () => {
     const { container } = render(<StatusCell row={row(health("runner_stale"))} />);
     expect(screen.getByText("No runner online")).toBeInTheDocument();
-    // cm:why the lifecycle word is "In progress" and there is NO "Running" at all: since ISS-1097 the lifecycle chip prints the kernel status, and "Running" in this cell can now only be a session chip — which is exactly what must be absent here
     expect(screen.getByText("In progress")).toBeInTheDocument();
     expect(screen.queryAllByText("Running")).toHaveLength(0);
     expect(container.querySelector(".forge-indeterminate")).toBeNull();
@@ -100,7 +98,6 @@ describe("issue list row · queued chip", () => {
 
   it("adds the session chip on a row that IS being worked", () => {
     render(<StatusCell row={row(undefined, "running")} />);
-    // cm:why one of each rather than two of one — the ISS-436 split this cell exists to keep is now legible in the WORDS: the lifecycle chip says the kernel status and the session chip says the agent is running. Before ISS-1097 both read "Running" and the split was invisible to a reader.
     expect(screen.getByText("In progress")).toBeInTheDocument();
     expect(screen.getAllByText("Running")).toHaveLength(1);
     expect(screen.queryByText("Queued")).not.toBeInTheDocument();

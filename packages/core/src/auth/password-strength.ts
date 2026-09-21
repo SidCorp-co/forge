@@ -1,13 +1,3 @@
-/**
- * Password strength evaluation via zxcvbn-ts.
- *
- * The minimum acceptable score is 2 ("somewhat guessable" — withstands
- * online attacks at moderate rate). Score 3+ is preferred but rejecting
- * everything below 3 makes signup feel hostile; stick with 2 as the
- * floor and surface the score on the registration form so users can
- * voluntarily strengthen weak choices.
- */
-
 import { ZxcvbnFactory, type ZxcvbnResult } from '@zxcvbn-ts/core';
 import * as zxcvbnCommonPackage from '@zxcvbn-ts/language-common';
 import * as zxcvbnEnPackage from '@zxcvbn-ts/language-en';

@@ -23,22 +23,18 @@ import {
 import { projects, users } from './schema.js';
 import type { PresenceConfig } from './schema-agent-selves.js';
 
-// cm:guard the transports a conversation can belong to, and the same list `assistant_speaker_links.source` is an authority over — a speaker linked under a source is linked for that transport alone. Renamed from `chatSessionSources` when the table it was named after was replaced (ISS-1001); adding a member here without an adapter registered in `conversations/ports.ts` gives a venue nothing can deliver to.
 export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
 export type ConversationAdapter = (typeof conversationAdapters)[number];
 
-// cm:guard `direct` and `group` are the SAME code path at N=1 and N>=2 and neither is a special case: a direct room is one handle, a group room is several, and what a shape decides is addressing, never scope. Scope comes from the participants in every case.
 export const conversationShapes = ['direct', 'group'] as const;
 export type ConversationShape = (typeof conversationShapes)[number];
 
-// cm:guard what a room is TALKING TO, chosen by the person opening it and frozen by their first message — `assistant` is the in-core turn under the fenced project toolset, `agent` a Claude Code session on a paired box with the checkout. It is on the ROOM and not on the project, because the person asking knows whether their question needs a box and the operator does not; and it is settled once, because a room holding both kinds of turn raises a question nothing answers — what the runner session is handed as context when the lane switches under it (ISS-1039).
 export const conversationModes = ['assistant', 'agent'] as const;
 export type ConversationMode = (typeof conversationModes)[number];
 
 export const conversationMessageRoles = ['user', 'assistant', 'system'] as const;
 export type ConversationMessageRole = (typeof conversationMessageRoles)[number];
 
-// cm:guard a `handle` participant MUST carry a `user_id` and that user must be `kind='agent'`: the room's scope is the union of its handles' project memberships, so a handle with no user contributes no scope and makes the room unreadable. A `person` may carry no user — widget traffic and an unlinked channel speaker have only the key the transport gave.
 export const conversationParticipantKinds = ['person', 'handle'] as const;
 export type ConversationParticipantKind = (typeof conversationParticipantKinds)[number];
 
@@ -59,11 +55,9 @@ export interface ConversationOrigin {
   mintedHandleUserId: string | null;
 }
 
-// cm:guard NO project column, ever: a room's projects are the union of its handle participants' memberships, read at the moment of the read, and a column here is a second copy of that which a revoked role does not reach. The column is what made `chat_sessions` a project's thing rather than a conversation (ISS-1001).
 /**
  * What a room may set for itself: the five routing keys and nothing else.
  */
-// cm:guard `Pick` and not the whole `PresenceConfig`, so the type itself cannot carry `heartbeat`; the schema in `presence.ts` refuses it at the edge and this is what refuses it in the code.
 export type RoomPresence = Pick<
   PresenceConfig,
   'dormantMs' | 'backoffAfter' | 'loopBounceMs' | 'loopLimit' | 'answerInGroup'
@@ -74,28 +68,20 @@ export const conversations = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     adapter: text('adapter', { enum: conversationAdapters }).notNull(),
-    // cm:guard the transport's OWN id for the venue, unique within that transport only — for Rocket.Chat the rid, or `<rid> <tmid>` for a thread, which is why the pair and never `external_id` alone is the unique index.
     externalId: text('external_id').notNull(),
     shape: text('shape', { enum: conversationShapes }).notNull().default('direct'),
-    // cm:guard NULLABLE and with no default, and the null is load-bearing: it is the one state in which the composer still offers the choice, so a default would settle every room the moment it was opened and take the pick away before anybody made it. A null read at turn time means `assistant`, which is what every room opened before ISS-1039 was (ISS-1039).
     mode: text('mode', { enum: conversationModes }),
     title: text('title'),
-    // cm:guard provenance for the reverse migration and NOTHING else — scope may never be read from it, and a reader that took `origin.projectId` for the room's project would restore the column this table exists to remove. Null on every conversation opened after 0241 ran.
     origin: jsonb('origin').$type<ConversationOrigin | null>(),
-    // cm:guard a soft archive that DESTROYS nothing: it takes the room out of the default list and
-    // out of its count, and every message it holds is still readable by id. A list that hid a room
-    // with no way back would be the delete this column exists to avoid (ISS-1028).
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     /**
      * This room's own routing thresholds, winning per key over the fold of
      * its handles' selves (ISS-1087).
      */
-    // cm:guard NULLABLE and holding only the five ROUTING keys, never `heartbeat`: null is a room that said nothing and takes the fold whole, and a heartbeat is a handle's own clock that `heartbeatOf` resolves per handle — a room that could set one would go on speaking on it after an admin quietened the room. `conversations/presence.ts:roomPresenceSchema` is the one reader and refuses the key by name.
     presence: jsonb('presence').$type<RoomPresence | null>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  // cm:guard every CHECK the migration creates is declared HERE too, because a drizzle snapshot records `checkConstraints` per table: one left in SQL alone is a constraint the snapshot denies
   (t) => ({
     venueUnique: uniqueIndex('conversations_venue_unique').on(t.adapter, t.externalId),
     updatedIdx: index('conversations_updated_idx').on(t.updatedAt),
@@ -125,14 +111,11 @@ export const conversationParticipants = pgTable(
      * The project this handle was added FOR — the room's scope, recorded
      * (ISS-1003).
      */
-    // cm:guard this is NOT the second copy of a membership the `derivedScope` guard refuses, and the difference is what it answers: `project_members` says what the agent may DO and is deleted by a revoke, while this says what the ROOM is about and a revoke must not touch it. Reading scope off the authority table is what made revoking an agent leave a room nobody could read and nobody could repair. It is written by the caller that names the project, never derived from the agent's memberships at write time — an agent given a second membership later must not widen a room it already sits in.
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-    // cm:guard the transport's own key for a speaker with no Forge user — the audit key `chat_sessions.user_key` carried. It is NOT an identity: nothing authorizes on it, and `assistant_speaker_links` stays the only path from a channel speaker to a `userId`.
     externalKey: text('external_key'),
     label: text('label'),
     addedBy: uuid('added_by').references(() => users.id, { onDelete: 'set null' }),
     addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
-    // cm:guard a removal is a stamp and never a DELETE: a message row names its author, and deleting the participant row would leave a transcript whose speakers cannot be listed back.
     removedAt: timestamp('removed_at', { withTimezone: true }),
   },
   (t) => ({
@@ -143,7 +126,6 @@ export const conversationParticipants = pgTable(
     userIdx: index('conversation_participants_user_idx').on(t.userId),
     projectIdx: index('conversation_participants_project_idx').on(t.projectId),
     kindKnown: check('conversation_participants_kind_known', sql`${t.kind} IN ('person','handle')`),
-    // cm:guard a REMOVED handle is admitted with a null: it is in no scope, so there is nothing to record, and a value invented from today's memberships would date the row wrong.
     handleHasProject: check(
       'conversation_participants_handle_has_project',
       sql`${t.kind} <> 'handle' OR ${t.removedAt} IS NOT NULL OR ${t.projectId} IS NOT NULL`,
@@ -159,7 +141,6 @@ export const conversationParticipants = pgTable(
   }),
 );
 
-// cm:guard one ROW per message, never an element of a jsonb array: `chat_sessions.messages` was rewritten whole on every turn, so turn 201 deleted turn 1 and a concurrent turn lost the other's write. The precedent is `agent_session_turns`, and the reason is the same one it was created for.
 export const conversationMessages = pgTable(
   'conversation_messages',
   {
@@ -167,23 +148,18 @@ export const conversationMessages = pgTable(
     conversationId: uuid('conversation_id')
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
-    // cm:guard allocated inside the INSERT off the current max, never read-then-written by the caller: two turns that both read N and both write N+1 lose one message, which is the loss the jsonb blob had and the unique index below is what refuses it.
     seq: integer('seq').notNull(),
     role: text('role', { enum: conversationMessageRoles }).notNull(),
     authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
-    // cm:guard the name the transport gave a speaker nothing has linked, kept for the reader and never for authorization — a row with a null `author_user_id` is a message by nobody Forge knows, which is a fact and not a gap to fill.
     authorLabel: text('author_label'),
     content: text('content').notNull(),
     /**
      * The transport's own id for an inbound message, where it named one.
      */
-    // cm:guard the one thing a collected row loses otherwise: the window routes long after the message arrived, so without this there is no way to tell the room's own history reader which lines it has already been given, and the model is shown the same messages twice — once as seed context and once as its own transcript (ISS-1004).
-    // cm:guard since ISS-1087 a DELIVERED reply carries the transport's receipt id here too (it used to be null for anything this codebase wrote): a person who quotes or replies to the bot names that id, and the address check needs it indexed. The seed's exclusion reads user rows only, so nothing it protected moved. Null still means the transport named nothing.
     externalId: text('external_id'),
     /**
      * The transport's own id for whoever spoke, where it named one.
      */
-    // cm:guard kept so a window routed minutes later can still say who is being refused: the authority refusal is taken at ROUTE time, and without this the only speaker the row remembers is a display label, which no directory can be asked about. Null for anything this codebase wrote (ISS-1004).
     authorKey: text('author_key'),
     images: jsonb('images'),
     /**
@@ -191,29 +167,18 @@ export const conversationMessages = pgTable(
      * (ISS-1029) — the same `AgentMessage['blocks']` the Claude Code CLI path
      * produces in `lib/agent-stream-parser.ts`.
      */
-    // cm:guard NULL here is a legacy flat row and NOT a gap to fill: every row written before
-    // ISS-1029, and every row an adapter writes through the text-only door, carries its whole
-    // answer in `content`, and `toCanonicalEntry` reads one back as a single text block. A reader
-    // that treated null as "no blocks yet" would show an empty turn where a real answer is stored.
-    // cm:guard `content` is NOT derived from these and stays the final text on its own: it is what
-    // `toProviderMessages` replays to the model and what every preview reads, and deriving it here
-    // would put the same sentence in two columns that nothing keeps in step.
     blocks: jsonb('blocks'),
-    // cm:guard the receipt the adapter's own `deliver` returned, and a chip may claim only what it holds: a null here means the transport took the text without naming a message, which is NOT delivered (ISS-1001 invariant 8).
     deliveryProof: jsonb('delivery_proof'),
-    // cm:guard why a turn said nothing, written INSTEAD of the text — a silence with no row is indistinguishable from a turn that never ran, which is the state invariant 7 exists to remove.
     silenceReason: text('silence_reason'),
     /**
      * The transport's own id for the message this one replies to or quotes,
      * where it named one (ISS-1087).
      */
-    // cm:guard a COLUMN and not a predicate over the text: Rocket.Chat hides a quote inside `?msg=` links in the body and its attachments, and a transport whose replies are frame metadata has no text to scan. Null is a message that replied to nothing, which is a fact and not a gap.
     replyToExternalId: text('reply_to_external_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     seqUnique: uniqueIndex('conversation_messages_seq_unique').on(t.conversationId, t.seq),
-    // cm:guard partial, over the rows that carry an id at all: the reply-address check asks "did a handle send the message this replies to" by the transport's id, adapter-wide, and without this every such window scans the transcript table (ISS-1087 criteria 12, 13).
     externalIdx: index('conversation_messages_external_idx')
       .on(t.externalId)
       .where(sql`external_id IS NOT NULL`),
@@ -227,9 +192,6 @@ export const conversationMessages = pgTable(
 /**
  * Why a window stopped, in the vocabulary rule 4 of ISS-1004 names.
  */
-// cm:guard the five silences are told APART and are not one `silent`: a person asking why nothing was said is owed the difference between nobody having anything to add, a guard pacing the room, authority refusing, an agent that could not be reached, and an outcome nobody knows yet. Collapsing them is the unreadable silence ISS-1004 exists to remove.
-// cm:guard `undetermined` is NOT a failure and no caller may act on it as one: the reply may still arrive by the path the turn was handed to, and re-routing the window on it is how one answer becomes two (ISS-1004 rule 4).
-// cm:guard `handed-off` is what a DIVERTED turn closes as, and it is not `undetermined`: the two differ in what is known, which is the whole of rule 4. `undetermined` is a delivery that was started and whose outcome nobody recorded; `handed-off` is a turn nobody has attempted to deliver yet, running as a session on a box, whose reply arrives through the completion bridge. Reading a live one as `undetermined` is how the Forge UI told a person "a reply was sent and never confirmed" about an answer that had not been written (ISS-1039).
 /** What opened a window: a message that arrived, or a heartbeat tick re-reading a quiet room (ISS-1034). */
 export const conversationWindowOrigins = ['inbound', 'heartbeat'] as const;
 export type ConversationWindowOrigin = (typeof conversationWindowOrigins)[number];
@@ -237,7 +199,6 @@ export type ConversationWindowOrigin = (typeof conversationWindowOrigins)[number
 /**
  * Why a window stopped collecting when it was claimed (ISS-1086).
  */
-// cm:guard three and not two: `overflow` is told apart from `deadline` because the turn's instruction is the same but the room's state is not — a deadline cut leaves nothing behind, an overflow cut leaves a collecting successor holding the tail, and a reader of the decision asking "was anything left unanswered here" is owed the difference.
 export const conversationWindowCutReasons = ['quiet', 'deadline', 'overflow'] as const;
 export type ConversationWindowCutReason = (typeof conversationWindowCutReasons)[number];
 
@@ -257,7 +218,6 @@ export type ConversationWindowDecision = (typeof conversationWindowDecisions)[nu
 /**
  * The unit a routing decision is taken over: the messages that arrived together.
  */
-// cm:guard a ROW and not a timer in a process: a window living only in memory is a silence with no owner when the core restarts, and the messages inside it are never routed and never noticed. The row is what a restart finds and what a second core is refused (ISS-1004 rule 1).
 export const conversationWindows = pgTable(
   'conversation_windows',
   {
@@ -269,10 +229,8 @@ export const conversationWindows = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    // cm:guard carried on the window rather than joined off the conversation so a drain loop asks for ITS OWN adapter's work in one index scan: a loop that read every open window and then filtered would claim windows for a transport it cannot deliver through.
     adapter: text('adapter', { enum: conversationAdapters }).notNull(),
     openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
-    // cm:guard the SETTLE clock, moved by every later message: a window closes on quiet rather than on a count, so two messages typed seconds apart are one decision and one cost. Quiet is one of two ways to become due since ISS-1086 — `opened_at` reaching the hold is the other — because a room whose messages never pause moved this clock forever and was never answered.
     extendedAt: timestamp('extended_at', { withTimezone: true }).notNull().defaultNow(),
     firstSeq: integer('first_seq').notNull(),
     lastSeq: integer('last_seq').notNull(),
@@ -280,19 +238,16 @@ export const conversationWindows = pgTable(
     /**
      * When this window's reply was handed to the transport.
      */
-    // cm:guard stamped BEFORE the send and never after it, which is the only order that makes at-most-once true across a crash: a core that posts a reply and dies before recording it leaves this stamp and no delivered row, and the next claimant reads that pair as "a delivery was started and nobody knows how it ended" — which is `undetermined`, not a second attempt. Recording it after the send would make the commonest loss look like a delivery that never happened (ISS-1004 rule 2).
     deliveryReservedAt: timestamp('delivery_reserved_at', { withTimezone: true }),
     /** Which core holds it — for the log, never for the claim, which is the conditional UPDATE. */
     claimedBy: text('claimed_by'),
     /**
      * Why this window stopped collecting when it was claimed.
      */
-    // cm:guard stamped ONCE, at the first claim, and never rewritten by a re-claim: a window cut by the hold and re-claimed after its holder died has by then been quiet for the whole lease, and re-deriving the reason there would tell the turn the room had finished speaking when it was cut mid-sentence (ISS-1086 criterion 5). Null on a row claimed before this column existed, which the router reads as quiet and says so in its detail.
     cutReason: text('cut_reason', { enum: conversationWindowCutReasons }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
     decision: text('decision', { enum: conversationWindowDecisions }),
     decisionDetail: jsonb('decision_detail'),
-    // cm:guard a heartbeat window is told apart by THIS column and never by its message range: a heartbeat re-reads messages an inbound window already routed, so the two ranges overlap by design, and the eligibility rule ("no heartbeat window newer than the interval") has to find the last heartbeat by what it was rather than by what it held (ISS-1034).
     origin: text('origin', { enum: conversationWindowOrigins }).notNull().default('inbound'),
   },
   (t) => ({
@@ -300,14 +255,12 @@ export const conversationWindows = pgTable(
       'conversation_windows_origin_known',
       sql`${t.origin} IN ('inbound','heartbeat')`,
     ),
-    // cm:guard ONE COLLECTING window per conversation, as a database fact rather than a convention: without it two messages seconds apart become two decisions and two costs. The predicate is `claimed_at IS NULL` and NOT `closed_at IS NULL` on purpose — a window being routed has already snapshotted its messages, so a message arriving mid-route must open the SUCCESSOR rather than join a turn that will never read it or collide with an index (ISS-1004 rule 1).
     oneCollecting: uniqueIndex('conversation_windows_one_collecting')
       .on(t.conversationId)
       .where(sql`claimed_at IS NULL AND closed_at IS NULL`),
     dueIdx: index('conversation_windows_due_idx')
       .on(t.adapter, t.extendedAt)
       .where(sql`closed_at IS NULL`),
-    // cm:guard the hold's own index, because the due predicate is now an OR over two clocks and the settle index cannot serve the second: without it every drain tick reads every unclaimed window of the adapter to find the ones that aged past the hold (ISS-1086).
     holdIdx: index('conversation_windows_hold_idx')
       .on(t.adapter, t.openedAt)
       .where(sql`claimed_at IS NULL`),
@@ -315,7 +268,6 @@ export const conversationWindows = pgTable(
       t.conversationId,
       t.closedAt,
     ),
-    // cm:guard every enum column in this file carries its CHECK, for the reason the header gives: the drizzle snapshot records `checkConstraints` per table, and a column typed in TypeScript alone is a value the database will take from anything that writes to it by hand.
     adapterKnown: check(
       'conversation_windows_adapter_known',
       sql`${t.adapter} IN ('web','widget','rocketchat','telegram')`,
@@ -328,12 +280,10 @@ export const conversationWindows = pgTable(
       'conversation_windows_decision_known',
       sql`${t.decision} IS NULL OR ${t.decision} IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined','handed-off')`,
     ),
-    // cm:guard a closed window ALWAYS carries its decision and an open one never does: a close with no decision is the unreadable silence this table was added to make impossible, and the constraint is what stops a caller inventing a third state.
     closedHasDecision: check(
       'conversation_windows_closed_has_decision',
       sql`(${t.closedAt} IS NULL) = (${t.decision} IS NULL)`,
     ),
-    // cm:guard claimed BEFORE it routes, and a close is a route: an unclaimed close is a decision two cores could both have taken (ISS-1004 rule 1).
     closedWasClaimed: check(
       'conversation_windows_closed_was_claimed',
       sql`${t.closedAt} IS NULL OR ${t.claimedAt} IS NOT NULL`,

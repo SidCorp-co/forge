@@ -34,30 +34,32 @@ your repo. There is no desktop app — pairing is done from the command line.
    The agent installs to `~/.local/bin`. If that isn't on your `PATH`, the
    installer prints the line to add — run it, or open a new shell.
 
-2. **Pair the machine**
-
-   Run this in an interactive terminal:
+2. **Run setup** (does the rest of this page for you)
 
    ```bash
-   forge-runner login --core-url https://<your-forge-host>
+   forge-runner setup
    ```
 
-   Pass `--core-url` on this first run — the machine doesn't know your host yet
-   (it's remembered afterwards). The command prints a pairing code and a link
-   and opens your browser to **approve this device**. Approve **promptly** — the
-   code expires after a couple of minutes.
-
-   **No browser on the machine (a server)?** Add `--no-browser` to print the
-   link instead, then open it on any device where you're signed in:
+   It checks the Claude CLI, git and tmux; pairs the machine; waits for step 3
+   below; gets a checkout; installs the service; and finishes with `doctor`.
+   The steps after this one are what it does — read on if you would rather do
+   them by hand, or if setup stopped and told you to.
 
    ```bash
-   forge-runner login --core-url https://<your-forge-host> --no-browser
+   forge-runner login
    ```
 
-   Or paste a code you generated under **Runners → Pair a device**:
+   The installer already wrote your host into the config, so no flag is needed
+   (`--core-url https://<your-forge-host>` overrides it if you installed the
+   binary some other way). The command prints a pairing code and a link — open
+   it on any device where you're signed in and **approve this device**. Approve
+   **promptly**: the code expires after a couple of minutes.
+
+   On a desktop, `--open` launches the browser for you. Or paste a code you
+   generated under **Runners → Pair a device**:
 
    ```bash
-   forge-runner login --core-url https://<your-forge-host> --code <code>
+   forge-runner login --code <code>
    ```
 
 3. **Assign the device to your project** — from the dashboard: **Runners** →
@@ -93,12 +95,15 @@ your repo. There is no desktop app — pairing is done from the command line.
   binding, and that it can reach your Forge host. You want **VERDICT PASS**.
 - The device shows **online** under **Runners** with a recent "last seen".
 - File a test issue in the project — the device picks up the job within seconds.
+- `doctor` also shows a **plugins** row: the `forge` plugin (the pipeline's
+  driver skill) installs itself on every device. `forge-runner config set
+  plugins.enabled false` opts a machine out.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| `login` says `no core URL` | Pass `--core-url https://<your-forge-host>` — it's required the first time. |
+| `login` says `no core URL` | The install script could not write it. `forge-runner config set core-url https://<your-forge-host>`, then run `login` again. |
 | Pairing fails with a server / gateway error (e.g. 502) | It's transient. Just run the `forge-runner login …` command again. |
 | Pairing code expired | Codes last only a couple of minutes. Run `login` again and approve right away. |
 | `bind` says the slug isn't assigned | Do step 3 first — assign the device to the project. |

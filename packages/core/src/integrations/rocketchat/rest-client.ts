@@ -1,14 +1,3 @@
-/**
- * ISS-609 (Lane A intelligence) — minimal Rocket.Chat REST reader.
- *
- * Fetches room history + thread messages with the same bot credential the DDP
- * client uses (X-Auth-Token / X-User-Id headers). Room-type-agnostic: RC splits
- * history across channels.history (public) / groups.history (private) /
- * im.history (DM), so we probe them in order and use the first that succeeds.
- * Read-only; used to seed the chat turn's conversation context and to back the
- * bounded `rocketchat_history` chat tool.
- */
-
 export interface RocketChatRestAuth {
   /** e.g. https://chat.sidcorp.co */
   serverUrl: string;
@@ -71,7 +60,6 @@ export interface RocketChatImageRef {
 
 const IMAGE_MIME_RE = /^image\/(png|jpe?g|gif|webp)$/i;
 
-// cm:guard normalize to the spelling `lib/attachment-mime.ts` ALLOWED_BY_TARGET lists — RC forwards whatever the client claimed, and `image/jpg` (which browsers do send) is not in that set, so an un-normalized jpeg is downloaded, spends the budget, and is then rejected at persist time, filing the issue without its picture
 function normalizeMime(raw: string): string {
   const mime = raw.toLowerCase();
   return mime === 'image/jpg' ? 'image/jpeg' : mime;
@@ -82,15 +70,6 @@ function absolutize(link: string, baseUrl: string | undefined): string {
   return `${baseUrl.replace(/\/+$/, '')}${link}`;
 }
 
-/**
- * A message's real content may live entirely in `attachments[]` — webhook/bot
- * notifications (and the quoted block of a reply) post with an EMPTY `msg`.
- * Flatten attachment title/text/description into the text so the conversation
- * seed and the history tool actually see what the channel saw. The title's
- * link is kept inline — a webhook card's URL is often the ONLY place the
- * source entity's id appears (e.g. `…/tasks?projectId=53&task=12608`).
- */
-// cm:guard pass `baseUrl` from every call site — RC emits attachment links ROOT-RELATIVE (`/file-upload/…`), and a relative link that reaches an issue description or a chat answer is dead the moment it leaves the room; there is no second place that repairs it
 export function extractMessageText(
   raw: Pick<RawRestMessage, 'msg' | 'attachments'>,
   baseUrl?: string,
@@ -110,14 +89,6 @@ export function extractMessageText(
   return parts.join('\n');
 }
 
-/**
- * The images a message carries, as absolute refs. RC describes an upload in
- * two places — the top-level `file`/`files[]` (id + name + mime) and a
- * matching `attachments[]` entry (`image_url`/`image_type`) — and neither is
- * present on every server version, so both are read and deduplicated by ref.
- * Non-image uploads (PDFs, videos) are skipped: nothing downstream can use
- * them, and fetching one only spends the budget an image needed.
- */
 export function extractMessageImages(
   raw: Pick<RawRestMessage, 'file' | 'files' | 'attachments'>,
   baseUrl: string,
@@ -224,7 +195,6 @@ const messagesEndpointByRoom = new Map<string, string>();
 /**
  * The `count` messages nearest to `ts` on one side of it, oldest-first.
  */
-// cm:guard the `.messages` endpoints and NOT `.history`, because history pages newest-first inside a time range and the two OLDEST of such a page are the two farthest from the anchor, not the two beside it. `.messages` takes a `query` over `ts` and a `sort`, so the server itself answers "the two immediately after" — `$gt` ascending — and "the two immediately before" — `$lt` descending — however many follow (ISS-1087 criteria 25, 36). Empty on any failure, and the caller says so rather than guessing neighbours.
 export async function fetchMessagesBeside(
   auth: RocketChatRestAuth,
   rid: string,
@@ -253,7 +223,6 @@ export async function fetchMessagesBeside(
         .sort((a, b) => a.ts.localeCompare(b.ts));
     }
   }
-  // cm:guard null and not []: an empty page says nothing was said there, a refused read says nothing is known, and the tool that reads this owes the model the difference (ISS-1087 criterion 30; whole-set review F4).
   return null;
 }
 
@@ -287,7 +256,6 @@ export async function fetchBotRooms(auth: RocketChatRestAuth): Promise<RocketCha
 /** installation+rid → {name, type}; a room's name/type never change in practice,
  *  and the permalink builder runs on every mention. Bounded by the rooms the bot
  *  is in. */
-// cm:guard keyed by the server as well as the room: a Rocket.Chat room id is unique only within one installation, so a rid-only key lets one server's room name build the other's permalink (same rule as `assistant_speaker_links.external_namespace`).
 const roomInfoByRid = new Map<string, { name: string; type: string }>();
 
 function roomCacheKey(auth: RocketChatRestAuth, rid: string): string {
@@ -299,7 +267,6 @@ function roomCacheKey(auth: RocketChatRestAuth, rid: string): string {
  * {@link buildMessagePermalink}'s read of the same call because that one wants a
  * name too and gives up without one, which a direct room usually has none of.
  */
-// cm:edge contract -> packages/core/src/integrations/rocketchat/room-shape.ts — `t`'s three values are mapped to the shapes there; a value this returns that the mapper does not know refuses the message rather than defaulting
 export async function fetchRoomType(auth: RocketChatRestAuth, rid: string): Promise<string | null> {
   const cached = roomInfoByRid.get(roomCacheKey(auth, rid));
   if (cached) return cached.type;
@@ -345,7 +312,6 @@ export interface RocketChatOwnIdentity {
   displayName: string | null;
 }
 
-// cm:guard BOTH names and not the username alone: the user-activity stream validates the name a write carries against the one the server currently SHOWS for the account, which is the display name under `UI_Use_Real_Name`, so a port holding only the username is refused on every such server (ISS-1088 criteria 24, 26).
 export async function fetchOwnIdentity(auth: RocketChatRestAuth): Promise<RocketChatOwnIdentity> {
   const body = (await rcGet(auth, 'me', {})) as { username?: unknown; name?: unknown } | null;
   const text = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
@@ -355,7 +321,6 @@ export async function fetchOwnIdentity(auth: RocketChatRestAuth): Promise<Rocket
 /**
  * Set or clear one reaction on a message, as the bot.
  */
-// cm:guard a SETTER and not a toggle: `chat.react` without `shouldReact` flips whatever is there, and a receipt set twice by two attempts would come off again. False on any refusal rather than a throw, because a reaction is decoration on a turn and the caller logs it (ISS-1088 criterion 23).
 export async function reactToMessage(
   auth: RocketChatRestAuth,
   messageId: string,
@@ -400,7 +365,6 @@ export interface RocketChatUserProfile {
  * needs `view-full-other-user-info`, and a bot without it gets a 403 that is
  * indistinguishable here from an id that does not exist.
  */
-// cm:guard prefer a VERIFIED address and fall back to the first only when none is verified, rather than taking `emails[0]` outright — Rocket.Chat lets an account hold several and marks which ones it has proven, and the unproven one is the one an operator can type
 export async function fetchUserProfile(
   auth: RocketChatRestAuth,
   externalId: string,
@@ -445,7 +409,6 @@ export async function fetchThreadMessages(
 ): Promise<RocketChatRestMessage[] | null> {
   const body = await rcGet(auth, 'chat.getThreadMessages', { tmid, count: String(count) });
   const raw = body?.messages;
-  // cm:guard null and not []: a thread with no replies yet and a thread the server refused to read are different answers, and the quote tool owes the model the difference (ISS-1087 criterion 30; whole-set review, round 6 F1).
   if (!Array.isArray(raw)) return null;
   return raw
     .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
@@ -453,17 +416,6 @@ export async function fetchThreadMessages(
     .sort((a, b) => a.ts.localeCompare(b.ts));
 }
 
-/**
- * ISS-675 — post a message to a room via REST (as opposed to the DDP
- * `sendMessage` the live bot socket uses). The async escalation completion
- * bridge is NOT tied to any live DDP connection's request/response cycle —
- * it fires from a session-terminal transition, which may happen on a
- * different core instance than the one holding the DDP socket — so it
- * rebuilds auth from the stored connection secrets and posts over REST
- * instead. Throws on a non-ok response or an RC-level `success: false` so the
- * caller can log/report the failure; it does not retry.
- */
-// cm:guard returns the id RC assigned, because a thread is addressed by the id of its root message and the delivery record cannot be written without one — a `void` here is what made a thread registry impossible before ISS-978.
 export async function postRoomMessage(
   auth: RocketChatRestAuth,
   roomId: string,
@@ -510,7 +462,6 @@ const FILE_FETCH_TIMEOUT_MS = 20_000;
  * process then throws away. Null on any failure — a picture the bot cannot
  * fetch degrades the answer, it never fails the turn.
  */
-// cm:guard `redirect: 'follow'` is load-bearing — `/file-upload/…` answers 302 to the storage backend, and the default-followed fetch is what makes this a 200; a `redirect: 'manual'` here returns a 302 whose empty body reads as a zero-byte image
 export async function fetchAttachmentBytes(
   auth: RocketChatRestAuth,
   ref: string,

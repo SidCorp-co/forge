@@ -1,27 +1,3 @@
-/**
- * The advisory lock, against a real Postgres.
- *
- * `check-run.test.ts` proves the SHAPE — that the lock is taken first and the
- * answer computed inside it — and it cannot prove more than that, because its
- * fake transaction serialises every callback whatever key the lock is given. A
- * namespace that varied per call would leave that file green and the production
- * race wide open. So the two properties the lock actually has are asserted here,
- * where `pg_advisory_xact_lock` is the real one:
- *
- * - two publishes for the SAME head do not overlap, so one run is created and
- *   the other updated rather than two created;
- * - two publishes for DIFFERENT heads DO overlap, so the lock is per head and
- *   not a global queue through which every project's publishes file one at a
- *   time.
- *
- * And a third property, which is about connections rather than locking: the
- * answer is computed on the transaction's own connection. Reading the pool from
- * inside would need a second connection while the first is held across HTTP, so
- * enough concurrent publishes would be the whole pool waiting on itself. The
- * different-head case proves it by finishing at all — both publishes hold a
- * transaction AND compute an answer at the same time.
- */
-
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setupTestDatabase, type TestDatabase } from '../helpers/index.js';
@@ -126,7 +102,6 @@ describe('two publishes for one head', () => {
 });
 
 describe('two publishes for different heads', () => {
-  // cm:guard the lock is keyed on binding AND head, so unrelated heads overlap. A namespace-only key would make every publish on the deployment file through one queue, and this test is what tells the two apart — the same-head case above passes under either.
   it('overlap, so the key is per head rather than a queue for the whole deployment', async () => {
     const calls: Call[] = [];
     const runs = new Map<string, number>();
@@ -159,7 +134,6 @@ describe('two publishes for different heads', () => {
 });
 
 describe('as many concurrent publishes as the pool has connections', () => {
-  // cm:guard TEN, because the pool is ten (`db/client.ts:buildDb`, `max: 10`). Each publish holds one connection for its transaction and is held here with that transaction open. If the answer's reads went to the POOL rather than to the transaction, all ten would be holding one connection and waiting for an eleventh that cannot exist — the whole pool waiting on itself until `idle_in_transaction_session_timeout` broke it. Finishing is the assertion.
   it('all finish, because each computes its answer on the connection it already holds', async () => {
     const calls: Call[] = [];
     const runs = new Map<string, number>();

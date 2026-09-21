@@ -1,16 +1,11 @@
 "use client";
 
-// One entry of the release timeline: what the agent says it did, and what the
-// machine read while it did it.
-//
-// The two are laid out as body and backing rather than side by side, because
-// they are not peers. `account` is a claim; `commit`, `providerRef`, `health`,
-// `identity` and `verdict` are readings core took itself, and the defect this
-// whole issue answers is that the claim used to be the only thing anybody had.
-// So the account is quoted as the agent's words and the readings sit under it
-// labelled as Forge's, and a reader can always tell which is which.
 
-import { Badge, MonoTag } from "@/design";
+import {
+  Badge,
+  CardTitle,
+  MonoTag,
+} from "@/design";
 import type { ReleaseAttempt } from "../types";
 
 /** Shown in place of a reading the record does not hold. */
@@ -23,7 +18,7 @@ function shortCommit(commit: string) {
 function Backing({ label, children }: { label: string; children: React.ReactNode }) {
 	return (
 		<div className="flex flex-col gap-0.5">
-			<span className="text-[10px] font-semibold uppercase tracking-wide text-subtle">
+			<span className="text-10 font-semibold uppercase tracking-wide text-subtle">
 				{label}
 			</span>
 			<span className="text-xs text-fg">{children}</span>
@@ -56,22 +51,6 @@ function AttemptIdentity({ attempt }: { attempt: ReleaseAttempt }) {
 	return <Unrecorded />;
 }
 
-/**
- * The five fields that back the account, split by who authored them.
- *
- * `commit` and `providerRef` reach the row through the agent's own routes —
- * `ledger.ts` says so in as many words: a deployment uuid "is a fact only the
- * caller holds, so it travels with the account, where it is read as something
- * reported rather than as something measured". `health`, `identity` and
- * `verdict` are what core read itself and no route lets an agent write them.
- * Presenting all five under one heading would put the agent's word back inside
- * Forge's reading, which is the collapse this whole table exists to undo.
- *
- * Every field renders whether or not it holds a value: a backing block that
- * hides its empty rows reads as a complete record with fewer questions asked,
- * and "Forge never read an identity here" is exactly the thing a person
- * debugging a release needs to see.
- */
 function AttemptBacking({ attempt }: { attempt: ReleaseAttempt }) {
 	return (
 		<div
@@ -79,9 +58,9 @@ function AttemptBacking({ attempt }: { attempt: ReleaseAttempt }) {
 			data-testid="attempt-backing"
 		>
 			<section data-testid="backing-reported">
-				<h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+				<CardTitle className="text-10 font-semibold uppercase tracking-wide text-muted">
 					Reported by the agent
-				</h4>
+				</CardTitle>
 				<div className="mt-1 grid gap-3 sm:grid-cols-2">
 					<Backing label="Commit">
 						{attempt.commit ? (
@@ -101,9 +80,9 @@ function AttemptBacking({ attempt }: { attempt: ReleaseAttempt }) {
 			</section>
 
 			<section data-testid="backing-read">
-				<h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+				<CardTitle className="text-10 font-semibold uppercase tracking-wide text-muted">
 					Read by Forge
-				</h4>
+				</CardTitle>
 				<div className="mt-1 grid gap-3 sm:grid-cols-3">
 					<Backing label="Health">
 						{attempt.health ? (
@@ -130,7 +109,7 @@ function AttemptBacking({ attempt }: { attempt: ReleaseAttempt }) {
 				{attempt.readings && attempt.readings.length > 0 ? (
 					<ul className="mt-1.5 flex flex-col gap-0.5" data-testid="attempt-readings">
 						{attempt.readings.map((reading) => (
-							<li key={reading} className="font-mono text-[11px] text-muted">
+							<li key={reading} className="font-mono text-11 text-muted">
 								{reading}
 							</li>
 						))}

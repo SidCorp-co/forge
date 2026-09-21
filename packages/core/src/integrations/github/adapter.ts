@@ -1,29 +1,3 @@
-/**
- * GitHub integration adapter — the inbound half of the provider, and since
- * ISS-1072 one outbound verb.
- *
- * Replaces the second webhook path that used to live inside `POST /in/:slug`,
- * keyed on `projects.webhookSecret`: one shared secret per project, no
- * environment split, no delivery log, no health, no breaker. Measured on the
- * live fleet 2026-09-06, that path had 0 of 41 projects configured and had
- * produced 0 of 4,436 issues, so there was nothing in the field to keep
- * working.
- *
- * Outbound is a TABLE of verbs, and today it holds two: publishing
- * `forge/issue-contract` on a pull request's head (ISS-1072), and merging a
- * pull request (ISS-1073). `canDispatch` turned true in the change that
- * implemented the first and not before, which is the rule ISS-1062 wrote and
- * `check-integration-declarations.mjs` holds the adapter to.
- *
- * The two arrived in that order on purpose: a check run cannot damage a
- * repository and a merge can, so the projection was proved under real load by a
- * face that could not hurt anything before the kernel was given power to merge
- * on it. Opening a pull request and reviewing one are still not here — they need
- * judgement, so they are `agent-ops.ts`'s — and a name this table does not hold
- * is refused against the table rather than growing a branch that does the
- * nearest thing.
- */
-
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { type BindingRole, integrationBindings } from '../../db/schema.js';
@@ -61,7 +35,6 @@ const PROBE_TIMEOUT_MS = 8000;
  * merge commit on a repository whose owner asked for a squash, arrived at by a
  * typo nobody was told about.
  */
-// cm:guard the refusal names the field, the value and the legal set, because the caller here is a job payload or a route body and neither has a schema of its own to read. What it must never do is drop the value and carry on: an `expectedHeadSha` silently dropped removes the one thing making the merge conditional on the head that was judged.
 function readMergePayload(
   payload: Record<string, unknown>,
 ): { requestedBy: string; expectedHeadSha?: string; method?: MergeMethod } | { refusal: string } {
@@ -104,7 +77,6 @@ function isMergeMethod(value: unknown): value is MergeMethod {
  * cases are. Adding a verb here and a branch below is one edit; the sentence a
  * caller gets for a name that is not on it needs no edit at all.
  */
-// cm:edge lockstep -> packages/core/src/integrations/github/contract-check.ts, packages/core/src/integrations/github/merge.ts — each entry is that module's own exported event name, read rather than restated so a rename there cannot leave a verb this adapter claims to serve and does not
 const SERVED_VERBS = [CHECK_PUBLISH_EVENT, MERGE_EVENT] as const;
 
 function isServedVerb(name: string): name is (typeof SERVED_VERBS)[number] {
@@ -121,7 +93,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     }),
   }),
 
-  // cm:guard 403 is NOT `needs_reauth` — GitHub answers 401 for a credential it does not recognise and 403 for one it does recognise and refuses (permission not granted to the App, SSO not authorised). Collapsing them tells the operator to reconnect when what they must do is grant a permission, and reconnecting reproduces the state exactly. This is the mislabel ISS-924 files against the coolify adapter; do not reproduce it here.
   async healthcheck(ctx: AdapterContext<GitHubConfig, GitHubSecrets>): Promise<HealthCheckResult> {
     const { owner, repo, installationId } = ctx.config ?? {};
     const base = (ctx.config?.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
@@ -212,7 +183,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       repository?: { full_name?: string };
     };
 
-    // cm:guard match the repository before acting — a GitHub App signs every installation's deliveries with ONE webhook secret, so a valid signature proves the App sent it and says NOTHING about which binding it belongs to. Without this check the router's "first binding whose secret verifies" would hand a second repo's events to the first repo's binding, silently and with a 200.
     const arrived = payload?.repository?.full_name;
     const expected =
       ctx.config?.owner && ctx.config?.repo ? `${ctx.config.owner}/${ctx.config.repo}` : null;
@@ -242,7 +212,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     return { deliveryId, actions: result.actions };
   },
 
-  // cm:guard the event name is matched against the TABLE and anything else is refused naming every verb the table holds. A default arm that did the nearest thing would make a caller's mistake return 200 and look like it worked, which is the wrong-input-absorbed shape CLAUDE.md refuses; the refusal IS the deliverable here. The table is also the extension point: a verb is added by putting it in `SERVED_VERBS`, and the refusal picks it up without being edited.
   async dispatchOutbound(
     ctx: AdapterContext<GitHubConfig, GitHubSecrets>,
     input: OutboundDispatchInput,
@@ -254,7 +223,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       );
     }
 
-    // cm:guard the binding is re-read at dispatch, exactly as `coolify/adapter.ts` re-reads its connection: the context was built earlier and a binding deactivated since is a repository nobody is bound to any more. The refusal is RECORDED as well as thrown, because ISS-1072 requires a project with no active binding to be named in the delivery log — and it is recorded against a null binding rather than the dead one, since a row scoped to a binding that is gone is a row nothing will list.
     const [live] = await db
       .select({ id: integrationBindings.id })
       .from(integrationBindings)
@@ -280,9 +248,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       );
     }
 
-    // cm:guard the binding the context authorised is carried INTO both verbs. Without it the
-    // caller's authorisation and the repository written to are resolved independently, and a
-    // dispatch for one project's binding could publish — or MERGE — on another's.
     if (input.eventName === MERGE_EVENT) {
       const read = readMergePayload(payload);
       if ('refusal' in read) throw new Error(read.refusal);
@@ -295,13 +260,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
           `github: no stored pull request ${pullRequestId} — nothing on this project's projection has that id`,
         );
       }
-      // cm:guard a REFUSED merge throws a TERMINAL error, and both halves of that matter. It throws
-      // because a caller's merge that did not happen must not come back as a dispatch result a
-      // worker can mark done, which is what a skipped check publish legitimately is. It is terminal
-      // because the queue retries a thrown error five times with exponential backoff, and a merge
-      // refused for conflicting or for a failing check, re-sent an hour later, lands after the
-      // condition that refused it changed — which is ISS-1073's third rule broken by the transport
-      // rather than by this file.
       if (merged.kind === 'refused') {
         throw new NonRetryableDispatchError(merged.detail, merged.reason);
       }
@@ -348,8 +306,6 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     webhookHeader: 'x-github-event',
     webhookSignatureHeader: 'x-hub-signature-256',
     structuredRollback: false,
-    // cm:guard `core-mediated` and NOT `direct-mcp`, and the difference is the whole of ISS-1071's rule 2: `direct-mcp` renders the credential into a runner box's MCP config and puts Forge outside the call path. This App's private key is the identity every write to the repository is made under — it can open, comment and review on every repository the installation covers — so there is no version of handing it to a box that is worth the round trip it saves. Core holds it, core makes the call, and `forge_github` is where an agent asks.
-    // cm:guard `forge_github` is the WHOLE list on purpose. A verb that merges is not missing from it, it is refused by it: merging is a kernel transition on THIS face, where the same operation stamps `merged_at` (ISS-1073, `merge.ts`). `agent-ops.ts:kernelVerbRefusal` is the sentence a caller naming one gets.
     agentPath: { kind: 'core-mediated', tools: ['forge_github'] },
   },
   schemas: {
@@ -363,11 +319,9 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     independentSecretFields: [],
     bindingConfigKeys: GITHUB_BINDING_CONFIG_KEYS,
   },
-  // cm:why SHORT: this reaches every prompt on every project with github connected, and a playbook here is a tax each of them pays per job. What an action takes and what it answers lives in the tool's own `description`, which is what a model reads at the moment it calls.
   usage: {
     hint: "Read and write this repository through `forge_github` — a pull request diff, a failing check run's log, a comment, a new pull request, a review request, a review verdict. Never `gh`: the App is the identity, and no credential reaches this box. Nothing here merges.",
   },
-  // cm:why null rather than a card of its own — the GitHub card `status-service.ts` builds comes from the PROJECT'S repository and its devices' push credentials, which is a different subject from a binding's health. A second github card keyed off a binding would collide with it by key.
   presentation: null,
   adapter: githubAdapterMethods,
 });

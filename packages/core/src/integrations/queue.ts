@@ -31,15 +31,6 @@ export interface OutboundDispatchJob {
   issueId: string | null;
   eventName: string;
   requestId?: string;
-  /**
-   * The exact request to dispatch, where the caller has one to replay.
-   *
-   * A RETRY sets this from the failed delivery's own recorded payload, which is what makes the
-   * retry a replay: a Sentry status update names a target label and a status that
-   * `{ runId, issueId, stages }` cannot carry, so rebuilding the payload would re-dispatch a
-   * different request under the same button. Absent — every release-path enqueue, and every job
-   * queued before this landed — the payload is built the way it always was.
-   */
   payload?: Record<string, unknown>;
 }
 
@@ -87,7 +78,6 @@ export async function registerIntegrationsWorker(): Promise<void> {
             }
           }
         } catch (err) {
-          // cm:guard rethrow — pg-boss's retry policy is the only thing that re-runs this, and the delivery row plus the breaker were already written by the adapter, so swallowing here loses the retry and keeps the failure.
           logger.error(
             { err, bindingId: data.bindingId, runId: data.runId, jobKind: data.jobKind },
             'integrations worker: coolify job threw — retry will be scheduled by pg-boss',
@@ -108,7 +98,6 @@ export async function registerIntegrationsWorker(): Promise<void> {
 function healthGateDeps(data: CoolifyHealthGateJob) {
   return {
     probe: (url: string) => probeHealth(url),
-    // cm:guard a gate with no `deliveryId` is watching a ROLLBACK's own build, which holds nothing — settling there would resolve a hold the failed deploy already owns and hand the run a second, contradictory outcome.
     settle: async (verdict: 'succeeded' | 'failed', detail?: string) => {
       const deliveryId = data.deliveryId;
       if (!deliveryId) return;
@@ -125,7 +114,6 @@ function healthGateDeps(data: CoolifyHealthGateJob) {
  * Retry button on a failed Sentry delivery would have handed that delivery to Coolify's client and
  * called it a deploy.
  */
-// cm:edge lockstep -> packages/core/src/integrations/registry.ts — `dispatchThrough` is the one place the refusal for a provider implementing no outbound call is worded, and asking it is what stops this worker naming a provider
 async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
   const binding = await findBindingById(data.bindingId);
   if (!binding?.active) {
@@ -152,12 +140,6 @@ async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
       runId: data.runId,
     });
   } catch (err) {
-    // cm:guard a TERMINAL refusal is logged and swallowed, and that is not the same as ignoring it.
-    // The delivery row carries the failure and its sentence; what this stops is the five-times
-    // exponential backoff above, which for an operation like a merge would send the same request
-    // again an hour later, after the very condition that refused it may have changed. ISS-1073's
-    // third rule is that a merge that cannot be made is refused by name, never retried — and a
-    // rethrow here is a retry however the adapter worded its refusal.
     if (err instanceof NonRetryableDispatchError) {
       logger.warn(
         { bindingId: data.bindingId, eventName: data.eventName, reason: err.reason },
@@ -185,7 +167,6 @@ export async function enqueueOutboundDispatch(
     retryLimit: opts.retryLimit ?? 5,
     retryBackoff: opts.retryBackoff ?? true,
     retryDelay: opts.retryDelay ?? 30,
-    // cm:guard the dedup key is the caller's `requestId` — pg-boss DROPS a send whose singletonKey is already in flight, so two deploys that reuse one requestId become one deploy and the second one's caller waits on a hold nothing will settle
     singletonKey: job.requestId,
   })) as string;
   return id;

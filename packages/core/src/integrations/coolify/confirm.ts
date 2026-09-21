@@ -1,21 +1,3 @@
-/**
- * ISS-922 — reading a deploy's outcome back out of Coolify, because Coolify
- * cannot tell us.
- *
- * Coolify's `SendWebhookJob` posts with no headers and no signature
- * (`Http::withOptions(...)->post($url, $payload)`), so the inbound contract
- * `/in/:slug` enforces — a provider event header plus an HMAC — is one Coolify
- * can never satisfy. That path was removed rather than repaired; this poller
- * replaces it, and unlike a webhook it also works for a deploy nobody told
- * Forge about in advance.
- *
- * One `coolify.confirm` job per deploy TARGET polls
- * `GET /api/v1/deployments/{uuid}` until it reports terminal or the hold's
- * deadline passes. Every terminal read writes an inbound-direction delivery
- * row, so the audit log carries both directions again — this time from a
- * source that exists.
- */
-
 import { INTEGRATIONS_QUEUE_NAME } from '../../jobs/queue-name.js';
 import { logger } from '../../logger.js';
 import {
@@ -45,7 +27,6 @@ export interface CoolifyConfirmJob {
 
 const POLL_INTERVAL_SECONDS = 20;
 
-// cm:guard these two sets must stay DISJOINT and must not grow a catch-all: a status this module cannot classify is polled again, and polling forever is exactly what the deadline is for. A Coolify status nobody listed here resolves as unconfirmed-at-deadline, which is loud, rather than as success, which would be the original defect wearing a new name.
 const SUCCESS_STATUSES = new Set(['finished', 'success', 'succeeded', 'completed']);
 const FAILURE_STATUSES = new Set(['failed', 'error', 'cancelled', 'canceled', 'cancelled-by-user']);
 
@@ -87,7 +68,6 @@ export async function enqueueCoolifyConfirm(
     retryLimit: 3,
     retryBackoff: true,
     startAfter: opts.startAfterSeconds ?? POLL_INTERVAL_SECONDS,
-    // cm:guard the dedup key must move with every re-poll — pg-boss drops a `send` whose singletonKey is already in flight, so a fixed key here silently makes the FIRST poll the only one and every deploy resolves at its deadline.
     singletonKey: `${job.deliveryId}:${Date.now()}`,
   });
 }
@@ -110,7 +90,6 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
     verdict = classifyDeploymentStatus(dep.status);
     if (verdict === 'failed') detail = `coolify reported ${dep.status}`;
   } catch (err) {
-    // cm:guard a read failure is NOT a deploy failure — Coolify may not have written the row yet, and turning an unreachable API into a failed deploy would fail runs whose deploy succeeded. The deadline is what bounds this branch.
     verdict = 'pending';
     detail = err instanceof Error ? err.message : 'unknown error';
     logger.debug(
@@ -120,7 +99,6 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
   }
 
   if (verdict === 'succeeded') {
-    // cm:guard Coolify's `finished` is a verdict on the BUILD, never on what the build does — the pg-boss 10→12 crash-loop reported finished with no port ever open (ISS-971). A target that declares a health URL is proven by reading the running application, so this poller records the build and hands the hold on rather than clearing it.
     const healthGate = healthGateFor({
       config: ctx.config,
       bindingId: data.bindingId,
@@ -136,9 +114,7 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
       return { settled: null, closedRun: false, handedToHealthGate: true };
     }
     if (healthGate.kind === 'window-too-short') {
-      // cm:guard the reason travels ON THE RECORD, not only into the log — this hold settles `succeeded` and stamps `release.deploy.done` like a proven deploy, so without the detail the only trace that nothing read the running application is a log line nobody queries.
       detail = `health gate skipped: ${Math.max(0, Math.round(healthGate.remainingMs / 1000))}s left on the confirmation deadline, too short to give the container its grace period — this deploy is NOT proven to serve`;
-      // cm:guard settle on the build verdict here and SAY the gate did not run — the remaining window is too short to give the container its grace period, so a gate opened on it would take one reading of a booting process and roll a healthy deploy back. An unproven deploy is the state before this gate existed; a rolled-back healthy one is a new outage.
       logger.error(
         {
           bindingId: data.bindingId,
@@ -210,14 +186,12 @@ export type DeploySettlementTarget = Pick<
  * hold this poller handed it, and there is still exactly ONE writer of that
  * decision.
  */
-// cm:edge lockstep -> packages/core/src/pipeline/runs.ts — `gatedOutcome` defers a close and records it; this is the only thing that ever performs the deferred close. Change one side's contract and a deferred run waits for a sweeper instead.
 export async function applyDeploySettlement(
   data: DeploySettlementTarget,
   verdict: Exclude<DeploymentVerdict, 'pending'>,
   detail?: string,
 ): Promise<ConfirmOutcome> {
   if (!data.runId) {
-    // cm:why ISS-922 requirement 3 — a deployment with no run to advance is recorded and said out loud rather than dropped, because silent is how the original defect looked.
     logger[verdict === 'failed' ? 'error' : 'info'](
       {
         bindingId: data.bindingId,
@@ -251,7 +225,6 @@ export async function applyDeploySettlement(
   if (gate.verdict !== 'clear') return { settled: 'succeeded', closedRun: false };
 
   await setCurrentStep(data.runId, RELEASE_DEPLOY_DONE_STEP);
-  // cm:guard close ONLY when a close was already deferred — a run whose other jobs are still going has not finished, and closing it on the deploy's success would end the run early.
   if (!(await isCloseDeferred(data.runId))) return { settled: 'succeeded', closedRun: false };
   await closeRun(data.runId, 'completed');
   return { settled: 'succeeded', closedRun: 'completed' };

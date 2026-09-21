@@ -1,19 +1,3 @@
-/**
- * `handleGitHubEvent` against real Postgres — the door an outside contributor's
- * report enters by, and everything it no longer does.
- *
- * ISS-1076 removed the naive mirror this file was first written for: there is no
- * `edited` upsert and no `closed` close, so the assertions that used to check how
- * a mirrored row was rewritten now check that it is not. The two older defects
- * this file was born from (a mirror-close stamping `merged_at`, an opened pull
- * request becoming an issue) are asserted still-fixed, because removing the
- * writer is what now enforces the first of them.
- *
- * Every assertion is made against the stored column: the unit test beside this
- * one counts the statements, and only real Postgres can say what a row holds
- * after a delivery.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -189,7 +173,6 @@ describe('the door decides whether anything enters', () => {
     expect(labelled.map((l) => l.name)).toContain('intake');
   });
 
-  // cm:guard the intake gate on its own must not open this door: three projects on the fleet had the gate on and had never been asked about GitHub when this was measured (2026-09-17).
   it('an intake gate with no githubIntake admits nothing', async () => {
     const gateOnly = await seedProject({
       pipelineConfig: { intakeGate: { enabled: true, notify: false } },
@@ -288,7 +271,6 @@ describe('it enters once, and no later event touches it', () => {
     expect(row?.status).toBe('in_progress');
   });
 
-  // cm:guard `merged_at` releases every `blocks` dependent as if the work had shipped, and GitHub closes an issue for `wontfix`, `duplicate` and `not planned` with the same event as one that was actually fixed. The writer that could stamp it is gone; both directions are asserted because "unchanged" is the claim, not "NULL".
   it('a closed delivery leaves merged_at NULL where it was NULL', async () => {
     await mods.handleGitHubEvent(evCtx(open), 'issues', {
       action: 'closed',
@@ -338,12 +320,6 @@ describe('a pull request is not a unit of work', () => {
     expect(await rows(open.projectId)).toHaveLength(0);
   });
 
-  // ISS-1062 — the payload that USED to file an issue per opened PR now carries a head, a base and
-  // a number, so `isProjectedEvent` returns it into the projection BEFORE the issues branch is
-  // reached. This asserts the ISSUES table stays empty on the shape that is no longer inert: the
-  // projection writes a row of its own, and a write that leaked back into the issues path would
-  // show up here and nowhere else. The door being open is deliberate — it is the case where a
-  // leak would actually create something.
   it('a full pull_request payload writes a projection row and still no issue', async () => {
     const open = await seedProject(OPEN_DOOR);
     const r = await mods.handleGitHubEvent(evCtx(open), 'pull_request', {

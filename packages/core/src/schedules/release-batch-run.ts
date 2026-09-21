@@ -37,7 +37,6 @@ export async function runScheduledReleaseCut(args: {
     return { status: 'skipped', output: 'this project has no release gate' };
   }
 
-  // cm:guard skip the already-claimed rows rather than failing on them: a batch in flight is a normal race with a person who pressed Release now, and the claim CAS would reject the whole cut over one issue.
   const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
   if (waiting.length === 0) {
     return { status: 'skipped', output: 'nothing is waiting at the release gate' };
@@ -54,8 +53,6 @@ export async function runScheduledReleaseCut(args: {
       output: `cut ${result.issueIds.length} issue(s) as run ${result.runId}`,
     };
   } catch (err) {
-    // cm:guard `ReleaseRecordMissingError` is on this list for the same reason as ClaimConflictError, even though neither clears on its own: a nightly cron that reports `failed` every night until a human writes a release note is the alarm nobody reads by week two. The message names the count, so the tick is still actionable.
-    // cm:guard every one of these is "not now", never "broken" — a cron that reports failure for a batch already in flight, or for a release box offline at 04:00, is one people learn to ignore, and the next failure they ignore is a real one.
     if (
       err instanceof BatchInFlightError ||
       err instanceof ClaimConflictError ||

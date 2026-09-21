@@ -94,7 +94,6 @@ describe("the column headed STATUS prints the kernel status", () => {
     expect(Object.keys(EXPECTED).sort()).toEqual([...ISSUE_STATUSES].sort());
   });
 
-  // cm:guard the whole reported defect, in the shape it was reported in: seven rows, one word.
   it("tells apart every status the lane folds onto Running", () => {
     const folded = ISSUE_STATUSES.filter((s) => laneLabel(s) === "Running");
     expect(folded.length).toBeGreaterThan(1);
@@ -111,8 +110,6 @@ describe("the column headed STATUS prints the kernel status", () => {
     expect(words).not.toContain("Needs a human");
   });
 
-  // cm:guard the issue's own Outcome sentence, verbatim: "a reader can tell `releasing` from
-  // `approved`, and `needs_info` from `waiting`, without opening the row".
   it("tells releasing from approved", () => {
     expect(printed("releasing")).not.toBe(printed("approved"));
   });
@@ -145,8 +142,6 @@ describe("the word the detail header prints", () => {
     expect(chip, "the detail header's StatusChip line was not found").toBeDefined();
   });
 
-  // cm:guard this is the line whose own cm:guard demanded "the TRUE lifecycle status, never the
-  // bucket's own word" while passing the lane word for four statuses (ISS-1097).
   it("labels the header chip with the kernel status and not the lane word", () => {
     expect(chip).toMatch(/label=\{statusLabel\(issue\.status\)\}/u);
     expect(chip).not.toMatch(/laneLabel/u);

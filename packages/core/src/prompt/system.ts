@@ -1,24 +1,3 @@
-/**
- * SSOT for system-prompt assembly across all callers (pipeline dispatcher,
- * chat preview, interactive sessions, MCP `forge_config.preview_prompt`).
- *
- * Static prefix order — kept stable so Anthropic API prompt cache (5-min TTL)
- * hits across jobs of the same project:
- *   1. PIPELINE_RULES        — process discipline (status LAST, branch, etc.)
- *   2. TOOL_REFERENCE        — MCP tool catalogue
- *   3. Project Config block  — baseBranch, and liveBranch under `promote`
- *   4. Project Context block — projectId + hint to call forge_projects.get
- *
- * Per-state extras (operator-defined in `appConfig.pipeline.states[state].systemPrompt`):
- *   - mode `append` (default) — appended AFTER the static prefix; cache prefix
- *     still hits up to the last shared char.
- *   - mode `replace` — operator-controlled prompt OVERRIDES the static
- *     prefix entirely. Cache misses on every job. UI surfaces a warning.
- *
- * Per-issue dynamic content (issue body, sessionContext, prior-conversation
- * snapshots) belongs in the USER prompt — never inline here.
- */
-
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -115,7 +94,6 @@ export function buildChatRoleSection(lenses: readonly MemberLens[]): string {
     audience =
       'Your counterpart is **technical** and comfortable with code. Answer at implementation depth: reference concrete files (`path:line`), diffs, architecture, and commands directly, and explain the mechanism plainly. Skip business-101 preamble.';
   } else {
-    // Explicit `product` lens OR no lens assigned — the historical default.
     audience =
       'Assume your counterpart is **non-technical** by default: a business owner, BA, or stakeholder who thinks in outcomes and business logic, not code. **Speak their language** — features, user impact, and behavior, NOT files, functions, or implementation. Only talk about code when they **explicitly ask to understand it**.';
   }
@@ -137,12 +115,6 @@ function buildChatNudge(lenses: readonly MemberLens[]): string {
   ].join('\n\n');
 }
 
-/**
- * Resolve the interactive reader's assigned working lens(es) for the project's
- * org (ISS role-aware chat). Best-effort + fail-open: no user (system/scheduled
- * session), no org, or any error → `[]` (the non-technical default). Only known
- * lens values survive, so a stray DB value can't corrupt the prompt.
- */
 async function resolveMemberLenses(
   projectId: string,
   userId: string | null,
@@ -167,7 +139,6 @@ async function resolveMemberLenses(
   }
 }
 
-// cm:guard fork the CALL, not the warning — the secrets sentence applies to every lane and must survive both branches. The drive branch is a CONSISTENCY choice, not a capability one: that lane's skill and preamble both speak `forge-runner api`, and a third name for one read is what put `forge_step_start` in 4,806 audit rows against a skill that named it nowhere.
 function formatProjectContext(projectId: string, step: JobType | null): string {
   const fetch =
     step === 'drive'
@@ -179,16 +150,6 @@ function formatProjectContext(projectId: string, step: JobType | null): string {
 ${fetch} Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
 }
 
-// cm:guard the park this line names must be one the reader's lane can actually write. It said `waiting` unconditionally until 2026-09-02, and `issues/autonomous-park.ts` rewrites `waiting` to `needs_info` for a device actor on every write — so the stop signal instructed the driver into the exact move a net exists to catch, on the only job type that runs unattended.
-// cm:guard the live-branch line is printed ONLY under `releaseModel: 'promote'`, and this is half of
-// one change with the column rename (ISS-1046) — the other half is that `liveBranch` is no longer
-// defaulted at create. Printing `- liveBranch: <not configured>` for the 25 `none` projects would
-// have fired the branch-detection paragraph below, which ends in an abort-and-ask instruction, into
-// 25 projects' drive prompts at once. Under `publish` and `none` there is no such branch to state,
-// so the honest render is silence rather than a sentinel.
-// cm:edge contract -> packages/core/src/release-batch/gate.ts — the same `releaseModel` decides the
-// gate; a prompt that states a promotion the gate does not make is Forge telling an agent one thing
-// and the tracker another
 export function formatProjectConfig(
   baseBranch: string | null,
   liveBranch: string | null,
@@ -198,7 +159,6 @@ export function formatProjectConfig(
 ): string {
   const promotes = releaseModel === 'promote';
   const b = baseBranch ?? BRANCH_SENTINEL;
-  // cm:guard the "no movement" qualifier is the whole line (RFC 0002 INV-8) — printing the bare number teaches the deleted cap back, and an agent that reads it as a cap stops at round 5 on work that is progressing fine
   const park = step === 'drive' ? 'needs_info' : 'waiting';
   const liveLine = promotes ? `\n- liveBranch: ${liveBranch ?? BRANCH_SENTINEL}` : '';
   let out = `## Project Config\n- baseBranch: ${b}${liveLine}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
@@ -212,7 +172,6 @@ export function formatProjectConfig(
   return out;
 }
 
-// cm:why orgId rides along on the row the chat preamble already reads — the integration block needs it to resolve that org's runtime guides, and a second projects SELECT for one column would double this path's cheapest query
 async function loadProjectBranches(projectId: string): Promise<{
   baseBranch: string | null;
   liveBranch: string | null;
@@ -236,28 +195,6 @@ async function loadProjectBranches(projectId: string): Promise<{
   }
 }
 
-/**
- * Build a non-pipeline (chat / interactive) system prompt. The chat variant
- * nudges the agent to use forge_knowledge for orientation since no per-state
- * preamble has been pre-loaded into the conversation.
- *
- * Returns `''` when the project does not exist / can't be read — the caller
- * concatenates the preamble onto the user prompt, so an empty string keeps
- * the chat send byte-identical to the pre-PR-3 behavior (avoids surprise
- * cache misses or orphaned preambles for missing-project sessions).
- *
- * `userId` (the interactive reader) tunes the role section to their assigned
- * working lens(es) (ISS role-aware chat). Omitted / null (system/scheduled
- * sessions) → the non-technical default, unchanged.
- *
- * `forceLenses` pins the chat voice regardless of the reader's member lens
- * (external product-bot runner sessions) and SKIPS the member-lens DB lookup
- * entirely — the pin must not depend on / be corrupted by the principal's
- * row. Omit (or pass null) for the principal-derived lens (normal chat).
- *
- * `mcpDiagnostics` carries the caller's resolved/dropped MCP server names for
- * this turn (see `resolveSessionMcpServers`).
- */
 export async function buildChatPreamble(
   projectId: string,
   userId?: string | null,
@@ -274,7 +211,6 @@ export async function buildChatPreamble(
     buildChatNudge(lenses),
     formatProjectConfig(project.baseBranch, project.liveBranch, project.releaseModel),
   ];
-  // cm:why chat drives connected integrations (an MCP-only project has no code to read), so the tool-routing hint must reach it too — renderStageFactsText gates the whole facts block behind a JobType, which chat has none of
   const integrations = await renderChatIntegrations(projectId, project.orgId);
   if (integrations) sections.push(integrations);
   if (mcpDiagnostics && mcpDiagnostics.dropped.length > 0) {
@@ -283,7 +219,6 @@ export async function buildChatPreamble(
   return `${sections.join('\n\n')}\n\n---\n\n`;
 }
 
-// cm:why best-effort: an integrations-lookup hiccup must degrade chat to the plain preamble, never fail the send
 async function renderChatIntegrations(
   projectId: string,
   orgId: string | null,
@@ -307,26 +242,9 @@ export interface BuildPreambleOptions {
   step?: JobType | null;
   /** Project per-state override (`states[state].systemPrompt`). */
   override?: SystemPromptOverride | null;
-  /**
-   * ISS-623 W2 — the dispatcher's post-merge MCP server diagnostics for THIS
-   * dispatch: which sentinel/shorthand names resolved into the runner's
-   * final `mcpServers` map, and which declared names silently dropped (an
-   * unknown catalog/integration name, or a declared-but-not-active
-   * integration). Omit for non-pipeline callers (chat / preview) — no
-   * dispatch has happened, so there is nothing to diagnose.
-   */
   mcpDiagnostics?: { resolved: string[]; dropped: string[] } | null;
 }
 
-/**
- * ISS-623 W2 — render the `mcp-servers` preamble block. Only called when
- * `dropped.length > 0` (a clean dispatch adds nothing, so the shared prefix
- * stays cache-friendly for the common case). Tells the agent what actually
- * resolved and what it declared-but-didn't-get, plus WHY a name commonly
- * fails to resolve, so it can self-diagnose instead of guessing (the
- * motivating incident: 4 pipeline runs blamed `needs_reauth` for a config
- * typo that a human had to read core source to find).
- */
 function formatMcpServersBlock(resolved: string[], dropped: string[]): string {
   const resolvedList =
     resolved.length > 0 ? resolved.map((n) => `\`mcp__${n}__*\``).join(', ') : '(none)';
@@ -338,19 +256,6 @@ WARNING — declared in \`pipelineConfig.mcpServers\` but did NOT resolve: ${dro
 A declared name fails to resolve when it is neither a known catalog server nor a known integration name (a typo), OR it names a real integration (e.g. \`epodsystem\`) that has no active binding for this project. If your task depends on tools from one of the dropped names, STOP and report the unresolved name in your response instead of retrying or assuming a credential/auth problem — the integration status badge does not gate injection, so "connected" does not mean "declared for this dispatch".`;
 }
 
-/**
- * Build the structured pipeline preamble. Layer order:
- *   1-4. shared prefix (Pipeline Rules / Tool Reference / Project Config /
- *        Project Context) — identical across every job, so the Anthropic prompt
- *        cache hits broadly.
- *   5.   `state-block` — the built-in default for `opts.step` (depth per state;
- *        shared across jobs of the same step).
- *   6.   `state-extras` — the project's per-state override, layered last.
- *
- * - `override.mode === 'replace'` with non-empty extras: the operator text
- *   REPLACES everything (no shared prefix, no state block; full cache miss).
- * - Otherwise extras are appended after the state block (cache-friendly).
- */
 export async function buildPipelinePreambleStructured(
   projectId: string,
   opts?: BuildPreambleOptions,
@@ -404,7 +309,6 @@ export async function buildPipelinePreambleStructured(
     id: 'project-context',
     body: formatProjectContext(projectId, step),
   });
-  // cm:why the facts are injected HERE rather than copied into skill bodies — that keeps a skill pure business logic and current without re-syncing every skill file, and it is why a project's knowledge entries arrive as a fetch-on-demand slug index rather than inlined bodies
   if (step && factInputs) {
     const factsBlock = renderStageFactsText(factInputs, projectId, step);
     if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });

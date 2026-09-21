@@ -42,7 +42,6 @@ describe('isResumeFailedError', () => {
   });
 });
 
-// cm:guard `reclassifyAbortedResume` must write BOTH the reason and the kind, and stamp the classifier version — an aborted resume that keeps `failureKind: 'infra'` is read by the retry chain as a bad box and fails the job over to another one, where the same missing session id fails again.
 describe('reclassifyAbortedResume', () => {
   it('rewrites the failure as code, stamped with the classifier version', async () => {
     updateReturning.mockResolvedValueOnce([{ id: 'j-1', failureKind: 'code' }]);

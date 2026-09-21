@@ -31,8 +31,8 @@ export function Tooltip({ label, children, side = "top", multiline = false }: To
             multiline ? "whitespace-normal text-left" : "whitespace-nowrap"
           }`}
           style={{
-            fontSize: 11,
-            color: "#fff",
+            fontSize: "var(--text-11)",
+            color: "var(--fg-on-accent)",
             background: "var(--ink-900)",
             boxShadow: "var(--shadow-md)",
             bottom: side === "top" ? "calc(100% + 6px)" : undefined,

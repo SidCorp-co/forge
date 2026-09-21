@@ -20,10 +20,6 @@ export interface HydratedAgentSession {
   lastHeartbeatAt: Date | null;
   pipelineRunId: string | null;
   claudeSessionId: string | null;
-  // ISS-411 — friendly device name (`devices.name`) for the live-run UI so the
-  // operator sees WHERE a run is executing by name, not a raw deviceId UUID.
-  // Resolved by one batch lookup; null when the session has no device or the
-  // device row is gone. Purely additive; shared by list/search/detail.
   deviceName: string | null;
 }
 
@@ -32,13 +28,6 @@ export interface HydratedAgentAttachment {
   agentStatus: DerivedAgentStatus;
 }
 
-// Precedence: a live state (running > queued) always surfaces; otherwise the
-// MOST-RECENT terminal session wins. Callers pass `sessions` ordered
-// updated_at DESC, so the first terminal one is the latest. A stale failure
-// from a superseded / cancelled run must NOT mask a newer success — else a
-// `tested`/`closed` issue whose latest run passed still shows a red "failed"
-// badge (state-lie). `completed_via_recovery` counts as success; `idle` /
-// `cancelled_stale` are skipped. Returns null when empty or terminal-less.
 export function deriveAgentStatus(sessions: HydratedAgentSession[]): DerivedAgentStatus {
   if (sessions.length === 0) return null;
   if (sessions.some((s) => s.status === 'running')) return 'running';

@@ -9,7 +9,6 @@ import {
   transitions,
 } from './state-machine.js';
 
-// cm:guard the WHOLE matrix, spelled out, because every other assertion in this file reads one row or one property and an exit silently dropped from any other row passes all of them. It is a deliberate second copy: the point is that changing `transitions` without changing this goes red, so an edit that means to move an exit says so here too. ISS-976 added `open → confirmed` and `confirmed → approved` and moved those two rungs out of the retired block; nothing else in it has been removed since.
 const EXPECTED_EXITS: Record<string, readonly string[]> = {
   draft: ['closed', 'developed', 'dropped', 'in_progress', 'open'],
   open: ['confirmed', 'dropped', 'in_progress', 'needs_info', 'on_hold'],
@@ -50,7 +49,6 @@ const EXPECTED_EXITS: Record<string, readonly string[]> = {
   tested: ['awaiting_release', 'closed', 'dropped', 'needs_info', 'on_hold', 'reopen'],
 };
 
-// cm:guard the expected side is written from the two documented rules and NOT from `DRAFT_EXIT_TARGETS`, so a change to that constant shows up here as a failure rather than being absorbed into both sides of the comparison. ISS-982 narrowed what the UI OFFERS; this matrix is what holds the line that nothing narrowed what the server ACCEPTS.
 const DRAFT_MAY_REACH = ['open', 'closed', 'dropped', 'developed', 'in_progress'];
 
 function acceptedByTheDocumentedRules(from: string, to: string): boolean {
@@ -118,12 +116,10 @@ describe('state machine', () => {
     expect(transitions.closed).toEqual(['reopen']);
   });
 
-  // cm:guard `dropped` must stay a dead end: `closed → reopen` exists because a closed issue shipped and can come back, whereas reopening a dropped issue would carry merged_at NULL into a shipping issue
   it('dropped is terminal with no exit at all', () => {
     expect([...transitions.dropped]).toEqual([]);
   });
 
-  // cm:guard a park resumes onto the LIVE rungs and must include `awaiting_release`: an issue merged and waiting for production, parked and then resumed, must not be forced through `open` — that dispatches a fresh agent onto shipped work and loses its place at the gate. It must NOT offer a retired rung: this row used to be `issueStatuses.filter(...)`, which offered every retired one and is how a resume put work back on a status nothing dispatches at. `confirmed` and `approved` joined `developed` and `testing` in the first list by ISS-976.
   it('a park resumes onto a live rung, never a retired one', () => {
     for (const live of [
       'open',
@@ -181,7 +177,6 @@ describe('state machine', () => {
     }
   });
 
-  // cm:guard `awaiting_release` does NOT exit to `closed`: the release path closes from `releasing`, where `finish` has read the deploy back. A direct close from the gate is a shipped claim nobody verified — the whole reason the gate exists (release-gate-hold.ts, after epodsystem ISS-141 self-closed with the bug still reproducing).
   it('awaiting_release exits to the release starting, the parks, or a discard', () => {
     expect([...transitions.awaiting_release].sort()).toEqual([
       'dropped',
@@ -191,7 +186,6 @@ describe('state machine', () => {
     ]);
   });
 
-  // cm:guard the OUTCOME exits are `finish`'s (`closed`) and `abort`'s (`reopen`) and nothing else may take them — an agent that could leave `releasing` on its own would be declaring its own release finished, which `issues/release-gate-hold.ts` exists to refuse. The two parks are a person stopping to ask, which a half-landed batch needs.
   it('releasing exits only to the two release outcomes and the two parks', () => {
     expect([...transitions.releasing].sort()).toEqual([
       'closed',
@@ -203,11 +197,9 @@ describe('state machine', () => {
 
   it('isReopenEntry counts every entry into reopen, not just from closed (ISS-781)', () => {
     expect(isReopenEntry('closed', 'reopen')).toBe(true);
-    // cm:why these are the pipeline's own rejection paths — the ones that were silently free before ISS-781
     expect(isReopenEntry('developed', 'reopen')).toBe(true);
     expect(isReopenEntry('testing', 'reopen')).toBe(true);
     expect(isReopenEntry('tested', 'reopen')).toBe(true);
-    // cm:why negative cases: already at reopen, not heading there at all, or a mechanical revert (ISS-766)
     expect(isReopenEntry('reopen', 'reopen')).toBe(false);
     expect(isReopenEntry('closed', 'developed')).toBe(false);
   });
@@ -235,16 +227,13 @@ describe('state machine', () => {
     it('restricts a draft source to promotion, discard, direct-ship and taking it up in place', () => {
       expect(canTransitionFree('draft', 'open')).toBe(true);
       expect(canTransitionFree('draft', 'closed')).toBe(true);
-      // cm:why ISS-431 — direct-ship: work built outside the pipeline enters AT the review gate, where walking through `open` instead would re-triage it and dispatch an agent onto finished work
       expect(canTransitionFree('draft', 'developed')).toBe(true);
-      // cm:why ISS-940 — the rung a session already building the branch takes; promoting instead dispatches a second agent onto the worktree it is in
       expect(canTransitionFree('draft', 'in_progress')).toBe(true);
       expect(canTransitionFree('draft', 'approved')).toBe(false);
       expect(canTransitionFree('draft', 'testing')).toBe(false);
       expect(canTransitionFree('draft', 'awaiting_release')).toBe(false);
     });
 
-    // cm:guard spell the five out LITERALLY on both sides — comparing the computed set against DRAFT_EXIT_TARGETS is tautological, since canTransitionFree reads that same constant, and dropping a member from it passes. Verified 2026-08-27: removing 'dropped' left the tautological form green. The refusal in apply-transition.ts renders this list verbatim, so a silent divergence there is a message that lies about the rule.
     it('exits a draft to exactly these five statuses and no others', () => {
       const expected = ['closed', 'developed', 'dropped', 'in_progress', 'open'];
       const allowed = issueStatuses.filter(

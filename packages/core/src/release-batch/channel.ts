@@ -1,19 +1,3 @@
-// What ships this project, and who is allowed to ship it.
-//
-// The batch prompt used to carry one procedure for everyone: merge to the
-// production branch, deploy through Coolify, append one line under
-// `## [Unreleased]`. That is one project's ritual written as if it were the
-// protocol. epodsystem cuts a no-squash MR plus a tag, has no Coolify, and
-// promotes a version section rather than appending to `[Unreleased]`.
-//
-// So the split is: the PROTOCOL (get → … → finish/abort) stays hard in the
-// state prompt, because it is what stops a claim being made for work that did
-// not happen. The PROCEDURE is per project and lives where per-project text
-// already lives — the `release-procedure` knowledge entry for the repo-side
-// ritual (it was `projectFacts.release-procedure` until ISS-1048 moved project
-// prose into `knowledge_entries`), and the live deploy binding's `instructions`
-// for the channel-side one.
-
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -39,7 +23,6 @@ export { defaultReleaseProcedure, RELEASE_PROCEDURE_FACT } from './plan.js';
  * exposes a rollback API and Forge performs it, so a paragraph there is a
  * second path to the same outcome that nothing has verified is still true.
  */
-// cm:guard prose on a coolify binding must NOT degrade to `manual` — that is the silent substitution ISS-925 removed, and it reads identically to a working declaration. It is carried through so the prompt can quote it and settings can name the binding; it is never handed to an agent as an instruction. To undo the break, return `{kind:'manual'}` here.
 export function classifyRollback(provider: string, raw: unknown): ReleaseRollback | null {
   if (typeof raw === 'string') {
     const text = raw.trim();
@@ -61,33 +44,6 @@ export function classifyRollback(provider: string, raw: unknown): ReleaseRollbac
   return null;
 }
 
-/**
- * EVERY active live deploy binding, each with its own channel declaration.
- *
- * A set, not a pick. Deploy is a tool handed to an agent, not a switch core throws, so core returns
- * the whole stage and the release agent works it; an endpoint with no adapter is described in
- * `instructions` as a guide or a requirement, handled by hand, and reported into the release job like
- * any other step.
- */
-// cm:guard the previous shape was `bindings[0]` off a query ordered `created_at ASC`, and that WAS the
-// defect: on `getcontent` the oldest active `prod` binding is a Rocket.Chat room and on the archived
-// `dodgeprint-api` it was a Sentry project, so the release agent was handed a chat channel and an
-// error tracker as things to release onto. Adding a uniqueness constraint would not have fixed it —
-// the fault was core choosing, not the set having more than one member.
-/**
- * The probe a project's own live address earns it, for a binding that declares none.
- *
- * ISS-1069 — before this, declaring a probe needed the one thing Forge did not hold: the project's
- * production hostname. 0 of 32 projects filled `verify.probes`, and `sidpeak` could not cut a
- * release at all. `environments.live` is where that address lives now, so a project that has
- * declared it has declared its probe.
- *
- * `commitUrl` and NOT `url`: the two are different addresses on this fleet, and deriving one from
- * the other by appending a health path is the hostname guessing this whole change exists to stop.
- * A live side with a `url` and no `commitUrl` therefore earns no probe — which is the refusal, by
- * name, that `undeclaredProbes` carries.
- */
-// cm:guard `commitPath: undefined` and never `null` — `readProbe` reads an ABSENT path as "the whole body, trimmed", which is the same reading a hand-declared probe with no `commitPath` gets. Passing null through would type-error rather than change behaviour, and the point of saying it here is that the two declarations mean the same thing.
 export function liveProbeFrom(environments: unknown): VerifyConfig | null {
   const live = normalizeEnvironments(environments).live;
   if (live.commitUrl === null) return null;
@@ -109,11 +65,6 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
     const cfg = effectiveConfig(pair);
     const label = cfg.releaseRunnerLabel;
     const declared = parseVerifyConfig(cfg.verify);
-    // cm:guard the default fires on ABSENCE and never on a declaration `parseVerifyConfig` refused.
-    // That function answers `null` to an absent key, to `{}`, to `{probes:[]}` and to probes with no
-    // url alike, so falling back on its answer alone would REPLACE a broken declaration with a
-    // working one and verify somewhere the operator never named — a silent substitution wearing a
-    // green verdict. `verifySource` below is what keeps the two apart for every later reader.
     const absent = cfg.verify === undefined || cfg.verify === null;
     const verify = declared ?? (absent ? fallback : null);
     return {
@@ -128,7 +79,6 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
           ? ('environments-live' as const)
           : ('none' as const),
       rollback: classifyRollback(pair.binding.provider, cfg.rollback),
-      // cm:guard read the pool label out of `config`, NEVER out of `integration_bindings.label` — that column is the multi-store slug (ISS-558), and borrowing it would make "which box releases" and "which store is this" the same field
       releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
     };
   });
@@ -155,7 +105,6 @@ export class ReleaseRunnerAmbiguousError extends Error {
  * a single answer, because it names a machine: sending the job to whichever row sorted first is the
  * same silent pick `resolveReleaseChannels` exists to remove.
  */
-// cm:edge lockstep -> packages/core/src/devices/release-label.ts — `RELEASE_LABEL_FOR_JOB` is this rule in raw SQL, on the pool and claim paths. Looser there offers a release job to a box this would refuse.
 export function releaseRunnerLabelOf(projectId: string, channels: ReleaseChannel[]): string | null {
   const labels = [...new Set(channels.map((c) => c.releaseRunnerLabel).filter((l) => l !== null))];
   if (labels.length > 1) throw new ReleaseRunnerAmbiguousError(projectId, labels);
@@ -174,12 +123,15 @@ export async function resolveReleasePlan(projectId: string): Promise<ReleasePlan
 }
 
 /**
- * The devices whose runners carry the release label. Empty means the operator
- * named a pool that no box is in — which the caller must treat as a refusal,
- * never as "use anyone".
+ * The devices whose runners carry the release label — the boxes a release
+ * should PREFER.
+ *
+ * Empty means no box on the fleet carries it, which ISS-1128 made a ranking
+ * rather than a refusal: the caller releases on the pool it has and records
+ * that the preference went unmet. It was a refusal until then, so declaring
+ * which box a release should prefer was indistinguishable from removing every
+ * other box from the pool.
  */
-// cm:guard the key is the LABEL, not a device id: a rebuilt box gets a new uuid and would silently drop out of a pool pinned by id, and the failure would read as "no runner online" rather than "the box you rebuilt lost its label"
-// cm:why `labels ? ${label}` is jsonb element-membership, not key lookup — runners.labels is a jsonb ARRAY, and `?` reads an array as its set of elements
 export async function resolveReleaseDeviceIds(projectId: string, label: string): Promise<string[]> {
   const rows = await db.execute<{ device_id: string }>(sql`
     SELECT DISTINCT device_id
@@ -187,6 +139,22 @@ export async function resolveReleaseDeviceIds(projectId: string, label: string):
     WHERE project_id = ${projectId}
       AND device_id IS NOT NULL
       AND labels ? ${label}
+  `);
+  return rows.map((r) => r.device_id);
+}
+
+/**
+ * Every device this project has a runner row for, eligible or not.
+ *
+ * What separates a genuinely empty pool — `RELEASE_POOL_EMPTY` — from a fleet
+ * that exists with nothing online, which is `NO_RUNNER_ONLINE` and always was.
+ */
+export async function projectRunnerDeviceIds(projectId: string): Promise<string[]> {
+  const rows = await db.execute<{ device_id: string }>(sql`
+    SELECT DISTINCT device_id
+    FROM runners
+    WHERE project_id = ${projectId}
+      AND device_id IS NOT NULL
   `);
   return rows.map((r) => r.device_id);
 }

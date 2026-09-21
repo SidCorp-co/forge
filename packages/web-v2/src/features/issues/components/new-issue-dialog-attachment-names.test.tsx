@@ -22,14 +22,12 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 vi.mock("../hooks", () => ({
   useCreateIssue: () => ({ mutateAsync, isPending: false, reset: vi.fn() }),
 }));
-// cm:guard nothing here asserts on the editor, but the dialog contains one and a REAL CodeMirror cannot mount in a shared worker — the stub module carries why.
 vi.mock("@uiw/react-codemirror", async () => (await import("@/test/codemirror-stub")).codeMirrorStub());
 
 const { NewIssueDialog } = await import("./new-issue-dialog");
 
 const SCOPE = { projectId: "p1", slug: "forge-dev" } as never;
 
-// cm:why BodyEditor runs a preview query, so the tree needs a QueryClient even though nothing here asserts on it — without one every case fails on "No QueryClient set" rather than on the rule it is testing
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -63,7 +61,6 @@ describe("NewIssueDialog attachment names (ISS-963)", () => {
     paste("image.png");
     paste("image.png");
 
-    // cm:why both must survive under their OWN names — one shared name makes the server refuse the whole batch, so a test that only asserted "two chips" would pass while the user still lost both files
     expect(screen.getByTitle("image.png")).toBeInTheDocument();
     expect(screen.getByTitle("image-2.png")).toBeInTheDocument();
     expect(screen.getByText(/Renamed image\.png to image-2\.png/)).toBeInTheDocument();
@@ -126,7 +123,6 @@ describe("NewIssueDialog attachment names (ISS-963)", () => {
     pick("a_b.png");
     pick("a b.png");
 
-    // cm:why the server sanitises before it compares, so `a b.png` and `a_b.png` are ONE name there — staging both unchanged loses the whole batch to a collision the dialog never saw
     expect(screen.getByTitle("a_b.png")).toBeInTheDocument();
     expect(screen.getByTitle("a b-2.png")).toBeInTheDocument();
   });

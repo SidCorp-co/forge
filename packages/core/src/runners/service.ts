@@ -74,7 +74,6 @@ export class RunnerAlreadyBoundError extends Error {
   }
 }
 
-// cm:edge contract -> packages/core/src/db/schema.ts — the key is the index NAME as `runnersProjectDeviceTypeUq` spells it; renamed there and not here, the violation stops being recognised and leaves as a 500 again.
 const PROJECT_DEVICE_TYPE_UQ = 'runners_project_device_type_uq';
 
 const isBindingCollision = (err: unknown) =>
@@ -89,14 +88,12 @@ async function insertRunnerRow(input: NewRunner) {
   return row;
 }
 
-// cm:guard registration REFUSES an existing binding by name, it does not resolve one — a retired runner is returned to the pool by `forge_runners restore` or the pool toggle, and re-registering was the way out the old copy named and the unique index has never allowed (ISS-990). The two paths that legitimately resolve a collision, `projects/runners-routes.ts` by upsert and `heartbeat-ws.ts` by re-select, do not come through here.
 export async function insertRunner(input: NewRunner) {
   try {
     return await insertRunnerRow(input);
   } catch (err) {
     if (!isBindingCollision(err)) throw err;
     const collided = await readBinding(input);
-    // cm:guard a collision whose row has since gone means the binding is FREE, so the answer is the insert, never a refusal naming a runner nobody can read — a fabricated id in that message is the state lying about which runner blocked the caller.
     if (!collided) return await retryAfterVanishedBinding(input);
     throw new RunnerAlreadyBoundError(
       collided,

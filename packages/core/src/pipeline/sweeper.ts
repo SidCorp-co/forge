@@ -1,24 +1,3 @@
-/**
- * Pipeline sweeper tick — loop-monitor driver + demoted alarm passes.
- *
- * ISS-449 (ISS-442 C3 / invariant I3) — the closed job loop
- * (`jobs/loop-monitor.ts`) is now the PRIMARY mechanism: it owns the
- * dispatch→ack→heartbeat→result hop timeouts and performs every terminal
- * write (via `applyKernelTransition`) as the FIRST pass of this tick. The
- * three sweep passes this file used to own — `sweepZombieSessions`,
- * `reconcileOrphanedJobs`, `reconcileNeverClaimedDispatches` — are DEMOTED to
- * assertion/alarm (renamed `alarm*`): they keep their detection SELECTs but
- * perform NO terminal writes. A row they still match is a loop MISS, logged
- * as `loop-miss` and surfaced as a `pipeline_wedge` (coverage proof during
- * the cutover; deleted at the ISS-442 parent integration once the loop is
- * proven).
- *
- * Still active here (not part of the demoted four): the one-shot run reaper
- * (ISS-445), the dispatcher backstop, queue snapshots (ISS-381), and the
- * Tier 1 ops alert sweep (ISS-652, shares query logic with GET
- * /api/admin/alerts via `admin/alert-queries.ts`).
- */
-
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
@@ -33,7 +12,8 @@ import {
 } from '../jobs/loop-monitor.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
-import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from '../jobs/session-kinds.js';
+import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
+import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -80,7 +60,6 @@ export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } 
 }
 
 export interface ZombieSweepResult {
-  // cm:guard these count ALARMED rows, never reaped ones. Read as reaps they say the sweep fixed something it only reported, which is the difference between a wedge that cleared and one nobody has touched.
   queueTimedOut: number;
   turnNeverReported: number;
   heartbeatTimedOut: number;
@@ -96,7 +75,6 @@ export interface OneShotRunReapResult {
 }
 
 export interface IssueRunReapResult {
-  // cm:why the count of issue runs closed because their backing issue already reached a terminal status — a run left open under a terminal issue is the forward half of the orphan invariant (pipeline/runs-cascade.ts).
   reaped: number;
 }
 
@@ -105,7 +83,6 @@ export interface IdleChatCloseResult {
 }
 
 export interface StallDetectResult {
-  // cm:why the count of `pipeline_wedge` notifications emitted this tick — a dependency deadlock that never clears is reported here rather than retried, because no sweep can resolve it.
   detected: number;
 }
 
@@ -131,9 +108,7 @@ export interface SweepResult {
   idleChatSessions: IdleChatCloseResult;
   /** ISS-461 — issue runs closed because their backing issue is terminal (reaps). */
   orphanedIssueRuns: IssueRunReapResult;
-  /** ISS-923 — runs closed because every child job already reached a terminal status (reaps). */
   concludedRuns: ConcludedRunReapResult;
-  /** ISS-654 — issue runs closed because no job was ever enqueued under them (reaps). */
   joblessRuns: JoblessRunReapResult;
   /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
   agedHolds: Inv7AlarmResult;
@@ -163,7 +138,6 @@ export interface SweepResult {
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
   const t0 = Date.now();
 
-  // cm:why every pass is isolated rather than a bare sequential `await` chain — the first pass to throw used to abort the whole tick, which starved the run-axis reapers for days: `reapOrphanedOneShotRuns` never ran, and job-less `schedule.run` + chat `interactive` runs leaked `running` across EVERY project because no `jobs` row exists to close them (`VISION: state-never-lies`)
   const errors: Array<{ pass: string; err: unknown }> = [];
   const runPass = async <T>(name: string, fn: () => Promise<T>): Promise<T | undefined> => {
     try {
@@ -181,14 +155,12 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     }
   };
 
-  // cm:guard the loop monitor runs FIRST and owns every reap; the alarm passes below must run against the POST-loop state, or a row they match is one the loop had not reached yet rather than a genuine miss, and every tick reports false wedges (ISS-449)
   const loop = await runPass('loopMonitor', () => runLoopMonitor(now));
   const zombieSessions = await runPass('alarmZombieSessions', () => alarmZombieSessions(now));
   const orphanedJobs = await runPass('alarmOrphanedJobs', () => alarmOrphanedJobs(now));
   const neverClaimedDispatches = await runPass('alarmNeverClaimedDispatches', () =>
     alarmNeverClaimedDispatches(now),
   );
-  // cm:why an ACTIVE reaper, not dead code — `schedule.run` and chat `interactive` runs carry no `jobs` row, so the job loop never fires for them and a dead agent_session would leave them `running` forever (`VISION: state-never-lies`)
   const orphanedOneShotRuns = await runPass('reapOrphanedOneShotRuns', () =>
     reapOrphanedOneShotRuns(now),
   );
@@ -196,41 +168,24 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const orphanedIssueRuns = await runPass('reapOrphanedIssueRuns', () =>
     reapOrphanedIssueRuns(now),
   );
-  // cm:guard AFTER reapOrphanedIssueRuns, and the order carries meaning: that pass writes `completed` unconditionally to mirror `apply-transition.ts`, so running it first keeps the closed-issue case on its established outcome and leaves this pass the rows nothing else reaches. Reversed, a closed issue whose last job failed would start closing `failed` — a silent change to ISS-461's contract made by ordering alone.
   const concludedRuns = await runPass('reapConcludedRuns', () => reapConcludedRuns(now));
-  // cm:guard AFTER reapConcludedRuns for the same ordering reason: that pass owns every run that HAS a job, this one only the rows with none, so a row can never be a candidate for both within one tick.
   const joblessRuns = await runPass('reapJoblessRuns', () => reapJoblessRuns(now));
   const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
-  // cm:why alarm, not a reap: a plain `queued` job holds no capacity, so cancelling it frees nothing and only destroys work — and the state it reports (every gate passes, nothing started it) is one only a human can resolve, because the picker and the selector disagreeing is a configuration mismatch, not a stuck row
   const stalledQueuedJobs = await runPass('alarmStalledQueuedJobs', () =>
     alarmStalledQueuedJobs(now),
   );
-  // cm:why the pass above cannot cover this and widening it would not help: a job under a paused run reports gate `pipeline_run_not_running`, so it is excluded by the `gated.has()` test, not by that pass's `pr.status='running'` filter. Measured 2026-08-30, that left four triage jobs queued 38 days on qa-project with no surface anywhere able to say so.
   const pausedRunsWithQueuedWork = await runPass('alarmPausedRunsWithQueuedWork', () =>
     alarmPausedRunsWithQueuedWork(now),
   );
-  // cm:why an ACTIVE reaper, not an alarm: a run paused by a mechanism this build no longer has is not a state anyone can act on — there is nothing left to clear the reason, so surfacing it would ask a human to do the resume every time
   const orphanedPauses = await runPass('resumeOrphanedPauses', () => resumeOrphanedPauses());
-  // cm:guard the ONLY reader of `noProgressRounds` left. Its twin `alarmChurningIssues` counted TOTAL reopens, and `reopen_count` moves solely on entry into `reopen` — a transition this lane never performs, so ISS-895 deleted it rather than leaving an alarm frozen at 0. An alarm that cannot fire is worse than no alarm: it reads as evidence the condition is absent.
   const rejectionStreaks = await runPass('alarmRejectionStreaks', () => alarmRejectionStreaks());
 
-  // cm:edge sideeffect -> packages/core/src/release-batch/claim-subscriber.ts — backstop for the pipelineRunStatusChanged hook: releases release_batch_run_id claims left behind if the subscriber threw or was skipped
   const staleReleaseBatchClaims = await runPass('reapStaleReleaseBatchClaims', () =>
     reapStaleReleaseBatchClaims(),
   );
-  // cm:guard REPORTS and moves nothing, and it must stay that way. `reapDeadRunSessions` may
-  // retract because it holds the fact that makes retraction sound — a session it opened stopped
-  // beating. This pass holds no such fact: an issue reaches `in_progress` on this project by a
-  // baseline record a person or a by-hand run wrote, so an arm that retracted here would pull the
-  // tree out from under exactly that work. It says the two halves disagree; whose fault that is, is
-  // not computable from either side (ISS-1050).
-  // cm:guard AFTER every reaping pass above, for the reason the loop monitor comment gives: a run
-  // session this tick is about to reap is not an orphaned assertion yet, and reporting it before
-  // the reaper reaches it names a disagreement that resolves itself within the same tick.
   const orphanedRunAssertions = await runPass('detectOrphanedRunAssertions', () =>
     detectOrphanedRunAssertions(now),
   );
-  // cm:why ISS-1075 — this is a clock and not a poll: it reads `runner_releases` and `now`, asks GitHub nothing, and exists because a release whose process died at `cut_tag`, or whose build GitHub never reported, is reached by no delivery and no other pass. It is here rather than on a timer of its own for `registerRunnerReleaseRefetch`'s opposite reason: that one has to beat a 30-minute channel, this one has to run wherever the sweeper runs so a release is never named twice by two boxes.
   const overdueRunnerReleases = await runPass('nameOverdueRunnerReleases', () =>
     nameOverdueRunnerReleases(now),
   );
@@ -239,8 +194,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
     detectRetryRescueThresholds(now),
   );
-  // cm:why ISS-1063 — this runs AFTER every detector pass, so a condition raised this tick
-  // is re-derived from the next tick onward and never by the pass that just wrote it.
   const reevaluated = await runPass('reevaluateConditions', () => reevaluateConditions(now));
   const alerts = await runPass('alertSweep', () => runAlertSweep(now));
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
@@ -284,30 +237,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     queueSnapshots: queueSnapshots as number,
   };
 }
-
-/**
- * ISS-639 — active counterpart to the blocks-gate fix in
- * `jobs/queued-gates.ts`: when a project's `mergeStates.baseBranch` IS
- * stampable, the gate no longer treats a `closed`+`merged_at IS NULL`
- * blocker as satisfying `blockedBy`, so a
- * dependent whose blocker closed without merging now just sits `queued`
- * forever instead of silently dispatching onto a base branch missing the
- * blocker's code (devbox ISS-2/ISS-4). This pass raises an ALARM on it: past
- * {@link STALL_GRACE_MS} (same grace window as `detectStalledDependencies` —
- * long enough for the ordinary close→`mark_merged` race to resolve on its
- * own), emit a wedge naming the unmerged blocker.
- * Skips projects whose base is structurally unstampable (manual/toggle-off)
- * — that is the legitimate `OR status='closed'` bypass the gate still
- * honors, so those dependents are left alone. Best-effort: never throws
- * (returns `{ parked: 0 }` on error); each row is isolated so one failure
- * doesn't block the rest.
- *
- * Since the close-time auto-stamp (issues/merged-at.ts markMergedOnClose,
- * getcontent 2026-07-13), every close through the state-machine writer (and
- * the GitHub mirror-close) stamps merged_at, so new closed-unmerged blockers
- * can no longer arise from normal operation. This pass stays as the backstop
- * for pre-existing rows and direct DB writes that bypass both paths.
- */
 
 /**
  * ISS-381 (2.2) — write one `queue_snapshots` row per project that currently has
@@ -372,7 +301,6 @@ export async function alarmZombieSessions(
   const heartbeatCutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   const projectClause = scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``;
 
-  // cm:guard ISS-1101 — the `last_heartbeat_at IS NULL` term mirrors the loop's queue arm and is what keeps this a MIRROR. Without it every claimed-and-beating queued session matches here every minute, and the alarm that exists to say "the loop missed a row" says it about rows the loop deliberately left alone — which is how a coverage proof becomes noise nobody reads.
   const queued = await db.execute<SessionAlarmRow>(sql`
     SELECT s.id, s.project_id, s.pipeline_run_id
     FROM agent_sessions s
@@ -380,18 +308,17 @@ export async function alarmZombieSessions(
       AND s.last_heartbeat_at IS NULL
       AND ((s.dispatched_at IS NOT NULL AND s.dispatched_at < ${queueCutoffIso})
         OR (s.dispatched_at IS NULL AND s.created_at < ${queueCutoffIso}))
-      AND s.metadata->>'type' IN ${PIPELINE_METADATA_TYPES}
+      AND s.kind IN ${kindTuple(PIPELINE_SESSION_KINDS)}
       ${projectClause}
   `);
 
-  // cm:guard the loop's OTHER queue arm, on the heartbeat cutoff rather than the queue one — the two thresholds differ here because they differ there, and reading both off `getZombieThresholds` is what keeps them the same two numbers.
   const neverReported = await db.execute<SessionAlarmRow>(sql`
     SELECT s.id, s.project_id, s.pipeline_run_id
     FROM agent_sessions s
     WHERE s.status = 'queued'
       AND s.last_heartbeat_at IS NOT NULL
       AND s.last_heartbeat_at < ${heartbeatCutoffIso}
-      AND s.metadata->>'type' IN ${PIPELINE_METADATA_TYPES}
+      AND s.kind IN ${kindTuple(PIPELINE_SESSION_KINDS)}
       ${projectClause}
   `);
 
@@ -404,7 +331,7 @@ export async function alarmZombieSessions(
             AND s.started_at < ${heartbeatCutoffIso} AND s.updated_at < ${heartbeatCutoffIso})
         OR (s.last_heartbeat_at IS NULL AND s.started_at IS NULL
             AND s.updated_at < ${heartbeatCutoffIso} AND s.created_at < ${heartbeatCutoffIso}))
-      AND s.metadata->>'type' IN ${PIPELINE_METADATA_TYPES}
+      AND s.kind IN ${kindTuple(PIPELINE_SESSION_KINDS)}
       ${projectClause}
   `);
 
@@ -413,14 +340,13 @@ export async function alarmZombieSessions(
     FROM agent_sessions s
     WHERE s.status = 'running'
       AND s.claude_session_id IS NULL
-      AND COALESCE(s.metadata->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}
+      AND s.kind IN ${kindTuple(CLIENT_SESSION_KINDS)}
       AND ((s.last_heartbeat_at IS NOT NULL AND s.last_heartbeat_at < ${heartbeatCutoffIso})
         OR (s.last_heartbeat_at IS NULL AND s.created_at < ${heartbeatCutoffIso}))
       ${projectClause}
   `);
 
   await alarmLoopMiss('claim', 'session', [...queued, ...noClient]);
-  // cm:guard `neverReported` alarms on the HEARTBEAT hop, the hop the loop emits its wedge on, because the row went quiet rather than went unclaimed. Filing it under `claim` would put a loop-miss about a session a worker plainly holds beside the ones nobody picked up.
   await alarmLoopMiss('heartbeat', 'session', [...heartbeat, ...neverReported]);
 
   return {
@@ -437,13 +363,8 @@ type JobAlarmRow = {
   issue_id: string | null;
 };
 
-/**
- * DEMOTED (ISS-449) — alarm-only mirror of the loop monitor's session-lost
- * propagation (`reapSessionLostJobs`, was ISS-280 `reconcileOrphanedJobs`).
- */
 export function orphanedJobAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): SQL {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
-  // cm:edge lockstep -> packages/core/src/jobs/kill-gate.ts — a gated row deliberately survives the loop until killGraceMs() elapses; exclude it or every gate trips a false loop-miss
   const killGateCutoffIso = new Date(now.getTime() - killGraceMs()).toISOString();
   return sql`
     SELECT j.id, j.project_id, j.issue_id
@@ -470,13 +391,6 @@ export async function alarmOrphanedJobs(
   return { reconciled: candidates.length };
 }
 
-/**
- * DEMOTED (ISS-449) — alarm-only mirror of the loop monitor's dispatch→ack
- * hop (`reapAckMisses`, was ISS-378 `reconcileNeverClaimedDispatches`). The
- * `acked_at IS NULL` term keeps the predicate in lockstep with the loop: an
- * ACKED job with no events is claimed-but-quiet, which is the result hop's
- * territory, not an ack miss.
- */
 export function neverClaimedAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): SQL {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   const cutoffIso = new Date(now.getTime() - getLoopThresholds().ackMs).toISOString();
@@ -529,51 +443,12 @@ async function alarmLoopMiss(
   }
 }
 
-/**
- * ISS-445 — close job-less `system`/`interactive` runs whose session is dead.
- *
- * schedule.run and interactive chat open a one-shot run via `openOneShotRun`
- * and execute it over an `agent:start` WS broadcast to the device room — they
- * create NO `jobs` row, so the `agent_session` IS the unit of work. The only
- * existing close paths are session/job-terminal events: the device POSTing
- * `/agent-sessions/desktop/status` (→ `closeRunIfOneShot`) and the job
- * lifecycle (`jobs/agent-session-link.ts`). When an unattended device finishes
- * the turn but never reports terminal status (the dominant schedule.run case),
- * both the session AND the run stay `running` forever — the loop monitor's
- * session hops don't catch it (claim/heartbeat are gated to
- * `metadata.type IN (pipeline,pm)`; the no-client hop only reaps
- * `claude_session_id IS NULL`), and `cascadeCancelChildJobs` keys
- * session-terminal off linked *jobs*, of which there are none.
- *
- * This pass is the backstop: a run is reapable when it is a job-less
- * `system`/`interactive` run older than the heartbeat threshold (age guard so
- * a freshly-opened run is never touched) with NO live session. A session counts
- * as live when its heartbeat is fresh within the bare heartbeat floor, OR
- * (ISS-442 device-aware grace) within a longer grace window while its device is
- * still beating on the runner WS — so a long-but-alive agent that goes quiet
- * between worker-side writes (parallel subagents) is not force-failed. Any
- * lingering non-terminal session is force-failed (`heartbeat_timeout`) and
- * broadcast first, then the run is closed through the shared
- * `closeRunIfOneShot` SSOT (CAS-guarded; cascade is a no-op with zero jobs).
- *
- * Outcome honesty: `completed` only when a session genuinely reached a
- * completed terminal and none failed (the missed-`/desktop/status` case);
- * otherwise `failed` — never the false-`completed` mirror of ISS-352. The pass
- * also drains the existing leaked backlog on the first ticks after deploy
- * (their heartbeats are days stale), so no one-shot migration is needed.
- *
- * Best-effort per row: one failure is logged and skipped, never aborting the
- * pass — same convention as the loop monitor's per-row handlers.
- */
 export async function reapOrphanedOneShotRuns(
   now: Date = new Date(),
   scope: SweepScope = {},
 ): Promise<OneShotRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
-  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
-  // cm:guard a session parked on a PERSON counts as live here, and it is a third term rather than a wider window: parking freezes `last_heartbeat_at` (agent-sessions/routes.ts does not bump it on `awaiting_input`), so on the heartbeat premise alone a park that is alive and waiting is indistinguishable from an agent that died three minutes ago — and this sweep force-fails it `heartbeat_timeout` and closes its run, which is the whole of the park undone. A run session is the shape that lands here: `issue_id` is NULL, and `pipeline_runs_issue_kind_chk` makes that incompatible with `kind='issue'`, so `reapJoblessRuns` can never see one (ISS-964 criterion 24).
-  // cm:guard the device grace is the SECOND liveness term and it exists because the bare heartbeat floor force-failed live runs — a job-less agent between worker-side writes looked dead, its run closed mid-work, and the terminal-run trigger then orphaned the session still running under it (ISS-442). A disconnected device still reaps on the floor alone, so shrinking this toward `heartbeatMs` restores that failure rather than tightening anything.
   const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);
   const graceCutoffIso = new Date(now.getTime() - deviceGraceMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
@@ -612,9 +487,8 @@ export async function reapOrphanedOneShotRuns(
   let reaped = 0;
   for (const row of candidates) {
     try {
-      // Force-fail any lingering non-terminal session for this run. A session
-      // already completed/failed is left as-is — the run still needs closing
-      // (the missed-`/desktop/status` case).
+      // A session already completed or failed is left as-is — the run still
+      // needs closing (the missed-`/desktop/status` case).
       const flipped = await applyKernelTransition(db, {
         entity: 'session',
         returning: SWEEP_SESSION_COLUMNS,
@@ -622,7 +496,7 @@ export async function reapOrphanedOneShotRuns(
         set: { failureReason: 'heartbeat_timeout', updatedAt: now },
         where: and(
           eq(agentSessions.pipelineRunId, row.id),
-          inArray(agentSessions.status, ['queued', 'running', 'idle']),
+          inArray(agentSessions.status, LIVE_SESSION_STATUSES),
         ),
         fromStatus: 'active',
         reason: 'heartbeat_timeout',
@@ -636,9 +510,6 @@ export async function reapOrphanedOneShotRuns(
         });
       }
 
-      // Derive the run outcome from the post-flip session statuses: a genuine
-      // success-close (`completed`) only when some session reached a completed
-      // terminal and none is failed/cancelled_stale; otherwise `failed`.
       const sessions = await db
         .select({ status: agentSessions.status })
         .from(agentSessions)
@@ -688,12 +559,9 @@ export async function closeIdleChatSessions(
   now: Date = new Date(),
   scope: SweepScope = {},
 ): Promise<IdleChatCloseResult> {
-  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - CHAT_IDLE_CLOSE_MS).toISOString();
   const projectClause = scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``;
 
-  // cm:guard never widen this SELECT to job-linked or `schedule.run` sessions. A job-linked session belongs to the loop monitor, and closing one here races its owner. A hung `schedule.run` closed `completed` makes the next terminal report write `schedules.lastStatus='success'` (schedules/service.ts) — a lie about an audit that never ran, which is the exact class this pass exists to prevent.
-  // cm:guard `started_at IS NOT NULL` — a row that never ran has nothing to close honestly; `idle` is also the DEFAULT status of a fresh session, so without this the pass would settle never-dispatched rows as `completed`.
   const candidates = await db.execute<{ id: string }>(sql`
     SELECT s.id
     FROM agent_sessions s
@@ -712,7 +580,6 @@ export async function closeIdleChatSessions(
   const ids = candidates.map((row) => row.id);
   if (ids.length === 0) return { closed: 0 };
 
-  // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — fourth writer of the completed-carries-no-reason contract (ISS-759)
   const flipped = await applyKernelTransition(db, {
     entity: 'session',
     returning: SWEEP_SESSION_COLUMNS,
@@ -720,7 +587,7 @@ export async function closeIdleChatSessions(
     set: { failureReason: null, failureDetail: null, updatedAt: now },
     where: and(
       inArray(agentSessions.id, ids),
-      inArray(agentSessions.status, ['queued', 'running', 'idle']),
+      inArray(agentSessions.status, LIVE_SESSION_STATUSES),
     ),
     fromStatus: 'active',
     reason: 'chat_idle_timeout',
@@ -739,39 +606,11 @@ export async function closeIdleChatSessions(
   return { closed: flipped.length };
 }
 
-/**
- * ISS-461 — close `issue`-kind runs left `running`/`paused` after their backing
- * issue already reached a run-closing status (ISS-669 kept `awaiting_release` out of
- * that set — the release step runs inside the still-open run).
- *
- * `closeOpenRunForIssue` is wired in exactly one place — `apply-transition.ts`'s
- * `RUN_CLOSING_STATUSES` block — so a close-status write that bypasses
- * `applyTransition` (or a close predating that wiring) orphans the issue run: it
- * stays `running`/`paused` forever, and none of the other reapers cover
- * `kind='issue'` (`reapOrphanedOneShotRuns` is scoped to `system`/`interactive`).
- * The dashboard live-run count (`derive.ts liveRuns()`) renders every
- * `running`/`paused` run, so each leak inflates it.
- *
- * Run-axis backstop (sibling of `reapOrphanedOneShotRuns`): it closes each
- * candidate through the shared SSOT `closeOpenRunForIssue` (CAS-guarded on
- * `status IN (running,paused)`, sets `finishedAt`, cascades child-job cancel,
- * emits the close hook). Outcome `'completed'` mirrors `apply-transition.ts`,
- * which passes `'completed'` on `closed` — never a false `failed`. The age
- * guard (`started_at` older than the heartbeat threshold)
- * avoids racing a just-fired `applyTransition` close, and also drains the
- * existing leaked backlog on the first ticks after deploy (their `started_at`
- * is days old) — no one-shot migration needed.
- *
- * Best-effort per row: one failure is logged and skipped, never aborting the
- * pass — same convention as `reapOrphanedOneShotRuns`.
- */
-// cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — the status list in this query IS `RUN_CLOSING_STATUSES`, and this pass is that block's only backstop; a status added there and not here leaks its runs forever with no reaper on any axis. `dropped` was exactly that drift (2026-08-30), and it is not hypothetical on an autonomous project — `dropped` is one of the five statuses the driver may write.
 export async function reapOrphanedIssueRuns(
   now: Date = new Date(),
   scope: SweepScope = {},
 ): Promise<IssueRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
-  // cm:guard serialise to ISO before binding — postgres-js throws on a raw `Date` param at bind time, so a cutoff passed as a Date fails the sweep rather than mis-selecting, and the whole tick is lost.
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
 
@@ -791,7 +630,6 @@ export async function reapOrphanedIssueRuns(
   let reaped = 0;
   for (const row of candidates) {
     try {
-      // cm:guard count only what actually closed — `closeOpenRunForIssue` returns `deferred` while a dispatched deploy is unconfirmed (ISS-922); the run is revisited next tick and closes on the deploy's real outcome.
       if ((await closeOpenRunForIssue(row.issue_id, 'completed')) === 'settled') reaped++;
     } catch (err) {
       logger.error(
@@ -808,15 +646,6 @@ export async function reapOrphanedIssueRuns(
   return { reaped };
 }
 
-/**
- * ISS-764 — backstop for orphaned release_batch claims.
- *
- * The primary claim release is the `registerReleaseBatchClaimSubscriber` hook
- * on `pipelineRunStatusChanged`. This pass is the fallback: find issues whose
- * `release_batch_run_id` references a terminal (non-running, non-paused) run
- * and clear the pointer. Best-effort: never throws; a residual is safe — it
- * just means the issue stays un-selectable until the next tick.
- */
 export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchClaimsResult> {
   try {
     const released = await db.execute<{ id: string }>(sql`

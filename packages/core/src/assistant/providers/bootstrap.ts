@@ -9,8 +9,6 @@ import { listProviders, register } from './registry.js';
 export const CHAT_PROVIDER_ID = 'openai';
 export const ANTHROPIC_PROVIDER_ID = 'anthropic';
 
-// cm:guard keep EVERY id this adapter has ever answered to registered — 'litellm' was its own id until the 2026-09-03 rename, and 'gemini' was a separate adapter registered on a GEMINI_API_KEY that config/env.ts stopped declaring on 2026-09-04; the env var is gone but the `app_config.chat_provider_id` rows that named it are NOT, and a row outlives the code that wrote it
-// cm:guard dropping an alias is not a no-op: resolveForProject falls through to the env fallback when a row's chat_provider_id will not resolve and discards that row's `chat_model` with it, silently re-pinning a pinned project onto the default model — aliased, a Gemini model name instead reaches Vertex THROUGH the proxy or 400s where an operator can see it, and on a box with no LITELLM_* nothing registers at all so those rows get a 503 rather than a wrong answer
 const LEGACY_PROVIDER_IDS = ['litellm', 'gemini'] as const;
 
 export function bootstrapChatProviders(): void {

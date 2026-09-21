@@ -10,7 +10,6 @@ vi.mock('../logger.js', () => ({
   logger: { error: loggerError },
 }));
 
-// cm:why ISS-849 — mocks the transition dedupe guard's SELECT-before-insert lookup
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));

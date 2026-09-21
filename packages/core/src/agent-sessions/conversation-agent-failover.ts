@@ -24,7 +24,6 @@ import { scheduleAck } from './conversation-agent-ack.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
-// cm:why mirrors `redispatchScheduleSessionOnFailover` (schedules/dispatch.ts) — that machinery is hard-gated to `metadata.source === 'schedule.run'`, so this lane needs its own.
 const MAX_FAILOVERS = 2;
 
 export type ConversationAgentFailoverResult =
@@ -34,10 +33,6 @@ export type ConversationAgentFailoverResult =
       status: 'not-a-conversation-turn' | 'exhausted' | 'no-device' | 'no-prompt' | 'error';
     };
 
-/**
- * Try another box for a turn whose runner failed on infrastructure.
- */
-// cm:guard reuse the STORED prompt, never rebuild it: the stored text is exactly what `buildConversationAgentPrompt` produced for the first attempt, and the caller has already claimed this turn so this cannot race a second failover for the same turn.
 export async function redispatchConversationAgentTurn(
   session: SessionRow,
 ): Promise<ConversationAgentFailoverResult> {
@@ -87,6 +82,7 @@ export async function redispatchConversationAgentTurn(
       projectId: session.projectId,
       userId: session.userId,
       title: session.title ?? `Chat: ${meta.question.slice(0, TITLE_MAX)}`,
+      parentSessionId: session.id,
       runKind: 'system',
       runMetadata: { source: 'conversation.agentTurn', conversationId: meta.conversationId },
       metadata: {
@@ -125,9 +121,6 @@ export async function redispatchConversationAgentTurn(
       },
       'conversation-agent failover: re-dispatched to another runner',
     );
-    // cm:guard the RETRY gets its own ack window too: the first attempt's timer fired against a
-    // session that is now terminal and posted nothing, so without this a venue whose turn failed
-    // over waits out both windows in silence — which is the one case the ack exists for.
     scheduleAck(dispatched.id, next);
     return { ok: true, sessionId: dispatched.id, deviceId };
   } catch (err) {
@@ -135,12 +128,6 @@ export async function redispatchConversationAgentTurn(
       { err, failedSessionId: session.id, retrySessionId: retry.id, attempt },
       'conversation-agent failover: re-dispatch failed',
     );
-    // cm:edge lockstep -> packages/core/src/agent-sessions/conversation-agent-bridge.ts — `dispatchChatTurn` commits `status: 'running'` before its throwable work, so a throw here must terminate the retry row itself or `hasInFlightConversationAgentTurn` wedges the room on a phantom live turn.
-    // cm:why the retry row is pre-stamped CLAIMED AND DELIVERED in the same write, so the row the
-    // transition hands the bridge is already settled — without it the bridge claims the retry and
-    // posts a second failure sentence while the original caller posts one too. It carries the
-    // failure as well, because a row stamped delivered with nothing in the transcript under it is
-    // the false success the two stamps were split to end (ISS-1039, commit consult F1).
     await markSessionFailed(retry, 'conversation-agent-failover', {
       ...next,
       claimedAt: new Date().toISOString(),

@@ -27,10 +27,6 @@
 //! asserts that path allows the tool call and writes a degraded mark on every
 //! platform this crate builds for.
 
-// cm:guard the gate goes on the FILE and names the socket as its reason. Widening it — cfg-ing out
-// the tests instead of the thing that needs a unix socket — would leave the refusal that is this
-// issue's whole deliverable untested on two of three CI legs while `ci-passed` reported green,
-// which is the exact shape ISS-1094 exists to refuse (ISS-1094).
 #![cfg(unix)]
 
 use std::io::{BufRead, BufReader, Write};
@@ -41,9 +37,6 @@ use std::process::{Command, Stdio};
 use forge_runner_core::daemon::dispatch_gate::REFUSAL;
 use forge_runner_core::daemon::hook_install;
 
-/// Observed from claude 2.1.276 on 2026-09-18 by registering this hook and
-/// running one session that dispatched a subagent.
-// cm:guard OBSERVED and not composed. A fixture written to match the parser proves only that the parser matches itself; this one was captured from the harness and trimmed, and the field names in it are the contract.
 const DISPATCH_PAYLOAD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","transcript_path":"/x.jsonl","cwd":"/tmp/x","prompt_id":"5f063c37","permission_mode":"bypassPermissions","effort":{"level":"medium"},"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"description":"Take ISS-12","prompt":"work it","subagent_type":"runner","run_in_background":false},"tool_use_id":"toolu_01WFynvjwEmYFcgyKTMn4J91"}"#;
 
 struct Scratch(PathBuf);
@@ -54,15 +47,6 @@ struct Scratch(PathBuf);
 const SUN_LEN: usize = 104;
 
 impl Scratch {
-    /// A directory short enough to hold a unix socket, and unique enough for these tests to run at
-    /// once.
-    ///
-    // cm:guard the base is `/tmp` and NOT `std::env::temp_dir()`. On macOS that helper answers
-    // `/var/folders/<hash>/<hash>/T/` — about 49 bytes before this test has named anything — and
-    // the full test name after it put every socket here past `SUN_LEN`. The whole file then failed
-    // at `bind` on the macos leg while ubuntu passed, which is the platform-shaped version of a
-    // green that means nothing (ISS-1094). The name is a hash rather than the test's own so the
-    // length cannot drift back over the line as tests are added.
     fn new(name: &str) -> Self {
         let mut h: u64 = 0xcbf2_9ce4_8422_2325;
         for b in name
@@ -133,17 +117,6 @@ fn daemon_that_refuses(dir: &Path) -> std::sync::mpsc::Receiver<String> {
     rx
 }
 
-/// The environment that steers a child process's config directory at `root`, and the directory the
-/// child will then derive from it.
-///
-// cm:guard `XDG_CONFIG_HOME` is a LINUX-only lever and setting it alone is how this file passed on
-// ubuntu while testing nothing at all on macos. `Config::path()` goes through
-// `dirs_next::config_dir()`, which reads `$XDG_CONFIG_HOME` on linux, `$HOME/Library/Application
-// Support` on macos and `%APPDATA%` on windows. With only the linux variable set, the macos child
-// wrote its marks into the CI runner's REAL home and looked for its socket there: every mark count
-// read 0 and the stub socket was never spoken to, so one test sat on `recv_timeout` for ten
-// seconds. The platform difference is named here once rather than relaxed out of the assertions
-// (ISS-1094).
 fn config_home_at(root: &Path) -> (&'static str, PathBuf) {
     if cfg!(target_os = "macos") {
         (
@@ -171,8 +144,6 @@ fn config_dir_at(root: &Path) -> PathBuf {
     dir
 }
 
-// cm:guard a SHELL, because that is what Claude Code runs a hook command with. Splitting on
-// whitespace modelled the consumer instead of being it, and could not see quoting at all (F1).
 fn run_gate(command: &str, config_home: &Path, payload: &str) -> String {
     let mut child = Command::new("sh")
         .arg("-c")
@@ -285,9 +256,6 @@ fn an_ordinary_tool_call_costs_the_master_no_round_trip() {
     );
 }
 
-/// Criteria 19, 26. The operator's read surface, from the real binary: a gate
-/// that could not operate is a number `forge-runner status` prints.
-// cm:guard run as a PROCESS against a config directory holding real marks, because the claim is about what an operator sees. A test of the formatting function alone stays green if `status` never calls it, which is the same door/arm gap the gate test above exists for.
 #[test]
 fn status_prints_what_the_gate_could_not_do() {
     let scratch = Scratch::new("status");

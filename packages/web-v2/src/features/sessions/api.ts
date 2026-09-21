@@ -1,4 +1,3 @@
-// cm:edge contract -> packages/core/src/agent-sessions/routes.ts — every path below is one of that router's, and a route renamed there arrives here as a 404 the caller renders as its ordinary error state.
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type { QueueStats, SessionCost, SessionRow } from "./types";
 
@@ -7,21 +6,12 @@ export const SESSIONS_PAGE_SIZE = 50;
 export interface ListSessionsOpts {
   projectId?: string;
   status?: string;
-  /** `metadataType=agent` scopes the server response to the caller's OWN
-   *  interactive chats (ISS-522 owner-privacy filter) — required for any
-   *  cross-project "my conversations" listing; omit only for project-shared
-   *  views (Agents overview, pipeline). */
   metadataType?: string;
   page?: number;
   pageSize?: number;
 }
 
 export const sessionsApi = {
-  /**
-   * `GET /api/agent-sessions` — flat rows + `X-Total-Count`. Omit `projectId`
-   * for the cross-project (workspace-tier) view scoped to caller-visible
-   * projects.
-   */
   list: ({
     projectId,
     status,
@@ -36,7 +26,6 @@ export const sessionsApi = {
     return apiClientList<SessionRow>(`/agent-sessions?${params}`);
   },
 
-  /** `GET /api/agent-sessions/queue-stats?projectId=` — REQUIRES projectId. */
   queueStats: (projectId: string) =>
     apiClient<QueueStats>(`/agent-sessions/queue-stats?projectId=${encodeURIComponent(projectId)}`),
 

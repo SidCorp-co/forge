@@ -1,17 +1,3 @@
-/**
- * ISS-1063 — core's runtime copy of the notification taxonomy: what KIND of record each
- * type is, how urgent it is, how many evaluations a condition must survive before anyone
- * is told, and which firing type suppresses which.
- *
- * WHY THIS IS A COPY AND NOT AN IMPORT. `@forge/contracts` is a TYPE-ONLY surface in
- * core's production runtime image and is not present in it; importing a runtime VALUE
- * from there crashed boot with `ERR_MODULE_NOT_FOUND` (ISS-510), which is why
- * `notifications/emit.ts` already carries its own inlined severity table for the same
- * reason. The duplication is deliberate and it is held honest by a test rather than by
- * this comment.
- */
-
-// cm:edge lockstep -> packages/contracts/src/notifications.ts — NOTIFICATION_CONTRACT carries the same kind, tier and pending duration for every type, and `kinds.test.ts` fails on any disagreement between the two and `db/schema.ts`'s column. Three copies, one meaning: change any of them alone and that test names which pair drifted.
 import type { NotificationType } from '../db/schema.js';
 
 export const notificationKinds = ['signal', 'condition', 'task'] as const;

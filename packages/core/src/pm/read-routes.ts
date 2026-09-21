@@ -26,7 +26,6 @@ const graphQuerySchema = z.object({
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:guard mounted UNCONDITIONALLY while `pm/routes.ts` sits behind `isEnabled('pmAgent')`, and the asymmetry is deliberate: `forge_project_pm` is registered regardless of that flag, so a replacement gated by it would answer 404 on any deployment with the flag off — turning a tool deletion into a capability loss that only shows up where nobody is looking. Move these under the flag only in a change that also flag-gates the tool.
 export const pmReadRoutes = new Hono<{ Variables: AuthVars }>();
 pmReadRoutes.use('/:id/pm/snapshot', requireAuth(), assertEmailVerified());
 pmReadRoutes.use('/:id/pm/graph', requireAuth(), assertEmailVerified());

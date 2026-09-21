@@ -299,10 +299,6 @@ describe('notifications · a receipt for a condition that is still true is not d
     expect(await bellOf(alice)).toHaveLength(1);
   });
 
-  // cm:guard this is the reason the refusal exists, not a second opinion about it. The
-  // delivery is the receipt `deliverTo` reads to decide whether this person has been told:
-  // delete one while its condition still fires and the next sweep finds no receipt, writes a
-  // second delivery and interrupts again — once a minute, for as long as the condition lasts.
   it('so a reader cannot re-arm a firing condition by deleting it', async () => {
     await wedge('wedge:a', [alice]);
     const [row] = await bellOf(alice);

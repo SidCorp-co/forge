@@ -1,14 +1,5 @@
 "use client";
 
-// Shared attachment renderer (ISS-363). Extracted from issue-detail-screen's
-// `AttachmentGrid` so both the issue-level attachments card and per-comment
-// attachments render identically. Images become clickable thumbnails that open
-// an in-app gallery lightbox (page through all images in the list with the
-// arrow keys) instead of dumping each into its own browser tab; everything else
-// is a download link with name + size. Accepts the minimal
-// `{ id; name; mime; size; url }` shape so it works for both issue attachments
-// and comment attachments. `text/html` renders inline as a sandboxed artifact
-// (ISS-format work, 2026-08-26) rather than as a download link.
 
 import { Icon } from "@/design";
 import { coreFileUrl } from "@/lib/utils/core-url";

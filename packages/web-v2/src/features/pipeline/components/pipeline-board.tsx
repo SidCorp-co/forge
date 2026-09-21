@@ -17,6 +17,7 @@ import {
   KanbanColumn,
   KanbanColumnSkeleton,
   LiveDot,
+  PageTitle,
   Tooltip,
 } from "@/design";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -78,7 +79,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
       }
     >
       <header className={`mb-3 flex flex-none items-center gap-3${embedded ? " hidden" : ""}`}>
-        <h1 className="fg-h2">Pipeline</h1>
+        <PageTitle className="fg-h2">Pipeline</PageTitle>
         <p className="fg-body-sm hidden text-muted sm:block">
           One column per state an issue can be in. There is no order between them.
         </p>

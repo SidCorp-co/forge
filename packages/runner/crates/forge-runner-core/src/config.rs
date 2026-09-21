@@ -38,8 +38,10 @@ pub struct Config {
 
     /// Shared-skill delivery via a Claude Code plugin marketplace (ISS-739),
     /// the 3rd channel alongside per-project disk sync (ISS-737) and
-    /// MCP-served meta prompts. Defaults to fully disabled — canary rollout
-    /// opts in one device at a time.
+    /// MCP-served meta prompts. Defaults to the first-party `forge` plugin,
+    /// installed on every device — the driver skill every `drive` job runs
+    /// lives there, so a runner without it cannot do the work it was paired
+    /// for. An explicit `enabled = false` still opts a device out.
     #[serde(default)]
     pub plugins: PluginSettings,
 
@@ -79,18 +81,22 @@ impl Default for UpdateSettings {
 /// (ISS-739) — the 3rd delivery channel, SHA-pinned.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginSettings {
-    /// Master switch. Defaults to OFF — the runner ships to every device via
-    /// the Rust release channel, so this is a canary opt-in (enable on one
-    /// device, prove it, then widen), mirroring the ISS-736 rollout discipline.
-    #[serde(default)]
+    /// Master switch. Defaults to ON: the canary widened, and the plugin the
+    /// default names carries the driver skill a pipeline job executes.
+    /// `forge-runner config set plugins.enabled false` opts a device out.
+    #[serde(default = "default_plugins_enabled")]
     pub enabled: bool,
     /// Marketplace source: a GitHub `owner/repo` shorthand or full git URL,
-    /// passed straight to `claude plugin marketplace add`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// passed straight to `claude plugin marketplace add`. Defaults to the
+    /// first-party marketplace.
+    #[serde(
+        default = "default_marketplace_repo",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub marketplace_repo: Option<String>,
-    /// Plugin name(s) from the marketplace to install + enable. Empty = none
-    /// (marketplace added but nothing installed).
-    #[serde(default)]
+    /// Plugin name(s) from the marketplace to install + enable. Defaults to
+    /// the `forge` plugin; an explicit empty list installs nothing.
+    #[serde(default = "default_plugin_names")]
     pub plugin_names: Vec<String>,
     /// Commit SHA the marketplace clone is checked out to right after
     /// `marketplace add`, giving a deterministic floor for the initial
@@ -113,16 +119,59 @@ fn default_plugin_auto_update() -> bool {
     true
 }
 
+/// The first-party marketplace: `github.com/SidCorp-co/forge-plugin`, which
+/// carries the `forge` CLI, the session hooks and the `issue-flow` driver
+/// skill. `forge-pipeline-skills` was its predecessor and is retired.
+pub const DEFAULT_MARKETPLACE_REPO: &str = "SidCorp-co/forge-plugin";
+/// The plugin published by [`DEFAULT_MARKETPLACE_REPO`].
+pub const DEFAULT_PLUGIN_NAME: &str = "forge";
+/// The marketplace the default replaced. A config still naming it is migrated
+/// on load, loudly.
+pub const RETIRED_MARKETPLACE_REPO: &str = "SidCorp-co/forge-pipeline-skills";
+
+fn default_plugins_enabled() -> bool {
+    true
+}
+
+fn default_marketplace_repo() -> Option<String> {
+    Some(DEFAULT_MARKETPLACE_REPO.to_string())
+}
+
+fn default_plugin_names() -> Vec<String> {
+    vec![DEFAULT_PLUGIN_NAME.to_string()]
+}
+
 fn default_plugin_poll_interval_secs() -> u64 {
     6 * 3600
+}
+
+impl PluginSettings {
+    /// A config still pointing at the retired marketplace is moved onto the
+    /// first-party one and told so. Leaving it would not preserve anything:
+    /// the plugin names it carries do not exist in the new marketplace, so
+    /// every sweep would fail against a source nobody publishes to.
+    fn migrate_retired_marketplace(&mut self, path: &std::path::Path) {
+        if self.marketplace_repo.as_deref() != Some(RETIRED_MARKETPLACE_REPO) {
+            return;
+        }
+        self.marketplace_repo = default_marketplace_repo();
+        self.plugin_names = default_plugin_names();
+        tracing::warn!(
+            "{}: `[plugins] marketplace_repo = \"{RETIRED_MARKETPLACE_REPO}\"` is retired — this \
+             run uses {DEFAULT_MARKETPLACE_REPO} with plugin `{DEFAULT_PLUGIN_NAME}` instead. \
+             Delete the `[plugins]` block, or `forge-runner config set plugins.marketplace-repo \
+             {DEFAULT_MARKETPLACE_REPO}`, to stop seeing this.",
+            path.display()
+        );
+    }
 }
 
 impl Default for PluginSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
-            marketplace_repo: None,
-            plugin_names: Vec::new(),
+            enabled: default_plugins_enabled(),
+            marketplace_repo: default_marketplace_repo(),
+            plugin_names: default_plugin_names(),
             pinned_ref: None,
             auto_update: default_plugin_auto_update(),
             poll_interval_secs: default_plugin_poll_interval_secs(),
@@ -154,30 +203,11 @@ fn default_skill_auto_pull() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerSettings {
-    /// Size of the box's session-permit pool. Clamped to >= 1 at use.
-    ///
-    /// It bounds NOTHING today: a permit is taken only by a spawn that opts in
-    /// with `counts_against_session_cap`, and the only spawn left on a box is a
-    /// chat turn, which opts out. Jobs used to be the caller that opted in; a run
-    /// is a subagent inside a master's own session now and never reaches this
-    /// process. The field stays because the pool is the mechanism a future
-    /// opt-in would use, and because removing it is a config-file break for
-    /// every box that sets it, for no behaviour.
-    // cm:guard do NOT read this as the box's process ceiling — it is not one. A master is bounded one-per-project and by its own residency, and how wide a master dispatches is the project's `parallel runs`, read by the plugin and invisible here. An operator told to raise this number to run more work is being sent to a knob that decides nothing.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number sizes `session_sem`, whose permit is taken only when a spec sets `counts_against_session_cap`.
     #[serde(default = "default_duplex_max_sessions")]
     pub duplex_max_sessions: u32,
     /// Send `runner:register` (gated behind core `runnerFramework` flag).
     #[serde(default)]
     pub register_enabled: bool,
-    /// How many pool jobs — `release_batch`, `smoke`, `reconcile`, `verify_skill` — may
-    /// have a live pane on this box at once. Clamped to >= 1 at use.
-    ///
-    /// Unlike `duplex_max_sessions` above, this one bounds something: each of these
-    /// jobs is a real `claude` process in a tmux pane on this machine, opened by
-    /// `daemon/pool_jobs.rs` and counted from the registry it rebuilds at startup.
-    // cm:guard the ceiling is the BOX's alone and core cannot see it. Core does not refuse a claim for capacity and must not start: `runner_full` was a hold nothing enforced and was removed on 2026-09-05, and a refusal reporting a hold that does not exist is worse than none. What core does instead is bound the WAIT — `release-batch/unstarted-recovery.ts` hands the roster back after a deadline set loose enough to outlast a box sitting at this number.
-    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — `take_one` reads this as its `bound` and checks it before it reads the pool, so a full box costs core no round trip and takes no hold it must give back.
     #[serde(default = "default_max_job_panes")]
     pub max_job_panes: u32,
 }
@@ -196,29 +226,13 @@ fn default_duplex_max_sessions() -> u32 {
     3
 }
 
-// cm:guard TWO, not three, and the difference from `duplex_max_sessions` is deliberate: a release holds a production credential and runs the longest of the four kinds, so a default that lets a box take three at once makes one slow release into three. An operator who wants more raises it knowingly.
 fn default_max_job_panes() -> u32 {
     2
 }
 
-/// `[runner] max_concurrent`, `device_max_concurrent` and `chat_max_concurrent`
-/// were all removed on 2026-09-04. The first two were parsed and written for
-/// their whole life and read by nothing, so a box set to 4 ran exactly one job
-/// and said nothing about it. `chat_max_concurrent` WAS read — it sized both the
-/// chat turn queue and the duplex process ceiling — so a config that sets it is
-/// asking for something the runner no longer does with that key.
-///
-/// Serde ignores unknown keys, so an old file still loads — but ignoring is what
-/// made them a trap. Warn only on a value the operator can only have typed:
-/// every config the runner ever WROTE carries `max_concurrent = 1` and
-/// `device_max_concurrent = 0`, and warning the whole fleet about its own
-/// defaults is noise nobody reads.
-// cm:guard warn, NEVER refuse to start. These keys were serialized into every config file this tool has ever written, so a hard failure here is a fleet-wide outage on upgrade — the opposite of the loud break, which is meant to stop a WRONG action, not every action.
-// cm:edge contract -> packages/core/src/devices/claim.ts — this warning text tells the operator WHERE the ceiling now lives, and it must name this box, not core: core stopped deciding a box's session count when the master began dispatching its own runs, so a message pointing at core sends them to a knob that decides nothing. The guard on that claim is the record of why.
 fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
     const RUNNER_OWNS_IT: &str =
         "pipeline concurrency is decided by this runner — see `duplex_max_sessions`";
-    // cm:guard `chat_max_concurrent` is the one retired key whose value was LOAD-BEARING, so its warning must name the key that replaced it. Say only "no longer read" here and an operator who raised it to 8 is told their line is inert while the ceiling it used to lift silently sits at the default 3.
     const CHAT_UNCAPPED: &str = "chat no longer has a concurrency limit at all, and the duplex          process ceiling this number used to size now reads `duplex_max_sessions`";
     for (key, tool_written_default, why) in [
         ("max_concurrent", "1", RUNNER_OWNS_IT),
@@ -288,7 +302,10 @@ impl Config {
         }
         let raw = std::fs::read_to_string(&p)?;
         warn_on_retired_concurrency_keys(&raw, &p);
-        toml::from_str(&raw).map_err(|e| Error::Config(format!("parse {}: {e}", p.display())))
+        let mut cfg: Config = toml::from_str(&raw)
+            .map_err(|e| Error::Config(format!("parse {}: {e}", p.display())))?;
+        cfg.plugins.migrate_retired_marketplace(&p);
+        Ok(cfg)
     }
 
     /// Atomic write (`.tmp` + rename).
@@ -332,9 +349,6 @@ mod tests {
         assert!(back.skills.auto_pull);
     }
 
-    // cm:guard an old config MUST still load. `save()` serialized `max_concurrent` and
-    // `device_max_concurrent` into every file this tool has ever written, so if removing the
-    // fields made parsing strict, every runner in the fleet would fail to start on upgrade.
     #[test]
     fn a_config_carrying_the_retired_keys_still_loads() {
         let raw = r#"
@@ -385,8 +399,6 @@ chat_max_concurrent = 5
         );
     }
 
-    // cm:guard the scan is table-scoped: `max_concurrent` under ANOTHER table is not this key, and
-    // reading it would warn an operator about a line that is doing its job.
     #[test]
     fn a_same_named_key_in_another_table_is_not_mistaken_for_the_retired_one() {
         let raw = "[skills]\nmax_concurrent = 9\n\n[runner]\nchat_max_concurrent = 3\n";
@@ -394,30 +406,74 @@ chat_max_concurrent = 5
     }
 
     #[test]
-    fn plugin_settings_default_disabled_with_auto_update_on() {
+    fn plugin_settings_default_to_the_first_party_plugin() {
         let cfg = Config::default();
-        assert!(!cfg.plugins.enabled);
+        assert!(cfg.plugins.enabled);
         assert!(cfg.plugins.auto_update);
         assert_eq!(cfg.plugins.poll_interval_secs, 6 * 3600);
-        assert!(cfg.plugins.marketplace_repo.is_none());
-        assert!(cfg.plugins.plugin_names.is_empty());
+        assert_eq!(
+            cfg.plugins.marketplace_repo.as_deref(),
+            Some(DEFAULT_MARKETPLACE_REPO)
+        );
+        assert_eq!(cfg.plugins.plugin_names, vec![DEFAULT_PLUGIN_NAME]);
+    }
+
+    #[test]
+    fn a_config_with_no_plugins_block_still_gets_the_first_party_plugin() {
+        let cfg: Config = toml::from_str("core_url = \"https://core.example.com\"\n").unwrap();
+        assert!(cfg.plugins.enabled);
+        assert_eq!(cfg.plugins.plugin_names, vec![DEFAULT_PLUGIN_NAME]);
+    }
+
+    #[test]
+    fn an_explicit_opt_out_survives_the_new_default() {
+        let cfg: Config = toml::from_str("[plugins]\nenabled = false\n").unwrap();
+        assert!(!cfg.plugins.enabled);
+    }
+
+    #[test]
+    fn the_retired_marketplace_is_migrated_onto_the_first_party_one() {
+        let mut plugins: PluginSettings = toml::from_str(&format!(
+            "marketplace_repo = \"{RETIRED_MARKETPLACE_REPO}\"\nplugin_names = [\"forge-pipeline-skills\"]\n"
+        ))
+        .unwrap();
+        plugins.migrate_retired_marketplace(std::path::Path::new("/tmp/config.toml"));
+        assert_eq!(
+            plugins.marketplace_repo.as_deref(),
+            Some(DEFAULT_MARKETPLACE_REPO)
+        );
+        assert_eq!(plugins.plugin_names, vec![DEFAULT_PLUGIN_NAME]);
+    }
+
+    #[test]
+    fn a_marketplace_nobody_retired_is_left_alone() {
+        let mut plugins: PluginSettings = toml::from_str(
+            "marketplace_repo = \"acme/private-skills\"\nplugin_names = [\"house-rules\"]\n",
+        )
+        .unwrap();
+        plugins.migrate_retired_marketplace(std::path::Path::new("/tmp/config.toml"));
+        assert_eq!(
+            plugins.marketplace_repo.as_deref(),
+            Some("acme/private-skills")
+        );
+        assert_eq!(plugins.plugin_names, vec!["house-rules"]);
     }
 
     #[test]
     fn plugin_settings_roundtrip_through_toml() {
         let mut cfg = Config::default();
         cfg.plugins.enabled = true;
-        cfg.plugins.marketplace_repo = Some("SidCorp-co/forge-pipeline-skills".into());
-        cfg.plugins.plugin_names = vec!["forge-shared-skills".into()];
+        cfg.plugins.marketplace_repo = Some("acme/private-skills".into());
+        cfg.plugins.plugin_names = vec!["house-rules".into()];
         cfg.plugins.pinned_ref = Some("deadbeef".into());
         let s = toml::to_string_pretty(&cfg).unwrap();
         let back: Config = toml::from_str(&s).unwrap();
         assert!(back.plugins.enabled);
         assert_eq!(
             back.plugins.marketplace_repo.as_deref(),
-            Some("SidCorp-co/forge-pipeline-skills")
+            Some("acme/private-skills")
         );
-        assert_eq!(back.plugins.plugin_names, vec!["forge-shared-skills"]);
+        assert_eq!(back.plugins.plugin_names, vec!["house-rules"]);
         assert_eq!(back.plugins.pinned_ref.as_deref(), Some("deadbeef"));
     }
 }

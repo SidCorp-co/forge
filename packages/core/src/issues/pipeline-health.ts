@@ -35,7 +35,6 @@ import type {
   PipelineHealthSession,
 } from './pipeline-health-types.js';
 
-// cm:edge contract -> packages/core/src/issues/pipeline-health-types.ts — every consumer imports these names from THIS path, so the re-export is the public surface; dropping it moves the break to eleven call sites rather than one
 export type {
   ClassifyInput,
   PipelineHealth,
@@ -73,17 +72,14 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     out.waitingCause = { kind: issue.waitingKind };
   }
 
-  // cm:guard ISS-853 — above every `return out` below, and gated on NOTHING: a paused run stops the issue whatever its own status says and whether or not a step is queued, and the `run_not_running` arm further down reaches it only through a queued candidate, so an issue with none rendered no banner at all
   if (input.pausedRun) out.pausedRun = input.pausedRun;
 
-  // cm:guard the candidate is picked HERE, above the held arm, so `queuedAt` and `queuedStep` describe the queued step whichever arm goes on to own `waitingOn` — an issue carrying a held job AND a queued one still has a step nobody can see, which is the ISS-903 blind spot. The `waitingOn` PRECEDENCE below is unchanged; only the projection moved.
   const candidate = [...queuedJobs].sort((a, b) => a.queuedAt.getTime() - b.queuedAt.getTime())[0];
   if (candidate) {
     out.queuedAt = candidate.queuedAt.toISOString();
     out.queuedStep = queuedStepOf(candidate);
   }
 
-  // cm:guard this call MUST stay above the `queuedJobs.length === 0` return — a held job is usually the issue's ONLY job, so deriving it from inside the queued-candidate block below reports nothing at all in exactly the case that matters
   const held = heldWaitingOn(issueJobs);
   if (held) {
     out.waitingOn = held;
@@ -93,7 +89,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   if (!candidate) return out;
   const sinceIso = candidate.queuedAt.toISOString();
 
-  // cm:guard this arm belongs FIRST among the queued reasons, matching the CASE in queued-gates.ts — a paused or terminal parent run makes every later gate moot, and reporting `project_full` for it sends the reader after a slot that would change nothing
   if (candidate.pipelineRunStatus && candidate.pipelineRunStatus !== 'running') {
     out.waitingOn = {
       reason: 'run_not_running',
@@ -103,7 +98,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  // cm:guard the cooldown arm belongs HERE, third, exactly where `retry_cooldown` sits in the dispatch CASE — ahead of both issue_busy arms and of staleness. Until ISS-789 the reason had no member in `PipelineWaitingReason` at all, so every cooldown-gated job rendered as an idle, actionable issue while the picker was refusing it.
   const cooldown = retryCooldownWaitingOn(candidate, sinceIso, input.now ?? new Date());
   if (cooldown) {
     out.waitingOn = cooldown;
@@ -114,7 +108,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     (s) => (s.status === 'running' || s.status === 'queued') && s.id !== candidate.agentSessionId,
   );
   const blockingJob = activeJobs.find((j) => j.id !== candidate.id);
-  // cm:guard the session arm stays FIRST — with both present this reason reports the session and never the job, which is what the `if (blockingSession || blockingJob)` guard plus a ternary meant. Narrowing `blockingJob` with `&&` rather than asserting it with `!` is not style: TypeScript cannot narrow across that guard, so the two assertions were the compiler's blindness written as a claim, and `a!.b` is the one thing biome's autofix turns into `a?.b` — "throw when the invariant is violated" becoming "silently undefined".
   const busy = blockingSession
     ? { blockingSessionId: blockingSession.id }
     : blockingJob && { blockingJobId: blockingJob.id, blockingJobType: blockingJob.type };
@@ -191,7 +184,6 @@ export async function hydratePipelineHealthForIssues(
   }
 
   const jobsByIssue = await loadActiveJobsByIssue(projectId, ids);
-  // cm:why Q4 reads `pipeline_runs` by issue id rather than joining through Q3 — Q3 has no row at all for an issue whose run is paused with nothing queued, which is the only shape ISS-853 is about
   const pausedRunsByIssue = await loadPausedRunsByIssue(projectId, ids);
 
   const runnerPool = await freshRunnerAvailability(projectId);
@@ -218,7 +210,6 @@ export async function hydratePipelineHealthForIssues(
   return map;
 }
 
-// cm:guard this is the ONE degrade-to-stage-only wrapper — `issues/routes.ts` and `issues/search.ts` both call it rather than keeping a copy each. pipelineHealth is derived, so a transient DB blip (or a partial drizzle mock in a unit test) must not 500 a list of issues; callers graft `{ stage: row.status }` for any id the map omits.
 export async function safeHydratePipelineHealthForIssues(
   projectId: string,
   issueIds: readonly string[],
@@ -240,7 +231,6 @@ export async function publishPipelineHealthChanged(
 ): Promise<void> {
   if (issueIds.length === 0) return;
   try {
-    // cm:guard keep this import lazy — a top-level one pulls the websocket + runner-heartbeat graph, and so pg-boss and DATABASE_URL, into every unit test that imports the loader half of this module for the REST routes alone
     const { roomManager } = await import('../ws/server.js');
     const map = await hydratePipelineHealthForIssues(projectId, issueIds);
     for (const [issueId, pipelineHealth] of map) {

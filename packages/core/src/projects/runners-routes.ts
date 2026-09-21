@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
+import { residentMasterSql } from '../devices/master-session.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -64,6 +65,13 @@ projectRunnerRoutes.get(
         deviceName: devices.name,
         platform: devices.platform,
         deviceStatus: devices.status,
+        // The runner's own version. A runner is one (device x project) binding of
+        // the agent binary that device runs, so the version that binary reported
+        // on pair/heartbeat IS this runner's — read from the joined device rather
+        // than mirrored onto `runners`, where a missed heartbeat would leave two
+        // copies disagreeing. NULL where the device has never reported one, which
+        // the screen says in words rather than leaving blank (ISS-1119).
+        agentVersion: devices.agentVersion,
         // Operator "turn off" timestamp. A disabled device's runner can still
         // heartbeat (status stays 'online'), so the UI needs this to explain
         // why an "online"-looking runner receives no jobs (mirrors the
@@ -81,6 +89,9 @@ projectRunnerRoutes.get(
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,
         provisionedAt: runners.provisionedAt,
+        // ISS-1118 — the most expensive thing a bound box runs is a resident
+        // master for this project, and no screen said whether one existed.
+        residentMaster: residentMasterSql(runners.deviceId, runners.projectId),
       })
       .from(runners)
       .leftJoin(devices, eq(devices.id, runners.deviceId))
@@ -211,7 +222,6 @@ const patchRunnerBodySchema = z
     repoPath: z.string().trim().max(500).nullable().optional(),
     branch: z.string().trim().max(100).nullable().optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
-    // cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseDeviceIds` matches `runners.labels ? releaseRunnerLabel` with the exact string; this is the only PAT-reachable writer of that column (`/api/runners` is fenced), so a release pool is declared here or by nobody
     labels: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
   })
   .strict();
@@ -288,7 +298,6 @@ projectRunnerRoutes.post(
     }
 
     const cleared = await clearRunnerFaultFlags(runnerId, id);
-    // cm:why the tick is the point of the button: a box excluded by rate_limited_until or quarantine holds queued jobs that nothing re-examines until the next dispatch trigger, so clearing alone would look like a no-op to the operator
     return c.json({ runnerId, cleared });
   },
 );

@@ -1,4 +1,3 @@
-// cm:edge contract -> packages/core/src/orgs/agent-accounts-routes.ts — the paths and their bodies are the wire shape. `/api/orgs` is deliberately absent from the PAT surface, so every call here is a signed-in org admin's and none of it is reachable by a token.
 
 import { apiClient } from "@/lib/api/client";
 import type {
@@ -15,11 +14,6 @@ export const agentAccountsApi = {
   list: (orgId: string) =>
     apiClient<{ agents: AgentAccountRow[] }>(`/orgs/${orgId}/agents`).then((r) => r.agents),
 
-  /**
-   * `POST /api/orgs/:orgId/agents` — a new agent and its first credential.
-   * The body is `.strict()` server-side: `projectIds` is plural and at least one.
-   */
-  // cm:guard `projectIds` and never `projectId`. The route's schema is strict, so the singular key is refused BY NAME rather than read as "no projects named"; sending it from here would turn that refusal into a 400 an admin cannot act on from a form that looks right (ISS-1093).
   create: (orgId: string, input: CreateAgentInput) =>
     apiClient<AgentCreated>(`/orgs/${orgId}/agents`, {
       method: "POST",
@@ -39,7 +33,6 @@ export const agentAccountsApi = {
       method: "POST",
     }),
 
-  /** `DELETE /api/orgs/:orgId/agents/:agentUserId/tokens` — authority off, account intact. */
   revokeCredentials: (orgId: string, agentUserId: string) =>
     apiClient<{ revoked: number }>(`/orgs/${orgId}/agents/${agentUserId}/tokens`, {
       method: "DELETE",

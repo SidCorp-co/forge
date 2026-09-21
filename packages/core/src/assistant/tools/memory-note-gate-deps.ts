@@ -12,7 +12,6 @@ export function memoryNoteGateFor(projectId: string): PreCall {
   return memoryNotePreCall({
     existingNotes: async (text) => {
       if (text.trim().length === 0) return [];
-      // cm:why imported at the call and not at the top: `search-service` reaches the database and the validated env, and the turn loop is loaded by tests that hold neither; the gate's rules stay in the pure module either way
       const { runMemorySearch } = await import('../../memory/search-service.js');
       const found = await runMemorySearch({
         projectId,

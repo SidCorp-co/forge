@@ -1,18 +1,3 @@
-/**
- * The one entry point every write door calls, and the one every read path
- * calls back.
- *
- * There is exactly one of each on purpose. `refuseUnrecordedClose` states the
- * shape of the rule this follows: a gate on some doors is a gate on none, and
- * a body reaches core through seven caller-supplied doors (two REST comment
- * routes, two MCP comment actions, issue create, issue patch
- * children). They converge here rather than each carrying a copy.
- *
- * `prepareBody` throws `BodyInvalidError`; the transport maps it to 400.
- * `bodyText` NEVER throws — it reads rows that are already stored, and a read
- * path that can refuse its own data takes the whole issue view down.
- */
-
 import { BodyInvalidError } from './errors.js';
 import type { BodyFormat } from './formats.js';
 import { serializeBody } from './normalize.js';
@@ -32,16 +17,6 @@ export interface PrepareInput {
   format?: BodyFormat | null | undefined;
 }
 
-/**
- * Which renderer a body gets when the caller did not say.
- *
- * Absent → `markdown`, and that default is load-bearing: every shipped
- * `forge_comments → create` example in `packages/core/skills/**` omits
- * `format`, so any other default would refuse them all at the agent's first
- * call. A body that OPENS with a component is taken as `html` because there is
- * no reading of `<forge-review …>` as markdown that anybody wanted.
- */
-// cm:edge contract -> packages/core/skills — the `markdown` default is what keeps every shipped SKILL.md `forge_comments → create` example valid unchanged; `skills/shipped-templates.test.ts` parses them against the strict schema. Flip this default and ISS-898 P1 blinds every reader at once, which is exactly the ordering Decision 9 forbids.
 export function resolveFormat(input: PrepareInput): BodyFormat {
   if (input.format) return input.format;
   const head = input.raw.trimStart();
@@ -74,16 +49,6 @@ export function prepareBody(input: PrepareInput): PreparedBody {
   };
 }
 
-/**
- * The compact text projection of a STORED body.
- *
- * Four read paths call this: `prompt/user.ts`, `memory/indexer.ts`, and both
- * MCP serializers. ISS-898's proposal named only the first two; under
- * thin-init the prompt inlines the title alone by default, so the MCP
- * serializers are what actually carry a description or a comment to an agent —
- * wiring only the named pair would project almost none of the bytes.
- */
-// cm:guard never let this throw. It reads rows already in the table, including any written before a registry change, and a read path that refuses its own data takes the issue view and the agent prompt down together. An unparseable stored body degrades to its own bytes.
 export function bodyText(body: string, format: string | null | undefined): string {
   if (!readsAsHtml(body, format)) return body;
   try {
@@ -93,24 +58,6 @@ export function bodyText(body: string, format: string | null | undefined): strin
   }
 }
 
-/**
- * An ABSENT format is sniffed rather than assumed `markdown`.
- *
- * Both columns are NOT NULL, so null never comes off a row — it means a caller
- * lost the field in transit, and one does: `track` in `issues/routes.ts` drops
- * a field whose value did not move, so the unconditional
- * `onChange('descriptionFormat')` in `patch-fields.ts` never reaches
- * `issueUpdated` when a body was edited without changing format. Measured live
- * on forge-beta 2026-09-03: ISS-899's html description was re-embedded as raw
- * `<forge-problem>` markup, spending its vector budget on tag names.
- *
- * Fixed HERE and not at that call site because there are four readers and the
- * format can be lost on any route into them; a reader that cannot be blinded
- * is worth more than one event made complete. An explicit `'markdown'` still
- * wins, so a markdown row can never be misread as markup.
- */
-// cm:guard the sniff must stay the SAME rule as `resolveFormat`'s — a body that opens with `<forge-` is html on the way in and on the way out, or a body stores one way and reads the other
-// cm:guard the `<forge-` sniff is NOT dead code now that component markup is refused on write (2026-09-14): it is what keeps the rows written BEFORE that projecting to text when their format is lost in transit, and `track` in `issues/routes.ts` is what loses it.
 function readsAsHtml(body: string, format: string | null | undefined): boolean {
   if (format === 'html') return true;
   if (format) return false;
@@ -126,7 +73,6 @@ function readsAsHtml(body: string, format: string | null | undefined): boolean {
  * declares arrives as an ordinary element and web draws its generic card —
  * which is the whole of ISS-967 gap 6, with no second name list anywhere.
  */
-// cm:guard never let this throw, for `bodyText`'s reason and one more: this feeds the ISSUE DETAIL screen, so a row the scanner cannot read must degrade to `null` and let the caller fall back to the raw bytes, never take the screen down with it
 export function bodyNodes(body: string, format: string | null | undefined): BodyNode[] | null {
   if (!readsAsHtml(body, format)) return null;
   try {

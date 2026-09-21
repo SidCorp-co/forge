@@ -3,21 +3,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { bucketIso } from './time-buckets.js';
 
-/**
- * The chokepoint guard on `utcDateTrunc` made enforceable.
- *
- * A bare `date_trunc(unit, ts)` over a `timestamptz` floors in the session
- * `TimeZone`, so it cannot match the UTC boundaries the JS side generates and
- * the series gap-fills to zero with nothing logged. Comparing one against a
- * `timestamptz` is the quieter half: the naive result is coerced through the
- * session zone, moving the cutoff by the offset. Neither shows up on a UTC
- * session, which is what CI runs — so the assertion is made against the
- * source, where it can go red anywhere. The rule is zero-tolerance rather
- * than "names a zone somewhere in the call", because `date_trunc('month',
- * now() AT TIME ZONE 'UTC')` names one and is still wrong — it returns a naive
- * `timestamp`, and the coercion back is what reintroduces the session zone.
- */
-// cm:edge contract -> packages/core/src/lib/time-buckets.ts — this is the gate behind that file's `cm:guard`; the scan matches the `date_trunc(` spelling by text, so it keeps holding if the helper is renamed
 const SRC_ROOT = join(import.meta.dirname, '..');
 
 /** The one file allowed to spell `date_trunc(` at all. */

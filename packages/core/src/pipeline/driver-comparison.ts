@@ -16,8 +16,6 @@
 // project that switches drivers would otherwise relabel its whole history,
 // and the switch is exactly when someone wants to read this. Grouping by
 // driver ACROSS projects would compare repositories, not drivers.
-//
-// Design: docs/proposals/agent-driven-pipeline.md
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -53,12 +51,6 @@ type Raw = {
   issues_born_under_driver: number | string;
 };
 
-// cm:guard the driver is derived per ISSUE from a dispatched `drive` job, never from `pipelineConfig.mode` — reading the project's current mode retroactively credits one driver with the other's history, and flipping KineTrak on 2026-08-20 relabelled three staged closures as autonomous evidence the moment the config changed
-// cm:guard the `drive` row EXISTING is the test, deliberately not that it dispatched — an autonomous issue no session ever started belongs in autonomous's numbers, counted as closed and contributing no wait. Requiring dispatch would move exactly the driver's failures into the other driver's bucket, which is the one direction this measurement must never be wrong in.
-// cm:guard both metrics are scoped to the issues that CLOSED in the window, not to the window's events — counting every intervention in the period against only the issues that finished in it inflates whichever driver happens to have long-running work open at the boundary
-// cm:guard metric ① from `created_at` alone CANNOT compare a driver switched on into an existing backlog: the pre-switch age is the OTHER driver's failure to pick the issue up, charged here to whichever driver finally did. Measured on getcontent 2026-08-21 — autonomous read 141.2h median against staged's 23m, and splitting the cohort gave 249.9h for the 11 issues born before the switch vs 0m for the 2 born after. Keep BOTH columns: drop the raw one and the number stops matching the north-star definition, trust it alone and the instrument reports the inverse of the truth.
-// cm:edge contract -> packages/core/drizzle/migrations/0117_intervention_events_view.sql — reads that view's project_id/issue_id/occurred_at; it is the only definition of what counts as a human reaching in
-// cm:guard HISTORY-ONLY since ISS-895 removed the staged lane. `'staged'` here labels jobs that really ran before 2026-08-31 and must keep labelling them; it is not a live branch and no new row can land in that column. Reading a bare `'autonomous'` count off this today is reading a cohort that has no comparison left — the comparison is the archive of a decision already made.
 export async function driverComparison(args: {
   days: number;
   projectIds: readonly string[];
@@ -92,7 +84,6 @@ export async function driverComparison(args: {
     ), waits AS (
       SELECT sc.project_id, d.driver,
              EXTRACT(EPOCH FROM (fr.started_at - sc.created_at))::float AS wait_seconds,
-             -- cm:why GREATEST(0,...) because first_run is the MIN over ALL of the issue's jobs: one that ran staged first and drove later starts before the switch and lands negative
              GREATEST(0, EXTRACT(EPOCH FROM (fr.started_at - GREATEST(
                sc.created_at,
                CASE WHEN d.driver = 'autonomous'
@@ -104,7 +95,6 @@ export async function driverComparison(args: {
       JOIN first_run fr ON fr.issue_id = sc.id
       LEFT JOIN driver_start ds ON ds.project_id = sc.project_id
       WHERE fr.started_at IS NOT NULL AND fr.started_at >= sc.created_at
-    -- cm:guard ISS-1022 - one grouped pass, not five correlated subqueries per output
     -- group. MAX is not an aggregate over several values here: the LEFT JOIN below is on
     -- exactly this CTE's grouping key, so each output group sees at most one row of it and
     -- MAX is what carries a single value through the outer GROUP BY. That is why the four
@@ -126,7 +116,6 @@ export async function driverComparison(args: {
       FROM issue_intervention_events e
       JOIN scope sc ON sc.id = e.issue_id
       JOIN driver d ON d.id = sc.id
-      -- cm:guard the predicate is the PROJECT and deliberately not occurred_at, against
       -- this issue's own wording (ISS-1022, decision on the record): the guards above scope
       -- both metrics to the issues that CLOSED in the window and never to the window's
       -- events, so a time bound here would drop an intervention that happened before the
@@ -166,7 +155,6 @@ export async function driverComparison(args: {
       issuesClosed: closed,
       issuesDropped: Number(r.issues_dropped),
       interventions,
-      // cm:guard NULL, never 0, when nothing closed — a project with no closed issues and no interventions would otherwise report a perfect score and win the comparison by having done nothing
       interventionsPerIssueClosed: closed > 0 ? interventions / closed : null,
       medianRequestToRunningSeconds: numeric(r.median_request_to_running),
       p95RequestToRunningSeconds: numeric(r.p95_request_to_running),

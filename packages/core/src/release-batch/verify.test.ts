@@ -3,7 +3,14 @@
 // Every case below is a version of that.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseVerifyConfig, readLiveCommit, readLiveState, verifyDeployed } from './verify.js';
+import {
+  commitsAgree,
+  parseVerifyConfig,
+  readLiveCommit,
+  readLiveState,
+  verifyDeployed,
+  verifyServingNow,
+} from './verify.js';
 
 const fetchMock = vi.fn();
 
@@ -50,7 +57,6 @@ describe('parseVerifyConfig', () => {
 });
 
 describe('readLiveCommit', () => {
-  // cm:guard a fleet half on the new build is NOT deployed — returning the first probe's answer would report green while some servers still serve the old one
   it('refuses to answer when two probes disagree', async () => {
     answers('aaa', 'bbb');
 
@@ -90,7 +96,6 @@ describe('verifyDeployed', () => {
     expect(out).toEqual({ ok: true, commit: 'new-sha', health: 'up', identity: 'new-sha' });
   });
 
-  // cm:guard THE case: a 200 from a healthy site proves nothing, and this is the read that separates "deployed" from "still running yesterday's build"
   it('goes red when the site is healthy and still serving the pre-release build', async () => {
     answers('old-sha', 'old-sha', 'old-sha', 'old-sha');
 
@@ -109,7 +114,6 @@ describe('verifyDeployed', () => {
     expect(out.ok === false && out.reason).toContain('unchanged');
   });
 
-  // cm:guard without the pre-release baseline an agent reporting the commit that was ALREADY live verifies perfectly, which is the exact shape of a release that deployed nothing
   it('goes red when the release reports the commit that was already serving', async () => {
     answers('same-sha', 'same-sha');
 
@@ -194,8 +198,6 @@ describe('verifyDeployed', () => {
   });
 });
 
-// ISS-1042 — health and identity are two questions, and the four ways a probe read
-// can fail used to arrive as one `null`.
 describe('readLiveState', () => {
   const twoProbes = {
     probes: [
@@ -223,9 +225,6 @@ describe('readLiveState', () => {
     expect(state.unhealthy.join()).toContain('ECONNREFUSED 10.0.0.1:443');
   });
 
-  // cm:guard THE separation this was written for: the application answered, so health is UP, and
-  // what failed is the probe declaration. Reported as "no probe answered" it sends an operator to
-  // the build for a typo in `commitPath`.
   it('reads a 200 whose commitPath plucks nothing as healthy and unidentified', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
@@ -293,8 +292,6 @@ describe('verifyDeployed, health before identity', () => {
     expect(out.ok === false && out.reason).toContain('the application is not answering');
   });
 
-  // cm:guard a healthy site with an unreadable commit must NOT read as a failed deploy — that
-  // sentence is what sent the repair at the build for a probe declaration that never matched.
   it('names the probe declaration, not the deploy, when the site is healthy and unidentified', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -318,5 +315,112 @@ describe('verifyDeployed, health before identity', () => {
     expect(out.ok === false && out.health).toBe('up');
     expect(out.ok === false && out.identity).toBe('old-sha');
     expect(out.ok === false && out.readings.length).toBe(1);
+  });
+});
+
+// `commitsAgree` and `verifyServingNow` answer a different question from
+// `verifyDeployed`: not "did the deploy I just started arrive" but "is the
+// application serving this commit right now". One read, no poll, and a
+// comparison that tolerates the abbreviation production reports without
+// tolerating a value that is not a commit at all.
+describe('commitsAgree', () => {
+  it.each([
+    ['b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e', 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e', true],
+    ['b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e', 'b853f813d', true],
+    ['b853f813d', 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e', true],
+    ['B853F813D', 'b853f813d', true],
+    ['  b853f813d  ', 'b853f813d', true],
+    ['b853f81', 'b853f813d', true],
+    ['b853f8', 'b853f813d', false],
+    ['b853f813d', 'b853f8', false],
+    ['b853f813d', 'a12b34c5d', false],
+    ['b853f813d', 'not-a-commit', false],
+    ['v1.2.3', 'v1.2.3', false],
+    ['', '', false],
+    ['b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5eff', 'b853f813d', false],
+  ])('reads %j against %j as %s', (claimed, live, agree) => {
+    expect(commitsAgree(claimed, live)).toBe(agree);
+  });
+});
+
+describe('verifyServingNow', () => {
+  it('accepts the commit the probes are serving, in one read', async () => {
+    answers('b853f813d');
+
+    const out = await verifyServingNow({ cfg: CFG, expected: 'b853f813d' });
+
+    expect(out.ok).toBe(true);
+    expect(out.ok === true && out.identity).toBe('b853f813d');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a full sha against the abbreviation the probes report', async () => {
+    answers('b853f813d');
+
+    const out = await verifyServingNow({
+      cfg: CFG,
+      expected: 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e',
+    });
+
+    expect(out.ok).toBe(true);
+  });
+
+  it('refuses a commit the probes are not serving, naming both', async () => {
+    answers('a12b34c5d');
+
+    const out = await verifyServingNow({ cfg: CFG, expected: 'b853f813d' });
+
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.identity).toBe('a12b34c5d');
+    expect(out.ok === false && out.reason).toContain('a12b34c5d');
+    expect(out.ok === false && out.reason).toContain('b853f813d');
+  });
+
+  it('refuses an application that is not answering, as a health failure', async () => {
+    answers(null);
+
+    const out = await verifyServingNow({ cfg: CFG, expected: 'b853f813d' });
+
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.health).toBe('down');
+    expect(out.ok === false && out.reason).toContain('the application is not answering');
+  });
+
+  it('refuses a claimed value that is not a commit, rather than comparing it', async () => {
+    answers('b853f813d');
+
+    const out = await verifyServingNow({ cfg: CFG, expected: 'HEAD' });
+
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toContain('is not a commit');
+  });
+
+  it('carries every probe reading onto the refusal', async () => {
+    answers('a12b34c5d');
+
+    const out = await verifyServingNow({ cfg: CFG, expected: 'b853f813d' });
+
+    expect(out.ok === false && out.readings.length).toBe(1);
+  });
+});
+
+// ISS-1127 — `parseVerifyConfig` takes any non-empty string as a probe url, and
+// `readProbe` builds `new URL(probe.url)` outside its own try. So a binding holding
+// `"forge-beta-api.sidcorp.co/version"` makes `createReleaseBatch` throw
+// `TypeError: Invalid URL` past every mapped refusal, as a 500 with no code, while
+// `release-readiness` says nothing about it.
+describe('a probe url that does not parse (ISS-1127)', () => {
+  const MALFORMED = {
+    probes: [{ url: 'forge-beta-api.sidcorp.co/version', commitPath: 'commit' }],
+  };
+
+  it('is named by invalidProbeUrls without a request being made', async () => {
+    const { invalidProbeUrls } = await import('./verify.js');
+    expect(invalidProbeUrls(MALFORMED)).toEqual(['forge-beta-api.sidcorp.co/version']);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still throws out of readLiveCommit, which is why the caller has to refuse first', async () => {
+    await expect(readLiveCommit(MALFORMED)).rejects.toThrow();
   });
 });

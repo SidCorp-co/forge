@@ -34,7 +34,6 @@ export type IssueDependencyErrorCode =
   | 'CYCLE_DEPTH_EXCEEDED'
   | 'INTERNAL';
 
-// cm:guard carry the CODE, never a transport's wording — REST answers `cycle detected — adding this edge would form a loop` at 409 and MCP answers `CYCLE_DETECTED: adding this blocks edge would form a loop`, and both are asserted by their own tests; a shared message string silently rewrites one caller's contract
 export class IssueDependencyError extends Error {
   constructor(readonly code: IssueDependencyErrorCode) {
     super(code);
@@ -55,7 +54,6 @@ export type SetIssueDependencyInput = {
  * Who the write is attributed to. `createdById` lands in the row; `actor` is
  * what the activity log records.
  */
-// cm:guard pass `actor` explicitly whenever the caller knows its principal, and derive it through `mcp/tools/lib.ts:principalActor` on the MCP side. A device-shaped default cannot be right there: since ISS-931 no device authenticates `/mcp` at all, so a person's token must record the person, and an agent's records `{type:'device', id: tokenId}` — an `api_tokens` id, matching no `devices` row. Default it here and the same request's dependency edge and status transition get two different actors.
 export type IssueDependencyWriter = {
   actor: Actor;
   createdById: string;
@@ -88,8 +86,6 @@ export type IssueDependencyWrite = {
  * `reason` the caller supplied, reporting that as `updated`. Setting
  * `validUntil` into the past is how an edge is RETRACTED.
  */
-// cm:edge lockstep -> packages/core/src/issues/dependency-routes.ts — the REST POST maps IssueDependencyError codes to status codes; a new code added here without a case there falls through as an unmapped 500
-// cm:edge lockstep -> packages/core/src/mcp/tools/forge-pm-set-dependency.ts — same mapping on the MCP side, to its `CODE: message` string form
 export async function setIssueDependency(
   input: SetIssueDependencyInput,
   writer: IssueDependencyWriter,
@@ -97,7 +93,6 @@ export async function setIssueDependency(
 ): Promise<SetIssueDependencyResult> {
   const written = await writeIssueDependency(input, writer);
   await emitIssueDependencyEffects(input, written, writer, opts);
-  // cm:guard report `effects` on EVERY outcome, including the idempotent re-assert — ISS-935: the edge is live either way, so a caller told only `created:false` still walks away not knowing a `decomposes` edge is holding its work-evidence gate open.
   const effects = describeDependencyKind(input.kind);
   if (written.created) return { id: written.id, created: true, effects };
   return { id: written.id, created: false, updated: written.updated, effects };
@@ -107,7 +102,6 @@ export async function setIssueDependency(
  * The DURABLE half: validate, detect a cycle, and land the row. Runs on the
  * caller's executor so a create can commit the issue and its edge together.
  */
-// cm:guard nothing here may emit or publish. The whole point of the split is that this half can run inside someone else's transaction — a hook fired from in here announces an edge a rollback can still take away. Effects belong to `emitIssueDependencyEffects`, which the caller runs AFTER its commit.
 export async function writeIssueDependency(
   input: SetIssueDependencyInput,
   writer: IssueDependencyWriter,
@@ -126,8 +120,6 @@ export async function writeIssueDependency(
     if (s.projectId !== input.projectId) throw new IssueDependencyError('CROSS_PROJECT');
   }
 
-  // cm:why only kind='blocks' gates dispatch (ISS-40 PR-E), so it is the only kind whose cycle can deadlock the dispatcher — hence the check is not run for the others
-  // cm:guard a write that EXPIRES the edge is exempt, and the exemption follows the reason above rather than widening it: an edge whose `validUntil` is already past gates no dispatch, so it can deadlock nothing and there is nothing left for the check to protect. Without this a cycle that exists has no way out of the API at all — re-sending the edge with `validUntil` in the past is the only retraction an agent can perform (`DELETE` is JWT-only REST, stated in `forge_pm_set_dependency`'s own description), and it arrives here as an idempotent re-assert, so the check refused the one call that would resolve the loop it was refusing over. Measured 2026-09-07 on the ISS-933/ISS-964 pair: retracting either edge answered CYCLE_DETECTED until the other was expired first, a workaround that only exists while exactly two edges form the loop.
   if (input.kind === 'blocks' && !expiresEdge(input.validUntil)) {
     const cycle = await detectCycle(input.toIssueId, input.fromIssueId, ex);
     if (cycle === 'cycle') throw new IssueDependencyError('CYCLE_DETECTED');
@@ -175,8 +167,6 @@ export async function writeIssueDependency(
     .limit(1);
   if (!existing) throw new IssueDependencyError('INTERNAL');
 
-  // cm:guard apply `validUntil`/`reason` on the CONFLICT path too — the write advertises both and the `onConflictDoNothing` above silently dropped them, which left a `blocks` edge retractable by no agent-reachable API at all (the DELETE route is JWT-only REST). It matters because a `dropped` blocker never stamps `merged_at`: on getcontent a consolidation dropped ISS-463 and its stale edge held ISS-455, and via ISS-455 held ISS-457, queued for 53h with nobody notified (measured 2026-08-22).
-  // cm:why only the fields the caller actually sent — a bare re-assert of an existing edge is the common idempotent call, and blanking someone's expiry or reason because they omitted it is a silent data loss
   const patch: { validUntil?: Date; reason?: string } = {};
   if (input.validUntil) patch.validUntil = new Date(input.validUntil);
   if (input.reason) patch.reason = input.reason;
@@ -193,8 +183,6 @@ export async function writeIssueDependency(
  * The EFFECTS half: announce the edge and refresh the dependent's health.
  * Runs after the write has committed.
  */
-// cm:guard `dependencyChanged` fires on an UPDATE too, not only an insert — expiring an edge can make the gated side dispatchable THIS INSTANT, and without the emit the unblock waits for whatever else happens to wake the dispatcher.
-// cm:edge ordering -> packages/core/src/issues/create-service.ts — the create path runs this BEFORE its `issueCreated` emit, because that hook is what wakes dispatch and the edge's health must already be published when it does
 export async function emitIssueDependencyEffects(
   input: SetIssueDependencyInput,
   written: IssueDependencyWrite,
@@ -250,13 +238,11 @@ async function recordOnBothSides(
   ]);
 }
 
-// cm:guard `deferHealthPublish` suppresses ONLY the WS refresh, never the edge write or the `dependencyChanged` hook — a caller that defers owes the batched `publishPipelineHealthChanged` itself, before whatever wakes the dispatcher (see relations-service.ts), or the dependent's waiting banner goes stale until the next event
 async function refreshDependentHealth(
   input: SetIssueDependencyInput,
   opts?: { deferHealthPublish?: boolean },
 ): Promise<void> {
   if (opts?.deferHealthPublish) return;
-  // cm:why ISS-164 — only `blocks` changes a waiting reason, and it is the dependent (`to`) side whose pipelineHealth goes stale, never the blocker's
   if (input.kind !== 'blocks') return;
   await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
 }

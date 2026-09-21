@@ -32,7 +32,6 @@ export type BodyNode =
  * at the opening tag — rather than in a pre-pass with placeholders — is the
  * same guarantee with no placeholder that author text could collide with.
  */
-// cm:guard `forge-diagram` stays lifted as RAW TEXT even though writing one has been refused since 2026-09-14: a mermaid body carries `-->` and `<br/>`, which the scanner reads as an end-of-comment and a void tag, so the rows stored before that are unreadable — and unrenderable — without it.
 export const RAW_TEXT_ELEMENTS = new Set(['forge-diagram']);
 
 const NAME_START = /[A-Za-z]/;
@@ -157,7 +156,6 @@ function readAttrs(s: Scanner, tag: string): { attrs: BodyAttrs; selfClosing: bo
     const name = s.readWhile(NAME_CHAR).toLowerCase();
     s.skipWhile(WS);
     if (s.peek() !== '=') {
-      // cm:why a bare attribute takes its own name as its value rather than the empty string — `details@open` is the only one the allowlist admits, and an empty value reads as "absent" to every consumer
       attrs[name] = name;
       continue;
     }
@@ -181,7 +179,6 @@ interface Frame {
   children: BodyNode[];
 }
 
-// cm:guard a non-raw text node holds DECODED characters, so `normalize.ts` can escape it unconditionally and stay idempotent. Decoding only in `textOf` left the write path escaping `&quot;` into `&amp;quot;`, growing one `amp;` per re-prepare — and `forge_comments.update` re-prepares.
 function pushText(into: BodyNode[], value: string, raw = false): void {
   if (value.length === 0) return;
   const decoded = raw ? value : decodeEntities(value);
@@ -242,7 +239,6 @@ export function parseBody(src: string): BodyNode[] {
       continue;
     }
     if (!NAME_START.test(s.peek(1))) {
-      // cm:why a lone `<` is prose, not a broken tag — Decision 3 makes tag-free text always valid, and `a < b` is what a human writes
       pushText(top(), s.take());
       continue;
     }

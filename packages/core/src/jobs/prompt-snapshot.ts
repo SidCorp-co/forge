@@ -14,19 +14,6 @@ export interface PersistPromptSnapshotArgs {
   model: string;
 }
 
-/**
- * Persist the per-job prompt snapshot used by Surface A (Inspector) +
- * Surface C (block-contribution analytics). Performs two writes:
- *
- *   1. UPSERT into `prompt_blobs` keyed by sha256(systemPrompt) and
- *      atomically increment `ref_count` so dedupe stays accurate under
- *      concurrent dispatch.
- *   2. UPDATE the `jobs` row with the hash + user-prompt snapshot +
- *      token estimate + resolved model id + structured block breakdown.
- *
- * Observability-only — any failure is logged at warn and swallowed so the
- * dispatch path is never blocked on a transient storage hiccup.
- */
 export async function persistPromptSnapshot(args: PersistPromptSnapshotArgs): Promise<void> {
   try {
     const hash = crypto.createHash('sha256').update(args.systemPrompt).digest('hex');

@@ -8,7 +8,15 @@
 // server-side BY CONSTRUCTION; nothing secret ever reaches this component.
 
 import { useState } from "react";
-import { Button, Card, CardContent, ErrorState, Icon, Skeleton } from "@/design";
+import {
+  Button,
+  Card,
+  CardContent,
+  ErrorState,
+  Icon,
+  SectionTitle,
+  Skeleton,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsList, useMcpPreview, useTestIntegration } from "../hooks";
@@ -36,11 +44,6 @@ const REASON_META: Record<
     icon: "alert",
   },
   shadowed: { label: "Shadowed", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
-  // cm:guard the hint points at the switch ON THIS ROW and must never again send the operator to
-  // another tab: its predecessor read "Add `<serverName>: true` to a stage's MCP servers", naming a
-  // map no screen exposed and a form that refused `true` because it is not a JSON object. That
-  // sentence is the defect ISS-1038 was filed on, and 6 of 9 MCP-capable bindings on the fleet sat
-  // connected and healthy behind it.
   not_granted: {
     label: "Not granted",
     fg: "var(--amberw-600)",
@@ -99,7 +102,7 @@ function McpServerRow({
     <li className="flex flex-col gap-1.5 rounded-md border border-line bg-surface px-3 py-2.5">
       <div className="flex items-center gap-2">
         <Icon name="command" size={15} className="text-muted" />
-        <span className="font-mono text-[13px] font-semibold text-fg">{entry.serverName}</span>
+        <span className="font-mono text-13 font-semibold text-fg">{entry.serverName}</span>
         {entry.role !== null && (
           <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
             {scopeLabel(entry.role, entry.stages)}
@@ -111,7 +114,7 @@ function McpServerRow({
       </div>
 
       {entry.url ? (
-        <p className="truncate font-mono text-[12.5px] text-muted" title={entry.url}>
+        <p className="truncate font-mono text-12-5 text-muted" title={entry.url}>
           {entry.url}
         </p>
       ) : (
@@ -167,7 +170,7 @@ export function McpServersPanel({
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-1">Agent MCP servers</h2>
+        <SectionTitle className="fg-h3 mb-1">Agent MCP servers</SectionTitle>
         <p className="fg-body-sm mb-3 text-muted">
           MCP servers injected into every Claude agent dispatched for this project. URLs come from
           the same resolver that performs the injection; credentials are attached at dispatch time

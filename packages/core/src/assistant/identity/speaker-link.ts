@@ -1,16 +1,3 @@
-/**
- * ISS-977 — who is the person who just spoke on a chat channel.
- *
- * The bridge between a Claude Code run and a human reaches that human on the
- * web UI or in a chat room, and every write on the far side is gated against a
- * real Forge `userId`: `questions/read.ts:answerAs` refuses an option whose
- * authority the caller's project role does not carry, and comment authorship
- * decides whose receipt clears the unseen-drafts bucket. On the web that
- * identity is the session. On a channel there is none — a speaker arrives as a
- * display name — so this module is the only place a channel speaker becomes a
- * Forge user, and it either names one or refuses.
- */
-
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { type ConversationAdapter, conversationAdapters } from '../../db/schema-conversations.js';
@@ -57,17 +44,6 @@ function speakerPhrase(ref: SpeakerRef): string {
  * The way out, carried in the refusal itself rather than left for the reader to
  * find: what was wrong, who was not found, and the step that fixes it.
  */
-// cm:guard this string is read by A PERSON IN A CHAT ROOM and by nobody else — `question-inbound.ts`
-// and `comment-inbound.ts` are its only callers, and both hand it straight to `say(transport, …)`.
-// Three sentences, and the length is the point: it opened with two REST paths and a JSON body, and
-// the rewrite that fixed that first replaced them with six sentences of prose, which is the same
-// defect wearing better clothes. Cause, the one condition that decides it, the one place to go.
-// The condition is the ADDRESSES MATCHING: measured 2026-09-18, the person who hit this was refused
-// because the channel reports one address for them and they sign in to Forge as another, and the
-// refusal they got never used the word "email".
-// cm:guard the last sentence degrades rather than lies: with a project it is a link to the confirm
-// page, and without one — the resolver called from a path that does not know the project — it names
-// the endpoint instead, because a page URL missing the project it must scope to opens onto nothing.
 export function unlinkedMessage(ref: SpeakerRef, projectId?: string): string {
   const url = projectId
     ? speakerLinkUrl({ projectId, source: ref.source, externalId: ref.externalId })
@@ -96,7 +72,6 @@ export function sourceUnknownRefusal(source: string): SpeakerRefusal {
  * The ONE resolution. A speaker is the Forge user a confirmed row names, or a
  * named refusal — never a guess, never a fallback, never a service identity.
  */
-// cm:guard the only writer of an identity on the chat side. A second path to a `userId` — a bot account standing in for a person, a "best effort" match at call time, a default project owner — makes `questions/write.ts:answeredBy` lie, which is what `comments.is_ai` did before it was dropped on 2026-09-04 disagreeing with the token on 3,172 of 23,414 rows.
 export async function resolveSpeaker(
   ref: SpeakerRef,
   projectId?: string,

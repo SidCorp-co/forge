@@ -78,7 +78,6 @@ async function gql<T>(
   }
 }
 
-// cm:guard pick the draft by parent_theme_id pointing at the CURRENT main — a store can hold several `unpublished` themes (a demoted previous main is also `unpublished`, per publishDraftTheme), so role alone would hand back a backup and the caller would build on, or publish, the wrong theme
 function pickDraft(themes: StorefrontTheme[], mainThemeId: string | null): string | null {
   if (!mainThemeId) return null;
   const clone = themes.find((t) => t.role === 'unpublished' && t.parentThemeId === mainThemeId);

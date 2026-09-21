@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why the module reaches `db/client` for `loadPriorAttempts`, so importing it for the pure renderer alone would otherwise demand a real DATABASE_URL
 vi.mock('../config/env.js', () => ({
   env: { NODE_ENV: 'test', JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef' },
 }));
@@ -52,7 +51,6 @@ describe('renderPriorAttemptsBlock', () => {
     expect(out).toContain('a1b2c3d');
     expect(out).toContain('7 file(s), +214');
     expect(out).toContain('WIP, not reviewed work');
-    // cm:guard the next attempt cuts its checkout from the BASE branch, so the salvage commit is not in its history: without naming the fetch, the pointer is unactionable and the agent's own push is rejected non-fast-forward. Deleting either assertion lets that regress silently.
     expect(out).toContain('git fetch origin ISS-862-runner-health');
     expect(out).toContain('origin/ISS-862-runner-health');
   });

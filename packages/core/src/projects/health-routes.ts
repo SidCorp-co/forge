@@ -1,7 +1,9 @@
 import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
+import type { IssueStatus } from '../db/schema.js';
 import { projects } from '../db/schema.js';
+import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -46,9 +48,6 @@ function emailInitials(email: string): string {
 const MEMBER_AVATAR_CAP = 5;
 const PER_PROJECT_BLOCKER_CAP = 5;
 
-// cm:edge contract -> packages/web-v2/src/features/project-dashboard/derive.ts — "open" is defined by EXCLUSION here and there, so the donut centre equals this KPI by construction. A positive allow-list drops the genuinely-open statuses nobody remembers to add: `clarified`, `on_hold` and `needs_info` were all missing from the one this replaced (ISS-528).
-const NON_OPEN_STATUSES = new Set(['awaiting_release', 'closed', 'draft']);
-
 export const projectHealthRoutes = new Hono<{ Variables: AuthVars }>();
 projectHealthRoutes.use('/health', requireAuth(), assertEmailVerified());
 
@@ -74,7 +73,6 @@ projectHealthRoutes.get('/health', async (c) => {
   const visibleIds = await loadVisibleProjectIds(userId);
   if (visibleIds.length === 0) return c.json([]);
 
-  // cm:guard `agentConfig` is NOT selected here and no `projectMeta` reaches the response: it is free-form jsonb this repo keeps off every MCP read (`mcp/tools/forge-projects.ts` names it sensitive beside webhookSecret and apiKey), and nothing on the client ever read it (ISS-1018).
   const visibleProjects = await db
     .select({
       id: projects.id,
@@ -141,7 +139,7 @@ projectHealthRoutes.get('/health', async (c) => {
     const dist = distByProject.get(p.id) ?? {};
     let totalActive = 0;
     for (const [status, n] of Object.entries(dist)) {
-      if (!NON_OPEN_STATUSES.has(status)) totalActive += n;
+      if (!NON_OPEN_STATUSES.includes(status as IssueStatus)) totalActive += n;
     }
     return {
       id: p.id,

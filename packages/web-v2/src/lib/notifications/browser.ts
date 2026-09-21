@@ -1,15 +1,3 @@
-// Web Notification API wrapper (ISS-510) — the browser/OS delivery channel.
-//
-// Two independent gates must BOTH be true before a native notification fires:
-//   1. `Notification.permission === 'granted'` — the browser-level grant.
-//   2. `isEnabled()` — the user's explicit in-app opt-in (localStorage), set
-//      from the Settings toggle. The opt-in is intentionally separate from the
-//      permission so a user who granted permission once can still mute the
-//      feature without revoking it at the OS level.
-//
-// Permission is only ever requested from an explicit user gesture (the Settings
-// toggle) — never auto-prompted on load. Everything degrades to no-op when the
-// API is unsupported or denied, so callers never need to guard.
 
 const OPT_IN_KEY = "forge:browser-notify";
 
@@ -58,12 +46,6 @@ export interface FireBrowserNotificationOptions {
   onClick?: () => void;
 }
 
-/**
- * Fire a native OS notification — but only when permitted, opted-in, AND the
- * tab is not currently focused (a focused tab gets the in-app toast instead, so
- * the two channels never double-fire). Clicking focuses the window and runs
- * `onClick` (deep-link). No-op + swallow on any failure.
- */
 export function fireBrowserNotification(opts: FireBrowserNotificationOptions): void {
   if (!isSupported() || Notification.permission !== "granted" || !isEnabled()) return;
   if (typeof document !== "undefined" && document.visibilityState === "visible") return;
@@ -83,16 +65,6 @@ export function fireBrowserNotification(opts: FireBrowserNotificationOptions): v
   }
 }
 
-/**
- * Fire a one-off confirmation notification the moment the user enables the
- * channel from Settings. Unlike `fireBrowserNotification` this is intentionally
- * NOT gated on tab visibility: it is the direct response to a user gesture, so
- * the user gets immediate, observable proof the channel works even with the tab
- * focused (the real complaint behind ISS-513's reopen — high-signal events only
- * fire a native notification while the tab is backgrounded, which is invisible
- * to someone actively testing). Still requires permission granted + opt-in.
- * No-op + swallow on any failure.
- */
 export function showTestNotification(): void {
   if (!isSupported() || Notification.permission !== "granted" || !isEnabled()) return;
   try {
@@ -104,11 +76,9 @@ export function showTestNotification(): void {
       try {
         window.focus();
       } catch {
-        // focus can throw in some embedded contexts — ignore.
       }
       n.close();
     };
   } catch {
-    // Notification construction can throw on some platforms — degrade silently.
   }
 }

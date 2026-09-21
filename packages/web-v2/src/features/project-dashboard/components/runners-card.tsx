@@ -1,9 +1,14 @@
 "use client";
 
-// cm:why no utilization% and deliberately not the rich fleet strip — utilization is not stored (ISS-378) and the detail belongs on the two screens this card links out to
-// cm:edge contract -> packages/web-v2/src/features/project-dashboard/derive.ts — `runnersSummary` decides WHOSE runners these are; its guard is the one that keeps this card from claiming a project has none
 import { useRouter } from "next/navigation";
-import { Badge, Card, CardContent, HealthDot, Icon } from "@/design";
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardTitle,
+  HealthDot,
+  Icon,
+} from "@/design";
 import type { RunnersSummary } from "../derive";
 
 const PLATFORM_LABEL: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
@@ -17,7 +22,7 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
         <div className="flex items-center gap-2">
           <Icon name="server" size={16} className="text-subtle" />
-          <h3 className="fg-h3">Runners</h3>
+          <CardTitle>Runners</CardTitle>
         </div>
         <span className="font-mono text-sm font-semibold tabular-nums text-fg">
           {onlineCount}/{total} online

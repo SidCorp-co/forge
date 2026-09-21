@@ -1,28 +1,8 @@
-/**
- * Reading the repository projection, for callers that do not know a provider.
- *
- * `devices/admissible.ts` and the pool ask this. They must not name github: the
- * provider-literal gate refuses a provider name outside `integrations/<provider>/`,
- * the registry and the schema — and the deeper reason is the same one the gate
- * exists for. What a master needs to know is whether this issue's change is
- * green and waiting or conflicting, which is a question about a repository and
- * not about which integration filled the row in.
- */
-
 import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type PullRequestState, repoPullRequests } from '../db/schema-repo-projection.js';
 import { type CheckRollup, rollupOf } from './github/projection-shape.js';
 
-/**
- * One pull request as a master reads it.
- *
- * Raw throughout: a count, a state and a head, never a `ready`, `blocked` or
- * `satisfied`. Deciding what the numbers mean is the master's judgement, and a
- * payload that pre-answers it is the kernel routing through a second door —
- * `devices/admissible.ts` carries the same rule for `merged_at` and ISS-940 is
- * what it cost to learn.
- */
 export interface IssuePullRequest {
   number: number;
   repo: string;
@@ -44,32 +24,13 @@ export interface IssuePullRequest {
   refreshError: string | null;
   /** Counted over the current head's runs only. */
   checks: CheckRollup;
-  /**
-   * Every review still standing, newest submission last. History, not a verdict.
-   *
-   * One reviewer may appear twice — changes requested, then an approval that
-   * never dismissed it — and both are returned WITH their submission times,
-   * because which of the two supersedes the other is a judgement and this field
-   * is evidence. A dismissed review is absent: GitHub has retracted it, which is
-   * a fact about the review rather than a reading of it.
-   */
   reviews: Array<{ id: string; reviewer: string; state: string; submittedAt: string | null }>;
   mergedAt: string | null;
   mergeCommitSha: string | null;
 }
 
-// cm:guard open BEFORE closed and merged, then highest number first — an issue carrying a merged predecessor beside an open replacement is the ordinary case, both are returned, and the one a master is deciding about is the open one. Any order at all is required: an unordered read makes two calls disagree about which row is first, and a caller reading `[0]` would see a different pull request between one poll and the next.
 const ORDER = sql`(${repoPullRequests.state} <> 'open'), ${repoPullRequests.number} DESC`;
 
-/**
- * Every pull request linked to each of these issues.
- *
- * Returns a map so a caller that read a page of issues spends one query rather
- * than one per row. An issue with none is absent from the map, which the caller
- * renders as an empty list — never as null, because null and "none" would be
- * the same answer for "no pull request" and "the projection is not built here",
- * and those are different facts.
- */
 export async function readPullRequestsForIssues(
   issueIds: string[],
 ): Promise<Map<string, IssuePullRequest[]>> {

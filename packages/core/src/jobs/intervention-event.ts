@@ -1,11 +1,3 @@
-/**
- * The audited `job_events` row every manual job intervention writes (ISS-442 C6).
- *
- * One writer, because the `seq` frontier is not a detail: it is an advisory lock
- * plus `MAX(seq)+1`, and two copies of that under concurrent inserts is a
- * duplicate-key wait for whichever surface was written second.
- */
-
 import { sql } from 'drizzle-orm';
 import type { db } from '../db/client.js';
 import { jobEvents } from '../db/schema.js';
@@ -29,8 +21,6 @@ export interface InterventionEventInput {
  * Append the intervention row inside an OPEN transaction, so the status
  * mutation and its audit trail commit together or not at all.
  */
-// cm:edge contract -> packages/core/drizzle/migrations/0181_intervention_action_source.sql — `issue_intervention_events.source` is built as `'manual_' || data->>'action'`, so a new action value appears in the interventions metric under a name only this type decides. Adding one here without checking that view is how a resume came to be charted as a cancel.
-// cm:guard the advisory lock must be taken on the JOB, not the event — it serialises the `MAX(seq)+1` read against a concurrent insert for the same job, and it auto-releases at COMMIT/ROLLBACK. Locking anything else lets two surfaces compute the same seq.
 export async function insertInterventionEvent(
   tx: Tx,
   input: InterventionEventInput,

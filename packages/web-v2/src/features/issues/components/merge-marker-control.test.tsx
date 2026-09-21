@@ -29,7 +29,6 @@ describe("MergeMarkerControl", () => {
     render(<MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
-    // cm:why the trigger stays mounted behind the SlideOver, so the confirm is the LAST match — clicking the first one would re-open the dialog and pass while sending nothing
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
     expect(buttons).toHaveLength(2);
     fireEvent.click(buttons[1] as HTMLElement);
@@ -38,7 +37,6 @@ describe("MergeMarkerControl", () => {
     expect(unmark).not.toHaveBeenCalled();
   });
 
-  // cm:guard the note is OMITTED rather than sent empty — core's body schema is `.strict()` with `note` at min length 1, so a blank string is a 400 rather than a no-op
   it("omits an untouched note instead of sending an empty one", () => {
     render(<MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" />);
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));

@@ -14,6 +14,7 @@ import {
   EmptyState,
   ErrorState,
   Pagination,
+  SectionTitle,
   Skeleton,
   Toggle,
 } from "@/design";
@@ -64,7 +65,7 @@ export function NotificationsTab() {
       <DeliveryPreferences />
 
       <div className="flex items-center justify-between gap-3">
-        <h2 className="fg-h3">Notifications</h2>
+        <SectionTitle className="fg-h3">Notifications</SectionTitle>
         <Button
           variant="secondary"
           size="sm"
@@ -125,7 +126,7 @@ function DeliveryPreferences() {
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-1">Delivery preferences</h2>
+        <SectionTitle className="fg-h3 mb-1">Delivery preferences</SectionTitle>
         <p className="fg-caption mb-4">Choose which notifications Forge sends you.</p>
 
         {prefsQ.isLoading && <Skeleton className="h-11 w-full rounded-md" />}

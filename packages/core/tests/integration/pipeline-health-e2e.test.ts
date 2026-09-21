@@ -63,10 +63,8 @@ describe('ISS-164 pipelineHealth E2E', () => {
     return { owner, project };
   }
 
-  // cm:guard every fixture project needs one fresh runner or the classifier answers `runner_stale` for all of them — the gate is right to say so (an empty pool dispatches nothing), which is exactly why the default fixture must model a WORKING project and the empty pool gets its own test
   async function insertFreshRunner(projectId: string): Promise<string> {
     const id = randomUUID();
-    // cm:guard `runners.device_id` is NOT NULL since 2026-09-04 — seed a real device instead of the `host='remote'`/no-device shape this fixture used, which now fails the insert rather than producing a row.
     const ownerRows = (await harness.db.execute(
       sql`SELECT created_by AS id FROM projects WHERE id = ${projectId}`,
     )) as unknown as Array<{ id: string }>;
@@ -95,7 +93,6 @@ describe('ISS-164 pipelineHealth E2E', () => {
     return id;
   }
 
-  // cm:guard reuse the issue's existing run, never insert a second — `pipeline_runs_issue_open_uq` is a partial unique index admitting ONE non-terminal run per issue, so a fixture that inserts blindly fails on 23505 rather than on what it was testing
   async function getOrCreateRun(projectId: string, issueId: string | null): Promise<string> {
     if (issueId) {
       const existing = await harness.db.execute<{ id: string }>(sql`
@@ -136,8 +133,9 @@ describe('ISS-164 pipelineHealth E2E', () => {
     if (args.skill) metaObj.skill = args.skill;
     const runId = await getOrCreateRun(projectId, args.issueId ?? null);
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata)
-      VALUES (${id}, ${projectId}, ${runId}, ${status}, ${JSON.stringify(metaObj)}::jsonb)
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata)
+      VALUES (${id}, ${projectId}, ${runId}, 'pipeline', ${status},
+              ${JSON.stringify(metaObj)}::jsonb)
     `);
     return id;
   }
@@ -215,7 +213,6 @@ describe('ISS-164 pipelineHealth E2E', () => {
     });
   });
 
-  // cm:guard an issue with an UNMERGED blocker must report NO waitingOn — this is the behaviour the blocker gate's deletion changed, and it is the whole point: a `blocks` edge is a fact the master reads and weighs (a docs-only dependent can run beside its blocker), not a condition the kernel enforces. A `waiting_on_dep` reappearing here means routing moved back into core.
   it('does not report a blocker as a wait — the edge is a fact, not a gate', async () => {
     const { project } = await seedProject();
     const blocker = await insertIssue(project.id, { status: 'open' });
@@ -227,7 +224,6 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(map.get(child)?.waitingOn).toBeUndefined();
   });
 
-  // cm:guard the same for a blocker that closed WITHOUT its code landing — the one case the old gate treated as permanently blocking. It is still the most alarming shape on the board, and it is still the master's call, so health must not pre-empt it with a verdict.
   it('does not report a closed-but-unmerged blocker as a wait either', async () => {
     const { project } = await seedProject();
     const blocker = await insertIssue(project.id, { status: 'closed' });
@@ -271,7 +267,6 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(health?.queuedAt).toBe(queuedAt.toISOString());
   });
 
-  // cm:guard these two are the end-to-end proof for the blind spots the unit tests cover in isolation — both used to report NO waitingOn, so the board rendered a permanently-stuck issue as one merely awaiting its turn (forge-dev ISS-576/ISS-652, paused 3 days unnoticed)
   it('reports run_not_running for a queued job under a paused run', async () => {
     const { project } = await seedProject();
     const issueId = await insertIssue(project.id);
@@ -287,7 +282,6 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(health?.waitingOn?.details.runStatus).toBe('paused');
   });
 
-  // cm:guard the ONLY end-to-end proof of ISS-853 — `loadPausedRunsByIssue` reads `pipeline_runs` by issue id, so it is the one loader with no job row to join through, and the unit suite mocks drizzle away entirely. Delete this and the SQL that closes the blind spot is exercised nowhere.
   it('reports the paused run for an issue with NO job at all (ISS-853)', async () => {
     const { project } = await seedProject();
     const issueId = await insertIssue(project.id, { status: 'approved' });
@@ -344,7 +338,6 @@ describe('ISS-164 pipelineHealth E2E', () => {
   });
 
   it('never reads jobs.gate_reason (live-join contract — preserved after D1 column drop)', async () => {
-    // cm:guard the loader must classify from the live join, never from a persisted column — this spy reads the SQL back, so a cached-column shortcut fails here instead of reporting a stale health forever
     const dbModule = (await import('../../src/db/client.js')) as {
       db: { execute: (...args: unknown[]) => unknown };
     };

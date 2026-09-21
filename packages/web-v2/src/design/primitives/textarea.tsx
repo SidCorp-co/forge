@@ -2,13 +2,6 @@ import type { Ref, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils/cn";
 
 export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
-  /**
-   * Declared explicitly rather than left implicit: React 19 hands `ref` to a
-   * function component as an ordinary prop, so the spread below already lands it
-   * on the element, but the base attribute type does not include it and callers
-   * that need the node (caret / selection work — the composer's slash menu)
-   * would not typecheck.
-   */
   ref?: Ref<HTMLTextAreaElement>;
 };
 

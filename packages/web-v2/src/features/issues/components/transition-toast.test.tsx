@@ -39,8 +39,6 @@ function movedTo(status: IssueStatus, opts?: { successMessage?: string }): strin
 }
 
 describe("the default success toast", () => {
-  // cm:guard the reported shape: `developed`, `testing` and `releasing` are three different things
-  // that happened, and the lane word called all three "Running".
   it("names the kernel status the issue moved to", () => {
     expect(movedTo("developed")).toBe("Moved to Developed");
     expect(movedTo("testing")).toBe("Moved to Testing");
@@ -57,8 +55,6 @@ describe("the default success toast", () => {
 });
 
 describe("the two paths that deliberately do NOT name a status", () => {
-  // cm:guard a reason-required move is confirmed by what the person did, and ISS-1097 left it so.
-  // This case is here to fail if a later change widens the status word across all three paths.
   it("keeps the reason-required move's own action wording", () => {
     const { result } = renderHook(() => useGuardedTransition());
     act(() => result.current.requestTransition("id", "needs_info"));

@@ -41,9 +41,6 @@ function Harness(props: {
     ready: true,
     ...props,
   });
-  // cm:guard the harness draws the PILL, so criterion 28's assertions are about the affordance a
-  // reader actually gets rather than about a boolean: the whole behaviour is "told there is new
-  // output, and taken to it when they ask", and only the two together are worth anything.
   return (
     <div ref={scrollRef} onScroll={onScroll} data-testid="scroller">
       {newOutput && <NewOutput onGo={toBottom} />}
@@ -73,16 +70,6 @@ describe("a thread following a turn that is still being written", () => {
     expect(scrolls.at(-1)).toEqual({ block: "end" });
   });
 
-  // cm:guard a stream step asks for NO animation, and this assertion is the whole of what jsdom can
-  // hold of the reason. A smooth scroll animates through every position on the way down and each
-  // one fires `onScroll`; one reading more than 80px short sets `atBottomRef` false with nobody
-  // having touched the page, and a turn that keeps growing moves the animation's target out from
-  // under it, so the recovery never comes and the reader is dropped mid-turn. The feedback itself
-  // is not reproducible here — `scrollIntoView` is a mock and jsdom animates nothing — so what goes
-  // red is the request: this line fails the moment the stream path asks for `behavior: "smooth"`
-  // again. The property it stands in for needs a real browser: start pinned, append a card taller
-  // than the threshold, then append text every 120ms during the scroll, and assert the viewport is
-  // still at the latest content once it settles (ISS-1078 review F6, whole-set consult).
   it("asks for no animation while a turn is arriving, and keeps one outside a turn", () => {
     const { rerender } = render(<Harness itemCount={3} live streaming streamedChars={10} />);
 
@@ -101,19 +88,8 @@ describe("a thread following a turn that is still being written", () => {
     expect(scrolls.at(-1)).toEqual({ behavior: "smooth", block: "end" });
   });
 
-  // cm:guard the ROW a reader queues mid-turn, which is the sequence the first version of this fix
-  // still animated: the composer takes a follow-up while the reply streams (`queueWhileBusy`), and
-  // that moves `itemCount` with the stream content untouched. Branching on which dependency moved
-  // put a smooth animation in the middle of a stream — one is enough, because its own scroll events
-  // set the guard false and every frame after it returns at the guard instead of re-affirming it,
-  // so following never comes back for the rest of the turn. This is red the moment the branch goes
-  // back to reading the changed dependency rather than whether a turn is arriving.
   it("does not animate a row queued while the reply is still streaming", () => {
     const { rerender } = render(<Harness itemCount={3} live streaming streamedChars={48} />);
-    // cm:guard the COUNT is asserted before the options, in this case and the one below, because
-    // the mount already recorded a `{block:"end"}` call: reading only `scrolls.at(-1)` passes
-    // whether the rerender scrolled or not, so a hook that stopped following rows mid-stream
-    // altogether — the opposite regression — would clear it (whole-set consult round 3).
     const before = scrolls.length;
 
     act(() => {
@@ -124,9 +100,6 @@ describe("a thread following a turn that is still being written", () => {
     expect(scrolls.at(-1)).toEqual({ block: "end" });
   });
 
-  // cm:guard the watcher, who has no send of their own in flight: `live` is false for them for the
-  // whole turn, so a hook reading `live` as "a turn is arriving" would animate every row and every
-  // frame they see. `streaming` is what a second browser in the room has (criterion 6).
   it("does not animate for a second person watching, whose own send is not in flight", () => {
     const { rerender } = render(
       <Harness itemCount={3} live={false} streaming streamedChars={10} />,
@@ -141,9 +114,6 @@ describe("a thread following a turn that is still being written", () => {
     expect(scrolls.at(-1)).toEqual({ block: "end" });
   });
 
-  // cm:guard the growth dependency must not defeat the near-bottom guard: a reader who scrolled up
-  // to read what was said earlier is the one person a streaming turn must not move, and this hook's
-  // whole reason for being conditional is that turning it unconditional makes history unreadable.
   it("does not drag a reader who scrolled back into history", () => {
     const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
     const el = view.getByTestId("scroller");
@@ -194,10 +164,6 @@ describe("telling a reader there is output they cannot see", () => {
     expect(screen.queryByTestId("new-output")).toBeNull();
   });
 
-  // cm:guard the two halves asserted TOGETHER, because either alone is a defect: the reader is told,
-  // and the reader is not moved. A version that told them by scrolling them there would pass the
-  // first assertion and fail the second, and that is the behaviour ISS-728 made this hook
-  // conditional to prevent.
   it("tells a reader in history that output has arrived, without moving them", () => {
     const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
     intoHistory(view.getByTestId("scroller"));
@@ -232,16 +198,10 @@ describe("telling a reader there is output they cannot see", () => {
     });
 
     expect(scrolls.length).toBeGreaterThan(before);
-    // cm:guard INSTANT, for the reason the growth effect gives: a smooth scroll fires `onScroll` at
-    // every position on the way down, and one reading short of the threshold drops the reader
-    // mid-turn. This click is most likely to happen while a turn is streaming underneath it.
     expect(scrolls.at(-1)).toEqual({ block: "end" });
     expect(screen.queryByTestId("new-output")).toBeNull();
   });
 
-  // cm:guard and the pill follows a reader who takes themselves back rather than only one who
-  // clicks it: the affordance is about what they cannot see, and once they are at the bottom there
-  // is nothing they cannot see.
   it("stops saying it once the reader scrolls back down themselves", () => {
     const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
     const el = view.getByTestId("scroller");
@@ -258,9 +218,6 @@ describe("telling a reader there is output they cannot see", () => {
     expect(screen.queryByTestId("new-output")).toBeNull();
   });
 
-  // cm:guard a room switch is not new output in the room a reader arrives in, and the pill is state
-  // rather than a derived value — so without this it would follow them across the switch and point
-  // at the bottom of a thread they are already at.
   it("says nothing in a conversation the reader has just opened", () => {
     const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
     intoHistory(view.getByTestId("scroller"));
@@ -279,10 +236,6 @@ describe("telling a reader there is output they cannot see", () => {
   });
 });
 
-// cm:guard the pill is about OUTPUT and the effect that raises it also runs on two lifecycle
-// dependencies, which is how it came to announce nothing at all: a send resolving or a turn ending
-// moves `live` and `streaming` with the thread's content untouched, and a reader up the thread was
-// told there was something new to see (scroll consult F2).
 describe("what counts as new output", () => {
   const intoHistory = (el: HTMLElement) =>
     scrollIntoHistory(el, () => el.dispatchEvent(new Event("scroll", { bubbles: true })));
@@ -298,8 +251,6 @@ describe("what counts as new output", () => {
     expect(screen.queryByTestId("new-output")).toBeNull();
   });
 
-  // cm:guard and the positive case is asserted in the SAME shape, so what separates them is the one
-  // thing that should: the content moved.
   it("says so when the same lifecycle change carries output with it", () => {
     const view = render(<Harness itemCount={3} live streaming streamedChars={48} />);
     intoHistory(view.getByTestId("scroller"));
@@ -323,11 +274,6 @@ describe("what counts as new output", () => {
   });
 });
 
-// cm:guard the SESSION screen's growth signal, which it did not have at all: its turn rows grow in
-// place, so `itemCount` does not move and `live` was already true, and it carried the defect
-// PR #480 fixed for the chat panel — the thread followed the first frame and then stopped, and a
-// reader up the thread was never told the rest had arrived (scroll consult F3). `tailOutputSize` has
-// exactly one caller, so what goes red here is what that screen passes.
 describe("the growth of a turn whose rows change in place", () => {
   const turnOf = (blocks: RenderBlock[]): ConversationItem => ({
     kind: "agent",
@@ -352,9 +298,6 @@ describe("the growth of a turn whose rows change in place", () => {
     expect(after).toBeGreaterThan(before);
   });
 
-  // cm:guard THE case a text-length signal would have missed: a result settling onto a card adds
-  // height to the thread and not one character to its prose, and a reader following the turn would
-  // have been dropped at the exact moment it got taller.
   it("moves when a tool result settles onto a card, with no prose to show for it", () => {
     const before = tailOutputSize([turnOf([{ type: "text", text: "Let me look" }, tool()])]);
     const after = tailOutputSize([

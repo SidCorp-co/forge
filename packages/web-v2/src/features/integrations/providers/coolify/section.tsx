@@ -62,13 +62,6 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   return { label: "Untested", tone: "neutral" };
 }
 
-/**
- * ISS-395 — Coolify deploy integration config (ported from the v1
- * `coolify-section.tsx`). Separate preview/live bindings toggled via a
- * SegmentedControl. Prod requires a manual confirmation gate before every
- * deploy. There is no inbound webhook to configure: Coolify signs nothing, so
- * ISS-922 replaced the callback with a poll of the deployment's own status.
- */
 export function CoolifySection({ projectId }: { projectId: string }) {
   const [stage, setStage] = useState<DeployStage>("preview");
   const list = useIntegrationsList(projectId);
@@ -177,7 +170,6 @@ function StagePanel({
   async function handleSave() {
     setError(null);
     setTestResult(null);
-    // cm:guard carry `healthUrl` through — a config PATCH replaces the whole `targets` array, so a save that drops the key silently disarms the post-deploy health gate and its rollback (ISS-971). Empty stays absent: the field's absence is what turns the gate off.
     const cleanTargets = targets
       .map((t) => ({
         ...(t.id ? { id: t.id } : {}),
@@ -192,7 +184,6 @@ function StagePanel({
     }
     try {
       if (existing) {
-        // cm:guard `targets` is binding-tier and always sendable by a project admin; baseUrl and token are connection-tier and org-gated, so an org-locked save must NOT include them or the whole PATCH answers 403 and the targets edit is lost with it
         const config: Record<string, unknown> = { targets: cleanTargets };
         if (!orgLocked && baseUrl.trim()) config.baseUrl = baseUrl.trim();
         await update.mutateAsync({
@@ -346,8 +337,6 @@ function StagePanel({
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        {/* Save stays enabled under orgLocked — it then writes only the
-            binding-tier deploy target, which a project admin may change. */}
         <Button variant="primary" onClick={handleSave} loading={saving}>
           {existing ? "Save" : "Create integration"}
         </Button>
@@ -467,7 +456,7 @@ function ProdGateSection({
               Auto-approve is enabled — live deploys dispatch automatically on
               release, like preview. No manual confirmation required.
             </span>
-            <span className="font-mono text-[10px] text-subtle">
+            <span className="font-mono text-10 text-subtle">
               integration: {integrationId}
             </span>
           </div>
@@ -521,7 +510,7 @@ function ProdConfirmBanner({
             Confirm live deploy
           </Button>
         </div>
-        <span className="font-mono text-[10px] text-subtle">
+        <span className="font-mono text-10 text-subtle">
           integration: {integrationId}
         </span>
       </div>

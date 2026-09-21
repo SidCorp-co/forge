@@ -1,10 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { logger } from '../logger.js';
 
-// Read the master key from process.env directly (not via config/env.ts) so
-// importing this module does not transitively force EnvSchema parsing during
-// test runs that mock the DB but never touch the vault. The boot-time guard
-// below catches missing keys when real integrations exist.
 function readMasterKey(): string | undefined {
   const v = process.env.INTEGRATION_MASTER_KEY;
   return v && v.length > 0 ? v : undefined;
@@ -46,12 +42,6 @@ function getKey(): Buffer {
   return cachedKey;
 }
 
-/**
- * True iff `INTEGRATION_MASTER_KEY` is present in the environment. Pure check
- * — does not call `getKey()` and never throws. Use from request handlers to
- * convert the missing-key boot bypass into a structured 503 before invoking
- * any encrypt/decrypt routine.
- */
 export function isVaultConfigured(): boolean {
   return readMasterKey() !== undefined;
 }

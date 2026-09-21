@@ -61,9 +61,7 @@ export const createProjectSchema = z.object({
     .max(64),
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).nullable().optional(),
-  // cm:why ISS-387 — project kind. `standard` (default) = code repo project; `website` = an Epodsystem storefront project (git repo optional).
   kind: z.enum(projectKinds).optional(),
-  // cm:guard omitted means the caller's PERSONAL org and never "no org" — every project belongs to exactly one, and any org role including plain member may create one here
   orgId: z.uuid().optional(),
 });
 
@@ -73,26 +71,17 @@ export const updateProjectSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
-    // cm:guard `kind` was create-only for two months, which made it unreachable for every project that already existed — including the one storefront it was added for (mowment stayed `standard` while ISS-808 was written about it being a storefront). A shape that can only be declared at birth is a shape nobody can correct.
-    // cm:guard NOTHING reads this value. It was meant to switch off a git preflight for a storefront project, and the function that would have read it was never written — it existed only as a name inside four comments until ISS-1047 removed them, and `/me/runners` stopped carrying the field in the same change. `mowment` is set to `website` and has been inert for as long as it has been set, so treat this as a label until something reads it, and read docs/proposals/website-lane-has-no-working-directory.md before wiring one.
     kind: z.enum(projectKinds).optional(),
     repoPath: z.string().trim().max(500).nullable().optional(),
     repoUrl: z.string().trim().max(500).nullable().optional(),
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this text IS the setup agent's instruction set; it reaches the box via `/me/runners`, so a rename here silently gives every setup agent an empty procedure and sends it back to deriving one per job
     workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
     ...releaseModelPatchFields,
-    // cm:guard ISS-992 — the shape is checked in the handler, not here, because three of the four refusals need the database (the reserved name, the prefix another project holds, and whether the caller may be told which one). A zod regex here would answer the first and let the other three reach Postgres as a 500 on an ordinary conflict.
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
-    // cm:why ISS-609 follow-up — a scoped write for the chat/RC-bot reply-style knob, so the UI never round-trips the whole `agentConfig` jsonb to change one string; `null` and `''` both clear it
-    // cm:guard the cap leaves room for what migration 0245 PREPENDED — 82 characters plus a newline — because a project already at the old 4,000 came out of that migration longer than its own settings form would accept, and the field the person edits is Bot personality under Settings → Integrations → Rocket.Chat. `Dockerfile` runs the migrator before the server serves, so the widened cap and the rows it has to accept arrive together and are never observed half-applied (ISS-1007).
     personaStyle: z.string().trim().max(PERSONA_STYLE_MAX).nullable().optional(),
-    // cm:why ISS-727 — the two values name two different ANSWERERS rather than two speeds: `fast` is the provider-chat turn this process runs, `agent` diverts the whole turn to a Claude session on a paired box. null clears it back to `fast`.
     rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
-    // cm:why ISS-1070 — `agentConfig.systemPrompt` is read by `assistant/system-prompt.ts:buildSystemPrompt` and had no door of its own: the only way to set it was the wholesale `agentConfig` record this schema no longer takes. `null` and `''` both clear it.
     systemPrompt: z.string().trim().max(SYSTEM_PROMPT_MAX).nullable().optional(),
-    // cm:why ISS-1070 — `agentConfig.categories` is served by MCP `forge_config` and had no door of its own, for the same reason `systemPrompt` did not. `null` clears the list; an empty array stores an empty list, which is a different document.
     categories: z.array(z.string().trim().min(1).max(100)).max(50).nullable().optional(),
     environments: environmentsPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
@@ -220,7 +209,6 @@ projectRoutes.post(
 
 projectRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  // cm:guard `archivedAt` must stay in the select projection whatever `?archived=1` does — the flag decides which ROWS come back, the projection decides whether the UI can tell an archived one apart, and dropping it renders every row as live (ISS-353).
   const includeArchived = ['1', 'true'].includes((c.req.query('archived') ?? '').toLowerCase());
   // Visible = explicit membership (any role) OR org owner/admin on the
   // project's org (implicit admin) — same rule as lib/authz.ts.
@@ -269,7 +257,6 @@ projectRoutes.get('/', async (c) => {
       const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
       return {
         ...row,
-        // cm:guard the apiKey is execution-grade — it pairs MCP devices and installs the widget — so the viewer tier, which is read-only, never receives it
         apiKey: role === 'viewer' ? null : apiKey,
         role,
         orgRole: orgRole ?? null,
@@ -327,9 +314,6 @@ projectRoutes.get(
     // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json({
       ...project,
-      // cm:guard the column is returned through the ONE rule that reads it. `releaseModel` travels
-      // beside it so a caller can tell "this project promotes to no branch" from "this project does
-      // not promote"; before ISS-1046 both answered the stale branch and neither said which.
       liveBranch: readableLiveBranch(project),
       apiKey: access.role === 'viewer' ? null : project.apiKey,
       role: access.role,
@@ -427,7 +411,6 @@ projectRoutes.patch(
     if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
 
-    // cm:guard ISS-1070 — the four scoped `agentConfig` values are collected as a per-KEY patch and written by one statement inside the transaction below. What this replaced read the whole blob and wrote the whole blob back, so a sibling key another request set between the read and the write was restored to its old value — the `wholesale-config-clobber` shape, which no care at this call site can remove. `null` here means DELETE the key, never store `key: null`.
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.personaStyle !== undefined) {
       agentConfigPatch.personaStyle =
@@ -440,26 +423,15 @@ projectRoutes.patch(
       agentConfigPatch.systemPrompt =
         patch.systemPrompt === null || patch.systemPrompt.length === 0 ? null : patch.systemPrompt;
     }
-    // cm:why an EMPTY array is stored and only `null` clears, because "this project offers no categories" and "this project has not said" are different documents; `forge_config` answers `[]` for both, and a door that could not express the difference would make one of them unreachable
     if (patch.categories !== undefined) agentConfigPatch.categories = patch.categories;
-    // cm:guard WHOLESALE replacement and not a merge, at any depth — the semantics `previewDeploy`
-    // already had and every client is written against: web-v2's Testing tab spreads the stored blob
-    // before it sends, and a merge would leave no caller able to clear a field. It is the
-    // `wholesale-config-clobber` affordance, kept deliberately (ISS-1069); the ONE narrow write,
-    // `environmentsLimits` over MCP, stays a read-modify-write so a limits edit cannot delete the
-    // credentials beside it.
     if (patch.environments !== undefined) updates.environments = patch.environments;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
-    // cm:guard the prefix moves in the SAME transaction as the rest of the patch — it is written through a second table and its own savepoint, so applying it outside this block would leave a project renamed by a request that then failed on a sibling field and answered the caller with an error (codex review of ISS-992)
     const [updated] = await db.transaction(async (tx) => {
-      // cm:guard the scoped `agentConfig` keys are written INSIDE this transaction, beside the prefix, for the reason the prefix is: a request that fails on a sibling field must not leave the configuration changed. Written outside it, a `{systemPrompt, issuePrefix}` patch whose prefix conflicts would answer the operator 409 with the prompt already saved.
-      // cm:why BEFORE the prefix and not after, so the rollback is the thing under test rather than an ordering that never reaches the write — the prefix refusal is the failure this pairs with
       await patchAgentConfigKeys(id, agentConfigPatch, tx);
       if (patch.issuePrefix !== undefined) {
         await applyIssuePrefixPatch(id, patch.issuePrefix, userId, tx);
       }
-      // cm:guard a patch naming ONLY `issuePrefix` leaves `updates` empty, and drizzle refuses `set({})` — the row is read back instead, because the write it asked for has already happened above
       if (Object.keys(updates).length === 0) {
         return tx.select(PATCHED_PROJECT).from(projects).where(eq(projects.id, id)).limit(1);
       }
@@ -468,8 +440,6 @@ projectRoutes.patch(
     if (!updated) throw notFound();
     await announceContractInput(id, patch);
 
-    // cm:guard same rule on the write door as on the read one: a PATCH that set `releaseModel: 'none'`
-    // must not echo back the live branch the row still carries, or the caller writes it straight back.
     return c.json({ ...updated, liveBranch: readableLiveBranch(updated) });
   },
 );
@@ -492,7 +462,6 @@ projectRoutes.delete(
     const access = await loadProjectAccess(id, userId);
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
-    // cm:edge contract -> packages/core/drizzle/migrations/0219_unaudited_transition_reach.sql — `jobs`, `agent_sessions` and `pipeline_runs` all cascade off `project_id`, so this one statement deletes kernel rows and owes the `forge.kernel_txn` marker.
     await withKernelMarker(db, async (tx) => tx.delete(projects).where(eq(projects.id, id)));
     return c.body(null, 204);
   },
@@ -530,7 +499,6 @@ projectRoutes.post(
     const access = await loadProjectAccess(id, userId);
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
-    // cm:guard `now()` here is raw SQL, never an interpolated JS `Date` — an untyped Date bind 500s against a timestamptz column; the `coalesce` is what keeps a re-archive idempotent by preserving the FIRST timestamp.
     const [updated] = await db
       .update(projects)
       .set({ archivedAt: sql`coalesce(${projects.archivedAt}, now())` })
@@ -640,10 +608,6 @@ projectRoutes.patch(
   },
 );
 
-// cm:why writable over REST since ISS-897 — `agentConfig.plugins` was reachable only through MCP `forge_config`, so an operator with a browser could read the list on the settings screen that explains what it is for and could not change it there
-
-// cm:guard the PATCH REPLACES the whole list, and the UI must GET then send it complete. A per-entry merge would need an identity for an entry, and the only candidate — `name` — is exactly what an operator edits when they move a plugin to another marketplace.
-// cm:edge contract -> packages/core/src/devices/routes.ts — `GET /api/devices/me/plugins` unions this list across every project a device serves, so a change here reaches a box on its next poll and only if that box has `[plugins] enabled`
 projectRoutes.patch(
   '/:id/plugins',
   zValidator('param', idParamSchema, (result) => {
@@ -658,7 +622,6 @@ projectRoutes.patch(
     const access = await loadProjectAccess(id, c.get('userId'));
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
-    // cm:guard the read is the 404 and NOT the basis of the write: `patchAgentConfigKeys` touches the one key in one statement, so a `personaStyle` saved between this read and that write survives. Reading the blob and writing it back whole is what this route used to do, and is the `wholesale-config-clobber` shape (ISS-1070).
     if ((await readAgentConfig(id)) === null) throw notFound();
     await patchAgentConfigKeys(id, { plugins });
 
@@ -666,12 +629,6 @@ projectRoutes.patch(
   },
 );
 
-// ─── Project facts (ISS-521) ─────────────────────────────────────────────────
-//
-// GET/PATCH /:id/project-facts (incl. the knowledge_entries write-through
-// deprecation shim) live in ./project-facts-routes.ts, next to
-// ./project-facts.ts. Mounted here so they inherit this router's auth
-// middleware exactly as before the split.
 projectRoutes.route('/', projectFactsRoutes);
 
 // ─── Branch config (ISS-135 PR-A) ───────────────────────────────────────────
@@ -709,10 +666,6 @@ projectRoutes.get(
       .where(eq(projects.id, id))
       .limit(1);
     if (!row) throw notFound();
-    // cm:guard the branch resolver is handed the READABLE live branch, never the raw column. 25 of
-    // 32 fleet projects carry a live branch nothing promotes to, and this endpoint is what the web
-    // branch picker reads: handing one of those over is how a `publish` project comes to be shown,
-    // and acted on, as a branch-based promote (ISS-1046).
     const project = { baseBranch: row.baseBranch, liveBranch: readableLiveBranch(row) };
 
     const [issueRow] = await db

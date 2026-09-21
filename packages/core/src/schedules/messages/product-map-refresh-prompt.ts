@@ -1,22 +1,3 @@
-// Product-map refresh prompt builder — ISS-587 (Module Knowledge Backbone, Tier-3 MVP).
-//
-// Builds the agent prompt for the standing `product-map-refresh` schedule run.
-// Like the steward + drift-check, it fires on EVERY cadence run (no
-// appliedMessageVersions gate). It keeps a project's curated PRODUCT map
-// (overview mindmap / scenario flowcharts / workflow state-diagrams / per-module
-// overviews) current from the issue stream by UPSERTING changed entries.
-//
-// cm:edge contract -> packages/core/src/labels/module-diagrams.ts — the mindmap / context / user-flow / swimlane kinds are GENERATED from the module taxonomy since ISS-950 and are not this agent's to draw. It authors the overview / scenario / workflow ENTRIES; widening it back over the four generated kinds gives them two owners and no way to tell which one a reader is looking at.
-//
-// Self-contained: the prompt drives the refresh via forge_knowledge + forge_issues
-// MCP tools directly, so it works on any project regardless of whether the
-// forge-product-map SKILL is installed on the runner. If that skill IS present
-// (installOnly-synced), the agent may lean on it — but the contract below is the
-// source of truth so the run never depends on disk state.
-//
-// The completion handler does NOT set metadata.steward for this key, so the
-// steward-report parser skips it (the refresh's effect is the upserted entries).
-
 import type { ScheduleMode } from '../../db/schema.js';
 
 /** Max NEW scenario/workflow entries the agent may add per run (refresh stays bounded). */

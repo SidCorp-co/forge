@@ -11,10 +11,6 @@ describe('unesc', () => {
   });
 
   it('does NOT unescape twice, which is what the rule order buys', () => {
-    // `&amp;lt;` is a page saying, literally, `&lt;`. Unescape `&amp;` first
-    // and it becomes `&lt;` and then `<` — the defect CodeQL's
-    // js/double-escaping named. Both assertions go red if `&amp;` moves back
-    // to the front of the chain, which is the only way this can regress.
     expect(unesc('&amp;lt;')).toBe('&lt;');
     expect(unesc('&amp;amp;')).toBe('&amp;');
     expect(unesc('&amp;quot;')).toBe('&quot;');

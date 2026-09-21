@@ -39,7 +39,6 @@ const stampedUntil = () =>
   (stampRunnerLimit.mock.calls[0] as unknown as [string, string, { until: Date | null }])[2].until;
 
 describe('recordMasterLimit', () => {
-  // cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/master-limit-wire.json — the far end of the chain the runner's own suite starts: that file is what a captured refusal produces on the wire, and this is the instant core stores for it. The reset arithmetic is asserted below against typed numbers; this asserts it against the number a real box would actually send.
   it('stores the instant the real wire body asks for', async () => {
     const wire = JSON.parse(readFileSync(WIRE_FIXTURE, 'utf8')) as {
       reason: 'usage_limit';
@@ -53,7 +52,6 @@ describe('recordMasterLimit', () => {
     expect(until.getTime() - before).toBeLessThan(wire.resetsInSeconds * 1000 + 60_000);
   });
 
-  // cm:guard `auth` MUST stamp `until: null`. The column is NULL for it by design — there is no parseable reset to wait for — and every dispatch gate excludes that reason BY NAME precisely because the time predicate would otherwise pass an auth-dead box. A reset invented here would be a self-healing window an auth limit does not have.
   it('gives an auth limit no reset even when the report carries one', async () => {
     await recordMasterLimit('dev-1', { reason: 'auth', resetsInSeconds: 900, detail: 'x' });
     expect(stampedUntil()).toBeNull();
@@ -71,7 +69,6 @@ describe('recordMasterLimit', () => {
     expect(until.getTime() - before).toBeLessThan(900_000 + 60_000);
   });
 
-  // cm:guard the unknown-reset fallback is DEFAULT_LIMIT_COOLDOWN_MS, the constant `detectRunnerLimit` already applies to a usage-limit message with no parseable reset. A second number here would make the job lane and the master lane answer one question differently.
   it('falls back to the job lane cooldown when the master cannot read a reset', async () => {
     const before = Date.now();
     await recordMasterLimit('dev-1', {

@@ -1,28 +1,3 @@
-/**
- * The fixture every `usage_records` index assertion is read on, and the helpers
- * that read one.
- *
- * Not a test file. It is `.ts` rather than `.test.ts` because two suites seed
- * the same shape and neither owns it: `usage-session-index.test.ts` reads the
- * session- and run-scoped rollups, `issues-list-cost-index.test.ts` reads the
- * issues-list one. They were one file until ISS-1081, which is when importing
- * the issues-list query into the first pushed it past its module-reach ceiling
- * (`no-coordinator-blob`) — the split is by responsibility rather than by size.
- *
- * Sized on beta as it stood on 2026-09-17 (24,085 usage rows over 15,657
- * distinct session ids, 21,899 agent sessions, 31,197 jobs, 7,880 runs):
- *   16,000 agent_sessions over 5,000 pipeline_runs  (~3.2 sessions per run)
- *    8,000 jobs over 2,000 issues, one session each  (4 jobs per issue)
- *   24,000 usage_records over those 16,000 sessions  (1.5 rows per session)
- * `ANALYZE` runs before any plan is read.
- *
- * An index that exists proves nothing and a cost estimate is not a test, so
- * what the suites assert is the plan the planner actually chose. The row
- * count, session cardinality and selectivity are fixed HERE rather than left
- * to judgement, because the planner reads all three and a fixture of twenty
- * rows takes a sequential scan whatever the predicate says.
- */
-
 import { sql } from 'drizzle-orm';
 import { expect } from 'vitest';
 import type { TestDb } from '../helpers/index.js';
@@ -35,7 +10,6 @@ export const ISSUES = 2_000;
 export const USAGE_ROWS = 24_000;
 
 /** Deterministic uuids so a selection can be written without reading ids back. */
-// cm:guard the literal `ab` in every node is what keeps a hex LETTER in each id, and it is not decoration. Without it `sessionId(1)` is `...000000000001`, all digits, and `toUpperCase()` on it is a no-op — so the two cases below that exist to prove an uppercase spelling is handled would have been comparing a string with itself. That happened twice while this file was written; putting the letters in the generator is what stops it happening a third time in whatever case someone adds next.
 const node = (g: number) => `ab${g.toString(16).padStart(10, '0')}`;
 export const runId = (g: number) => `20000000-0000-4000-8000-${node(g)}`;
 export const sessionId = (g: number) => `10000000-0000-4000-8000-${node(g)}`;
@@ -57,22 +31,16 @@ export async function seedFixture(db: TestDb, projectId: string, ownerId: string
     FROM generate_series(1, ${RUNS}) g`);
 
   await db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, started_at, metadata)
     SELECT ('10000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${projectId},
            ('20000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${RUNS}) + 1), 10, '0'))::uuid,
-           'idle', now() - (g * interval '1 second'),
+           'pipeline', 'idle', now() - (g * interval '1 second'),
            -- metadata.issueId maps sessions onto the same 2,000 issues the jobs use, so
            -- estimateIssueContextTokens has a real selection to be planned against.
            jsonb_build_object('issueId',
              '30000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${ISSUES}) + 1), 10, '0'))
     FROM generate_series(1, ${SESSIONS}) g`);
 
-  // Jobs 1..8000 carry sessions 1..8000. `status` cycles through the REAL members of
-  // `jobStatuses` — `done`, `failed`, `cancelled` — because the view yields a duration only
-  // for `done`: seeded with a status the enum does not hold, every row's `duration_seconds`
-  // is NULL and the equivalence case cannot tell the two views' duration expressions apart.
-  // Every 500th job's span is inverted, finished before started, so the guard 0128 added is
-  // exercised on both of its sides.
   await db.execute(sql`
     INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status,
                       agent_session_id, dispatched_at, finished_at, model_used)
@@ -121,7 +89,6 @@ export async function seedFixture(db: TestDb, projectId: string, ownerId: string
 }
 
 /** What every index-served assertion here means, in one place. */
-// cm:guard the predicate under EXPLAIN is built by the REAL `usageSessionMatch`, `canonicalSessionId` and `issueCostRollupQuery` rather than hand-copied into this file. A likeness would make the negative control prove only that Postgres distinguishes two predicates — true and not the claim — while a regression in the helper kept every case green. ISS-1081 is what that costs when it slips: the issues-list case below asserted on a hand-written `p.session_id` and stayed green for a statement Postgres refused on every execution.
 export function expectIndexServed(text: string) {
   expect(text).toContain('usage_records_session_id_idx');
   expect(text).not.toContain('Seq Scan on usage_records');

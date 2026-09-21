@@ -114,7 +114,6 @@ describe('the lookup that decides create from update', () => {
     expect(published).toMatchObject({ outcome: 'updated', checkRunId: 404 });
   });
 
-  // cm:guard `?check_name=` ALONE would match a run another App published under the same name, and PATCHing another App's check run is a 403 that reads exactly like a missing permission.
   it('filters the lookup to this name AND this App', async () => {
     const { client: c, calls } = client(noExistingRun);
     await publishContractCheck(c, { issueId: ISSUE_ID, headSha: HEAD });
@@ -142,7 +141,6 @@ describe('the serialisation, and what it is around', () => {
     expect(flat).toContain(`binding-1:${HEAD}`);
   });
 
-  // cm:guard the ANSWER is computed inside the lock, not before it. Serialising only the write still lets a publish that read first and wrote second replace a newer answer with an older one — a check that reads current and is not.
   it('computes the answer inside the lock, after it is held', async () => {
     const order: string[] = [];
     execute.mockImplementation(async () => {

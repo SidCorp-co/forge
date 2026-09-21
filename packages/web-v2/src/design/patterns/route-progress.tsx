@@ -4,23 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useIsFetching } from "@tanstack/react-query";
 
-/** Hard ceiling on how long the bar may stay visible. Even if the destination's
- *  React Query fetches never drain (per-row lazy queries + `retry` keep the
- *  GLOBAL `useIsFetching()` count > 0), the bar force-completes after this so it
- *  can never hang at ~90% (ISS-366 D1). */
 const SAFETY_TIMEOUT_MS = 8000;
 
-/** Top flame progress bar during client navigations — lib-free. Starts on
-    link click / history change, trickles to ~90%, and completes once the
-    destination route has settled AND its React Query fetches have drained
-    (`useIsFetching() === 0`) — or, failing that, when the safety timeout fires.
-    Gating on data-ready stops the bar reporting "done" while the new page is
-    still loading (ISS-308 A2); the safety timeout stops it hanging forever when
-    the global fetch count never reaches 0 (ISS-366 D1). A same-path
-    `history.replaceState` (the Issues list syncing its filter/sort into the URL
-    query) must NOT re-arm the bar, otherwise `startPath` resets to the current
-    path and the completion guard never clears. In-page hash links are ignored.
-    Mount once in layout. */
 export function RouteProgress() {
   const pathname = usePathname();
   const fetching = useIsFetching();
@@ -30,10 +15,6 @@ export function RouteProgress() {
   const hide = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Hard-stop timer armed when the bar appears; force-completes the bar.
   const maxHide = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Pathname captured when a navigation begins. The completion effect waits
-  // until usePathname() actually differs from this — otherwise the brief
-  // fetching===0 window between "navigation started" and "destination query
-  // registered" would complete the bar before the route even changed.
   const startPath = useRef<string | null>(null);
 
   // Force-complete: snap to 100%, then fade out. Used both by the data-ready
@@ -65,10 +46,6 @@ export function RouteProgress() {
       maxHide.current = setTimeout(finish, SAFETY_TIMEOUT_MS);
     };
 
-    // A history update whose target pathname equals the current one is a
-    // query-only sync (e.g. the Issues list writing filter/sort state) — it is
-    // NOT a navigation and must not (re-)start the bar. When the URL arg is
-    // absent or unparseable we can't tell, so fall back to starting.
     const isSamePath = (url: unknown): boolean => {
       if (url == null) return false;
       try {

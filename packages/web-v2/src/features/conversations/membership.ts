@@ -22,7 +22,6 @@ import type {
 /**
  * One claim a confirmation makes, keyed so a test names the claim and not its wording.
  */
-// cm:guard the KEY is the contract and the text is the rendering: a criterion demanding the confirmation say what removal does not undo is a claim about which facts are present, and a test asserting on prose would go red on a copy edit and green on a deleted fact.
 export interface MembershipClaim {
   key: ClaimKey;
   text: string;
@@ -42,7 +41,6 @@ export type ClaimKey =
   | "room-private"
   | "room-shared";
 
-// cm:guard tolerant of an ABSENT list and not merely an empty one, which is the same rule `composerRefusal` states below: these fields arrive from the room's own answer, and a tab open across the deploy of the half that added them holds a payload without them. Every sentence built from an absent list says "no project", which is true of what the client knows.
 const list = (projects: readonly ConversationProject[] | undefined): string => {
   const names = (projects ?? []).map((p) => p.name);
   if (names.length === 0) return "no project";
@@ -84,7 +82,6 @@ export function peopleOf(room: Partial<Pick<ConversationMembership, "participant
 /**
  * What adding this agent does, claim by claim.
  */
-// cm:guard the first three are UNCONDITIONAL and are the ones the issue calls the confirmation that must be true: what the agent will read, what removing it does not take back, and what it leaves behind. The last three are conditional because they describe changes that may not happen — a project already in scope widens nothing, and a room already shared cannot be widened again.
 export function agentAdditionClaims(args: {
   candidate: HandleCandidate;
   room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">>;
@@ -122,8 +119,6 @@ export function agentAdditionClaims(args: {
     });
   }
 
-  // cm:guard placed BEFORE the widening claim and stated with names, because it is the one consequence of this act that nobody can undo by reading: widening the scope puts the room outside anybody who holds no role on the project being brought in, and they are not told. A general "some people may lose access" is a warning nobody can act on (ISS-1011).
-  // cm:guard read through a default for the reason every other field here is: this arrives from `/api/conversations/:id/candidates`, and a tab open across the deploy of the half that added it holds candidates without it. An absent list means "this client was told of nobody", which is silence — the wrong answer would be to invent a warning or to throw and take the whole confirmation down with it.
   const losing = candidate.losesReaders ?? [];
   if (losing.length > 0) {
     const one = losing.length === 1;
@@ -146,7 +141,6 @@ export function agentAdditionClaims(args: {
 /**
  * What the room being opened will be, said before it is opened.
  */
-// cm:guard a SEPARATE builder from `agentAdditionClaims`, and not a call into it, because the load-bearing claim there is false here: nothing has been said in a room that does not exist, so "will be shown what has already been said" would be a sentence about nothing. The claims that survive are the ones about what the room WILL be — its scope, whether it can be spoken in, and who will be able to read it (ISS-1011 criterion 15, review F4).
 export function roomOpeningClaims(args: {
   projects: readonly ConversationProject[];
   agentCount: number;
@@ -181,7 +175,6 @@ export function roomOpeningClaims(args: {
 /**
  * What adding this person does, which is a smaller thing and says so.
  */
-// cm:guard a GROUP room is told the truth rather than the reassuring version: everyone holding a role on its projects can already open it, so adding somebody lists them and changes nobody's access. Saying "they will now be able to read this" there would be a claim the code does not make.
 export function personAdditionClaims(args: {
   name: string;
   room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects">>;
@@ -221,11 +214,9 @@ export function removalClaim(
 /**
  * Why a room takes no messages from Forge, where it takes none.
  */
-// cm:guard it answers NULL for a room that can be spoken in, so the composer has one thing to test rather than a boolean beside a string that can disagree with it. The reason is the same refusal the server makes by name, said before the person types rather than after they press enter (ISS-1011 criterion 33).
 export function composerRefusal(
   room: Partial<Pick<ConversationMembership, "scopeProjects">>,
 ): { reason: string; wayOut: string } | null {
-  // cm:guard a room whose answer carried NO scope claims nothing, rather than claiming the room is about one project: the field arrives from `/api/conversations/:id`, and a tab left open across a deploy of the half that added it holds a payload without it. Saying nothing leaves the room behaving as it did before this change; inventing a scope would close a composer over a guess.
   if (!room.scopeProjects || room.scopeProjects.length <= 1) return null;
   return {
     reason: `This room is about ${list(room.scopeProjects)}, and a message is answered under exactly one project.`,

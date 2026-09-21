@@ -1,14 +1,5 @@
 "use client";
 
-// web-v2 feature module: attention / inbox — React Query hook.
-//
-// Query-key contract (ISS-307): the attention list is keyed `['attention']`,
-// exactly the key `lib/ws/event-router.ts` invalidates on the events that move
-// an item in/out of a bucket (issue.statusChanged, job.statusChanged, device.*,
-// notification.created, …) plus `replayOnReconnect`. Cross-project WS only
-// arrives on subscribed rooms, so the Attention SCREEN additionally fans out a
-// `RoomSub` per project (the Ops-monitor pattern); without that the count is
-// stale until the next manual refetch.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDevices } from "@/features/runners/hooks";
@@ -57,7 +48,6 @@ export function useAttention() {
       failedJobs,
       pendingSkillUpdates,
       unseenDrafts,
-      // cm:guard pass core's count through, never `unseenDrafts.length` — that list is capped, and recomputing the total from it is how a 22-deep backlog renders as 20 and stops being one anybody chases.
       unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
       offlineRunners,
       total:

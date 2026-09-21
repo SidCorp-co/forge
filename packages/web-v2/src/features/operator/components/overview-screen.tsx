@@ -17,6 +17,7 @@ import { AlertFeed, AlertFeedSkeleton } from "./alert-feed";
 import { GlanceCards, GlanceCardsSkeleton } from "./glance-cards";
 import { KpiRow, KpiRowSkeleton } from "./kpi-row";
 import { WorkspacesTable, WorkspacesTableSkeleton } from "./workspaces-table";
+import { SectionTitle, PageTitle } from "@/design/primitives/heading";
 
 const WINDOWS: { value: OperatorWindow; label: string }[] = [
   { value: "24h", label: "24h" },
@@ -66,7 +67,7 @@ export function OperatorOverviewScreen() {
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="fg-h2">Deployment overview</h1>
+        <PageTitle className="fg-h2">Deployment overview</PageTitle>
         <SegmentedControl options={WINDOWS} value={window} onChange={setWindow} />
       </div>
 
@@ -79,7 +80,7 @@ export function OperatorOverviewScreen() {
       </Panel>
 
       <section className="flex flex-col gap-3">
-        <h2 className="fg-h3">Glance</h2>
+        <SectionTitle className="fg-h3">Glance</SectionTitle>
         <Panel query={overview} skeleton={<GlanceCardsSkeleton />}>
           {(data) => <GlanceCards glance={data.glance} />}
         </Panel>

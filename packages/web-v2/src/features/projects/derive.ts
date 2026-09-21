@@ -19,15 +19,6 @@ export function isAttention(item: Pick<ProjectConsoleItem, 'health'>): boolean {
   return ATTENTION_HEALTH.has(item.health);
 }
 
-/**
- * Derive the client-side health enum from a health rollup row. There is no
- * hard-fail event source today, so the derived state maxes at `attention`
- * (`down` is reserved for a future hard-fail signal):
- *   - blocked/escalated issues       → attention
- *   - work present but no live runner → attention (offline-runner signal)
- *   - nothing active                 → idle
- *   - otherwise                      → healthy
- */
 export function deriveHealth(
   h: Pick<
     ProjectHealthRow,
@@ -142,13 +133,6 @@ export function formatSpend(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-/**
- * Format an average cycle time (in days) for the overview Stat. A bare `0d` is
- * misleading (ISS-308 B1) — it reads as "instant" when it usually means "no
- * resolved issues in the window" or "sub-day, rounded away". So: 0 / no data →
- * `—`; under a day → hours (`8h`); under ~10 days → one decimal (`2.4d`); else
- * whole days (`14d`).
- */
 export function formatCycleTime(days: number | null | undefined): string {
   if (days == null || !Number.isFinite(days) || days <= 0) return "—";
   if (days < 1) {

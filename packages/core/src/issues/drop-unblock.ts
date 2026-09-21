@@ -23,7 +23,6 @@ export async function recordDropUnblock(
       ? formatIssueRef(await activeIssuePrefix(issue.projectId), blocker.issSeq)
       : issue.id;
     const authorId = actor.type === 'user' ? actor.id : actor.ownerId;
-    // cm:guard write this on each DEPENDENT, never only on the dropped issue. The question it answers — "why did this start?" — is asked on the issue that moved, and once the edge is expired no surface in this repo can still show the pair.
     await db.insert(comments).values(
       dependents.map((dependent) => ({
         issueId: dependent.issueId,

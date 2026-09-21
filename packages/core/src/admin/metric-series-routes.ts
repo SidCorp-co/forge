@@ -28,15 +28,12 @@ import { type AdminMetricSeries, GLANCE_METRIC_NAMES, GLANCE_WINDOWS } from './t
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:guard the path enum is GLANCE_METRIC_NAMES itself, never a list retyped here — a name this route serves that `/overview` cannot show means one of the two is lying about what the console measures (ISS-975), and the shared union is what makes that a type error rather than a review comment.
 const paramSchema = z.object({ metric: z.enum(GLANCE_METRIC_NAMES) });
 
-// cm:edge contract -> packages/core/src/admin/aggregate-routes.ts — the SAME window enum and the same `24h` default as `/overview`, deliberately: a second vocabulary for one idea is the drift ISS-975 was split out to avoid, and an operator comparing a tile against its series must be reading one span.
 const querySchema = z.object({ window: z.enum(GLANCE_WINDOWS).default('24h') });
 
 export const adminMetricSeriesRoutes = new Hono<{ Variables: AuthVars }>();
 
-// cm:guard the sibling gate verbatim, and `/api/admin` is deliberately absent from `auth/pat-permissions.ts`, so `beginPatRequest` refuses a PAT 403 PAT_NOT_PERMITTED inside requireAuth before this handler runs, whoever owns the token. This route adds NO second answer to what a token may reach; listing the prefix there would widen every PAT onto the whole cross-tenant console.
 adminMetricSeriesRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
 
 adminMetricSeriesRoutes.get(

@@ -23,6 +23,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useActiveOrg } from "../active-org";
 import { useOrgProjects } from "../hooks";
 import { OrgMembersCard } from "./org-members-card";
+import { SectionTitle, PageTitle } from "@/design/primitives/heading";
 
 export function OrgHome() {
   const router = useRouter();
@@ -48,7 +49,7 @@ export function OrgHome() {
         <span className="inline-flex size-9 items-center justify-center rounded-md border border-line bg-sunken text-subtle">
           <Icon name="users" size={18} />
         </span>
-        <h1 className="fg-h2">{label}</h1>
+        <PageTitle className="fg-h2">{label}</PageTitle>
         {activeOrg.isPersonal ? (
           <Badge tone="neutral">personal</Badge>
         ) : (
@@ -74,7 +75,7 @@ function PersonalOrgProjects({ orgId }: { orgId: string }) {
   return (
     <Card>
       <CardContent>
-        <h2 className="fg-h3 mb-1">Projects</h2>
+        <SectionTitle className="fg-h3 mb-1">Projects</SectionTitle>
         <p className="fg-body-sm mb-4 text-muted">Projects in your personal workspace.</p>
         {projectsQ.isLoading ? (
           <Skeleton className="h-9 w-full rounded-md" />

@@ -1,13 +1,3 @@
-/**
- * Fetch the images a Rocket.Chat message carries, for the two consumers that
- * need the bytes: the model (as content parts) and any issue the bot files
- * this turn (as attachments).
- *
- * Downloading happens HERE, at the edge that owns the bot credential, and the
- * credential never travels further — neither consumer is given a URL it would
- * have to authenticate.
- */
-
 import { buildEscalationToolset } from '../../assistant/tools/escalate.js';
 import { type ChatToolset, mergeToolsets } from '../../assistant/tools/mcp-adapter.js';
 import { buildChatToolContext } from '../../assistant/tools/principal.js';
@@ -32,12 +22,6 @@ import {
  */
 export const MAX_INBOUND_IMAGES = 4;
 
-/**
- * Per-image ceiling, checked against `content-length` before any body is read.
- * Roughly a 4K screenshot at PNG density; above it the upload is a photo or a
- * capture nobody meant to discuss, and `VISION_BUDGET_BYTES` would spend the
- * whole request on it.
- */
 export const MAX_IMAGE_BYTES = 4_000_000;
 
 async function download(
@@ -76,19 +60,12 @@ export function makeImageResolver(auth: RocketChatRestAuth): ImageResolver {
   };
 }
 
-/**
- * Everything a fast-path turn needs from the room's uploads: the images
- * themselves, a resolver for the ones on earlier turns, and the toolset —
- * `forge_*`, the room-scoped history reader, escalation, the project's
- * external MCP hubs — wrapped so an issue filed this turn is filed with them.
- */
 export interface FastTurnInputs {
   tools: ChatToolset;
   images: TurnImage[];
   resolveImage: ImageResolver;
 }
 
-// cm:guard the principal is the TURN's and never the route's: a direct room's turn runs as the person who spoke (ISS-987), and the route carries the organization's creator, so reading `opts.route.principalUserId` here again would quietly restore the creator for every DM. The field is off the route shape for that reason rather than merely unused.
 export async function prepareFastTurn(opts: {
   route: { projectId: string; projectSlug: string };
   principalUserId: string;
@@ -128,8 +105,6 @@ export async function prepareFastTurn(opts: {
 /**
  * The room's own past, where this turn has a room to ask about.
  */
-// cm:guard attached only where the turn NAMES a conversation, and never as a tool that always refuses: a turn with no conversation row is a path that does not collect a transcript, so a tool offered there would spend the model's attention on a room that does not exist.
-// cm:guard a THREAD is told apart and said so: `conversation-port.ts:rocketChatVenueId` gives a thread its own `external_id`, so this conversation holds the thread and not the channel around it. The alternative — searching the parent room too — answers under a second room's scope, which is the widening ISS-1090 rule 1 forbids, so the turn is told what it cannot reach rather than quietly given less than it asked for.
 function transcriptSearchToolsets(opts: {
   principalUserId: string;
   turn: ChatTurnFacts;

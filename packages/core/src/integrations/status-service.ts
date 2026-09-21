@@ -1,15 +1,3 @@
-/**
- * ISS-305 — composed read-only integrations status for the web hub
- * (`GET /:projectId/integrations/status` — thin handler in routes.ts).
- *
- * Aggregates ONLY real, already-existing signals — no fabricated metrics. Each
- * card carries a status the UI renders with icon + text (never color-only) plus
- * a last-sync timestamp where one genuinely exists. Providers with no backing
- * data render `not_configured` rather than inventing health. Each provider card
- * also carries its adapter `capabilities` so the UI renders to the provider's
- * archetype (e.g. no delivery-log affordance for MCP-injection providers).
- */
-
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { eq } from 'drizzle-orm';
@@ -64,7 +52,6 @@ function healthToStatus(lastHealthStatus: string | null, active: boolean): CardS
   const s = lastHealthStatus.toLowerCase();
   if (s === 'ok' || s === 'healthy' || s === 'success') return 'connected';
   if (s === 'degraded' || s === 'pending' || s === 'unknown') return 'attention';
-  // cm:guard both credential verdicts bucket to `attention`, never `error` — they are things an operator can fix (re-enter it, or widen it) and `error` reads as the provider's problem; the raw lastHealthStatus is what the chip reads to tell the two apart (ISS-409, ISS-924)
   if (s === 'needs_reauth' || s === 'needs_scope') return 'attention';
   return 'error';
 }
@@ -74,15 +61,6 @@ function providerCapabilities(provider: IntegrationProvider): IntegrationCapabil
   return getIntegration(provider)?.capabilities ?? null;
 }
 
-/**
- * The card-key suffix for a binding, which web-v2 parses back out of `key`.
- *
- * A `service` binding has no stage, so it keys on its role — `sentry:service` rather than the
- * `sentry:prod` it used to key on, where `prod` was the filler the old column forced it to carry.
- */
-// cm:edge contract -> packages/web-v2/src/features/integrations/derive.ts — `envSortKey` and the
-// drawer both split this key on `:` and read the suffix back as a stage; a suffix invented here that
-// is not a stage name or `service` sorts to the end and renders as an unlabelled card
 function stageKey(row: { role: string; stages: string[] }): string {
   return row.role === 'service' ? 'service' : row.stages.join('+') || 'deploy';
 }
@@ -140,12 +118,6 @@ export function buildProviderCards(opts: {
   const envKeyed = opts.alwaysEnvKeyed || opts.rows.length > 1;
   const base = (row: ProviderRow) =>
     envKeyed ? `${opts.provider}:${stageKey(row)}` : opts.provider;
-  // cm:guard two bindings that serve the SAME stages produce the same base key, and a duplicate
-  // key is a card the screen cannot address: React renders one of them, and every drill-in, test
-  // and delete reaches whichever the list happened to hold first. The old model made that shape
-  // unreachable — one binding per environment — and ISS-1046 made it legal, so the id has to break
-  // the tie. It is appended ONLY where a tie exists, because the stage-keyed spelling is what
-  // existing drill-ins are bookmarked on (ISS-429) and renaming every card would break them all.
   const collides = new Set(opts.rows.map(base).filter((k, i, all) => all.indexOf(k) !== i));
   return opts.rows.map((row) => ({
     key: collides.has(base(row)) ? `${base(row)}:${row.id}` : base(row),

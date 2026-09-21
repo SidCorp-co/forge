@@ -11,6 +11,7 @@ pub mod master;
 pub mod run;
 pub mod runners;
 pub mod service;
+pub mod setup;
 pub mod start;
 pub mod status;
 pub mod sync;

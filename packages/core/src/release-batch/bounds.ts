@@ -1,18 +1,3 @@
-/**
- * When a release run has been going on long enough that a person should look.
- *
- * A release run had no bound of any kind: it ran until its agent finished,
- * aborted, or died, and a run whose agent died sat `running` with its roster at
- * `releasing` until somebody noticed. These are not timeouts — nothing here
- * kills anything. They are the three readings that say "this stopped being a
- * release in progress and became a situation", and the state route reports them
- * so the next agent and the operator read the same thing.
- *
- * Three, because they catch three different shapes of stuck: a release that is
- * still doing things and has been at it far too long, a release that has gone
- * quiet, and a release that is making things worse.
- */
-
 import type { ReleaseAttemptRow } from './ledger.js';
 
 /** Defaults, and there is no per-project override — see the plan's trade note. */
@@ -48,9 +33,6 @@ function settled(attempts: ReleaseAttemptRow[]): ReleaseAttemptRow[] {
  *
  * `now` is injected so the reading is testable without real time.
  */
-// cm:guard a bound is crossed on `measured > threshold` and NEVER on equality. The difference shows up exactly once — at the boundary — and a run held at precisely its threshold is one that has not yet exceeded anything, which is the reading an operator gets asked to defend.
-// cm:guard a run with NO `promote` row has crossed neither DURATION bound, whatever its age. Nothing has reached production for them to measure from: the run is still in the part where an abort costs nothing, and reporting it as holding would send a person to a release that has not begun.
-// cm:guard `regression` measures SETTLED attempts only. An attempt whose act never reported has no health reading at all, and reading its NULL as `down` would report a regression over an agent that was killed mid-deploy.
 export function readBounds(
   attempts: ReleaseAttemptRow[],
   opts: { now?: number; total?: number; stall?: number } = {},
@@ -81,7 +63,6 @@ export function readBounds(
           why: 'time since this run first promoted',
         };
 
-  // cm:guard the stall clock is reset by EVERY write to any attempt row, an account included. An agent that is reporting what it is doing has not gone quiet, and a stall measured off settled attempts alone would page over a deploy that is simply slow.
   const lastWrite = attempts
     .flatMap((a) => [a.startedAt.getTime(), a.settledAt?.getTime() ?? Number.NEGATIVE_INFINITY])
     .reduce<number | null>((max, t) => (max === null || t > max ? t : max), null);

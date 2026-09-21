@@ -18,7 +18,7 @@ import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
 import { type AskAnswer, askQuestion, QuestionRefused } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
-import { badRequest, notFound, sessionParamsSchema } from './route-errors.js';
+import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
 
 type AskBody = {
   id?: string;
@@ -34,10 +34,14 @@ type AskBody = {
   needed?: string;
   assumed?: Record<string, unknown>;
   cost?: { claimsHeld?: number; workspacesPinned?: number; dependents?: number };
-  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — the box sends this and a round it marks private is delivered to the asker's direct room; a field dropped on either side sends a private round into a channel (ISS-1091 criterion 19).
   sensitive?: boolean;
 };
 
+import {
+  type ResolvedLeaseKey,
+  readDeviceIssueLease,
+  resolveLeaseKey,
+} from '../issues/issue-lease.js';
 import { readAdmissibleIssues } from './admissible.js';
 import {
   prepareJobForMaster,
@@ -49,10 +53,9 @@ import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
-import { isIssueLeaseHeld, readRunSessionTerminal, releaseIssueLease } from './run-session.js';
+import { readRunSessionTerminal, releaseIssueLease } from './run-session.js';
 import { deviceRunSessionRoutes } from './run-session-routes.js';
 
-// cm:guard `requireDevice`, never `requireAnyAuth`. Only the latter sets `userId = device.ownerId`, which would hand a master session its owner's whole account authority; these routes must stay scoped to the device's own bindings so `loadProjectAccess` fails closed.
 export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
 
 // The run-session family lives in its own module; it is mounted here so the paths it
@@ -74,13 +77,10 @@ devicePoolRoutes.get(
     const { limit, projectId } = c.req.valid('query');
     const deviceId = c.get('device').id;
     const items = await readPool({ deviceId, projectId, limit });
-    // cm:guard the pool is JOBS, and since ISS-933 it is jobs for the four kinds that have no issue to rank — `smoke`, `release_batch`, `reconcile`, `verify_skill`. `drive` reaches a box as a run session instead, so an issue never belongs in this array: a row with no `jobId` where a master claims from is a malformed claim waiting to happen.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — `CorePool::claimable` is the ONE reader of this route on a box, and between ISS-933 and ISS-1080 there was none at all: this route answered every sweep with rows nothing claimed, and a `release_batch` sat `queued` for 16 hours on `pixelight` while its whole roster waited at `releasing`. A change to the row shape here has its second half there and nothing else will catch it.
     return c.json({ items, count: items.length });
   },
 );
 
-// cm:guard the issues a master may open a run session over, and the ONLY reader of `pipelineConfig.poolBacklog.statuses` after ISS-933 deleted `pool promote`. Without a live consumer that config key is configurable, savable and dead, which is the shape this repo refuses; a change that drops this route owes the key another reader or owes the key its deletion.
 devicePoolRoutes.get(
   '/me/issues/admissible',
   requireDevice(),
@@ -95,8 +95,22 @@ devicePoolRoutes.get(
 );
 
 const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
+const leaseQuerySchema = z.object({ projectId: z.string().uuid().optional() });
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/recovery_ports.rs — `CoreRunState` reads these back; the close loop sets a mark ONLY from what they answer, never from the ack of the write it just made (ISS-933 criterion 13).
+/**
+ * The lease this request is about, or the refusal that says why there is none.
+ *
+ * Both endpoints go through it, because the pool hands a box the project's own
+ * prefixed key while the store keeps the canonical one, and an endpoint that
+ * skips the mapping answers about a lease that does not exist (ISS-1139).
+ */
+async function leaseKeyOf(rawKey: string, projectId?: string): Promise<ResolvedLeaseKey> {
+  const resolved = await resolveLeaseKey({ rawKey, projectId: projectId ?? null });
+  if (resolved.ok) return resolved.key;
+  const { status, code, message } = resolved.refusal;
+  throw new HTTPException(status, { message, cause: { code } });
+}
+
 devicePoolRoutes.get(
   '/me/run-sessions/:sessionId',
   requireDevice(),
@@ -117,23 +131,62 @@ devicePoolRoutes.get(
   zValidator('param', leaseParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('query', leaseQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
-    const { issueKey } = c.req.valid('param');
-    return c.json({ held: await isIssueLeaseHeld({ deviceId: c.get('device').id, issueKey }) });
+    const key = await leaseKeyOf(c.req.valid('param').issueKey, c.req.valid('query').projectId);
+    // Two questions, both answered, because they are different ones: `held` is
+    // the fleet-wide fact, `heldByThisDevice` is what a close loop asking
+    // "have I given this back" means. Answering the second under the first
+    // name is the defect ISS-1109 closed.
+    return c.json(
+      await readDeviceIssueLease({
+        deviceId: c.get('device').id,
+        issueKey: key.issueKey,
+        projectId: key.projectId,
+      }),
+    );
   },
 );
 
-// cm:guard answers 200 whether or not anything was held — the close loop retries every mark it still owes, so a second return of the same lease must be a no-op rather than a failure that parks the run.
 devicePoolRoutes.delete(
   '/me/issue-leases/:issueKey',
   requireDevice(),
   zValidator('param', leaseParamsSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('query', leaseQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
-    const { issueKey } = c.req.valid('param');
-    await releaseIssueLease({ deviceId: c.get('device').id, issueKey });
-    return c.json({ ok: true });
+    const rawKey = c.req.valid('param').issueKey;
+    const key = await leaseKeyOf(rawKey, c.req.valid('query').projectId);
+    const outcome = await releaseIssueLease({
+      deviceId: c.get('device').id,
+      issueKey: key.issueKey,
+      projectId: key.projectId,
+    });
+    if (outcome.released) {
+      return c.json({ ok: true, issueKey: key.issueKey, projectId: outcome.projectId });
+    }
+    // A delete that matched nothing is not a success: the box reads the ack as
+    // the issue handed back and stops watching it (ISS-1139).
+    if (outcome.reason === 'ambiguous') {
+      throw conflict(
+        'ISSUE_LEASE_AMBIGUOUS',
+        [
+          `this box holds ${outcome.projectIds.length} leases on ${key.issueKey}, one per project, and nothing was given back.`,
+          ...outcome.projectIds.map((id) => `  ${key.issueKey} in project ${id}`),
+          "A lease is given back for the project it was taken for, so name one: send `?projectId=<id>`, or that project's own issue prefix in the key.",
+        ].join('\n'),
+        { issueKey: key.issueKey, projectIds: outcome.projectIds },
+      );
+    }
+    throw new HTTPException(404, {
+      message: `no lease on ${key.issueKey}${key.projectId ? ` in project ${key.projectId}` : ''} is held by this box, so nothing was given back. \`${rawKey}\` resolved to the canonical \`${key.issueKey}\`, which is the form the lease store keeps.`,
+      cause: { code: 'ISSUE_LEASE_NOT_HELD', details: { issueKey: key.issueKey } },
+    });
   },
 );
 
@@ -142,7 +195,6 @@ const claimBodySchema = z.object({
   sessionId: z.string().uuid(),
 });
 
-// cm:guard the old one-shot `/me/pool/claim` is GONE, and this refusal is what replaces it rather than a second live path. A runner that predates the ISS-919 split would receive a preparation and start nothing, parking claimable work on a master that never ran it; `runner_too_old` is a reason the master prints and an operator can act on, where silently composing prepare+start here would leave the box looking correct and the split unenforced.
 devicePoolRoutes.post(
   '/me/pool/claim',
   requireDevice(),
@@ -167,7 +219,6 @@ devicePoolRoutes.post(
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
     const result = await prepareJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
-    // cm:guard a refused preparation answers 200 with `ok:false`, NOT 4xx. A busy issue and a lost race are ordinary outcomes a master handles by choosing differently; making them errors invites a retry loop against a condition retrying cannot change.
     return c.json(result);
   },
 );
@@ -227,7 +278,6 @@ devicePoolRoutes.get(
     const project = projectId ? await readProjectLoad(projectId) : null;
     const fleet = projectId ? await readFleetLoad(projectId, livenessSeconds) : [];
 
-    // cm:guard report raw counts and NEVER a recommendation field like `canTakeMore`. That number would be core deciding batch size again — the ceiling this design removed, wearing a helpful name — and a master reading it would stop weighing the facts that made it.
     return c.json({ device, project, fleet });
   },
 );
@@ -260,7 +310,6 @@ const masterCloseBodySchema = z.object({
 });
 
 /** The runner reporting a master it watched die (ISS-919 B3). */
-// cm:guard closing the row and releasing the holds are TWO calls the runner makes in order, and this is deliberately only the first. `POST /me/pool/release` is the other, and it must be able to run for a session whose close already landed — a box that crashes between them leaves holds the three-minute reaper still collects, where one fused endpoint that failed halfway would leave neither half knowing which happened.
 devicePoolRoutes.post(
   '/me/master-session/close',
   requireDevice(),
@@ -274,13 +323,10 @@ devicePoolRoutes.post(
   },
 );
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/protections.rs — the box reads this BEFORE it releases a process, and requires every member of its own named set. An old core has no such route, so a 404 is a legitimate answer meaning "no protections" rather than a fault (ISS-964 criterion 27).
-// cm:guard no project scope and no device state — this reports what THIS BUILD of core runs, which is what the box cannot otherwise know. Making it per-project would let a park be protected on one project and eaten on another by the same deployed code.
 devicePoolRoutes.get('/me/protections', requireDevice(), async (c) =>
   c.json({ protections: PARK_PROTECTIONS }),
 );
 
-// cm:guard an ABSENT `answerShape` means `choice` and means it for exactly one caller: a box built before ISS-996, which had no other shape to ask for. A body that names `free_text` and sends no `needed` is refused by name rather than falling back here — the fallback covers a missing FIELD, never a wrong value.
 function askAnswerOf(body: AskBody): AskAnswer {
   if (body.answerShape === 'free_text') return { shape: 'free_text', needed: body.needed ?? '' };
   return {
@@ -290,8 +336,6 @@ function askAnswerOf(body: AskBody): AskAnswer {
   };
 }
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — `ask` posts this shape and the box has already committed its own half; `id` is the join key and the runner mints it.
-// cm:guard the box MINTS the question id and sends it; core never allocates one. The box has already written its own half of the park in a local transaction before this call, and a server-allocated id would make the two halves unjoinable across the window where the box has parked and core has not heard (ISS-964 criterion 10).
 devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
   const body = await c.req.json<AskBody>().catch(() => null);
   if (!body?.id || !body.projectId || !body.prompt) {
@@ -312,7 +356,6 @@ devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
     }
     return c.json({ questionId: q.id });
   } catch (e) {
-    // cm:guard the refusal's OWN code reaches the box, not a flattened `BAD_REQUEST`. `QuestionRefused` carries a distinct code per refusal precisely so a caller can act on it (`questions/write.ts`), and this is the only route that produces the ask-time ones — flattening them here leaves that distinction alive in the type system and dead on the wire (ISS-989).
     if (e instanceof QuestionRefused) {
       throw new HTTPException(400, {
         message: e.message,
@@ -323,8 +366,6 @@ devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
   }
 });
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — `answer` reads this, and it distinguishes `answer: null` (not yet) from 404 (not this box's question); collapsing the two on either side turns somebody else's question into an eternal wait.
-// cm:guard the box reads the ANSWER back rather than being sent it. A websocket that was down for the whole episode costs latency and nothing else, which is the only thing criterion 12 allows to be lost.
 devicePoolRoutes.get('/me/questions/:questionId', requireDevice(), async (c) => {
   const questionId = c.req.param('questionId');
   const waiter = await waiterFor({
@@ -347,8 +388,6 @@ const masterLimitSchema = z.object({
   detail: z.string().min(1).max(200),
 });
 
-// cm:guard the master reports a TYPED reason and core never classifies text here — see the guard on `recordMasterLimit` for why a raw-text door would let anyone who can write an issue body hard-exclude a box from dispatch.
-// cm:edge contract -> packages/core/src/db/schema.ts — `runnerLimitReasons` is the enum this door validates against and the column stores; a member added there that the runner is never taught to send is a cap the master can see and cannot report.
 devicePoolRoutes.post(
   '/me/limit',
   requireDevice(),
@@ -358,7 +397,6 @@ devicePoolRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const resetsInSeconds = body.resetsInSeconds ?? null;
-    // cm:guard refuse the pair by NAME instead of dropping one half: `auth` has no parseable reset by design, so a stamp that kept a reset would hand an auth-dead box a self-healing window and put it back in the candidate set the moment it lapsed.
     if (body.reason === 'auth' && resetsInSeconds !== null) {
       throw new HTTPException(400, {
         message: "an 'auth' limit has no reset — report it without `resetsInSeconds`",
@@ -375,7 +413,6 @@ devicePoolRoutes.post(
   },
 );
 
-// cm:why the early exit is a DELETE on the same path rather than a `clear` flag on the POST: the two carry opposite evidence — one says the account failed, the other that it worked — and a single door taking both is how a caller ends up clearing a limit by omitting a field.
 devicePoolRoutes.delete('/me/limit', requireDevice(), async (c) => {
   const cleared = await clearMasterLimit(c.get('device').id);
   if (!cleared) throw notFound('claude-code runner for this device');

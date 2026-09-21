@@ -186,7 +186,6 @@ describe('writeAssistantPreferences', () => {
     });
   });
 
-  // cm:guard the trail records CHANGES, not writes (ISS-1041): the case this replaces held that "a write is a write" and it is exactly what put a previous==new row on beta.
   it('writes no trail row and returns the stored row for a patch equal to what is stored (criteria 17, 18)', async () => {
     await writeAssistantPreferences({
       userId: ALICE,
@@ -223,7 +222,6 @@ describe('writeAssistantPreferences', () => {
     });
   });
 
-  // cm:guard a legacy chain older → "" → new restores twice and ends at "older": the restore guard reads instructions through the canonical form on both sides (codex F1).
   it('restores through a legacy empty-string change', async () => {
     state.prefs.set(ALICE, {
       userId: ALICE,
@@ -263,7 +261,6 @@ describe('writeAssistantPreferences', () => {
     expect(restored?.assistantInstructions).toBe('older');
   });
 
-  // cm:guard the STORED side is canonicalised too: a row an older writer left padded reads equal to its canonical form (codex F1).
   it('writes no row when a legacy padded row is re-sent in canonical form', async () => {
     state.prefs.set(ALICE, {
       userId: ALICE,

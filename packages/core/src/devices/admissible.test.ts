@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const execute = vi.fn();
 
-// cm:guard the projection read is a real `db.select()` chain, so this stub answers it with no rows and nothing here is a claim about the field it fills. What `pullRequests` carries, and that it is carried raw, is proved against Postgres in `tests/integration/admissible-evidence-e2e.test.ts` beside the `merged_at` and `branch` cases it is the third of.
 const projectionRows: unknown[] = [];
 const select = vi.fn(() => {
   const chain = {
@@ -52,7 +51,6 @@ beforeEach(() => {
 });
 
 describe('readAdmissions', () => {
-  // cm:guard the entry status is admitted with NO `poolBacklog` declared, and that is the whole of criterion 23's other half: since ISS-933 core mints no drive job, so a project that offered only its declared backlog would go silent with no error anywhere saying why.
   it('admits the entry status even when no poolBacklog is declared', async () => {
     execute.mockResolvedValueOnce([projectRow({ enabled: true })]);
     await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([
@@ -66,7 +64,6 @@ describe('readAdmissions', () => {
     expect(a?.statuses).toEqual(['draft', 'open']);
   });
 
-  // cm:guard a GATED project admits the entry status only for an issue a human released by hand. `mode:'manual'` means a human presses Run, and it kept that meaning when the gate moved from "core mints" to "the issue is offered".
   it('withholds the entry status while a human holds the gate', async () => {
     execute.mockResolvedValueOnce([
       projectRow({ states: { open: { mode: 'manual' } }, poolBacklog: { statuses: ['draft'] } }),
@@ -99,13 +96,11 @@ describe('readAdmissions', () => {
     expect(a?.limit).toBe(20);
   });
 
-  // cm:guard the SAFE direction. A stored config this build can no longer parse must read as NO backlog: a hand-read would keep offering rows `promoteFromBacklog` then refuses, and the master could not tell which of the two surfaces was wrong.
   it('reads a config the canonical schema rejects as no backlog at all', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['open'] } })]);
     await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
   });
 
-  // cm:guard the device principal must see only what its own bindings cover. Scoped through `runners` exactly as `readPool` is; a query that dropped the join would hand a paired box its owner's whole account.
   it('scopes the project read through this device runners binding', async () => {
     execute.mockResolvedValueOnce([]);
     await readAdmissions({ deviceId: DEVICE });
@@ -129,7 +124,6 @@ describe('readAdmissibleIssues', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard AC4 — no `jobId` on a backlog row, ever. A row a master could hand to `pool claim` is a malformed claim waiting to happen, and keeping the field off the type is the whole reason the backlog is a sibling key.
   it('returns rows carrying no job id', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
     execute.mockResolvedValueOnce([issueRow()]);
@@ -168,7 +162,6 @@ describe('readAdmissibleIssues', () => {
     expect(row).not.toHaveProperty('satisfied');
   });
 
-  // cm:guard "no work has been opened for this issue", PLUS the one blocks clause ISS-1100 added, and nothing else. A priority ordering, a merge-state filter, a pull-request filter or a cap beyond the project's own `limit` are still the master's judgements — a backlog that pre-decides those is the kernel routing again through a second door.
   it('excludes issues that already carry a job or an open run, and nothing more', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'], limit: 3 } })]);
     execute.mockResolvedValueOnce([]);
@@ -200,20 +193,17 @@ describe('readAdmissibleIssues', () => {
       expect(q).toContain('d.to_issue_id = i.id');
     });
 
-    // cm:guard the KIND term is what keeps a `relates` or a `decomposes` edge from hiding a row. Drop it and every relation in the project becomes a blocker, which is the loudest possible version of this filter being wrong in the direction it may never be wrong in.
     it('narrows to the one kind that gates dispatch', async () => {
       const q = await blockedQuery();
       expect(q).toContain('d.kind =');
       expect(q).toContain(DISPATCH_GATING_KIND);
     });
 
-    // cm:guard the EXPIRY term is what makes retraction work. `forge_issues.update` with `validUntil` in the past is the documented way to retract an edge and `drop-cascade.ts` expires edges when a blocker is dropped; without this the row those two release stays hidden from the master for good.
     it('ignores an edge whose validity has run out', async () => {
       const q = await blockedQuery();
       expect(q).toContain('d.valid_until IS NULL OR d.valid_until > now()');
     });
 
-    // cm:guard the STATUS term names the mirror set and never a literal list: `BLOCKER_SETTLED_STATUSES` is core's one copy of what `holdsBack` lets through, and a literal here is free to drift from it silently.
     it('releases the row on exactly the settled statuses', async () => {
       const q = await blockedQuery();
       expect(q).toContain('b.status NOT IN');
@@ -222,7 +212,6 @@ describe('readAdmissibleIssues', () => {
       }
     });
 
-    // cm:guard the PROJECT correlation is the index, not a scope: `issue_dependencies` carries only `(project_id, from_issue_id)` and `(project_id, to_issue_id)`, so without it Postgres reads every edge in the table on a query that runs on every sweep of every box.
     it('correlates on the admitting project so the composite index stays usable', async () => {
       const q = await blockedQuery();
       expect(q).toContain('d.project_id =');

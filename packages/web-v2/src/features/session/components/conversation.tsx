@@ -5,7 +5,7 @@
 // Prompt turns are editable + regen/fork anchors; agent turns render ordered
 // thinking / text / tool / todos blocks with a streaming caret on the live tail.
 import { useEffect, useRef, useState } from "react";
-import { Button, Icon, StreamingText } from "@/design";
+import { Button, Icon, StreamingText, Textarea } from "@/design";
 import { AttachmentList } from "@/features/issues/components/attachment-list";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";
@@ -14,15 +14,6 @@ import type { AgentTodo, ConversationItem, RenderBlock } from "../types";
 import { ThinkingLine } from "./thinking-line";
 import { ToolCard } from "./tool-card";
 
-/**
- * The per-turn verbs, all three optional.
- */
-// cm:guard optional because a conversation has none of them and never will: a run's turns can be
-// edited, regenerated and forked, and an append-only conversation's cannot — `conversation-chat.tsx`
-// states why ISS-1004 left all six run-shaped verbs on the session surface. Before ISS-1078 these
-// were required, so the one other caller would have had to pass three no-op functions to render a
-// thread, and a no-op handler behind a visible button is a control that silently does nothing. The
-// row they live in is rendered only where a handler exists (ISS-1078).
 export interface ConversationActions {
   onRegenerate?: ((turnId: string) => void) | undefined;
   onFork?: ((turnId: string) => void) | undefined;
@@ -43,15 +34,6 @@ interface ConversationProps extends ConversationActions {
    * the messages fallback doesn't carry (ISS-348).
    */
   readOnly?: boolean;
-  /**
-   * The thread's newest agent turn. Every agent turn above it folds its machinery to one row.
-   */
-  // cm:guard the CALLER names it, because on the chat surface this component is mounted once per
-  // turn — `conversation-thread.tsx:AssistantTurn` renders a `Conversation` holding a single item —
-  // so an instance's own last item is the newest turn it can see and not the newest turn there is.
-  // Left to work it out for itself, nothing on that surface would ever fold. Where the caller holds
-  // the whole thread, as the session screen does, it may leave this alone and the last agent item
-  // is the answer.
   newestAgentId?: string;
 }
 
@@ -112,8 +94,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
       <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
         {editing ? (
           <div className="flex w-full flex-col gap-2" style={{ minWidth: 240 }}>
-            <textarea
-              className="w-full resize-y rounded-md bg-surface px-2.5 py-2 text-base text-fg focus-visible:outline-none md:text-sm"
+            <Textarea
               rows={3}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -165,12 +146,6 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
   );
 }
 
-/**
- * The one row a folded turn shows in place of everything it collapsed.
- */
-// cm:guard the same affordance a collapsed pause uses, deliberately: a reader who has learned that a
-// chevron and a grey line open onto more has learned it for both, and a second visual language for
-// "there is more behind this" is how a thread stops being scannable.
 function FoldRow({ label, onOpen }: { label: string; onOpen: () => void }) {
   return (
     <button
@@ -179,7 +154,7 @@ function FoldRow({ label, onOpen }: { label: string; onOpen: () => void }) {
       aria-expanded={false}
       onClick={onOpen}
       className="flex w-fit items-center gap-1.5 rounded text-subtle hover:text-default"
-      style={{ fontSize: 12 }}
+      style={{ fontSize: "var(--text-12)" }}
     >
       <Icon name="chevronRight" size={12} className="flex-none" />
       <span>{label}</span>
@@ -188,43 +163,15 @@ function FoldRow({ label, onOpen }: { label: string; onOpen: () => void }) {
 }
 
 function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; folded?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
-  // cm:guard the caret trails the text block that is still GROWING, which — because a turn is
-  // append-only — is the last block of the turn or none at all. It used to trail the last TEXT
-  // block by index whatever came after it, so a turn that wrote a sentence and then called a tool
-  // left a cursor blinking at the end of that sentence for the whole of the call, above a card
-  // saying the call was still out (ISS-1083 criterion 18).
-  // cm:why this is the same tail read `turn-stage.ts:turnStageOf` makes, and deliberately so: the
-  // caret is on the prose exactly when the turn's stage line says `Responding…`, so the two cannot
-  // disagree about whether anything is being written.
   const tailIdx = item.blocks.length - 1;
   const caretIdx = item.blocks[tailIdx]?.type === "text" ? tailIdx : -1;
 
-  // cm:guard a turn a reader has opened anything inside NEVER folds, and the flag outlives the card
-  // they opened (`disclosure.tsx`): folding the turn the moment they close it would take away what
-  // they were in the middle of reading, and their own click would be what did it (criterion 25).
-  // cm:why the fold row's own open state is local while the cards' is not: a turn is only ever
-  // folded long after it settled, and the settle is the one moment this subtree is swapped out from
-  // under a reader. There is nothing for it to survive.
   const disclosures = useThreadDisclosures();
   const [unfolded, setUnfolded] = useState(false);
 
-  // cm:guard a turn folds ONLY at the moment it stops being the newest, and only if the reader was
-  // at the bottom of the thread then. Both halves answer the implementation consult's F2: a reader
-  // can be inside the turn that folds, below its cards, and then the height that vanishes is ABOVE
-  // them and what they are reading moves. A reader who IS at the bottom is held there by the
-  // browser's own clamp when content above them shrinks, so that case moves nothing — which is why
-  // this is a gate and not a line of scroll arithmetic.
-  // cm:guard latched, and never re-read: folding on `atBottom` as it changes would UNFOLD every old
-  // turn the moment a reader scrolled up, which is the same defect with the sign flipped and every
-  // turn in the thread moving at once instead of one.
   const [latched, setLatched] = useState(
     () => folded === true && disclosures?.atBottom !== false,
   );
-  // cm:guard the latch is RELEASED when a turn becomes the newest again, which is not a hypothetical:
-  // regenerating or editing a turn drops the ones after it, and on the chat surface an optimistic
-  // entry can vanish. Without the release, a turn that had already folded once folded again the
-  // moment a replacement arrived — with the reader anywhere at all, because its permission was the
-  // one it captured minutes earlier (scroll consult F1).
   const wasOld = useRef(folded === true);
   useEffect(() => {
     const old = folded === true;
@@ -234,14 +181,6 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
   }, [folded, disclosures?.atBottom]);
   const keys = disclosureKeys(item.id, item.blocks);
 
-  // cm:guard focus MOVES into what the row revealed, because opening it REMOVES the control that
-  // was focused: a keyboard user who activated the row and was left on `document.body` has lost
-  // their place in the thread rather than continuing through the cards they just asked for
-  // (implementation consult F3).
-  // cm:why nothing is focused where nothing revealed is interactive — a turn whose every card and
-  // pause opens onto nothing renders static lines — and that limit is stated rather than answered
-  // with a `tabIndex={-1}` container: there is nothing there to continue through, and a focus ring
-  // around a whole turn says there is.
   const columnRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!unfolded) return;
@@ -256,26 +195,13 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
       ? foldTurn(item.blocks)
       : null;
 
-  // cm:guard ONE renderer for both paths, and the keys are the block's own: a kept block is the
-  // SAME React element before and after its turn folds, so folding cannot remount the prose a
-  // reader is looking at (criterion 29, asserted as node identity in `conversation-fold.test.tsx`).
   const renderBlock = (block: RenderBlock, i: number) => {
     if (block.type === "text") {
       return <StreamingText key={i} text={block.text} streaming={streamingTail && i === caretIdx} />;
     }
     if (block.type === "todos") return <TodoList key={i} todos={block.todos} />;
-    // cm:guard this arm is before the `ToolCard` fall-through and must stay there: the function
-    // ends by reading `block.tool` off whatever is left, so a block type with no arm reads a
-    // field off undefined rather than rendering nothing. The compiler caught exactly that the
-    // moment `RenderBlock` grew this member (ISS-1079).
     if (block.type === "thinking") {
       return (
-        // cm:why the index IS this block's identity: a turn's blocks are positional and
-        // append-only — the list grows at the end while the turn streams and never reorders — and a
-        // thinking block carries no id to key on. The sibling text and todos arms key the same way
-        // for the same reason. This used to need a `biome-ignore` for `noArrayIndexKey`; moving the
-        // arms into a named function took the rule out of scope, and the suppression with it, so
-        // what is left is the reason rather than the waiver (ISS-1083).
         <ThinkingLine
           key={i}
           text={block.text}
@@ -297,9 +223,6 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
   };
 
   return (
-    // cm:why the turn carries its own id on the element: it is what lets a test name ONE turn in a
-    // thread and assert that folding did not touch it — criterion 29 is a statement about the turns
-    // a reader is not looking at, and there is no way to hold it without being able to point at one.
     <div className="group flex flex-col items-start" data-testid="agent-turn" data-turn-id={item.id}>
       <div ref={columnRef} className={`flex flex-col gap-2 ${AGENT_COLUMN}`}>
         {fold
@@ -322,12 +245,6 @@ export function Conversation({ items, streaming, busy, readOnly, newestAgentId, 
   items.forEach((it, i) => {
     if (it.kind === "agent") lastAgentIdx = i;
   });
-  // cm:guard the newest agent turn never folds, which is the owner's decision and criterion 21: a
-  // reader who has just watched an answer arrive must not have it rearrange itself under them.
-  // cm:why folding can only ever happen at the BOTTOM of a thread, and that is what holds criterion
-  // 29 without a line of scroll arithmetic: exactly one turn stops being the newest each time a
-  // newer one appears, every turn above it folded at its own transition, and content shrinking
-  // below a reader's viewport does not move what is in it.
   const newest = newestAgentId ?? (lastAgentIdx >= 0 ? items[lastAgentIdx]?.id : undefined);
 
   return (

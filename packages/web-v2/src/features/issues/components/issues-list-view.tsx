@@ -14,16 +14,17 @@ import {
   ErrorState,
   Input,
   Pagination,
-  type SegmentOption,
+  SectionTitle,
   SegmentedControl,
   Select,
-  type SelectOption,
   SlideOver,
+  Table,
   TBody,
   TH,
   THead,
   TR,
-  Table,
+  type SegmentOption,
+  type SelectOption,
 } from "@/design";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
@@ -42,8 +43,8 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
 import {
+  ANY_AGENT_LABEL,
   filterToQueryParams,
-  FORGE_AGENT_LABEL,
   groupRows,
   priorityLabel,
   statusesFromParam,
@@ -68,8 +69,6 @@ import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
 import { useGuardedTransition } from "./use-guarded-transition";
 
-// cm:guard an unknown `?filter=` falls back to the default rather than refusing, so a deep-link written against the old buckets (`everything`, `drafts`, `active`, `review`, `blocked`) still opens the page.
-// cm:guard order is the reading order of the question "is this mine?": what waits on a person first, what a machine is doing second, what is finished third. Putting `all` first is what made the page open on 1011 rows of which 986 were closed.
 const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "you", label: "Needs you" },
   { value: "agent", label: "With agent" },
@@ -80,11 +79,8 @@ const FILTERS: SegmentOption<IssueFilter>[] = [
 ];
 const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "you", "agent", "done"];
 const FINISHED_CUTS = ["closed", "dropped"];
-// cm:guard a DEFAULT, never a narrowing the reader chose: `isFiltered` compares against this rather than against a hardcoded `all`, so moving this line cannot make a project with no issues greet its owner with "No issues match this search or filter" and a Clear-filters button that clears nothing.
-// cm:why `all` is the owner's call (2026-09-14), taken after the counted tabs landed: the tab figures already say where the work is, so the landing view is a full ledger rather than a pre-made cut of it.
 const DEFAULT_FILTER: IssueFilter = "all";
 
-// cm:edge contract -> packages/web-v2/src/features/issues/derive.ts#filterToQueryParams — a tab's count is the sum of the statuses that same function asks the server for, so the two cannot name different sets. Counting a tab by any other rule is how a tab says 5 and lists 4.
 function withCounts(
   options: SegmentOption<IssueFilter>[],
   buckets: IssueBuckets | undefined,
@@ -122,7 +118,6 @@ const SORT_OPTIONS: SelectOption[] = [
   { value: "priority:asc", label: "Priority ↑" },
 ];
 
-// cm:why the empty value is a real option and not a placeholder: "" is what the setter writes to CLEAR the filter from the query string, and a Select with no such entry can narrow but never widen (ISS-436).
 const PRIORITY_FILTER_OPTIONS: SelectOption[] = [
   { value: "", label: "Priority: any" },
   ...ISSUE_PRIORITIES.map((p) => ({ value: p, label: priorityLabel(p) })),
@@ -147,7 +142,6 @@ export function IssuesListView({
   const pathname = usePathname() || `/projects/${slug}/issues`;
   const pinnedViews = usePinnedViews();
 
-  // cm:guard every filter is read from the URL and written back to it, never held in component state: a pinned view is just a URL (ISS-436), so a filter that lives only in state cannot be pinned, shared or restored by back/forward.
   const search = useLocationSearch();
   const sp = useMemo(() => new URLSearchParams(search), [search]);
   const q = sp.get("q") ?? "";
@@ -188,7 +182,6 @@ export function IssuesListView({
     [pathname],
   );
 
-  // cm:why keystrokes are held locally and only the settled value reaches the URL, but the effect below still follows the URL: a pinned-view click or back/forward changes `q` with nobody typing, and a box that only ever wrote would show the previous search over the new results.
   const [rawQ, setRawQ] = useState(q);
   const lastAppliedQ = useRef(q);
   useEffect(() => {
@@ -207,7 +200,6 @@ export function IssuesListView({
     return () => clearTimeout(t);
   }, [rawQ, q, setParams]);
 
-  // cm:guard `?new=1` is stripped before the URL becomes a pin (ISS-436) — a pin carrying it reopens the New-issue dialog every time somebody opens their own saved view.
   const viewHref = useMemo(() => {
     const p = new URLSearchParams(search);
     p.delete("new");
@@ -261,18 +253,25 @@ export function IssuesListView({
     isPending: transitionPending,
   } = useGuardedTransition();
 
-  // cm:why options list project members only; a non-member creator's row still displays correctly since its label comes from the row payload, not this list
+  // ISS-1137 — a writer is a named account, so every member is offered under
+  // its own name and an agent is marked rather than replaced by a class label.
+  // "any agent" stays as a KIND filter above them, which is a different
+  // question from "which writer" and is why it is not one of the names.
   const creatorFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Creator: anyone" },
-      { value: "agent", label: `Creator: ${FORGE_AGENT_LABEL}` },
-      ...(membersQ.data ?? []).map((m) => ({ value: m.userId, label: m.email })),
+      { value: "agent", label: `Creator: ${ANY_AGENT_LABEL}` },
+      ...(membersQ.data ?? []).map((m) => ({
+        value: m.userId,
+        label:
+          m.kind === "agent"
+            ? `${m.displayName ?? m.email} (agent)`
+            : (m.displayName ?? m.email),
+      })),
     ],
     [membersQ.data],
   );
 
-  // cm:why plain labels only — a module has its own filter below, and offering the same row in
-  // both controls would let a reader set two filters that mean the same narrowing.
   const labelFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Label: any" },
@@ -296,14 +295,10 @@ export function IssuesListView({
   );
 
   const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
-  // cm:guard ONE instant for the whole table, and it is when the RESPONSE landed rather than when React re-rendered: read the clock per row and two issues that last moved in the same second print different figures, which turns the column from a comparison into noise.
   const now = issuesQ.dataUpdatedAt || Date.now();
   const total = issuesQ.data?.totalCount ?? 0;
-  // cm:guard the tabs carry a count only once the response that produced the rows has arrived. A zero standing in for "not loaded yet" is the one reading a person cannot recover from — an empty bucket and an unknown one look the same, and they mean opposite things.
   const buckets = issuesQ.data?.extra?.buckets;
   const tabs = useMemo(() => withCounts(FILTERS, buckets), [buckets]);
-  // cm:guard the two outcomes are counted from the SAME bucket figures the Finished tab sums, so "Closed 283 · Dropped 22" can never disagree with the 305 above it.
-  // cm:why finishing work and deciding not to do it share one tab because both are off the reader's plate, and narrow through the `?status=` the rest of the app already links with, because they are different outcomes and a second filter axis nothing else understands would be a worse way to say so.
   const finishedCuts = useMemo<SegmentOption<string>[]>(() => {
     const closed = buckets?.byStatus.closed;
     const dropped = buckets?.byStatus.dropped;
@@ -317,7 +312,6 @@ export function IssuesListView({
       { value: "dropped", label: "Dropped", count: dropped },
     ];
   }, [buckets]);
-  // cm:guard only the two cuts this control offers light up. A `?status=` naming anything else — a multi-status dashboard link, a status this control knows nothing about — falls back to "Both" rather than leaving every segment dark, which reads as a broken control rather than as a narrowing it cannot show.
   const finishedCut = FINISHED_CUTS.includes(sp.get("status") ?? "")
     ? (sp.get("status") as string)
     : "";
@@ -332,7 +326,6 @@ export function IssuesListView({
     canWrite,
   };
 
-  // cm:guard the selection is page-scoped and cleared on ANY view change (ISS-463) — kept across a filter or a page turn, "select all" silently spans pages and a bulk apply lands on rows the person never saw.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const bulkEnabled = canWrite;
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
@@ -374,7 +367,6 @@ export function IssuesListView({
     !!label ||
     !!moduleId ||
     statusParam !== undefined;
-  // cm:why "nothing is waiting on you" and "this project has no issues" are opposite readings of one empty table, and only the bucket totals tell them apart — without it the default tab tells a busy project it is empty.
   const projectHasIssues = tabs.some((o) => (o.count ?? 0) > 0);
 
   // ── Mobile "Filters" SlideOver (<sm): the 5 advanced Selects collapse behind
@@ -390,8 +382,6 @@ export function IssuesListView({
     (groupBy !== "none" ? 1 : 0) +
     (sort !== "createdAt:desc" ? 1 : 0);
 
-  // cm:why the table starts at `lg` and not at `md`: it needs ~1100px before the columns stop colliding (ISS-308 C3), so tablets fall through to the cards rather than to a table that scrolls sideways.
-  // cm:why ONE status column, carrying the lifecycle chip and the live-agent indicator: the separate Pipeline/Status pair it replaced rendered the same two fields twice (ISS-436). It carried a mini stage tracker as well until ISS-999 deleted the ladder that tracker drew.
   return (
     <>
       {reasonDialog}
@@ -659,9 +649,9 @@ export function IssuesListView({
             {groups.map((g) => (
               <section key={g.key}>
                 {groupBy !== "none" && (
-                  <h2 className="fg-overline mb-2 px-1 font-mono">
+                  <SectionTitle className="fg-overline mb-2 px-1 font-mono">
                     {g.label} · {g.rows.length}
-                  </h2>
+                  </SectionTitle>
                 )}
                 <div className="overflow-x-auto">
                   <Table>
@@ -681,7 +671,6 @@ export function IssuesListView({
                         <TH>Issue</TH>
                         <TH>Module</TH>
                         <TH>Status</TH>
-                        {/* cm:guard headed for what the figure measures, and NOT "Waiting": the figure is the issue row's last write, and `Waiting` is also the word the STATUS column beside it now prints for the `waiting` kernel status, so the old heading was both untrue and a collision (ISS-1097). */}
                         <TH>Updated</TH>
                         <TH>Priority</TH>
                         <TH>Complexity</TH>
@@ -719,9 +708,9 @@ export function IssuesListView({
             {groups.map((g) => (
               <section key={g.key}>
                 {groupBy !== "none" && (
-                  <h2 className="fg-overline mb-2 px-1 font-mono">
+                  <SectionTitle className="fg-overline mb-2 px-1 font-mono">
                     {g.label} · {g.rows.length}
-                  </h2>
+                  </SectionTitle>
                 )}
                 <div className="space-y-2.5">
                   {g.rows.map((row) => (

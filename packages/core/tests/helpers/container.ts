@@ -12,7 +12,6 @@ export interface StartedContainer {
  * Uses `pgvector/pgvector:pg17` so the ADR-0011 `vector` extension is
  * available — required by migration 0010 (`CREATE EXTENSION vector`).
  */
-// cm:guard a container that never started is an ENVIRONMENT condition and must say so by name. Testcontainers reports an unreachable daemon as a connection error deep in its own stack, and vitest surfaces that as a failed suite — so a box whose docker socket refuses the runner (`permission denied ... /var/run/docker.sock`, measured on forge-vm 2026-09-06) reads as a broken test suite rather than as a missing prerequisite, and the reader has no way to tell which. Naming the condition here is what makes `TEST_DATABASE_URL` findable instead of guessable.
 export async function startPostgresContainer(): Promise<StartedContainer> {
   let container: StartedPostgreSqlContainer;
   try {

@@ -1,21 +1,3 @@
-/**
- * Boot-time populate of `RUNNER_RELEASE_DIR` from the latest `runner-v*` GitHub
- * Release (ISS-310). The install routes (`install/routes.ts`) serve whatever
- * `forge-runner-<target>` + `VERSION` files live in that dir; CI publishes the
- * assets to a GitHub Release but nothing copied them onto the core host, so the
- * `/install/*` endpoints 501'd and `forge-runner update` had nothing to pull.
- *
- * It runs once before the server starts (see the Dockerfile CMD) AND every 30
- * minutes after it, via `registerRunnerReleaseRefetch` — so a tag cut after
- * core booted reaches the channel without a redeploy, which is what the fleet's
- * auto-update polls. It is BEST-EFFORT: any failure (no network, rate-limit, no
- * release) logs and exits 0 so it can never block core boot. Idempotent: skips
- * the download when the local `VERSION` already matches the latest published
- * tag.
- *
- * Repo `SidCorp-co/forge` is public, so the GitHub API + asset downloads work
- * unauthenticated; a token only raises the rate limit.
- */
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { argv } from 'node:process';
@@ -41,7 +23,6 @@ function ghHeaders(): Record<string, string> {
     'user-agent': 'forge-core-release-fetch',
     accept: 'application/vnd.github+json',
   };
-  // cm:guard read RUNNER_RELEASE_GITHUB_TOKEN first — that is the name the deploy environment sets, next to RUNNER_RELEASE_DIR and RUNNER_RELEASE_REPO. Reading only GITHUB_TOKEN meant an operator could fill the release token in and get nothing, with no error: the fetch just stayed anonymous (measured on forge-beta 2026-08-18, where it was set and empty).
   const token = process.env.RUNNER_RELEASE_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
   if (token) h.authorization = `Bearer ${token}`;
   return h;
@@ -135,15 +116,6 @@ export async function run(): Promise<void> {
   console.log(`[runner-release] published runner ${version} to ${dir}`);
 }
 
-/**
- * Periodic re-ingest (ISS-392). `run()` otherwise fires only once at boot (the
- * Dockerfile CMD), so a freshly cut `runner-v*` release is not served — and
- * therefore not auto-pulled by runners — until the next core restart. Schedule
- * a low-frequency re-fetch so auto-update delivery does not depend on a manual
- * redeploy. No-op when RUNNER_RELEASE_DIR is unset. The timer is unref'd so it
- * never keeps the process alive on shutdown; each tick is best-effort (a failed
- * fetch logs and is retried next interval, never throwing into the caller).
- */
 export function registerRunnerReleaseRefetch(intervalMs = 30 * 60_000): NodeJS.Timeout | null {
   if (!process.env.RUNNER_RELEASE_DIR) return null;
   const timer = setInterval(() => {

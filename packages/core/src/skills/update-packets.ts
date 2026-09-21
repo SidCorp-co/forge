@@ -14,7 +14,6 @@ export interface CreateUpdatePacketOptions {
   trigger: SkillActivityTrigger;
 }
 
-// cm:edge contract -> packages/contracts/src/update-packets.ts — createUpdatePacketInputSchema mirrors this; kept in sync by update-packets.test.ts
 const inputSchema = z.object({
   change: z.string(),
   story: z.string().trim().min(1, 'story is required'),
@@ -29,7 +28,6 @@ const inputSchema = z.object({
     .optional(),
 });
 
-// cm:guard validates BEFORE the insert — the DB CHECK on `story` is a backstop, not the enforcement point, per Update Pipeline §3 ("enforce at the write boundary").
 export async function createUpdatePacket(
   db: Db,
   input: CreateUpdatePacketInput,

@@ -42,16 +42,6 @@ import {
   truncateTurnsAfter,
 } from './turns-helpers.js';
 
-/**
- * The person's own turn, read off the canonical entry.
- *
- * cm:guard `type`, never `role`. Both regeneration and rerun searched for
- * `role === 'user'`, and since ISS-1030 no entry carries one: every row at rest
- * was rewritten by the backfill and both producers write `type`. A `role`
- * reading here does not fail loudly — it finds no prompt and answers
- * `NO_DISPATCHABLE_PROMPT` on a conversation that plainly has one.
- * cm:edge lockstep -> packages/core/src/agent-sessions/canonical-legacy.ts
- */
 function isUserEntry(m: unknown): boolean {
   return !!m && typeof m === 'object' && (m as { type?: string }).type === 'user';
 }
@@ -80,7 +70,6 @@ const forkBodySchema = z
   })
   .strict();
 
-// cm:guard no auth middleware here on purpose — `routes.ts` applies it once for the whole `/api/agent-sessions` surface before mounting this router. Adding a second layer here would double-charge every request; removing the aggregator's would leave this one unauthenticated with nothing saying so.
 export const agentSessionTurnsRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionTurnsRoutes.get(
@@ -128,12 +117,6 @@ agentSessionTurnsRoutes.patch(
     assertProjectRole(access, 'member');
     assertSessionOwnerOrAdmin(session, access, userId);
 
-    // cm:guard an edit lands a WHOLESALE transcript in the carrier (below), and a
-    // carrier row takes the next free `seq` — which, while a turn is in flight,
-    // is a number the runner has already allocated to a line it has not sent
-    // yet. The insert would then be swallowed as a duplicate and that line lost
-    // for ever. Regeneration and rerun already refuse an in-flight turn for
-    // their own reasons; this is the same refusal for the same shape of write.
     if (session.status === 'running' || session.status === 'queued') {
       throw new HTTPException(409, {
         message: 'abort the in-flight turn before editing it',
@@ -170,10 +153,6 @@ agentSessionTurnsRoutes.patch(
     const origValue = (turn.content as { value?: unknown }).value;
     const origObj =
       origValue && typeof origValue === 'object' ? (origValue as Record<string, unknown>) : {};
-    // cm:guard the stamp is the canonical `type`, and re-adding `role` here would
-    // put the second shape back into the one place a person still writes an
-    // entry by hand. Only a `user` turn reaches this line, so the kind is not a
-    // guess where the stored entry has none.
     const newContent = {
       value: {
         ...origObj,
@@ -202,10 +181,6 @@ agentSessionTurnsRoutes.patch(
         .where(eq(agentSessions.id, id))
         .returning();
       if (!sessionRow) throw notFound('agent session not found');
-      // cm:guard the carrier learns of the edit in the SAME transaction. A chat
-      // session's transcript is rebuilt by folding the carrier, so an edit the
-      // carrier never saw is an edit the next derive silently puts back.
-      // cm:edge lockstep -> packages/core/src/agent-sessions/session-events.ts
       await recordReportedTranscript(tx, id, newMessages as Record<string, unknown>[], editNow);
       return [turnRow, sessionRow] as const;
     });
@@ -284,9 +259,6 @@ agentSessionTurnsRoutes.post(
         .returning();
       if (!row) return null;
       await truncateTurnsAfter(id, priorMessages.length - 1, tx);
-      // cm:guard a regeneration TRUNCATES the transcript, which the carrier must
-      // learn of for the same reason an edit must: the next derive folds the
-      // carrier, and one that still holds the discarded turns hands them back.
       await recordReportedTranscript(tx, id, priorMessages as Record<string, unknown>[], regenNow);
       return row;
     });
@@ -353,6 +325,8 @@ agentSessionTurnsRoutes.post(
           deviceId: session.deviceId,
           pipelineRunId: forkRun.id,
           title: title ?? (session.title ? `${session.title} (fork)` : null),
+          kind: 'chat',
+          parentSessionId: session.id,
           status: 'idle',
           repoPath: session.repoPath,
           messages: slicedMessages as never,
@@ -418,6 +392,7 @@ agentSessionTurnsRoutes.post(
       projectId: session.projectId,
       userId: session.userId ?? userId,
       title: session.title ? `${session.title} (rerun)` : null,
+      parentSessionId: id,
       metadata: {
         ...((session.metadata ?? {}) as Record<string, unknown>),
         rerunOfSessionId: id,

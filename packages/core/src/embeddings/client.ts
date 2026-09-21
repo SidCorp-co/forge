@@ -54,13 +54,11 @@ export interface EmbedDetailed {
   model: string;
 }
 
-/** Vectors and the model that produced them — the configured one, or its fallback. */
 export interface EmbedDetailed {
   vectors: number[][];
   model: string;
 }
 
-/** Vectors and the model that produced them — the configured one, or its fallback. */
 export interface EmbedDetailed {
   vectors: number[][];
   model: string;
@@ -93,7 +91,6 @@ export class EmbeddingsClient {
     return (await this.embedDetailed(texts)).vectors;
   }
 
-  // cm:guard the model that PRODUCED the vectors rides beside them, because this is the one place the fallback is chosen: a caller caching by the configured model would otherwise keep serving a fallback vector after the primary recovers (ISS-1041 criterion 6).
   async embedDetailed(texts: string[]): Promise<EmbedDetailed> {
     if (texts.length === 0) return { vectors: [], model: this.cfg.model };
     this.assertBreakerClosed();
@@ -168,16 +165,6 @@ export class EmbeddingsClient {
         await sleep(delay);
       }
     }
-    // cm:guard exhausted retries are UNAVAILABILITY and must classify as it. `callOnce` wraps a
-    // network failure as `RetriableError`; rethrowing that raw meant the plainest outage there is —
-    // a host that does not resolve — never reached the degraded paths, which key on
-    // `EmbeddingUnavailableError`. `upsertKnowledgeEntries` would then fail the caller's write
-    // instead of storing the row with a null vector for the backfill to find, and memory would lose
-    // the keyword-searchable row it stores for the same reason. Degradation only began once the
-    // breaker opened after five consecutive failures, so whether a save survived an outage depended
-    // on how many saves had already failed ahead of it. ISS-1048 reached this from the
-    // knowledge write behind `PUT /api/projects/:id/knowledge/:slug`, which an operator drives
-    // from the Knowledge screen.
     if (isRetriable(lastErr)) {
       throw new EmbeddingUnavailableError(
         `embeddings service unavailable after ${RETRY_DELAYS_MS.length + 1} attempts: ${(lastErr as Error).message}`,
@@ -220,7 +207,6 @@ export class EmbeddingsClient {
       if (response.status >= 500) {
         throw new RetriableError(`${response.status} ${body.slice(0, 200)}`);
       }
-      // cm:guard a budget/quota rejection MUST classify as unavailable, not as a hard error — callers degrade gracefully on EmbeddingUnavailableError (memory stores a keyword-searchable row for backfill) but propagate anything else, and that difference is a whole session's learning silently lost
       if (isQuotaRejection(response.status, body)) {
         throw new EmbeddingUnavailableError(
           `embeddings quota exhausted (${response.status}): ${body.slice(0, 200)}`,
@@ -264,7 +250,6 @@ function isRetriable(err: unknown): boolean {
   return err instanceof RetriableError;
 }
 
-// cm:why matched on body text and not status alone — providers signal an exhausted budget as 400/402/403 as readily as 429, and the case that actually cost us a learning was a 400 reading "Budget has been exceeded"
 const QUOTA_MARKERS = [
   'budget has been exceeded',
   'budget exceeded',

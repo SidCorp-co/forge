@@ -1,10 +1,3 @@
-// The one renderer of what a turn knows about the PERSON it is answering: their
-// reply style and standing instructions where the speaker is linked, and the
-// plain statement that nothing is known where they are not (ISS-1034).
-//
-// Rendered into the turn context, not the system prompt, because it changes
-// with the speaker and a group room has more than one.
-
 import type { AnswerStyle } from '../db/schema.js';
 
 export interface SpeakerPreferences {
@@ -31,7 +24,6 @@ const STYLE_MEANING: Record<AnswerStyle, string | null> = {
 /**
  * What the turn is told about the speaker, or null when there is nothing to say.
  */
-// cm:guard an UNLINKED speaker gets a sentence and never a silent default: the turn would otherwise answer a stranger in the voice of whoever's preferences were nearest, and the tools bound to the speaker would have nobody to refuse for. The label is quoted for the reader and decides nothing (ISS-1034 criteria 19, 20).
 export function speakerSection(input: SpeakerInput): string | null {
   if (!input.speakerUserId) {
     if (!input.speakerLabel) return null;

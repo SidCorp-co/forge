@@ -49,7 +49,11 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
 const { releaseBatchRoutes } = await import('./routes.js');
 const { ReleaseTargetUndeclaredError } = await import('./gate.js');
 const { ReleaseRunnerAmbiguousError } = await import('./channel.js');
-const { ReleaseMultiChannelUnsupportedError } = await import('./service.js');
+const { ReleaseMultiChannelUnsupportedError, ReleaseRecordMissingError } = await import(
+  './service.js'
+);
+const { ReleaseCheckUnevaluatedError } = await import('./blockers.js');
+const { releaseBlockerSentence } = await import('./blocker-sentences.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -130,9 +134,6 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
     expect(body.message).toContain('box-b');
   });
 
-  // cm:guard the set is refused, not collapsed. ISS-1046 widened what core RETURNS to the whole
-  // live set without widening the attempt ledger, which records one reading per run — so a
-  // two-endpoint release would be proved at one and claimed for both.
   it('answers 409 RELEASE_MULTI_CHANNEL_UNSUPPORTED, saying how many were declared', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(new ReleaseMultiChannelUnsupportedError(2));
@@ -182,5 +183,118 @@ describe('GET /:projectId/release-batches/roster — the same two refusals', () 
 
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_RUNNER_AMBIGUOUS');
+  });
+});
+
+/**
+ * ISS-1127 — what the caller reads when the refusal is one of several.
+ *
+ * A refusal that is correct and mentions nothing else is the defect this issue
+ * was filed for: the operator clears it, calls again, and meets the next one.
+ */
+describe('POST /:projectId/release-batches — every reason at once', () => {
+  function refusedWith(
+    err: Error,
+    thrown: string,
+    standing: Array<{ code: string; message: string }>,
+  ) {
+    Object.assign(err, {
+      releaseBlockers: [
+        { code: thrown, message: 'the one being thrown', evaluated: true, httpStatus: 409 },
+        ...standing.map((b) => ({ ...b, evaluated: true, httpStatus: 409 })),
+      ],
+    });
+    createReleaseBatchMock.mockRejectedValueOnce(err);
+  }
+
+  it('carries the reasons standing beside the one it threw', async () => {
+    mockAdmin();
+    refusedWith(new ReleaseRecordMissingError([ISSUE_ID]), 'RELEASE_RECORD_MISSING', [
+      { code: 'NO_RUNNER_ONLINE', message: 'and no box is online either' },
+    ]);
+
+    const res = await createReq();
+    const body = (await res.json()) as {
+      code?: string;
+      details?: { alsoBlocking?: Array<{ code: string }> };
+    };
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('RELEASE_RECORD_MISSING');
+    expect(body.details?.alsoBlocking?.map((b) => b.code)).toEqual(['NO_RUNNER_ONLINE']);
+  });
+
+  it('never lists the reason it threw among the ones still standing', async () => {
+    mockAdmin();
+    refusedWith(new ReleaseRecordMissingError([ISSUE_ID]), 'RELEASE_RECORD_MISSING', []);
+
+    const res = await createReq();
+    const body = (await res.json()) as { details?: { alsoBlocking?: unknown } };
+
+    expect(body.details?.alsoBlocking).toBeUndefined();
+  });
+
+  it('answers 503 for a check it could not run, rather than claiming a release may start', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockRejectedValueOnce(new ReleaseCheckUnevaluatedError('runner-pool'));
+
+    const res = await createReq();
+    const body = (await res.json()) as { code?: string; message?: string };
+
+    expect(res.status).toBe(503);
+    expect(body.code).toBe('RELEASE_CHECK_UNEVALUATED');
+    expect(body.message).toContain('runner-pool');
+  });
+
+  it('says the same sentence the readiness answer said for the same code', async () => {
+    mockAdmin();
+    refusedWith(new ReleaseRecordMissingError([ISSUE_ID]), 'RELEASE_RECORD_MISSING', []);
+
+    const res = await createReq();
+    const body = (await res.json()) as { message?: string };
+
+    expect(body.message).toBe(
+      releaseBlockerSentence('RELEASE_RECORD_MISSING', { issueIds: [ISSUE_ID] }),
+    );
+  });
+});
+
+/**
+ * The whole-set review's F1 and F3, at the door: a refusal whose class the
+ * enumerator lost reaches `errorHandler` as a 500, and a refusal routed around
+ * `releaseBlockerHttp` drops every reason standing with it.
+ */
+describe('POST /:projectId/release-batches — the refusals that go through their own sentence', () => {
+  it('still answers 409 for an undeclared target, rather than the 500 an unmapped class gets', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockRejectedValueOnce(
+      new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish'),
+    );
+
+    const res = await createReq();
+
+    expect(res.status).toBe(409);
+  });
+
+  it('carries the rest of the list on a declaration refusal too', async () => {
+    mockAdmin();
+    const err = new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish');
+    Object.assign(err, {
+      releaseBlockers: [
+        { code: 'RELEASE_TARGET_UNDECLARED', message: 'thrown', evaluated: true, httpStatus: 409 },
+        {
+          code: 'RELEASE_ROSTER_EMPTY',
+          message: 'nothing waiting',
+          evaluated: true,
+          httpStatus: 409,
+        },
+      ],
+    });
+    createReleaseBatchMock.mockRejectedValueOnce(err);
+
+    const res = await createReq();
+    const body = (await res.json()) as { details?: { alsoBlocking?: Array<{ code: string }> } };
+
+    expect(body.details?.alsoBlocking?.map((b) => b.code)).toEqual(['RELEASE_ROSTER_EMPTY']);
   });
 });

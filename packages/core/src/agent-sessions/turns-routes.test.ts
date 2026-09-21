@@ -53,9 +53,6 @@ function session(over: Record<string, unknown> = {}) {
     userId: '33333333-3333-4333-8333-333333333333',
     status: 'idle',
     title: 'Original chat',
-    // cm:guard CANONICAL, and that is the assertion: since ISS-1030 no entry at
-    // rest carries `role`, so a rerun reading one finds no prompt and answers 400
-    // on a conversation that plainly has one.
     messages: [{ type: 'user', content: 'original prompt' }],
     metadata: { model: 'default' },
     updatedAt: new Date('2026-08-27T00:00:00.000Z'),
@@ -63,8 +60,18 @@ function session(over: Record<string, unknown> = {}) {
   };
 }
 
+const CALLER_ID = '33333333-3333-4333-8333-333333333333';
+
 function app() {
-  const router = new Hono();
+  const router = new Hono<{ Variables: { userId: string; agency: 'human' | 'agent' } }>();
+  // `routes.ts` mounts these behind `requireUserOrDevice()`, which sets both of
+  // these on every branch. Mounting the sub-router bare leaves a request no door
+  // has answered for, and `restActor` refuses one by name (ISS-1137).
+  router.use('*', async (c, next) => {
+    c.set('userId', CALLER_ID);
+    c.set('agency', 'human');
+    await next();
+  });
   router.route('/api/agent-sessions', agentSessionTurnsRoutes);
   router.onError((err, c) => {
     if (err instanceof HTTPException) {
@@ -126,6 +133,10 @@ describe('POST /:id/rerun', () => {
       projectId: PROJECT_ID,
       userId: original.userId,
       title: 'Original chat (rerun)',
+      // ISS-1136 — a rerun is cut from the session it reran, and core writes
+      // that edge in a column rather than leaving it to be read back out of
+      // the metadata key the row also happens to carry.
+      parentSessionId: SESSION_ID,
       metadata: { model: 'default', rerunOfSessionId: SESSION_ID },
     });
     expect(dispatchChatTurn).toHaveBeenCalledWith({

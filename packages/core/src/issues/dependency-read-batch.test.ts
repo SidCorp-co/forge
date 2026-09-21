@@ -13,7 +13,6 @@ import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own; here it is a fixture that answers a DIFFERENT prefix per project, which is what makes the cross-project naming case able to fail — and a spy, because the display ids come out right whether it was asked once per project or once per row
 const prefixes: Record<string, string | null> = {};
 const activeIssuePrefix = vi.fn(async (id: string) => prefixes[id] ?? null);
 vi.mock('./issue-prefix-read.js', () => ({
@@ -94,7 +93,6 @@ describe('one query for the whole page', () => {
     expect(out.size).toBe(0);
   });
 
-  // cm:guard this is the index case: `issue_dependencies` carries only (project_id, from_issue_id) and (project_id, to_issue_id), so a WHERE without project_id constrains the non-leading column of both and Postgres seq-scans every edge in the table
   it('constrains project_id alongside the two endpoint columns', async () => {
     await loadIssueDependencyEdgesForIssues([A, B], PROJECT);
     const { sql, params } = renderedWhere();
@@ -122,7 +120,6 @@ describe('an edge is filed against the row that owns its side', () => {
     expect(out.get(B)?.outgoing).toEqual([]);
   });
 
-  // cm:guard file it once and one of the two rows renders a badge the other one owns — this is the case a single `find the id` loop gets wrong
   it('lands on BOTH rows when both endpoints are on the page', async () => {
     rows = [edge({})];
     const out = await loadIssueDependencyEdgesForIssues([A, B], PROJECT);
@@ -139,7 +136,6 @@ describe('an edge is filed against the row that owns its side', () => {
     expect(out.get(C)).toEqual({ outgoing: [], incoming: [] });
   });
 
-  // cm:guard a self-edge is filed ONCE, outgoing, which is what the single-issue loader's `from === issueId ? outgoing : incoming` did before this batch existed. No writer can create one — `dependency-service` throws SELF_DEP — so the case only exists for a row already in the table, and filing it on both sides would render the issue as blocking and blocked by itself.
   it('files a self-edge once, on the outgoing side', async () => {
     rows = [edge({ fromIssueId: A, toIssueId: A, toIssSeq: 1 })];
     const out = await loadIssueDependencyEdgesForIssues([A], PROJECT);
@@ -156,7 +152,6 @@ describe('an edge is filed against the row that owns its side', () => {
 });
 
 describe('each endpoint is named with its own project prefix', () => {
-  // cm:guard naming a cross-project blocker under the page project's prefix reports a DIFFERENT issue that exists, which is why the edge's project_id scope and the endpoint's project are read separately (codex review of ISS-992)
   it('names an endpoint in another project with that project prefix', async () => {
     prefixes[PROJECT] = 'FD';
     prefixes[OTHER_PROJECT] = 'FX';
@@ -167,7 +162,6 @@ describe('each endpoint is named with its own project prefix', () => {
     expect(e?.toDisplayId).toBe('FX-7');
   });
 
-  // cm:guard this counts the CALLS, not the display ids: `readPrefixes` iterating the raw endpoint list instead of the distinct set names every reference correctly and turns one prefix read into two per edge — a page-sized N+1 one level down from the one this change removed, with nothing in the payload to show for it
   it('reads one prefix per distinct project, not one per row', async () => {
     prefixes[PROJECT] = 'FD';
     prefixes[OTHER_PROJECT] = 'FX';

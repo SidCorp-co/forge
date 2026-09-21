@@ -11,18 +11,6 @@ const AGENT_CRON_CRON = '0 0 * * *';
 
 let workerId: string | null = null;
 
-/**
- * Daily tick: scan agents with `enabled=true AND schedule != 'off'` and, for
- * each whose schedule fires today, enqueue a PM session via the canonical
- * spawner. Per-project dedup is enforced by `jobs_pm_per_project_unique_idx`,
- * so a second tick on the same day resolves cleanly to `already-active`.
- *
- * Scope note: `agents.type` is open-ended `text` (no enum). Today PM is the
- * canonical cron entry-point for every agent that opts in via `schedule`, so
- * we don't filter on `type`. If a future agent type needs different cron
- * behaviour (e.g. its own queue), branch on `row.type` here instead of
- * unconditionally calling `spawnPmSession`.
- */
 export async function runAgentCronTickOnce(now: Date = new Date()): Promise<string[]> {
   const rows = await db
     .select({

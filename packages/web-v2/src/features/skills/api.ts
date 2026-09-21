@@ -1,6 +1,3 @@
-// web-v2 feature module: skills — REST surface. All calls go through the
-// shared `apiClient` (no raw fetch). Routes verified against
-// `packages/core/src/skills/{crud-routes,routes}.ts` for ISS-299.
 import { apiClient } from "@/lib/api/client";
 import type {
   InvokableSkill,
@@ -30,12 +27,6 @@ export const skillsApi = {
   list: (projectId: string) =>
     apiClient<SkillRow[]>(`/skills?projectId=${encodeURIComponent(projectId)}&scope=all`),
 
-  /**
-   * `GET /api/skills/invokable?projectId=` — the install-only skills a human may
-   * invoke as a slash-command in an interactive chat (ISS-718). Name +
-   * description only; this is what the composer's `/` menu lists, and it is the
-   * same set `POST /api/agent-sessions/start` accepts as `skillName`.
-   */
   invokable: (projectId: string) =>
     apiClient<{ skills: InvokableSkill[] }>(
       `/skills/invokable?projectId=${encodeURIComponent(projectId)}`,
@@ -54,24 +45,18 @@ export const skillsApi = {
       `/projects/${encodeURIComponent(projectId)}/skill-registrations`,
     ),
 
-  /** `POST /api/skills` — create a project skill (owner/admin). `projectId`
-   *  required; `isGlobal` omitted so the row is always project-scoped. */
   create: (projectId: string, body: SkillCreateInput) =>
     apiClient<SkillRow>(`/skills`, {
       method: "POST",
       body: JSON.stringify({ ...body, projectId }),
     }),
 
-  /** `PUT /api/skills/:id` — update a project skill (owner/admin). */
   update: (skillId: string, patch: SkillUpdateInput) =>
     apiClient<SkillRow>(`/skills/${encodeURIComponent(skillId)}`, {
       method: "PUT",
       body: JSON.stringify(patch),
     }),
 
-  /** `POST /api/projects/:projectId/skills/apply-default` — clone a global
-   *  template into a new same-name project skill (owner/admin). Returns the new
-   *  project SkillRow; only project skills may then be registered to a stage. */
   adopt: (projectId: string, globalSkillId: string) =>
     apiClient<SkillRow>(
       `/projects/${encodeURIComponent(projectId)}/skills/apply-default`,
@@ -99,9 +84,6 @@ export const skillsApi = {
       `/projects/${encodeURIComponent(projectId)}/skills/smoke-verify`,
     ),
 
-  /** `POST /api/projects/:projectId/skills/smoke-verify` — tier 1 re-runs the
-   *  static checks; tier 2 (admin) additionally dispatches a `smoke` canary
-   *  job per registered stage. */
   runSmokeVerify: (projectId: string, body: { tier: 1 | 2; stages?: string[] }) =>
     apiClient<SmokeVerifyRunResponse>(
       `/projects/${encodeURIComponent(projectId)}/skills/smoke-verify`,

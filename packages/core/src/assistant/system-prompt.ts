@@ -1,16 +1,3 @@
-/**
- * v1 EPIC 1 (ISS-294 / PR-B) — the system prompt: persona or `app_config.systemPromptOverride`
- * (the override wins), the handle's SELF around the persona (ISS-1034: who it is before, its
- * standing instructions after — replaced by the override with the persona, because it is the
- * persona's kind of thing), the project's `agentConfig.systemPrompt`, the `personaStyle` knob, and
- * the ISS-671 `progressFacts` block, which survives the override because a kernel fact must not be
- * strippable by a project's prompt customization. No RAG, no rolling stats. The conversation seed
- * and the page context are NOT here — see `turn-context.ts`. What IS here does not all hold still:
- * `progressFacts` renders counters recomputed every turn, so this message is a cache prefix across
- * rounds and not across turns, while `tools[]`, which renders before it, is stable across both
- * (ISS-983).
- */
-
 export interface ProjectSummary {
   name: string;
   agentConfig?: unknown;
@@ -39,7 +26,6 @@ export interface BuildSystemPromptInput {
   progressFacts?: string | null | undefined;
 }
 
-// cm:guard soul and greeting render BEFORE the persona and instructions AFTER it, verbatim, under headings the model reads as its own: the persona says where it is speaking and how the door works, and a self that came after that would read as a footnote to the channel rather than the identity the channel is a venue for (ISS-1034 criterion 3).
 function renderWho(self: SelfSummary): string | null {
   const lines: string[] = [];
   const soul = self.soul?.trim();

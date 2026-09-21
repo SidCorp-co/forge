@@ -49,7 +49,6 @@ const conflict = (message: string) =>
  * is what made the owner's bell read 5663 while 3914 of those rows were status changes.
  * A `pending` or `inhibited` condition is not here either — nobody was told about it.
  */
-// cm:guard this predicate is over `state`, never over `read`. The read state lives on the delivery and answers whether a human looked; putting it in here is the defect ISS-1063 was filed about, and it is the one thing this whole module exists to keep apart.
 const stillTrue = sql`(
   (${notifications.kind} = 'condition' AND ${notifications.state} = 'firing')
   OR (${notifications.kind} = 'task' AND ${notifications.state} IN ('open', 'acknowledged'))
@@ -142,8 +141,6 @@ notificationRoutes.get(
       .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
       .where(where);
 
-    // cm:why one row per DELIVERY with its member count, not one per record: a grouped
-    // delivery is one line in the bell naming fifteen parks, and the reader expands it.
     const rows = await db
       .select({
         id: notificationDeliveries.id,
@@ -151,13 +148,11 @@ notificationRoutes.get(
         groupKey: notificationDeliveries.groupKey,
         resolvedNotice: notificationDeliveries.resolvedNotice,
         createdAt: notificationDeliveries.createdAt,
-        // cm:why the explicit `::int` on both counts: postgres returns `count()` as bigint, which reaches JSON as a STRING. The web compares it (`members > 1`) and prints it, and a string that coerces in every comparison it happens to be in is the kind of wrong that shows up as one odd row months later.
         members: sql<number>`count(${notificationDeliveryMembers.notificationId})::int`,
         openMembers: sql<number>`(count(*) FILTER (WHERE ${notifications.resolvedAt} IS NULL AND ${stillTrue}))::int`,
         type: sql<string>`min(${notifications.type})`,
         kind: sql<string>`min(${notifications.kind})`,
         tier: sql<string>`min(${notifications.tier})`,
-        // cm:why the delivery's own title wins: a grouped delivery names the cause the fifteen share, and `min()` over its members would pick one of the fifteen at random
         title: sql<string>`coalesce(${notificationDeliveries.title}, min(${notifications.title}))`,
         body: sql<string | null>`min(${notifications.body})`,
         severity: sql<string | null>`min(${notifications.severity})`,
@@ -285,9 +280,6 @@ async function closeTasks(deliveryId: string, userId: string, to: 'done' | 'dism
     .where(eq(notificationDeliveryMembers.deliveryId, deliveryId));
   if (memberIds.length === 0) return { closed: 0 };
 
-  // cm:guard scoped to `kind = 'task'`, and that scope is the whole point. A person may
-  // finish work; a person may not declare that a condition stopped being true. Widen this
-  // and the open count becomes a number people can change by looking at it again.
   const closed = await db
     .update(notifications)
     .set({ state: to, resolvedAt: new Date() })
@@ -333,14 +325,6 @@ notificationRoutes.delete(
       .limit(1);
     if (!own) throw notFound('notification not found');
 
-    // cm:guard refuse by name rather than deleting it. A delivery is the receipt that says
-    // this person was told, and `deliver.ts:deliverTo` reads it to decide whether to tell
-    // them again: delete one while its condition is still firing and the next sweep finds no
-    // receipt, writes a second delivery and interrupts again — every minute, for as long as
-    // the condition lasts. It is also the hole `closeTasks` closes one route along: a person
-    // may finish work, and may not declare that a condition stopped being true. Deleting the
-    // row that says so is that declaration wearing another verb, and it would make the open
-    // count a number people can change by looking at it.
     const [live] = await db
       .select({ title: notifications.title, type: notifications.type })
       .from(notificationDeliveryMembers)
@@ -368,15 +352,6 @@ notificationRoutes.delete(
   },
 );
 
-/**
- * The internal producer surface, kept at its old name and its old shape so that every
- * emitter did not have to move in the same change as the schema.
- *
- * ISS-1063 — `userId` became `recipients`, because one condition told to six admins is
- * one record and six deliveries rather than six records. Everything else this used to do
- * — the mention preference gate, the row insert, the `notificationCreated` hook — now
- * lives in `deliver.ts`, alongside the four things that decide whether anybody is told.
- */
 export async function createNotification(input: {
   userId?: string;
   recipients?: string[];

@@ -13,7 +13,6 @@ import { NOTE_TEXT_MAX } from './memory-note-gate.js';
 
 export { NOTE_TEXT_MAX };
 
-// cm:guard `text` and an optional `title`, and NOTHING else — no `source`, no `sourceRef`, no `metadata`: `forge_memory.write` takes all three and is not on the chat allowlist because a room that could pick its source could file under `knowledge` or `policy` and wear the trust those rows carry. The schema is `.strict()` so a call carrying one is refused whole (ISS-1034 criteria 24, 27).
 const input = z
   .object({
     text: z
@@ -46,14 +45,12 @@ export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
         'forge_memory.note stamps the project and the room it was written in, and this turn names no room',
       );
     }
-    // cm:guard refused, not attributed to the principal: a note is written ON BEHALF of the person who spoke, and when the newest message is from nobody Forge knows there is nobody to write it for — the principal in a room is the org agent, and a note under its name would be the agent remembering things a stranger said as if they were its own (ISS-1034 criterion 26).
     if (!turn.speakerUserId) {
       throw new Error(
         'forge_memory.note is written on behalf of the linked person who spoke, and the newest message is from nobody Forge knows — nothing may be remembered on their behalf. They can link their account first.',
       );
     }
     await assertPrincipalIsMember(ctx.principal, projectId);
-    // cm:guard a FRESH id per note rather than the message id the plan first named: `runMemoryWrite` upserts on (projectId, source, sourceRef), so two notes from one turn under the message's id would leave one — the second silently replacing the first (ISS-1034 criterion 25).
     const sourceRef = `conversation:${turn.conversationId}:${randomUUID()}`;
     const result = await runMemoryWrite({
       projectId,

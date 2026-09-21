@@ -51,34 +51,82 @@ export async function projectAutoProdDeploy(projectId: string): Promise<boolean>
 /**
  * Whether a run-less action against a `prod` binding must park for a human.
  *
- * There is exactly one rule and this is the only place it is written: a prod
- * binding with no run behind it never dispatches, because confirming a prod
- * deploy is run-keyed and a run-less action has no gate to release. The
+ * A prod binding with no run behind it never dispatches, because confirming a
+ * prod deploy is run-keyed and a run-less action has no gate to release. The
  * project can opt out wholesale with `pipelineConfig.autoProdDeploy`.
+ * `tryDispatchCoolifyRelease` applies the same rule through `reachesLiveOf`,
+ * which it needs anyway to answer for a whole binding set at once.
  */
-// cm:edge contract -> packages/core/src/integrations/coolify/controls.ts — cancel and rollback change production exactly as a deploy does (ISS-925), so they ask THIS function rather than restating the branch; a second copy is how one of the three ends up with a weaker gate than the other two.
 export async function liveActionNeedsHumanConfirm(
   projectId: string,
   stages: readonly string[],
+  targets: readonly string[] = [],
 ): Promise<boolean> {
-  // cm:guard the `live` STAGE, not a `prod` environment: this gate is "is a real user about to see
-  // the result", and until ISS-1046 it asked a column that seven of eight providers filled with
-  // `'prod'` because they had to write something. A preview-only binding is dispatched unasked; a
-  // binding serving BOTH stages (one epodsystem store, whose live theme is its published one) is
-  // gated, because publishing it reaches the live audience whatever else it also reaches.
-  if (!stages.includes('live')) return false;
+  const reachesLive =
+    stages.includes('live') || (await sharesAResourceWithLive(projectId, targets));
+  if (!reachesLive) return false;
   return !(await projectAutoProdDeploy(projectId));
 }
 
 /**
- * A deploy asked for after its run already went terminal cannot be proved by
- * that run: the confirmation hold is refused on a closed run, and stamping the
- * deploy substeps on one is what produced 50 rows reading
- * `status='completed'` beside `current_step='release.deploy.in_flight'`
- * (measured 2026-09-06). The deploy still happens; what stops is the pretence
- * that the run witnesses it.
+ * Whether these resources are also served by a binding that carries `live`.
+ *
+ * A stage is a label on a binding; the production box is a fact about what the
+ * binding deploys to. Where one branch and one application serve both stages,
+ * asking only the label lets a `preview` deploy reach production with no human
+ * in front of it — measured on forge-dev, whose two deploy bindings both target
+ * `y8w4c4kss8ogo8gc44ow44kc`. A project whose stages are separate boxes shares
+ * no resource here, so this answers `false` and the gate is what it was.
  */
-// cm:why ISS-922 requirement 3 — this log line is the whole of "be loud when it sees a deployment it cannot place", and it is an ERROR because a run that cannot witness its own deploy is a hole in the evidence chain, not a curiosity.
+async function sharesAResourceWithLive(
+  projectId: string,
+  targets: readonly string[],
+): Promise<boolean> {
+  if (targets.length === 0) return false;
+  try {
+    const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+    const live = new Set(
+      pairs
+        .filter((p) => (p.binding.stages ?? []).includes('live'))
+        .flatMap((p) => resourceUuidsOf(p.binding.config)),
+    );
+    return targets.some((t) => live.has(t));
+  } catch (err) {
+    logger.warn({ err, projectId }, 'coolify: could not read sibling bindings — keeping prod gate');
+    return true;
+  }
+}
+
+/**
+ * Which of these bindings reach the production box — by carrying `live`, or by
+ * deploying to an application a `live` binding also deploys to.
+ *
+ * Built from the WHOLE binding set before any filter, because the shared
+ * resource is only visible while the `live` binding is still in the list: drop
+ * it first and the one beside it stops looking like production.
+ */
+function reachesLiveOf(
+  pairs: ReadonlyArray<{ binding: { stages: string[] | null; config: unknown } }>,
+): (binding: { stages: string[] | null; config: unknown }) => boolean {
+  const live = new Set(
+    pairs
+      .filter((p) => (p.binding.stages ?? []).includes('live'))
+      .flatMap((p) => resourceUuidsOf(p.binding.config)),
+  );
+  return (binding) =>
+    (binding.stages ?? []).includes('live') ||
+    resourceUuidsOf(binding.config).some((u) => live.has(u));
+}
+
+/** The Coolify applications a binding's config names, however sparse it is. */
+function resourceUuidsOf(config: unknown): string[] {
+  const targets = (config as { targets?: unknown } | null)?.targets;
+  if (!Array.isArray(targets)) return [];
+  return targets
+    .map((t) => (t as { resourceUuid?: unknown })?.resourceUuid)
+    .filter((u): u is string => typeof u === 'string' && u.length > 0);
+}
+
 function reportUnwitnessedDeploy(runId: string, issueId: string | null, bindingId?: string): void {
   logger.error(
     { runId, issueId, ...(bindingId ? { bindingId } : {}) },
@@ -86,7 +134,6 @@ function reportUnwitnessedDeploy(runId: string, issueId: string | null, bindingI
   );
 }
 
-// cm:guard the check at dispatch entry and the refused-hold check are BOTH needed: this one names the common case before any work happens, and the hold's own return value catches the run that closes in the window between them. Drop either and a deploy goes unwitnessed in silence, which is the defect ISS-922 exists to end.
 async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): Promise<void> {
   const [row] = await db
     .select({ status: pipelineRuns.status })
@@ -110,23 +157,15 @@ export async function tryDispatchCoolifyRelease(args: {
   runId: string;
   /** Hard filter — when set, dispatch ONLY this binding. */
   integrationId?: string | null;
-  /**
-   * Whether bindings carrying the `live` stage are eligible at all. Defaults to `true`
-   * so the release auto-subscriber (which passes neither new arg) keeps its
-   * existing behavior byte-for-byte. Callers outside the release path (the
-   * `forge_coolify_deploy` MCP tool) pass `false` pre-release to exclude live
-   * entirely rather than relying on the human-confirm gate.
-   */
   allowLive?: boolean;
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId, integrationId, allowLive = true } = args;
   await warnIfRunAlreadyTerminal(runId, issueId);
-  // cm:guard DEPLOY bindings only. A `service` coolify binding is a facility the project
-  // uses, not somewhere Forge pushes to, and enqueueing a release against one is the retired
-  // model reappearing under a new column name.
-  let pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const allPairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const reachesLive = reachesLiveOf(allPairs);
+  let pairs = allPairs;
   if (integrationId) pairs = pairs.filter((p) => p.binding.id === integrationId);
-  if (!allowLive) pairs = pairs.filter((p) => !(p.binding.stages ?? []).includes('live'));
+  if (!allowLive) pairs = pairs.filter((p) => !reachesLive(p.binding));
   if (pairs.length === 0) {
     await setCurrentStep(runId, RELEASE_DEPLOY_SKIPPED);
     return {
@@ -142,7 +181,7 @@ export async function tryDispatchCoolifyRelease(args: {
   const autoProd = await projectAutoProdDeploy(projectId);
 
   for (const { binding } of pairs) {
-    if ((binding.stages ?? []).includes('live') && !autoProd) {
+    if (reachesLive(binding) && !autoProd) {
       // Manual approval gate — never auto-dispatch prod. The UI sticky
       // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
       // Skipped entirely when the project opted into autoProdDeploy.
@@ -154,16 +193,9 @@ export async function tryDispatchCoolifyRelease(args: {
       }
     }
 
-    // Per-attempt requestId (ISS-290). Every deploy call is its own request, so
-    // a re-deploy of the same run after a branch fix actually fires instead of
-    // being silently no-op'd. The timestamp + random suffix keep the
-    // `integration_deliveries` unique constraint + pg-boss singletonKey
-    // collision-free (even for two dispatches in the same ms) without a dedup
-    // lookup. (Coolify-side, the adapter force-rebuilds so the build is fresh.)
     const requestId = `${runId}:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     await setCurrentStep(runId, RELEASE_DEPLOY_IN_FLIGHT_STEP);
-    // cm:edge ordering -> packages/core/src/pipeline/deploy-confirmations.ts — the hold is opened BEFORE the enqueue, never after: between enqueueing a deploy and the adapter learning its deployment_uuid the run can close, and a hold written after that window lands on a terminal run and is dropped.
     const held = await openDeployDispatchHold({
       runId,
       bindingId: binding.id,
@@ -204,30 +236,11 @@ export async function tryDispatchCoolifyRelease(args: {
   return { dispatched: dispatched.length > 0, pendingHumanConfirm, integrationIds: dispatched };
 }
 
-/**
- * Run-less Coolify deploy (ISS-312). Triggers a resource redeploy for a single
- * integration with no pipeline run attached — the path for a plain "ship latest
- * main now" that isn't tied to any issue. Keeps `tryDispatchCoolifyRelease`
- * run-centric and untouched.
- *
- * Enqueues with `runId=null` + a synthetic per-attempt requestId (there is no
- * run to stamp and no hold to open). The adapter records the outbound delivery
- * with runId:null and `confirm.ts` still polls the deployment to a terminal
- * outcome and audits it — a run-less deploy is proved, it just advances no run.
- *
- * Prod is never auto-dispatched: a prod integration returns
- * `pendingHumanConfirm` without enqueueing. (The confirm-prod-deploy endpoint
- * is run-keyed, so completing a prod deploy still requires the issueId path —
- * documented limitation. The invariant that matters — prod is never
- * auto-dispatched run-less — is preserved.)
- */
 export async function dispatchCoolifyDeployDirect(args: {
   projectId: string;
   integrationId: string;
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
-  // cm:guard `integrationId` here is a BINDING id, not a connection id — the MCP tool passes binding ids and both id spaces are uuids, so a mix-up resolves to some other project's deploy target rather than failing.
-  // cm:guard DEPLOY bindings only — same rule as the release path above.
   const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
   const pair = pairs.find((p) => p.binding.id === integrationId);
   if (!pair) {
@@ -240,11 +253,13 @@ export async function dispatchCoolifyDeployDirect(args: {
   }
   const { binding } = pair;
 
-  if (await liveActionNeedsHumanConfirm(projectId, binding.stages ?? [])) {
-    // Prod is never auto-dispatched run-less (unless the project opted into
-    // autoProdDeploy). Confirming a prod deploy is run-keyed (confirm-prod-
-    // deploy endpoint), so it still requires the issueId path — return the gate
-    // outcome without enqueueing.
+  if (
+    await liveActionNeedsHumanConfirm(
+      projectId,
+      binding.stages ?? [],
+      resourceUuidsOf(binding.config),
+    )
+  ) {
     return {
       dispatched: false,
       pendingHumanConfirm: true,
@@ -410,20 +425,6 @@ export async function confirmPendingProdDeploy(
   return { confirmed: true, runId: run.id, integrationId: bindingId };
 }
 
-/**
- * Resolve the most recent issue-run id for an issue, regardless of status.
- *
- * Both the auto-subscriber (below) and the agent-driven `forge_coolify_deploy
- * → deploy` MCP tool need to map an `issueId` to its pipeline run before
- * dispatching, and neither has the runId in hand. A status filter would skip
- * every deploy, so the most recent run is taken regardless of status.
- *
- * ISS-922 corrected what this function's result MEANS. It used to say that
- * taking a closed run was safe *because* the downstream helpers no-op on
- * terminal runs; that reasoning is what let a `completed` run wear
- * `release.deploy.in_flight`. A terminal run is now an explicit hole in the
- * evidence chain, reported by `warnIfRunAlreadyTerminal`, not a free pass.
- */
 export async function resolveLatestIssueRunId(issueId: string): Promise<string | null> {
   const [run] = await db
     .select({ id: pipelineRuns.id })
@@ -467,8 +468,6 @@ export function registerReleaseCompletedSubscriber(hooks: {
   hooks.on('jobCompleted', async (payload) => {
     if (payload.type !== 'release') return;
 
-    // Map the issue to its latest run (see resolveLatestIssueRunId for why
-    // we take the most recent run regardless of status).
     if (!payload.issueId) return;
     const runId = await resolveLatestIssueRunId(payload.issueId);
     if (!runId) {

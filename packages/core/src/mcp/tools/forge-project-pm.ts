@@ -73,7 +73,6 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ principal }) =
   name: 'forge_project_pm',
   description:
     `PM agent action dispatcher. Actions: ${PM_ACTIONS.join(' | ')}. ` +
-    // cm:guard do NOT enumerate the reachable/unreachable split here — `assertPmActor` in project-authz.ts derives it from PM_ACTIONS and delivers it at the moment a caller hits the gate. A hand-typed copy here would advertise a device-only action as reachable with every test still green.
     'CREDENTIAL CLASS: dispatch and write_decision act on runner state and are not reachable over MCP — they refuse with PM_REQUIRES_DEVICE, and the refusal names the actions that do work. To set or retract a blocks/relates edge, forge_issues create/update data.relations also works and reads back from forge_issues get. ' +
     'snapshot/graph/runner_load: read-only; require projectId + project membership. ' +
     'graph also accepts optional rootIssueId (BFS) and depth (default 2, max 5); without rootIssueId returns the full graph capped at 200 nodes with truncated:true + remainingNodes:N. ' +
@@ -98,7 +97,6 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ principal }) =
         return pmRunnerLoadHandler(principal, { projectId: input.projectId });
       }
       case 'dispatch': {
-        // cm:guard `dispatch` gets NO credential refusal, and that is deliberate: `dispatchPmJob` already throws unconditionally because ISS-895 removed the staged lane, and THAT is the condition a caller needs to read. Adding `assertPmActor` here would preempt it with "needs a paired device", sending an operator to pair a box for an action that has no lane to run in either way — the wrong condition, which is what ISS-787/ISS-868 were about.
         if (!input.issueId) {
           throw new Error('BAD_REQUEST: issueId is required for dispatch');
         }
@@ -137,7 +135,6 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ principal }) =
         });
       }
       case 'write_decision': {
-        // cm:guard the CREDENTIAL refusal comes before the required-field checks. `assertPmActor` refuses every caller `/mcp` can produce (ISS-931), so validating `cause` first answers "cause is required" to a caller who could not use the action with every field supplied. Until ISS-931 this ordering came from `DEVICE_REQUIRED` in `mcp/server.ts`, which ran before the tool; that map is gone and this line is what replaced it.
         await assertPmActor(principal);
         if (!input.cause) {
           throw new Error('BAD_REQUEST: cause is required for write_decision');

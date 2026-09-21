@@ -39,7 +39,6 @@ beforeEach(() => {
 });
 
 describe('retention sweep: coverage of the stated rules', () => {
-  // cm:guard a rule with a window and no statement sweeps NOTHING and reports `deleted: 0`, which is indistinguishable in a log from a table that was already clean. This is the only thing that catches a seventh table being stated and never wired.
   it('has a statement for every rule that states a window, and none for those that do not', () => {
     for (const rule of RETENTION_RULES) {
       const wired = Object.hasOwn(RETENTION_STATEMENTS, rule.table);
@@ -79,7 +78,6 @@ describe('retention sweep: the batch loop', () => {
     expect(executeMock).toHaveBeenCalledTimes(3 + (swept - 1) + held + 1);
   });
 
-  // cm:guard `heldBack` is a count of what is left past the window, so at the batch cap it counts an undrained backlog as well as what a rule keeps. Two different facts under one number is the shape this repo calls a silent substitution, so the cap is reported rather than folded away.
   it('says when the batch cap stopped it before the table ran out of rows', async () => {
     const full = Array.from({ length: 10_000 }, (_, i) => ({ id: String(i) }));
     executeMock.mockResolvedValue(full);
@@ -135,7 +133,6 @@ describe('retention sweep: reporting', () => {
     }
   });
 
-  // cm:guard an override that is silently clamped is a window nobody set and nobody can see. The refusal has to reach the log, naming the variable, or the operator reads their own number back off the config and the sweep uses a different one.
   it('warns, naming the variable, when it refuses an override below the floor', async () => {
     process.env.RETENTION_JOB_EVENTS_DAYS = '1';
     answerWith([]);

@@ -6,23 +6,6 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** Either the top-level db client or an in-flight drizzle transaction. */
 export type DbOrTx = typeof db | Tx;
 
-/**
- * Coerce a transcript entry into the per-turn enum.
- *
- * One shape reaches this function: the canonical `entry.type`
- * (`assistant | user | system | tool_use | tool_result`). A `system`, `tool_use`
- * or `tool_result` entry is a `tool` turn — they are never user-edited, and the
- * row is kept rather than dropped.
- *
- * cm:guard there is no `role` branch and there is not meant to be one. Until
- * ISS-1030 this read `entry.role` first and fell back to `type`, because the
- * desktop runner and edited turns wrote one shape and the derive wrote another.
- * Both producers now speak the canonical entry, every row at rest was rewritten
- * by `db/backfill-canonical-transcripts.ts`, and a device still on the previous
- * release has what it sends converted on the way IN by
- * `agent-sessions/canonical-legacy.ts`. Re-adding a `role` branch here is
- * re-admitting the second shape those three pieces exist to remove.
- */
 export function messageRoleToTurnRole(entry: unknown): AgentSessionTurnRole | null {
   if (!entry || typeof entry !== 'object') return null;
   const type = (entry as { type?: unknown }).type;
@@ -53,18 +36,6 @@ interface SyncResult {
   truncatedFromTurnIndex: number | null;
 }
 
-/**
- * Reconcile the per-turn table with the new `messages` array.
- *
- * Strategy: compare lengths first, then tail content.
- *   next.length > prev.length  → insert rows for the new tail entries.
- *   next.length < prev.length  → DELETE turn_index >= next.length.
- *   next.length === prev.length → walk from tail and update any row whose
- *     content drifted (the desktop runner's `mergeMessages` replaces
- *     `messages[last]` in place while accumulating streamed assistant blocks
- *     — same length, different content). Walking from the tail and breaking
- *     on first-equal keeps this O(1) for the common streaming case.
- */
 export async function syncTurnsWithMessages(
   sessionId: string,
   prev: unknown[],

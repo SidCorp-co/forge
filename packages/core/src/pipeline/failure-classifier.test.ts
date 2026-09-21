@@ -34,7 +34,6 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     });
 
     it('the runner token wins over the cc-startup message-count heuristic', () => {
-      // cm:why an MCP-init death also looks like `diedBeforeFirstToolUse`, so this asserts the token wins over the heuristic rather than agreeing with it by luck.
       const r = classifyFailure({
         error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
         signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 1 },
@@ -167,7 +166,6 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   });
 
   it('classifies "runner stale" as infra (transient patterns)', () => {
-    // cm:why only the bare phrasing is asserted — "runner stale heartbeat" straddles the transient and timeout buckets and may legitimately land on either side of the split.
     expect(classifyFailure({ error: 'runner stale' }).kind).toBe('infra');
   });
 
@@ -195,7 +193,6 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     expect(classifyFailure({ error: 'preflight_failed: hooks_path: missing' }).kind).toBe('infra');
   });
 
-  // cm:guard assert BOTH axes on every case — this test read only `.kind` and demanded `code`, which is how a runner-workspace fault came to blame the repo. The `terminal` half is the load-bearing one (retrying a missing git repo is the ubuntu1 loop, 8 jobs on 2026-08-14); `infra` is the half a triaging human reads.
   it('classifies structural preflight sub-variants as infra with a terminal action (ISS-808)', () => {
     for (const error of [
       "preflight_failed: origin_remote: no 'origin' remote configured",
@@ -224,7 +221,6 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     });
 
     it('structured signal takes precedence over text patterns', () => {
-      // cm:why the text alone lands on infra via the transient patterns, so this asserts the signal overrides it rather than agreeing with it.
       const r = classifyFailure({
         error: 'network error during startup',
         signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 1 },
@@ -382,7 +378,6 @@ describe('duplex session channel failures (RFC 0003)', () => {
 });
 
 describe('failure-classifier — a full box says the box is full (ISS-920)', () => {
-  // cm:guard the literal the runner renders, not an approximation — `acquire_session_permit`'s own test pins the same bytes, and the digits are why: a cap or wait rendering as 503 would be claimed by TRANSIENT_PATTERNS' /\\b50[0-9]\\b/ if this bucket sat behind it.
   const SATURATED =
     'session_permit_saturated: all 3 duplex permits on this box held after 600s; ' +
     'holders at wait start: codemap, forge-dev, forge-dev';
@@ -395,7 +390,6 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     expect(r.meta?.needsReview).toBeUndefined();
   });
 
-  // cm:guard neither verdict has a CAUSE_RULES row and neither needs one, because `reason` IS the excerpt and the token survives the 200-char cut at the front — this pins that round-trip, and without it a reword that pushes the token past the cut drops the session lane to `unclassified` in silence, the way 88 `cc-startup-death` rows did.
   it('round-trips its own reason, which is why neither cause needs a CAUSE_RULES row', () => {
     for (const error of [SATURATED, 'repo_lock_timeout: /srv/x is still held after 600s']) {
       const first = classifyFailure({ error });
@@ -417,8 +411,6 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     );
   });
 
-  // cm:why the permit wait no longer runs under the root lock, so a lock timeout can only mean a sibling genuinely spent the wait in preflight or `git worktree add` — a different event with a different cause.
-  // cm:guard the SIGNAL is what this pins, and without it the whole bucket is dead code: a job that dies in either pre-spawn wait never spawned, and the heartbeat leaves `deriveCcStartupSignals` reading `total > 0, toolCalls === 0` — so `classifyFailure` was taking the cc-startup branch for every real occurrence while a signal-free test said otherwise.
   it('survives the cc-startup signal a job that never spawned always carries', () => {
     const signals = { diedBeforeFirstToolUse: true, sessionMessageCount: 0 };
     expect(classifyFailure({ error: SATURATED, signals }).cause).toBe('box_session_saturated');
@@ -429,7 +421,6 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     ).toBe('repo_root_contention');
   });
 
-  // cm:why the holder list is project slugs, so the routed text carries a value nobody validates — `store-403` would otherwise be claimed by PERMISSION_PATTERNS' /\b(401|403)\b/ and routed `retry`, back onto the box that just refused.
   it('a project slug that looks like an HTTP status does not change the routing', () => {
     const r = classifyFailure({
       error:
@@ -440,7 +431,6 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     expect(r.action).toBe('failover');
   });
 
-  // cm:guard the same signal takes ISS-808's terminal preflight verdict, which is why that table moved up with the two new ones: a `website` project cannot fix a missing work tree by failing over to another box, and `transient-cc` is exactly that instruction.
   it('a preflight failure stays terminal under the signal that a slow preflight always sets', () => {
     const signals = { diedBeforeFirstToolUse: true, sessionMessageCount: 0 };
     const r = classifyFailure({
@@ -452,7 +442,6 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     expect(r.cause).toBe('workspace_preflight_failed');
   });
 
-  // cm:guard `push_credentials` is the preflight prefix TERMINAL_INFRA does not name, so it rides the catch-all — which was the LAST table still below the signal. `LS_REMOTE_TIMEOUT` alone is 20s against a 25s beat, so this is the common case, not the corner.
   it('a preflight prefix outside the terminal three still reads as a preflight fault', () => {
     const r = classifyFailure({
       error: 'preflight_failed: push_credentials: ls-remote timed out after 20s',

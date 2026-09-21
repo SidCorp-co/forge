@@ -28,8 +28,10 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
-import { createIssue, IssueCreateError } from './create-service.js';
+import { registerIssueAttributeRoutes } from './attributes/routes.js';
+import { CREATE_ENTRY_STATUSES, createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
+import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
   LabelResolutionError,
@@ -39,6 +41,7 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
+import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
@@ -48,19 +51,10 @@ import { sessionContextExpectSchema, sessionContextSchema } from './session-cont
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 import {
   IssueUpdateNotFound,
+  SessionContextDropsUnreadKeys,
   SessionContextExpectMismatch,
   updateIssueFields,
 } from './update-service.js';
-
-const attachmentInputSchema = z
-  .object({
-    name: z.string().min(1).max(200),
-    mime: z.string().min(1).max(255),
-    dataBase64: z.string().min(1),
-  })
-  .strict();
-
-import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 
 export {
   branchConfigOverrideSchema,
@@ -71,17 +65,6 @@ export {
 
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { ReleaseNotesSchema } from './release-notes.js';
-
-// cm:guard the object arm's `labelId` accepts a NAME or a uuid, exactly as the bare string does — both arms go through `resolveLabelIdsForWrite`, so a caller can never have one value mean an id here and a name there. `isPrimary` is legal only on a `kind='module'` label; the resolver refuses the rest with PRIMARY_NOT_MODULE / MULTIPLE_PRIMARY.
-const labelAttachItemSchema = z.union([
-  z.string().trim().min(1),
-  z
-    .object({
-      labelId: z.string().trim().min(1),
-      isPrimary: z.boolean().optional(),
-    })
-    .strict(),
-]);
 
 export const issueCreateSchema = z
   .object({
@@ -97,8 +80,7 @@ export const issueCreateSchema = z
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    // cm:why ISS-130 / ISS-236 — the F4 transition endpoint owns every post-creation status change; this allow-list exists only so a caller can park at `on_hold` atomically with the insert, or hold an AI-generated proposal (Dream / Doc-Sync) at `draft` until a human promotes or discards it
-    status: z.enum(['open', 'on_hold', 'draft']).optional(),
+    status: z.enum(CREATE_ENTRY_STATUSES).optional(),
   })
   .strict();
 
@@ -118,10 +100,8 @@ export const issuePatchSchema = z
     labels: z.array(labelAttachItemSchema).max(100).optional(),
     metadata: issueMetadataSchema.optional(),
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
-    // cm:guard these two were MCP-only until the CLI needed them, and they are the reason `sessionContextSchema` is imported rather than re-declared: `sessionContext.branch` is what `pipeline/work-evidence.ts` reads as proof that work exists, so an agent that cannot write it here cannot satisfy the very evidence gate this surface now enforces. Widening it to REST also hands it to a browser session, which is deliberate — a person may edit it, and the ISS-820 verified-claim walk still applies to them.
     sessionContext: sessionContextSchema,
     detectorKey: z.string().trim().min(1).max(120).optional(),
-    // cm:guard ISS-959 — `expect` is a PRECONDITION, not a field: it must never reach `SHARED_ISSUE_PATCH_FIELDS`, or the value a client read back would be written to a column. The refine below is what keeps it from standing alone — a compare-and-set with nothing to write is a read wearing a write's verb, and it would still bump `updated_at`.
     expect: sessionContextExpectSchema.optional(),
   })
   .strict()
@@ -132,7 +112,6 @@ export const issuePatchSchema = z
 
 export type IssuePatchInput = z.infer<typeof issuePatchSchema>;
 
-// cm:guard the STRING survives validation, not a number — which prefix is legal depends on the project the request is scoped to, and this schema has no project. `parseIssueRef` in the handler is what refuses a foreign prefix by name; widening the shape here to swallow one would answer a caller's cross-project reference with this project's issue of that number (ISS-992).
 const issueKeyFilterSchema = z
   .string()
   .trim()
@@ -141,17 +120,14 @@ const issueKeyFilterSchema = z
     'expected a display id like `ISS-42`, or its bare sequence number',
   );
 
-// cm:guard `.strict()` is the whole point of this schema, not a flourish: without it zod STRIPS an unregistered key, the handler builds its WHERE from the four it knows, and a filtered ask is answered with the project's unfiltered list at 200 (ISS-991). `list-query-strict.test.ts` is the case that goes red if it is removed.
 export const issueFiltersSchema = paginationSchema
   .extend({
     status: z.enum(issueStatuses).optional(),
     priority: z.enum(issuePriorities).optional(),
     assigneeId: z.uuid().optional(),
     category: z.string().trim().min(1).max(100).optional(),
-    // cm:why the filter ISS-991's caller reached for and did not have — it asked this route for `ISS-376` by hand. Scoping stays the project's: the `key` condition is ANDed onto `projectId`, so a sequence number another project holds matches nothing here.
     key: issueKeyFilterSchema.optional(),
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
-    // cm:why default false rather than true: hydration is a second query per page, and the callers that want sessions are the two screens that render them
     withAgentSessions: z.coerce.boolean().optional().default(false),
   })
   .strict();
@@ -170,7 +146,15 @@ const notFound = (message: string) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-// cm:guard the CURRENT value must travel with the refusal. A bare 409 tells the loser its write failed and nothing about what to do next, so the only move left is to read again and write unconditionally — which is the overwrite this refusal exists to prevent.
+const sessionContextDrops = (err: SessionContextDropsUnreadKeys) =>
+  new HTTPException(409, {
+    message:
+      `this write replaces \`sessionContext\` whole and would remove ${err.dropped.join(', ')}, ` +
+      'which it never read. Read the field, add your key to what is there, and send it back complete — ' +
+      'or send `expect: { sessionContext: <what you read> }` to say the removal is deliberate.',
+    cause: { code: 'SESSION_CONTEXT_DROPS_UNREAD_KEYS', dropped: err.dropped },
+  });
+
 const sessionContextMoved = (err: SessionContextExpectMismatch) =>
   new HTTPException(409, {
     message:
@@ -184,7 +168,6 @@ interface IssueBodyColumns {
   descriptionFormat?: string | null;
 }
 
-// cm:guard the tree ships from HERE, the one projection both issue-detail surfaces already share, and never from a call site. web-v2 has no `@forge/core` dependency and cannot parse a component body, so a surface that forgets the field renders literal `<forge-…>` markup with every unit test still green (ISS-967).
 function serializeIssue<T extends { issSeq: number } & IssueBodyColumns>(
   row: T,
   prefix: string | null,
@@ -210,7 +193,6 @@ async function assertAssigneeIsMember(projectId: string, assigneeId: string): Pr
   }
 }
 
-// cm:why the ISS-967 body routes are re-exported through here rather than imported straight into `index.ts`: `.arch.baseline.json` freezes that file's fan-out at 48 modules with `improves: down`, so a 49th — `core-body` — is refused outright and there is no widening available. This module is where the choice belongs anyway: it already owns issue bodies, already imports `core-body` (so this costs its own frozen 7 nothing), and already hosts the comment surface via `registerIssueCommentRoutes`. `index.ts` stays a mount list.
 export { bodyRoutes } from '../body/routes.js';
 
 export const issueProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -244,7 +226,6 @@ issueProjectRoutes.post(
       throw toHttpCreateError(err);
     }
 
-    // cm:why a detectorKey that already tracks a live issue is a successful no-op, not a conflict — the caller asked for "one issue per detector" and got it; 200 says nothing was created without making it an error the client must special-case as a failure
     if (result.deduped) return c.json(result, 200);
 
     const response: Record<string, unknown> = serializeIssue(
@@ -259,7 +240,6 @@ issueProjectRoutes.post(
   },
 );
 
-// cm:edge lockstep -> packages/core/src/issues/create-service.ts — every error the create service can raise needs a case here, or it surfaces as an unmapped 500
 function toHttpCreateError(err: unknown): unknown {
   if (err instanceof BodyInvalidError) return bodyInvalidHttp(err);
   if (err instanceof LabelResolutionError) {
@@ -311,12 +291,7 @@ issueProjectRoutes.get(
     const serialized = serializeIssue(issue, await activeIssuePrefix(projectId));
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([
-      {
-        id: issue.id,
-        createdById: issue.createdById,
-        createdVia: issue.createdVia,
-        creatorAgency: issue.creatorAgency,
-      },
+      { id: issue.id, createdById: issue.createdById },
     ]);
     return c.json({
       ...serialized,
@@ -362,7 +337,6 @@ issueProjectRoutes.get(
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
-    // cm:why ISS-1016 — the page comes from `issueListPageQuery` and not from a `db.select()` here, so the plan the index tests EXPLAIN is the plan this handler runs. `sort=createdAt:desc` and `updatedAt:desc` are served by `issues_project_created_at_idx` / `issues_project_updated_at_idx`; the two `priority` sorts order by a CASE expression, which no btree serves, and still sort.
     const rows = await issueListPageQuery({
       where,
       orderBy: buildIssueOrderBy(q.sort),
@@ -373,23 +347,15 @@ issueProjectRoutes.get(
     const total = Number(n);
 
     const listPrefix = await activeIssuePrefix(projectId);
-    // cm:guard `serializeRestListRow` and NOT `serializeIssue`: the latter also grafts `descriptionNodes`, parsed from a column this projection no longer reads, and its body columns are OPTIONAL — so a projected row type-checks through it and answers `descriptionNodes: null` on every row of every page. A list that says nothing about a body beats one that says the body is empty (ISS-1016).
     const serialized = rows.map((r) => serializeRestListRow(r, listPrefix));
     if (serialized.length === 0) {
       return c.json(listResponse(c, serialized, total, q));
     }
 
-    // cm:why pipelineHealth is hydrated unconditionally here while `agentSessions` is opt-in above, and the asymmetry is measured: this is 6 queries flat regardless of page size, and every row on the list renders a gate-aware badge from it (ISS-164).
     const ids = serialized.map((r) => r.id);
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, ids);
-    // cm:why no opt-in flag here — every list/detail surface needs the creator fields, unlike withCost/withAgentSessions
     const creatorMap = await hydrateCreatorsForIssues(
-      serialized.map((r) => ({
-        id: r.id,
-        createdById: r.createdById,
-        createdVia: r.createdVia,
-        creatorAgency: r.creatorAgency,
-      })),
+      serialized.map((r) => ({ id: r.id, createdById: r.createdById })),
     );
 
     if (!q.withAgentSessions) {
@@ -432,7 +398,7 @@ export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerIssueCommentRoutes(issueRoutes);
-// cm:why the issue attachment endpoints are a SEPARATE router (`issueAttachmentRoutes`, mounted at /api/issues in index.ts) rather than registered here: this router applies `requireAuth()` to everything, and those two endpoints must also accept a PAT and a device credential — mounting them here would silently narrow that to browser sessions.
+registerIssueAttributeRoutes(issueRoutes);
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
   const row = await findIssueById(issueId);
@@ -457,16 +423,10 @@ issueRoutes.get(
 
     const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
     const serialized = serializeIssue(issue, await activeIssuePrefix(issue.projectId));
-    // cm:guard the detail payload hydrates `agentStatus` like the list and search payloads do — without it PipelineTracker falls back to a status-only bead and an issue whose agent FAILED still draws green (ISS-308).
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
     const creatorMap = await hydrateCreatorsForIssues([
-      {
-        id: issue.id,
-        createdById: issue.createdById,
-        createdVia: issue.createdVia,
-        creatorAgency: issue.creatorAgency,
-      },
+      { id: issue.id, createdById: issue.createdById },
     ]);
     return c.json({
       ...serialized,
@@ -481,8 +441,6 @@ issueRoutes.get(
   },
 );
 
-// cm:edge contract -> packages/core/src/jobs/routes.ts — the rollup joins `usage_records` on `session_id = jobs.agent_session_id::text`, the same link `loadActualUsage` uses; let the two spellings drift and one surface prices a job the other reports at zero (ISS-202). Until ISS-1015 both spelled it `session_id::uuid = jobs.id`, which is a JOB id where the column holds an `agent_sessions.id`: measured on beta 2026-09-17, 0 of 24,085 usage rows matched any job id and 24,085 matched an agent session, so both surfaces priced every job at zero. The edge held the two in step and the step was wrong; it is the column this names, not merely that the two agree.
-// cm:guard the LEFT JOIN is what keeps queued and running jobs in the history at tokens=0/cost=0 — an inner join drops every job that has not produced a usage row yet, and a step in flight vanishes from its own history
 const jobHistoryQuerySchema = z.object({
   step: z.enum(jobTypes),
 });
@@ -526,7 +484,6 @@ issueRoutes.patch(
     assertProjectRole(access, 'member');
 
     if (patch.assigneeId) await assertAssigneeIsMember(issue.projectId, patch.assigneeId);
-    // cm:guard `undefined` means "no change" and `[]` means "clear every label" — collapsing the two makes an unrelated PATCH silently wipe the issue's labels
     let resolvedLabelIds: ResolvedLabelAttach[] | undefined;
     if (patch.labels !== undefined) {
       try {
@@ -548,7 +505,6 @@ issueRoutes.patch(
         after[field] = next;
       }
     };
-    // cm:edge lockstep -> packages/core/src/mcp/tools/forge-issues.ts — `SHARED_ISSUE_PATCH_FIELDS` is the one column list both update surfaces write from; a field added at either call site instead of in that array is a column one surface can set and the other cannot.
     let collected: ReturnType<typeof collectIssueFieldUpdates>;
     try {
       collected = collectIssueFieldUpdates(
@@ -585,6 +541,7 @@ issueRoutes.patch(
       });
     } catch (err) {
       if (err instanceof IssueUpdateNotFound) throw notFound('issue not found');
+      if (err instanceof SessionContextDropsUnreadKeys) throw sessionContextDrops(err);
       if (err instanceof SessionContextExpectMismatch) throw sessionContextMoved(err);
       throw err;
     }
@@ -620,10 +577,8 @@ issueRoutes.delete(
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
-    // cm:edge contract -> packages/core/drizzle/migrations/0219_unaudited_transition_reach.sql — `pipeline_runs.issue_id` is `ON DELETE CASCADE`, so this statement deletes kernel rows and owes the `forge.kernel_txn` marker; without it every issue delete is charged to the interventions metric as a hand on the database.
     await withKernelMarker(db, async (tx) => tx.delete(issues).where(eq(issues.id, id)));
 
-    // cm:guard delete the issue's memory row too, and do it DETACHED. The row references the issue by `sourceRef` with no FK, so skipping it leaves the title and description searchable forever; awaiting it lets a memory-store failure fail a delete that already succeeded.
     queueMicrotask(() => {
       deleteMemory(issue.projectId, 'issue', id).catch((err) => {
         logger.warn(

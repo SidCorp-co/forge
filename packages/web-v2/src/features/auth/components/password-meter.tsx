@@ -2,15 +2,6 @@
 
 import { useMemo } from 'react';
 
-/**
- * Lightweight realtime strength hint — a heuristic over length + character-class
- * variety, no dependency. It is purely advisory: core enforces a real zxcvbn
- * score gate server-side (`packages/core/src/auth/register.ts`), so a weak choice
- * is rejected on submit regardless of what this bar shows. We deliberately skip
- * the ~120KB zxcvbn dictionary bundle to keep the cold /register payload small.
- *
- * The five-segment bar + colour ramp (red → amber → green) reuses v2 tokens.
- */
 
 const LABELS = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'] as const;
 

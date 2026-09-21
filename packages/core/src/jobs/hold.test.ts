@@ -13,7 +13,6 @@ const insertValues = vi.fn();
 const updateSet = vi.fn();
 const selectRows = vi.fn<() => unknown[]>(() => []);
 
-// cm:why `releaseHeldJobs` requeues through `withKernelMarker`, which opens a transaction and stamps `forge.kernel_txn` via `tx.execute` before the UPDATE — the double hands the same stub back so the scripted `.update()` chain still answers.
 const dbStub = {
   execute: async () => [],
   transaction: async (fn: (tx: unknown) => unknown) => fn(dbStub),
@@ -61,11 +60,9 @@ vi.mock('./stage-overrides.js', () => ({
   resolveStageOverrides: async () => ({ deviceIds: null }),
 }));
 
-// cm:edge contract -> packages/core/src/jobs/retry.ts — the literal MUST equal AUTO_RETRY_PAYLOAD_KEY there; hold.ts imports the real constant, and this stub exists only because that module's import chain validates DB env at load time
 vi.mock('./retry.js', () => ({ AUTO_RETRY_PAYLOAD_KEY: '_autoRetry' }));
 
 const resolveWedgeMock = vi.fn(async (..._args: unknown[]) => 0);
-// cm:edge contract -> packages/core/src/pipeline/wedge.ts — stubbed for the same reason as retry.js: its chain reaches notifications/routes.ts, whose env import throws at load time here
 vi.mock('../pipeline/wedge.js', () => ({
   resolvePipelineWedge: (...args: unknown[]) => resolveWedgeMock(...args),
 }));
@@ -107,7 +104,6 @@ beforeEach(() => {
 });
 
 describe('HOLD_REASONS', () => {
-  // cm:guard these five are the mechanical no-retry outcomes and the list must stay closed — a reason added here stops asking a human a question, so anything representing a human decision (a plan to approve, a missing test account) belongs on issues.status via the agent, never here
   it('covers exactly the mechanical no-retry reasons, and nothing that concludes anything', () => {
     expect([...HOLD_REASONS].sort()).toEqual([
       'all_devices_exhausted',
@@ -141,7 +137,6 @@ describe('holdJobForReason', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard a condition-checked reason MUST insert with retryAfterAt unset — the release pass gates on that column, so a backoff here delays a capacity recovery the fleet already reported
   it('a condition-checked reason holds with auto-release armed and no backoff', async () => {
     await holdJobForReason(makeJob(), 'all_devices_exhausted');
     const written = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -155,14 +150,12 @@ describe('holdJobForReason', () => {
     expect(readHoldState(written.payload)?.autoRelease).toBe(false);
   });
 
-  // cm:guard a permanent hold must NOT advertise a retry — `retry_after_at` was stamped on exactly these reasons and on none of the ones that use it, so the row claimed a retry 10 minutes out that no code path would ever perform (seen live on 4 jobs, 2026-08-14)
   it('a permanent hold stores no retry timestamp', async () => {
     await holdJobForReason(makeJob(), 'non_retryable_terminal');
     const written = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(written.retryAfterAt).toBeUndefined();
   });
 
-  // cm:guard `verify_unavailable` must arm auto-release AND carry the backoff — HOLD_RECHECK_MS and conditionCleared's fallback were both written for this reason while the autoRelease flag blocked it, so the operator was told "no action needed, it re-checks itself" about a hold that never re-checked
   it('a time-checked reason arms auto-release behind a backoff', async () => {
     const before = Date.now();
     await holdJobForReason(makeJob(), 'verify_unavailable');
@@ -173,7 +166,6 @@ describe('holdJobForReason', () => {
     expect(retryAt.getTime()).toBeGreaterThanOrEqual(before + HOLD_RECHECK_MS);
   });
 
-  // cm:guard this is the loop bound (RFC 0002) — without it a flapping fleet holds, releases with a fresh rotation, fails, and holds again forever, spending a full round budget per flap
   it('a SECOND hold in the same lineage never re-arms auto-release', async () => {
     const alreadyHeld = makeJob({
       payload: {
@@ -215,7 +207,6 @@ describe('releaseHeldJobs', () => {
     expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard this is the release the feature always claimed and never performed — the candidate query returned the row (its backoff had passed) and the autoRelease guard then dropped it, so a DB blip held the step forever. It must re-queue with NO condition lookup: the timer was the whole gate.
   it('releases a time-checked hold once its backoff has passed, without consulting the fleet', async () => {
     selectRows.mockReturnValue([
       heldRow({
@@ -237,7 +228,6 @@ describe('releaseHeldJobs', () => {
     expect(written.retryAfterAt).toBeNull();
   });
 
-  // cm:guard AUTO_RELEASE_REASONS must stay derived from the two lanes — a reason in the union with no lane would reach conditionCleared's fallback, and a fallback of `true` there auto-releases it into the very failure it recorded
   it('every auto-releasable reason declares a lane', () => {
     for (const reason of AUTO_RELEASE_REASONS) expect(HOLD_REASONS.has(reason)).toBe(true);
     expect(AUTO_RELEASE_REASONS.has('non_retryable_terminal')).toBe(false);
@@ -255,7 +245,6 @@ describe('releaseHeldJobs', () => {
     expect(enqueueJobMock).toHaveBeenCalled();
   });
 
-  // cm:guard the released row must carry a FRESH rotation — a payload still holding the exhausted `_autoRetry` state fails on its first attempt and holds again with auto-release already spent, so the recovery buys one attempt instead of a round budget
   it('drops the spent retry rotation from the released payload', async () => {
     selectRows.mockReturnValue([
       heldRow({ payload: { ...heldRow().payload, _autoRetry: { round: 10, tries: 3 } } }),
@@ -301,7 +290,6 @@ describe('releaseHeldJobs', () => {
     expect(await releaseHeldJobs('p1')).toBe(1);
   });
 
-  // cm:guard a throwing condition check must leave the job HELD, never release it — releasing on an unreadable condition dispatches into the failure the hold exists to absorb, and the pass would do it again every tick
   it('a condition check that throws leaves the job held', async () => {
     selectRows.mockReturnValue([heldRow()]);
     capableMock.mockRejectedValue(new Error('runner table unreachable'));
@@ -320,7 +308,6 @@ describe('buildRequeueUpdate', () => {
     },
   };
 
-  // cm:guard this is the patch BOTH the automatic release and the operator resume apply — the assertion that matters is that it spends the auto-release, because that is the only thing standing between a resume button and an unbounded hold/release loop
   it('spends the auto-release whichever path applies it', () => {
     const patch = buildRequeueUpdate(makeJob({ payload: armed }), now);
     expect(readHoldState(patch.payload)?.autoRelease).toBe(false);
@@ -343,7 +330,6 @@ describe('buildRequeueUpdate', () => {
     expect(patch.failureKind).toBeNull();
   });
 
-  // cm:guard the rotation must go and everything else must stay — dropping the whole payload would lose `requiredCapabilities` and the stage overrides, and keeping the rotation gives the recovered job one attempt instead of a full round
   it('drops only the spent rotation, preserving the rest of the payload', () => {
     const patch = buildRequeueUpdate(
       makeJob({

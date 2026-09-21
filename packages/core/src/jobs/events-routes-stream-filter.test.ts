@@ -7,7 +7,6 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-// cm:why the shape `readJobGate` answers with — `ackedAt` included, because the handler gates its ack stamp on the row it already read (ISS-1014) and a double without the field reads every job as already acked.
 const jobRow: {
   id: string;
   projectId: string;
@@ -55,13 +54,10 @@ const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
 
 const selectFor = vi.fn(() => ({}));
 const selectLimit = vi.fn(async () => [jobRow]);
-// cm:why the same `.where()` link ends two different chains — `readJobGate` stops at `.limit()`, the heartbeat's locking CTE at `.for('update')`.
 const selectWhere = vi.fn(() => ({ limit: selectLimit, for: selectFor }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
-// cm:why the mock chain has to end BOTH ways — the heartbeat is `.set().from().where().returning()` and the ack stamp and runtime-state sync stop at `.where()`, so `updateWhere` returns a thenable that is also `.returning()`-able or one path throws instead of asserting
-// cm:guard `from` has to be on the `.set()` result, and a double missing it is not a loud failure: the heartbeat's `try/catch` swallows the TypeError and logs a warning, so every assertion in this file still passes while the write under it never happens (found on ISS-1014).
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => {
   const p = {
@@ -77,7 +73,6 @@ const updateFrom = vi.fn(() => ({ where: updateWhere }));
 const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere, from: updateFrom }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
-// cm:guard `$with` and the transaction's `with` both have to answer, and a double missing either is not a loud failure: the heartbeat's `try/catch` swallows the TypeError and logs a warning, so every assertion in the file still passes while the write under it never happens (found on ISS-1014).
 vi.mock('../db/client.js', () => ({
   db: { select: dbSelect, transaction, update: dbUpdate, $with: dbWith },
 }));
@@ -129,7 +124,6 @@ function req(path: string, init: RequestInit & { token?: string } = {}) {
   return new Request(`http://localhost${path}`, { ...rest, headers });
 }
 
-// cm:guard the persistence filter has an integration twin (tests/integration/stdout-frame-persistence-e2e.test.ts) that asserts the real COLUMN; this file exists because that one needs Docker and `pnpm test` does not run it, so without these a contributor breaking the filter sees green locally
 describe('jobs/events-routes stream_event persistence filter', () => {
   beforeEach(resetMocks);
   afterEach(() => {
@@ -162,7 +156,6 @@ describe('jobs/events-routes stream_event persistence filter', () => {
     expect(vals.map((v) => v.data.line.type)).toEqual(['assistant', 'result']);
   });
 
-  // cm:guard the denylist must let an UNKNOWN frame through — an allowlist here would silently stop storing the first frame kind a future CLI emits, and nothing would report it
   it('stores a frame type it has never seen', async () => {
     txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
@@ -180,7 +173,6 @@ describe('jobs/events-routes stream_event persistence filter', () => {
     expect(vals.map((v) => v.data.line.type)).toEqual(['frame_invented_next_year']);
   });
 
-  // cm:guard the regression this filter could cause — a fan-out session emits nothing but partial deltas for minutes, and if dropping them also dropped the heartbeat the loop monitor would reap a live agent, the exact failure `--include-partial-messages` was turned on to prevent (ISS-479); persistence and liveness must stay separate doors
   it('still bumps the session heartbeat when every frame is filtered out', async () => {
     jobRow.agentSessionId = 'session-1';
     const app = buildApp();
@@ -192,7 +184,6 @@ describe('jobs/events-routes stream_event persistence filter', () => {
       }),
     );
     expect(r.status).toBe(200);
-    // cm:why `transaction` is no longer the proxy for "nothing was persisted": the heartbeat CAS opens one of its own to stamp `forge.kernel_txn` (ISS-943), so the persistence door is `txInsert` — the event dual-write's only writer — and that is what this asserts.
     expect(txInsert).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
     expect(sets('lastHeartbeatAt')).toBeGreaterThan(0);

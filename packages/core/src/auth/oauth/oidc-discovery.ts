@@ -1,12 +1,3 @@
-/**
- * OIDC discovery + JWKS — shared by Google and the generic OIDC provider.
- *
- * Discovery docs and JWKS keys are cached for 1 hour. `jose`'s
- * `createRemoteJWKSet` does its own internal caching and rotation handling
- * (it refetches when the kid in the JWT header is unknown), so we just
- * wrap it once per issuer.
- */
-
 import { createRemoteJWKSet, type JWTPayload, jwtVerify } from 'jose';
 
 interface DiscoveryDoc {

@@ -18,7 +18,6 @@ export interface InstallationRepo {
   fullName: string;
 }
 
-// cm:guard bound the paging — a token that can see thousands of repositories would otherwise walk them all on a screen that renders a dropdown. The cap is stated to the caller as `truncated`, never silently applied: a repository missing from a picker with no explanation is the same defect as a wrong one.
 const MAX_PAGES_PER_INSTALLATION = 5;
 const PER_PAGE = 100;
 
@@ -102,7 +101,6 @@ export async function listInstallationRepositories(args: {
         fetchImpl: doFetch,
       });
     } catch {
-      // cm:why one installation the App can no longer mint for must not empty the whole picker — the operator may have revoked it on one account while another still works, and an empty dropdown reads as "no repositories" rather than "one account went away"
       continue;
     }
     const page = await reposForInstallation(doFetch, token, inst.id, inst.account?.login ?? '');

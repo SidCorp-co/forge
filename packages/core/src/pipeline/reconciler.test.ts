@@ -46,7 +46,6 @@ const { runReconcilerOnce } = await import('./reconciler.js');
 beforeEach(resetHarness);
 
 describe('rescue accounting', () => {
-  // cm:guard L0.7 — `rescued` used to count the ATTEMPT. `considerEnqueue` has a dozen paths that enqueue nothing (a disabled stage, a human gate, a race, a missing skill), and an issue parked on any of them is re-read every 60s forever: the counter and the warning breadcrumb both fired every minute for a loop that did nothing, which is how it stayed invisible.
   it('does not count a rescue when no box is bound to serve the project', async () => {
     stuckQueue.push([
       {

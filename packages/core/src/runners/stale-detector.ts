@@ -7,17 +7,6 @@ import { roomManager } from '../ws/server.js';
 import { insertRunnerEvent } from './runner-events.js';
 
 export const RUNNER_STALE_DETECTOR_QUEUE = 'runner-status-detector';
-// ISS-198 — tightened from 90s → 30s so the UI's `status='offline'` flip
-// matches the dispatcher's Gate L5 heartbeat window. P95 detection target
-// (runner death → flip + dispatcher skip) is < 60s; the every-minute cron
-// schedule below combined with this threshold keeps it inside the budget.
-//
-// This sweep only marks the runner row offline — it does NOT touch any
-// jobs already picked by that runner. The L5 gate prevents *new* dispatches
-// onto stale runners. Jobs already in `dispatched`/`running` stay there
-// until the runner posts /complete or /fail; there is no server-side
-// watchdog kill (removed because the 300s heartbeat threshold misfired on
-// slow but live Claude CLI runs and surfaced as spurious manualHold).
 const RUNNER_STALE_THRESHOLD = "interval '30 seconds'";
 
 type StaleRunnerRow = {
@@ -68,8 +57,12 @@ let registered = false;
 
 export async function registerRunnerStaleDetector(): Promise<void> {
   if (registered) return;
-  await (boss as any).createQueue(RUNNER_STALE_DETECTOR_QUEUE);
-  await (boss as any).work(RUNNER_STALE_DETECTOR_QUEUE, async () => {
+  const queues = boss as unknown as {
+    createQueue(name: string): Promise<void>;
+    work(name: string, handler: () => Promise<void>): Promise<string>;
+  };
+  await queues.createQueue(RUNNER_STALE_DETECTOR_QUEUE);
+  await queues.work(RUNNER_STALE_DETECTOR_QUEUE, async () => {
     try {
       const result = await runRunnerStaleSweep();
       logger.info(result, 'runner-status-detector: sweep complete');

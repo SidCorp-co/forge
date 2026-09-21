@@ -1,19 +1,3 @@
-/**
- * Everything about a release run, assembled from the world rather than from a
- * session's memory.
- *
- * A release run's whole state lived in the transcript of whichever box was
- * running it. Kill that session and the next agent — on the same box or another
- * one — had the roster and nothing else: not what had already been promoted,
- * not what had been deployed, not what the probes said last time, and no way to
- * tell a release that had done nothing from one that had deployed three times.
- *
- * So this read takes the four things a continuation needs and takes each from
- * the place that owns it: the roster from `issues`, the ledger from
- * `release_attempts`, the health and identity of production from the probes NOW
- * rather than from any record, and the bounds from the ledger's own clock.
- */
-
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -28,6 +12,8 @@ export interface ReleaseRunState {
   runId: string;
   projectId: string;
   runStatus: string;
+  /** The version this release cut. `null` only on a release row nothing versioned. */
+  version: string | null;
   roster: ReleaseRoster;
   attempts: ReleaseAttemptRow[];
   /** Read at request time. `null` only when the project declares no probes. */
@@ -42,8 +28,6 @@ export interface ReleaseRunState {
 /**
  * The whole of one release run, or `null` when the run is not one.
  */
-// cm:guard the live reading is taken HERE, on every call, and is never served from `release_attempts`. The ledger says what production looked like at each attempt; this question is what it looks like now, and answering it from the newest row would hand a resuming agent a reading from before the outage it was woken up for.
-// cm:guard `live` is `null` ONLY for a project that declares no probes, and that is a state `createReleaseBatch` now refuses to create. It is kept representable because a run cut before that refusal reaches this read, and collapsing it into a `down` reading would report an outage over a project that never told anyone where to look.
 export async function readReleaseRunState(runId: string): Promise<ReleaseRunState | null> {
   const [run] = await db
     .select({
@@ -51,6 +35,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
       projectId: pipelineRuns.projectId,
       status: pipelineRuns.status,
       metadata: pipelineRuns.metadata,
+      releaseVersion: pipelineRuns.releaseVersion,
     })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
@@ -72,6 +57,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     runId,
     projectId: run.projectId,
     runStatus: run.status,
+    version: run.releaseVersion,
     roster,
     attempts,
     live,
@@ -92,8 +78,6 @@ export class ReleaseRunHoldingError extends Error {
 /**
  * Refuse a further attempt on a run that is already past a bound.
  */
-// cm:guard the bounds are re-read from the LEDGER here and not taken from a cached state: a run crosses a bound by time passing, so a verdict computed at the last request would let a run that went quiet an hour ago record one more attempt because nothing had asked since.
-// cm:guard this refuses the ATTEMPT and never the account. An agent that is already mid-act must still be able to say what happened — refusing that would make a holding run's last act the one nothing is recorded about, which is the act worth reading.
 export async function assertRunNotHolding(runId: string): Promise<void> {
   const bounds = readBounds(await listAttempts(runId));
   if (bounds.holding) throw new ReleaseRunHoldingError(bounds.crossedNames);

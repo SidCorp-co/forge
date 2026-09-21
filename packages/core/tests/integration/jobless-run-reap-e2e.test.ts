@@ -63,7 +63,6 @@ describe('reapJoblessRuns predicate E2E (ISS-654)', () => {
     opts: { kind?: string; status?: string; startedMinutesAgo?: number } = {},
   ): Promise<string> {
     const kind = opts.kind ?? 'issue';
-    // cm:guard `pipeline_runs_issue_kind_chk` binds issue_id to kind — a `system`/`interactive` run may not carry one, so this seed cannot pass the same issue for every kind.
     let issueId: string | null = null;
     if (kind === 'issue') {
       issueId = randomUUID();
@@ -85,8 +84,8 @@ describe('reapJoblessRuns predicate E2E (ISS-654)', () => {
 
   async function seedSession(runId: string, status: string): Promise<void> {
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status)
-      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${status})
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, 'pipeline', ${status})
     `);
   }
 
@@ -106,7 +105,6 @@ describe('reapJoblessRuns predicate E2E (ISS-654)', () => {
     expect(await runStatus(runId)).toBe('cancelled');
   });
 
-  // cm:guard the outcome of a run that never ran anything is `cancelled`, never `failed` — a fabricated failure lands in every success-rate metric that reads run outcomes.
   it('closes as `cancelled` when nothing ever ran, `failed` when a session failed', async () => {
     const nothing = await seedRun();
     const failed = await seedRun();
@@ -135,7 +133,6 @@ describe('reapJoblessRuns predicate E2E (ISS-654)', () => {
     expect(await runStatus(runId)).toBe('running');
   });
 
-  // cm:guard an issue run is opened BEFORE its first job is enqueued, so the quiet window is what stands between this pass and a run that is about to be dispatched into.
   it('leaves a job-less run younger than the quiet window', async () => {
     const runId = await seedRun({ startedMinutesAgo: 5 });
 

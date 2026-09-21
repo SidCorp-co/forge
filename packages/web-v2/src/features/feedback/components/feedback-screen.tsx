@@ -15,6 +15,7 @@ import {
   MonoTag,
   NativeSelect,
   PageContainer,
+  PageTitle,
   Skeleton,
   Table,
   TBody,
@@ -135,7 +136,7 @@ function ReportRow({
       <TD>
         <Badge tone="neutral">{report.target}</Badge>
         {report.targetRef && (
-          <MonoTag style={{ fontSize: 11 }}>{report.targetRef}</MonoTag>
+          <MonoTag style={{ fontSize: "var(--text-11)" }}>{report.targetRef}</MonoTag>
         )}
       </TD>
       <TD className="max-w-xs">
@@ -171,7 +172,7 @@ function ReportCard({
           <Badge tone={kindToBadgeTone(report.kind)}>{report.kind.replace(/_/g, " ")}</Badge>
           <Badge tone={severityToBadgeTone(report.severity)}>{report.severity}</Badge>
           <Badge tone="neutral">{report.target}</Badge>
-          {report.targetRef && <MonoTag style={{ fontSize: 11 }}>{report.targetRef}</MonoTag>}
+          {report.targetRef && <MonoTag style={{ fontSize: "var(--text-11)" }}>{report.targetRef}</MonoTag>}
         </div>
         <p className={`fg-body-sm break-words mb-2 ${muted ? "line-through text-subtle" : "text-fg"}`}>
           {report.summary}
@@ -201,7 +202,7 @@ export function FeedbackScreen({ scope }: FeedbackScreenProps) {
   return (
     <PageContainer className="min-h-dvh">
       <header className="mb-6">
-        <h1 className="fg-h2">Feedback</h1>
+        <PageTitle className="fg-h2">Feedback</PageTitle>
         <p className="fg-body-sm mt-1">
           Steward friction reports. Mark reviewed to track what&apos;s been addressed.
         </p>

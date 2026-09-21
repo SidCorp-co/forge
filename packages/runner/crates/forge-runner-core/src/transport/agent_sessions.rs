@@ -42,12 +42,6 @@ impl LineEvent {
     }
 }
 
-/// Marks an answer that means "core cannot store what this batch carries".
-// cm:guard the caller MUST stop the turn on this and say so, never retry past
-// it: a 400 here names a line core cannot represent, and the same body will be
-// refused for ever. A turn that kept going would deliver the rest of its lines
-// on the far side of the hole, and the fold holds at a hole — so the transcript
-// would end at that line looking exactly like a turn that stopped talking.
 pub const REFUSED: &str = "TRANSCRIPT_REFUSED";
 
 /// True when core has refused this batch rather than failed to take it.
@@ -55,14 +49,6 @@ pub fn is_refused(e: &Error) -> bool {
     e.to_string().contains(REFUSED)
 }
 
-/// Post one chunk of numbered lines, with the same backoff `post_job_events`
-/// uses.
-///
-/// cm:guard the retry re-sends the IDENTICAL body, and that is safe only
-/// because `seq` is assigned here and core inserts `ON CONFLICT DO NOTHING` on
-/// `(agent_session_id, seq)`. A batch that committed and lost its response is
-/// posted again and stores nothing the second time. Moving the numbering to the
-/// server would store every line of such a batch twice.
 async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent]) -> Result<()> {
     let url = client.url(&format!("/api/agent-sessions/{session_id}/events"));
     let body = serde_json::json!({ "events": events });
@@ -109,13 +95,6 @@ async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent])
 /// How many lines one request may carry; core's own schema caps the batch here.
 const MAX_BATCH: usize = 100;
 
-/// Deliver this turn's lines, chunked.
-///
-/// cm:guard the error says how many lines were STORED before it, because they
-/// were. A batch past the first is delivered on its own request, so a failure
-/// here leaves earlier chunks committed on the server — and an operator told
-/// that none of the turn was stored goes looking for a transcript that is
-/// partly there. The count is what the caller puts in front of a person.
 pub async fn post_events(
     client: &CoreClient,
     session_id: &str,
@@ -134,10 +113,6 @@ pub async fn post_events(
     Ok(())
 }
 
-/// Report the PROCESS state for a session with no other patch riding along.
-/// Used when the session ends with nobody consuming its event stream — the
-/// idle ceiling closing an abandoned resident session.
-// cm:guard best-effort by design: a failed report must not take down the close. The row is left claiming `awaiting_input` on a session whose status is already terminal, which the heartbeat hop does not look at — a lost PATCH here costs a stale field, while a close that unwound on it would leak the process this call exists to record the death of.
 pub async fn report_runtime_state(client: &CoreClient, session_id: &str, state: &str) {
     let patch = SessionPatch {
         runtime_state: Some(state.to_string()),
@@ -155,20 +130,11 @@ pub async fn report_runtime_state(client: &CoreClient, session_id: &str, state: 
 pub struct SessionPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `runtimeState` on patchSchema there is a `.strict()` enum accepted from the DEVICE principal only, and `awaiting_input` is the one value that exempts a session from the heartbeat hop. A value this side does not have there is a 400 the runner logs and drops, leaving the park invisible and the session reaped at 3 minutes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_state: Option<String>,
     // `null` is meaningful (clear), so serialize Some(None) as null but omit None.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude_session_id: Option<String>,
-    // cm:guard the runner reports the error as a STRING and core writes the
-    // transcript entry for it. A `messages` array used to ride this patch and a
-    // failed turn appended its own `system` entry — which is what made the runner
-    // a producer of transcript entries, the thing ISS-1030 removed. The
-    // `toolCallCount` that sat here went with it: the transcript can answer what
-    // a turn called now, so a counter beside it is a second answer to one
-    // question.
-    // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `turnError` on patchSchema there, device principal only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub turn_error: Option<String>,
 }
@@ -298,10 +264,6 @@ mod tests {
             .collect()
     }
 
-    // cm:guard the message a person reads must not claim more was lost than was.
-    // A second chunk refused leaves the first one COMMITTED on the server, and
-    // "stored none of it" sends whoever is investigating to look for a
-    // transcript that is partly there.
     #[tokio::test]
     async fn a_refusal_of_the_second_chunk_says_the_first_was_stored() {
         let url = serve_two("200 OK", "400 Bad Request").await;

@@ -8,14 +8,6 @@ import {
 import { parseUsageLimitReset } from '../runners/limit-detect.js';
 import { extractPromptString } from './turns-helpers.js';
 
-/**
- * ISS-572 — build a failure-text blob from a session's transcript + the
- * runner's terminal `note`, so a usage/session-limit RESULT_ERROR that the
- * runner streamed into the messages (e.g. `[RESULT_ERROR] success: You've hit
- * your weekly limit · resets 11am (Asia/Ho_Chi_Minh)`) can be classified.
- * Scans only the tail (limits surface in the terminal system/assistant
- * message) and caps length so a long transcript stays cheap.
- */
 export function extractSessionFailureText(
   messages: unknown,
   note: string | null | undefined,
@@ -40,22 +32,6 @@ export function extractSessionFailureText(
   return blob.length > 4000 ? blob.slice(-4000) : blob;
 }
 
-/**
- * ISS-733 fix — detect the "unexpanded skill slash-command" failure signature
- * on a chat-runs-skill cold start (turn 1 = `/${skillName}`, see chat-turn.ts
- * `pendingSkillName`). The sync-then-dispatch race: `requestSkillSync` is
- * fire-and-forget, so the skill file can land on the runner's disk AFTER
- * `agent:start` fires. The CLI then short-circuits `/<skillName>` as an
- * unrecognized command (`Unknown command: /<skillName>`), produces zero
- * turns, but still reports `is_error=false` — the exact zero-turn no-op
- * `claude_code.rs` / `stage-stall-guard.ts` already guard for pipeline JOBS
- * (`is_issue_job` only); chat has no runner-side equivalent, so without this
- * check the session silently reports `completed`.
- *
- * Scoped to the assistant messages appended AFTER `priorMessageCount` (the
- * session's message count before this turn) so a later, unrelated turn that
- * happens to mention the phrase in prose can never match.
- */
 export function detectUnexpandedSkillFailure(
   messages: unknown,
   skillName: string,
@@ -119,22 +95,6 @@ export async function recoverScheduleOnFailoverAction(
   }
 }
 
-/**
- * ISS-824 — THE shared terminal-report finalizer for a `failed` status write.
- * Both terminal-report paths (POST /desktop/status and PATCH /:id) call this
- * once, right before persisting the status: it asks the SAME classifier the
- * job path asks (`classifyFailure`) instead of a bespoke regex, then always
- * stamps a `failureReason` onto the pending update `set` — `unclassified`
- * included, so a failure that matches nothing is still recorded (never left
- * NULL). `runners/limit-detect.ts` is used only for the reset-time detail on
- * an `action:'failover'` hit; the routing decision is the classifier's.
- *
- * The returned `recoverAfterWrite` runs AFTER the status write has persisted
- * (best-effort, schedule runs only) so a recovery failure can never break the
- * write. The call sites keep their own gating + inputs (message source,
- * terminal note, metadata base) — only this classify+stamp+recover core is
- * shared.
- */
 export async function finalizeScheduleSessionFailure(opts: {
   sessionId: string;
   messages: unknown;
@@ -151,11 +111,9 @@ export async function finalizeScheduleSessionFailure(opts: {
   /** Post-write schedule failover; no-op unless the classifier said `failover`. */
   recoverAfterWrite: (metadata: unknown) => Promise<void>;
 }> {
-  // cm:guard classify runner-authored text ONLY. A schedule session's transcript opens with the schedule's own prompt as a `user` message, so an unfiltered blob is fed to the classifier AS IF it were the error: every pattern runs against the prompt, and a prompt that merely says "usage limit" or "rate limit" is classified `failover` and triggers a real cross-account schedule failover. Measured live on forge-beta 2026-08-13: `improve:optimize-skills` and `improve:product-map-refresh` both stored 198 chars of their own prompt as `agent_sessions.failure_reason`.
   const text = extractSessionFailureText(opts.messages, opts.note, { excludeRoles: ['user'] });
   const classified = classifyFailure({ error: text });
 
-  // cm:guard ISS-877 — `failureReason` takes the CAUSE token and `failureDetail` takes the sentence. This assignment used to put `classified.reason` (a sentence) into the column `queue_timeout` and `user_cancelled` use as a token, which is how 55 live rows came to hold prose — including 9 that hold the agent's own prompt as its reason for failing. Never widen `failureReason` back to free text; add a member to `FAILURE_CAUSES` instead.
   opts.set.failureReason = classified.cause;
   opts.set.failureDetail = classified.reason || null;
 
@@ -166,7 +124,6 @@ export async function finalizeScheduleSessionFailure(opts: {
       ...base,
       ...(reset ? { limitResetAt: reset.toISOString() } : {}),
     };
-    // cm:guard the predicted `→ cross-device failover` may only stand where SOME failover path can act on the row. A schedule run gets its true disposition stamped post-write by redispatchScheduleSessionOnFailover; an agent-chat session has its own copy of that machinery (integrations/rocketchat/agent-chat.ts) which runs on its own trigger, so its disposition is not ours to state. What is left — a plain chat session — has no failover path at all, and settles here.
     if (base.source !== 'schedule.run' && base.agentChat == null) {
       opts.set.failureDetail = `${failureClassOf(classified.reason)} → no failover (plain chat session)`;
     }

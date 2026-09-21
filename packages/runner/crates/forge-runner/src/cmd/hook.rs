@@ -20,8 +20,6 @@ pub struct Args {
     pub event: String,
 }
 
-/// Drain the hook payload and answer the agent, whatever else happens.
-// cm:guard stdin is drained BEFORE anything can return, and this is not politeness: Claude Code writes the event payload to this process's stdin, so a hook that exits without reading it hands the agent a broken pipe mid-write — measured by Orca as their #8110, an exit 127 and a truncated write in the agent's own critical path. Every early return below has already been through here.
 fn drain_and_ack() -> Vec<u8> {
     use std::io::Read;
     let mut sink = Vec::new();
@@ -30,10 +28,6 @@ fn drain_and_ack() -> Vec<u8> {
     sink
 }
 
-/// The child, the conversation and the role this payload names, if it names them.
-// cm:guard a payload that will not parse yields NOTHING rather than a guess, and the daemon then records a lead event. Reporting the boundary without a subject is the safe direction: an unattributable child event must void nothing.
-// cm:guard `teammate_name` is an ALTERNATIVE subject and not a fallback for a missing `agent_id`: measured against claude 2.1.257, `TeammateIdle` names its subject there while `SubagentStart`/`SubagentStop` carry `agent_id`, and a LEAD event carries neither — which is what makes absence the discriminator rather than a gap.
-// cm:guard `agent_type` is carried and NOTHING here decides on it. It is read because the daemon cannot tell a hand-off from a search helper without it, and that judgement belongs where the role list is (`daemon/dispatch_gate.rs`). A hook that classified would be a second place the fleet's role set is known, which is the drift this issue exists to end.
 fn named_in(payload: &[u8]) -> (Option<String>, Option<String>, Option<String>) {
     let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) else {
         return (None, None, None);
@@ -50,9 +44,6 @@ fn named_in(payload: &[u8]) -> (Option<String>, Option<String>, Option<String>) 
     )
 }
 
-/// Report one event. Never fails, by construction.
-// cm:guard returns `()` and not a `Result`, so no caller can turn a lost report into a non-zero exit. The value of this channel is that a pane keeps working when the daemon is down; a hook that failed loudly would trade every agent on the box for a diagnostic nobody reads.
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/agent_activity.rs — the event NAMES are that module's closed set, and the daemon refuses an unknown one. This side must not translate, normalise or guess: a name Claude Code emits and that module does not know is a gap to close there, not to paper over here.
 pub async fn run(args: Args) {
     let payload = drain_and_ack();
     let Ok(token) = session_tokens::token_from_env() else {
@@ -81,7 +72,6 @@ pub async fn run(args: Args) {
 mod tests {
     const SOURCE: &str = include_str!("hook.rs");
 
-    // cm:guard the assertion is on the SOURCE because what is under test is that no path can fail: a behavioural test would have to reproduce a broken daemon, a missing token and an unknown event separately, and would still not catch the next early return somebody adds above the drain.
     #[test]
     fn no_path_through_this_verb_can_fail_the_agent_that_ran_it() {
         let body = SOURCE
@@ -108,10 +98,6 @@ mod tests {
 
     use super::named_in;
 
-    /// Real payloads, observed from claude 2.1.257 on 2026-09-11 by registering
-    /// these hooks and running one session that spawned one subagent. Trimmed to
-    /// the fields this verb reads.
-    // cm:guard these are OBSERVED and not composed, and that is the whole reason they are here: two commits before this one shipped a wrong model of this payload, once from a peer's read of another tool's consuming side and once from strings in a stripped binary. A fixture somebody wrote to match the code proves only that the code matches itself.
     const SUBAGENT_START: &str = r#"{"agent_id":"acf9b1721de184fa7","agent_type":"general-purpose","hook_event_name":"SubagentStart","prompt_id":"6a830af5-8553-45a9-9ebe-e5353e72481e","session_id":"f3115c20-8b4b-4fcd-b27d-fefd1ac163f5"}"#;
     const SUBAGENT_STOP: &str = r#"{"agent_id":"acf9b1721de184fa7","agent_type":"general-purpose","hook_event_name":"SubagentStop","prompt_id":"6a830af5-8553-45a9-9ebe-e5353e72481e","session_id":"f3115c20-8b4b-4fcd-b27d-fefd1ac163f5","stop_hook_active":false}"#;
     const LEAD_STOP: &str = r#"{"hook_event_name":"Stop","prompt_id":"6a830af5-8553-45a9-9ebe-e5353e72481e","session_id":"f3115c20-8b4b-4fcd-b27d-fefd1ac163f5","stop_hook_active":false}"#;
@@ -134,7 +120,6 @@ mod tests {
         assert_eq!(role.as_deref(), Some("general-purpose"));
     }
 
-    // cm:guard THE observed contract: a lead event carries no `agent_id`, so absence is the lead/child discriminator. A build that filled it in — from the session, from the transcript path, from anything — would let every lead `Stop` cancel a live child's claim.
     #[test]
     fn a_lead_event_names_no_child() {
         let (subject, conv, _) = named_in(LEAD_STOP.as_bytes());
@@ -156,7 +141,6 @@ mod tests {
         assert_eq!(named_in(b""), (None, None, None));
     }
 
-    // cm:guard a non-string field is not a subject: `serde_json`'s `as_str` answers None for a number or an object, and coercing one would put a rendered `{}` into a roster key.
     #[test]
     fn a_subject_that_is_not_a_string_is_not_a_subject() {
         assert_eq!(

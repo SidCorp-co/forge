@@ -84,7 +84,6 @@ async function seedProjectWithOneStep(step: string) {
 }
 
 describe('GET /api/pipeline/step-durations', () => {
-  // cm:guard the second project is the whole test: with ONE project seeded, a route that ignored visibility entirely would return the same rows and pass. The failure being guarded is one account reading another's pipeline timings, and it takes a row that must NOT come back to see it.
   it('returns the caller own step rows and none from a project they cannot see', async () => {
     const mine = await seedProjectWithOneStep('code');
     const theirs = await seedProjectWithOneStep('review');
@@ -115,7 +114,6 @@ describe('GET /api/pipeline/step-durations', () => {
   });
 });
 
-// cm:guard this is the PAT-reachable half, and the pair is the point: `/api/pipeline/step-durations` fans out and must stay off the PAT allowlist, so a token-holding caller reaches durations ONLY here. Delete this route and `forge_metrics.step_durations`'s deletion becomes a capability loss rather than a move — which is what it briefly was, live, until 2026-09-01.
 describe('GET /api/projects/:id/metrics/step-durations', () => {
   it('serves the caller own project and refuses one they are not a member of', async () => {
     const mine = await seedProjectWithOneStep('code');
@@ -138,7 +136,6 @@ describe('GET /api/projects/:id/metrics/step-durations', () => {
   });
 });
 
-// cm:guard both of these had ONLY a `/api/pipeline/*` fan-out route, which is off the PAT allowlist — so retiring their tools without this project-scoped half would leave a token-holding caller with no path at all, which is exactly what briefly happened to step-durations live on 2026-09-01. Assert the member/non-member pair, not just a 200: the fan-out is fenced by prefix, but THIS half is fenced only by the role check below it.
 describe('project-scoped metrics a token can reach', () => {
   it.each([['retry-rescues'], ['session-failures']])(
     'serves %s to a member and refuses a stranger',
@@ -166,7 +163,6 @@ describe('project-scoped metrics a token can reach', () => {
   );
 });
 
-// cm:guard the interventions half, and it is asserted against the REAL view rather than a shape: `issue_intervention_events` unions four sources and the rollup buckets on the `manual_` PREFIX, so a seed of one wedge and one `manual_inject` is what distinguishes a working bucket from a route that merely answers. The stranger's row is the fence — the failure being guarded is one project's north-star number carrying another project's flips (ISS-944).
 describe('GET /api/projects/:id/metrics/interventions', () => {
   async function seedInterventions(owner: { id: string }, projectId: string) {
     const issueId = randomUUID();

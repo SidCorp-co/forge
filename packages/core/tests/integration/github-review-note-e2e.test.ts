@@ -164,7 +164,6 @@ describe("a human's GitHub review flows back onto the issue", () => {
     expect(await commentsOn(mine)).toHaveLength(0);
   });
 
-  // cm:guard a dismissal is a retraction of a review already recorded, not a second event to record. Writing one would be the second record this whole write-back exists to remove.
   it('writes no comment for a dismissal', async () => {
     const issueId = await ground.seedIssue(ground.projectId, 4242);
     await ground.mods.applyProjectedEvent(
@@ -230,10 +229,6 @@ describe('the two doors are one writer', () => {
     expect(await commentsOn(issueId)).toHaveLength(1);
   });
 
-  // The race is the case the issue-row lock exists for: a check-then-insert without it lets every
-  // caller find nothing and every one of them write.
-  //
-  // cm:guard EIGHT and not three. Measured 2026-09-17 with `FOR UPDATE` deleted: three callers still produced one comment — the pre-transaction reads keep them in lockstep and the first insert commits before the second's check — and eight produced SEVEN. A count that cannot represent the failure is a green that means nothing, so the number is the evidence and not a taste.
   it('writes once when eight callers run at the same moment', async () => {
     const issueId = await ground.seedIssue(ground.projectId, 4242);
     const one = () =>

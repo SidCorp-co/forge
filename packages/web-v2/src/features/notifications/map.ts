@@ -1,6 +1,3 @@
-// Maps a core delivery row onto the design `NotificationItem` shape the
-// header bell renders. Keeps the presentation concerns (hue, short label,
-// relative time) out of both the API layer and the layout.
 import type { NotificationAction, NotificationItem } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { NotificationRow, PendingInvitation } from "./types";
@@ -60,9 +57,6 @@ export function toNotificationItem(
     text: row.title,
     sub: row.body ?? undefined,
     time: formatRelativeTime(row.createdAt),
-    // ISS-1063 — unread is the DELIVERY's read state and nothing else. Whether the
-    // thing is still true is `openMembers`, shown by the group summary below; the two
-    // used to be one boolean, which is the defect this issue is about.
     unread: row.readAt === null,
     hue: hueFor(row),
     // A delivery carrying one record is a plain row; one carrying several names the

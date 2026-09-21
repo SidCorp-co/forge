@@ -6,11 +6,6 @@ import { boss } from '../queue/boss.js';
 
 export const DEVICE_PRUNE_QUEUE = 'device-offline-prune';
 
-/**
- * Days a device may stay offline before it is pruned. Read straight from
- * process.env (not the env schema) so operators can tune it without a schema
- * change; clamped to a 7-day floor so a typo can't reap live devices.
- */
 function pruneDays(): number {
   const raw = Number.parseInt(process.env.DEVICE_PRUNE_DAYS ?? '', 10);
   return Number.isFinite(raw) && raw >= 7 ? raw : 30;
@@ -18,14 +13,6 @@ function pruneDays(): number {
 
 type PrunedRow = { id: string };
 
-/**
- * Revoke devices that have been offline (no heartbeat) longer than the prune
- * window and remove their runner bindings — the same cleanup the manual revoke
- * endpoint does. This GCs "ghost" devices (e.g. a re-pair before machine-id
- * dedup, or a decommissioned box) so they stop cluttering `/me/devices` and
- * leaving orphaned `runners` rows. Mirrors GitLab's offline-runner prune /
- * Tailscale key expiry. Idempotent: already-revoked devices are skipped.
- */
 export async function runDevicePrune(): Promise<{ revoked: number; durationMs: number }> {
   const t0 = Date.now();
   const days = pruneDays();

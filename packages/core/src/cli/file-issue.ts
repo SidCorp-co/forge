@@ -29,10 +29,8 @@ export const CLI_DUPLICATE_CORPUS = 200;
 /** The one word both doors use for "I have looked and this is not that issue". */
 export const CLI_DEDUP_OVERRIDE = 'confirmNotDuplicate';
 
-// cm:guard this type IS the door, and a field `CreateIssueInput` accepts that is absent here is deliberately out of reach rather than forgotten — adding one is a decision about what may be filed through a stricter front-end, never a passthrough. `relations` is on it because the parts refusal in `shape.ts` tells a filer to relate the keys in the same create, and a way out the door cannot carry is the defect this layer exists to remove.
 export interface CliFiling {
   readonly projectId: string;
-  // cm:guard REQUIRED and never optional-with-a-legacy-default: this door is db-free on purpose (`file-issue.test.ts` mocks `db` as `{}`) and has no production caller yet, so an optional field would let the first one omit it and refuse a prefixed project's filing under the wrong name (ISS-992). A project that has set none passes `[]` and `null`.
   readonly prefixes: readonly string[];
   readonly activePrefix: string | null;
   readonly title: string;
@@ -68,8 +66,6 @@ export interface CliFilingOptions {
   readonly confirmNotDuplicate?: boolean;
 }
 
-// cm:guard the shape is read and the duplicate asked BEFORE `createIssue`, and a refusal returns from here rather than from inside it — a layer that files a malformed body and reports success has done nothing, and a duplicate refused after the insert is a duplicate filed
-// cm:edge contract -> packages/core/src/issues/one-create-path.test.ts — this door calls `createIssue` and must never grow an `insert(issues)` of its own; that scan is what keeps the stricter front-end from becoming a second write path
 export async function fileIssueThroughCli(
   filing: CliFiling,
   writer: IssueCreateWriter,
@@ -129,7 +125,6 @@ export async function fileIssueThroughCli(
     },
     writer,
   );
-  // cm:guard a detector-key claim that landed on an EXISTING issue comes back refused by name, never as a filing that happened. `createIssue` answers `deduped: true` with no new row, and a door reporting that as filed is the shape ISS-807 is the standing example of: a call that returns successfully and wrote nothing. This layer sets no `detectorKey`, so the branch is unreachable from `CliFiling` today, and that is exactly why it is written as a loud break rather than left to a caller to notice.
   if (created.deduped) {
     const key = created.existingIssueDisplayId ?? created.existingIssueId;
     return {

@@ -18,13 +18,6 @@ export function benchMessagePatterns(tasks: readonly Task[]): RegExp[] {
   );
 }
 
-/**
- * The sessions that MAY be a shipped task's: every row's query is a task's turn message. Bench rooms
- * are deleted with a read-back after every trial, so their titles cannot be read from a window
- * afterwards; the messages are the one mark the rows keep (ISS-1065 D2). A session with one such row
- * beside any other query is a person's and stays; the caller then keeps only the candidates whose
- * room is gone, since a person's room is still there (codex F1).
- */
 export function benchSessions(rows: HistoryRow[], tasks: readonly Task[]): string[] {
   const patterns = benchMessagePatterns(tasks);
   const verdict = new Map<string, boolean>();

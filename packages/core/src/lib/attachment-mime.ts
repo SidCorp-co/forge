@@ -21,7 +21,6 @@ const ISSUE_MIMES = [
 
 const COMMENT_MIMES = ISSUE_MIMES.filter((m) => !m.startsWith('video/'));
 
-// cm:why ISS-499 — an agent-chat transcript is read back by a runner and shown for vision, so it takes images, PDF and the two text types and nothing a runner cannot open
 const SESSION_MIMES = [
   'image/png',
   'image/jpeg',
@@ -60,7 +59,6 @@ const EXT_MIME: Record<string, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
-// cm:guard every member of this set MUST be a type whose payload is UTF-8 text, because a candidate in here survives the byte sniff unchanged and a binary type surviving it would defeat the whole resolution. `image/svg+xml` qualifies (SVG is XML source); no other image, video or office type does.
 const TEXT_FORMATS = new Set([
   'text/plain',
   'text/markdown',
@@ -73,20 +71,11 @@ function extensionOf(name: string): string {
   return name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
 }
 
-/**
- * The type an extension asks for, with no bytes to check it against. Used at
- * ticket-mint time, where the file does not exist yet. An extension this table
- * does not know asks for `text/plain` rather than `application/octet-stream`:
- * the ticket is a capability, not a verdict, and {@link resolveAttachmentMime}
- * judges the bytes at the PUT.
- */
 export function mimeFromName(name: string): string {
   return EXT_MIME[extensionOf(name)] ?? 'text/plain';
 }
 
 /** Strip path separators and anything that is not part of a name; keep the extension. */
-// cm:guard this output is an IDENTITY, not just a safe filename — the attachment name rule compares it, so a character class that maps distinct names together refuses distinct documents: `[^A-Za-z0-9._-]` sent `报告.pdf` and `设计.pdf` both to `__.pdf`, and NFC/NFD spellings of one name to two (ISS-963)
-// cm:guard `\p{M}` is in the keep-class and must stay — NFC composes no Devanagari, Arabic harakat or Hebrew niqqud, so dropping combining marks sends `किताब.pdf` and `कुताब.pdf` both to `क_त_ब.pdf`, which is the CJK collapse above surviving in the scripts nobody checked (ISS-963)
 export function safeName(name: string): string {
   const cleaned = name
     .normalize('NFC')
@@ -96,35 +85,17 @@ export function safeName(name: string): string {
   return cleaned || 'file';
 }
 
-/**
- * The UTF-8 budget a stored name has to fit, and the predicate that decides it.
- *
- * Bytes, because the filesystem counts bytes: a path component is 255 on ext4
- * and the storage key spends 14 more on the `<epoch>-` prefix, so ~81 CJK
- * characters overflow where 200 ASCII ones did not — and an `ENAMETOOLONG` out
- * of the storage driver is an unmapped 500 on a file that validated fine.
- *
- * A predicate and not a truncation, because the name is the identity the
- * collision rule compares: cutting one to fit maps every name sharing its first
- * 180 bytes onto a single row, which is exactly the collapse the rule exists to
- * prevent — for astral characters it does so by splitting a surrogate pair, and
- * the lone surrogate left behind is shared by 1,024 code points. Over budget is
- * refused by name (ISS-963).
- */
 export const NAME_MAX_BYTES = 180;
 export function nameExceedsByteBudget(name: string): boolean {
   return new TextEncoder().encode(name).length > NAME_MAX_BYTES;
 }
 
-// cm:guard test code points, never a regex character class — biome's noControlCharactersInRegex refuses control escapes in a literal, and spelling them as `\\x00` in a `new RegExp` string only hides the same bytes from the reader
-// cm:guard ESC and BACKSPACE belong here: an ANSI-coloured build log is the single most common `.log` and is ordinary text. Removing them re-refuses the exact file ISS-957 was filed to admit.
 const TEXT_CONTROLS = new Set([0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x1b]);
 function isBinaryControl(codePoint: number): boolean {
   if (TEXT_CONTROLS.has(codePoint)) return false;
   return codePoint < 0x20 || codePoint === 0x7f;
 }
 
-// cm:guard this table must stay the byte-wise projection of isBinaryControl — it exists only because an indexed scan over 10 MB (UPLOADS_MAX_BYTES) costs ~20 ms where the same loop through the Set costs ~400 ms of blocked event loop, and two predicates that disagree is the bug this file already paid for once (ISS-957)
 const BINARY_BYTE = new Uint8Array(256);
 for (let byte = 0; byte < 256; byte++) BINARY_BYTE[byte] = isBinaryControl(byte) ? 1 : 0;
 
@@ -158,8 +129,6 @@ function utf16Text(bytes: Buffer): string | null {
  */
 export function looksBinary(bytes: Buffer): boolean {
   if (bytes.byteLength === 0) return true;
-  // cm:guard a BOM selects the DECODER and the scan then runs over the decoded units — it must never return early, because two bytes anyone can prepend would otherwise admit any blob as text/plain and make this whole check a formality (ISS-957)
-  // cm:guard `fatal: true` is the load-bearing half — it rejects the lone surrogates any real binary payload reaches within a few hundred bytes (measured: 200 of 200 random 4 KB blobs), so the residual is a blob too short to contain one, which by this predicate's only definition is text
   const decoded = utf16Text(bytes);
   if (decoded !== null) {
     for (const ch of decoded) {
@@ -168,7 +137,6 @@ export function looksBinary(bytes: Buffer): boolean {
     }
     return false;
   }
-  // cm:guard scan every byte, never a prefix — a window means the payload only has to start past it, and 8 KB of ASCII in front of an ELF header is not a hard file to make. The buffer is already whole in memory and capped by UPLOADS_MAX_BYTES, so there is nothing to stream around.
   for (let i = 0; i < bytes.length; i++) {
     if (BINARY_BYTE[bytes[i] as number] === 1) return true;
   }
@@ -185,7 +153,6 @@ export function allowedSetForTarget(target: AttachmentTarget): {
   const allowed = new Set(mimes);
   return {
     mimes,
-    // cm:guard `extensions` is the explicit map ONLY, so it cannot list `.log`, and a client that prints it alone tells its user the opposite of the rule — `anyExtensionIfText` is the rest of the sentence and must be printed with it (ISS-957)
     extensions: Object.entries(EXT_MIME)
       .filter(([, mime]) => allowed.has(mime))
       .map(([ext]) => `.${ext}`),
@@ -228,7 +195,6 @@ export interface ResolveAttachmentMimeInput {
  */
 export function resolveAttachmentMime(input: ResolveAttachmentMimeInput): MimeResolution {
   const allowed = ALLOWED_BY_TARGET[input.target];
-  // cm:guard `application/octet-stream` counts as NO declaration, not as a claim — the multipart routes write it themselves whenever the browser reports `""` (issues/attachment-routes.ts, comments/routes.ts), which is every `.log` a person drags in, so treating it as a claim refuses the headline case ISS-957 exists to admit
   const declared = input.declaredMime === UNDECLARED ? '' : input.declaredMime;
   const candidate = declared || mimeFromName(input.name);
 

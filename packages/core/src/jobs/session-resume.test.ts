@@ -79,7 +79,6 @@ describe('loadResumeBounds (ISS-580)', () => {
   });
 });
 
-// cm:guard the estimate is scoped to the ISSUE, and that is deliberately broader than the one attempt a retry resumes: every session of an issue shares the transcript that attempt would reload, so the widest peak is the honest bound. A test that narrows the scope back to one session would pass while removing the ceiling.
 describe('estimateIssueContextTokens', () => {
   it('returns 0 when no usage_records rows exist for the issue', async () => {
     executeLimitResults.push([{ peak: null }]);

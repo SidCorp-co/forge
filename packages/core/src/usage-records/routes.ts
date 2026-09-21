@@ -32,14 +32,6 @@ const summaryQuerySchema = z
   })
   .strict();
 
-/**
- * cm:guard the shape every cost rollup relies on, and the only place it is enforced before the
- * database. `usage_records.session_id` is an `agent_sessions.id`, and since ISS-1015 the rollups
- * reach it by plain text equality on `usage_records_session_id_idx` — so a stored value that is not
- * a canonical lowercase uuid is not an error anyone sees, it is a row every cost figure silently
- * omits. Refusing it here is what makes the equality safe; widening this back to a free string
- * restores the silent omission and nothing will report it.
- */
 const sessionIdField = z
   .uuid({
     error: (iss) =>
@@ -70,7 +62,6 @@ const recordCreateSchema = z
 
 const bulkSchema = z
   .object({
-    // cm:guard `projectId` is REQUIRED here and on the ingest-cli twin, and widening it to optional is the whole defect: the per-record gate below authorises by iterating the distinct projectIds, so a null one is filtered out of that loop, authorised by nobody, and inserted as a global-pool row.
     records: z
       .array(recordCreateSchema.extend({ projectId: z.uuid() }))
       .min(1)
@@ -212,7 +203,6 @@ usageRecordRoutes.get(
     const [row] = await db.select().from(usageRecords).where(eq(usageRecords.id, id)).limit(1);
     if (!row) throw notFound('usage record not found');
 
-    // cm:guard a null-projectId row is the internal/global pool and must 404 here with the SAME shape as a missing row — any other status makes this route an enumeration oracle for internal usage; internal writers read those rows off the DB, never over HTTP (ISS-492)
     if (!row.projectId) throw notFound('usage record not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
@@ -231,7 +221,6 @@ usageRecordRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    // cm:guard refuse a missing `projectId` here rather than defaulting it — an unscoped row is a global-pool row, and this is a user-facing route. The internal writers that legitimately create them are `materializeJobUsage` and friends, which insert directly and never come through HTTP (ISS-492).
     if (!input.projectId) {
       throw badRequest({ projectId: 'required' });
     }
@@ -323,7 +312,6 @@ usageRecordRoutes.post(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    // cm:why this exists beside /bulk only to tag the source: desktop runners post their local JSONL parses here, and the ingest path has to be distinguishable from an API caller's bulk upload after the fact
     const { records } = c.req.valid('json');
     const userId = c.get('userId');
 

@@ -1,14 +1,3 @@
-/**
- * ISS-104 — attach a Sentry breadcrumb to every `pipelineRunStatusChanged`
- * hook event. Breadcrumbs are global per Node process and ride along with
- * the next captured event in the same isolation scope, so a slow-pipeline
- * error captured downstream surfaces the run's status history in the
- * Sentry UI without any explicit `captureException` plumbing here.
- *
- * Payload is IDs + status strings only — no titles, descriptions, or other
- * PII surfaces here.
- */
-
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { HooksBus } from './hooks.js';
 

@@ -13,7 +13,6 @@ const updateWhere = vi.fn(async () => undefined);
 const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
-// cm:why `deriveCcStartupSignals` reads `job_events` counts, so the classification under test is driven by `ccSignalRow` rather than by the job row — a test that sets only the job and expects a class is asserting against the wrong input.
 let ccSignalRow: { total: number; toolCalls: number; messages: number } = {
   total: 0,
   toolCalls: 0,
@@ -27,13 +26,11 @@ vi.mock('../db/client.js', () => ({
   db: { insert: dbInsert, update: dbUpdate, select: () => dbSelect() },
 }));
 
-// cm:why reconcile-service.js (imported below for buildVerifierPrompt) pulls in notifications/emit.js -> notifications/routes.js -> middleware/auth.js -> config/env.js, which validates real env vars at import time — mock both notification entry points so this file never walks that chain.
 vi.mock('../notifications/emit.js', () => ({ emitNotification: vi.fn() }));
 vi.mock('../notifications/auto-resolve.js', () => ({ resolveNotifications: vi.fn() }));
 
 const emitWedgeMock = vi.fn(async (..._a: unknown[]) => undefined);
 const resolveWedgeMock = vi.fn(async (..._a: unknown[]) => 0);
-// cm:edge contract -> packages/core/src/pipeline/wedge.ts — `capacityWedgeEntityId` is reimplemented here rather than imported because that module's chain reaches config/env.js; the FORMAT must match, since the emit and the resolve are asserted against this string
 vi.mock('../pipeline/wedge.js', () => ({
   capacityWedgeEntityId: (p: string, s: string) => `capacity:${p}:${s}`,
   emitPipelineWedge: (...a: unknown[]) => emitWedgeMock(...a),
@@ -270,7 +267,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 60 });
     });
 
-    // cm:why an out-of-pool rotation target would be dropped at dispatch, so an unscoped sweep spends the RETRY_MAX_ROUNDS budget on boxes this stage can never use
     it('scopes the rotation sweep to the stage runner pool', async () => {
       ccSignalRow = { total: 2, toolCalls: 0, messages: 1 };
       stagePoolMock.mockResolvedValue({ deviceIds: ['device-B'] });
@@ -351,7 +347,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       'cancelled',
     );
 
-    // cm:guard assert BOTH halves — the persist AND the no-retry return. Dropping the return half leaves a test that stays green if the cancellation guard is deleted outright and the job silently retries; dropping the persist half is the ISS-812 defect itself coming back.
     expect(result).toEqual({ scheduled: false, reason: 'cancellation_requested' });
     expect(dbInsert).not.toHaveBeenCalled();
 
@@ -523,7 +518,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
         },
         'spend-limit',
       );
-      // cm:guard the clone KEEPS its target, and the note this replaced was wrong about why it should not: it claimed a pin would make the job "wait on the one that just failed", but select.ts:322 falls through on a stale pin, so a pin to a limited box costs one lookup and then picks a standby. Nulling the target bought nothing and travelled with a `done` reset that did real harm.
       expect(result.scheduled).toBe(true);
       const rotation = (insertValues.mock.calls[0]?.[0] as Record<string, unknown>).payload as {
         _autoRetry: { round: number; target: string | null; done: string[]; deferredSince: string };
@@ -534,7 +528,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
     });
 
-    // cm:guard the round must NOT move on a deferral — this is the whole fix. A round is one sweep over the usable devices, so charging one when there are none is what drove sid-desk from round 2 to 3 in 90 seconds and landed it on `retry_rounds_exhausted`, the hold reason no code can clear.
     it('spends no round and keeps the exclusion memory while the pool is empty', async () => {
       onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
         const opts = _args[2] as { includeLimited?: boolean } | undefined;
@@ -558,7 +551,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(rotation._autoRetry.done).toEqual(['device-B']);
     });
 
-    // cm:guard the give-up reason must come from HOW LONG the pool stayed empty, not from a reading taken at give-up time — the old ternary re-read the fleet on entry, so one device recovering for one instant mid-burn relabelled a capacity outage as `retry_rounds_exhausted` and the job then needed a human forever
     it('reports all_devices_exhausted once the deferral ceiling is passed', async () => {
       onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
         const opts = _args[2] as { includeLimited?: boolean } | undefined;
@@ -585,7 +577,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(dbInsert).not.toHaveBeenCalled();
     });
 
-    // cm:guard ONE notification per pool, keyed on the pool and not the job — many jobs hit the same empty fleet, and keying per job is the notification spam that put 721 unresolved rows in the bell (2026-08-14)
     it('notifies once about the pool, naming the rate-limit case', async () => {
       onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
         const opts = _args[2] as { includeLimited?: boolean } | undefined;
@@ -622,7 +613,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(ev.nextStep).toContain('Start a runner');
     });
 
-    // cm:guard a successful rotation is the ONLY observer of recovery — without this resolve the capacity notification stays in the bell about a pool that came back
     it('clears the capacity notification as soon as a device is usable again', async () => {
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
       await run(

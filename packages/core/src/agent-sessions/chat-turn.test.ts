@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:why `config/env.js` validates at IMPORT time and throws when DATABASE_URL / JWT_SECRET / DEVICE_TOKEN_PEPPER are absent, so without this stub the suite passes or fails on the operator's shell rather than on the code — the same reason `schedules/routes.test.ts` stubs it.
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
@@ -21,7 +20,6 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
-    // cm:why `withKernelMarker` (db/kernel-marker.ts) opens a transaction and stamps `forge.kernel_txn` through `tx.execute` before the write, and since ISS-1030 the turn also writes its user entry into `agent_session_events` inside it — so a db double missing `execute` or `insert` fails every wrapped path with `exec.transaction is not a function` rather than with what the test is about.
     execute: vi.fn(async () => []),
     insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
@@ -81,7 +79,7 @@ const syncTurnsSpy = vi.fn(async () => ({ appended: [], truncatedFromTurnIndex: 
 vi.mock('./turns-helpers.js', () => ({
   syncTurnsWithMessages: (...args: unknown[]) => syncTurnsSpy(...(args as [])),
 }));
-(await import('../integrations/register-all.js')).registerAllIntegrations(); // cm:why ISS-1071 — the dispatch path asks the registry which providers render an MCP server for a granted binding, and reading it EMPTY throws rather than answering "none declared", so this file registers as the app does at boot.
+(await import('../integrations/register-all.js')).registerAllIntegrations();
 vi.mock('../pipeline/runs.js', () => ({
   openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
 }));
@@ -317,7 +315,6 @@ describe('dispatchChatTurn', () => {
     // Preamble + prior transcript + the new message are all primed into the cold start.
     expect(prompt).toContain('[Preamble]');
     expect(prompt).toContain('This is a cold start');
-    // cm:guard LABELLED, off the canonical `type`: the words alone leave the new box unable to tell the person's requests from its own prior answers.
     expect(prompt).toContain('User: where is the runner code');
     expect(prompt).toContain('Assistant: in packages/runner');
     expect(prompt).toContain('and the dispatch loop?');
@@ -439,7 +436,6 @@ describe('dispatchChatTurn', () => {
     ];
     expect(prev).toEqual([]);
     expect(next).toHaveLength(1);
-    // cm:guard CANONICAL (`type`), never `role`: ISS-1030 removed the reader branches that read both, so a `role` here draws this turn as an agent row.
     expect(next[0]).toMatchObject({ type: 'user', content: 'hello' });
     // The user turn is materialized in the same update that flips the session to running — never after dispatch.
     const updates = updateSet.mock.calls[0]?.[0] as { messages: unknown[]; status: string };

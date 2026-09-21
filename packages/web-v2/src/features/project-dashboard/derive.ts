@@ -1,10 +1,3 @@
-// web-v2 feature module: project-dashboard — PURE derivations (no React, no
-// fetching) for the per-project operator dashboard (`/projects/[slug]`,
-// see `design/draft-screen/01 Dashboard.html`). Everything re-composes data already fetched
-// by the existing `useProjectHealth` / `useAttention` / `useProjectRuns` /
-// `useStepDurations` / `useDevices` + `useQueueStats` / `useSchedules` hooks —
-// NO new data sources (ISS-379). Kept pure so the aggregation is unit-tested in
-// `derive.test.ts` without rendering anything.
 
 import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
@@ -27,33 +20,8 @@ import type { QueueStats } from "@/features/sessions/types";
 
 export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "ready";
 
-/**
- * Statuses that are NOT genuinely-open work and so are EXCLUDED from the donut
- * entirely: terminal `released`/`closed` and the not-yet-active `draft`. This is
- * the same exclusion the core KPI uses (`NON_OPEN_STATUSES` in
- * `packages/core/src/projects/health-routes.ts`), so the donut center total
- * equals the top "Open issues" KPI by construction (ISS-528). Previously these
- * were bucketed into "Done" and dominated the chart (~96% noise on projects with
- * many closed issues), contradicting the KPI.
- */
 const NON_OPEN_STATUSES = new Set(["awaiting_release", "closed", "draft"]);
 
-/**
- * Display buckets for the status donut, in legend order. ISS-509: buckets are
- * grouped by SEMANTIC TONE and colored from `TONE_META` (one source of truth),
- * so a status lands on the SAME tone here as in its chip and in the overview
- * work-distribution bar. This reconciles the old disagreement where `reopen`
- * was a red "Blocked / failed" segment here but an in-progress segment on the
- * overview, and where `on_hold`/`needs_info` were painted the alarm-red of a
- * real failure: now `reopen` is `active`, `on_hold` is calm `blocked` ink, and
- * `needs_info`/`waiting` are `attention` amber. No issue STATUS maps to the red
- * `failure` tone — only a failed job/session does. ISS-528: the donut now charts
- * OPEN work only — terminal `released`/`closed` + `draft` are excluded (see
- * `NON_OPEN_STATUSES`), and `tested` moved out of the old "Done" bucket into a
- * `ready` (awaiting-release) bucket since it is still in-flight. Every OPEN
- * status maps into exactly one bucket so the donut total equals the sum of the
- * open-only distribution = `totalActive`.
- */
 const STATUS_BUCKETS: ReadonlyArray<{
   key: StatusBucketKey;
   label: string;
@@ -84,7 +52,6 @@ export interface StatusDonutData {
 
 export function statusDonut(dist: Record<string, number> | undefined): StatusDonutData {
   const d = dist ?? {};
-  // cm:edge contract -> packages/core/src/projects/health-routes.ts — the donut centre must equal that route's "Open issues" KPI, so terminal `awaiting_release`/`closed` and not-yet-active `draft` are excluded from the total on both sides (ISS-528).
   let total = 0;
   for (const [status, count] of Object.entries(d)) {
     if (!NON_OPEN_STATUSES.has(status)) total += count;
@@ -167,11 +134,6 @@ export function spendByStage(rows: StepDurationRow[] | undefined): SpendByStageD
 
 const LIVE_RUN_STATUSES = new Set(["running", "paused"]);
 
-/** currentStep value for a run parked at the manual pre-release gate (issue
- *  status `tested`, awaiting a human to advance tested→released). The pipeline
- *  run stays `running` in the DB while parked here — see ISS-461: that reaper
- *  only closes runs whose issue is already `closed`/`released`, so a run
- *  legitimately parked at `tested` is untouched and looks "live" forever. */
 const AWAITING_RELEASE_STEP = "tested";
 
 /** Currently-live runs (running or paused), most recent first (the list arrives
@@ -181,14 +143,6 @@ export function liveRuns(runs: PipelineRunListItem[] | undefined): PipelineRunLi
   return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
 }
 
-/** Live runs that are genuinely executing a step — i.e. something is actually
- *  queued, dispatched or running on them.
- *
- *  This used to be `currentStep !== "tested"`, which only knew about ONE parked
- *  state. Every other park — `waiting`, `needs_info`, `on_hold`, or a run whose
- *  last job died — read as live forever. Measured 2026-08-11: getcontent had 14
- *  runs at status `running`, of which 3 had any live job. `liveJobs` is the fact
- *  the guess was standing in for (ISS-789). */
 export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter((r) => (r.liveJobs ?? 0) > 0);
 }
@@ -196,23 +150,16 @@ export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRun
 /** Live runs with no live JOB on them. Split out from `awaitingReleaseRuns`:
  *  that one names the single expected park (the release gate); this one is
  *  everything else, which is the set nobody could see before. */
-// cm:guard "no live job" is NOT "idle" — a master-lane run carries agent_sessions and no jobs row, so it lands here while fully live and heartbeating (14 such runs across 5 projects, 2026-09-12). This bucket is a job-liveness bucket; do not label it idle in user-facing copy, and do not reap from it.
-// cm:edge contract -> packages/core/src/pipeline/runs-rollup.ts — `liveJobs` is a job count there for the same reason; the two must keep the same meaning or the dashboard says idle about a box at capacity
 export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter(
     (r) => (r.liveJobs ?? 0) === 0 && r.currentStep !== AWAITING_RELEASE_STEP,
   );
 }
 
-/** Live runs parked at the manual release gate — tested and done, just waiting
- *  on a human to advance tested→released. Not "live" in any executing sense. */
 export function awaitingReleaseRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter((r) => r.currentStep === AWAITING_RELEASE_STEP);
 }
 
-/** Sum of estimated cost across the live runs — the `+$X in flight` annotation.
- *  Prefer `activeSpend` for anything user-facing (this includes sunk cost of
- *  runs parked awaiting release, which is no longer "in flight"). */
 export function inFlightSpend(runs: PipelineRunListItem[] | undefined): number {
   return liveRuns(runs).reduce((sum, r) => sum + (r.cost?.estimatedCost ?? 0), 0);
 }
@@ -324,16 +271,6 @@ export interface RunnersSummary {
   total: number;
 }
 
-/**
- * Compact runner summary — every runner the PROJECT has, joined with per-device
- * queue counters and the live active-runner snapshot. When `active` is supplied,
- * `busy` and the `activeIssueRef`/`activeStage` detail come from the runner's
- * ACTUAL in-flight job; otherwise `busy` falls back to the queue running-count.
- * No utilization% (not stored — deferred to ISS-378); revoked devices dropped.
- */
-// cm:guard the spine is the PROJECT's runner rows, never the caller's `/me/devices`: a device belongs to whoever paired it, so keying on the viewer's own fleet made every runner somebody else paired vanish and the card state "No runners paired yet · 0/0 online" over a project with an online box — a false claim rather than an empty list, measured on forge-dev 2026-09-09 (VISION: state-never-lies).
-// cm:why `active` needs no runnerId→deviceId bridge any more — the snapshot and the spine are keyed alike, and the queue counters are the only thing still looked up by `deviceId`.
-// cm:guard `online` reads the RUNNER's status as well as the device's, because the endpoint filters neither: a retired runner keeps its row (retire sets `disabled`, it does not delete) and a draining one keeps heartbeating on an online device, so counting the device alone reports capacity the pool will not offer work to. Measured on getcontent/sidpeak/dodgeprint-api 2026-09-09, each carrying a `draining` row beside a live one.
 export function runnersSummary(
   projectRunners: ProjectRunner[] | undefined,
   queue: QueueStats | undefined,

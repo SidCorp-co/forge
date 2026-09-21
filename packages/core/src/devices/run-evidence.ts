@@ -26,14 +26,12 @@ import { logger } from '../logger.js';
 import {
   BOX_RUN_ID_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
-  RUN_SESSION_TYPE,
+  RUN_SESSION_KIND,
 } from './run-session.js';
 
 /**
  * The box's half, exactly as `daemon/checkpoint.rs` puts it on the wire.
  */
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/checkpoint.rs — `Reconstructed::to_json` is the producer. A field added there and not here is dropped silently; a field required here and not sent there is a 400 on the close, which loses the whole close and not only the evidence.
-// cm:guard `source` is carried rather than assumed. It is what keeps a box-derived field from ever being printed under the run's own testimony, and a payload that does not declare itself is refused rather than labelled by this end.
 export const runCheckpointSchema = z
   .object({
     source: z.string().min(1).max(64),
@@ -55,7 +53,6 @@ export type RunCheckpoint = z.infer<typeof runCheckpointSchema>;
 export const RECONSTRUCTION_SOURCE = 'reconstructed_from_box';
 
 /** The line that makes a second write of the same evidence a no-op. */
-// cm:guard keyed on the SESSION and not on the issue or the box run id. The close loop retries every mark it still owes, and a run whose close was answered but whose answer was lost sends the whole close again; a second identical post on an issue a human is being asked to read is how an operator-facing signal becomes noise they filter out. The session id is what one close is about, so it is what one evidence post is about.
 export function runEvidenceMarker(sessionId: string): string {
   return `run-evidence: ${sessionId}`;
 }
@@ -63,11 +60,6 @@ export function runEvidenceMarker(sessionId: string): string {
 /**
  * A fence that the content cannot break out of.
  */
-// cm:guard the testimony is printed BYTE FOR BYTE and is arbitrary text a run wrote, so a fixed
-// three-backtick fence is breakable by the content — a `next` that itself contains a fenced block
-// would close this one early and the rest would render as prose beside the box's own findings,
-// which is the two blocks merging by accident. The fence is sized past the longest run of
-// backticks in the content instead.
 function fenceFor(content: string): string {
   const longest = (content.match(/`+/g) ?? []).reduce((n, run) => Math.max(n, run.length), 0);
   return '`'.repeat(Math.max(3, longest + 1));
@@ -93,20 +85,12 @@ function reconstructionBlock(cp: RunCheckpoint): string {
   lines.push(files.length === 0 ? '- _none_' : files.map((f) => `- \`${f}\``).join('\n'));
   const unread = cp.unread ?? [];
   if (unread.length > 0) {
-    // cm:guard the unread list is PRINTED and not swallowed. It is the difference between "the run
-    // touched nothing" and "nothing could be read", and those two lead a master to opposite
-    // decisions about the work.
     lines.push('', 'Could not be read:');
     lines.push(unread.map((u) => `- ${u}`).join('\n'));
   }
   return lines.join('\n');
 }
 
-// cm:guard `''` is nothing written and whitespace is NOT, which is ISS-1050 finding F5. Criterion 24
-// says the run's own text appears byte for byte, and `next.trim() === ''` classified a run that
-// wrote spaces or a newline as one that wrote nothing at all — a substitution of this module's
-// words for the run's, on the one surface built to keep the two apart. What a whitespace-only
-// testimony looks like to a reader is the fence with nothing visible inside it, which is the truth.
 function testimonyBlock(next: string | null): string {
   const head = '### What the run said about itself';
   if (next === null || next === '') {
@@ -138,9 +122,6 @@ export function buildRunEvidenceBody(args: {
 /**
  * A worktree this box is still holding because its work is on no remote.
  */
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/held_report.rs — the box
-// builds this; a field added there and not here is dropped, and one required here and not sent
-// there is a 400 on a report whose whole purpose is to stop a silence.
 export const heldWorktreeSchema = z
   .object({
     worktree: z.string().min(1).max(1024),
@@ -156,10 +137,6 @@ export type HeldWorktree = z.infer<typeof heldWorktreeSchema>;
 /**
  * What a resumed master decided about a run it inherited.
  */
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/control.rs — `RESUME_CHOICES`
-// there is the same closed set, refused by name before it reaches this box's transport.
-// cm:guard `.strict()` and a CLOSED enum, so a fourth word is a 400 rather than a comment nobody
-// can act on. The box refuses it first; this is the half that holds when the box is an older build.
 export const resumeChoiceSchema = z
   .object({
     runId: z.string().min(1).max(200),
@@ -170,9 +147,6 @@ export const resumeChoiceSchema = z
 
 export type ResumeChoice = z.infer<typeof resumeChoiceSchema>;
 
-/** The line that makes a second report of the SAME choice a no-op. */
-// cm:guard keyed on the RUN, not the session: one resumed pane answers for several runs and each
-// gets its own comment, while a pane asked twice about one run says it once.
 export function resumeChoiceMarker(runId: string): string {
   return `resume-choice: ${runId}`;
 }
@@ -199,19 +173,11 @@ export function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
     '',
     `> ${choice.why.replace(/\n/g, '\n> ')}`,
     '',
-    // cm:guard says the choice was the MASTER's. The box handed it the branch, the worktree and the
-    // state raw and no recommendation; printing this without saying whose judgement it was would
-    // read as the system having decided, which is the thing the design refuses to do.
     "That judgement is the resumed machine's own. It was handed the run's branch, checkout and",
     'state as plain facts with no recommendation attached, and this is what it made of them.',
   ].join('\n');
 }
 
-/** The line that makes a second report of the SAME held state a no-op. */
-// cm:guard keyed on the session AND the head commit, not the session alone. The hold is retried
-// every thirty seconds and must not say so every thirty seconds; but a run that commits again while
-// held has changed what is at risk, and that IS worth saying a second time. Keying on the session
-// alone would report the first state forever and never the current one.
 export function heldWorktreeMarker(sessionId: string, head: string): string {
   return `held-worktree: ${sessionId}:${head}`;
 }
@@ -234,9 +200,6 @@ export function buildHeldWorktreeBody(args: { sessionId: string; held: HeldWorkt
     '',
     `Why it is held: ${held.reason}`,
     '',
-    // cm:guard says plainly that nothing has been moved and that the box keeps trying. A report
-    // that reads like a request for action, when the box will in fact resolve it by itself the
-    // moment the remote is reachable, trains a reader to intervene where waiting was correct.
     'Nothing about this issue has been moved. The box retries on every sweep, so a remote that',
     'becomes reachable releases the checkout with no action from anybody. This is here so that a',
     "remote which does *not* become reachable is somebody's to see rather than nobody's.",
@@ -249,11 +212,6 @@ interface RunIssueRow {
 }
 
 /** One device's run session, whatever status it has reached. */
-// cm:guard NOT filtered by status, and both writers here depend on that. A run whose box died is
-// reaped by `reapDeadRunSessions` after ten minutes and the box reports afterwards; filtering to a
-// live session drops the report in exactly the situation it is about.
-// cm:guard scoped by DEVICE. A session id alone would let one box write onto the issues another
-// box's run is holding.
 async function runSessionForDevice(
   deviceId: string,
   sessionId: string,
@@ -270,7 +228,7 @@ async function runSessionForDevice(
       and(
         eq(agentSessions.id, sessionId),
         eq(agentSessions.deviceId, deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
       ),
     )
     .limit(1);
@@ -278,7 +236,6 @@ async function runSessionForDevice(
 }
 
 /** The run's issues, and what each one's lease says the run said. */
-// cm:guard the `next` is read from `session_context.lease.next` and cast to text rather than parsed. It is a statement a run made, so what belongs on the issue is the bytes it wrote; re-serialising it through anything that could normalise whitespace or escapes makes the block a paraphrase while still being labelled as testimony.
 async function runIssuesWithTestimony(
   projectId: string,
   issueKeys: string[],
@@ -299,18 +256,6 @@ async function runIssuesWithTestimony(
 /**
  * Post one comment onto an issue, once, however many callers race to post it.
  */
-// cm:guard the marker is an EXACTLY-ONCE key and a select followed by an insert is not one, which is
-// ISS-1050 finding F4. All three writers below are retried — the box reports a checkpoint on every
-// sweep until core takes it, and the held-worktree pass every thirty seconds — so two retries in
-// flight together both read no comment and both insert, and the issue carries the same block twice.
-// `openRunSession` had already met this exact shape and closed it with `pg_advisory_xact_lock`; this
-// is that lesson carried the three functions over it had not reached.
-// cm:guard the lock is TRANSACTION-scoped and its key is derived from the issue and the marker, so
-// nothing has to be cleaned up and two different markers on one issue never wait for each other.
-// The `run-evidence:` prefix is there because advisory keys share one namespace database-wide.
-// cm:guard the re-read happens INSIDE the transaction, after the lock. The read before it would be
-// the same defect with a lock next to it: what makes the key hold is that the loser blocks until
-// the winner commits and then sees the winner's row.
 async function insertCommentOnce(args: {
   issueId: string;
   marker: string;
@@ -334,7 +279,6 @@ async function insertCommentOnce(args: {
       issueId: args.issueId,
       authorId: args.authorId,
       authorDeviceId: args.deviceId,
-      authorAgency: 'agent',
       body: args.body,
     });
     return true;
@@ -351,7 +295,6 @@ export interface RunEvidenceResult {
 /**
  * Write the two blocks onto every issue the run was holding.
  */
-// cm:guard accepts a session core has ALREADY reaped, and that is the case it exists for. A run whose box died is reaped by `reapDeadRunSessions` after ten minutes; the box comes back, finds the row, and reports what it left. Refusing that because the session is terminal would drop the evidence in exactly the situation the evidence is about.
 export async function writeRunEvidence(args: {
   deviceId: string;
   sessionId: string;
@@ -399,9 +342,6 @@ export async function writeRunEvidence(args: {
 /**
  * Say on every issue this run holds that its work is on one machine only.
  */
-// cm:guard REPORTS and moves nothing, exactly as the core-side invariant does. The box is refusing
-// to release a checkout, which is already the strongest act available to it; a status change on top
-// would be the kernel deciding what happens to work whose owner it cannot ask (ISS-1050).
 export async function writeHeldWorktreeReport(args: {
   deviceId: string;
   sessionId: string;
@@ -439,9 +379,6 @@ export async function writeHeldWorktreeReport(args: {
 /**
  * Say on each issue a resumed master's inherited run holds what it chose and why.
  */
-// cm:guard REPORTS, like its two neighbours. The master has already decided and the box has already
-// recorded; this is the half that puts the decision where a human reads it, and it moves no status
-// (ISS-1050 criterion 29).
 export async function writeResumeChoice(args: {
   deviceId: string;
   sessionId: string;
@@ -476,7 +413,6 @@ export async function writeResumeChoice(args: {
 }
 
 /** The person a box's credential belongs to, which is who a box's comment is authored as. */
-// cm:guard `author_id` answers WHOSE credential and `author_device_id` answers WHICH box; both are written, and `author_agency` says an agent wrote it. Leaving the agency off would file a machine's reconstruction as a human's statement on the one surface a human reads to decide what happens to the work.
 async function ownerOfDevice(deviceId: string): Promise<string> {
   const [row] = await db
     .select({ ownerId: devices.ownerId })

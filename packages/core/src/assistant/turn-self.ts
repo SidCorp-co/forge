@@ -1,8 +1,3 @@
-/**
- * ISS-1034 — what a turn reads about WHO is answering and WHO is being answered:
- * the handle's self and the speaker's preferences, in one place for every door.
- */
-
 import { readAssistantPreferences } from '../auth/preference-changes.js';
 import { db as defaultDb } from '../db/client.js';
 import { readSelvesFor } from '../orgs/agent-selves.js';
@@ -24,8 +19,6 @@ export interface TurnSelf {
   speakerContext: string | null;
 }
 
-// cm:guard the self is read off the HANDLE the turn speaks as and the preferences off the SPEAKER, and neither off "the project's agent" or the principal: a project may hold more than one agent account and the room names which one is in it, while in a group room the principal is the org agent and the person being answered is somebody else (ISS-1034 criteria 3, 17, 19).
-// cm:edge contract -> packages/core/src/assistant/external-chat.ts — every door takes its self and speaker section from HERE rather than reaching the org and auth modules on its own; the archmap fan-out limit on the SSE door is what put the two reads together, and the rule outlived that door (ISS-1030).
 export async function loadTurnSelf(input: TurnSelfInput): Promise<TurnSelf> {
   const dbi = input.db ?? defaultDb;
   const selves = input.handleUserId ? await readSelvesFor([input.handleUserId], dbi) : new Map();

@@ -1,9 +1,5 @@
 'use client';
 
-// Pinned views/tabs = a (route + filter-state) deep-link the user saves. They
-// render as a horizontal pinned-tab bar and as a "Pinned" group in the command
-// palette. The `href` carries the encoded filter state, so reopening a pinned
-// view restores it (see features/shell/deep-link.ts + the Issues screen).
 import { useCallback } from 'react';
 import { usePersistedState } from '@/lib/utils/use-persisted-state';
 import type { IconName } from '@/design/icons/icon';

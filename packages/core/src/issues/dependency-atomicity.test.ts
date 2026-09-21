@@ -1,14 +1,3 @@
-/**
- * ISS-889 — the edge write runs on the caller's executor, all of it.
- *
- * `create-service.test.ts` witnesses that the write is CALLED inside the
- * transaction. That is not the same claim as the write actually READING inside
- * it: threading the executor into the insert while leaving `detectCycle` on the
- * module-level pool passes every ordering assertion and still admits the pair
- * the cycle gate exists to refuse, because edges written earlier in the same
- * uncommitted transaction are invisible to a pool read.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
@@ -98,7 +87,6 @@ describe('writeIssueDependency — the cycle walk reads the caller executor', ()
     expect(IssueDependencyError).toBeDefined();
   });
 
-  // cm:guard this is the assertion that fails when only the INSERT is threaded and the walk is left on `db`. Without it, reverting `detectCycle(…, ex)` to `detectCycle(…)` keeps all 369 issues tests green — measured 2026-08-31 — while a create transaction declaring both directions commits a cycle the gate is supposed to refuse.
   it('never reaches the pool for the walk, so an uncommitted edge cannot be missed', async () => {
     const tx = txHoldingEdgeBtoA();
 

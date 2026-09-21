@@ -39,7 +39,6 @@ interface ActivityTabProps {
   onRetry: () => void;
 }
 
-// cm:guard `failure` is the ONLY red — ISS-322 settled that a cascade cleanup and a lifecycle sweep must not read like a step that broke, and re-pointing any other tone at `--red-*` here silently re-opens that
 const TONE_COLOR: Record<ActivityTone, { dot: string; fg: string }> = {
   failure: { dot: "var(--red-500)", fg: "var(--red-600)" },
   swept: { dot: "var(--ink-400)", fg: "var(--fg-muted)" },
@@ -109,13 +108,12 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
   );
 }
 
-// cm:guard ISS-411's round-robin headline moved here when the retry list folded into this feed — deleting it drops WHERE the next attempt will land, which no other surface in web-v2 shows
 function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
   const target = summary.targetDeviceName ?? summary.targetDeviceId?.slice(0, 8) ?? null;
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-md border border-line-subtle bg-sunken px-3.5 py-2.5">
       <span
-        className="rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold"
+        className="rounded-full px-2 py-0.5 font-mono text-11 font-semibold"
         style={{ background: "var(--amberw-50)", color: "var(--amberw-600)" }}
       >
         round {summary.round}/{summary.maxRounds}
@@ -149,12 +147,11 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="fg-body-sm font-semibold text-fg">{entry.verb}</span>
-          <span className="font-mono text-[12.5px] font-bold text-muted">{entry.object}</span>
+          <span className="font-mono text-12-5 font-bold text-muted">{entry.object}</span>
           <span className="fg-body-sm font-semibold" style={{ color: color.fg }}>
             {entry.outcome}
           </span>
           {entry.repeats > 1 && (
-            // cm:guard the sr-only twin is not decoration — WHICH attempts folded exists nowhere else on this screen, and a tooltip on a non-interactive badge reaches a pointer and nothing else, so without it a screen reader is told sixteen attempts collapsed and never which ones. The rule: information a sighted reader gets from a hover has to reach a screen reader some other way
             <Tooltip label={repeatLabel(entry.positions)}>
               <span className="inline-flex">
                 <Badge tone={entry.tone === "failure" ? "red" : "neutral"}>

@@ -112,6 +112,65 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Forge shows its own version**, once, in the sidebar footer. It is read from the deployment
+  answering you, so it names what is actually serving you rather than what this page was built
+  from.
+- **Every runner row shows that runner's own version**, beside the box it describes, labelled so
+  it cannot be read as Forge's. A runner that has never reported one now says so instead of
+  showing a blank where a number belongs.
+- **The sessions list is a tree, and every row says what kind it is.** Each session sits under
+  the one that started it, named Master, Run, Step, PM or Chat — five kind tabs where there were
+  two.
+- **A session that ends takes what it started with it.** Closing a master closes the runs beneath
+  it and returns their issues. One silence clock at ten minutes replaces two that could not see
+  each other.
+
+- **Forge's guides are now web pages anyone can read, at `/guides`.** No login, the same text the
+  API already served, and an address for an unknown guide answers 404 naming it.
+
+- **A box can be told to stop driving a project, and stay stopped.** `forge-runner master
+  stand-down <project>` places no master and sends no nudge until `stand-up`. Killing the pane
+  never held: it came back on the old conversation.
+- **Standing it up puts the project back on the same terms as any other** rather than starting a
+  master on the spot. The next pane is told how long it was down; `--fresh` starts it cold.
+- **A stand-down will not quietly take running work with it.** Where the master still holds open
+  runs, or where the box cannot establish what it holds, the pane is left running and each run is
+  named. `--force` ends it anyway.
+- **`forge-runner master status` answers three questions, not one.** Whether a session exists,
+  whether you stood the project down, and whether this box takes work for it at all.
+- **`forge-runner master kill` says what actually happens next.** It claimed the next pane was
+  fresh. It resumes the same conversation. Help and result now say so, and name what does stop it.
+- **The project's Runners screen now shows whether a box is running a session for the project, and
+  what stops it.** It names the session, when it last reported, and the command to stand it down.
+- **The pool switch says what it does not reach.** Turning it off was the obvious way to stop a box
+  working on a project, and it left the session running. It now says so where it is read.
+- **A release that already happened can now be recorded, with no release batch.** Name the
+  commit production is serving and how it shipped; Forge reads the live probes itself, closes
+  what the release carried, and refuses a commit nothing serves.
+- **A migration is now ordered against every open branch, not against `main` alone.** Picking a
+  number that beat numbers you could not see lost migrations silently. The build reads the set,
+  refuses a clash and prints the number to take.
+- **The build refuses two names for one answer.** Two constants holding the same set of statuses,
+  or a status list written out where a named one already held it, went unnoticed. A check now
+  names both and fails.
+- **An issue's records now have a store of their own.** `POST` and `GET /api/issues/:id/attributes`
+  take a typed value and the comment that asserted it, so the sentence a person reads and the
+  structured row stay joined.
+- **A comment carrying a machine record is told where that record belongs.** The answer names the
+  route for its kind, and a guide. Guidance today; a refusal only for a client that says it can
+  comply.
+- **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
+  credential core mints for that one checkout, writes its `.mcp.json`, and records the local
+  binding — no pasted token, no `bind` by hand.
+- **A checkout provisioned with no PAT says so.** It got no `forge` server in `.mcp.json` and was
+  still reported `ready`. The reason now rides that report, `doctor` shows it per checkout, and
+  `setup` asks for the token.
+- **`forge-runner setup` takes a box from installed to running work.** It checks `claude`/`git`/`tmux`
+  before pairing, waits for the project assignment, provisions the checkout, installs the service
+  and ends on `doctor` — non-zero when that fails. Every question has a flag.
+- **Setting up a runner is install, `login`, `bind`.** The installer records the core URL it came
+  from, `login` prints the approval URL instead of opening a browser (`--open` still does), and
+  every device installs the `forge` plugin unless told otherwise.
 - **Work handed to a subagent must be declared, and a box now refuses the hand-off rather than
   advising against it.** Skipping it left that work invisible and its issues never offered again.
   `forge-runner status` counts what still got through.
@@ -3000,6 +3059,67 @@
   set is now 59.
 
 ### Fixed
+
+- **A project can be asked what commit its deployment is serving.** `GET /api/projects/:id/deployment`
+  reads the declared probes and answers, deriving on every call. Health and identity stay apart,
+  so a fleet mid-deploy reports healthy with no identity.
+
+- **A deploy binding's stages can be corrected after it is created.** Settable only at create,
+  they forced a project with the wrong stage topology to delete the binding, and its credential
+  with it, to say so.
+
+- **A `preview` deploy that lands on the production box is now gated like production.** The
+  confirm gate asked the binding's stage label; where one branch and one application serve both
+  stages, the label is not the box.
+
+- **A record's pointer back to the comment that asserted it is now checked.** An id naming no
+  comment answered 500; one naming a comment on another issue was stored silently. Both are
+  refused by name.
+
+- **A `sessionContext` write can no longer delete keys its writer never read.** The field is
+  replaced whole and has no history, so sending one key dropped the landing checkpoint, lease
+  and worklog. Now refused; `expect` permits a deliberate removal.
+
+- **Asking the session list for a kind that does not exist now says so.** It names the valid
+  kinds instead of answering an empty page. A caller can also no longer declare what kind it is
+  creating.
+
+- **What you write with your own access token is filed under your name, not an agent's.** Forge
+  reads the writer from the account behind the credential. Agents now appear under the names
+  their admins gave them.
+- **Handing one issue back no longer frees a different project's issue with it.** Issue numbers
+  restart per project, and a machine working several gave up every issue carrying that number.
+  A hand-back now names the project it belongs to.
+
+- **A hand-back is confirmed only when something was given back.** Issues labelled the way your
+  project labels them — `FD-880` — reached no record and were told "done". Either form works now,
+  and a hand-back that matched nothing says so.
+
+- **A machine finishing work in a project you deleted no longer hangs.** It asked about the issue
+  under a label nothing answers to, and waited for ever. It now records the hand-back and moves on.
+
+- **A hand-back a machine cannot complete now says why.** Where the same issue number is live in
+  two of your projects, the machine has to name which one, and that sentence now reaches its log.
+
+- **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
+  claim the database refuses, and the machine that loses is told which one holds it and since when.
+
+- **Naming the box a release should prefer no longer stops the release.** The label recommends a
+  machine rather than forbidding the others, so a project whose boxes carry no matching label still
+  ships, and records the unmet preference.
+
+- **A pull request Forge opened is now one Forge can merge.** Forge knew only the pull requests
+  GitHub announced by webhook, so one Forge opened itself left no record and could not be merged.
+  Opening one now writes that record.
+
+- **A merge that finds nothing to merge says whether the record is empty or the number is wrong.**
+  The refusal now names an empty record as that, and counts the webhook deliveries that ever
+  arrived.
+
+- **A migration written but never registered in the journal can no longer reach a deploy.** Drizzle
+  runs only what `meta/_journal.json` names, so such a file silently did nothing at all. The build
+  now refuses it by name.
+
 - **A decision put to your chat room can no longer be asked twice, or stop being retried in
   silence.** Attempts are counted by the record itself, so retries end where they should and
   somebody is told when delivery fails.

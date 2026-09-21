@@ -1,16 +1,3 @@
-/**
- * The store and repository doubles the sequence's suites run against.
- *
- * Lifted out of `runner-release.test.ts` when that file passed the 500-line
- * budget, and kept as ONE copy on purpose: every double here is a model of a
- * statement in `runner-release-store.ts`, and two copies of a model drift
- * apart silently — a suite whose double forgot the `attempt` fence, or the
- * re-arm's `settled_at IS NOT NULL`, goes green over code that lost it.
- *
- * `.fixture.ts` because that suffix is what `tsconfig.build.json` excludes, so
- * this file's `vitest` import never reaches a build.
- */
-
 /** A row as the doubles hold it: the columns these suites read, and nothing else. */
 export type FixtureRow = Record<string, unknown> & {
   id: string;
@@ -55,7 +42,6 @@ export const publishError = (
     over.op === 'lookup',
   );
 
-// cm:guard the double reads GitHub's own body, exactly as `runner-release-repo.ts` does. Matching `message` here instead would make every 422 in these suites read as a tag that already exists, which is the defect the real function was carrying.
 export const saysRefExists = (r: { status: number | null; detail?: string | null }) =>
   r.status === 422 && /already exists/i.test(r.detail ?? '');
 
@@ -74,7 +60,6 @@ export const between: {
   settleAndReadBack: ((row: FixtureRow) => void) | null;
 } = { settleAndReadBack: null };
 
-// cm:guard the double of the real statement's WHERE, both halves: a row still in flight is HELD whatever its tag state, and a settled one re-arms only from `unread` or `absent` — and the re-arm bumps the attempt, so a caller holding the old one writes nothing afterwards.
 export async function openRunnerRelease(args: Record<string, unknown>) {
   const key = `${args.projectId}:${args.tag}`;
   const held = rows.get(key);
@@ -113,11 +98,9 @@ export async function openRunnerRelease(args: Record<string, unknown>) {
     startedAt: new Date('2026-09-18T00:00:00.000Z'),
   };
   rows.set(key, row);
-  // cm:guard a COPY, as a real read hands back a copy. Returning the stored object makes the caller's `row` an alias of the row every later write mutates, and an alias cannot be out of date — so every comparison of "the attempt I hold" against "the attempt the row carries" is true by construction and the races they defend are untestable.
   return { opened: { ...row }, held: null };
 }
 
-// cm:guard every double below carries the same `attempt` fence the statement does, so a case that re-arms a row proves the sequence is passing the attempt through rather than the double being forgiving about it.
 export async function appendReading(id: string, attempt: number, line: string) {
   const row = rows.get(id);
   if (row && row.attempt === attempt) (row.readings as string[]).push(line);

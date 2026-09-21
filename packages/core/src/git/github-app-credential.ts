@@ -55,8 +55,6 @@ export function parseRepoPath(raw: string): { owner: string; repo: string } | nu
   return { owner, repo };
 }
 
-// cm:guard the device is authorised by its RUNNERS, never by the binding alone — a binding says a project may reach a repository and says nothing about which box may. Drop the `runners.device_id` join and any paired device can mint a token for every repository bound anywhere in the fleet, which is broader than the deploy keys this path replaces.
-// cm:guard compare owner/repo case-INSENSITIVELY and write the identifiers literally — GitHub treats `SidCorp-co` and `sidcorp-co` as one repository, and Drizzle renders a column reference inside a raw `sql` template unqualified, which is ambiguous under these joins.
 async function findBindingForRepo(deviceId: string, owner: string, repo: string) {
   const rows = await db
     .select({
@@ -78,13 +76,6 @@ async function findBindingForRepo(deviceId: string, owner: string, repo: string)
         sql`lower(integration_bindings.config->>'repo') = lower(${repo})`,
       ),
     )
-    // cm:guard an ORDER BY is required and is not cosmetic: this used to prefer the `prod` row over
-    // the `staging` one, because a project could hold two github bindings on the same repository
-    // carrying different installations. ISS-1046 makes every github binding `role: 'service'` and
-    // `integration_bindings_service_uq` allows one per (project, provider, label), so that pair cannot
-    // exist inside a project any more — but this query spans every project the DEVICE runs, so the set
-    // can still have more than one member and an unordered pick would make the credential
-    // non-deterministic across identical asks, which is exactly what the old guard was defending.
     .orderBy(asc(integrationBindings.createdAt));
 
   return rows[0] ?? null;
@@ -118,7 +109,6 @@ export async function mintGitCredentialForDevice(args: {
   }
 
   const config = row.config as GitHubConfig;
-  // cm:guard report the BINDING's spelling of the repository, never the one git asked with — this string is what the log line and the operator see, and echoing `sidcorp-co/EPODSYSTEM_CLI` back names a repository nobody can find in GitHub.
   const canonical = config.owner && config.repo ? `${config.owner}/${config.repo}` : full;
   if (!config.installationId) {
     throw new GitCredentialError(
@@ -162,7 +152,6 @@ export async function mintGitCredentialForDevice(args: {
  * Which of these projects can authenticate git through their GitHub App, so the
  * provision payload can say so instead of the runner guessing from a URL.
  */
-// cm:guard an App binding is a CAPABILITY, never a requirement — a project with no integration, or one on SSH, must provision exactly as it did before this path existed. Return false here rather than refusing, and the deploy-key and repo-less paths stay the default they are.
 export async function projectsWithGitHubAppCredential(projectIds: string[]): Promise<Set<string>> {
   if (projectIds.length === 0) return new Set();
   const rows = await db

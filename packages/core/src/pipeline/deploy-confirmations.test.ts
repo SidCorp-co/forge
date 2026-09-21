@@ -9,7 +9,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why `resolveDeployGate` is pure but its module opens the db client at import time, so the stub is what keeps this suite free of a real environment.
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 import {
@@ -88,7 +87,6 @@ describe('resolveDeployGate', () => {
     });
   });
 
-  // cm:guard the boundary is `<=`, so a hold whose deadline is exactly now is EXPIRED. A `<` here turns the last millisecond of the window into a defer that the next tick resolves anyway — harmless — but the test exists so the direction is a decision and not an accident.
   it('the deadline boundary is inclusive: deadlineAt === now is expired, one ms later is not', () => {
     expect(resolveDeployGate({ a: hold({ deadlineAt: NOW.toISOString() }) }, NOW).verdict).toBe(
       'failed',
@@ -100,7 +98,6 @@ describe('resolveDeployGate', () => {
   });
 
   it('is bounded: the window is shorter than the sweeper quiet window it must resolve inside', () => {
-    // cm:edge contract -> packages/core/src/jobs/loop-monitor.ts — RESULT_QUIET_MINUTES is 60 minutes; raise this window past it and the sweeper and the deploy gate both decide one run's outcome, which is the two-writers shape ISS-923 forbids.
     expect(DEPLOY_CONFIRM_WINDOW_MS).toBeLessThan(60 * 60_000);
   });
 });

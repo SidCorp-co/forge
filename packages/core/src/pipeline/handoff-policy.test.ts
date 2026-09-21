@@ -56,6 +56,4 @@ describe('resolveHandoffsPolicy', () => {
     );
     expect(r.injectFromSteps).toEqual(['triage', 'plan', 'clarify']);
   });
-
-  // cm:guard the resolved policy carries NO gate field, and a test asserting one is how they came back: `requireHandoffWrite` and `missingMarkerPolicy` resolved for months with no reader, and their own tests were the only thing keeping them alive. The handoff is context; `jobs/finalize-done.ts` reads it to RESCUE a failed job, never to fail a passing one.
 });

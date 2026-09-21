@@ -1,27 +1,8 @@
-/**
- * ISS-258 — shared cascade helper for `pipeline_runs` terminal transitions.
- *
- * Whenever a run flips to a terminal status (`completed | failed | cancelled`)
- * any child `jobs` rows still in `queued | dispatched | running` are orphaned:
- * the dispatcher gate counts them against the runner's inFlight cap forever
- * and no later lifecycle event will resolve them. The cancel path in
- * `runs-control.ts` already had this cleanup; the natural-close paths in
- * `runs.ts` did not, so an issue closing while a triage job sat in
- * `dispatched` wedged the runner indefinitely (the 2026-05-27 stall).
- *
- * This module is the single SSOT for the cascade so MCP cancel and natural
- * close cannot drift.
- *
- * ISS-785 — `agent:abort` (keyed by `agent_sessions.id`) was always a no-op
- * for pipeline jobs (keyed by `jobId`); `requestKillsForCascade` fixes that
- * with the real primitive, `job.cancel` (see `jobs/kill-gate.ts`).
- *
- * ISS-923 — this is HALF the invariant; the inverse is `runs-concluded.ts`.
- */
-
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 
@@ -33,8 +14,6 @@ export type CascadeReason = 'pipeline_cancelled' | 'pipeline_completed' | 'pipel
 export interface CascadeResult {
   cancelledJobIds: string[];
   abortedSessionIds: string[];
-  /** deviceId keyed by sessionId — kept for the existing MCP cancel response
-   *  shape (`deviceIdsNotified`); no longer used to pick an event to send. */
   deviceBySession: Map<string, string>;
   /** ISS-785 — the terminal-flipped job rows that have a device to kill on.
    *  Pass to `requestKillsForCascade` AFTER the transaction commits (same
@@ -43,26 +22,7 @@ export interface CascadeResult {
   killableJobs: JobRow[];
 }
 
-/**
- * Mark every still-active child job of `runId` cancelled, mark linked
- * agent_sessions failed, and return the device fan-out map plus the job rows
- * to kill. The caller is responsible for calling `requestKillsForCascade`
- * AFTER the transaction commits (so we never act on a write the DB has
- * rolled back). Pass the transaction handle so the cascade rides on the same
- * tx as the run-status UPDATE; if a transaction is not available, pass `db`
- * directly — the cascade is idempotent (status WHERE clause excludes
- * terminal rows).
- *
- * Includes `'running'` jobs deliberately: a closed pipeline_run with a
- * still-running child job is the same orphan class as a still-dispatched
- * one. `cancelPipelineRun` previously cleaned only `queued|dispatched`;
- * unifying here closes that gap.
- */
 // cm:flow release/reap after:close — closing the run reaps its child jobs, and on a `pipeline_completed` close the release job that is still running flips to done, NOT cancelled; that sentinel is why a successful release does not look like a cancelled one
-// cm:guard every terminal pipeline_runs.status transition must route through this helper — nothing else reaps child jobs
-// cm:edge lockstep -> packages/core/src/jobs/loop-monitor.ts — orphan-hygiene defence 2; the three defences move together
-// cm:edge lockstep -> packages/core/src/devices/pool.ts — orphan-hygiene defence 3: the pool offers a job only under a `running`/`paused` parent, so an orphan the cascade missed is never handed to a master. It took this role from the dispatch gates when the central picker was deleted.
-// cm:edge lockstep -> packages/core/src/pipeline/runs-concluded.ts — the INVERSE direction, and it is part of the same statement: this module keeps child jobs from outliving a terminal run, that one keeps a run from outliving its last terminal job. Defending only this direction is what left 98 of 114 live runs `running` with nothing in flight (ISS-923); a change to what `terminal` means on either axis has to move both.
 export async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,
@@ -87,10 +47,7 @@ export async function cascadeCancelChildJobs(
           failureKind: 'infra',
           failureReason: reason,
         },
-    where: and(
-      eq(jobs.pipelineRunId, runId),
-      inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
-    ),
+    where: and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, [...LIVE_JOB_STATUSES])),
     fromStatus: 'active',
     reason,
     actor: { type: 'system' },
@@ -106,8 +63,6 @@ export async function cascadeCancelChildJobs(
     if (j.agentSessionId && j.deviceId) deviceBySession.set(j.agentSessionId, j.deviceId);
   }
 
-  // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — a reconcile/verify_skill job cancelled here never routes through finalizeFailedJob, so it still needs the same terminal path (BLOCKER M path 3, ISS-801 review); only the genuine-cancel branch, since a `pipeline_completed` close flips these to 'done' instead.
-  // cm:why dynamic import avoids a runs-cascade -> reconcile-service -> pipeline/runs -> runs-cascade cycle (reconcile-service imports closeRun/openOneShotRun from pipeline/runs.js, which imports this module).
   if (!completedSuccess) {
     const reconcileJobs = cancelledJobs.filter(
       (j) => j.type === 'reconcile' || j.type === 'verify_skill',
@@ -144,7 +99,7 @@ export async function cascadeCancelChildJobs(
         : { failureReason: reason, updatedAt: now },
       where: and(
         inArray(agentSessions.id, abortedSessionIds),
-        inArray(agentSessions.status, ['queued', 'running', 'idle']),
+        inArray(agentSessions.status, [...LIVE_SESSION_STATUSES]),
       ),
       fromStatus: 'active',
       reason,
@@ -158,19 +113,6 @@ export async function cascadeCancelChildJobs(
   return { cancelledJobIds, abortedSessionIds, deviceBySession, killableJobs };
 }
 
-/**
- * ISS-785 — request+broadcast a real `job.cancel` for each cascaded job that
- * has a device to kill on, via the SSOT in `jobs/kill-gate.ts`. Call AFTER
- * the transaction commits — same "never act on a rolled-back write" contract
- * the `agent:abort` fan-out this replaces had. Defensive: one bad request
- * must not stop the rest.
- *
- * `jobs/kill-gate.js` is lazy-loaded (mirrors the old `agent:abort` fan-out's
- * lazy `ws/server.js` import) — it pulls in `ws/server.js` (the full WS /
- * runner / dispatcher graph), which lightweight callers of this module
- * (`pipeline/runs.ts` → `skills/crud-routes.ts`, etc.) must not pay for at
- * module-init time just because a cascade happened to run.
- */
 export async function requestKillsForCascade(
   killableJobs: JobRow[],
   reason: CascadeReason,

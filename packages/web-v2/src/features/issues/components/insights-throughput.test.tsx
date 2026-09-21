@@ -17,7 +17,6 @@ import { ThroughputChart } from "./issues-insights-view";
 expect.extend(matchers);
 afterEach(cleanup);
 
-// cm:guard out of date order, with a zero day and the busiest day in the middle, so a change to sorting, to the bar-height max, or to the total is visible in the expectations below
 const ROWS: ThroughputRow[] = [
   { projectId: "p1", date: "2026-09-10", count: 1 },
   { projectId: "p1", date: "2026-09-08", count: 4 },
@@ -39,7 +38,6 @@ describe("ThroughputChart — characterization fixture (ISS-999)", () => {
 
   it("scales each bar against the busiest day and floors an empty day at 4%", () => {
     render(<ThroughputChart rows={ROWS} />);
-    // cm:why 4 is the max → 100%; 2 → 50%; 1 → 25%; 0 → the 4% floor, which is what keeps a zero day visible
     expect(bars().map((b) => b.style.height)).toEqual(["100%", "50%", "25%", "4%"]);
   });
 

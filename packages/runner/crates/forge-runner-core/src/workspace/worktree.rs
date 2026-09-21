@@ -44,21 +44,13 @@ pub async fn create(repo: &str, branch: &str, start_point: Option<&str>) -> Resu
 
     let abs = path(repo, branch);
 
-    // cm:guard REUSE comes first, and it is not an optimisation. `git worktree add` refuses a
-    // path that exists — with or without `-b` — so without this arm the SECOND stage of an issue
-    // gets `fatal: '.worktrees/ISS-n' already exists` and the job dies before the agent starts.
-    // Core sends one branch for the whole issue precisely so the stages share a tree; that
-    // contract is this branch of this function and nothing else.
     if let Some(existing) = reusable(repo, &abs, branch).await {
         let _ = copy_skills(repo, &existing).await;
         return Ok(existing);
     }
 
-    // cm:edge ordering -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — dispatch resolves `start_point` to `origin/<base>` and is the only caller that can: it is the half that knows the project's base branch. Passing `None` cuts the branch from whatever the main worktree happens to sit on, which since the workspace refresh became a notice rather than a refusal can be ANY branch — `main` on anhome, 2026-08-15.
-    // Try to create a new branch; if it already exists, attach without -b.
     let out = git(repo, &create_argv(&rel, branch, start_point)).await?;
     if !out.status.success() {
-        // cm:why prune first: a worktree whose directory was deleted by hand stays REGISTERED, and git then refuses both `add` arms for a path it still believes is checked out
         let _ = git(repo, &["worktree", "prune"]).await;
         let retry = git(repo, &["worktree", "add", &rel, branch]).await?;
         if !retry.status.success() {
@@ -102,8 +94,6 @@ async fn reusable(repo: &str, abs: &Path, branch: &str) -> Option<PathBuf> {
         .then(|| abs.to_path_buf())
 }
 
-/// Remove the checkout AT this path, whatever its branch is called.
-// cm:guard the path the caller holds, never one rebuilt from the branch name. `create` names a tree after its branch, so the two agreed for as long as nothing renamed either — and on forge-vm they had diverged on three runs: `.worktrees/ISS-972` carrying branch `ISS-972-uploads-inertness-claim`, where the derived path made git answer `is not a working tree` and the run could never be released. The ledger's `worktree_path` is the record of what was actually cut.
 pub async fn remove_at(repo: &str, worktree: &std::path::Path) -> Result<()> {
     let out = git(
         repo,
@@ -250,7 +240,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // cm:guard the SECOND call is the whole assertion, and the first cannot stand in for it. `git worktree add -b` fails on a branch that exists, so create-or-reuse rests entirely on the retry arm — and that arm is what makes every stage of one issue land in the SAME checkout, which is the reason `pipeline/orchestrator.ts` sends one branch name for the whole issue rather than one per job. Delete the retry and only this goes red.
     #[tokio::test]
     async fn the_second_stage_of_an_issue_reuses_the_first_stages_checkout() {
         let root = repo("reuse").await;
@@ -267,7 +256,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // cm:guard two issues must get two trees on ONE box. This is the property a per-runner cap above 1 would rest on — with every stage in the repo root, refusing a second job was the only thing keeping two agents out of one checkout.
     #[tokio::test]
     async fn two_issues_get_two_independent_checkouts() {
         let root = repo("two").await;

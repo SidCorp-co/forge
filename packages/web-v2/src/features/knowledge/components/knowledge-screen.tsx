@@ -1,16 +1,12 @@
 "use client";
 
-// cm:why the inner tab seeds from `?sub=` and is otherwise local state. It was local-only, on the
-// reasoning that a second URL param "would need the two to agree on precedence for a link nobody
-// sends" — ISS-1048 made that premise false by pointing release readiness's remediation link at
-// the Rules editor. There is no precedence to settle: `?tab=` picks the outer Library tab and
-// `?sub=` picks the inner one, and an absent or unknown `sub` falls back to the default.
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   EmptyState,
   ErrorState,
   PageContainer,
+  PageTitle,
   ScreenTabs,
   Skeleton,
   type TabItem,
@@ -54,7 +50,7 @@ export function KnowledgeScreen({ scope }: KnowledgeScreenProps) {
   return (
     <PageContainer className="min-h-dvh">
       <header className="mb-4">
-        <h1 className="fg-h2">Knowledge</h1>
+        <PageTitle className="fg-h2">Knowledge</PageTitle>
         <p className="fg-body-sm mt-1 text-muted">
           Curated product knowledge — visual diagrams, user journeys, rules, and references.
         </p>

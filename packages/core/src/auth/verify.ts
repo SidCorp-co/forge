@@ -16,11 +16,6 @@ async function runVerify(token: string | undefined): Promise<VerifyOutcome> {
   return 'ok';
 }
 
-/**
- * Build a redirect to the web `/login` with a typed query flag. Mirrors the
- * `oauthErrorRedirect` shape in auth/oauth/handler.ts so success/error UX is
- * consistent — the web banner translates the code into prose.
- */
 function loginRedirect(c: Context, query: string): Response {
   const base = env.APP_BASE_URL.replace(/\/+$/, '');
   return c.redirect(`${base}/login${query}`, 302);

@@ -1,10 +1,5 @@
 'use client';
 
-// Ported from `packages/web/src/providers/auth-provider.tsx` (ISS-288).
-// `logout()` navigates to `/login` (the (auth) route group, added in ISS-289).
-// An unauthenticated mount is still tolerated: `user` stays `null` while
-// `/auth/me` resolves, and the (workspace) layout owns the redirect-to-login
-// guard so this provider never redirect-loops on first load.
 import type { LoginInput, MeResponse, RegisterInput } from '@forge/contracts';
 
 /**

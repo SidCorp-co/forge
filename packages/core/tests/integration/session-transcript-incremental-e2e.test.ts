@@ -104,8 +104,8 @@ beforeEach(async () => {
 async function seedSession(): Promise<{ jobId: string; sessionId: string }> {
   const sid = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, device_id, status, pipeline_run_id)
-    VALUES (${sid}, ${projectId}, ${deviceId}, 'running', ${runId})
+    INSERT INTO agent_sessions (id, project_id, device_id, kind, status, pipeline_run_id)
+    VALUES (${sid}, ${projectId}, ${deviceId}, 'pipeline', 'running', ${runId})
   `);
   const jid = randomUUID();
   await harness.db.execute(sql`
@@ -229,7 +229,6 @@ describe('incremental transcript derivation', () => {
     await flush();
     expect(textOf(await storedMessages())).toContain('the original line');
 
-    // cm:why the assertion below is what proves the CURSOR rather than the output: everything the first flush folded now reads POISONED on disk, so only a flush that re-reads those rows can put it in the transcript.
     await poisonEventsUpTo(4);
     await insertEvents(4, 7);
     await flush();
@@ -275,7 +274,6 @@ describe('incremental transcript derivation', () => {
     await insertEvents(3, 7);
     await flush();
 
-    // cm:guard the control is the SAME two batches, each derived by a full rebuild — what every flush did before this change — and NOT the events derived in one pass. One pass leaves a turn table the two-batch path has never produced (docs/proposals/a-turn-row-goes-stale-when-the-transcript-grows-past-it.md), so comparing against it asserts a fix nobody made here.
     const other = await seedSession();
     await insertEvents(0, 3, other.jobId);
     await transcript.deriveSessionFinal(other.jobId, other.sessionId);
@@ -294,7 +292,6 @@ describe('what a derive refuses to fold onto, and what it refuses to write over'
     await flush();
     const warn = vi.spyOn(logger, 'warn');
 
-    // cm:why a content-only rewrite: not one message id, type or timestamp moves, so nothing but the bytes themselves can tell this transcript from the one the checkpoint wrote.
     await harness.db.execute(sql`
       UPDATE agent_sessions
       SET messages = jsonb_set(messages, '{1,content}', '"a stranger wrote this"'::jsonb)
@@ -313,7 +310,6 @@ describe('what a derive refuses to fold onto, and what it refuses to write over'
   });
 
   it('re-derives from every event when it holds no checkpoint', async () => {
-    // cm:guard the transcript is asserted on THIS flush, not on a later one. A flush that logged the fallback and then selected nothing would leave the row untouched, and a case that only reads the row after a subsequent full derive passes either way — it is that derive it is measuring.
     await harness.db.execute(sql`
       UPDATE agent_sessions
       SET messages = '[{"id":"msg-1","type":"system","timestamp":1,"content":"not ours"}]'::jsonb
@@ -348,7 +344,6 @@ describe('what a derive refuses to fold onto, and what it refuses to write over'
     await insertEvents(4, 6);
     await flush();
 
-    // cm:why the failed flush must leave no checkpoint claiming its write landed, and the only way to see that from outside is to poison what the FIRST flush folded and watch it come through.
     await poisonEventsUpTo(4);
     await insertEvents(6, 7);
     await flush();
@@ -373,12 +368,10 @@ describe('what a derive refuses to fold onto, and what it refuses to write over'
     await flush();
     const warn = vi.spyOn(logger, 'warn');
 
-    // cm:why the race is made deterministic by a second connection holding the row under an uncommitted write: the flush reads the version it can still see (its own, matching its checkpoint), then BLOCKS on the update, and the commit below replaces the transcript underneath it. Postgres re-checks the compare-and-swap against what landed, which is the whole mechanism under test — a timing-based version of this asserts nothing about the interleaving that matters.
     const held = await harness.client.reserve();
     let flushed: Promise<void> | null = null;
     try {
       await held.unsafe('BEGIN');
-      // cm:guard a same-SHAPE rewrite, one message's content and nothing else. A shorter array would move the bytes too, but it also breaks the lockstep `syncTurnsWithMessages` assumes between the turn table and `prev`, and the derive would then fail on the turn index unique constraint rather than on the swap this case is about.
       await held.unsafe(
         `UPDATE agent_sessions SET messages = jsonb_set(messages, '{0,content}', '"held"'::jsonb) WHERE id = $1`,
         [sessionId],
@@ -401,7 +394,6 @@ describe('what a derive refuses to fold onto, and what it refuses to write over'
   });
 
   it('stores no session id over one derived from events it never read', async () => {
-    // cm:why the session id is the half of the derived result that moves without the transcript moving: a progress event carrying a new one leaves `messages` byte for byte as it was. A flush that read the row before that event, and guards only the transcript, writes the id from its own stale prefix straight over the newer one and nothing ever corrects it — the transcript is right and the id is a lie.
     await insertEvents(0, 1);
     const held = await harness.client.reserve();
     let flushed: Promise<void> | null = null;
@@ -414,7 +406,6 @@ describe('what a derive refuses to fold onto, and what it refuses to write over'
       flushed = transcript.maybeDeriveIncremental(jobId, sessionId, 8);
       expect(flushed).not.toBeNull();
       await waitForBlockedUpdate();
-      // cm:why the event lands here and not before the flush: it has to be absent from the read that blocked and present for the re-derive, which is the whole interleaving — insert it earlier and this flush folds it itself, and the case asserts nothing.
       await harness.db.execute(sql`
         INSERT INTO job_events (job_id, kind, data, seq, ts)
         VALUES (${jobId}, 'progress', '{"claudeSessionId":"claude-newer"}'::jsonb, 99,
@@ -433,7 +424,6 @@ describe('what a derive refuses to fold onto, and what it refuses to write over'
   });
 
   it('writes nothing over a session cancelled after it read the row', async () => {
-    // cm:why the cancel has to be re-checked in the write and not only in the read: it moves neither column the fingerprint covers, so a cancel committing in that window leaves the swap intact and the late stream lands anyway — in the transcript, in the turn table and on the wire.
     await insertEvents(0, 4);
     const held = await harness.client.reserve();
     let flushed: Promise<void> | null = null;

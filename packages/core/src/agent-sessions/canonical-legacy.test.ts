@@ -21,9 +21,6 @@ describe('toCanonicalEntry — the one conversion', () => {
   });
 
   it('drops `role` rather than leaving it beside the kind it became', () => {
-    // cm:guard the removal is the point: `messageRoleToTurnRole` and the web's
-    // `entryRole` lost their `role` branch, so an entry carrying both would read
-    // one way here and could read the other way anywhere a branch came back.
     const out = toCanonicalEntry({ role: 'user', content: 'hi' });
     if (!out.ok) throw new Error(out.why);
     expect(out.entry).not.toHaveProperty('role');
@@ -76,10 +73,6 @@ describe('toCanonicalEntry — the one conversion', () => {
     expect(legacyEntryOf(out.entry)).toEqual(original);
   });
 
-  // cm:guard each of these is a REFUSAL rather than a best guess, and the message
-  // names what was wrong. The migration turns this into an abort naming the row
-  // and the live PATCH into a 400 naming the entry — neither drops the entry to
-  // make itself succeed, which is the whole rule this converter exists to keep.
   it.each([
     [{ role: 'moderator', content: 'hi' }, 'names no canonical kind'],
     [{ role: 7, content: 'hi' }, 'names no canonical kind'],
@@ -133,10 +126,6 @@ describe('toCanonicalMessages — a whole transcript', () => {
     expect(out.why).toContain('moderator');
   });
 
-  // cm:guard an entry with NEITHER legacy field is not canonical by elimination.
-  // Both of these used to pass through untouched, and `messageRoleToTurnRole`
-  // then answered null for them: a person's line left the conversation and the
-  // PATCH still answered 200.
   it.each([
     ['an entry with no `type` at all', { content: 'keep this' }],
     ['an entry whose `type` names no canonical kind', { type: 'moderator', content: 'keep this' }],

@@ -4,7 +4,15 @@
 // (cron) + next-run time + last-outcome chip. Data from `useSchedules`
 // (`GET /api/schedules`, JWT/cookie auth via apiClient).
 import { useRouter } from "next/navigation";
-import { Button, Card, CardContent, Icon, MonoTag, StatusChip } from "@/design";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardTitle,
+  Icon,
+  MonoTag,
+  StatusChip,
+} from "@/design";
 import { formatRelativeTime } from "@/features/projects/derive";
 import { lastStatusToChip, type ScheduleRow } from "@/features/schedules/types";
 
@@ -25,7 +33,7 @@ export function SchedulesCard({ rows, now, slug }: { rows: ScheduleRow[]; now: n
     <Card className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-line-subtle px-5 py-3.5">
         <Icon name="calendar" size={16} className="text-subtle" />
-        <h3 className="fg-h3">Upcoming schedules</h3>
+        <CardTitle>Upcoming schedules</CardTitle>
       </div>
       <CardContent className="flex-1">
         {rows.length === 0 ? (

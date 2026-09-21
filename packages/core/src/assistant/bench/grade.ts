@@ -4,12 +4,12 @@
  * a verdict with named failure modes and the fact behind each comes out. Nothing here fetches.
  */
 
-import type { REGISTRY_ISSUE_STATUSES } from '@forge/contracts';
 import {
   emptyFallbackReply,
   errorFallbackReply,
   unverifiedFallbackReply,
 } from '../../conversations/fallback-replies.js';
+import { issueStatuses } from '../../db/schema.js';
 import { ISSUE_NAV_RE } from '../../messaging/text-rules.js';
 import { type Check, type ExpectedRow, fill, type Pattern, type Turn } from './task.js';
 import type { Attempt, ToolCall } from './trail.js';
@@ -103,7 +103,6 @@ export function isFallback(text: string): boolean {
   return FALLBACK_RES.some((re) => re.test(trimmed));
 }
 
-// cm:why precomposed code points, not the letters themselves: the Vietnamese alphabet's own vowels (U+00E0–U+01B0) and its tone-marked forms (U+1EA0–U+1EF9), written as escapes so the rule survives any editor's normalisation
 const VI_LETTER_RE =
   /[\u00E0-\u00E3\u00E8-\u00EA\u00EC\u00ED\u00F2-\u00F5\u00F9\u00FA\u00FD\u0103\u0111\u0129\u0169\u01A1\u01B0\u1EA0-\u1EF9]/i;
 
@@ -124,17 +123,6 @@ export function vietnameseWords(text: string): number {
 
 type Checker = (check: Check, facts: TurnFacts) => Evidence[];
 
-// cm:guard a literal pattern is matched on a WORD BOUNDARY where it has one, because an issue key
-// is a prefix of another issue key: on the QA project, `ISS-2` matched inside `ISS-25` and `ISS-10`
-// inside an `ISS-1056` a title carried, so `listInOrder` reported a reply that had listed all five
-// in the deployment's own order as naming them out of order, and `open-issues-linked` could not be
-// passed at all (0/3, measured against beta 2026-09-16). A pattern that starts or ends on a
-// non-alphanumeric character keeps that end unbounded, since a boundary there asserts the opposite
-// of what is meant (ISS-1066).
-//
-// cm:why the boundary is a lookaround over [0-9A-Za-z] and not `\b`: `_` is a word character to
-// `\b`, so `\bISS-25\b` does not match the `__ISS-25__` a reply writes when it emphasises the key
-// in Markdown, and the fix for one false failure would have bought another (codex F1).
 const ALNUM = /[0-9A-Za-z]/;
 const literal = (p: Pattern, values: Record<string, string>): RegExp => {
   if (typeof p !== 'string') return p;
@@ -154,37 +142,9 @@ const isHelp = (call: ToolCall): boolean =>
 
 const unanswered = (fact: string): Evidence[] => [{ mode: 'unanswered', fact }];
 
-type RegistryStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
-
-/**
- * The registry's status names, inlined rather than imported.
- * cm:guard core value-imports nothing from `@forge/contracts` (the production image ships no
- * contracts package; `contracts-runtime-boundary.test.ts`), so the list is a copy typed against the
- * contract, and `grade-only-from.test.ts` holds it equal to `REGISTRY_ISSUE_STATUSES` member for member.
- */
-export const ONLY_FROM_STATUSES = [
-  'open',
-  'confirmed',
-  'clarified',
-  'waiting',
-  'approved',
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'awaiting_release',
-  'releasing',
-  'closed',
-  'reopen',
-  'on_hold',
-  'needs_info',
-  'draft',
-  'dropped',
-] as const satisfies readonly RegistryStatus[];
-
 /** Every registry status name the text carries as a whole word (`_` is part of the word, so `in_progress` is one token and `progress` none). */
 function stateTokens(text: string): string[] {
-  return ONLY_FROM_STATUSES.filter((s) => new RegExp(`(?<![\\w])${s}(?![\\w])`).test(text));
+  return issueStatuses.filter((s) => new RegExp(`(?<![\\w])${s}(?![\\w])`).test(text));
 }
 
 /** A clause ends at a line break, a full stop, a semicolon, a comma, a slash or the word "and"; a pipe is not a break, so a table cell pairs with its row's label. */
@@ -373,7 +333,6 @@ const checkers: Record<Check['kind'], Checker> = {
   },
   argvNotMatch: (c, f) => {
     if (c.kind !== 'argvNotMatch') return [];
-    // cm:why a help call is not the verb: `forge new -h` files nothing, and `noHelp` already names it as a roundtrip — counting it here too would fail a reply that did exactly what was asked
     return forgeCalls(f.attempts)
       .filter((call) => !isHelp(call) && c.pattern.test(call.argv?.[0] ?? ''))
       .map((call) => ({ mode: 'forbidden_tool', fact: `forge ${call.argv?.join(' ')}` }));

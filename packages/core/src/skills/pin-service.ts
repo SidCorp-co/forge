@@ -1,9 +1,3 @@
-/**
- * Pinning a project skill — the intentional, permanent divergence marker
- * (ISS-795 §10, invariant 10). Split out of `service.ts` when the MCP tool
- * went away (ISS-894 wave 3): the only caller is now `pin-routes.ts`.
- */
-
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { skills } from '../db/schema.js';
@@ -19,11 +13,6 @@ export interface SetSkillPinnedInput {
   actorUserId: string;
 }
 
-/**
- * Mark (or clear) a project skill as `pinned` — intentional, permanent
- * divergence from its template. Writes the column and the `skill.pinned`
- * activity event in the SAME transaction (§9.11).
- */
 export async function setSkillPinned(input: SetSkillPinnedInput): Promise<SkillRow> {
   if (input.pinned && !input.reason?.trim()) {
     throw new Error('BAD_REQUEST: reason is required to pin a skill');

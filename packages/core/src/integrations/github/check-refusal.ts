@@ -1,18 +1,3 @@
-/**
- * The check-run publish's binding of the refusal engine. ISS-1072, ISS-1075.
- *
- * The rule — that a refusal is built from the evidence and never from the
- * status alone, and that a timeout before a write is a different report from a
- * timeout during one — lives in `publish-refusal.ts`, where the `runner-v*` tag
- * cut reads it too. What is left here is the four sentences that are about
- * check runs: which operation each op was, which permission a check run needs,
- * what was not written when a pre-write call timed out, and the commonest cause
- * of a 422 on this path.
- *
- * Every sentence this module produces is unchanged by the lift. `check-refusal.test.ts`
- * is the whole of what says so, and it was not edited.
- */
-
 import type { GitHubPublishError, GitHubPublishOp } from './client.js';
 import {
   describePublishRefusal,

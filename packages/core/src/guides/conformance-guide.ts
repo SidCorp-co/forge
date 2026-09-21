@@ -6,7 +6,6 @@
 
 import type { ForgeGuide } from './types.js';
 
-// cm:edge lockstep -> packages/core/src/guides/registry.ts — must appear in FORGE_GUIDES there or it is unreachable; the registry test asserts every slug is unique and reachable
 export const CONFORMANCE_GUIDE: ForgeGuide = {
   slug: 'conformance-and-verify',
   title: 'Conformance gates & `pnpm verify`',
@@ -52,10 +51,6 @@ node scripts/check-<axis>.mjs --update-baseline
 
 Then **say so in the commit message and name what moved**. The changed numbers in the diff are the record; a re-baseline mentioned nowhere reads as a cleanup that never happened. Never re-baseline to make an unexplained red go away — find out why it went red first.
 
-### Read the advisory before you edit
-
-A full verify run prints the declared couplings on every file you changed — \`cm:guard\` (invariants you must obey), \`cm:edge\` (files that must change together), \`cm:flow\` (runtime steps). This is the pull-side replacement for context injection and it works with nothing installed. If an edge's other side needs the same change, make it now rather than leaving the pair inconsistent.
-
 Ask **before** you edit rather than after, and ask the map rather than reading files:
 
 | Want to know | Ask |
@@ -65,8 +60,6 @@ Ask **before** you edit rather than after, and ask the map rather than reading f
 | the whole declared graph, for your own reasoning | \`cm graph --json\` |
 
 These answer in one call what would otherwise cost a dozen file reads, and they carry edges no language server can see — a \`lockstep\` pair usually has no import between its two sides. They are also only as complete as what somebody declared: an empty \`cm impact\` means *nothing was declared here*, never *nothing depends on this*. Confirm with references either way.
-
-The other direction is part of your job too. If you discover a coupling nothing links — two sides that must agree on a string, a call that must run before another, an effect that happens in SQL or a cron — declare it with a \`cm:edge\` in the same change. That is how the next agent gets context you had to work for.
 
 ### Cardinal rules
 

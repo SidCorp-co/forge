@@ -11,7 +11,7 @@
 
 ## Architecture
 
-<img src="docs/assets/architecture.svg" alt="Forge architecture: a browser and MCP clients reach the control plane over REST, MCP and WebSocket; a runner box on your machine runs the forge-runner daemon, which spawns a Claude agent session carrying the forge-plugin skills, CLI and hooks." width="100%">
+<img src="docs/assets/architecture.svg" alt="Forge architecture: a browser and MCP clients reach the control plane over REST, MCP and WebSocket. A runner box on your machine runs the forge-runner daemon, which pairs as a device and dials core; it opens a resident master session that decides order, and a run session where Claude works one issue in a git worktree under the issue-flow skill. The plugin&#39;s CLI reaches core over REST with its own PAT, separate from the daemon. Claude credentials never leave the box, and core neither pushes work nor ranks it." width="100%">
 
 Three boundaries hold the shape:
 
@@ -24,7 +24,16 @@ Three boundaries hold the shape:
   [`SidCorp-co/forge-plugin`](https://github.com/SidCorp-co/forge-plugin) ships the CLI, the
   session hooks and the driver skill on its own clock.
 
-The agent's surface and where it is going: [`docs/architecture/agent-surface.md`](docs/architecture/agent-surface.md).
+### The plugin boundary, close up
+
+The driver skill, the `forge` CLI and the session hooks live in a second repository on its own
+clock. The CLI is not `forge-runner` — it carries its own HTTP client and its own declared route
+table, and reaches REST with a Bearer PAT. This is the surface those three reach core through, the
+one thing in it that carries a version, and the place an agent can pick the wrong tool:
+
+<img src="docs/assets/plugin-core.svg" alt="forge-plugin and forge core: three callers with three credentials reach core - the agent session over MCP, the plugin’s own forge CLI over REST with a Bearer PAT and its own declared route table, and the forge-runner daemon over the device API. All nine CLI capability families carry the same names as core MCP tools, so the agent has two routes to the same data under one name. Of five contract items only pinnedRef carries a version, and it is set to null when two projects designate different SHAs, after which the box installs plugin HEAD." width="100%">
+
+The agent's surface, the data plane and where both are going: [`docs/proposals/destination/`](docs/proposals/destination/) — one set, measured, with its own coverage stated.
 
 ## Quickstart
 
@@ -51,13 +60,13 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 ## Documentation
 
 [Vision](docs/VISION.md) · [Quickstart](docs/quickstart.md) ·
-[Architecture](docs/architecture/) · [Modules](docs/modules/) ·
-[RFCs](docs/rfcs/) · [Proposals](docs/proposals/) · [Changelog](CHANGELOG.md)
+[Architecture](docs/proposals/destination/) ·
+[Proposals](docs/proposals/destination/) · [Changelog](CHANGELOG.md)
 
 ## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md). Trunk-based: one `main`, branches under a day, feature flags
-absorb what is in flight. Significant changes need an [RFC](docs/rfcs/).
+absorb what is in flight. Significant changes are argued in [`docs/proposals/destination/`](docs/proposals/destination/).
 
 Security vulnerabilities: **never a public issue** — use
 [private reporting](https://github.com/SidCorp-co/forge/security/advisories/new).

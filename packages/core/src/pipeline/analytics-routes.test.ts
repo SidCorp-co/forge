@@ -267,7 +267,6 @@ describe('GET /api/pipeline/step-durations', () => {
     const res = await app.fetch(req('/api/pipeline/step-durations?step=code', { token }));
     expect(res.status).toBe(200);
     expect(dbExecute).toHaveBeenCalledTimes(1);
-    // cm:guard the emitted SQL is read off the drizzle object's `.queryChunks`, where a chunk is either a `StringChunk` carrying literal text or a bare bound value, so a reader must branch on both: `JSON.stringify` of the object itself throws on the circular `PgTable` graph.
     const queryArg = dbExecute.mock.calls[0]?.[0] as {
       queryChunks?: Array<{ value?: unknown }>;
     };

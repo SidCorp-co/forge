@@ -1,23 +1,10 @@
 "use client";
 
-// web-v2 feature module: activity — React Query hooks.
-//
-// Query-key contract: every key starts with `['chat-logs']`. The chat-logs
-// table has no per-row WS broadcast today (rows are written best-effort from
-// the chat provider's turn loop in `core/src/assistant/run-turn-core.ts`), so live refresh
-// rides three signals: (1) reconnect replay — `replayOnReconnect()` in
-// `lib/ws/event-router.ts` invalidates `['chat-logs']` after a dropped socket
-// (ISS-314); (2) `refetchOnWindowFocus`; (3) the explicit Refresh action.
-// Pushing per-row in real time would need a `chat-log.created` broadcast in
-// core — recorded as a follow-up, deliberately out of scope. (Consumed by the
-// Overview "Recent activity" widget; the standalone Activity page was removed in
-// ISS-359.)
 
 import { useQuery } from "@tanstack/react-query";
 import { activityApi, type ListActivityOpts } from "./api";
 
 /** Cross-project activity feed. Keyed `['chat-logs','list',opts]`. */
-// cm:guard `refetchOnWindowFocus: true` is LOAD-BEARING here and is no longer the library default: since ISS-1019 the project default is false, so this line is signal (2) of the three this feed has, and deleting it as redundant takes one of them away silently.
 export function useActivity(opts: ListActivityOpts) {
   return useQuery({
     queryKey: ["chat-logs", "list", opts],

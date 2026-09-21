@@ -83,7 +83,6 @@ function failureTooltipLabel(info?: IssueFailureInfo | null): string {
   return short ? `${step} failed · ${short} · ${when}` : `${step} failed · ${when}`;
 }
 
-// cm:guard the agent chip is ADDED beside the lifecycle label, never swapped in for it (ISS-436) — the ISS-366 D2 take-over this reverses made the lifecycle invisible for as long as an agent was active.
 const hasLiveAgent = (s: IssueRow["agentStatus"]): boolean =>
   s === "running" || s === "queued" || s === "failed";
 
@@ -115,9 +114,6 @@ function AgentChip({
 
 /** ISS-436 merged status cell: the issue's lifecycle chip, the live agent's chip, and the gate
  *  holding a queued step — three chips, each carrying a fact something recorded. */
-// cm:guard the queued step is derived from `hasLiveAgentSession`, NOT this file's `hasLiveAgent` — the latter counts `failed` as live so the failure chip keeps its tooltip, and a deferred retry's `agentStatus` IS `failed`, so reusing it here hid the gate on the very row ISS-903 was filed about
-// cm:guard the chip's label is `statusLabel` — the KERNEL status — and never `laneLabel`. This one cell is the column headed STATUS on the desktop table and the status line on the mobile card, and until ISS-1097 it printed the lane word: seven statuses read "Running" in one screenshot, four of them mid-deploy at `releasing` and three with nobody on them at `approved`/`confirmed`. The colour was never the problem — `statusToChip` already keys on the kernel status — so a fix that only recoloured would have left the word lying.
-// cm:guard no progress figure belongs in this cell. Until ISS-999 it carried a mini tracker reading "N / 7" over a bar, positioned by a hand-written status→stage map against a seven-stage pipeline ISS-897 had already deleted from the kernel — on every row of every issues table, which is the widest audience any lie in this app had.
 export function StatusCell({ row }: { row: IssueRow }) {
   const queuedStep = deriveQueuedStep(
     row.pipelineHealth,
@@ -197,10 +193,8 @@ function useRowMenuItems(
     { label: "Open issue", icon: "arrowRight", onSelect: open },
   ];
 
-  // cm:why a viewer keeps navigation and loses every mutation item; the server 403s those writes regardless, so this is the affordance and never the gate
   if (actions.canWrite === false) return items;
 
-  // cm:guard the lock says why on ONE disabled line rather than dropping the items silently — a menu that shrinks from fourteen entries to one with no explanation reads as a broken menu, and this is the widest surface the lock reaches: every row of every issues table.
   if (heldByAgent(row.status, row.agentStatus)) {
     items.push({ label: AGENT_HOLDS_EDIT, disabled: true, separatorBefore: true });
     return items;

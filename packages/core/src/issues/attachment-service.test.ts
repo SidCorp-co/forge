@@ -26,7 +26,6 @@ vi.mock('../storage/index.js', () => ({
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const selectWhere = vi.fn(async () => [] as Array<{ id: string; path: string }>);
-// cm:why `where()` must stay lazy: the discard lookup awaits it while the ISS-963 name lookup chains .orderBy().limit(), and calling selectWhere eagerly would burn one mockResolvedValueOnce per chained call
 const selectNameLimit = vi.fn(async () => [] as unknown[]);
 const selectChain = (...args: unknown[]) => ({
   orderBy: () => ({ limit: selectNameLimit }),

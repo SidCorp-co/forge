@@ -30,7 +30,6 @@ export const SOURCE_LABEL_CAP = 40;
 /**
  * The transport id a source row carries.
  */
-// cm:guard an id longer than this is DROPPED and never clipped, and the hit says which message lost it: a clipped id is a different id, and a permalink built from one points at the wrong message or at nothing while looking exactly like a good link. Dropping it costs a person one click; clipping it costs them the belief that the links are real (plan consult F2).
 export const SOURCE_EXTERNAL_ID_CAP = 64;
 
 /** One message a passage was built from. */
@@ -91,8 +90,6 @@ const clip = (s: string, cap: number): string => (s.length > cap ? s.slice(0, ca
 /**
  * Search one room's indexed past.
  */
-// cm:guard `readableConversation` is the FIRST act and its refusal is thrown rather than turned into an empty result: a caller outside the room's scope is told so by name — `CONVERSATION_NO_AUTHORITY`, `CONVERSATION_NO_SCOPE`, `CONVERSATION_OUT_OF_SCOPE`, `NOT_IN_THE_ROOM` — because a narrowed result set and an honest "no matches" are indistinguishable to whoever reads them, and one of them is a leak that looks like an answer (ISS-1090 rule 1).
-// cm:guard the coverage, the hits and their source rows are read inside ONE `repeatable read` transaction, and ordering the reads is not a substitute for it: a rebuild deletes every passage and re-indexes a bounded batch, so it LOWERS the watermark while it runs, and a coverage figure read before the hits can outrun the index it is describing rather than lag it. One snapshot is the only arrangement in which the number a caller is told and the passages it is told about are about the same index (plan consult round 4 F2).
 export async function searchConversationTranscript(
   args: TranscriptSearchArgs,
 ): Promise<TranscriptSearchResult> {
@@ -112,7 +109,6 @@ async function searchInSnapshot(
 ): Promise<TranscriptSearchResult> {
   const coverage = await readCoverage(args.conversationId, dbi);
   const requested = args.limit;
-  // cm:guard clamped HERE and never in the tool's schema: a `maximum` in a JSON schema is a request to the model, and a bound the model is asked to keep is not a bound. A number outside the range is read, clamped and REPORTED — an unreported normalization is a guess, and a caller told nothing cannot tell a short answer from a complete one (ISS-1090 rule 6).
   const limit = Math.min(
     Math.max(
       1,
@@ -213,7 +209,6 @@ interface PassageRow {
 /**
  * The passages matching a query, best first.
  */
-// cm:guard two arms and one rank, the same shape `memory/search.ts:keywordSearchMemories` uses: `websearch_to_tsquery` over the english column finds what the room was TALKING about, and the identifier arm finds `ISS-1090` and `runs-cascade.ts` — which the english dictionary stems into words no query matches. A room's past is full of both.
 async function readHits(
   conversationId: string,
   query: string,
@@ -247,7 +242,6 @@ async function readHits(
 /**
  * One passage, with the rows it was built from.
  */
-// cm:guard the source rows are the ELIGIBLE ones in the range and never every row in it, and the read is capped: a passage may span thousands of recorded silences, and returning a row for each would make the response bounded by what a quiet room happened to accumulate rather than by anything this file declares (plan consult F2).
 async function shapeHit(
   row: PassageRow,
   conversationId: string,

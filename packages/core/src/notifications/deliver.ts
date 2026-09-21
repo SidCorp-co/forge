@@ -1,27 +1,3 @@
-/**
- * ISS-1063 — the delivery layer: who gets told about a record, and whether anybody does.
- *
- * A record is what the system says is true. A delivery is one person's copy of it on one
- * channel, and it is the only place a read state lives. Four things stand between a
- * record being written and a person being told, and each is a primitive borrowed whole
- * from an alerting system that already settled it:
- *
- * - **dedup** (PagerDuty's `dedup_key`) — a condition already firing under the same
- *   `resolution_key` is the SAME condition, not a new one. Forge already had the key; it
- *   used it inconsistently.
- * - **pending / for** (Prometheus) — a condition raised by a periodic detector waits for
- *   a second evaluation before anybody hears about it, so a park that clears within two
- *   sweeps never reaches a human.
- * - **inhibition** (Alertmanager) — a firing root cause suppresses its children. The
- *   11:21 burst on 2026-09-16 is the case: 15 conditions, 88 rows, one cause.
- * - **silence** (Alertmanager) — an operator already working on something stops being
- *   told, until a deadline they stated.
- *
- * And one thing stands between a delivery and a second delivery: **grouping**
- * (Alertmanager's `group_by`). Records sharing a `groupKey` reach one recipient as one
- * delivery carrying all of them.
- */
-
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
@@ -44,7 +20,6 @@ import { INITIAL_STATE, inhibitorsOf, kindOf, pendingEvaluationsFor, tierOf } fr
  * `pipeline/sweeper.ts`, which ticks every 60 seconds. A type declaring
  * `pendingEvaluations: 2` therefore waits two minutes for a second sighting.
  */
-// cm:edge lockstep -> packages/core/src/pipeline/sweeper.ts — this is that loop's tick; change the sweep interval and every `for` duration in the taxonomy silently changes with it
 export const EVALUATION_MS = 60_000;
 
 /** A pending record unseen for this long cleared before it earned a delivery. */
@@ -72,12 +47,6 @@ export interface DeliverInput {
 }
 
 /** A silence THIS reader set that covers this record. */
-// cm:guard the `createdBy` match is what makes a silence a silence rather than a switch.
-// Without it one operator saying "stop telling me about this park for an hour" stops
-// telling EVERYBODY for an hour — which is the thing ISS-1063 was filed about, wearing a
-// deadline. `silences-routes.ts` lists only your own rows, so the screen would show the
-// silence to nobody but its author while it muted the whole deployment. Per-reader, and
-// evaluated inside the per-recipient loop below, is the whole contract.
 async function silencedFor(userId: string, input: DeliverInput, now: Date): Promise<boolean> {
   const rows = await db
     .select({ id: notificationSilences.id })
@@ -122,30 +91,6 @@ async function inhibitor(input: DeliverInput): Promise<string | null> {
 /**
  * The record already carrying this condition's identity, if it is still active.
  */
-// cm:guard this is a check-then-insert, and what bounds it is WHERE the emitters run rather
-// than a lock. Three of the four condition types -- `issue_stranded`,
-// `retry_rescue_threshold` and `ops_alert` -- are emitted only from passes inside
-// `pipeline/sweeper.ts` and `admin/alert-sweeper.ts`, which are pg-boss scheduled queues
-// (`PIPELINE_SWEEPER_QUEUE`, `* * * * *`): one job per tick for the whole deployment,
-// fetched by one worker, so two evaluations of the same identity cannot overlap however
-// many replicas are up. `pipeline_wedge` is the exception -- it is emitted from the job
-// event path -- and there its producer's own guard in `pipeline/wedge.ts` is a second
-// check-then-insert, so two wedge events for one entity arriving together can write two
-// records.
-// cm:why a unique index on (type, resolution_key) WHERE resolved_at IS NULL would make this
-// structural, and it is REFUSED rather than forgotten: the replica holds 2161 active
-// `pipeline_wedge` rows under 1300-odd keys, up to 15 to a key, left by the daily renotify
-// copies this change deleted -- and VISION metric 2 counts one row per wedge straight off
-// this table (`issue_intervention_events`). The index cannot be created without deleting
-// the rows that metric is made of, which is a north-star series moved in silence to buy an
-// invariant that today's live data does not need.
-// cm:why an advisory lock around the insert would serialize it without touching that history,
-// and it is declined on a measurement rather than on taste: across the replica's 11037 rows
-// there are 587 repeat emissions under one `pipeline_wedge` key, and the SMALLEST gap between
-// any two of them is 30.0 seconds -- a retry cadence, not a race. The window has never been
-// entered, and closing it means a transaction around a write path some 48 call sites reach.
-// What would reopen the question: two records under one key seconds apart, which is what to
-// look for if a wedge is ever reported twice.
 
 async function activeRecord(input: DeliverInput) {
   if (!input.resolutionKey) return null;
@@ -174,11 +119,6 @@ async function activeRecord(input: DeliverInput) {
 async function deliverTo(recordId: string, input: DeliverInput, now: Date): Promise<number> {
   let told = 0;
   for (const userId of input.recipients) {
-    // cm:guard both gates below are INSIDE the loop, and every path that delivers comes
-    // through here — first delivery, a pending record's promotion, and `deliverExisting`.
-    // A gate applied once at the record is a gate that reads one person's preferences and
-    // applies the answer to everybody, and a gate applied on the create path only is a
-    // gate a promotion walks around.
     if (await silencedFor(userId, input, now)) {
       logger.info(
         { type: input.type, projectId: input.projectId, userId },
@@ -187,11 +127,6 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
       continue;
     }
     if (!(await wantsDelivery(userId, input.type))) continue;
-    // cm:guard a record reaches one person ONCE. Every periodic detector re-emits the same
-    // condition on every tick, so without this the second sweep writes a second delivery
-    // and the bell grows a row a minute for a condition nobody's state changed. `told`
-    // counts people newly told about THIS record, which is why the check is over the
-    // member link and not over the delivery.
     const [already] = await db
       .select({ id: notificationDeliveries.id })
       .from(notificationDeliveryMembers)
@@ -224,12 +159,6 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
         .limit(1);
       deliveryId = existing?.id;
     }
-    // cm:guard ISS-1063 — the announcement is per DELIVERY, not per record. Fifteen
-    // records joining one grouped delivery used to fire fifteen `notificationCreated`
-    // hooks, so the bell collapsed to one row while the toast, the sound and the browser
-    // notification still interrupted fifteen times — the 11:21 burst of 2026-09-16
-    // surviving in the one channel that interrupts. The record that FOUNDS the delivery
-    // announces it; the rest join it quietly and only invalidate the bell.
     let founded = false;
     if (!deliveryId) {
       founded = true;
@@ -280,10 +209,6 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
  * split the RECORD is the system's own account of what happened and is not one person's
  * to suppress, so an opt-out now stops the delivery and leaves the record standing.
  */
-// cm:guard this is the gate `routes.ts#createNotification` used to hold, and the only
-// place it lives now. Deleting it there without landing it here sent mentions to every
-// user who had turned them off, which compiles, passes every type check, and is invisible
-// until somebody who opted out is @-mentioned.
 async function wantsDelivery(userId: string, type: NotificationType): Promise<boolean> {
   if (type !== 'mention') return true;
   const [prefs] = await db
@@ -326,13 +251,6 @@ export async function deliverExisting(
   return deliverTo(recordId, { ...row, recipients }, now);
 }
 
-/**
- * Record the fact, then decide whether anybody is told about it.
- *
- * Returns the record's id, or `null` when the emission switch refused the type outright.
- * A record written but not delivered still returns its id: the system knows, nobody was
- * told, and those are different answers.
- */
 export async function recordAndDeliver(
   input: DeliverInput,
   now: Date = new Date(),
@@ -344,11 +262,6 @@ export async function recordAndDeliver(
 
   const kind = kindOf(input.type);
 
-  // cm:guard refuse by name rather than dropping it. A signal is an event: it cannot stop
-  // having happened, so a dedup/clear key on one is a caller saying something the model
-  // cannot mean. Silently writing NULL would leave the caller believing something clears
-  // it, and the row would sit unresolvable for ever — which is the 1771 rows ISS-1063 was
-  // filed about. The CHECK constraint refuses the same thing one layer down.
   if (kind === 'signal' && input.resolutionKey) {
     throw new Error(
       `recordAndDeliver: type '${input.type}' is a signal, and a signal may not carry a ` +
@@ -365,10 +278,6 @@ export async function recordAndDeliver(
     const heldFor = existing.pendingSince ? now.getTime() - existing.pendingSince.getTime() : 0;
     const owed = pendingEvaluationsFor(input.type) * EVALUATION_MS;
     const ripe = existing.state === 'pending' && heldFor >= owed;
-    // cm:guard inhibition is rechecked AT the promotion, not only at the first sighting. A
-    // condition that started pending while the deployment was healthy and matures two
-    // minutes into a wedge is a child of that wedge, and promoting it to `firing` on the
-    // state of the world two minutes ago reports the cause twice.
     const inhibitedNow = ripe || existing.state === 'firing' ? await inhibitor(input) : null;
     const promote = ripe && !inhibitedNow;
     await db
@@ -381,19 +290,7 @@ export async function recordAndDeliver(
       .where(eq(notifications.id, existing.id));
     if (existing.state === 'pending' && !promote) return { id: existing.id, delivered: 0 };
     if (existing.state === 'inhibited') return { id: existing.id, delivered: 0 };
-    // cm:guard a FIRING record with a live root cause keeps its state and stops DELIVERING.
-    // Inhibition decides who is told, and the retry below is a telling: a reader not yet told
-    // about a child must not be told while the cause is being reported, whoever else already
-    // holds it. What this deliberately does NOT do is demote the record to `inhibited` --
-    // `routes.ts` counts `kind = 'condition' AND state = 'firing'`, so demoting a condition
-    // that is still true would take it out of the count of what is still true, which is the
-    // one number this whole issue exists to make honest.
     if (inhibitedNow) return { id: existing.id, delivered: 0 };
-    // cm:guard a FIRING record re-emitted tries delivery again, and this is not a second
-    // notification: `deliverTo` skips anybody already holding a member link for it. What
-    // it catches is the reader who was gated out of the first delivery — silenced, or
-    // added to the project since — for whom returning early here meant a condition that
-    // is still true and that they were never told about, for as long as it lasted.
     const delivered = await deliverTo(existing.id, input, now);
     return { id: existing.id, delivered };
   }
@@ -413,7 +310,6 @@ export async function recordAndDeliver(
       title: input.title,
       body: input.body ?? null,
       severity: input.severity ?? null,
-      // cm:guard a signal carries neither, and a CHECK constraint refuses the row if it does — an event cannot stop having happened, so a resolution key on one is the defect ISS-1063 was filed about
       resolutionKey: input.resolutionKey ?? null,
       dedupeKey: input.dedupeKey ?? null,
       issueId: input.issueId ?? null,

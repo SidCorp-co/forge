@@ -37,7 +37,6 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-  // cm:guard every core import here is DYNAMIC and happens after the env above is set — `db/client.ts` binds its pool at module load, so a static import resolves the wrong database before a case runs.
   ({ assignIssuePrefix } = await import('../../src/issues/issue-prefix-service.js'));
   ({ heldIssuePrefixes } = await import('../../src/issues/issue-prefix-read.js'));
   ({ parseIssueRef } = await import('../../src/lib/issue-ref.js'));
@@ -91,7 +90,6 @@ describe('assigning a prefix', () => {
     expect((await heldIssuePrefixes(p.id)).sort()).toEqual(['FD', 'FX']);
   });
 
-  // cm:why The criterion that reads "is accepted" is not enough: a service that returns success without moving the pointer passes it while the project goes on rendering FX-977.
   it('moves the pointer BACK when a project returns to a prefix it already holds', async () => {
     const p = await project();
     await assign(p.id, 'FD');
@@ -136,7 +134,6 @@ describe('assigning a prefix', () => {
 });
 
 describe('what the database refuses on its own', () => {
-  // cm:why criterion 11 — the pointer and the claim cannot diverge, because Postgres will not hold it.
   it('refuses a projects row pointed at a prefix no alias of its own holds', async () => {
     const p = await project();
     await expect(
@@ -153,7 +150,6 @@ describe('what the database refuses on its own', () => {
     ).rejects.toThrow();
   });
 
-  // cm:why criterion 9 — deleting the holder must NOT free the name, or a published FD-977 silently re-points at a different project's issue 977.
   it('keeps the claim as a tombstone when the holding project is deleted', async () => {
     const a = await project();
     const b = await project();
@@ -172,7 +168,6 @@ describe('what the database refuses on its own', () => {
     expect(out).toMatchObject({ reason: 'taken', holderProjectId: null });
   });
 
-  // cm:why criterion 10 — two callers racing for one free prefix get one success and one refusal.
   it('turns the race into a refusal rather than a 500', async () => {
     const a = await project();
     const b = await project();
@@ -184,7 +179,6 @@ describe('what the database refuses on its own', () => {
     expect(refused.reason).toBe('taken');
   });
 
-  // cm:why the same project on both sides is NOT a conflict: the state the loser asked for is the state that now holds, and reporting `taken` against its own holder refuses a request that has already succeeded (codex review of ISS-992).
   it('answers both callers ok when ONE project races itself for a free prefix', async () => {
     const a = await project();
     const results = await Promise.all([assign(a.id, 'FD'), assign(a.id, 'FD')]);
@@ -193,7 +187,6 @@ describe('what the database refuses on its own', () => {
   });
 });
 
-// cm:guard Postgres's own words are on `err.cause`, not on the DrizzleQueryError that wraps it — a `rejects.toThrow(/…/)` here matches the wrapper's generic "Failed query" and passes for ANY database error, which is a green that says nothing about which rule refused.
 async function refusedBy(run: Promise<unknown>, pattern: RegExp): Promise<void> {
   let caught: unknown;
   try {
@@ -216,7 +209,6 @@ describe('what the database refuses on its own, so a restore and a psql session 
     return id;
   }
 
-  // cm:why the trigger, not the application: the guard on `issuePrefixAliases` says the table is insert-only, and until this ran nothing but that sentence enforced it (codex review of ISS-992).
   it('refuses a DELETE of an alias, spent or active', async () => {
     const a = await project();
     await assign(a.id, 'FD');
@@ -250,7 +242,6 @@ describe('what the database refuses on its own, so a restore and a psql session 
     );
   });
 
-  // cm:guard the tombstone belongs to the project FK and to nothing else. Postgres deletes the parent row BEFORE the referential action fires, so the cascade's own `project_id -> NULL` sees no `projects` row while a hand-written one sees its project alive — which is the only thing that tells them apart, and without it the one mutation the design must allow is a door onto orphaning a live project's alias (codex review of ISS-992, measured against Postgres 16 on 2026-09-13).
   it('refuses a tombstone written by hand while the project is still here', async () => {
     const a = await project();
     await assign(a.id, 'FD');
@@ -262,7 +253,6 @@ describe('what the database refuses on its own, so a restore and a psql session 
     expect(await heldIssuePrefixes(a.id)).toEqual(['FD']);
   });
 
-  // cm:guard the lookup names `public.projects` and the function pins its own search_path: PL/pgSQL resolves an unqualified name against the CALLING session at execution, and `pg_temp` is searched ahead of `public` without appearing in `SHOW search_path`, so a session holding a temp table of that name read an empty relation, answered "the project is gone" and admitted the one write this trigger exists to refuse (codex review of ISS-992, measured against Postgres 16 on 2026-09-13).
   it('refuses a hand-written tombstone from a session shadowing projects', async () => {
     const a = await project();
     await assign(a.id, 'FD');
@@ -289,7 +279,6 @@ describe('what the database refuses on its own, so a restore and a psql session 
     );
   });
 
-  // cm:guard every case above assigns ONE prefix, so `projects_issue_prefix_fk` is holding the row as much as the trigger is — a trigger narrowed to the project's ACTIVE alias would pass all of them while leaving every RETIRED alias free to be deleted, handed on or orphaned, and a retired prefix is precisely the one whose references are already published (codex review of ISS-992).
   describe('a retired alias, which the composite foreign key does not cover', () => {
     async function retired(): Promise<{ projectId: string; aliasId: string }> {
       const a = await project();
@@ -335,7 +324,6 @@ describe('what the database refuses on its own, so a restore and a psql session 
     });
   });
 
-  // cm:why the tombstone is the ONE mutation the design needs, so the trigger has to let it through — a trigger that refused it would break project deletion instead.
   it('still lets the project FK tombstone the alias on delete', async () => {
     const a = await project();
     await assign(a.id, 'FD');
@@ -347,7 +335,6 @@ describe('what the database refuses on its own, so a restore and a psql session 
     expect(rows[0]?.project_id).toBeNull();
   });
 
-  // cm:why a direct write of `fd` coexists with `FD` under the case-sensitive unique index, and both projects then answer to the same apparent FD-977.
   it.each(['fd', 'ISS', 'F', 'TOOLONG', 'F-D', '1FD'])(
     'refuses the stored prefix %s',
     async (p) => {
@@ -403,7 +390,6 @@ describe('an edge whose two ends sit in different projects', () => {
     return id;
   }
 
-  // cm:guard `issue_dependencies.project_id` scopes the EDGE and constrains NEITHER endpoint, so a cross-project edge is representable — naming the far end under the near end's prefix reports a reference that exists and points somewhere else (codex review of ISS-992)
   it("names each end with its own project's prefix", async () => {
     const fd = await project();
     const fx = await project();
@@ -424,7 +410,6 @@ describe('an edge whose two ends sit in different projects', () => {
 });
 
 describe('a run session under a prefixed project', () => {
-  // cm:why criteria 22 and 23 — the stored key stays canonical, so admission still finds it.
   it('stores the canonical ISS- key whatever prefix the project holds', async () => {
     const p = await project();
     await assign(p.id, 'FD');
@@ -449,7 +434,6 @@ describe('a run session under a prefixed project', () => {
     expect(rows[0]?.keys).toEqual(['ISS-977']);
   });
 
-  // cm:guard criterion 23 — admission matches the stored `runIssues` key by SQL string CONTAINMENT, and the stored form is canonical. Take `issue_prefix` into account in that predicate and it stops matching: the run's own issue is offered to a second box as free work, which is the cross-box conflict ISS-933 criterion 7 exists to prevent.
   it("sees a FD project's issue in a run whose stored key reads ISS-977", async () => {
     const p = await project();
     await assign(p.id, 'FD');

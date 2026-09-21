@@ -36,7 +36,6 @@ describe('registerPausedRunWedgeResolve (ISS-879)', () => {
     expect(resolveMock).toHaveBeenCalledWith('paused:run-1');
   });
 
-  // cm:guard the terminal cases are the reason this keys on `toStatus` — `emitCloseHook` in runs.ts hardcodes `fromStatus: 'running'` even on a paused→terminal close, so a `fromStatus === 'paused'` test would resolve the resumes and leave every cancelled run's wedge in the bell forever
   it.each(['completed', 'failed', 'cancelled'])('resolves when the run closes %s', async (to) => {
     resolveMock.mockClear();
     const { fire } = busWith();

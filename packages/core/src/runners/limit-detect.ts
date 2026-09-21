@@ -1,17 +1,3 @@
-/**
- * Runner rate-limit / usage-limit / auth detection (ported + adapted from the
- * forge-agents predecessor's `error-classification.ts`).
- *
- * The Rust runner already emits `[USAGE_LIMIT] <msg…resets…>` into `jobs.error`
- * and Anthropic 429/auth errors surface in the error text + `failureMeta`.
- * This module turns that raw text into a structured `RunnerLimit` so the
- * failure path can stamp the runner row, the dispatcher can skip it until the
- * reset time, and the UI can render a distinct "limited" badge.
- *
- * Kept pure (no DB, no I/O) so it is trivially testable — the write side lives
- * in `apply-runner-limit.ts`.
- */
-
 import type { RunnerLimitReason } from '../db/schema.js';
 
 export interface RunnerLimit {
@@ -40,7 +26,6 @@ const MONTH_MAP: Record<string, number> = {
 /** Default cooldown when a usage/rate limit carries no parseable reset time. */
 export const DEFAULT_LIMIT_COOLDOWN_MS = 60 * 60 * 1000;
 
-// cm:why ISS-823 — the spend-cap string carries no parseable reset (the real boundary is monthly); 6h bounds re-probing at 4x/day instead of 1h's 24x/day, and clearRunnerLimit still clears it early on any success
 export const SPEND_LIMIT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 /**
@@ -72,14 +57,6 @@ export function isUsageLimitError(text: string): boolean {
   return false;
 }
 
-/**
- * Detect an org/account monthly spend-cap message
- * (`"You've hit your org's monthly spend limit"`). Structurally distinct from
- * {@link isUsageLimitError}: it carries no `resets <time>` clause, so it can't
- * reuse that guard — length is the only signal separating a genuine short
- * error string from a long agent response that merely discusses spend
- * limits.
- */
 export function isSpendLimitError(text: string): boolean {
   if (!text) return false;
   if (text.length >= 300) return false;
@@ -223,7 +200,6 @@ export function parseUsageLimitReset(text: string): Date | null {
 export function detectRunnerLimit(text: string, retryAfter?: Date | null): RunnerLimit | null {
   const t = text ?? '';
 
-  // cm:edge lockstep -> packages/core/src/pipeline/failure-classifier.ts — both must check the spend-cap string ahead of the time-windowed usage-limit check
   if (isSpendLimitError(t)) {
     const until = retryAfter ?? new Date(Date.now() + SPEND_LIMIT_COOLDOWN_MS);
     return { reason: 'usage_limit', until, detail: summarize(t) };

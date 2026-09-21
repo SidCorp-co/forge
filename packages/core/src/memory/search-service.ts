@@ -37,7 +37,6 @@ import {
 export const memorySearchStrategies = ['semantic', 'keyword', 'hybrid'] as const;
 export type MemorySearchStrategy = (typeof memorySearchStrategies)[number];
 
-// cm:guard `surface` is REQUIRED and the owner's rule lives on it: rerank runs for 'agent' only (MCP forge_memory.search, which the chat toolset registers too, and forge_knowledge's unified search), never for 'web' (POST /api/memory/search) — the decision of 2026-09-04 that no browser path pays the model's latency is enforced here, where the strategy runs, and a new caller that cannot say which it is has not read the proposal
 export const memorySearchSurfaces = ['agent', 'web'] as const;
 export type MemorySearchSurface = (typeof memorySearchSurfaces)[number];
 
@@ -86,8 +85,6 @@ interface SearchOutcome {
   demotedStale?: number;
 }
 
-// cm:guard a stale hit is DEMOTED, never dropped — it may be the only row that answers the query, and a search that silently returns nothing is worse than one that answers late. The reorder is REPORTED (`demotedStale`) because a boundary that changes what the caller sees and says nothing is indistinguishable from one that never ran.
-// cm:guard this reorders the hits ALREADY retrieved; it does not fetch deeper, so a fresh row that ranked below the cut is still not returned. Fixing that means over-fetching, which is a cost decision nobody has taken — do not describe this as "fresh results win", it is "a superseded row no longer leads".
 function demoteStale(hits: MemoryHit[]): { hits: MemoryHit[]; demoted: number } {
   const fresh = hits.filter((h) => !h.stale);
   if (fresh.length === hits.length) return { hits, demoted: 0 };
@@ -126,7 +123,6 @@ async function retrieve(
     const hits = await keywordSearchMemories({ ...base, query: input.query });
     return { hits, resolved: requested, degraded: false };
   }
-  // cm:guard the embedding is timed around every ATTEMPT and the figure survives the degradation catch: on beta the service answers in 0.7 s or 11 s and a 28 s turn read as "memory search was slow" with nothing separating the embedding from the rest; a hybrid that waited on a failed embedding and fell back to keyword is exactly the delay this exposes, so `embedMs` is absent only when no embedding was attempted here (ISS-1041 criteria 7-9).
   const embedStarted = Date.now();
   const attempted = input.queryVec === undefined;
   const embedMsNow = () => (attempted ? { embedMs: Date.now() - embedStarted } : {});
@@ -156,7 +152,6 @@ async function retrieve(
     };
   } catch (err) {
     if (!(err instanceof EmbeddingUnavailableError) || requested !== 'hybrid') throw err;
-    // cm:why only `hybrid` degrades: its keyword arm needs no embedding, so a caller asking for it gets answers with `degraded: true` rather than a 503. `semantic` has no second arm to fall back to and must still throw — quietly answering a similarity query with ts_rank scores would hand every threshold caller (knowledge dedup at > 0.8) numbers on a different scale.
     const embedMs = embedMsNow();
     logger.warn(
       { projectId: input.projectId, err: (err as Error).message, ...embedMs },
@@ -167,7 +162,6 @@ async function retrieve(
   }
 }
 
-// cm:guard expansion is a courtesy and must stay fail-soft — a failed neighbour read logs and returns the ranked hits alone, because the ranking already answered the query and a search that 500s over context nobody asked for is worse than one without it
 async function expand(
   input: RunMemorySearchInput,
   hits: MemoryHit[],
@@ -223,7 +217,6 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   const tookMs = Date.now() - startedAt;
   logRetrieval(input, hits, retrieved.resolved, requested, tookMs, retrieved.breakdown, outcome);
 
-  // cm:guard retrieval counts come from SEARCH hits only — a natural-key read (forge_memory.get) deliberately does not bump them, because the decay and promotion jobs read the count as evidence the row answered a question somebody asked rather than that somebody knew its ref.
   if (hits.length > 0) {
     const hitIds = hits.map((h) => h.id);
     queueMicrotask(() => {
@@ -265,7 +258,6 @@ export function buildRetrievalMetadata(
   };
 }
 
-// cm:guard a key is written only when it says something — `reranked:true` / `rerankHoldout:true` / `expanded:true` and their counts, plus `hitIds` on every hybrid agent search — because the pilot's exit query joins `hitIds` to `memories.last_verified_at` for the two groups, and `reranked:false` on every semantic row would only dilute what "not reranked" means
 function outcomeMetadata(outcome: (SearchOutcome & { hitIds?: string[] | undefined }) | undefined) {
   if (!outcome) return {};
   return {

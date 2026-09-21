@@ -1,13 +1,3 @@
-/**
- * GitHub provider — plain OAuth 2.0 (no id_token).
- *
- * Why two API calls in `callback`: GitHub's `/user` endpoint returns the
- * profile but its `email` field can be `null` if the user marked their
- * email private. The /user/emails endpoint always returns the verified
- * primary email when `user:email` scope is granted, so we use that as the
- * source of truth.
- */
-
 import type { ProviderConfig } from './providers.js';
 import type { AuthorizeArgs, CallbackArgs, OAuthIdentity, OAuthProvider } from './types.js';
 

@@ -122,7 +122,6 @@ describe('POST /api/runners over an existing binding', () => {
     expect(body.message).toMatch(/restore it/i);
   });
 
-  // cm:guard `details` is the ONLY structured channel out — `middleware/error.ts:extractCause` drops every cause key but `code`, `details` and `wwwAuthenticate`, so a runner attached under its own key is silently absent from the response (ISS-990).
   it('carries the colliding runner as structured detail, not only as prose', async () => {
     const s = await seed('disabled');
 

@@ -38,7 +38,6 @@ const selection = {
   updatedAt: agentSelves.updatedAt,
 };
 
-// cm:guard text fields are bounded and trimmed and NOTHING else — no shape, no vocabulary. They are prose a model reads, and the bound exists so one row cannot make a prompt unrenderable. `presence` is `unknown` here on purpose: its keys and bounds are `presence.ts`'s to refuse, by name, and a second schema here would be the drift a refusal cannot explain.
 export const agentSelfPatchSchema = z
   .object({
     soul: z.string().trim().max(8000).nullable().optional(),
@@ -90,7 +89,6 @@ export async function readAgentSelf(
  * clears one). `presence` is MERGED key by key onto what is stored, a key sent
  * as `null` is removed, and the merged whole is validated.
  */
-// cm:guard merge, never replace: a PATCH that swapped the nested map wholesale would drop every presence key the admin did not resend — the `wholesale-config-clobber` red flag — and an interface named PATCH promises the other semantics. `null` is the way to unset one key, so the merge can still narrow (ISS-1034).
 export async function writeAgentSelf(
   orgId: string,
   agentUserId: string,
@@ -104,7 +102,6 @@ export async function writeAgentSelf(
   if (patch.presence !== undefined) {
     const merged: Record<string, unknown> = { ...current.presence };
     for (const [key, value] of Object.entries(patch.presence)) {
-      // cm:guard `heartbeat` is merged BY ITS OWN KEYS and a nested null unsets one: the editor sends `{ heartbeat: { enabled, intervalMs: null } }` to clear an interval, and a merge that stopped at the top level would hand that null to the strict validator — or replace the object and drop `enabled` (codex F5).
       if (key === 'heartbeat' && value !== null && typeof value === 'object') {
         const hb: Record<string, unknown> = {
           ...((merged.heartbeat as Record<string, unknown> | undefined) ?? {}),

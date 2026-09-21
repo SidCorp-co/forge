@@ -1,18 +1,3 @@
-/**
- * ISS-789 — `liveJobs` on all three run surfaces, against real Postgres.
- *
- * Shipped in 65bb8a0b and immediately wrong in production: the MCP list returned
- * `liveJobs: 0` for runs that `forge_project_pipeline_runs get` reported as
- * having a `dispatched` job. Typecheck cannot catch a subquery that compiles and
- * counts the wrong rows, and the consumer-side tests mocked the number, so only
- * a real query proves it. The surfaces compute the count differently (MCP
- * correlated subquery, batched loader for the list, and the single-run detail
- * rollup, which for the whole of ISS-789's first half returned a hard-coded 0
- * because its spread of `rowToListItem` was never overridden) — which is exactly
- * why all three are asserted here, cross-checked against `jobCounts`, the
- * pre-existing independent path.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -73,13 +58,12 @@ describe('run liveJobs E2E (ISS-789)', () => {
     await truncateAll(harness.db);
   });
 
-  // cm:why job type is `code`, not `pm` — a partial unique index (jobs_pm_per_project_unique_idx) allows only one live pm job per project, so a pm fixture cannot express a multi-job run
   async function seed(jobStatuses: string[]) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     const principal: McpPrincipal = {
       kind: 'pat',
-      agency: null,
+      agency: 'human',
       agentUserId: null,
       userId: owner.id,
       tokenId: randomUUID(),
@@ -104,7 +88,6 @@ describe('run liveJobs E2E (ISS-789)', () => {
     return { runId, projectId: project.id, principal, owner };
   }
 
-  // cm:guard pass the REAL principal type, never a cast — these calls used to hand `pipelineRunsListHandler` a `devices` row behind `as any`, so when ISS-931 changed the parameter to `McpPrincipal` typecheck stayed silent and every case in this file failed in CI with `NOT_FOUND` out of `assertPrincipalIsMember` reading an undefined `userId`.
   async function liveViaMcp(
     principal: McpPrincipal,
     projectId: string,
@@ -129,7 +112,6 @@ describe('run liveJobs E2E (ISS-789)', () => {
     return summary?.liveJobs;
   }
 
-  // cm:guard the production bug this file exists for — a run with one dispatched job reported liveJobs 0 while the independent jobCounts path reported {dispatched: 1}
   it('counts a dispatched job on all three surfaces, agreeing with jobCounts', async () => {
     const s = await seed(['dispatched']);
     const got = await mods.pipelineRunsGetHandler(s.principal, { runId: s.runId });
@@ -192,7 +174,6 @@ describe('run liveJobs E2E (ISS-789)', () => {
     await expect(liveViaDetail(otherRun)).resolves.toBe(3);
   });
 
-  // cm:guard the two surfaces must be asserted on the SAME run in one test, not only in separate ones — the detail rollup returned a constant 0 while the list returned the truth, and every per-surface assertion passed the whole time. Only comparing them catches a divergence that each half reports consistently.
   it('detail and list agree on the same run, so no reader can be shown two answers', async () => {
     const s = await seed(['running', 'queued', 'done']);
     const [viaList, viaDetail] = await Promise.all([liveViaRest(s.runId), liveViaDetail(s.runId)]);

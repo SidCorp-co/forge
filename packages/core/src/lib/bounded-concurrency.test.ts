@@ -20,7 +20,6 @@ describe('createLimiter', () => {
     expect(() => createLimiter(1.5)).toThrow(RangeError);
   });
 
-  // cm:guard the assertion is the PEAK, not the final count: a limiter that lets every task start at once still ends with inFlight 0, so a test reading only the end state passes against no bound at all.
   it('never lets more than `limit` tasks run at once, across interleaved callers', async () => {
     const limiter = createLimiter(3);
     const gates = Array.from({ length: 12 }, () => deferred<number>());
@@ -52,7 +51,6 @@ describe('createLimiter', () => {
     expect(peak).toBe(3);
   });
 
-  // cm:guard the mock queue in health-routes.test.ts feeds one row-set per await IN ORDER, so a limiter that started parked tasks out of order would hand each query another query's rows and the route would answer a coherent-looking lie.
   it('starts parked tasks in the order they asked, so a caller keyed on order still reads its own', async () => {
     const limiter = createLimiter(2);
     const started: number[] = [];
@@ -76,7 +74,6 @@ describe('createLimiter', () => {
     expect(started).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
-  // cm:guard THIS is the case that separates handing the slot on from returning it to a counter, and nothing else here does: a caller arriving between a release and the parked task waking sees a slot already spoken for. Every other case here passes against the counter form.
   it('does not over-subscribe when a caller arrives while a parked task is waking', async () => {
     const limiter = createLimiter(1);
     let running = 0;
@@ -94,8 +91,6 @@ describe('createLimiter', () => {
     await flush();
     expect(peak).toBe(1);
 
-    // cm:why two microtasks IS the window, measured: the holder's body resumes on the first and its release runs on the second, so a caller arriving now sits between the release and the parked task's resumption.
-    // One tick is too early and three too late — at either the counter form also reads 1, so this number is a measurement rather than a guess.
     gates[0]?.resolve();
     await Promise.resolve();
     await Promise.resolve();

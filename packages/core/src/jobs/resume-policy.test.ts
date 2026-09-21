@@ -239,7 +239,6 @@ describe('ISS-887 resolveResumePolicy — a start-from-scratch says so, and says
   });
 });
 
-// cm:guard a FIRST dispatch is not a loss and must record nothing. The (issue, sessionGroup) lookup that gave attempt 1 something to continue left with `pipelineConfig.sessionGroups` in ISS-897, so there is no offer here to drop — and `ResumeDropReason` must not regrow a member that names a loss nothing on this path can suffer.
 describe('resolveResumePolicy — a first dispatch has nothing to drop', () => {
   const firstDispatch = {
     id: 'j1',
@@ -280,7 +279,6 @@ describe('resolveResumePolicy — a first dispatch has nothing to drop', () => {
   });
 });
 
-// cm:guard the bounds apply to the RETRY path and must keep applying there — it is the one path that still has a transcript to continue, so a bound that stopped being read would let an attempt resume past the peak that already forced a compaction.
 describe('resolveResumePolicy — the bounds a retry is judged against', () => {
   it('names the token bound when the issue outgrew maxResumeTokens', async () => {
     vi.mocked(loadResumeBounds).mockResolvedValue({ maxResumeTokens: 150_000 });
@@ -299,7 +297,6 @@ describe('resolveResumePolicy — the bounds a retry is judged against', () => {
     expect(recordResumeDrop).toHaveBeenCalledWith('resume_bound_tokens');
   });
 
-  // cm:guard the reopen-cycles bound this replaced was deleted by ISS-895: it compared `reopen_count` — a column this lane never moves — so it evaluated 0 for every issue and could not fire. A bound that cannot fire and a bound that holds report the same thing.
   it('does not drop the resume on reopen count, which this lane never moves', async () => {
     vi.mocked(loadResumeBounds).mockResolvedValue({ maxResumeTokens: 150_000 });
     vi.mocked(estimateIssueContextTokens).mockResolvedValue(1_000);
@@ -392,7 +389,6 @@ describe('ISS-887 finalizeResumeForDevice — a pin the selector did not honour'
   });
 });
 
-// cm:guard `reachable` demands PROOF — both ids non-null AND equal — and these call the pure function directly BECAUSE no policy resolver reaches it any more: on the retry path a null pin is already dropped as `rotation`, and a first dispatch is offered nothing. That makes this the only place the null-pin arm is exercised at all, and deleting it leaves the arm untested the day a caller constructs a policy by hand.
 describe('finalizeResumeForDevice — an offer with no pin is not a reachable session', () => {
   const offered = (pinDeviceId: string | null) =>
     ({

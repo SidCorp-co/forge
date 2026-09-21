@@ -1,8 +1,3 @@
-/**
- * ISS-1053 — a window of the assistant's own record: `chat_logs` rows read through the API, every
- * page, as the route serves them. Nothing here grades; `grade-row.ts` does.
- */
-
 import type { BenchClient } from '../client.js';
 import type { ChatLogRow } from '../trail.js';
 

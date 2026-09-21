@@ -9,17 +9,8 @@ export type IntegrationProvider =
   | 'rocketchat'
   | 'github'
   | 'google'
-  // cm:why `agent` carries a DECLARATION and no adapter methods — nothing is integrated. It is a release CHANNEL declaration (which box may ship, how to prove it shipped, how to undo it), and the deploy itself is the project's own script run by the release session. `getAdapter` answers `undefined` for it and every caller already guards that, so the absence is a supported shape. What ISS-1071 changed is that the absence of METHODS no longer means absence from the registry: its schemas and its `agentPath: none` are declared there like every other provider's.
   | 'agent';
 
-/**
- * Runtime form of {@link IntegrationProvider} — for validating caller-supplied strings.
- *
- * This list and the registry are two statements of one vocabulary, and `registry.test.ts` refuses
- * them when they disagree: the union is what the compiler checks, the registry is what the code
- * asks at run time, and a provider present in one and not the other is a provider half of the
- * system does not know about.
- */
 export const INTEGRATION_PROVIDERS = [
   'coolify',
   'postman',
@@ -31,7 +22,6 @@ export const INTEGRATION_PROVIDERS = [
   'agent',
 ] as const satisfies readonly IntegrationProvider[];
 
-// cm:guard adding a provider to the union above without adding it here fails this line — keep both in lockstep rather than letting the runtime list silently lag the type
 const _providersExhaustive: IntegrationProvider =
   null as unknown as (typeof INTEGRATION_PROVIDERS)[number];
 void _providersExhaustive;
@@ -52,7 +42,6 @@ export interface AdapterContext<
   config: TConfig;
   /** Decrypted secrets, lazily decrypted by the dispatch path. */
   secrets: TSecrets;
-  /** HMAC secret used to verify inbound webhook signatures, if applicable. */
   integrationSecret: string | null;
 }
 
@@ -69,7 +58,6 @@ export interface AdapterContext<
  *
  * `error` covers transient and other failures.
  */
-// cm:guard 401 and 403 are different verdicts and must never be collapsed into one — a 403 mapped to `needs_reauth` sends the operator to replace a credential that works, and re-entering it reproduces the state exactly (ISS-924)
 export type HealthStatus = 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
 
 export interface HealthCheckResult {
@@ -89,21 +77,6 @@ export interface OutboundDispatchInput<TPayload = unknown> {
   runId?: string | null;
 }
 
-/**
- * A dispatch that failed and must NOT be attempted again. ISS-1073.
- *
- * `enqueueOutboundDispatch` retries five times with exponential backoff, which is
- * right for a deploy that met a transient API blip and wrong for an operation
- * whose refusal is a statement about the world: GitHub answering 405 to a merge
- * means that pull request cannot be merged as it stands, and a retry an hour
- * later merges it AFTER the condition that refused it changed — which is a merge
- * nobody asked for at a moment nobody chose.
- *
- * Generic on purpose. It names no provider and no verb: an adapter says "this
- * one is terminal" and the worker obeys, so a second provider with the same
- * shape does not need the worker edited.
- */
-// cm:edge lockstep -> packages/core/src/integrations/queue.ts — that worker is what makes this mean anything: it logs and RETURNS for this error instead of rethrowing, so pg-boss marks the job done and no backoff fires. Throwing a plain Error from an adapter keeps the retries.
 export class NonRetryableDispatchError extends Error {
   constructor(
     message: string,
@@ -130,36 +103,9 @@ export interface InboundDispatchInput {
 export interface InboundDispatchResult {
   deliveryId: string;
   actions: number;
-  /**
-   * Why this delivery was accepted, recorded and then acted on by nothing.
-   *
-   * A permanent refusal — an unserved event, a payload naming a project no target declares — is not
-   * a failure to answer, so it is a 200 rather than a throw: throwing makes the provider retry a
-   * delivery whose outcome cannot change. But `actions: 0` on its own is indistinguishable from the
-   * generic path's "signed, and dropped on the floor", which is the one thing an operator must not
-   * have to guess at. The sentence goes on the delivery row for later and comes back here for now.
-   */
   refusal?: string;
 }
 
-/**
- * How — if at all — an agent running this project's work can reach this provider, and at whose
- * risk. ISS-1071 replaced the boolean `injectsMcp` with this, because the two shapes it collapsed
- * carry different blast radii and must not share a word.
- *
- * - `none` — nothing an agent calls. The grant column on such a binding is inert and no screen
- *   offers it a control.
- * - `core-mediated` — core holds the credential and makes the call; the agent asks core through the
- *   named MCP tools. Forge is in the call path and can refuse, rate-limit and audit.
- * - `direct-mcp` — the credential is RENDERED INTO THE RUNNER'S MCP CONFIG and the agent calls the
- *   provider itself, with Forge outside the call path. `sentry` additionally executes an npm
- *   package on the runner with the token in its environment.
- *
- * `tools` is on both non-`none` arms because a provider can be both at once: epodsystem's `crmk_`
- * key reaches the runner AND core answers `forge_storefront_target` from the same binding. The
- * `kind` names the RISK; `tools` names the core-mediated surface the same grant gates.
- */
-// cm:guard `justification` is required on `direct-mcp` and on no other arm, and it is the whole of how ISS-1071 rule 2 ("a new provider defaults to core-mediated; direct-mcp is for providers that offer no other route, and the registry records that intent") is kept honest. Deleting the field does not weaken a message — it removes the only place the decision to export a project's credential to a runner box is written down, and `check-integration-declarations.mjs` reads it.
 export type AgentPath =
   | { readonly kind: 'none' }
   | { readonly kind: 'core-mediated'; readonly tools: readonly string[] }
@@ -170,16 +116,6 @@ export type AgentPath =
       readonly serverName: string;
       /** Why this provider offers no core-mediated route. Read by the declaration checker. */
       readonly justification: string;
-      /**
-       * A credential-SHAPED placeholder, carrying no secret, so the MCP preview can render this
-       * entry's shape without decrypting anything.
-       *
-       * `buildEntry` refuses an absent credential by returning null, which is right for dispatch and
-       * wrong for a preview: the preview knows a credential is stored (`secretsEnc !== null`) and is
-       * forbidden from reading it, so with `{}` it got null back and reported no URL for a binding
-       * that has one. Every value here must be visibly redacted — it is passed to a real builder and
-       * must be impossible to mistake for a working credential if it ever escapes.
-       */
       readonly previewSecrets: Record<string, unknown>;
       /** Renders the runner's `mcpServers` entry. Returns null when the credential is unusable. */
       buildEntry(
@@ -234,18 +170,6 @@ export interface IntegrationCapabilities {
    * new one on the floor. Only meaningful where `canReceiveWebhook` is true.
    */
   webhookHeader?: string;
-  /**
-   * The request header carrying the HMAC signature over an inbound delivery's raw body.
-   *
-   * Declared for the same reason `webhookHeader` is, and it was the half ISS-1071 left behind:
-   * `webhooks/inbound-routes.ts` derived the header→provider map from these declarations and then
-   * looked for the signature in a literal `['x-hub-signature-256', 'x-forge-signature-256']` in its
-   * own file. A provider signing with anything else — Sentry's `sentry-hook-signature`, ISS-1085
-   * slice 4 — therefore routed correctly to its adapter and was then refused `MISSING_SIGNATURE`,
-   * with nothing beside that array saying a second edit was owed. REQUIRED wherever
-   * `canReceiveWebhook` is true; `capabilities.test.ts` holds that, and the router refuses a matched
-   * provider that declares none by name rather than falling through to the generic path.
-   */
   webhookSignatureHeader?: string;
   /**
    * True where this provider's API can express a rollback as a structured action rather than as
@@ -376,20 +300,6 @@ export interface IntegrationAdapterMethods<
     config: Record<string, unknown>;
   }): Promise<Record<string, unknown>>;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
-  /**
-   * Core's outbound call, present exactly where `capabilities.canDispatch` is true.
-   *
-   * Optional since ISS-1062, and the two must agree: `check-integration-declarations.mjs` refuses a
-   * declaration where one is true and the other absent, in either direction. Until then this was
-   * required, six of seven adapters satisfied it with a stub that threw by name, and `canDispatch`
-   * had no reader anywhere in core — so github could have declared `true` beside a throwing stub and
-   * all 22 verify checks would have stayed green. ISS-1062's own rule is that a capability is
-   * declared or it is absent, never declared and unimplemented; an absent method is how a type
-   * system can hold that rule, and a stub is how it could not.
-   *
-   * A caller that does not know which provider it has asks `registry.ts:dispatchThrough`, which is
-   * the one place the refusal is worded.
-   */
   dispatchOutbound?(
     ctx: AdapterContext<TConfig, TSecrets>,
     input: OutboundDispatchInput,
@@ -428,17 +338,7 @@ export interface IntegrationDeclaration<
   readonly schemas: IntegrationSchemas;
   /** Null where the provider has no agent-facing usage to advertise. */
   readonly usage: IntegrationUsage | null;
-  /** Null where the provider renders no status card of its own. */
   readonly presentation: IntegrationPresentation | null;
-  /**
-   * The release-step instruction a project releasing through this provider is given, or absent
-   * where Forge has no default step for it.
-   *
-   * `release-batch/plan.ts` used to filter `c.provider === 'coolify'` and inline Coolify's polling
-   * protocol. Its own `cm:guard` says a step must be emitted only for a provider that HAS one — and
-   * the way to keep that true as providers are added is for the provider to carry its own step,
-   * rather than for the planner to hold a list it is not reminded to update.
-   */
   readonly releaseStep?: (namedChannels: string) => string;
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;

@@ -2,22 +2,6 @@ import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type RunnerStatus, runnerEvents, runners } from '../db/schema.js';
 
-/**
- * ISS-381 (2.3) — runner status-change audit writer.
- *
- * Single choke point so every `runners.status` mutation site records the
- * transition consistently and CHANGE-GATED: an event row is written only when
- * the status actually changes. This matters because the device-heartbeat site
- * sets status='online' on every heartbeat (~30s); without change-gating the
- * `runner_events` table would flood with no-op rows and the uptime timeline
- * would be unreadable.
- *
- * Bulk sites (device heartbeat, stale-detector) keep their set-based UPDATE for
- * efficiency and call `insertRunnerEvent` per actually-changed row; single-row
- * sites (PATCH / exclude / include) use `setRunnerStatus`, which does the
- * read-compare-write atomically.
- */
-
 /** A drizzle executor: the base `db` or a transaction handle. */
 export type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 

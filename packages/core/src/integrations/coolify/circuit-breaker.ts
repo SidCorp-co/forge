@@ -6,13 +6,6 @@ import { findBindingById, findConnectionById, updateConnection } from '../store.
 /** Per the issue's AC: 3 consecutive failed outbound deliveries within 5 minutes trips the breaker. */
 export const BREAKER_FAILURE_THRESHOLD = 3;
 export const BREAKER_WINDOW_MS = 5 * 60_000;
-/**
- * Cooldown before an open breaker allows a single half-open trial dispatch.
- * Without this, an open breaker could only ever be reset by a successful
- * dispatch — which the breaker itself blocks (deadlock). After the cooldown the
- * next dispatch is allowed through once; success closes the breaker, failure
- * re-arms the cooldown.
- */
 export const BREAKER_COOLDOWN_MS = 10 * 60_000;
 
 export interface BreakerEvaluation {
@@ -63,7 +56,6 @@ export async function maybeTripBreaker(args: {
 
   const connection = await findConnectionById(args.connectionId);
   if (!connection?.active) {
-    // Already tripped previously; nothing to do.
     return false;
   }
 
@@ -105,20 +97,6 @@ export async function maybeTripBreaker(args: {
   return true;
 }
 
-/**
- * Dispatch-time gate. Decides whether an outbound deploy may proceed given the
- * connection's breaker state:
- *  - active (closed) → allow.
- *  - inactive (open) but `breakerOpenedAt` older than {@link BREAKER_COOLDOWN_MS}
- *    → HALF-OPEN: re-stamp `breakerOpenedAt` to now (so a failing trial waits
- *    another full cooldown) and allow ONE trial. A success then closes the
- *    breaker via {@link maybeResetBreaker}; a failure leaves it open with the
- *    fresh timestamp.
- *  - inactive and still within cooldown → deny.
- *
- * This breaks the deadlock where an open breaker blocks the very dispatch that
- * would reset it. Pass the already-fetched connection row to avoid a re-read.
- */
 export async function breakerAllowsDispatch(connection: {
   id: string;
   active: boolean;
@@ -139,11 +117,6 @@ export async function breakerAllowsDispatch(connection: {
   return { allow: false, halfOpen: false };
 }
 
-/**
- * Called after a successful outbound delivery OR a successful Test-connection
- * (operator-driven). If the owning connection's breaker was previously open,
- * reset it. Otherwise no-op.
- */
 export async function maybeResetBreaker(connectionId: string): Promise<void> {
   const connection = await findConnectionById(connectionId);
   if (!connection || connection.active) return;

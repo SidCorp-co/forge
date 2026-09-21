@@ -202,14 +202,6 @@ export async function plantProject(
   },
 ): Promise<string> {
   const id = row.id ?? randomUUID();
-  // cm:guard `archived_at` is plantable because the coverage assertion reads `projects` with no
-  // filter on it, and the first fleet measurement read the API's default listing, which hides
-  // archived rows. Four of them went undeclared and would have aborted the deploy.
-  //
-  // cm:guard `created_at` is plantable because 0253's project coverage is narrowed by it: a project
-  // created INSIDE the deploy window and carrying no deploy-capable binding takes `none` by force.
-  // A test meaning to prove the ABORT must therefore plant a row older than that floor, or it
-  // proves the exemption instead and reads as a passing test of nothing.
   await sql.unsafe(
     `INSERT INTO projects (id, slug, name, created_by, org_id, production_branch, archived_at, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now()))`,

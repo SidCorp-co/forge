@@ -22,6 +22,7 @@ import {
   Field,
   Input,
   MonoTag,
+  SectionTitle,
   Select,
   Skeleton,
   SlideOver,
@@ -258,7 +259,7 @@ export function TokensTab() {
     <div className="space-y-6">
       <Card>
         <CardContent>
-          <h2 className="fg-h3 mb-4">Create a token</h2>
+          <SectionTitle className="fg-h3 mb-4">Create a token</SectionTitle>
           <div className="space-y-4">
             <Field label="Name" required error={errors.name}>
               <Input
@@ -372,7 +373,7 @@ export function TokensTab() {
       </Card>
 
       <div>
-        <h2 className="fg-h3 mb-3">Your tokens</h2>
+        <SectionTitle className="fg-h3 mb-3">Your tokens</SectionTitle>
 
         {tokensQ.isLoading && (
           <div className="space-y-2.5">
@@ -454,7 +455,7 @@ export function TokensTab() {
               </p>
             )}
             <div className="rounded-md border border-line bg-sunken p-3">
-              <code className="block break-all font-mono text-[13px] text-fg">
+              <code className="block break-all font-mono text-13 text-fg">
                 {revealed.plaintext}
               </code>
             </div>

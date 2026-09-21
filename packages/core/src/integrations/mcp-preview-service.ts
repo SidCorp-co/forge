@@ -1,29 +1,3 @@
-/**
- * MCP injection preview (ISS-429) — service behind
- * `GET /:projectId/integrations/mcp-preview` (thin handler in routes.ts).
- *
- * Mirrors dispatch-time semantics with the same entry builders, the same active+credential filters
- * and the same oldest-first winning-binding pick, but cannot reuse the dispatch resolver: that one
- * decrypts real vault credentials (the preview must never mint secret bytes) and returns only the
- * winning map, while this reports one row PER BINDING against every declared binding rather than
- * one dispatch's stage-resolved map.
- *
- * ISS-1071 changed both what this walks and what it measures. It walked a hardcoded
- * `MCP_PROVIDERS = ['postman','epodsystem','sentry']` and called three per-provider builders
- * through a two-branch ternary; it now walks `directMcpIntegrations()` and calls the builder the
- * declaration carries, so a fourth provider adds no line here. And `willInject` was gated on a
- * SENTINEL being declared somewhere in `pipelineConfig.mcpServers` — a map on a different settings
- * tab, which is how a binding could read Connected and healthy and reach no agent (ISS-1038). It is
- * now gated on the binding's own `agentAccess` grant, and the reason a binding does not inject is
- * `not_granted`, naming a switch that sits on the same object the operator is looking at.
- *
- * `resolveSessionMcpServers` runs the same chain minus the stage layer, so this describes chat
- * turns too.
- */
-// cm:edge lockstep -> packages/core/src/integrations/mcp-resolver.ts — the gate order and the
-// binding-pick order live in both files, and the preview lies about what a runner receives if they
-// drift. The pair is deliberately NOT one shared function: that one decrypts, this one must not.
-
 import type { BindingRole, DeployStage } from '../db/schema.js';
 import { grantHolds } from './agent-access.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
@@ -50,15 +24,6 @@ export interface McpServerPreviewEntry {
   lastHealthAt: string | null;
 }
 
-/**
- * The entry a runner would receive for one binding, built with an EMPTY secrets object.
- *
- * The same builder the dispatch resolver uses, so the URL cannot drift from what a runner actually
- * gets. The credential passed is the declaration's own `previewSecrets` placeholder, never the
- * stored one — that is the mechanism by which this response cannot carry secret bytes, and the
- * projection below then reads only `url` and synthesizes its own redacted `Authorization`, so a
- * builder that puts the placeholder in `env` never reaches the wire either.
- */
 function previewEntryFor(
   decl: IntegrationDeclaration,
   pair: BindingWithConnection,

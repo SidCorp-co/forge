@@ -1,14 +1,5 @@
 "use client";
 
-// web-v2 feature module: issues — React Query hooks (Part A list + shared).
-//
-// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts#routeEvent — these keys MUST match the
-//   ones that router invalidates (ISS-293); any other prefix makes WS-driven invalidation a silent no-op
-//   list   → ['issues','search', projectId, opts]   (issue.* events)
-//   cost   → ['issue', id, 'cost']                  (lazy; no WS event)
-//   deps   → ['issue', id, 'dependencies']          (dependencyChanged)
-//   members→ ['project', projectId, 'members']
-// Any other prefix → WS-driven invalidation silently no-ops.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -128,7 +119,6 @@ export function useProjectModules(projectId: string | undefined) {
  * has to travel with the modules; a payload of modules alone deletes them, and the server cannot
  * tell that from a deliberate clear.
  */
-// cm:guard the non-module labels come FIRST and unconditionally — this function is the only thing standing between a module edit and silently wiping an issue's labels
 export function buildModuleLabelWrite(
   current: IssueLabel[],
   moduleIds: string[],
@@ -200,7 +190,6 @@ export function usePatchIssue() {
  * matters on the detail screen: it invalidates `['issue', id]`, so the saved
  * body comes back rendered without a reload.
  */
-// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts#routeEvent — `['issue', id]` is the exact key that router invalidates on `issue.updated`; any other prefix leaves the card showing the old body until a navigation.
 export function useSaveDescription(id: string) {
   const qc = useQueryClient();
   const mut = useIssueMutation(
@@ -229,7 +218,6 @@ export function useTransitionIssue() {
         waitingKind: args.waitingKind,
       }),
   );
-  // cm:guard `onSuccess` is a passthrough and `onError` is deliberately NOT — `useIssueMutation` already toasts `formatApiError`, so a second handler here double-toasts every failure (ISS-828 blocker-banner actions add their own success copy on top of the shared invalidation)
   return {
     ...mut,
     mutate: (
@@ -336,14 +324,6 @@ export interface BulkSummary {
  *  sockets at once. */
 const BULK_CHUNK = 8;
 
-/**
- * Apply ONE field change (status or priority) to many issues at once. Fans out
- * over the SAME endpoints the per-row kebab uses — status → transition (409 =
- * skipped), priority → patch — in bounded chunks via `Promise.allSettled`, then
- * tallies ONCE and invalidates `['issues']` (+ each touched `['issue', id]`)
- * ONCE, with a single summary toast. Deliberately NOT built on
- * `useIssueMutation` (which would fire N toasts + N invalidations). ISS-463.
- */
 export function useBulkUpdateIssues() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -387,7 +367,6 @@ export function useBulkUpdateIssues() {
  * render instead of a menu — an absent map is never widened back into the
  * whole enum.
  */
-// cm:guard staleTime Infinity is load-bearing, not a tuning: this answers a MENU, and a refetch mid-session would reorder a list a person is reading. The table changes only when core deploys, which ends the session's page anyway.
 export function useStatusExits() {
   const q = useQuery({
     queryKey: ["pipeline", "registry"],

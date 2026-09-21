@@ -91,9 +91,6 @@ describe('GET /api/projects/:id/knowledge — the always-inject guarantee (ISS-9
     expect(body.maxAlwaysInjectChars).toBe(6000);
   });
 
-  // The route that used to serve this is now a refusal, and it has to stay a
-  // refusal that SAYS where the store went: deleting it would answer the same
-  // caller with a routing 404, which reads as "no such project".
   it('the retired project-facts route answers 410 naming the knowledge route', async () => {
     const user = await createTestUser(harness.db);
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);

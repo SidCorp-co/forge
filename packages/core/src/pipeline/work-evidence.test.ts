@@ -6,14 +6,11 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why queued by call order: `hasChildIssues`'s edge read (via `findMissingWorkEvidence`), then
-//   `collectWorkEvidence`'s 3 parallel reads in source order — jobs, handoffs, issue.sessionContext
 const queue: unknown[][] = [];
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => {
       const tail = { where: () => ({ limit: async () => queue.shift() ?? [] }) };
-      // cm:guard the chain must answer `innerJoin` as well as `where` — the issue read joins `projects` for the base/production branch, and a mock that only models `from().where()` fails every case in this file with a TypeError instead of the assertion it was written for.
       return { from: () => ({ ...tail, innerJoin: () => tail }) };
     },
   },
@@ -108,7 +105,6 @@ describe('collectWorkEvidence', () => {
     });
   });
 
-  // cm:guard the spelling `forge claim --pushed` actually writes. A run driven by hand holds no `code`/`fix`/`drive` job and no step handoff, so its worklog branch is the ONLY evidence it has; read from `sessionContext.branch` alone the gate answers "no branch, commit or code handoff is recorded" about an issue whose branch it is holding. Measured on ISS-1003 2026-09-14, where `forge record merged` refused its own landed change. Delete the worklog spelling and this goes red.
   it('reads the branch a hand-driven run records, at sessionContext.worklog.branch', async () => {
     setup([], [], [{ sessionContext: { worklog: { branch: 'ISS-1003', head: 'abc1234' } } }]);
     const evidence = await collectWorkEvidence('iss-1');
@@ -116,7 +112,6 @@ describe('collectWorkEvidence', () => {
     expect(hasCodeEvidence(evidence)).toBe(true);
   });
 
-  // cm:guard the base/production exclusion applies to the worklog spelling too, or the widening above hands the gate back exactly the claim ISS-786 built it to refuse.
   it('refuses the base branch in the worklog just as it does at the top level', async () => {
     setup(
       [],
@@ -207,7 +202,6 @@ describe('findMissingWorkEvidence', () => {
     setup([], [], [], [{ sessionContext: null }]);
     const detail = await findMissingWorkEvidence('iss-1');
     expect(detail).toContain('no branch, commit or code handoff');
-    // cm:guard the remedy must name every field the reader accepts. It named `sessionContext.branch` alone while `collectWorkEvidence` also read the worklog, which sends a hand-driven run to change the field it had already filled — the refusal disagreeing with the check behind it.
     expect(detail).toContain('sessionContext.worklog.branch');
   });
 
@@ -216,7 +210,6 @@ describe('findMissingWorkEvidence', () => {
     expect(await findMissingWorkEvidence('iss-1')).toBeNull();
   });
 
-  // cm:guard a broken evidence check must never freeze a legitimate advance
   it('fails open (returns null) when a query throws', async () => {
     const { db } = await import('../db/client.js');
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
@@ -257,7 +250,6 @@ describe('missingWorkEvidenceStrict', () => {
     expect(await missingWorkEvidenceStrict('iss-1')).toBeNull();
   });
 
-  // cm:guard this is the one difference, and it is the whole reason the function exists. The pair below runs the SAME planted failure through both entry points: the gate answers "met" so a broken check cannot freeze an advance, and the publisher raises so the check run says it could not read rather than that the criterion is satisfied.
   it('RAISES where the fail-open one answers `met`', async () => {
     const { db } = await import('../db/client.js');
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock override

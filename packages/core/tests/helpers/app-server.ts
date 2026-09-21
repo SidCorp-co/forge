@@ -1,16 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 
-/**
- * A live in-process core server: HTTP + WS + pg-boss dispatcher, bound to an
- * ephemeral port. Used by the Phase 2.7-F2 device-runner E2E (ISS-218) to
- * exercise the full REST + WS contract end-to-end against a real Postgres.
- *
- * Callers must set `process.env.DATABASE_URL` (and the other test-env vars in
- * `pipeline-e2e.test.ts`) BEFORE calling `startTestServer()`, because importing
- * `../../src/index.js` resolves `config/env.ts` and binds the drizzle client at
- * module-load time.
- */
 export interface TestServer {
   baseUrl: string;
   wsUrl: string;

@@ -1,27 +1,20 @@
-// ISS-764 — REST surface for batch release.
-//
-// POST /:projectId/release-batches — create + claim a new batch (returns {runId,jobId,issueIds})
-// GET  /:projectId/release-batches/active — returns the active batch for the project, or null
-// GET  /:projectId/release-batches/:runId — batch context: roster, branches, deployPlanned
-// POST /:projectId/release-batches/:runId/finish — close every claimed issue
-// POST /:projectId/release-batches/:runId/abort — release the claims, cancel the run, close no issue
-// POST /:projectId/release-batches/:runId/method — announce the method this run loaded
-// GET  /:projectId/release-batches/:runId/state — roster + ledger + a live probe reading + bounds
-// POST /:projectId/release-batches/:runId/attempts — record the INTENT of one act
-// POST /:projectId/release-batches/:runId/attempts/:key/account — the agent's account of that act
-
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
-import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  ReleaseCheckUnevaluatedError,
+  ReleaseProbesUnreadableError,
+  ReleaseRosterUnusableError,
+} from './blockers.js';
 import { resolveReleaseChannels } from './channel.js';
 import { openAttempt, readAttempt, recordAccount, settleAttempt } from './ledger.js';
 import { announceMethod } from './method.js';
 import { loadReleaseReadiness } from './readiness.js';
+import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
 import {
   badRequest,
   conflict,
@@ -29,8 +22,9 @@ import {
   holding,
   methodRefusal,
   notFound,
+  recordRefusal,
   refuseMachineKeys,
-  serviceUnavailable,
+  releaseBlockerHttp,
   undeclaredBranches,
   undeclaredProbes,
 } from './refusals.js';
@@ -52,8 +46,13 @@ import {
   ReleasePoolEmptyError,
   ReleaseProbesUndeclaredError,
   ReleaseRecordMissingError,
+  ReleaseRecutRefusedError,
   ReleaseRunnerUndeclaredError,
+  ReleaseVersionConflictError,
+  ReleaseVersionExhaustedError,
+  ReleaseVersionMissingError,
 } from './service.js';
+import { readServingDeployment } from './serving.js';
 import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
 import { readLiveState } from './verify.js';
 
@@ -62,6 +61,13 @@ const projectParamSchema = z.object({ projectId: z.uuid() });
 const createBodySchema = z
   .object({
     issueIds: z.array(z.uuid()).min(1).max(50),
+    /**
+     * The version of a FAILED release being cut again, which raises the patch digit instead of the
+     * minor. Not validated for shape here: `cutReleaseVersion` refuses a value that is not a
+     * version with the same named refusal that rules on the four other ways a re-cut can be wrong,
+     * and one refusal carrying the whole rule beats a zod message carrying half of it.
+     */
+    recutOf: z.string().trim().max(100).optional(),
   })
   .strict();
 
@@ -78,7 +84,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const { issueIds } = c.req.valid('json');
+    const { issueIds, recutOf } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
@@ -86,49 +92,43 @@ releaseBatchRoutes.post(
     assertProjectRole(access, 'admin');
 
     try {
-      const result = await createReleaseBatch({ projectId, issueIds, userId });
+      const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf });
       return c.json(result, 201);
     } catch (err) {
       const declined = declarationRefusal(err);
       if (declined) throw declined;
-      if (err instanceof NoReleaseGateError) {
-        throw conflict('NO_RELEASE_GATE', 'This project has no release gate configured');
-      }
+      if (err instanceof NoReleaseGateError) throw releaseBlockerHttp(err, 'NO_RELEASE_GATE');
       if (err instanceof ReleaseRunnerUndeclaredError) {
-        throw conflict(
-          'RELEASE_RUNNER_UNDECLARED',
-          'This project declares a release model but no live deploy binding names a release runner — set `releaseRunnerLabel` on one, and label the box that holds the deploy credential',
-        );
+        throw releaseBlockerHttp(err, 'RELEASE_RUNNER_UNDECLARED');
       }
-      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
-      if (err instanceof ReleasePoolEmptyError) {
-        throw serviceUnavailable(
-          'RELEASE_POOL_EMPTY',
-          `No runner carries the release label \`${err.label}\`, so nothing here may deploy`,
-        );
+      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes(err);
+      if (err instanceof ReleaseProbesUnreadableError) {
+        throw releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { urls: err.urls });
       }
-      if (err instanceof NoRunnerOnlineError) {
-        throw serviceUnavailable('NO_RUNNER_ONLINE', 'No runner is online for this project');
+      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
+      if (err instanceof ReleasePoolEmptyError) throw releaseBlockerHttp(err, 'RELEASE_POOL_EMPTY');
+      if (err instanceof NoRunnerOnlineError) throw releaseBlockerHttp(err, 'NO_RUNNER_ONLINE');
+      if (err instanceof ReleaseRosterUnusableError) {
+        throw releaseBlockerHttp(err, err.code, { waiting: err.waiting });
+      }
+      if (err instanceof ReleaseCheckUnevaluatedError) {
+        throw releaseBlockerHttp(err, 'RELEASE_CHECK_UNEVALUATED', { check: err.check });
       }
       if (err instanceof ClaimConflictError) {
-        throw conflict(
-          'CLAIM_CONFLICT',
-          'One or more issues could not be claimed (wrong status or already in a batch)',
-        );
+        throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
       }
       if (err instanceof ReleaseRecordMissingError) {
-        throw conflict(
-          'RELEASE_RECORD_MISSING',
-          `${err.issueIds.length} issue(s) in this batch have no release note, and closing them ` +
-            `would claim a ship nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
-        );
+        throw releaseBlockerHttp(err, 'RELEASE_RECORD_MISSING', { issueIds: err.issueIds });
       }
-      if (err instanceof BatchInFlightError) {
-        throw conflict(
-          'BATCH_IN_FLIGHT',
-          'A batch release is already in progress for this project',
-        );
+      if (err instanceof BatchInFlightError) throw releaseBlockerHttp(err, 'BATCH_IN_FLIGHT');
+      if (err instanceof ReleaseRecutRefusedError) {
+        throw conflict('RELEASE_RECUT_REFUSED', err.message);
+      }
+      if (err instanceof ReleaseVersionConflictError) {
+        throw conflict('RELEASE_VERSION_CONFLICT', err.message);
+      }
+      if (err instanceof ReleaseVersionExhaustedError) {
+        throw conflict('RELEASE_VERSION_EXHAUSTED', err.message);
       }
       throw err;
     }
@@ -193,13 +193,49 @@ releaseBatchRoutes.get(
   },
 );
 
+releaseBatchRoutes.get(
+  '/:projectId/deployment',
+  zValidator('param', projectParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    if (!access) throw notFound('project not found');
+    assertProjectRole(access, 'member');
+
+    // cm:edge protocol -> packages/core/src/release-batch/readiness.ts — readiness answers the
+    // DECLARATION and makes no outbound request; this one reads the probes, so they stay apart
+    const read = await readServingDeployment(projectId);
+    if (!read.ok) {
+      if (read.code === 'NO_PROJECT') throw notFound('project not found');
+      throw new HTTPException(409, { message: read.detail, cause: { code: read.code } });
+    }
+    return c.json(read.deployment);
+  },
+);
+
 const runParamSchema = z.object({ projectId: z.uuid(), runId: z.uuid() });
 
 const finishBodySchema = z.object({ commit: z.string().trim().max(200).optional() }).strict();
 const abortBodySchema = z.object({ reason: z.string().trim().max(2000).optional() }).strict();
 
-// cm:guard resolve the run FIRST and refuse when `context.projectId` differs from the id in the path — the path id is what the PAT fence bites on, so accepting a runId that belongs to another project is exactly how a token scoped to project A finishes project B's release. The MCP tool this replaces read the project OFF the run and could not have this bug; a project-scoped URL can, and only this comparison stops it.
-// cm:guard ownership only — no release plan, no branches. `abort` and `finish` must answer for a run whose project has since lost its branch declaration (or anything else the plan needs): abort is the agent's escape hatch, and an escape hatch that 500s leaves the run `running` with its claims held. Measured 2026-09-03: the three lifecycle routes all threw RELEASE_BRANCHES_UNDECLARED from here.
+/**
+ * `account` has a floor because it is the whole of Rule 2 of ISS-1129: a release
+ * performed by hand and a release performed by a batch are different facts, and
+ * "released" with no account of how is the silent substitution this repository
+ * refuses everywhere else. Twenty characters does not make an account good; it
+ * makes `ok` refused.
+ */
+const releaseRecordBodySchema = z
+  .object({
+    issueIds: z.array(z.uuid()).min(1).max(50),
+    commit: z.string().trim().min(7).max(200),
+    account: z.string().trim().min(20).max(20_000),
+    providerRef: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
 async function loadRunForProject(runId: string, projectId: string, userId: string) {
   const run = await findReleaseBatchRun(runId);
   if (!run || run.projectId !== projectId) throw notFound('release batch not found');
@@ -220,7 +256,7 @@ releaseBatchRoutes.get(
     try {
       return c.json(await loadReleaseBatchContext(runId));
     } catch (err) {
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
+      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
       throw err;
     }
   },
@@ -244,14 +280,16 @@ releaseBatchRoutes.post(
         await finishReleaseBatch(runId, { type: 'user', id: userId }, c.req.valid('json')),
       );
     } catch (err) {
-      // cm:guard a refused verification is a 409 the caller ACTS on (abort with this reason), not a 500 — `reason` and `live` must survive into the body or the agent cannot tell "the deploy did not land" from "the server broke".
       if (err instanceof ReleaseNotVerifiedError) {
         throw new HTTPException(409, {
           message: err.reason,
           cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
         });
       }
-      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
+      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes(err);
+      if (err instanceof ReleaseVersionMissingError) {
+        throw conflict('RELEASE_VERSION_MISSING', err.message);
+      }
       if (err instanceof ReleaseBatchAbortedError) {
         throw conflict(
           'RELEASE_BATCH_ABORTED',
@@ -280,14 +318,10 @@ releaseBatchRoutes.post(
     await loadRunForProject(runId, projectId, userId);
 
     const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId);
-    // cm:guard `releasedIds` is kept under its old name because the release agent's protocol reads it; the rest is added beside it. What the abort did to the RUN has to reach the caller, or an abort on a run something already concluded goes on looking exactly like one that called off a live release.
     return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
   },
 );
 
-// cm:guard `health`, `identity`, `verdict`, `verdictReason` and `readings` are refused BY NAME
-// rather than dropped by `.strict()`. A caller that sends one has misread what this route is for,
-// and the whole table exists because "the release happened" used to be a sentence an agent wrote —
 const attemptBodySchema = z
   .object({
     stage: z.enum(RELEASE_ATTEMPT_STAGES),
@@ -347,9 +381,6 @@ releaseBatchRoutes.post(
   },
 );
 
-// cm:guard the INTENT goes down before the act, which is why this route exists at all rather than
-// one route posted afterwards. A ledger written after the fact records only what finished, so a
-// release killed mid-deploy leaves nothing — and that is the release worth reading about.
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts',
   zValidator('param', runParamSchema, (r) => {
@@ -379,9 +410,6 @@ releaseBatchRoutes.post(
   },
 );
 
-// cm:guard the account is accepted on a HOLDING run, unlike the attempt above. An agent already
-// mid-act must still be able to say what happened, or a holding run's last act is the one nothing
-// is recorded about — which is the act worth reading.
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts/:key/account',
   zValidator('param', attemptKeyParamSchema, (r) => {
@@ -408,12 +436,6 @@ releaseBatchRoutes.post(
       providerRef: (body.providerRef as string | undefined) ?? null,
       logTail: (body.logTail as string | undefined) ?? null,
     });
-    // cm:guard core's reading is taken HERE, at the moment the account lands, and from the project's
-    // own probes. It is what makes the two halves an account and its backing rather than one claim
-    // written twice: they are about the same act, taken at the same moment, by two parties.
-    // cm:why the FIRST channel's probes: an attempt is one reading at one moment, and the run carries
-    // one `commitBefore` to compare it against. A set whose members verify separately is its own issue
-    // — ISS-1046 widened what core RETURNS, not what an attempt records.
     const channels = await resolveReleaseChannels(projectId);
     const verify = channels[0]?.verify ?? null;
     const live = verify ? await readLiveState(verify) : null;
@@ -432,5 +454,52 @@ releaseBatchRoutes.post(
             : `the application is not answering: ${live.unhealthy.join('; ')}`,
     });
     return c.json(settled);
+  },
+);
+
+// ISS-1129 — the release that already happened, and the read of what was written.
+//
+// Registered on this router rather than on one of its own, so the `use('*')`
+// at the top covers them and `check-pat-surface` — which reads routes off the
+// router file `index.ts` mounts — can see that both reach the fence.
+releaseBatchRoutes.post(
+  '/:projectId/release-records',
+  zValidator('param', projectParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', releaseRecordBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access) throw notFound('project not found');
+    assertProjectRole(access, 'admin');
+
+    try {
+      const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });
+      return c.json(result, 201);
+    } catch (err) {
+      throw recordRefusal(err);
+    }
+  },
+);
+
+releaseBatchRoutes.get(
+  '/:projectId/release-records/:runId',
+  zValidator('param', runParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    if (!access) throw notFound('project not found');
+    assertProjectRole(access, 'member');
+
+    const record = await readReleaseRecord(projectId, runId);
+    if (!record) throw notFound('no release record under this id on this project');
+    return c.json(record);
   },
 );

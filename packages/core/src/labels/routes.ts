@@ -23,7 +23,6 @@ import { labelUniqueConflict } from './unique-conflicts.js';
 
 const colorRegex = /^#[0-9a-f]{6}$/i;
 
-// cm:guard `color` is optional ONLY because a module without one is auto-assigned below — the column stays NOT NULL, so a plain label still has to carry its own or the insert fails at the database with a message no caller can act on.
 const labelCreateSchema = z
   .object({
     name: z.string().trim().min(1).max(64),
@@ -49,12 +48,10 @@ const labelPatchSchema = z
     description: z.string().max(2000).nullable().optional(),
   })
   .strict()
-  // cm:guard `slug` is absent from BOTH schemas on purpose — it is the module's identity, derived once from the name, and a caller who could send it could also move it, which orphans the knowledge node every later tier resolves through it (ISS-947).
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 
-// cm:guard the window is bounded on both ends — `coerce` turns any string into a number, so an absent bound lets `?activeWithinDays=0` ask for a window nothing can fall inside and `?activeWithinDays=1e9` ask Postgres for an interval it refuses
 const rollupQuerySchema = z.object({
   activeWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
 });
@@ -69,13 +66,11 @@ const notFound = (message: string) =>
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
 
-// cm:guard a 23505 is reported by the index that fired, never as the name one — `labels/unique-conflicts.ts` owns that mapping and answers undefined for an index it does not know, which rethrows rather than mislabelling (ISS-947).
 const uniqueConflict = (err: unknown): HTTPException | undefined => {
   const named = labelUniqueConflict(err);
   return named && conflict(named.message, named.code);
 };
 
-// cm:guard every projection in this file must list the same columns — a route that omits `kind` answers a module as an indistinguishable plain label, and one that omits `knowledgeEntryId` leaves `module-${slugify(name)}` as the only answer available to a caller asking which node a module owns, which is the name-prefix convention ISS-947 exists to replace.
 const labelColumns = {
   id: labels.id,
   projectId: labels.projectId,
@@ -167,7 +162,6 @@ labelProjectRoutes.get(
   },
 );
 
-// cm:why the rollup rides `labelProjectRoutes` because a module IS a label (ISS-593) and the aggregation reads the same table pair every route in this file writes; a `/modules` router of its own would be a second place to learn what a module is
 labelProjectRoutes.get(
   '/:id/modules/rollup',
   zValidator('param', projectIdParamSchema, (r) => {
@@ -192,7 +186,6 @@ const driftQuerySchema = z
   .object({ minCoOccurrence: z.coerce.number().int().min(1).max(1000).default(2) })
   .strict();
 
-// cm:why ISS-951 — the drift signal rides `labelProjectRoutes` for the same reason the rollup does: the observed half IS `issue_labels` joined to this file's table, and a `/modules` router of its own would be a second place to learn what a module is.
 labelProjectRoutes.get(
   '/:id/modules/drift',
   zValidator('param', projectIdParamSchema, (r) => {
@@ -209,7 +202,6 @@ labelProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    // cm:guard drift NEVER changes the status code — an undeclared coupling is information, and an endpoint that answered 409 (or a gate that read it) would be satisfied by declaring edges nobody means, which is the one failure mode ISS-951 names. Every legal state, including a project with no declaration at all, is a 200 body.
     return c.json(await moduleDrift(projectId, { minCoOccurrence }));
   },
 );
@@ -250,7 +242,6 @@ labelRoutes.patch(
     const access = await loadProjectAccess(label.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
-    // cm:guard judge the RESULTING row, not the patch — `kind` and `parentId` can move in the same request, so checking either alone lets a demotion keep its parent, or a new parent land on a row that is about to stop being a module
     const nextKind = patch.kind ?? label.kind;
     const nextParentId = patch.parentId !== undefined ? patch.parentId : label.parentId;
     const isPromotion = nextKind === 'module' && label.kind === 'label';
@@ -274,7 +265,6 @@ labelRoutes.patch(
     if (patch.parentId !== undefined) updates.parentId = patch.parentId;
     if (patch.knowledgeEntryId !== undefined) updates.knowledgeEntryId = patch.knowledgeEntryId;
     if (patch.description !== undefined) updates.description = patch.description;
-    // cm:guard the slug moves on exactly two edits and never on a rename — a promotion derives it (the CHECK requires a module to have one) and a demotion clears both module-only fields (the CHECK forbids a plain label from keeping them). A `name` patch deliberately leaves it alone: that is the whole point of storing it (ISS-947).
     if (isPromotion)
       updates.slug = await deriveModuleSlug(label.projectId, patch.name ?? label.name);
     if (isDemotion) {

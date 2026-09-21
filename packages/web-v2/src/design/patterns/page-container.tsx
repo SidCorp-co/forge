@@ -1,12 +1,3 @@
-// Canonical screen content container (ISS-359).
-//
-// Every web-v2 screen wraps its content in <PageContainer>: one shared wide
-// column (max-width 1720px, from `design/draft-screen/09 Usage.html`) with
-// consistent side padding, so no screen hand-rolls its own `mx-auto max-w-*`
-// wrapper. The legacy `standard` (max-w-6xl) option is gone — all screens are
-// migrated.
-//
-// `ScreenTabs` uses the same default width so tab strips align with the body.
 
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils/cn";

@@ -82,7 +82,6 @@ export async function readReindex(projectId: string): Promise<MemoryReindex | nu
   return value && typeof value.state === 'string' ? (value as MemoryReindex) : null;
 }
 
-// cm:guard `memory_reindex` is written ONLY here and by the memory-model routes, as a jsonb merge — PUT /api/app-config refuses the key (ISS-904), so a stale client copy of the row cannot erase a running migration's state
 export async function writeReindex(
   projectId: string,
   patch: Partial<MemoryReindex>,
@@ -122,7 +121,6 @@ async function nextBatch(projectId: string, skip: string[]) {
     .limit(REINDEX_BATCH_SIZE);
 }
 
-// cm:guard the state is re-read before EVERY batch and the loop asks only for `chunked_at IS NULL` rows — that is what makes DELETE (cancel) stop it between batches, a retry resume from where it stopped, and a restart mid-run the same case as a retry; a row that fails for a non-outage reason is skipped for the rest of this run so it cannot be re-selected forever
 export async function runChunkReindex(projectId: string): Promise<MemoryReindex | null> {
   let state = await readReindex(projectId);
   if (!isLive(state)) return state;

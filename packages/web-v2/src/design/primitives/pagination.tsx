@@ -20,7 +20,7 @@ export function Pagination({ page, pageCount, onChange }: PaginationProps) {
         className="rotate-180"
         onClick={() => onChange?.(page - 1)}
       />
-      <span className="font-mono text-muted" style={{ fontSize: 12.5 }}>
+      <span className="font-mono text-muted" style={{ fontSize: "var(--text-12-5)" }}>
         {page} / {pageCount}
       </span>
       <IconButton

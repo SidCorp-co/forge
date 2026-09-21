@@ -2,7 +2,12 @@
 // plan / other) + per-stage legend + `+$X in flight` annotation. The over-time
 // trend graph is deferred to ISS-380 Part 1 (bucketed endpoints) — shown as a
 // quiet "coming soon" footer rather than a fake chart.
-import { Card, CardContent, Icon } from "@/design";
+import {
+  Card,
+  CardContent,
+  CardTitle,
+  Icon,
+} from "@/design";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { SpendByStageData } from "../derive";
 
@@ -13,7 +18,7 @@ export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFli
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
         <div className="flex items-center gap-2">
           <Icon name="dollar" size={16} className="text-subtle" />
-          <h3 className="fg-h3">7-day spend</h3>
+          <CardTitle>7-day spend</CardTitle>
         </div>
         <span className="font-mono text-sm font-semibold tabular-nums text-fg">{formatUsd(total)}</span>
       </div>

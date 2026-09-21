@@ -121,7 +121,6 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
     });
   }
 
-  // Actions — wired to existing handlers/routes only; no fabricated endpoints.
   out.push({
     label: "Create issue",
     icon: "plus",

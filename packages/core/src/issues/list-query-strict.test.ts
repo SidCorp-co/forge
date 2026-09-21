@@ -16,7 +16,6 @@ const countRows = vi.fn(async () => [{ n: 0 }]);
 const pageOffset = vi.fn(async () => []);
 const pageLimit = vi.fn(() => ({ offset: pageOffset }));
 const selectOrderBy = vi.fn(() => ({ limit: pageLimit }));
-// cm:why `where()` is both awaited (the count query) and chained off (the page query) in one handler, so the mock has to be a thenable that also carries `orderBy` and `limit`
 const selectWhere = vi.fn(() => ({
   limit: selectLimit,
   orderBy: selectOrderBy,
@@ -104,7 +103,6 @@ describe('GET /api/projects/:id/issues — unregistered query parameters', () =>
     }
   });
 
-  // cm:why this is the one assertion a hand-kept accepted-list cannot pass: every other case above is satisfied by a literal that happens to match the schema today
   it('would list a parameter added to the schema with no edit to the refusal', async () => {
     const grown = issueFiltersSchema.extend({ freshlyAdded: (await import('zod')).z.string() });
     const { queryBadRequest } = await import('../lib/query-strict.js');
@@ -150,7 +148,6 @@ describe('GET /api/projects/:id/issues — unregistered query parameters', () =>
     expect(res.status).toBe(400);
   });
 
-  // cm:why an out-of-range int reaches Postgres as a 500, so the int4 bound in the schema is what keeps a caller's typo a 400
   it('refuses a `key` past int4', async () => {
     const { res } = await list('key=2147483648');
 

@@ -1,13 +1,3 @@
-// web-v2 feature module: pipeline — the run Activity Feed's derivation.
-//
-// A run's `attempts[]` is one row per `jobs` row, so a step that failed sixteen
-// times arrives as sixteen rows. Rendered one-to-one they read as sixteen
-// copies of the same sentence, which is the same lie `job_failed` told in the
-// column: repetition where information should be. Every entry here is built as
-// Verb · Object · Outcome, distinct rows stay distinct, and a genuinely
-// identical repeat is COUNTED rather than reprinted.
-//
-// Pure — no React, no fetch. The component renders what this returns.
 
 import {
   FAILURE_CAUSE_PRESENTATION,
@@ -37,8 +27,6 @@ export interface ActivityEntry {
   cause: FailureCause | null;
   /** One-line remedy for that cause; null when there is nothing to act on. */
   action: string | null;
-  /** The operator sentence recorded with the failure (`failure_detail`), or the
-   *  job row's own free text when that is all the attempt left behind. */
   detail: string | null;
   tone: ActivityTone;
   /** Runner the attempt landed on, already resolved to something printable. */
@@ -62,7 +50,6 @@ function deviceLabel(a: PipelineRunAttempt): string {
   return "unassigned";
 }
 
-// cm:guard a `failed` attempt ALWAYS resolves to a cause, and `unclassified` is the honest one — never return null here to keep a row quiet, because an invisible unclassified rate is exactly how `job_failed` rotted unnoticed for 1,787 rows (ISS-877 invariant)
 function causeOf(a: PipelineRunAttempt): FailureCause | null {
   if (a.failureCause) return resolveFailureCause(a.failureCause);
   if (a.status !== "failed" && a.status !== "cancelled") return null;
@@ -94,11 +81,6 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
   return `Ended ${a.status}`;
 }
 
-/**
- * The sentence recorded alongside the cause. `failureDetail` is the ISS-877
- * operator sentence; the job row's `failureReason` is the classifier's older
- * free text and is the fallback, but only when it is not just the token again.
- */
 function detailOf(a: PipelineRunAttempt, cause: FailureCause | null): string | null {
   if (a.failureDetail) return a.failureDetail;
   if (!a.failureReason) return null;
@@ -119,14 +101,6 @@ function verbFor(position: number, repeats: number): string {
   return position === 1 ? "Ran" : "Retried";
 }
 
-/**
- * Fold a run's attempts into feed entries, oldest-first.
- *
- * Consecutive attempts that agree on step, outcome, cause, device and detail
- * become ONE entry carrying `repeats` — so a step that died sixteen times of
- * one spend cap reads as one counted line, while a device failover or a second
- * cause splits into its own line and stays visible.
- */
 export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): ActivityEntry[] {
   const entries: ActivityEntry[] = [];
   let lastSignature: string | null = null;
@@ -168,8 +142,6 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
   return entries;
 }
 
-/** Whether an entry is a real failure — the only tone that reads red, and the
- *  only one the `failures` filter keeps. */
 export function isFailureEntry(entry: ActivityEntry): boolean {
   return entry.tone === "failure";
 }

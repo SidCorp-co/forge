@@ -11,12 +11,6 @@ logoutRoutes.use('/logout', requireAuth());
 
 logoutRoutes.post('/logout', async (c) => {
   const userId = c.get('userId');
-  // Burn every still-valid refresh token for this user. Without this, an
-  // attacker who already exfiltrated the refresh token (XSS, shared
-  // device, leaked browser profile) can keep minting JWTs for the next
-  // 30 days regardless of the user clicking "log out". usedAt is the
-  // canonical "spent" marker — `refresh.ts` already short-circuits any
-  // verify against a row where `usedAt IS NOT NULL`.
   await db
     .update(refreshTokens)
     .set({ usedAt: sql`now()` })

@@ -2,6 +2,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
@@ -30,7 +31,6 @@ import { getGuide, listGuides } from './registry.js';
  */
 export const guideRoutes = new Hono();
 
-// cm:guard the two public GETs serve the CODE tier only — this router is unauthenticated, so layering an org's guide into them would publish tenant bytes to anyone who can guess an org id
 const upsertSchema = z.object({
   title: z.string().trim().min(1).max(200),
   summary: z.string().trim().min(1).max(500),
@@ -112,11 +112,16 @@ orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
 
 guideRoutes.route('/orgs', orgGuideRoutes);
 
+/** The readable rendering of this same corpus, on the web host. */
+function humanGuidesUrl(): string {
+  return `${env.APP_BASE_URL.replace(/\/+$/, '')}/guides`;
+}
+
 function validSlugsMessage(): string {
   const slugs = listGuides()
     .map((g) => g.slug)
     .join(', ');
-  return `guide not found. Valid slugs: ${slugs}`;
+  return `guide not found. Valid slugs: ${slugs}. Readable pages: ${humanGuidesUrl()}`;
 }
 
 guideRoutes.get('/guides', (c) => {
@@ -124,10 +129,7 @@ guideRoutes.get('/guides', (c) => {
   return c.json({ guides: listGuides() });
 });
 
-// cm:guard emit every URL relative to THIS request's own mount prefix — the router is mounted at both `/` and `/api` and the hosted edge forwards only `/api/*`, so a hardcoded prefix publishes links that 404 for half the audience
-// cm:why the /llms.txt convention is the entry point this surface lacked — /guides has been public since ISS-746, but a reader had to already know a slug, so nothing was discoverable from a bare hostname
 guideRoutes.get('/llms.txt', (c) => {
-  // cm:guard honour x-forwarded-proto — the edge terminates TLS and forwards plain http, so c.req.url alone publishes http:// links for an https-only host
   const url = new URL(c.req.url);
   const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
   if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
@@ -139,6 +141,8 @@ guideRoutes.get('/llms.txt', (c) => {
     '> pipeline that drives Claude end to end (triage → clarify → plan → code → review → test →',
     '> release). These guides are the same bytes the `forge_guide` MCP tool serves. Every URL below',
     '> is unauthenticated and returns raw markdown — fetch what you need, when you need it.',
+    '>',
+    `> A person reads the same corpus as web pages at ${humanGuidesUrl()} — also no credential.`,
     '',
     '## Guides',
     '',
@@ -147,6 +151,7 @@ guideRoutes.get('/llms.txt', (c) => {
     '## Index',
     '',
     `- [Guide index (JSON)](${base}/guides): slug, title, summary and version for every guide.`,
+    `- [Guide index (web pages)](${humanGuidesUrl()}): the same corpus a person can read.`,
     '',
   ];
   c.header('Cache-Control', 'public, max-age=300');

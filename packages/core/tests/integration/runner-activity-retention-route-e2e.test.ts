@@ -113,10 +113,6 @@ describe('GET /api/runners/:id/activity — the retention window (ISS-1027)', ()
     expect((await call(runnerId, jwt)).body.retentionDays).toBe(120);
   });
 
-  // cm:guard the floor is the half an operator never sees coming: a window below 90 days silently
-  // truncates the tail `metrics/queries.ts` caps its own window at, so the sweep refuses it and
-  // keeps the stated value. A screen that reported the refused number would be telling an operator
-  // their change took effect while the sweep ignored it — worse than not showing a number at all.
   it('answers with the floor, not a below-floor override the sweep refuses', async () => {
     process.env.RETENTION_RUNNER_EVENTS_DAYS = '5';
     const { runnerId, jwt } = await seedRunner();

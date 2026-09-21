@@ -52,7 +52,7 @@ function DeliveryRow({
             <Icon name={dirIcon} size={13} />
             <span className="fg-body-sm">{row.direction}</span>
           </span>
-          <span className="font-mono text-[12px] text-fg">{row.eventName}</span>
+          <span className="font-mono text-12 text-fg">{row.eventName}</span>
           <span className="inline-flex items-center gap-1 font-semibold" style={{ color: s.fg }}>
             <Icon name={s.icon} size={13} />
             {s.label}
@@ -68,14 +68,14 @@ function DeliveryRow({
         {row.errorMessage && <Banner tone="danger">{row.errorMessage}</Banner>}
         <div>
           <span className="fg-overline text-subtle">Payload</span>
-          <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-[11px] leading-relaxed">
+          <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-11 leading-relaxed">
             {JSON.stringify(redactSensitive(row.payload), null, 2)}
           </pre>
         </div>
         {row.response && (
           <div>
             <span className="fg-overline text-subtle">Response</span>
-            <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-[11px] leading-relaxed">
+            <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-11 leading-relaxed">
               {JSON.stringify(redactSensitive(row.response), null, 2)}
             </pre>
           </div>

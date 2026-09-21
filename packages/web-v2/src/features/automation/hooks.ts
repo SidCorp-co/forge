@@ -1,11 +1,5 @@
 "use client";
 
-// web-v2 feature module: automation → PM — React Query hooks. Config is keyed
-// `['pm', projectId, 'config']`; decisions `['pm', projectId, 'decisions', page]`.
-// The config mutation invalidates the `['pm', projectId]` subtree on success.
-// (The PM backend emits no WebSocket events, so freshness relies on
-// invalidate-on-mutate plus the per-page decisions query — same model as the
-// sibling Schedules tab.)
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";

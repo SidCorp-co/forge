@@ -7,8 +7,6 @@ export interface ComingSoonProps {
   message?: string;
 }
 
-/** On-brand placeholder for nav targets whose feature hasn't shipped yet — so
- *  a nav row leads somewhere intentional instead of a hard 404. */
 export function ComingSoon({ title, message }: ComingSoonProps) {
   return (
     <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6 py-16 text-center">

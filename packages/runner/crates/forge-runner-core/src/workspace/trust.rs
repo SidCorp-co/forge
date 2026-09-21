@@ -13,9 +13,6 @@ use std::path::{Path, PathBuf};
 
 const TRUST_FIELD: &str = "hasTrustDialogAccepted";
 
-/// Where the CLI keeps that record: `$CLAUDE_CONFIG_DIR/.claude.json` when the
-/// operator set one, else `~/.claude.json`.
-// cm:guard this is NOT `plugin_sync::claude_config_dir().join(...)` and the difference is a real one: with no override the config DIRECTORY is `~/.claude` while this file is `~/.claude.json` beside it, so composing the two resolvers writes a file the CLI never reads and the dialog still fires.
 fn claude_json_path() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
         if !dir.is_empty() {
@@ -46,9 +43,6 @@ pub fn pre_trust_logged(dir: &Path, what: &str) {
     }
 }
 
-/// The whole edit, against an explicit config path so a test can own one.
-// cm:guard read-modify-write on a file Claude Code also owns, so the write happens ONLY when the field is missing or false. That is once per checkout per box, which is what keeps the clobber window a one-off rather than a thing this daemon does every 30 seconds beside a live session rewriting the same file.
-// cm:guard refuse a config whose top level is not an object rather than replacing it. Anything else there is a shape this code does not understand, and overwriting it costs an operator their MCP servers, their history and their auth — the dialog costs them one keystroke.
 fn trust_in(json_path: &Path, dir: &Path) -> Result<bool, String> {
     let mut root = match std::fs::read(json_path) {
         Ok(bytes) => serde_json::from_slice::<serde_json::Value>(&bytes)
@@ -93,8 +87,6 @@ fn trust_in(json_path: &Path, dir: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-/// The path spellings Claude Code could key this folder under.
-// cm:guard the CLI keys by the cwd it observes, which is `getcwd()` — symlinks already resolved — while tmux is handed the path as configured. Stamp both when they differ: guessing one and getting it wrong leaves the dialog exactly where it was, and the whole cost of being wrong is one extra key in a file that already holds ten.
 fn keys_for(dir: &Path) -> Vec<String> {
     let literal = dir.to_string_lossy().into_owned();
     let mut keys = vec![literal.clone()];
@@ -107,8 +99,6 @@ fn keys_for(dir: &Path) -> Vec<String> {
     keys
 }
 
-/// `.tmp` + rename, carrying the original file's mode.
-// cm:guard the mode is copied from the file being replaced, and the fallback is 0600. This file holds the CLI's OAuth account and its MCP server arguments; a rename that widened it to the umask default would publish those to every user on the box, silently and permanently.
 fn write_atomic(json_path: &Path, root: &serde_json::Value) -> Result<(), String> {
     let body = serde_json::to_vec_pretty(root).map_err(|e| format!("serialize: {e}"))?;
     let tmp = json_path.with_extension("json.forge-tmp");
@@ -176,8 +166,6 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    // cm:guard the second call must not write. Claude Code rewrites this file constantly from its own
-    // process, so a stamp that ran on every sweep would be a clobber race scheduled twice a minute.
     #[test]
     fn a_path_already_trusted_is_not_rewritten() {
         let dir = temp("idempotent");
@@ -197,8 +185,6 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    // cm:guard `false` is the shape the dialog actually leaves behind — a dismissed prompt, not an
-    // absent key — so a check that only tested for absence would skip the one box that needs this.
     #[test]
     fn an_explicit_false_is_corrected() {
         let dir = temp("false");
@@ -222,8 +208,6 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    // cm:guard a config this code cannot parse is REFUSED, never replaced: the file holds the CLI's
-    // account, its MCP servers and its history, and the dialog it would spare costs one keystroke.
     #[test]
     fn an_unparseable_config_is_refused_and_left_alone() {
         let dir = temp("refuse");
@@ -256,8 +240,6 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    // cm:guard tmux is given the path as configured and the CLI keys by `getcwd()`, so a symlinked
-    // checkout has two spellings and stamping one of them leaves the dialog where it was.
     #[cfg(unix)]
     #[test]
     fn a_symlinked_checkout_is_stamped_under_both_spellings() {

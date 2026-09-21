@@ -1,11 +1,4 @@
-// web-v2 feature module: attention / inbox. Types mirror the EXISTING core
-// endpoint `GET /api/me/attention` (`packages/core/src/me/attention-routes.ts`)
-// — do NOT guess field names. The `runner_offline` kind is web-v2-only: it is
-// derived client-side from `GET /api/me/devices` (the core endpoint has no
-// offline-runner bucket), then folded into the same grouped view + rail count.
 
-/** Buckets surfaced by `/me/attention`, plus the client-derived offline-runner
- *  bucket. `failed_job` covers deploy failures (deploy is a job type). */
 export type AttentionKind =
   | "needs_review"
   | "awaiting_input"
@@ -15,9 +8,6 @@ export type AttentionKind =
   | "unseen_draft"
   | "runner_offline";
 
-/** One actionable row. `link` is a basePath-relative href (router.push handles
- *  the `/v2` prefix). For issues it points at the issue detail; for failed jobs
- *  the issue (or project) it belongs to; for offline runners the Runners page. */
 export interface AttentionItem {
   kind: AttentionKind;
   title: string;
@@ -28,13 +18,7 @@ export interface AttentionItem {
   status?: string;
   projectSlug?: string;
   projectName?: string;
-  /** Awaiting-input only: who can end the wait, and what it costs meanwhile.
-   *  Core sets these on that bucket alone, so absent means not-applicable
-   *  rather than zero — render nothing, never "0 claims". */
   blockerKind?: string | null;
-  /** Awaiting-input only: the open `agent_questions` row, or null for a park a
-   *  person entered by hand. Present means a structured decision is waiting and
-   *  the issue screen renders it (ISS-980); absent means not-applicable. */
   questionId?: string | null;
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
 }
@@ -53,8 +37,6 @@ export interface AttentionResponse {
   total: number;
 }
 
-/** The core response widened with the client-derived offline-runner bucket and
- *  a `total` that includes it — what `useAttention()` returns to consumers. */
 export interface AttentionView extends AttentionResponse {
   offlineRunners: AttentionItem[];
 }

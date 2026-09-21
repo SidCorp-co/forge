@@ -67,7 +67,6 @@ export function gradeRow(row: HistoryRow, opts: GradeRowOptions): RowGrade {
   const grade = gradeTurn(
     { message: row.query ?? '', checks: checksFor(opts) },
     {
-      // cm:why a trimmed-empty reply is no reply: the door sends a fallback for one (screened-reply.ts), and the benchmark's notFallback reads only null as unanswered
       delivered: row.reply?.trim() ? row.reply : null,
       attempts: [attempt],
       seconds: attempt.ms / 1000,
@@ -75,7 +74,6 @@ export function gradeRow(row: HistoryRow, opts: GradeRowOptions): RowGrade {
       values: {},
       lookups: opts.lookups ?? {},
       preferenceRows: [],
-      // cm:why null: a history row is one exchange and the notes a session kept are not read here; a history task never carries maxNotesKept
       notesKept: null,
     },
   );

@@ -23,7 +23,6 @@ export interface Route {
 
 export async function buildRoutes(connectionId: string): Promise<Map<string, Route>> {
   const routes = new Map<string, Route>();
-  // cm:why two batched lookups, not a projects+organizations pair per binding: this was 1+2N round-trips and `reload` fires on ANY connection/binding CRUD, so a 10-binding connection paid 21 of them every reload
   const active = (await listBindingsForConnection(connectionId))
     .map(({ binding: b }) => ({
       b,
@@ -55,7 +54,6 @@ export async function buildRoutes(connectionId: string): Promise<Map<string, Rou
     const principalUserId = ownerByOrg.get(proj.orgId);
     if (!principalUserId) continue;
     for (const rid of rids) {
-      // cm:guard one room routes to exactly one project and the FIRST binding wins, which is only deterministic because listBindingsForConnection orders by desc(createdAt) — reorder that query and a re-bound room silently changes project
       if (routes.has(rid)) {
         logger.warn(
           { connectionId, rid, projectId: b.projectId },

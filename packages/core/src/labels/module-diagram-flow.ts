@@ -39,7 +39,6 @@ const HEADER = /^(flowchart|graph)\b/i;
 const ARROW = /^(.+?)\s*-->\s*(?:\|([^|]*)\|)?\s*(.+)$/;
 const NODE = /^([A-Za-z0-9_-]+)(?:\[(.*)\]|\((.*)\)|\{(.*)\})?$/;
 
-/** The body of the first ```mermaid fence, or null when the node stores no flow at all. */
 export function extractMermaidBlock(body: string): string | null {
   const lines = body.split('\n');
   const open = lines.findIndex((l) => FENCE.test(l.trim()));
@@ -49,7 +48,6 @@ export function extractMermaidBlock(body: string): string | null {
   return (close === -1 ? rest : rest.slice(0, close)).join('\n');
 }
 
-// cm:guard a node id met twice keeps the FIRST text it was given — a later bare `B` must not blank the text `B[Review]` already carried, which is what a plain overwrite would do and what makes a second render of the same body differ from the first.
 function remember(steps: Map<string, FlowStep>, id: string, label: string | undefined): void {
   const text = label === undefined || label === '' ? null : label;
   const existing = steps.get(id);
@@ -70,7 +68,6 @@ function readNode(raw: string, steps: Map<string, FlowStep>): string {
   return id;
 }
 
-// cm:guard the refusal is the whole point of this function — every unreadable line throws, and no branch here returns "the arrows it managed to read". The issue's rule is that a generator which cannot render what it was asked for says so by name rather than answering with a partial diagram that looks complete, and a `continue` in this loop is exactly that partial diagram.
 /**
  * Parse the subset. `null` in, `null` out: a node that stores no flow is not an error, and the
  * caller decides whether an absent flow is a refusal (`user-flow` with no flows anywhere) or

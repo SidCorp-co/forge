@@ -59,10 +59,6 @@ const { CoolifyCommandError } = await import('./commands.js');
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 
-// cm:guard the fixture declares `role`/`stages`, which is what `controls.ts` actually reads.
-// It carried `environment` until ISS-1046 renamed the field out from under it, and because the
-// confirmation gate is mocked unconditionally, both protected-action tests went on passing while
-// handing that gate `undefined` — a green that was evidence for nothing.
 function integration(over: { stages?: string[]; targets?: unknown[] } = {}) {
   return {
     id: 'binding-1',
@@ -136,7 +132,9 @@ describe('runCoolifyCancel', () => {
     expect(out).toMatchObject({ performed: false, pendingHumanConfirm: true });
     expect(client.cancelDeployment).not.toHaveBeenCalled();
     // The gate is asked about THIS binding's stages, not about nothing.
-    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live']);
+    // The third argument is what the binding actually deploys to: the gate asks
+    // whether those applications are production, not what the stage is called.
+    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live'], ['app-1']);
   });
 });
 
@@ -216,7 +214,7 @@ describe('runCoolifyRollback', () => {
     expect(out).toMatchObject({ performed: false, pendingHumanConfirm: true });
     expect(client.listRollbackImages).not.toHaveBeenCalled();
     expect(client.rollbackApplication).not.toHaveBeenCalled();
-    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live']);
+    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live'], ['app-1']);
   });
 
   it('refuses to pick a target for the caller when the binding has several', async () => {

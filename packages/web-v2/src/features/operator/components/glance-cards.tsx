@@ -72,7 +72,7 @@ function Delta({ metric, betterWhen }: { metric: AdminGlanceMetric; betterWhen: 
   return (
     <span
       className="font-mono font-semibold"
-      style={{ fontSize: 12, color: good ? TONE_META.success.fg : TONE_META.attention.fg }}
+      style={{ fontSize: "var(--text-12)", color: good ? TONE_META.success.fg : TONE_META.attention.fg }}
     >
       {text}
     </span>

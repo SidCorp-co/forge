@@ -36,7 +36,6 @@ function sanitizeName(name: string): string {
 }
 
 export const DESCRIPTION_CAP = 1024;
-// cm:guard raised from 24k on 2026-09-15 and the reason is the CLI tool: a `forge -h --full` or a whole issue body runs past it, and a cut result hands the model half an answer with no mark of what it lost except the trailing `[truncated]`. The context budget elides by age across the turn and is the bound that holds; this one only stops a single pathological result from filling the window on its own (ISS-1009).
 export const RESULT_CAP = 200_000;
 
 export function truncate(s: string, cap: number): string {
@@ -48,7 +47,6 @@ export function toolError(message: string): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
 }
 
-// cm:why a Drizzle query error's `message` is the SQL plus params and its `cause` is the Postgres reason — the model was shown 500 chars of INSERT and never "duplicate key" (measured 2026-09-04), so the cause wins when there is one
 export function thrownMessage(err: unknown): string {
   const cause = (err as { cause?: unknown } | null)?.cause;
   if (cause instanceof Error && cause.message) return cause.message;
@@ -63,7 +61,6 @@ export function toolResultText(result: CallToolResult): string {
   return truncate(text, RESULT_CAP);
 }
 
-// cm:guard top-level keys the tool's OWN schema does not declare are dropped before the handler parses — models decorate calls (Gemini sends `reason` on a tool whose only parameter, projectId, was stripped from the advertised copy; measured 2026-09-04) and every forge_* input schema is `.strict()`, so an undeclared key is a whole-call rejection for a tool the model called correctly; judged against the declared schema, not the advertised one, so the pinned projectId is never a casualty, and skipped when the schema declares no properties or opts into additionalProperties
 function dropUndeclaredKeys(args: Record<string, unknown>, schema: Record<string, unknown>): void {
   const props = schema.properties as Record<string, unknown> | undefined;
   if (!props || Object.keys(props).length === 0 || schema.additionalProperties === true) return;
@@ -87,7 +84,6 @@ function stripProperty(schema: Record<string, unknown>, key: string): Record<str
 /** Instantiate each allowed factory once, convert to OpenAI tools, close over a dispatch map. */
 export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolset {
   const tools: ChatTool[] = [];
-  // cm:guard every tool's projectId is forced to the session's bound project and stripped from the advertised schema — a tool that honoured the model-supplied one would let a chat session read or write another project
   const boundProjectId = ctx.boundProjectId ?? null;
   const bySanitized = new Map<
     string,
@@ -102,7 +98,6 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
   for (const spec of specs) {
     const tool = spec.factory(ctx);
     const name = sanitizeName(tool.name);
-    // cm:why first spec wins on a sanitized-name collision: two MCP names differing only in a dot sanitize to one OpenAI name, and offering the model two entries it cannot tell apart is worse than offering the first.
     if (bySanitized.has(name)) continue;
     const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties;
     const hasProjectId = !!props && 'projectId' in props;

@@ -30,12 +30,6 @@ export const pipelineControlInputSchema = z
 
 export type PipelineControlInput = z.infer<typeof pipelineControlInputSchema>;
 
-// ISS-197 — `recoveryStats` was previously `z.record(z.string(), z.number())`
-// but never populated (operator UI showed `{}` for every session). The
-// structured shape below feeds the sessions-panel badge
-// `"Failed 3x (2 infra, 1 timeout)"` and the WS broadcast
-// `session.recoveryChanged`. Failure kinds mirror the classifier v3 enum
-// (ISS-450 taxonomy: code/infra/transient-cc/timeout — no `unknown`).
 export const failureKindEnum = z.enum(['code', 'infra', 'transient-cc', 'timeout']);
 
 export const recoveryStatsSchema = z

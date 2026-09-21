@@ -44,7 +44,6 @@ describe('the repo projection as the admissible payload reads it', () => {
     expect(projected.get(issueId)).toBeUndefined();
   });
 
-  // cm:guard the whole point of criterion 28 — green-and-waiting and conflicting must be two different readings of the SAME payload, with no verdict computed for the caller.
   it('tells a green open pull request from a conflicting one', async () => {
     const green = await g.seedIssue(g.projectId, 4242);
     const conflicted = await g.seedIssue(g.projectId, 4343);
@@ -143,7 +142,6 @@ describe('the repo projection as the admissible payload reads it', () => {
     ]);
   });
 
-  // cm:guard F6 of the whole-set consult. One reviewer may request changes and then approve without ever dismissing the first, and GitHub keeps both. Stripping the ids and the times left a master two contradictory entries with nothing saying which came second — neither the "last state" the docstring claimed nor a usable history. Both are returned, in submission order, and which one wins stays the reader's judgement.
   it('carries both reviews by one person in submission order, with what orders them', async () => {
     const issueId = await g.seedIssue(g.projectId, 4242);
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());

@@ -1,13 +1,3 @@
-/**
- * ISS-1023 — the two `agent_sessions` reads that used to cost a transcript, driven against a real
- * Postgres because that is the only runtime that can represent their failure.
- *
- * The unit tests for these paths mock the query, so after the slicing moved into SQL they can only
- * prove the caller returns what it was handed: a stub deciding the answer cannot go red for a
- * wrong `LIMIT`, a reversed tail, or a count taken from the wrong table. Everything asserted here
- * is asserted about SQL that actually ran.
- */
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -66,9 +56,9 @@ describe('agent_sessions reads that must not carry a transcript', () => {
           Array.from({ length: args.messageCount }, (_, i) => ({ role: 'user', content: `m${i}` })),
         );
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, messages, metadata)
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, messages, metadata)
       VALUES (
-        ${id}, ${projectId}, ${runId}, 'completed',
+        ${id}, ${projectId}, ${runId}, 'chat', 'completed',
         ${messages === null ? sql`'[]'::jsonb` : sql`${messages}::jsonb`},
         ${JSON.stringify({ issueId: 'not-a-real-issue' })}::jsonb
       )
@@ -144,9 +134,6 @@ describe('agent_sessions reads that must not carry a transcript', () => {
     expect(rows[0]?.messageCount).toBe(7);
   });
 
-  // cm:guard THE case this whole design decision turns on. Beta holds 2,339 sessions with a real
-  // transcript and no turn row, all created before July 2026. `0` here would be a list asserting
-  // those sessions are empty; `null` says the ledger does not know, which is true.
   it('reports null, NOT zero, for a session the turn ledger does not cover', async () => {
     await seedSession({ messageCount: 35, turns: 0 });
 

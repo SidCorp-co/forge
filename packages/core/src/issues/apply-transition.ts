@@ -17,6 +17,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { resolveAutonomousParkTarget } from './autonomous-park.js';
+import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
@@ -26,6 +27,7 @@ import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
+import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import {
   parkReasonFault,
@@ -33,35 +35,12 @@ import {
   requiresAuthoredReason,
 } from './transition-reason.js';
 
-/**
- * Issue statuses that free a `kind='blocks'` dependent (Layer 2) and fire the
- * terminal dispatch fan-out. Does NOT imply the run closes here — see
- * `RUN_CLOSING_STATUSES`.
- *
- * `awaiting_release` and `closed` free a dependent by SATISFYING the edge — they stamp
- * `merged_at`, which is what the gate reads. `dropped` frees it the other way:
- * the edge is expired (`drop-cascade.ts`), so the gate finds no edge at all.
- * The two mechanisms are not interchangeable, and the difference is the whole
- * reason `dropped` exists — see `RUN_CLOSING_STATUSES` below.
- */
-// cm:guard `releasing` belongs here for the same reason `awaiting_release` does — a release is running over this issue, so offering it to a dispatcher races a second agent against the batch it is executing under. It is the half `released` alone could not express: one status meant both "waiting for a person to press it" and "a batch is running", so the in-flight fact lived only in `issues.release_batch_run_id` where no dispatch gate read it.
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'awaiting_release',
   'releasing',
   'closed',
   'dropped',
 ]);
-
-/**
- * Statuses that close the issue's open `pipeline_run` — `closed` and
- * `dropped`, and deliberately NOT `awaiting_release`: the release batch still
- * runs over the issue from that rung, so closing the run at the gate orphaned
- * it and forced the release into a brand-new run every time (ISS-669's re-run
- * cascade). Leaving the run open lets the release run inside it; the run
- * closes when release finishes and sets `closed`.
- */
-// cm:guard `dropped` closes the run like `closed` but must NEVER reach markMergedOnClose. Since 2026-08-25 dropping DOES release the dependents (owner's call), so this split is no longer what stops that — `drop-cascade.ts` expires the edges and records why on each dependent. What the split still stops is the shipped claim: `merged_at` means the code reached the base branch, a dropped issue's never did, and stamping it would make every downstream reader (release notes, the L2 gate's satisfied arm, pipeline-health) count work that does not exist.
-export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed', 'dropped']);
 
 /**
  * Who is performing the transition. `id` feeds the outbox actor context
@@ -129,25 +108,20 @@ export interface ApplyStatusTransitionOptions {
    * entering `reopen`, `waiting` or `needs_info`; posted as a comment before
    * the status write.
    */
-  // cm:guard required, not advisory (RFC 0002 INV-8) — every guard deleted with the reopen cap was an attempt to detect a missing rationale AFTER the fact, and each detected it by stranding the issue; rejecting the write is the only version that cannot strand anything
   transitionReason?: string | undefined;
   /**
    * What would settle this park, in the agent's own words. When present, the
    * park mints a free-text question and the reason becomes its prompt.
    */
-  // cm:guard OPTIONAL on purpose, and the absence is not a default: a park without it keeps exactly today's behaviour — a reason comment and no question row. Making it required would refuse every park the moment this deploys, because the driver that writes them ships from github.com/SidCorp-co/forge-plugin on its own clock (ISS-996).
-  // cm:guard how often it is absent is a QUERY, not a counter: a `needs_info` park with no `agent_questions` row on its issue is one, and building a column for it would be a second copy of a number the rows already hold.
   needs?: string | undefined;
   /**
    * Which flavour of "a human is needed" this park is. REQUIRED entering
    * `waiting`.
    */
-  // cm:guard REQUIRED but never DEFAULTED (RFC 0002 INV-5) — refusing the write is not the same as picking a value: an unstated kind must never be guessed, because the five-way derivation this replaced guessed wrong on ISS-163 and rendered the wrong button
   waitingKind?: WaitingKind | undefined;
   /**
    * This close is the release itself, so it may write `closed` past the gate.
    */
-  // cm:guard `release_batch finish` is the ONLY caller entitled to set this, and it must never be plumbed through a route parameter or an MCP argument — the flag IS the gate, and anything that can ask for it can close an unshipped issue
   viaReleasePath?: boolean;
 }
 
@@ -156,13 +130,6 @@ export interface StatusTransitionResult {
   status: IssueStatus;
   reopenCount: number;
   updatedAt: Date;
-  /**
-   * `toStatus` entered `TERMINAL_FOR_DISPATCH`. The Layer-2 dispatch fan-out
-   * (`triggerTerminalDispatch`) is left to the caller so the batch route can
-   * fan out once per request and programmatic callers can rely on the 60s
-   * pg-boss backstop. The open run is closed separately, only when `toStatus`
-   * is in `RUN_CLOSING_STATUSES` (ISS-669 — `awaiting_release` does not close it).
-   */
   terminal: boolean;
   /**
    * Dependents whose `blocks` edge this transition expired, collected before
@@ -241,7 +208,6 @@ async function assertIssueNeverEnteredPipeline(
 
   const counts = await countRunsAndJobs(issueId);
   if (!counts) {
-    // cm:guard this ONE guard fails CLOSED, unlike every sibling. Failing open here would GRANT the exemption on a database hiccup and demote an issue with real work to `draft` — a status that says nothing ever started. Refusing is also exactly the behaviour that shipped before this exemption existed, so an unavailable check costs nobody anything they had.
     return refuse(
       '`draft` is reachable only while the issue has never entered the pipeline, and that could not be checked just now. Retry, or use `on_hold` to pause active work.',
       { checkFailed: true },
@@ -286,7 +252,6 @@ async function explainDraftRace(
       { ...details, runCount: counts.runCount, jobCount: counts.jobCount },
     );
   }
-  // cm:guard the fallback must name BOTH conditions, never guess one — the re-read is not in the failed UPDATE's transaction, so a value that raced back (a run cancelled and deleted, a status restored) leaves nothing to attribute it to, and naming the wrong one is the misdiagnosis ISS-787 exists to remove
   return new TransitionError(
     'ILLEGAL_TRANSITION',
     `the \`draft\` transition from \`${fromStatus}\` did not apply, and re-reading found neither a status change nor a pipeline run/job to attribute it to. Retry; if it refuses again, use \`on_hold\` to pause active work.`,
@@ -318,12 +283,10 @@ export async function transitionIssueStatus(
     });
   }
 
-  // cm:guard `skip` bypasses this whole check ON PURPOSE — it is the orchestrator's curated soft-skip chain, and every other runtime transition is deliberately permissive because the system prompt, not this function, guides the happy path
   if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
     if (requestedStatus === 'draft') {
       await assertIssueNeverEnteredPipeline(issue.id, fromStatus);
     } else {
-      // cm:guard reaching here means fromStatus is `draft` — once the target is not `draft`, canTransitionFree fails for no other reason — so blame the SOURCE, never the target. The old wording said `'<target>' is not a valid runtime status target`, which is false for every status it ever named: walking ISS-787's AC6 hit it on `needs_info` and on `waiting`, both legal from everywhere except `draft`, and it reads as "that status was removed".
       throw new TransitionError(
         'ILLEGAL_TRANSITION',
         `a \`draft\` issue may only move to ${DRAFT_EXIT_TARGETS.map((s) => `\`${s}\``).join(', ')}. \`${requestedStatus}\` is a legal target from every other status, but not from \`draft\` — promote it to \`open\` first, or use \`dropped\` to discard it.`,
@@ -332,9 +295,6 @@ export async function transitionIssueStatus(
     }
   }
 
-  // cm:guard refuse a `waitingKind` this write cannot keep instead of accepting it: the UPDATE below stores the kind only for `toStatus === 'waiting'` and `HEADINGS.needs_info` ignores the argument it is handed, so a kind sent with any other target reached no reader anywhere and was nulled in silence. Measured on 16 `needs_info` parks, 2026-09-07 (ISS-965).
-  // cm:guard keyed on the REQUESTED status and placed OUTSIDE the `requiresAuthoredReason` block below, both deliberately: an agent's `waiting` must stay legal on an autonomous project, where the rewrite lands the row on `needs_info` and the kind still reaches the reason comment's heading, while a target that demands no reason at all (`in_progress`) is the commonest silent drop and a check nested in that block would pass it straight through.
-  // cm:edge contract -> packages/core/src/prompt/facts/registry.ts — the driver's own fact text names this refusal by code, and `guides/registry.ts` repeats it; widen or drop the rule here and an agent is told one thing and refused another, with nothing type-checking the pair
   if (options.waitingKind && requestedStatus !== 'waiting') {
     throw new TransitionError(
       'WAITING_KIND_NOT_APPLICABLE',
@@ -343,8 +303,6 @@ export async function transitionIssueStatus(
     );
   }
 
-  // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
-  // cm:guard `skip: true` is exempt ON PURPOSE — it marks a transition the system made rather than one an actor chose (the park rewrites), and each of those paths posts its own comment; requiring a second one would double-comment, and refusing the write would freeze the cascade mid-flight
   const parkFault = parkReasonFault(fromStatus, requestedStatus, options);
   if (parkFault) {
     throw new TransitionError(parkFault.code, parkFault.detail, {
@@ -355,7 +313,6 @@ export async function transitionIssueStatus(
 
   const reopening = isReopenEntry(fromStatus, requestedStatus);
 
-  // cm:guard everything ABOVE this line reads `requestedStatus` (what the caller asked for) and everything BELOW writes `toStatus` (what the kernel will store); mixing the two either drops the park's reason, kind and counter or drops the rewrite, and each failure is silent
   const parkTarget = await resolveAutonomousParkTarget({
     projectId: issue.projectId,
     requested: requestedStatus,
@@ -368,21 +325,23 @@ export async function transitionIssueStatus(
     viaReleasePath: options.viaReleasePath === true,
   });
   if (fromStatus === toStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
-      status: fromStatus,
-      requested: requestedStatus,
-    });
+    throw new TransitionError(
+      'NO_OP',
+      noOpSentence({
+        projectId: issue.projectId,
+        requested: requestedStatus,
+        parked: parkTarget,
+        final: toStatus,
+      }),
+      { status: fromStatus, requested: requestedStatus, substituted: toStatus },
+    );
   }
 
-  // cm:guard reads `toStatus`, never `requestedStatus` — an agent close that resolveAgentCloseTarget rewrote to the release gate is not making the shipped claim, and refusing it there would park the session at a status it cannot leave
   const unrecorded = await refuseUnrecordedClose(issue.id, toStatus, actor, options);
   if (unrecorded) {
     throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
 
-  // cm:guard read OUTSIDE the transaction and passed in, never read from inside `checkTransitionEvidence` — ISS-863 removed a `projects` SELECT from inside every status transition's transaction and this would put one back. It sits beside the two project reads this path already does (`resolveAutonomousParkTarget`, `resolveAgentCloseTarget`).
-  // cm:guard keyed on `requestedStatus`, matching the status `checkTransitionEvidence` is handed below — a project declares criteria against the status an actor ASKS for, and reading `toStatus` here would check the park rewrite's target instead of the ask
-  // cm:guard the `skip` arm reads NOTHING, and that is a cost rule, not an optimisation: `checkTransitionEvidence` exempts `skip:true` entirely, so a read there is a `projects` SELECT whose answer is discarded — on the orchestrator's chain, which is the highest-volume writer of statuses in the product
   const declaredCriteria =
     options.skip === true
       ? []
@@ -410,7 +369,6 @@ export async function transitionIssueStatus(
     at: updated.updatedAt,
   });
 
-  // cm:why the block below is the GATE HOLD's audit trail, not the close stamp's — an earlier version of this comment said the latter, and the two fire on opposite paths. Best-effort on purpose: the transition already committed, so losing the comment must not fail the caller.
   if (held) {
     try {
       await db.insert(comments).values({
@@ -429,7 +387,6 @@ export async function transitionIssueStatus(
 
   if (txResult?.stampedOnClose && !held) {
     try {
-      // cm:why the `.catch(() => true)` fails toward EVIDENCE-EXISTS deliberately: the other branch of this comment asserts "no branch, commit or code handoff is recorded for this issue", and a reader acts on that by unmarking, so a transient read failure must never be allowed to author that claim. `unmark` remains the correct remedy under either wording, which is why the safe direction is the one that says less (ISS-786 child B requirement 5, against the ISS-75/76/77/78 false-unblock shape).
       const evidenceFound = await collectWorkEvidence(issue.id)
         .then(hasCodeEvidence)
         .catch(() => true);
@@ -457,10 +414,8 @@ export async function transitionIssueStatus(
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
   await setCurrentStepForOpenIssueRun(issue.id, toStatus);
-  // cm:guard a held close is terminal FOR DISPATCH even though the status is not: `merged_at` is stamped, so the L2 blocks gate is satisfied and the dependents are ready now — leaving this false makes them wait for the 60s reconciler backstop instead of the fan-out
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus) || held;
-  // cm:guard the run must close on a hold too. The driver's session is over; a run left `running` while the issue waits days for a release is the state-never-lies breach the gate exists to fix, and the loop monitor would eventually reap it as a stall.
-  if (RUN_CLOSING_STATUSES.has(toStatus) || held) {
+  if (ISSUE_TERMINAL_STATUSES.includes(toStatus) || held) {
     await closeOpenRunForIssue(issue.id, 'completed');
   }
 
@@ -494,7 +449,6 @@ type TransitionWriteResult = {
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, requestedStatus, toStatus, actor, options, reopening } = input;
   const { declaredCriteria } = input;
-  // cm:guard the never-ran check is re-asserted IN the UPDATE's WHERE, not just read above it — a freshly-`open` issue acquires its run within seconds, so a count read a moment earlier can hand `draft` to an issue that is already working, and the status would then claim nothing had started
   const draftGate =
     toStatus === 'draft' && !options.skip
       ? [
@@ -528,8 +482,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       });
       if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);
       // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
-      // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
-      // cm:edge sideeffect -> packages/core/drizzle/migrations/0070_pipeline_outbox.sql — trg_issues_status_outbox fires on this UPDATE and writes pipeline_outbox; no call site references it, so a reader of this file cannot see the row being produced
       const result = await withActorContext(
         tx,
         { type: actor.type, id: actor.id },
@@ -540,7 +492,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
             .set({
               status: toStatus,
               reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-              // cm:guard the CLEAR arm is the load-bearing half — a kind left behind on an issue that has moved on renders a live "a human is needed" banner on work already in flight, and nothing else in the system would ever clear it
               waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
               updatedAt: sql`now()`,
             })
@@ -563,7 +514,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
           return { row, stampedOnClose: closeStamp.stamped, unblockedDependents };
         },
       );
-      // cm:guard throw a stale transition inside this transaction — combined update callbacks may already have written fields and relations, so returning from the callback would commit a mutation whose caller was told it failed
       if (!result)
         throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
           from: fromStatus,

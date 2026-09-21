@@ -1,6 +1,3 @@
-// Deterministic project glyph helpers — derive the `ProjectMark` initials +
-// tint/ink from a project's name/id so the switcher, console, and overview all
-// render the same square monogram without storing per-project branding.
 import { AVATAR_HUE, type AvatarHue } from '@/design/status';
 
 const HUES: AvatarHue[] = ['cobalt', 'flame', 'green', 'amber', 'ink'];

@@ -106,7 +106,6 @@ const holds = (status: 'pending' | 'succeeded' | 'failed', label = 'Frontend') =
 
 beforeEach(() => {
   contextConfig = { baseUrl: 'https://coolify.example' };
-  // cm:guard restore this every case — `vi.clearAllMocks()` clears calls but KEEPS an implementation a case installed, so the binding-is-gone case leaks its `null` into every test declared after it and they fail on a fixture rather than on the code
   findBindingMock.mockResolvedValue({ id: 'bind-1', connectionId: 'conn-1' });
   settleMock.mockResolvedValue({});
   isCloseDeferredMock.mockResolvedValue(false);

@@ -10,10 +10,13 @@
 //! - `agent_sessions` — GET/PATCH `/api/agent-sessions/:id` for interactive chat (ISS-321)
 //! - `git_credential` — POST `/api/devices/me/git-credential`: one git ask, one token
 //! - `pool`           — GET `/me/pool` and the prepare/start/release claim (ISS-1080)
+//! - `fake_core`      — tests only: a core answering one status and one refusal code
 
 pub mod admissible;
 pub mod agent_sessions;
 pub mod events;
+#[cfg(test)]
+pub(crate) mod fake_core;
 pub mod frames;
 pub mod git_credential;
 pub mod heartbeat;

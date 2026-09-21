@@ -68,11 +68,6 @@ export interface TaskResult {
   id: string;
   capability: Capability;
   trials: TrialResult[];
-  /**
-   * Why this project cannot supply one of the task's fixtures, so no trial was run (ISS-1066).
-   * A refusal that was RIGHT — `forge-plugin` holds no issue waiting on information — used to cost
-   * three failed trials and read as a capability the assistant lacked.
-   */
   notApplicable?: string;
 }
 
@@ -121,25 +116,21 @@ export function readResult(text: string, where = 'result'): BenchResult {
     if (!(key in obj)) throw new ResultShapeError(`${where} lacks ${key}`);
   }
   if (!Array.isArray(obj.tasks)) throw new ResultShapeError(`${where}.tasks is not a list`);
-  // cm:why a file written before ISS-1066 names no project: it was taken before a run recorded one, and refusing it would make every stored run uncomparable to a new one. `null` is what the ladder and the comparison read as "which project is unknown", never as a project.
   if (obj.project === undefined) obj.project = null;
   obj.tasks.forEach((task: unknown, t) => {
     const row = task as Record<string, unknown>;
     if (typeof row.id !== 'string' || !Array.isArray(row.trials))
       throw new ResultShapeError(`${where}.tasks[${t}] lacks id or trials`);
-    // cm:why a file written before ISS-1061 names no capability: every task it walked was a method task, and reading it as such keeps an earlier run on the ladder
     if (row.capability === undefined) row.capability = 'method';
     for (const trial of row.trials as Array<Record<string, unknown>>) {
       const cleanup = trial.cleanup as Record<string, unknown> | undefined;
       if (!cleanup) continue;
-      // cm:why the same file holds one `cleanup.room`; a trial then opened one room, so it is the one-element list the history verb excludes by
       if (cleanup.rooms === undefined && cleanup.room !== undefined) {
         cleanup.rooms = [cleanup.room];
         delete cleanup.room;
       }
       if (cleanup.memories === undefined) cleanup.memories = null;
     }
-    // cm:why a file written before ISS-1065 carries no `retried`: no retry existed, so zero is the truth of that run
     for (const trial of row.trials as Array<Record<string, unknown>>)
       if (trial.retried === undefined) trial.retried = 0;
     row.trials.forEach((trial: unknown, i) => {

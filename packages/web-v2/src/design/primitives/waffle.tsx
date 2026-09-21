@@ -19,12 +19,10 @@ export interface WaffleProps {
 /**
  * Composition as a grid of cells, one category per colour.
  */
-// cm:guard the cell count per category is derived from its OWN count and the totals are printed beside it — a waffle that rounds each category to a share of a fixed 100 cells shows a 3-issue bucket and a 300-issue bucket as the same block (ISS-988 criterion 28).
 export function Waffle({ categories, perCell, className }: WaffleProps) {
   const total = categories.reduce((n, c) => n + c.count, 0);
   if (total === 0) return null;
 
-  // cm:why cells are capped at ~240 so a 1,110-issue backlog stays one screen; the divisor is announced in each category's accessible name so a reader is never told a cell is one record when it is forty
   const per = perCell ?? Math.max(1, Math.ceil(total / 240));
 
   const cells = categories.flatMap((c) =>
@@ -36,13 +34,13 @@ export function Waffle({ categories, perCell, className }: WaffleProps) {
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex flex-wrap gap-[3px]">
+      <div className="flex flex-wrap gap-3px">
         {cells.map((cell) => (
           <span
             key={cell.id}
             aria-hidden
             data-waffle-cell
-            className="block size-2 rounded-[2px]"
+            className="block size-2 rounded-2"
             style={{ background: cell.color }}
           />
         ))}
@@ -53,7 +51,7 @@ export function Waffle({ categories, perCell, className }: WaffleProps) {
           const swatch = (
             <span
               aria-hidden
-              className="size-2 shrink-0 rounded-[2px]"
+              className="size-2 shrink-0 rounded-2"
               style={{ background: c.color }}
             />
           );

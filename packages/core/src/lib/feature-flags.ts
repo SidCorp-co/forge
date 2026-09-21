@@ -1,25 +1,4 @@
-/**
- * Feature flags for Trunk-Based Development.
- *
- * Code for in-flight v1 epics merges to `main` immediately. Flags allow each
- * epic to be toggled per environment without rebuilding. To override a flag
- * in a given environment, set `FEATURE_<NAME>=true` (or `=false` to disable)
- * in the env (case-insensitive — the key is uppercased automatically).
- *
- * Flow per feature:
- *   1. Add the flag to `flagDefs` below.
- *   2. Gate route mounting / handler logic with `isEnabled(...)`.
- *   3. Merge to main.
- *   4. Disable in a specific env via `FEATURE_X=false` if needed.
- *   5. Remove the flag + the if-branch when feature is permanent (cleanup PR).
- *
- * Defaults: every flag below is `true`. v0.1.x is alpha — operators self-host,
- * we want them to see the full surface area. Operators who explicitly do NOT
- * want a feature can set `FEATURE_X=false` per environment.
- */
-
 const flagDefs = {
-  // v1 EPIC 3 — Pipeline control + runner/device fleet observability
   pipelineControl: true,
 
   // v1 EPIC 4 — Comment mentions + notification fan-out (PR-B)
@@ -28,41 +7,17 @@ const flagDefs = {
   // v1 EPIC 4 — User preferences + storage adapter (PR-C)
   userPreferences: true,
 
-  // v1 EPIC 5 — Knowledge ops + chat config + RAG analytics + domain templates
-  // (Chunk A — app_config + domain_templates already merged to main; Chunk B
-  //  knowledge health/backfill + retrieval_analytics + webhook adapter still
-  //  behind this flag while Chunk B lands incrementally.)
   knowledgeOps: true,
 
   // v1 EPIC 5 — WebhookSource adapter framework (replaces inline GitHub branch)
   webhookAdapter: true,
 
-  // v1 EPIC 6 — Per-project skill config UI (Settings > Skills page in web).
-  // Backend (override CRUD + /effective + skill.updated WS) ships unflagged
-  // because it's additive. The web UI surface gates on this flag while the
-  // diff editor and packages/dev sync engine land incrementally.
   skillUi: true,
 
-  // ISS-314 — OAuth/OIDC providers (GitHub + Google + generic OIDC).
-  // Default-on so the auth surface ships visible. Operators who haven't
-  // configured provider env vars (GITHUB_OAUTH_CLIENT_ID / GOOGLE_OIDC_*)
-  // will see no buttons — provider rows are read at request time, so the
-  // page stays clean. Set FEATURE_SOCIAL_AUTH=false if you want to hide
-  // the entire social-auth code path even when env vars are present.
   socialAuth: true,
 
-  // ISS-22 (PM Agent Epic 6) — pm_config CRUD + web/dev escalation surfaces.
-  // Gates `/api/projects/:id/pm/*` route mounting and the web /pm page.
-  // Backend escalation publish + sweeper land in Epics 4/5 (also default-on
-  // when those flags are added). Disable with FEATURE_PM_AGENT=false.
   pmAgent: true,
 
-  // ISS-305 — auto git-credential provisioning at runner-login time. Ships
-  // DARK (default OFF): provisioning a real push credential requires a
-  // configured host token/deploy-key source (env GIT_PROVISION_*), which most
-  // self-hosted deployments do not have. When off, runner login still mints a
-  // device token — only the git_credential side-channel is skipped. Flip
-  // FEATURE_RUNNER_GIT_CRED_PROVISION=true once a host source is configured.
   runnerGitCredProvision: false,
 } as const;
 

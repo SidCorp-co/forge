@@ -20,7 +20,6 @@ const updateSet = vi.fn(() => ({ where: updateWhere }));
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-// cm:why the `from` stub offers BOTH `where` and `innerJoin`: `parkIssueOnCancel` and the run lookup share this mock and take different chains off it, so a stub shaped for one silently returns undefined for the other rather than failing.
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
 
@@ -28,10 +27,8 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
-    // cm:why applyKernelTransition writes the kernel_transitions audit row on the same executor right after the run flip, so a double without `insert` swallows the audit half of the write it is asserting on
     insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
-    // cm:why applyKernelTransition stamps `forge.kernel_txn` through `exec.execute` before its CAS
     execute: vi.fn(async () => undefined),
   };
   return { db: dbStub };
@@ -174,7 +171,6 @@ describe('cancelPipelineRun', () => {
 
     const events = publishSpy.mock.calls.map((c) => (c[1] as { event: string }).event);
     expect(events.filter((e) => e === 'pipeline_run.status_changed')).toHaveLength(1);
-    // cm:why job.cancel fans out ONE PER JOB (not per session) — job-1/job-2 share device dev-A but are different processes, each needs its own kill request
     expect(events.filter((e) => e === 'agent:abort')).toHaveLength(0);
     const kills = publishSpy.mock.calls.filter(
       (c) => (c[1] as { event: string }).event === 'job.cancel',
@@ -263,7 +259,6 @@ describe('cancelPipelineRun', () => {
     expect(opts).toMatchObject({ skip: true });
   });
 
-  // cm:guard the park must be attributed to the caller, not to `projects.createdBy` — the interventions metric counts only user-actor transitions, so a park recorded as a device is an intervention nobody can measure
   it('attributes the park to the human who cancelled, not to the project creator', async () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
     updateReturning.mockResolvedValueOnce([]);
@@ -287,7 +282,6 @@ describe('cancelPipelineRun', () => {
     expect(actorArg).toEqual({ type: 'user', id: 'human-7' });
   });
 
-  // cm:guard `parkIssue: false` is the "kill this run so a clean one starts" intent — leaving the issue actionable IS the point there, so this must never be "fixed" by parking anyway (the replacement run within seconds is the requested outcome, not the ISS-411 bug)
   it('leaves the issue alone when the caller asks for a clean restart', async () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
     updateReturning.mockResolvedValueOnce([]);

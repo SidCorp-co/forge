@@ -20,7 +20,6 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard PAT-SHAPED, because a box now presents an ordinary `forge_pat_*` carrying `device_id` (ISS-932). An opaque string here never reaches the device branch at all — `requireUserOrDevice` routes on `isPatLike` — so the mock would go unconsulted and the suite would prove nothing about the device path.
 const DEVICE_PAT = `forge_pat_dev_${'a'.repeat(64)}`;
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
@@ -176,7 +175,6 @@ describe('PATCH /api/agent-sessions/:id — who may say a session is parked', ()
     expect(persisted()?.runtimeState).toBe('awaiting_input');
   });
 
-  // cm:guard the security half. `awaiting_input` is the one value that exempts a row from the heartbeat hop, so a member who could assert it could hold one of the box's few duplex session slots indefinitely with a plain PATCH.
   it('ignores the same claim from a project member', async () => {
     seedRunningSession();
     const res = await patchAsMember({ runtimeState: 'awaiting_input' });
@@ -204,7 +202,6 @@ describe('PATCH /api/agent-sessions/:id — who may say a session is parked', ()
 });
 
 describe('PATCH /api/agent-sessions/:id — ISS-877 failureReason is server-derived', () => {
-  // cm:guard the `{ enum }` on the column stops CORE writing free text, and this stops a REQUEST supplying it — the type cannot see a value that arrives as JSON at runtime, so widening `patchSchema` to accept `failureReason` re-opens the enum-mixed-with-free-text hole from the one direction the compiler is blind to, and nothing else in the suite would notice.
   it('rejects the field outright rather than storing whatever arrived', async () => {
     seedRunningSession();
     const res = await patchAsDevice({

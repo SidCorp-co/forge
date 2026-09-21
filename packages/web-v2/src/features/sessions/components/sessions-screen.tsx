@@ -20,6 +20,7 @@ import {
   Menu,
   MonoTag,
   PageContainer,
+  PageTitle,
   SegmentedControl,
   SessionRowSkeleton,
   StatusChip,
@@ -28,11 +29,11 @@ import {
   TD,
   TH,
   THead,
-  TR,
   Tooltip,
-  useElapsed,
+  TR,
   type MenuItem,
   type SegmentOption,
+  useElapsed,
 } from "@/design";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
@@ -61,10 +62,14 @@ import {
   classifySessionOutcome,
   isRealFailure,
   failureReasonLabel,
+  AGENT_SESSION_KINDS,
+  SESSION_KIND_LABEL,
   type AgentSessionDisplayStatus,
+  type AgentSessionKind,
   type SessionFilter,
   type SessionRow,
 } from "../types";
+import { orderByOwner, OWNER_INDENT_PX } from "./session-tree";
 
 interface SessionsScreenProps {
   /** Project-tier scope. Omit for the cross-project workspace tier.
@@ -125,21 +130,18 @@ const FILTER_LABEL: Record<SessionFilter, string> = {
 };
 
 // ISS-465 — kind dimension on top of the status filter. Defaults to "all" so
-// existing readers see the same set; explicit "Runs" / "Chats" labels separate
-// pipeline/pm sessions from interactive chats (already discriminated server-
-// side by metadata.type, here just presentation).
-type KindFilter = "all" | "runs" | "chats";
-const KIND_FILTERS: KindFilter[] = ["all", "runs", "chats"];
+// existing readers see the same set. The row states its species, so each one
+// is its own tab.
+type KindFilter = "all" | AgentSessionKind;
+const KIND_FILTERS: KindFilter[] = ["all", ...AGENT_SESSION_KINDS];
 const KIND_LABEL: Record<KindFilter, string> = {
   all: "All kinds",
-  runs: "Runs",
-  chats: "Chats",
+  ...SESSION_KIND_LABEL,
 };
 
 function matchesKind(kind: KindFilter, row: SessionRow): boolean {
   if (kind === "all") return true;
-  const k = sessionKind(row);
-  return kind === "runs" ? k === "pipeline" : k === "chat";
+  return sessionKind(row) === kind;
 }
 
 function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSessionDisplayStatus): boolean {
@@ -164,7 +166,6 @@ function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSes
   }
 }
 
-/** Zero-render WS room subscription — used to fan out across visible projects. */
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
   return null;
@@ -186,8 +187,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   // gets set when `projectId` is unset.
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
 
-  // Resolve each row's project slug (id → slug) so session rows can link to the
-  // project-scoped detail + issue routes at both tiers.
   const slugById = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of projectsQ.data ?? []) m.set(p.id, p.slug);
@@ -223,8 +222,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     const issueFiltered = issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
     // ISS-477 — workspace tier: keep only sessions whose project is in the active org.
     const scoped = projectId ? issueFiltered : issueFiltered.filter((r) => orgProjectIds.has(r.projectId));
-    // ISS-465 — kind dimension applies BEFORE the status filter so the status
-    // counts reflect the chosen kind ("3 Running chats" vs "3 Running runs").
     return scoped.filter((r) => matchesKind(kind, r));
   }, [sessionsQ.data, issueFilter, kind, projectId, orgProjectIds]);
 
@@ -233,7 +230,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r] as const)), [rows]);
   const openRow = openSessionId ? rowById.get(openSessionId) : undefined;
 
-  // cm:guard one `now` per render, read once and passed down: deriving it inside each consumer lets the tab counts, the row chips and the filter disagree about which sessions are stalled within a single paint
   const now = Date.now();
   const displays = useMemo(
     () => rows.map((r) => deriveSessionDisplayStatus(r, now)),
@@ -255,9 +251,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         const ms = since ? now - new Date(since).getTime() : NaN;
         if (Number.isFinite(ms) && ms >= 0) waits.push(ms);
       }
-      // ISS-322 — "Zombie jobs" counts only LIVE stalled sessions (heartbeat
-      // overdue, pending auto-recovery). A terminal `cancelled_stale` is benign
-      // swept cleanup and no longer inflates this alert.
       if (d === "stalled") zombies += 1;
     });
     // Median wait across queued sessions (draft "Median wait" metric).
@@ -293,6 +286,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       .map(({ row }) => row);
   }, [rows, displays, filter]);
 
+  // A pure derivation so it can be tested without a browser; session-tree.ts
+  // says what happens to a row whose owner a filter excluded.
+  const treeRows = useMemo(() => orderByOwner(visibleRows), [visibleRows]);
+
   const filterOptions: SegmentOption<SessionFilter>[] = FILTERS.map((f) => ({
     value: f,
     label: `${FILTER_LABEL[f]} ${counts[f]}`,
@@ -307,14 +304,13 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   }, [sessionsQ.data, issueFilter, projectId, orgProjectIds]);
   const kindCounts: Record<KindFilter, number> = {
     all: kindRows.length,
-    runs: 0,
-    chats: 0,
+    master: 0,
+    run_session: 0,
+    pipeline: 0,
+    pm: 0,
+    chat: 0,
   };
-  for (const r of kindRows) {
-    const k = sessionKind(r);
-    if (k === "pipeline") kindCounts.runs += 1;
-    else kindCounts.chats += 1;
-  }
+  for (const r of kindRows) kindCounts[sessionKind(r)] += 1;
   const kindOptions: SegmentOption<KindFilter>[] = KIND_FILTERS.map((k) => ({
     value: k,
     label: `${KIND_LABEL[k]} ${kindCounts[k]}`,
@@ -332,7 +328,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
           band of mostly 0/— on quiet projects), with Sweep on the same row. */}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
-          <h1 className="fg-h2">Sessions</h1>
+          <PageTitle className="fg-h2">Sessions</PageTitle>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <StatPill label="Active" value={String(stats.active)} />
             <StatPill label="Queued" value={String(stats.queued)} />
@@ -441,10 +437,12 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                 </TR>
               </THead>
               <TBody>
-                {visibleRows.map((row) => (
+                {treeRows.map(({ row, depth, hasChildren }) => (
                   <SessionTableRow
                     key={row.id}
                     row={row}
+                    depth={depth}
+                    hasChildren={hasChildren}
                     slug={slugFor(row)}
                     deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                     now={now}
@@ -459,10 +457,11 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
           {/* Mobile: stacked cards — no horizontal page scroll. */}
           <div className="space-y-2.5 md:hidden">
-            {visibleRows.map((row) => (
+            {treeRows.map(({ row, depth }) => (
               <SessionMobileCard
                 key={row.id}
                 row={row}
+                depth={depth}
                 slug={slugFor(row)}
                 deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                 now={now}
@@ -674,7 +673,6 @@ function RunnerCell({
   );
 }
 
-// cm:why the chip gets a second line under it at all: one word is the whole of twenty different endings, so a live stalled row carries a countdown to the server's auto-reap — "stalled (display)" must never read as "already reaped (server)" — and a terminal row carries its cause.
 function StatusCell({
   row,
   display,
@@ -692,7 +690,6 @@ function StatusCell({
   // taking priority over the generic idle→paused mapping used everywhere else
   // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
   const awaitingReply = isAwaitingReply(row);
-  // cm:guard every terminal session is classified here rather than chip-mapped directly: benign cleanup and lifecycle cancels take the neutral `swept` token with a tooltip that says why, and only a genuine failure earns the red `failed` token and its amber reason — a red chip on filed-away work is an alarm nobody can act on (ISS-322, ISS-998).
   const outcome = classifySessionOutcome(display, row.failureReason);
   const chipStatus = awaitingReply
     ? "waiting"
@@ -702,7 +699,6 @@ function StatusCell({
   const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
   const showReason =
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
-  // cm:guard a `cancelled` session carries no `failureReason` — nothing failed — so the line below it comes from the OUTCOME instead. Without it the row says only "Closed", which is the calm terminal tone this design system reserves for filed-away work and does not say that somebody stopped this session (ISS-998).
   const subLine = showReason ? reason : display === "cancelled" ? outcome.label : null;
   // Red reason text only for a genuine failure; swept/cleanup reads subtle.
   const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";
@@ -749,12 +745,18 @@ function SessionTableRow({
   actions,
   projectId,
   onInlineOpen,
+  depth,
+  hasChildren,
 }: {
   row: SessionRow;
   slug?: string;
   deviceName?: string;
   now: number;
   actions: RowActions;
+  /** How far under its owner this row sits, in the list as filtered. */
+  depth: number;
+  /** Whether anything in this list is owned by it. */
+  hasChildren: boolean;
   /** Set at the project tier only — when present, rows navigate as before. */
   projectId?: string;
   /** Workspace tier only (ISS-664): opens the inline reply panel instead of
@@ -776,13 +778,29 @@ function SessionTableRow({
   return (
     <TR>
       <TD>
-        {open ? (
-          <button type="button" onClick={open} className="focus-visible:outline-none">
+        <div
+          className="flex items-center gap-1.5"
+          style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
+        >
+          {depth > 0 && (
+            <span aria-hidden className="text-muted select-none">
+              &#8735;
+            </span>
+          )}
+          {open ? (
+            <button type="button" onClick={open} className="focus-visible:outline-none">
+              <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
+            </button>
+          ) : (
             <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
-          </button>
-        ) : (
-          <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
-        )}
+          )}
+          <SessionKindTag row={row} />
+          {hasChildren && (
+            <span className="text-11 text-muted" title="this session owns others in this list">
+              &#8226;
+            </span>
+          )}
+        </div>
       </TD>
       <TD className="max-w-[260px]">
         <SessionIdentity row={row} slug={slug} onOpen={open} />
@@ -804,6 +822,20 @@ function SessionTableRow({
   );
 }
 
+/** What species the row says it is: one word per kind, five of them. */
+const KIND_TONE = {
+  master: "accent",
+  run_session: "cobalt",
+  pipeline: "neutral",
+  pm: "neutral",
+  chat: "neutral",
+} as const satisfies Record<AgentSessionKind, "neutral" | "accent" | "cobalt">;
+
+function SessionKindTag({ row }: { row: SessionRow }) {
+  const kind = sessionKind(row);
+  return <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+}
+
 function SessionMobileCard({
   row,
   slug,
@@ -812,16 +844,15 @@ function SessionMobileCard({
   actions,
   projectId,
   onInlineOpen,
+  depth,
 }: {
   row: SessionRow;
   slug?: string;
   deviceName?: string;
   now: number;
   actions: RowActions;
-  /** Set at the project tier only — when present, rows navigate as before. */
+  depth: number;
   projectId?: string;
-  /** Workspace tier only (ISS-664): opens the inline reply panel instead of
-   *  navigating away from the cross-project list. */
   onInlineOpen: (id: string) => void;
 }) {
   const router = useRouter();
@@ -834,10 +865,25 @@ function SessionMobileCard({
       : undefined
     : () => onInlineOpen(row.id);
   return (
+    // The same edge the table shows, at a width a phone can carry: the nesting
+    // has to survive the narrow layout or the tree is a desktop-only claim.
     <Card>
       <CardContent>
-        <div className="flex items-start justify-between gap-3">
-          <SessionIdentity row={row} slug={slug} onOpen={open} />
+        <div
+          className="flex items-start justify-between gap-3"
+          style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
+        >
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-1.5">
+              {depth > 0 && (
+                <span aria-hidden className="text-muted select-none">
+                  &#8735;
+                </span>
+              )}
+              <SessionKindTag row={row} />
+            </div>
+            <SessionIdentity row={row} slug={slug} onOpen={open} />
+          </div>
           <RowActionsMenu row={row} display={display} actions={actions} />
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">

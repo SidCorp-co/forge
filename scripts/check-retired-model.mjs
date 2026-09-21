@@ -1,26 +1,5 @@
 #!/usr/bin/env node
 
-// The retired release model, hunted where the compiler cannot look.
-//
-// ISS-1046 replaced `integration_bindings.environment` ('staging'|'prod') with
-// `role` + `stages`, and `projects.production_branch` with `live_branch`. Every
-// TYPED reader of those moved with the change, because `tsc` named each one. The
-// three shapes below name NONE of them:
-//
-//   - raw SQL — `b.environment = 'prod'` in a `sql` template, which is a string
-//     to TypeScript. `devices/release-label.ts` carried exactly this on the pool
-//     and claim paths, and a stale predicate there fails by matching no row,
-//     presenting as "no runner in the release pool" rather than as a schema break.
-//   - an untyped property read — `(row as any).productionBranch`, or a read off a
-//     `Record<string, unknown>` parsed from JSON.
-//   - an inline literal union — `"staging" | "prod"` declared in a file that
-//     imports nothing, which is how packages/web-v2 held seven copies of the enum
-//     that the contracts change alone would not have broken.
-//
-// Exit 0 clean · 1 a retired name survives · 2 the check could not run.
-//
-// Usage:  node scripts/check-retired-model.mjs [--json]
-
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 
@@ -29,50 +8,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
 const JSON_OUT = process.argv.includes('--json');
 
-// cm:guard the skip list is tested against the path RELATIVE to the repo root, never the absolute
-// one: a delegated run works inside `<repo>/.worktrees/ISS-nnn`, so an absolute test matches the
-// checkout's own prefix and the walk silently returns nothing. It printed "scope matched no files"
-// once, which is the shape the `could not run` exit exists for — a green from a checker that scanned
-// zero files is indistinguishable from a green from one that scanned the tree.
 const SKIP =
   /(^|[/\\])(node_modules|\.next|dist|target|coverage|\.git|\.turbo|\.worktrees)([/\\]|$)/;
 const EXT = new Set(['.ts', '.tsx', '.mjs', '.js']);
 
-/**
- * Where the retired names are still the truth and must NOT be reported.
- *
- * Each entry says why, because an allowlist with no reasons is how a gate stops
- * meaning what its row says.
- */
-// cm:guard the migrations are the ONE place the old spelling is still correct: `0253_*.sql` reads
-// `environment` and `production_branch` to convert them, and `0253_down.sql` writes them back. A
-// migration that could not name the column it is migrating could not exist.
 const ALLOW = [
   // Every drizzle migration and its snapshots describe the schema as it was at that point.
   /^packages\/core\/drizzle\//,
-  // cm:guard the three files that RUN 0253 (and its rollback) against a real Postgres, and nothing
-  // else under `tests/`.
-  // They plant the pre-migration row the migration has to refuse or convert, so they must name the
-  // column as it was — a test that could not write `production_branch` could not reach the state
-  // 0253 starts from, and the migration's refusals would go to a verdict unproven. The constraints
-  // file additionally asserts that the ROLLBACK puts `production_branch` back, which it cannot do
-  // without naming it. Named one by one rather than by a `tests/` prefix: a prefix here would
-  // exempt every future integration test from the audit, which is most of the surface this rule
-  // exists to hold.
   /^packages\/core\/tests\/integration\/release-axes-migration-ground\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-constraints-e2e\.test\.ts$/,
-  // cm:guard the one unit test that asserts the retired spelling is NOT rendered. It has to write
-  // `productionBranch` to say so — an assertion that the name is absent cannot be made without
-  // naming it — and the alternative, composing the token from halves at runtime, would be a source
-  // scan evaded on purpose, which is worse than an exemption that says what it is. Named one by
-  // one, for the same reason as the three above.
   /^packages\/core\/src\/prompt\/system\.release-model\.test\.ts$/,
-  // cm:guard this checker's OWN test. Every fixture in it is a retired reader on purpose — that is
-  // what it asserts the rules match — so the audit scanning it would report its own evidence as the
-  // defect. The file holds fixture strings and nothing else.
   /^packages\/core\/src\/db\/retired-model-audit\.test\.ts$/,
-  // cm:guard ISS-1070 — `agentConfig.productionBranch` is a jsonb key named after the retired column, and these four files exist to REFUSE it and to delete it. The refusal message has to say which key it is about, and the tests have to plant that key to watch the refusal fire; a retirement that could not name what it retires would answer an operator's save with a 200 and a silent discard, which is the defect the retirement is for. Named one by one for the reason the three release-axes files are: a `projects/` or `tests/` prefix here would exempt most of the surface this rule exists to hold. `projects/routes.test.ts` is deliberately NOT among them — the route-level refusal of that key is proved in the e2e below instead, so the general route test file stays under the audit.
   /^packages\/core\/src\/projects\/agent-config-schema\.ts$/,
   /^packages\/core\/src\/projects\/agent-config-doors\.test\.ts$/,
   /^packages\/core\/tests\/integration\/agent-config-doors-e2e\.test\.ts$/,
@@ -83,12 +30,6 @@ const ALLOW = [
   /^scripts\/check-retired-model\.mjs$/,
 ];
 
-/** The patterns, each with the sentence a reader gets when it fires. */
-// cm:why RULES and `stripComments` are exported: a checker whose own behaviour nothing asserts
-// prints the same "no retired reader survives" whether it is working or broken, which is the
-// failure mode conformance rule R7 exists to catch one level up. Exercised by
-// `packages/core/src/db/retired-model-audit.test.ts` — core is where the suites actually run;
-// `scripts/` has a lint gate and no test runner.
 export const RULES = [
   {
     id: 'binding-environment-sql',
@@ -135,28 +76,6 @@ function walk(dir, out) {
   return out;
 }
 
-/**
- * Blank out comments, and ONLY comments, leaving every other byte and every newline in place.
- *
- * cm:why comments are stripped before the scan, for the same reason `check-memory-anchors.mjs`
- * does it: this repo writes obituaries, and every guard explaining WHY a name was retired names
- * that name. Scanning raw source would report the explanation as the defect.
- *
- * cm:guard this is a lexer and not a pair of regexes, because a regex cannot tell a comment from
- * the same characters inside a string. `const sep = '//'; const b = row.productionBranch;` made
- * the old spelling delete the rest of that line and pass a reader its own `production-branch`
- * rule exists to catch — a gate that goes green on the one input it was written for. String and
- * template CONTENTS are kept rather than blanked, because `binding-environment-sql` reads SQL
- * that only ever appears inside a template literal. Newlines are kept because the caller reports
- * `i + 1` as the line number, and a multi-line block comment replaced by one space renumbers
- * every finding below it — wrong, and wrong in silence.
- *
- * cm:guard a `${` inside a template re-enters CODE and its `}` returns to the template. Without
- * that frame the lexer read `` `${`//`}`; const b = row.productionBranch; `` as a template running
- * to the end of the file, and blanked the reader on the next line — the same blindness the regex
- * had, one nesting level down, and the version of this function that replaced the regex still had
- * it. The frame carries a brace depth so `${ {a: 1} }` closes on the right `}`.
- */
 export function stripComments(src) {
   let out = '';
   let i = 0;
@@ -300,6 +219,4 @@ function main() {
   process.exit(findings.length === 0 ? 0 : 1);
 }
 
-// cm:guard `main()` runs only when this file IS the command. Without the test, importing it to
-// assert its rules would scan the tree and call `process.exit`.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

@@ -26,7 +26,6 @@ const askBody = z
   })
   .strict();
 
-// cm:edge protocol -> packages/runner/crates/forge-runner/src/cmd/git_credential.rs — the response field names ARE git's credential-helper keys, so a rename here silently stops authenticating git rather than failing a type check.
 deviceGitCredentialRoutes.post(
   '/me/git-credential',
   requireDevice(),
@@ -39,7 +38,6 @@ deviceGitCredentialRoutes.post(
       throw new HTTPException(401, { message: 'this device is revoked' });
     const { host, path, protocol } = c.req.valid('json');
 
-    // cm:guard refuse a non-HTTPS ask rather than answering it — a token handed over cleartext http is a leaked token, and git offers no way to learn afterwards that it travelled in the clear.
     if (protocol && protocol !== 'https') {
       throw new HTTPException(400, {
         message: `git asked for a ${protocol} credential; this helper issues HTTPS credentials only`,
@@ -48,7 +46,6 @@ deviceGitCredentialRoutes.post(
 
     try {
       const grant = await mintGitCredentialForDevice({ deviceId: device.id, host, path });
-      // cm:guard log the repository and the expiry, NEVER the grant — this line is the only record that a token was issued, and the scrubber cannot rescue a password a handler chose to print.
       logger.info(
         {
           deviceId: device.id,

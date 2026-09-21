@@ -120,9 +120,6 @@ describe('what a resumed master chose, on the issues its inherited run holds', (
     }
   });
 
-  // cm:guard says WHOSE judgement it was. The box handed the master raw fields and no
-  // recommendation; printing the choice without saying it was the master's would read as the
-  // system having decided, which is the thing this design refuses to do.
   it('attributes the judgement to the resumed master, not to the machine', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
 
@@ -139,8 +136,6 @@ describe('what a resumed master chose, on the issues its inherited run holds', (
     expect(body).toMatch(/judgement is the resumed machine/i);
   });
 
-  // cm:guard keyed on the RUN, so one resumed pane answering for several runs writes one comment
-  // per run, while a pane asked twice about one run says it once.
   it('says one run once however many sweeps carry it', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
 

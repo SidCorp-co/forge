@@ -5,14 +5,6 @@
  * in that channel's own door layer, and what is true of the tracker's verbs in `tools.ts`.
  */
 
-// cm:guard channel-neutral by construction, which is the whole point of the layer: a sentence
-// true only in a chat room, only in the browser, or only of one project's language reaches every
-// door from here, including the ones that make it false (ISS-1007, carried into ISS-1057).
-// cm:edge contract -> packages/core/src/guides/assistant-method-guide.ts — that guide's body is
-// this layer and `tools.ts` composed, so this text is also what `forge_guide get
-// answering-as-the-assistant` serves a reader outside a turn.
-// cm:edge contract -> scripts/check-injected-doc-modes.mjs — that gate reads guide bodies by
-// FILE, and this file is listed there because the guide's body is composed from it.
 import type { PromptLayer } from './layer.js';
 
 export const BASE_LAYER: PromptLayer = {

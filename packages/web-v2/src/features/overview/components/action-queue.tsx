@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent } from "@/design";
+import {
+  Card,
+  CardContent,
+  SectionTitle,
+} from "@/design";
 import { actionQueue, formatElapsed } from "../derive";
 import type { ActionKey, ActionOwner } from "../derive";
 import type { PulseResponse } from "../types";
@@ -25,7 +29,7 @@ export function ActionQueue({ pulse, nowMs }: ActionQueueProps) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-3">
-        <h2 className="fg-h3">What needs someone</h2>
+        <SectionTitle className="fg-h3">What needs someone</SectionTitle>
 
         {rows.length === 0 ? (
           <p className="fg-body-sm text-muted">

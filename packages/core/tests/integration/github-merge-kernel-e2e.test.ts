@@ -1,27 +1,3 @@
-/**
- * The merge, end to end, against a real Postgres and a GitHub test double.
- *
- * `merge.test.ts` proves the SHAPE with a recording client handed straight in,
- * and it cannot prove the two things this file is for:
- *
- * - the merge and the stamp are ONE operation over a real transaction — the
- *   issue's `merged_at`, its `merged_commit_sha` and the projection row's merged
- *   state either all land or none do (ISS-1073's outcome 1). A fake transaction
- *   that runs its callback inline is green either way;
- * - the identity is the App and nothing else (outcome 4). Here the credential is
- *   read out of the binding, the JWT is signed RS256 for real, the installation
- *   token is minted over HTTP and every request the double receives is asserted
- *   to carry one of those two and no person's. A unit test holding a client
- *   cannot say anything about where the client's identity came from.
- *
- * WHAT IS FAKE, precisely: GitHub's HTTP answers, served by a `node:http` server
- * on loopback that the binding's `apiBaseUrl` points at. Nothing merges against
- * a real repository from a test, and the protections below are this double's,
- * not any real branch's — including `enforce_admins`, which is asserted here as
- * a thing the path tolerates rather than turned on anywhere.
- */
-// cm:guard this file is the authoritative source for the release flow's stamp step, whose annotation sits on `merge.ts:mergeStoredPullRequest`. `check-flow-coverage.mjs` counts that step reached only when the INTEGRATION suite entered the annotated function, so if this file stops calling it the gate goes red rather than quietly measuring unit coverage. The step's marker is NOT spelled out here: the checker finds its sites with `git grep` over tracked files, so writing it in prose declares a second site in a file no coverage report contains — which drags the step's merged verdict to `outofscope` and reports a configuration fault that does not exist.
-
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -39,6 +15,12 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   mergeStoredPullRequest: typeof import('../../src/integrations/github/merge.js').mergeStoredPullRequest;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  githubAgentClient: typeof import('../../src/integrations/github/agent-client.js').githubAgentClient;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  openPullRequest: typeof import('../../src/integrations/github/agent-ops.js').openPullRequest;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  projectOpenedPullRequest: typeof import('../../src/integrations/github/opened-pull-request.js').projectOpenedPullRequest;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createBinding: typeof import('../../src/integrations/store.js').createBinding;
@@ -49,6 +31,9 @@ const OWNER = 'SidCorp-co';
 const REPO = 'forge';
 const NUMBER = 503;
 const HEAD = 'a'.repeat(40);
+/** The branch names the issue, which is the only thing a pull request and an issue share. */
+const ISS_SEQ = 1073;
+const HEAD_REF = `ISS-${ISS_SEQ}-merge`;
 const MERGE_COMMIT = 'c0ffee'.padEnd(40, '0');
 /** GitHub's own merge time. Deliberately not now: the assertion is that the record is THIS. */
 const GITHUB_MERGED_AT = '2026-09-18T11:22:33Z';
@@ -56,7 +41,6 @@ const GITHUB_MERGED_AT = '2026-09-18T11:22:33Z';
 // The vault key is module scope because `createConnection` encrypts before any hook runs.
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
-// cm:why a real RSA key, because `buildAppJwt` signs RS256 for real — only GitHub's HTTP answer is faked, so a broken JWT would fail here rather than pass on a stub
 const { privateKey: APP_PRIVATE_KEY } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
@@ -73,6 +57,8 @@ interface Seen {
 /** What the double will answer for the pull request, and what it has been asked. */
 interface Double {
   base: string;
+  /** What the CREATION answer carries on top of the pull request body, or drops from it. */
+  createdExtra: Record<string, unknown>;
   seen: Seen[];
   merged: boolean;
   checks: Array<{ name: string; status: string; conclusion: string | null }>;
@@ -94,8 +80,11 @@ function pullBody(): unknown {
     merged_at: dbl.merged ? GITHUB_MERGED_AT : null,
     mergeable: true,
     mergeable_state: 'clean',
-    head: { sha: HEAD },
-    base: { ref: 'main' },
+    title: 'the merge is the stamp',
+    html_url: `https://github.com/${OWNER}/${REPO}/pull/${NUMBER}`,
+    updated_at: '2026-09-18T11:00:00Z',
+    head: { ref: HEAD_REF, sha: HEAD },
+    base: { ref: 'main', sha: 'b'.repeat(40) },
   };
 }
 
@@ -121,6 +110,9 @@ async function startDouble(): Promise<string> {
       }
       if (url.endsWith('/protection')) return send(dbl.protection.status, dbl.protection.body);
       if (url.includes('/check-runs')) return send(200, { check_runs: dbl.checks });
+      if (url.endsWith('/pulls') && req.method === 'POST') {
+        return send(201, { ...(pullBody() as Record<string, unknown>), ...dbl.createdExtra });
+      }
       if (url.endsWith(`/pulls/${NUMBER}/merge`) && req.method === 'PUT') {
         if (dbl.mergeStatus === 200) dbl.merged = true;
         return send(dbl.mergeStatus, dbl.mergeBody);
@@ -155,13 +147,22 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [mergeMod, store, hooksMod] = await Promise.all([
+  const [mergeMod, store, hooksMod, agentClient, agentOps, openedMod] = await Promise.all([
     import('../../src/integrations/github/merge.js'),
     import('../../src/integrations/store.js'),
     import('../../src/pipeline/hooks.js'),
+    import('../../src/integrations/github/agent-client.js'),
+    import('../../src/integrations/github/agent-ops.js'),
+    import('../../src/integrations/github/opened-pull-request.js'),
   ]);
+  // The agent client resolves the binding through the integration registry, which only `src/index.ts`
+  // registers in production: a test reaching that path registers it in its own setup.
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
   mods = {
     mergeStoredPullRequest: mergeMod.mergeStoredPullRequest,
+    githubAgentClient: agentClient.githubAgentClient,
+    openPullRequest: agentOps.openPullRequest,
+    projectOpenedPullRequest: openedMod.projectOpenedPullRequest,
     createConnection: store.createConnection,
     createBinding: store.createBinding,
     hooks: hooksMod.hooks,
@@ -178,6 +179,7 @@ beforeEach(async () => {
   const apiBaseUrl = server ? dbl.base : await startDouble();
   dbl = {
     base: apiBaseUrl,
+    createdExtra: {},
     seen: [],
     merged: false,
     checks: [{ name: 'ci-passed', status: 'completed', conclusion: 'success' }],
@@ -196,7 +198,6 @@ beforeEach(async () => {
     ownerId,
     provider: 'github',
     displayName: 'GitHub App test',
-    // cm:guard a DISTINCT appId per seeded connection — `installationTokenWithExpiry` caches on `base|appId|installationId`, so a shared id lets one test's mint answer the next one's and the assertion on what the double was sent then measures nothing.
     secrets: { appId: randomUUID(), privateKey: APP_PRIVATE_KEY, webhookSecret: 'whs' },
   });
   const binding = await mods.createBinding({
@@ -211,7 +212,7 @@ beforeEach(async () => {
 
   const issues = await harness.db.execute<{ id: string }>(sql`
     INSERT INTO issues (project_id, created_by_id, iss_seq, title, status)
-    VALUES (${projectId}, ${ownerId}, ${Math.floor(Math.random() * 1_000_000)},
+    VALUES (${projectId}, ${ownerId}, ${ISS_SEQ},
             'the merge is the stamp', 'in_progress')
     RETURNING id
   `);
@@ -222,7 +223,7 @@ beforeEach(async () => {
       (project_id, binding_id, issue_id, number, repo_full_name, title, state,
        head_ref, head_sha, base_ref, base_sha)
     VALUES (${projectId}, ${binding.id}, ${issueId}, ${NUMBER}, ${`${OWNER}/${REPO}`},
-            'the merge is the stamp', 'open', 'ISS-1073-merge', ${HEAD}, 'main', ${'b'.repeat(40)})
+            'the merge is the stamp', 'open', ${HEAD_REF}, ${HEAD}, 'main', ${'b'.repeat(40)})
     RETURNING id
   `);
   pullRequestId = (pulls[0] as { id: string }).id;
@@ -269,9 +270,6 @@ describe('one operation writes the stamp, the evidence and the projection', () =
 
     const marked = await stamp();
     expect(marked.commitSha).toBe(MERGE_COMMIT);
-    // cm:guard the recorded instant is GITHUB's, never this box's clock. A `new Date()` here would
-    // sit within a second of the truth and be indistinguishable from it — and the evidence
-    // predicate would then stop the `pull_request.closed` delivery from ever correcting it.
     expect(marked.mergedAt?.toISOString()).toBe(new Date(GITHUB_MERGED_AT).toISOString());
 
     const pr = await projection();
@@ -395,10 +393,6 @@ describe('the stamp announces the contract input it moved', () => {
     return heard;
   }
 
-  // cm:guard this is the seam between the merge and the contract check, and until ISS-1073 wrote
-  // it NOTHING asserted the kernel merge announces at all. `announce` swallows its own failures by
-  // design, so a merge that stopped emitting would leave every other open pull request of the same
-  // issue showing a contract answer computed before the blocker landed — and no test would move.
   it('emits contractInputChanged naming the issue and the kernel as the reason', async () => {
     const heard = listen('merge-announce-test');
     const outcome = await mods.mergeStoredPullRequest({
@@ -410,10 +404,6 @@ describe('the stamp announces the contract input it moved', () => {
     expect(heard).toEqual([{ projectId, issueId, reason: 'merged by the kernel' }]);
   });
 
-  // cm:guard announced only when THIS call wrote the stamp. A second reading of one merge must not
-  // announce again: the projection subscriber republishes every open pull request of the issue on
-  // each announcement, so a retry would spend a GitHub call per pull request for a change that
-  // already happened.
   it('says nothing on a second reading of the same merge, which wrote no stamp', async () => {
     await mods.mergeStoredPullRequest({ pullRequestId, requestedBy: `user:${ownerId}` });
     const heard = listen('merge-announce-again-test');
@@ -434,5 +424,100 @@ describe('the stamp announces the contract input it moved', () => {
       (await mods.mergeStoredPullRequest({ pullRequestId, requestedBy: `user:${ownerId}` }))?.kind,
     ).toBe('refused');
     expect(heard).toHaveLength(0);
+  });
+});
+
+/**
+ * ISS-1123 criteria 10 and 14 — the row comes from the open path, not from a fixture.
+ *
+ * Every case above starts from a hand-written `INSERT INTO repo_pull_requests`, and for the first
+ * year of this route's life that insert was the only one that had ever happened: the projection's
+ * single writer was reachable from a webhook door no delivery had knocked on, so the merge proved
+ * here could not be reached by any pull request Forge actually had. This case deletes the fixture
+ * row and lets Forge open the request itself, which is the whole of what the merge then stands on.
+ */
+describe('a pull request Forge opened is a pull request Forge can merge', () => {
+  /** The predicate `merge-routes.ts:resolveStoredPullRequest` resolves on, asked of the database. */
+  async function resolvedByTheRoute(): Promise<string[]> {
+    const rows = await harness.db.execute<{ id: string }>(sql`
+      SELECT id FROM repo_pull_requests WHERE issue_id = ${issueId} AND number = ${NUMBER}
+    `);
+    return (rows as unknown as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  beforeEach(async () => {
+    await harness.db.execute(sql`DELETE FROM repo_pull_requests`);
+    await harness.db.execute(sql`UPDATE integration_bindings SET agent_access = 'all'`);
+  });
+
+  it('opens, records and merges, and the issue ends up carrying the commit it landed at', async () => {
+    expect(await resolvedByTheRoute()).toEqual([]);
+
+    const client = await mods.githubAgentClient(projectId);
+    const opened = await mods.openPullRequest(client, {
+      head: HEAD_REF,
+      base: 'main',
+      title: 'the merge is the stamp',
+    });
+    const recorded = await mods.projectOpenedPullRequest({
+      projectId,
+      bindingId: client.bindingId,
+      repository: client.fullName,
+      opened,
+    });
+
+    expect(recorded).toMatchObject({ outcome: 'recorded', issueId });
+    const resolved = await resolvedByTheRoute();
+    expect(resolved).toHaveLength(1);
+
+    const outcome = await mods.mergeStoredPullRequest({
+      pullRequestId: resolved[0] as string,
+      requestedBy: `user:${ownerId}`,
+    });
+
+    expect(outcome?.kind).toBe('merged');
+    const marked = await stamp();
+    expect(marked.commitSha).toBe(MERGE_COMMIT);
+    expect(marked.mergedAt?.toISOString()).toBe(new Date(GITHUB_MERGED_AT).toISOString());
+  });
+
+  it('records the request as open with no merge evidence, because opening lands nothing', async () => {
+    const client = await mods.githubAgentClient(projectId);
+    const opened = await mods.openPullRequest(client, {
+      head: HEAD_REF,
+      base: 'main',
+      title: 'the merge is the stamp',
+    });
+    await mods.projectOpenedPullRequest({
+      projectId,
+      bindingId: client.bindingId,
+      repository: client.fullName,
+      opened,
+    });
+
+    const rows = await harness.db.execute<Record<string, unknown>>(sql`
+      SELECT state, merged_at, merge_commit_sha FROM repo_pull_requests WHERE number = ${NUMBER}
+    `);
+    expect(rows[0]).toMatchObject({ state: 'open', merged_at: null, merge_commit_sha: null });
+    expect(await stamp()).toMatchObject({ mergedAt: null, commitSha: null });
+  });
+
+  it('refuses the row by name where GitHub answered the creation without a head sha', async () => {
+    dbl.createdExtra = { head: { ref: HEAD_REF } };
+    const client = await mods.githubAgentClient(projectId);
+    const opened = await mods.openPullRequest(client, {
+      head: HEAD_REF,
+      base: 'main',
+      title: 'the merge is the stamp',
+    });
+    await expect(
+      mods.projectOpenedPullRequest({
+        projectId,
+        bindingId: client.bindingId,
+        repository: client.fullName,
+        opened,
+      }),
+    ).rejects.toThrow(/head sha/);
+    expect(await resolvedByTheRoute()).toEqual([]);
   });
 });

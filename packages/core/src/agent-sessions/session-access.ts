@@ -38,12 +38,6 @@ export async function ensureSessionMember(sessionId: string, userId: string) {
   return { session, access };
 }
 
-/**
- * Session load + role gate for handlers that historically inlined
- * `loadProjectAccess` + `assertProjectRole` (no `!access.role` pre-check) —
- * a non-member gets assertProjectRole's "requires project <min> access"
- * message, NOT ensureSessionMember's "not a project member".
- */
 export async function ensureSessionRole(
   sessionId: string,
   userId: string,
@@ -81,12 +75,6 @@ export async function ensureSessionOwnerOrAdmin(sessionId: string, userId: strin
   return { session, access };
 }
 
-// ISS-522 — interactive `agent` chats are private to their owner (or a project
-// admin). This is a NO-OP for pipeline/pm/no-type sessions, which stay
-// project-shared. Legacy `userId = NULL` agent rows are treated as non-owner →
-// only an admin can read them, so they never leak to other members. Mirrors the
-// owner-or-admin guard already used by the editTurn (PATCH /:id/turns/:turnId)
-// route.
 export function assertAgentChatOwner(
   session: { metadata: unknown; userId: string | null },
   access: Awaited<ReturnType<typeof loadProjectAccess>>,

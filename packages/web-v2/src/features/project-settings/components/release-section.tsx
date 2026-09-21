@@ -1,9 +1,13 @@
 "use client";
 
-// cm:why every gap listed here used to be found by a job — the driver with no build command, the batch with no labelled box, the release agent with no procedure falling back to a floor written for another repo. Saying it in settings does not add a rule; it moves the same sentence to a moment a person can act on it.
-// cm:edge contract -> packages/core/src/release-batch/readiness.ts — the gap keys and the release-gate rule are decided there; this file only renders them
 
-import { Badge, Banner, ErrorState, Skeleton } from "@/design";
+import {
+  Badge,
+  Banner,
+  CardTitle,
+  ErrorState,
+  Skeleton,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import Link from "next/link";
 import { useReleaseReadiness } from "../hooks";
@@ -15,7 +19,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "release-procedure":
     "No release-procedure fact — the release runs a generic fallback written for another repo.",
   "release-runner":
-    "The live binding names no release runner — a release is refused rather than sent to an arbitrary box.",
+    "The live binding names no release runner — a release is refused rather than sent to an arbitrary box. Naming one recommends a box; it does not stop the others releasing when that box is unavailable.",
   "release-runner-ambiguous":
     "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
   "release-multi-channel":
@@ -28,30 +32,25 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
     "A live Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
     "A live binding declares no verify probe — a release batch is refused, because a gate with no probes closes on the agent's word.",
-  // cm:guard this gap is about the PROJECT and `verify-probes` is about a BINDING, and they are not
-  // two spellings of one fact: a project may declare probes on every binding and still record
-  // nowhere that a person could open. Filling this one field answers `verify-probes` for every live
-  // binding at once, which is why it is worded as the shorter way round (ISS-1069).
   "live-commit-endpoint":
     "This project records no live commit endpoint — nothing holds the address a release ships to, so every live binding has to declare its own probe. Set it under Settings → Testing → Live.",
 };
 
-// cm:guard the link says what the operator must DO, and for one gap that is not "set it on the
-// live binding" — `release-target` IS the absence of a live binding, so sending the reader to
-// change one names a row that does not exist. Every other integration gap is about a declaration
-// missing FROM a binding that is there.
 const INTEGRATION_GAP_LINK: Partial<Record<ReleaseReadiness["gaps"][number], string>> = {
   "release-target": "Add a live deploy binding",
   "release-runner-ambiguous": "Reconcile the release runner labels",
   "release-multi-channel": "Review the live deploy bindings",
 };
 
-// cm:edge contract -> packages/core/src/release-batch/channel.ts — the three modes are decided by `classifyRollback`; rendering `unrepresentable` as "declared" would show a green-looking declaration for a release that will abort (ISS-925).
 const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
   manual: "declared — the release agent follows it",
   "coolify-image": "Forge rolls back to a Coolify image",
   unrepresentable: "free text — not executed, abort and comment",
 };
+
+/** What a field says when the read behind it failed. Never its default, which
+ *  would show an unreadable binding as a binding that declares nothing. */
+const UNREAD = "could not be read";
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
 
@@ -62,19 +61,22 @@ const RELEASE_MODEL_TEXT: Record<ReleaseReadiness["releaseModel"], string> = {
   publish: "publish — an act on a live target",
 };
 
-// cm:guard the branch pair is shown ONLY under `promote`. Under `publish` and `none` a project may still carry a live branch it was created with, and printing it is how the retired gate came to read "this project promotes" for one that promotes nothing.
 function branchPair(r: ReleaseReadiness): string {
   return r.releaseModel === "promote" && r.liveBranch
     ? `${r.baseBranch} → ${r.liveBranch}`
     : `${r.baseBranch} (no branch moves)`;
 }
 
-// cm:guard THREE states, never two. "Otherwise the session closes it directly" was true of one
-// project in two and wrong about the third: a project that declares a model and has no live target
-// neither gates nor closes — core throws `ReleaseTargetUndeclaredError` and the API answers
-// `409 RELEASE_TARGET_UNDECLARED` (packages/core/src/release-batch/routes.ts). The panel said the
-// issue would close while its own banner below said the release was refused.
 function stateLine(r: ReleaseReadiness) {
+  // An unreadable declaration is not a project that declares nothing. Saying so
+  // would be the substitution this whole section exists to stop (ISS-1127).
+  if (!r.declarationRead)
+    return (
+      <>
+        This project's release declaration could not be read just now, so nothing below it is a
+        reading. What could not be evaluated is named underneath.
+      </>
+    );
   if (r.hasReleaseGate)
     return (
       <>
@@ -102,7 +104,7 @@ export function ReleaseSection({
 
   const headingFor = (r?: ReleaseReadiness) => (
     <div>
-      <h3 className="fg-label text-fg">Release</h3>
+      <CardTitle className="fg-label text-fg">Release</CardTitle>
       <p className="fg-caption mt-0.5 text-muted">
         An issue reaches <b>Awaiting release</b> only when this project declares what releasing it
         means <i>and</i> has a live target to send it to. {r ? stateLine(r) : null}
@@ -136,22 +138,15 @@ export function ReleaseSection({
 
   const r = q.data;
   if (!r) return null;
-  // cm:guard this used to point at `settings?tab=facts`, a tab ISS-1048 deleted. A remediation
-  // link whose destination no longer exists is worse than no link: the operator follows the one
-  // affordance the gap offers and lands on a fallback pane. `sub=rules` opens the editor that
-  // now holds this text — the Knowledge screen's Rules tab.
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
   const integrationsHref = slug ? `/projects/${slug}/settings?tab=integrations` : undefined;
-  // cm:guard `live-commit-endpoint` is a PROJECT field and every other non-fact gap is a BINDING
-  // field, so it is the one gap whose link must not point at Integrations. Sending a reader there
-  // names a row that cannot hold the answer — the same mistake `release-target`'s guard above
-  // records, arriving from the other direction (ISS-1069).
   const testingHref = slug ? `/projects/${slug}/settings?tab=testing` : undefined;
 
   return (
     <div className="mt-6 border-t border-line pt-5">
       {headingFor(r)}
 
+      {r.declarationRead && (
       <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
         <div>
           <dt className="fg-caption text-subtle">Release</dt>
@@ -168,26 +163,35 @@ export function ReleaseSection({
         <div>
           <dt className="fg-caption text-subtle">Live targets</dt>
           <dd className="fg-body-sm text-fg">
-            {r.providers.length > 0 ? r.providers.join(", ") : "—"}
+            {!r.channelsRead ? UNREAD : r.providers.length > 0 ? r.providers.join(", ") : "—"}
           </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Release runner label</dt>
-          <dd className="fg-body-sm font-mono text-fg">{r.releaseRunnerLabel ?? "—"}</dd>
+          <dd className="fg-body-sm font-mono text-fg">
+            {!r.channelsRead ? UNREAD : (r.releaseRunnerLabel ?? "—")}
+          </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Rollback</dt>
           <dd className="fg-body-sm text-fg">
-            {r.rollbackMode ? ROLLBACK_TEXT[r.rollbackMode] : "abort and comment"}
+            {!r.channelsRead
+              ? UNREAD
+              : r.rollbackMode
+                ? ROLLBACK_TEXT[r.rollbackMode]
+                : "abort and comment"}
           </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Deploy verified by</dt>
-          <dd className="fg-body-sm text-fg">{r.hasVerify ? "a probe" : "nothing"}</dd>
+          <dd className="fg-body-sm text-fg">
+            {!r.channelsRead ? UNREAD : r.hasVerify ? "a probe" : "nothing"}
+          </dd>
         </div>
       </dl>
+      )}
 
-      {!r.hasReleaseGate && (
+      {r.declarationRead && !r.hasReleaseGate && (
         <p className="fg-caption mt-3 text-muted">
           {r.targetUndeclared ? (
             <>
@@ -206,8 +210,35 @@ export function ReleaseSection({
         </p>
       )}
 
+      {r.blockers.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">
+            Why a release will not start — every reason, now
+          </h4>
+          {r.blockers.map((b) => (
+            <Banner key={`${b.code}:${b.message}`} tone={b.evaluated ? "danger" : "attention"}>
+              <span className="font-mono">{b.code}</span> — {b.message}
+            </Banner>
+          ))}
+        </div>
+      )}
+
+      {r.warnings.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">
+            What will change how the release runs, without stopping it
+          </h4>
+          {r.warnings.map((w) => (
+            <Banner key={`${w.code}:${w.message}`} tone="attention">
+              <span className="font-mono">{w.code}</span> — {w.message}
+            </Banner>
+          ))}
+        </div>
+      )}
+
       {r.gaps.length > 0 && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">What this project has not declared</h4>
           {r.gaps.map((g) => (
             <Banner key={g} tone="attention">
               {GAP_TEXT[g]}{" "}

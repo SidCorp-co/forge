@@ -31,7 +31,6 @@ describe('the searchable field set (ISS-960)', () => {
   });
 });
 
-// cm:why what this answers for a given row is asserted against a real Postgres in `tests/integration/issue-search-matched-fields-e2e.test.ts`, never here: the claim is that the array agrees with what ILIKE did, and a mock of ILIKE agrees with itself whatever it is told (ISS-1016). What is left here is the shape — the arms and their order — which is the part a reader of this file can check.
 describe('matchedSearchFieldsSql', () => {
   const rendered = (term: string) => new PgDialect().sqlToQuery(matchedSearchFieldsSql(term));
 

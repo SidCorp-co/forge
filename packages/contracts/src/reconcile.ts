@@ -1,9 +1,3 @@
-// Client-facing contract for the Reconcile run artifact (Update Pipeline §②,
-// epic ISS-795 / ISS-801). Tuples hardcoded here rather than imported from
-// `@forge/core` (env side effects), same as skill-activity.ts. A parity test
-// in `packages/core/src/skills/reconcile-service.test.ts` keeps them in sync
-// with `db/schema.ts`.
-
 import { z } from 'zod';
 
 export const RECONCILE_VERDICTS = ['no-op', 'apply', 'apply-with-adaptation', 'escalate'] as const;
@@ -51,7 +45,6 @@ export const reconcileRunSchema = z.object({
 });
 export type ReconcileRun = z.infer<typeof reconcileRunSchema>;
 
-// cm:guard story must be present before a reconcile can be triggered (C1/C2 — passed in via packetId or directly)
 export const triggerReconcileInputSchema = z.object({
   projectId: z.string().uuid(),
   /** The update packet driving this reconcile run. At least one of packetId or direct fields required (C1). */

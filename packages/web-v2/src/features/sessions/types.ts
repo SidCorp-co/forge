@@ -1,9 +1,3 @@
-// web-v2 feature module: sessions (agent-sessions queue) — the flat `agent_sessions` row as the
-// route serves it, plus the display-status derivation and the status vocabulary over it.
-//
-// cm:guard the row is keyed `id` and NOT `documentId`, and carries no per-session dollar cost or model (measured against the route for ISS-291)
-// cm:edge contract -> packages/core/src/agent-sessions/routes.ts — a hand-mirror of that route's row, not an import, so a field added there is invisible here until it is added here too
-// cm:guard until ISS-999 this header ended "ported from the v1 `packages/web/src/features/agent/api.ts` so both UIs agree" — `packages/web` has been deleted, so a reader was told to keep this in step with a package that is not there
 
 import {
   FAILURE_CAUSE_PRESENTATION,
@@ -13,15 +7,6 @@ import {
 } from "@forge/contracts/failure-causes";
 import type { StatusKey } from "@/design/status";
 
-/**
- * Real persisted status enum (`agentSessionStatuses` in core schema). The
- * prototype's `done`/`zombie`/`canceled` are NOT real — map them via
- * `statusToChip` below. `completed_via_recovery` / `cancelled_stale` are the
- * non-failure terminal markers written by the recovery-by-verification path
- * (ISS-197).
- */
-// cm:guard EVERY value `agentSessionStatuses` holds, and `cancelled` is the one that was missing: core has written it since ISS-964's cancel path, and without it a cancelled session fell through `statusToChip`'s default and rendered as "queued" — a session somebody stopped, drawn as one waiting to start (ISS-998).
-// cm:edge contract -> packages/core/src/db/schema.ts#agentSessionStatuses — the same eight, and core may not be value-imported here; a status added there must be added here or its rows render as the default.
 export type AgentSessionStatus =
   | "idle"
   | "queued"
@@ -32,7 +17,6 @@ export type AgentSessionStatus =
   | "cancelled_stale"
   | "cancelled";
 
-// cm:edge contract -> packages/core/src/db/schema.ts#terminalAgentSessionStatuses — the statuses after which nothing more happens in a session. Read by the Agents runs row to tell core's reading apart from the box's claim.
 export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set<AgentSessionStatus>([
   "completed",
   "failed",
@@ -49,24 +33,8 @@ export type AgentSessionDisplayStatus = AgentSessionStatus | "stalled";
  *  cutoff — promote `running` → `stalled` past this. */
 export const STALLED_THRESHOLD_MS = 60_000;
 
-/**
- * Hard auto-reap bound: the server zombie-sweep fails a `running` session whose
- * heartbeat is older than this. Mirrors core `HEARTBEAT_TIMEOUT_MS_DEFAULT`
- * (`packages/core/src/pipeline/sweeper.ts` = 3 min). The FE constant cannot read
- * the `PIPELINE_HEARTBEAT_TIMEOUT_MS` env override, so an operator who lowers it
- * server-side will see the countdown run slightly long — documented limitation
- * (ISS-378). Past this bound the UI shows `reaping`, not "already reaped".
- */
 export const HEARTBEAT_REAP_MS = 3 * 60_000;
 
-/**
- * Heartbeat liveness, single-sourced across the fleet strip, list, and detail
- * (ISS-378 AC#5). `alive` → fresh; `stale` → past the warning threshold but
- * before the server reap (a countdown to auto-recovery is shown); `reaping` →
- * past the reap bound, the server sweep should be acting; `na` → not gradable
- * (terminal/queued sessions, or interactive chat which a headless runner never
- * heartbeats, so it must NOT read as wedged — AC#4).
- */
 export type Liveness = "alive" | "stale" | "reaping" | "na";
 
 export interface LivenessResult {
@@ -78,18 +46,8 @@ export interface LivenessResult {
   reapInMs: number | null;
 }
 
-// cm:edge contract -> packages/contracts/src/failure-causes.ts — `FailureCause` IS that module's list, imported rather than re-typed. It used to be a hand-copied union here, and the copy drifted: `no_client_ack` shipped with no member and no label, so both render sites fell through to the raw snake_case token, while a cause core had already retired kept one.
 export type SessionFailureReason = FailureCause | LegacyFailureReason;
 
-/**
- * Strings that appear in this field on live rows without being causes.
- *
- * The dispatcher's skip reasons come from `jobs/queued-gates.ts` and describe
- * why a job was not started, not how a session died — ISS-162 made them
- * stateless, recomputed every tick, so they are never stored as a terminal
- * cause. `job_failed` and `ws-publish-failed` are retired spellings that 1,787
- * and a handful of live rows still carry.
- */
 export type LegacyFailureReason =
   | "issue_busy"
   | "runner_full"
@@ -130,6 +88,9 @@ export interface SessionRow {
    *  project repoPath). Present on the full row; older rows may be null. */
   repoPath: string | null;
   status: AgentSessionStatus;
+  kind?: AgentSessionKind | null;
+  /** The session that owns this one, as core issued it. `null` is a root. */
+  parentSessionId?: string | null;
   usage: SessionUsage | null;
   metadata: SessionMetadata | null;
   failureReason: SessionFailureReason | string | null;
@@ -157,8 +118,6 @@ export interface QueueStats {
   devices: { deviceId: string | null; queued: number; running: number }[];
 }
 
-/** `GET /api/agent-sessions/:id/cost` — per-session usage_records rollup
- *  (ISS-378 AC#6). `models` is the per-model spend breakdown, spend-ordered. */
 export interface SessionCost {
   sessionId: string;
   projectId: string;
@@ -177,34 +136,62 @@ export interface SessionCost {
  *  stalled + cancelled_stale (unchanged; job failures, not reply-waiting). */
 export type SessionFilter = "all" | "waiting" | "running" | "queued" | "attention";
 
-/** Session kind: `pipeline` (job-driven, picked up by a headless runner) vs
- *  `chat` (interactive desktop session that spawns no job). A `chat` session
- *  sitting `running` is NOT a wedged runner — it is awaiting the user, so the
- *  liveness derivation treats it as `na` (ISS-378 AC#4). */
-export function sessionKind(session: Pick<SessionRow, "metadata">): "pipeline" | "chat" {
+export type AgentSessionKind = "master" | "run_session" | "pipeline" | "pm" | "chat";
+
+export const AGENT_SESSION_KINDS: AgentSessionKind[] = [
+  "master",
+  "run_session",
+  "pipeline",
+  "pm",
+  "chat",
+];
+
+export const SESSION_KIND_LABEL: Record<AgentSessionKind, string> = {
+  master: "Master",
+  run_session: "Run",
+  pipeline: "Step",
+  pm: "PM",
+  chat: "Chat",
+};
+
+/**
+ * The species the row states. A row served by a deployment older than the
+ * column falls back to reading `metadata.type`, rather than claiming a species
+ * the server never sent.
+ */
+export function sessionKind(
+  session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
+): AgentSessionKind {
+  if (session.kind && AGENT_SESSION_KINDS.includes(session.kind)) return session.kind;
   const type = session.metadata?.type;
-  return type === "pipeline" || type === "pm" ? "pipeline" : "chat";
+  if (type === "pipeline" || type === "pm" || type === "master" || type === "run_session") {
+    return type;
+  }
+  return "chat";
+}
+
+export function isJobDriven(
+  session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
+): boolean {
+  const k = sessionKind(session);
+  return k === "pipeline" || k === "pm";
 }
 
 /** Whether a session is an interactive chat (not driven by a pipeline job). */
-export function isInteractiveSession(session: Pick<SessionRow, "metadata">): boolean {
+export function isInteractiveSession(
+  session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
+): boolean {
   return sessionKind(session) === "chat";
 }
 
-/**
- * "Waiting for me" (ISS-664): an interactive chat whose agent turn finished
- * (`status:'idle'`, set on interactive turn completion) — the owner has not
- * replied yet. Deliberately EXCLUDES pipeline sessions: a pipeline `queued` (or
- * `idle` while blocked on capacity/deps) is waiting for a RUNNER, not the owner,
- * and must stay in its existing Queued/Attention bucket, not this one.
- */
-export function isAwaitingReply(session: Pick<SessionRow, "status" | "metadata">): boolean {
+export function isAwaitingReply(
+  session: Pick<SessionRow, "status" | "metadata"> & { kind?: AgentSessionKind | null },
+): boolean {
   return isInteractiveSession(session) && session.status === "idle";
 }
 
 /** Operator-facing label for each terminal failure reason — surfaced on the
  *  list row + the detail blocker-card so "failed" is actionable (ISS-378). */
-// cm:guard `Record<SessionFailureReason, …>` and NOT `Record<string, …>` — the exhaustiveness is the whole defence. Typed loosely, a cause added in contracts renders as a raw token and nothing anywhere goes red; typed this way it is a build error in this file, which is how it should arrive.
 export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   provider_spend_cap: "Spend limit reached",
   provider_usage_limit: "Usage limit reached",
@@ -325,14 +312,6 @@ export function failureReasonAction(reason: string | null | undefined): string |
   );
 }
 
-/**
- * Single source of truth for heartbeat liveness across the fleet strip, list,
- * and detail (ISS-378 AC#5). Only `running` pipeline sessions are gradable:
- *   since ≤ STALLED_THRESHOLD_MS → alive
- *   since ≤ HEARTBEAT_REAP_MS    → stale (reapInMs counts down to auto-recovery)
- *   else                         → reaping (server sweep should be acting)
- * Interactive chat + non-running sessions return `na`.
- */
 export function deriveLiveness(
   session: Pick<
     SessionRow,
@@ -342,7 +321,6 @@ export function deriveLiveness(
 ): LivenessResult {
   const naResult: LivenessResult = { state: "na", sinceHeartbeatMs: null, reapInMs: null };
   if (session.status !== "running") return naResult;
-  // cm:guard an interactive chat is never graded on liveness: a headless runner does not heartbeat one, so grading it would report every idle chat window as a dead session.
   if (isInteractiveSession(session)) return naResult;
 
   const lastSignal = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt;
@@ -358,12 +336,6 @@ export function deriveLiveness(
   return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
 }
 
-/**
- * Promote `running` → `stalled` past the warning threshold. Reimplemented on top
- * of `deriveLiveness` (ISS-378) so the list/stat/filter vocabulary stays single-
- * sourced: `stale`/`reaping` → `stalled`; `alive`/`na` (incl. interactive chat)
- * → `running`. Non-running sessions pass through their persisted status.
- */
 export function deriveSessionDisplayStatus(
   session: Pick<
     SessionRow,
@@ -376,13 +348,6 @@ export function deriveSessionDisplayStatus(
   return state === "stale" || state === "reaping" ? "stalled" : "running";
 }
 
-/** Map a real/derived session status to a design-kit `StatusKey` for StatusChip.
- *  ISS-322: `cancelled_stale` (a terminal session reaped by the stale-sweep) is
- *  a benign cleanup, not a failure — it gets the neutral `swept` token, NOT the
- *  red `zombie` token. `stalled` (a LIVE session whose heartbeat is overdue and
- *  is about to be auto-recovered) stays `zombie`: it is genuinely attention-
- *  worthy. For terminal `failed` rows, prefer `classifySessionOutcome` (it can
- *  see `failureReason` and demote lifecycle/capacity cancels to neutral). */
 export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
   switch (display) {
     case "running":
@@ -398,7 +363,6 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
       return "failed";
     case "cancelled_stale":
       return "swept";
-    // cm:guard `cancelled` is a person or a control call stopping the session, so it reads `paused`-family calm and never `failed`: nothing broke, and red here is the tone this design system reserves for a real failure.
     case "cancelled":
       return "archived";
     case "stalled":
@@ -409,34 +373,8 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
 }
 
 
-/**
- * Four-bucket outcome for a terminal session, so the UI never paints a benign
- * cleanup or a lifecycle/capacity cancel the same red as a genuine failure:
- *   - `success` — finished cleanly (incl. recovery-verified).
- *   - `failed`  — a REAL failure that needs attention (red). Only `job_failed`
- *                 or an unknown reason on a `failed` row qualifies.
- *   - `cleanup` — auto-cleaned when the pipeline closed (ISS-258 cascade). Most
- *                 such sessions are already `completed` post-ISS-352; this is the
- *                 safety net for legacy rows / non-failure markers.
- *   - `swept`   — swept after going stale, or cancelled by lifecycle/capacity
- *                 (no runner, queue timeout, user cancel, …). Neutral, not red.
- *   - `active`  — not terminal (running/queued/idle/stalled); falls back to the
- *                 plain `statusToChip` mapping.
- */
 export type SessionOutcomeBucket = "success" | "failed" | "cleanup" | "swept" | "active";
 
-/**
- * How a stored reason reads to an operator, resolved rather than looked up in a
- * set of strings kept here.
- *
- * The two sets this replaces were hand-copied from core and disagreed with it:
- * `residency_expired` was a real failure to the MCP failure metric and a sweep
- * here in the same change, and `no_worker_online` sat in the sweep set after
- * core had retired it. `FAILURE_CAUSE_PRESENTATION` answers this question once,
- * for both surfaces; `LEGACY_NEUTRAL_REASONS` covers the dispatcher skip
- * reasons, which are not causes and never were.
- */
-// cm:guard the UI question ("is this the user's problem") is NOT the metric question ("did the fleet break") — `isRealFailureCause` in contracts answers the second, and a heartbeat timeout is deliberately true there and neutral here. Do not collapse them back into one predicate.
 function presentationOf(reason: string): "cleanup" | "swept" | "failure" {
   if (LEGACY_NEUTRAL_REASONS.has(reason)) return "swept";
   return FAILURE_CAUSE_PRESENTATION[resolveFailureCause(reason)];
@@ -476,7 +414,6 @@ export function classifySessionOutcome(
     };
   }
 
-  // cm:guard `cancelled` is TERMINAL and is not a failure, and it needs its own branch rather than the fall-through below: that one returns bucket `active` for anything it does not name and labels the chip with the raw wire word, so a session somebody deliberately stopped read as still-working and said "cancelled" in lower case (ISS-998).
   if (display === "cancelled") {
     return {
       bucket: "cleanup",
@@ -508,7 +445,6 @@ export function classifySessionOutcome(
           "Cancelled by a lifecycle or capacity rule — not a failure.",
       };
     }
-    // cm:guard the label must name the CAUSE, not repeat "Failed" — a chip that says "Failed" for all 20 causes is the `job_failed` column rendered as pixels, and being readable without opening the transcript is the whole deliverable of ISS-877
     return {
       bucket: "failed",
       statusKey: "failed",
@@ -517,7 +453,6 @@ export function classifySessionOutcome(
     };
   }
 
-  // cm:guard the non-terminal tail defers to the plain mapping and adds no bucket of its own — a status that needs its own presentation gets a branch ABOVE this, never a second table beside it
   return {
     bucket: "active",
     statusKey: statusToChip(display),
@@ -537,9 +472,6 @@ export function isRealFailure(
 }
 
 /** The step this session RECORDED, verbatim — or `null`, for a session that recorded none. */
-// cm:guard the recorded value, never a projection of it onto the seven staged names. Its predecessor `deriveStage` matched `metadata.step` as a SUBSTRING against a 13-key table and answered `code` for anything left over, so every `drive` session — which is every session the autonomous lane runs — showed "running · code" beside a step nobody ran, and its own doc named the mini tracker ISS-999 deleted as the reason it existed.
-// cm:guard each candidate must be a NONBLANK STRING before it wins. `step ?? stage` let a blank `step` beat a real `stage`, and `.toString()` on a jsonb object rendered a step named "[object Object]" — this is untyped jsonb the server writes, so a value that is not a string is not a step.
-// cm:guard `metadata.type` is deliberately NOT a fallback here: `pipeline` and `pm` say what KIND of session this is, and the old chain read one of them as a step whenever `step` and `stage` were both absent.
 export function sessionStep(metadata: SessionMetadata | null): string | null {
   for (const value of [metadata?.step, metadata?.stage]) {
     if (typeof value !== "string") continue;
@@ -549,8 +481,7 @@ export function sessionStep(metadata: SessionMetadata | null): string | null {
   return null;
 }
 
-/** Whether a session can be retried (pipeline/pm sessions tied to an issue). */
+/** Whether a session can be retried (job-driven sessions tied to an issue). */
 export function isRetryable(row: SessionRow): boolean {
-  const type = row.metadata?.type;
-  return (type === "pipeline" || type === "pm") && !!row.metadata?.issueId;
+  return isJobDriven(row) && !!row.metadata?.issueId;
 }

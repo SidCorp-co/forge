@@ -57,7 +57,6 @@ function rowToRunner(r: typeof runners.$inferSelect): Runner {
 }
 
 function publicRunner(r: Runner): Omit<Runner, 'config'> & { config: Record<string, unknown> } {
-  // cm:guard every secret in `config` is masked HERE, on the one projection that reaches the wire — a field added to the runner config and not masked here ships the credential to any project member
   const config = { ...r.config };
   if ('apiKey' in config) config.apiKey = '***';
   if ('callbackSecret' in config) config.callbackSecret = '***';
@@ -120,7 +119,6 @@ runnerRoutes.get(
       if (!access.role) throw forbidden('not a project member');
       filters.push(eq(runners.projectId, q.projectId));
     } else {
-      // cm:guard a caller with no `projectId` gets an EMPTY list and never a cross-project one — this route is project-scoped and the authz above resolves one project, so widening it here would return runners the caller was never checked against
       return c.json({ runners: [] });
     }
     if (q.type) filters.push(eq(runners.type, q.type as RunnerType));
@@ -133,10 +131,6 @@ runnerRoutes.get(
   },
 );
 
-// cm:why powers the project dashboard's "Active runners" card and the per-row "running ISS-X (stage)" line on the Runners screen — two surfaces that break together, which is the only thing about this route the SQL below does not already say
-// cm:guard registered BEFORE `/:id` so the static `/active` segment is never captured as an id param — a single-segment route declared above this one silently swallows it, and the symptom is a 404 that looks like a missing endpoint rather than a shadowed one.
-// cm:guard `current` reports ONE job while a box may now be running several at once: core enforces no ceiling since the master began claiming from the pool, and the runner's own `duplex_max_sessions` defaults to 3. This endpoint shows the first and drops the rest, so never read that collapse as evidence a runner holds one job. Correcting it is a response-shape change (`current` → a list) reaching web-v2's runner types and project page, deliberately not folded into the kernel change that surfaced it.
-// cm:why orphan jobs whose parent pipeline_run is terminal are excluded (ISS-258) so a stale row never shows a runner as busy
 const activeQuery = z.object({ projectId: z.uuid() });
 
 runnerRoutes.get(
@@ -190,7 +184,6 @@ runnerRoutes.get(
       ORDER BY r.name ASC, j.dispatched_at ASC NULLS LAST
     `);
 
-    // cm:guard this Map keeps the FIRST non-null job per runner and silently drops any others, which is a real shortfall now that a box may run several at once (see the shortfall note on this route). Do not read the collapse as evidence a runner holds one job — it is evidence this endpoint reports one.
     const byRunner = new Map<string, (typeof rows)[number]>();
     for (const row of rows) {
       const existing = byRunner.get(row.runner_id);
@@ -308,7 +301,6 @@ runnerRoutes.get(
           .limit(limit)
       : [];
 
-    // cm:edge contract -> packages/web-v2/src/features/runners/components/project-runners-screen.tsx — `retentionDays` is what that panel's empty state renders, so the copy on the screen is this deployment's ACTUAL window rather than a number typed into a string: an operator who moves `RETENTION_RUNNER_EVENTS_DAYS` moves the sentence with it (ISS-1027).
     return c.json({
       events,
       sessions,
@@ -334,7 +326,6 @@ runnerRoutes.post(
     const result = adapter.validateConfig(input.config);
     if (!result.ok) throw badRequest({ config: result.error });
 
-    // cm:edge protocol -> packages/core/src/runners/service.ts — registration inserts through `insertRunner` and nowhere else, so the one writer that turns a collision on `runners_project_device_type_uq` into a named refusal is the one both transports use. A raw insert here raises the bare 23505 this route answered with until ISS-990.
     let row: Awaited<ReturnType<typeof insertRunner>>;
     try {
       row = await insertRunner({
@@ -348,7 +339,6 @@ runnerRoutes.post(
       });
     } catch (err) {
       if (err instanceof RunnerAlreadyBoundError) {
-        // cm:edge contract -> packages/core/src/middleware/error.ts — `extractCause` forwards `code`, `details` and `wwwAuthenticate` and DROPS every other key, so the colliding runner travels as `details` or it does not reach the caller at all.
         throw new HTTPException(409, {
           message: err.message,
           cause: { code: 'RUNNER_ALREADY_BOUND', details: { runner: err.collided } },
@@ -524,7 +514,6 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    // Same gate as PATCH `status` — exclude/include are status mutations.
     assertProjectRole(access, 'admin', 'project admin only');
     await setRunnerStatus({ runnerId: id, newStatus: 'offline', reason: 'operator_include' });
     return c.json({ ok: true });
@@ -542,7 +531,6 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    // Same gate as exclude/include — an operator clearing a hard-exclusion is a status mutation.
     assertProjectRole(access, 'admin', 'project admin only');
     await clearRunnerQuarantine(id, existing.projectId);
     return c.json({ ok: true });

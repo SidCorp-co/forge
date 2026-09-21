@@ -1,18 +1,3 @@
-/**
- * AST → the canonical bytes stored in `body` / `description`.
- *
- * Decision 8 makes the body the single source of truth: there is no blocks
- * column, so whatever this emits is what every reader re-parses. Two
- * properties follow and both are asserted by tests.
- *
- * **Idempotent.** Serializing a body twice yields the same bytes, or a PATCH
- * that changes nothing still rewrites the row.
- *
- * **Raw slots survive byte-identical.** A `forge-diagram` body carries `-->`
- * and `<br/>`, and escaping either would hand the mermaid renderer a diagram
- * it cannot draw (Decision 6).
- */
-
 import type { BodyNode } from './parse.js';
 import { VOID_TAGS } from './plain-tags.js';
 
@@ -52,7 +37,6 @@ function isBlock(node: BodyNode): boolean {
 
 function serializeNode(node: BodyNode): string {
   if (node.type === 'comment') return '';
-  // cm:guard a `raw` text node is emitted VERBATIM — escaping it turns a mermaid `-->` into `--&gt;` and the diagram stops rendering, which is Decision 6's whole point
   if (node.type === 'text') return node.raw ? node.value : escapeText(node.value);
   const attrs = Object.entries(node.attrs)
     .map(([k, v]) => ` ${k}="${escapeAttr(v)}"`)

@@ -1,15 +1,3 @@
-/**
- * `device_run_ledger` — what one box says its own session registry holds
- * (ISS-934), split out of `schema.ts` for the reason `schema-activity.ts`
- * states: that file is frozen far over the file budget, so a new table cannot
- * land there without an amnesty.
- *
- * A MIRROR, and only of facts core cannot otherwise have: the parent master, a
- * pid, a worktree path, a boot, and the box's own reading of whether a run can
- * move. Status, membership and last activity stay on `agent_sessions` /
- * `pipeline_runs.metadata.runIssues`, which core owns.
- */
-
 import type { InferSelectModel } from 'drizzle-orm';
 import {
   index,
@@ -21,25 +9,27 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { devices, projects } from './schema.js';
+import { agentSessions, devices, projects } from './schema.js';
 
-// cm:guard nothing here is read as the truth about a RUN — `session_id` and `master_session_id` are pointers into `agent_sessions`, never a second copy of what those rows say. A column that restates a status core already owns gives the fact two writers and the losing one is invisible.
-// cm:guard `observed_at` is the whole staleness signal, because a box that dies stops writing rather than writing that it died. A reader that drops it presents a dead box's last snapshot as current, which is the inversion this table exists to remove.
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/session_ledger.rs — every column below is one field of that snapshot; the two are one wire format and nothing type-checks the pair.
 export const deviceRunLedger = pgTable(
   'device_run_ledger',
   {
     deviceId: uuid('device_id')
       .notNull()
       .references(() => devices.id, { onDelete: 'cascade' }),
-    // cm:guard the BOX's run id and deliberately not a uuid column — it is an opaque key minted on the box, and the primary key is (device, run) because two boxes may mint the same string and neither is wrong.
     runId: text('run_id').notNull(),
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    // cm:guard NO foreign key to `agent_sessions`, on either of these. A box reports the whole of its registry in one statement, and a run naming a session core's reaper has already removed would fail that statement and take every OTHER run on the box down with it — the box would then read as holding nothing.
     sessionId: uuid('session_id'),
-    masterSessionId: uuid('master_session_id'),
+    /** The master the box says this run belongs to. A claim, not the record —
+     *  `agent_sessions.parent_session_id` is the record. The foreign key is here
+     *  so a claim naming a session core never issued cannot be stored at all;
+     *  `applyRunLedgerSnapshot` refuses it by name before it gets this far, so
+     *  the constraint is the floor rather than the error path. */
+    masterSessionId: uuid('master_session_id').references(() => agentSessions.id, {
+      onDelete: 'set null',
+    }),
     pid: integer('pid'),
     worktreePath: text('worktree_path').notNull(),
     bootId: text('boot_id').notNull(),
@@ -47,7 +37,6 @@ export const deviceRunLedger = pgTable(
     work: text('work').notNull(),
     blockerKind: text('blocker_kind'),
     waitingOn: text('waiting_on'),
-    // cm:guard two columns and NOT one `closed` flag, which is criterion 52's whole point: a run whose session reached terminal while its worktree is still on disk is recoverable, and one where both are done is not. Collapsed into a single boolean the two are indistinguishable and an operator cannot tell whether a diff is still there. The third mark of the three is per-issue and lives in `issues`, because a run over three issues can have returned one lease and not the others.
     sessionTerminalAt: timestamp('session_terminal_at', { withTimezone: true }),
     worktreeGoneAt: timestamp('worktree_gone_at', { withTimezone: true }),
     issues: jsonb('issues').$type<Array<{ issueKey: string; leaseReturned: boolean }>>().notNull(),

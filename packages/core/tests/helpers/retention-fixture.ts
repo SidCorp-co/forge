@@ -36,6 +36,7 @@ export interface RetentionFixture {
   }): Promise<string>;
   insertSession(opts?: {
     status?: string;
+    kind?: string;
     metadata?: unknown;
     messages?: unknown;
   }): Promise<string>;
@@ -95,7 +96,6 @@ export async function createRetentionFixture(): Promise<RetentionFixture> {
       ids.deviceId = (await createTestDevice(harness.db, owner.id)).id;
     },
 
-    // cm:guard `jobs_active_unique` is on (issue_id, type) for ACTIVE rows, so two fixture jobs on one issue must differ in `type` or one insert fails on a constraint that has nothing to do with retention.
     async insertJob(opts = {}) {
       const id = randomUUID();
       await harness.db.execute(sql`
@@ -112,10 +112,10 @@ export async function createRetentionFixture(): Promise<RetentionFixture> {
     async insertSession(opts = {}) {
       const id = randomUUID();
       await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, status, metadata,
-                                    messages)
+        INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status,
+                                    metadata, messages)
         VALUES (${id}, ${ids.projectId}, ${ids.ownerId}, ${ids.runId},
-                ${opts.status ?? 'completed'},
+                ${opts.kind ?? 'pipeline'}, ${opts.status ?? 'completed'},
                 ${JSON.stringify(opts.metadata ?? {})}::jsonb,
                 ${JSON.stringify(opts.messages ?? [])}::jsonb)
       `);
@@ -132,7 +132,6 @@ export async function createRetentionFixture(): Promise<RetentionFixture> {
       return id;
     },
 
-    // cm:guard one DEVICE per runner, not the fixture's shared one: `runners_project_device_type_uq` is on (project_id, device_id, type), so two runners built the obvious way collide on a constraint that has nothing to do with retention.
     async insertSessionEvent(sessionId, daysAgo, seq, ev = {}) {
       const id = randomUUID();
       await harness.db.execute(sql`

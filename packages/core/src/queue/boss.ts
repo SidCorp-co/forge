@@ -1,23 +1,8 @@
-// cm:guard pinned to pg-boss 10 and a DEFAULT import — v12 aborts at `start()` on any schema below 25, and forge-beta sits at 24, so the bump to ^12.30.0 (#317) took the API container down for 40 minutes on 2026-09-07 with the proxy answering `no available server`. v11 is the step that moves 24 → 25; adopting either needs that deploy first, and both use the default export. See docs/proposals/pg-boss-12-upgrade.md
 import PgBoss from 'pg-boss';
 import { env } from '../config/env.js';
 
 let instance: PgBoss | null = null;
 
-/**
- * Lazily construct the singleton PgBoss.
- *
- * `new PgBoss(connectionString)` validates the connection string in its
- * constructor and throws synchronously on a missing/invalid one. Constructing
- * it at module top-level (the old `export const boss = new PgBoss(...)`) meant
- * merely *importing* this file — which route/dispatcher modules pull in
- * transitively — required a real `DATABASE_URL`. Unit tests that `vi.mock`
- * `../config/env.js` without a `DATABASE_URL` then crashed at import with
- * `new PgBoss(undefined)`, taking the whole test file down (0 tests collected)
- * and failing the pre-push full-suite run on any machine without a DB env
- * (ISS-375 / ubuntu6). Deferring construction to first real use keeps importing
- * this module side-effect free.
- */
 function getBoss(): PgBoss {
   if (!instance) {
     instance = new PgBoss(env.DATABASE_URL);

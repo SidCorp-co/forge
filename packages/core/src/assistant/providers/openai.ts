@@ -30,10 +30,6 @@ interface OpenAIToolCallDelta {
 interface OpenAIDelta {
   content?: string | null;
   role?: string;
-  // cm:guard `reasoning_content` and nothing else. Some endpoints spell this `reasoning`; that is a
-  // spelling nobody here has measured, and reading a field on the strength of having read about it
-  // is a guess. The way in when one is measured is a second read on this line and the fixture
-  // beside it (ISS-1079 decision 6).
   reasoning_content?: string | null;
   tool_calls?: OpenAIToolCallDelta[];
 }
@@ -61,10 +57,8 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
     id: 'openai',
     defaultModel: cfg.defaultModel,
     async *stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
-      // cm:guard both of these degrade ONCE and then the field is gone for the rest of the call, so a rejecting endpoint costs one extra request, never a loop: `tool_choice:'required'` makes Vertex compile every tool schema into a constrained-decoding grammar and 400s "too many states" on a large toolset, and `response_format` is optional in the OpenAI contract so a compatible endpoint may 400 it as unsupported — in both cases the post-turn reply guard still polices the answer
       let toolChoice = req.toolChoice;
       let responseFormat = req.responseFormat;
-      // cm:guard degrades on the SAME once-only rule as the two above: `reasoning_effort` is not in the OpenAI chat contract, so an endpoint that has never seen it 400s, and a turn that lost the field still answers (ISS-1009).
       let reasoningEffort = req.reasoningEffort;
       const init = (): RequestInit => {
         const i: RequestInit = {
@@ -121,7 +115,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
         return;
       }
 
-      // cm:why tool-call deltas arrive fragmented across chunks keyed by `index`, so they are reassembled here and flushed when `finish_reason` says so, or at stream end as the fallback.
       const toolAcc = new Map<number, ToolCallAccumulator>();
       const flushToolCalls = function* (): Generator<ChatStreamEvent> {
         for (const [, acc] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
@@ -141,10 +134,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
             continue;
           }
           const choice = chunk.choices?.[0];
-          // cm:why reasoning is yielded BEFORE the prose of the same chunk: a chunk carrying both is
-          // a model that finished thinking and started answering in one frame, and thinking came
-          // first. The accumulator closes the thinking block on the first non-reasoning event, so
-          // the order here is the order of the blocks a reader sees.
           const reasoning = choice?.delta?.reasoning_content;
           if (typeof reasoning === 'string' && reasoning.length > 0) {
             yield { type: 'reasoning', text: reasoning };
@@ -186,7 +175,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
             yield { type: 'usage', usage };
           }
         }
-        // cm:why some proxies end the stream without a `tool_calls` finish_reason, so anything still buffered is flushed before terminating
         yield* flushToolCalls();
         yield { type: 'done' };
       } catch (err) {

@@ -1,20 +1,3 @@
-/**
- * MCP audit log writer (ISS-150).
- *
- * Fire-and-forget insert called by `server.ts` after every tool dispatch.
- * Audit failure must NEVER 5xx a tool call, so all DB errors are swallowed
- * to a console.warn (a future PR will route these to Sentry once the
- * scrubber is sure to redact PAT plaintext from breadcrumbs).
- *
- * This table is NOT swept, on purpose, and `pipeline/retention/policy.ts` is where that
- * is stated and why. `drizzle/migrations/0063_mcp_audit_log.sql` declares 90
- * days in a comment and ISS-1027 superseded it: the MCP tool-deletion rule in
- * `docs/architecture/agent-surface.md` spends a count over the whole table as
- * evidence a tool was never called, so a window here would turn "never called"
- * into "not called lately" and license a deletion nothing would go red for. The
- * 90-day `enforceMcpAuditRetention` that nothing ever called went with it.
- */
-
 import { createHash } from 'node:crypto';
 import { db } from '../db/client.js';
 import { mcpAuditLog } from '../db/schema.js';

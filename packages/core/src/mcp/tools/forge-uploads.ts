@@ -23,7 +23,6 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 
-// cm:guard keep this ONE object schema and never split it into a discriminated union — an MCP tool inputSchema must be `type:object`, so the per-action fields stay optional here and the handler enforces them: `action=request` needs data.targetId+name, `action=fetch` needs data.attachmentId
 const inputSchema = z
   .object({
     action: z.enum(['request', 'fetch']),
@@ -32,9 +31,7 @@ const inputSchema = z
         target: z.enum(['issue', 'comment', 'session']),
         targetId: z.uuid().optional(),
         name: z.string().trim().min(1).max(200).optional(),
-        // cm:why omitting this is the better default now: the extension only picks a candidate, and the PUT resolves the stored type from the bytes, so a declared type can only narrow what the file is allowed to be (ISS-957)
         mime: z.string().trim().min(1).max(255).optional(),
-        // cm:guard this is an `issue_attachments.id` / `comment_attachments.id`, the value `attachments[].id` carries on forge_issues, forge_step_start and forge_comments — not the upload ticket id, which is a different table and would resolve to nothing
         attachmentId: z.uuid().optional(),
       })
       .strict(),
@@ -43,7 +40,6 @@ const inputSchema = z
 
 const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv']);
 
-// cm:guard the returned URL carries its own credential — never log it, echo it into a comment, or hand it to anything that persists request URLs
 async function mintDownloadTicket(
   target: 'issue' | 'comment' | 'session',
   attachmentId: string,
@@ -105,7 +101,6 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
       const att = await loadAttachmentForFetch(target, attachmentId);
       await assertPrincipalIsWriter(principal, att.projectId);
 
-      // cm:why every fetch mints one, inlinable or not — the bearer-guarded `url` 401s for a PAT and for no-auth alike, so without this an agent that can SEE an attachment still has no way to obtain its bytes (or to hand a fetchable URL to a third-party service that must re-host it)
       const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
       const meta = {
         attachmentId,
@@ -208,7 +203,6 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         mime,
       });
     } catch (err) {
-      // cm:guard `details` must ride in the message and stay JSON — an MCP handler that throws has no structured error channel (mcp/server.ts renders `Error: <message>` and nothing else), so dropping it is what makes a client keep its own copy of the allowed set, which is the staleness ISS-957 was filed for
       if (err instanceof UploadTicketError) {
         const details = err.details === undefined ? '' : ` details=${JSON.stringify(err.details)}`;
         throw new Error(`${err.code}: ${err.message}${details}`);

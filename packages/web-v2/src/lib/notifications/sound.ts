@@ -1,24 +1,3 @@
-// Notification sound cue (ISS-513) — the audio analogue of the browser channel.
-//
-// An opt-in audible chime that accompanies transient notification delivery. It
-// is NOT a contract channel: it piggybacks on the existing toast/browser
-// delivery decision (see features/notifications/use-notification-delivery), so
-// it fires for exactly the high-signal types and stays silent for bell-only
-// ones — with no change to `@forge/contracts`.
-//
-// Like the browser channel it gates on an explicit localStorage opt-in
-// (default OFF) and the cue is a synthesized Web Audio tone — no bundled asset,
-// so nothing to license or host. Everything degrades to a silent no-op when the
-// API is unsupported or the autoplay policy blocks playback; callers never need
-// to guard and nothing here ever throws.
-//
-// Autoplay reliability (ISS-513 reopen): the browser autoplay policy keeps a
-// freshly-constructed AudioContext `suspended` until a user gesture resumes it.
-// The opt-in persists across reloads but the AudioContext does not, so two
-// mechanisms keep the cue actually audible: `installGesturePrimer()` resumes the
-// context on the first interaction after load, and `playNotificationSound()`
-// resumes-THEN-schedules so a cue is never scheduled against the frozen
-// timeline of a still-suspended context (which silently drops the tone).
 
 const OPT_IN_KEY = "forge:notify-sound";
 
@@ -67,11 +46,6 @@ function ensureContext(): AudioContext | null {
   }
 }
 
-/**
- * Resume (or construct) the AudioContext from a user gesture. The autoplay
- * policy only unlocks audio after such a gesture, so the Settings toggle calls
- * this on opt-in. No-op + swallow on any failure.
- */
 export function primeAudio(): void {
   const ctx = ensureContext();
   if (!ctx) return;
@@ -104,11 +78,6 @@ function emitChime(ctx: AudioContext): void {
   osc.stop(now + 0.2);
 }
 
-/** Resume-if-needed THEN schedule. Scheduling against a suspended context's
- *  frozen `currentTime` and resuming afterwards drops the tone (its start time
- *  lands in the past once the clock advances), so when suspended we wait for the
- *  resume to resolve before building the nodes. Wrapped end-to-end in try/catch
- *  so it never throws and never blocks toast/browser delivery. */
 function playChime(ctx: AudioContext): void {
   try {
     if (ctx.state === "suspended") {
@@ -128,15 +97,9 @@ function playChime(ctx: AudioContext): void {
     }
     emitChime(ctx);
   } catch {
-    // node construction / scheduling can throw on some platforms — silent.
   }
 }
 
-/**
- * Play the notification cue: a short two-note chime. No-op unless supported AND
- * opted-in. Resumes a suspended context first (best-effort) so a persisted
- * opt-in still plays after a reload. Never throws.
- */
 export function playNotificationSound(): void {
   if (!isSupported() || !isEnabled()) return;
   const ctx = ensureContext();
@@ -156,13 +119,6 @@ export function playPreviewCue(): void {
   playChime(ctx);
 }
 
-/**
- * Install one-time global user-gesture listeners that resume the AudioContext
- * whenever the sound cue is enabled. The opt-in persists across reloads but the
- * AudioContext does not, so without this a persisted opt-in would stay silent
- * until the user happened to re-visit the Settings toggle. Idempotent + SSR-safe;
- * never throws.
- */
 export function installGesturePrimer(): void {
   if (gesturePrimerInstalled || typeof window === "undefined") return;
   gesturePrimerInstalled = true;

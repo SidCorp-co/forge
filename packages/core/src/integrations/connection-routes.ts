@@ -1,12 +1,3 @@
-/**
- * Owner-scoped connection CRUD.
- *
- * A connection is the credential, owned by a principal (a user today). Bindings
- * (project-scoped, `routes.ts`) reference a connection. Mounted at a distinct
- * base so the single-segment paths never collide with the project router's
- * `/:id`.
- */
-
 import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
@@ -79,7 +70,6 @@ async function loadManageableConnection(
   const connection = await findConnectionById(id);
   if (!connection) throw notFound('connection');
   if (connection.ownerType === 'user') {
-    // cm:guard answer not-found, never forbidden, for another user's connection — a 403 confirms the id exists, and these ids are handed out by every list this principal cannot see
     if (connection.ownerId !== userId) throw notFound('connection');
     return connection;
   }
@@ -94,7 +84,6 @@ async function loadManageableConnection(
  * route shows a connection to can also read it here; only WRITING is gated on
  * org admin.
  */
-// cm:guard read routes gate on THIS, write routes on loadManageableConnection — the two sets differ by exactly the org member who is not an admin, and gating a read on the manage check is what made "Projects using this connection" answer 404 to a member looking at a card the same session had just listed
 async function loadVisibleConnection(
   id: string,
   userId: string,
@@ -170,9 +159,6 @@ const bindExistingSchema = z
     // still a property of the binding it creates rather than of a map somewhere else.
     agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
   })
-  // cm:guard the SAME three refusals the create path makes, from the same function — this is the
-  // second door onto `integration_bindings`, and a caller who reaches a wrong role/stages pair
-  // through it deserves the same sentence rather than a Postgres CHECK violation as a 500.
   .superRefine((body, ctx) => {
     checkRoleStagesPairing(body, ctx);
   });
@@ -237,9 +223,6 @@ integrationConnectionsRoutes.post(
       }
     }
 
-    // cm:why minted per binding, except where the provider DECLARES that it signs with a secret of its
-    // own (`adapter.inboundSecret`). GitHub does: it signs every delivery with the secret created with
-    // the App, so a binding minting its own fails every signature check while reading as configured.
     const integrationSecret =
       getAdapter(provider)?.inboundSecret?.(connection) ??
       `whsec_${randomBytes(24).toString('hex')}`;
@@ -290,12 +273,6 @@ integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   return c.json({ items: pairs.map(summarizeBinding) });
 });
 
-// ISS-435 — connection-scoped healthcheck for the workspace directory drawer.
-// Health lives on the connection, but an AdapterContext needs a binding
-// (project/env/inbound-HMAC scope), so probe through a representative ACTIVE
-// binding — oldest first, the same deterministic pick the health sweep and the
-// MCP resolvers use. The adapter persists the result onto the connection
-// itself, so every bound project's card reflects it on the next read.
 integrationConnectionsRoutes.post('/:id/test', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');

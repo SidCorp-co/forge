@@ -69,7 +69,6 @@ describe('the version a caller may name', () => {
     expect('message' in refused && refused.message).toContain('Forge adds that');
   });
 
-  // cm:guard this is the assertion behind criterion 16's exclusion of a prerelease, and it is about `install/fetch-release.ts` rather than about taste: `cmpVersion` there parses dotted integers, so `0.13.3-rc.1` and `0.13.3` compare EQUAL and the channel serves whichever release it meets first.
   it('refuses a prerelease, naming why the channel cannot order one', () => {
     const refused = tagForVersion('0.13.3-rc.1');
     expect('message' in refused && refused.message).toContain('-rc.N');
@@ -97,9 +96,6 @@ describe('the two Cargo readings', () => {
     expect(workspacePackageVersion(CARGO_TOML)).toBe('0.13.2');
   });
 
-  // cm:guard the regression this case exists for: a scan without the section state returns the
-  // first `version = "…"` in the file, which a key added above `[workspace.package]` makes wrong
-  // while every other test still passes.
   it('reads nothing when [workspace.package] carries no version', () => {
     expect(workspacePackageVersion('[workspace]\nresolver = "2"\n')).toBeNull();
     expect(workspacePackageVersion('[package]\nversion = "9.9.9"\n')).toBeNull();
@@ -200,7 +196,6 @@ describe('what GitHub holds for the tag', () => {
     expect(judged.detail).toContain('Present: forge-runner-aarch64-apple-darwin');
   });
 
-  // cm:guard a draft and a prerelease are `incomplete` however many assets they carry, because `pickLatestRunnerTag` in `install/fetch-release.ts` drops both outright — a release nothing will ever ingest is not a published one.
   it('is incomplete for a draft and for a prerelease, naming the channel that skips them', () => {
     expect(judgePublication({ ...whole, draft: true }).detail).toContain(
       'it is a draft, which the install channel skips',
@@ -220,7 +215,6 @@ describe('what GitHub holds for the tag', () => {
 });
 
 describe('what is now true on the repository', () => {
-  // cm:guard two commits on the fixture, deliberately different: `commitSha` is what this release ASKED for and `tagCommitSha` is what the tag was READ at. A fixture where they are equal cannot tell a sentence that names the right one from a sentence that names either.
   const base = {
     tag: 'runner-v0.13.3',
     commitSha: 'abc1234',
@@ -235,7 +229,6 @@ describe('what is now true on the repository', () => {
     expect(said).not.toContain('immutable');
   });
 
-  // cm:guard `unread` and `absent` are one fact about Forge and two about the repository. Both say nothing was written; only `absent` may say the tag is not there, because only `absent` came from a lookup GitHub answered. Saying "does not exist" off a lookup that failed is a claim about a repository Forge did not read, and it is the sentence an operator acts on before cutting anything else.
   it('separates a tag nobody read from one read and found missing', () => {
     const said = repositoryTruth({ ...base, tagState: 'unread', publication: 'unread' });
     expect(said).toContain('Nothing was written to the repository');
@@ -244,10 +237,8 @@ describe('what is now true on the repository', () => {
     expect(said).not.toContain('does not exist');
   });
 
-  // cm:guard this sentence is the whole of ISS-1075 point 3 for the shape nobody else reports: a process that died between asking for the tag and hearing the answer. It has to say the tag MAY exist, and it has to say Forge will not tidy it away.
   it('says the tag may or may not exist after a cut whose answer never came', () => {
     const said = repositoryTruth({ ...base, tagState: 'unknown', publication: 'unread' });
-    // cm:guard `unknown` is about the create Forge SENT, so it names the commit Forge asked for and not a tag target nobody read.
     expect(said).toContain('at abc1234');
     expect(said).toContain('never heard the answer');
     expect(said).toContain('may or may not exist');
@@ -279,7 +270,6 @@ describe('what is now true on the repository', () => {
     expect(unknown).not.toContain('nothing is published');
   });
 
-  // cm:guard a tag whose target was never read says it exists and stops there. Substituting the requested commit would have the row assert, off no reading at all, that somebody else's tag is at the commit this attempt resolved.
   it('names no commit for a tag nobody read the target of', () => {
     const said = repositoryTruth({
       ...base,

@@ -18,7 +18,6 @@ import {
   GitHubReadError,
 } from './client.js';
 
-// cm:guard a REAL key, because the signing is real: `buildAppJwt` calls `createSign().sign()`, and a placeholder PEM fails inside node's decoder with `error:1E08010C` — an exception that is not the one under test and reads like the code being broken.
 const { privateKey: PRIVATE_KEY } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
@@ -50,7 +49,6 @@ describe('building a repository client refuses by naming what is missing', () =>
     expect(err.message).toMatch(/owner\/repo/);
   });
 
-  // cm:guard this refusal must say INSTALL and must not say reconnect — ISS-924's mislabel is the failure it is worded against, and reconnecting reproduces the state exactly.
   it('names installation, and says reconnecting will not help, where the App is not installed', () => {
     const err = refusalOf(() => buildRepoClient(args({ config: { installationId: undefined } })));
     expect(err.reason).toBe('no_installation');
@@ -95,7 +93,6 @@ describe('a read as the installation', () => {
     });
   }
 
-  // cm:guard the Authorization header is the whole of ISS-1062's identity rule — every read Forge makes is the App, and a personal token reaching this path is exactly what the issue exists to remove. Assert the value, not merely that a header was sent.
   it('sends the installation token and no person`s credential', async () => {
     mintOk();
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: 1 }) });
@@ -174,7 +171,6 @@ describe('one request on the publish path', () => {
     return err;
   };
 
-  // cm:guard the App JWT mints and NOTHING else: criterion 15 is that every repository request carries an installation token, and a JWT reaching a repository call is the identity rule ISS-1062 wrote failing silently — the call would still work, on the wrong identity.
   it('mints with the App JWT and sends the installation token to the repository', async () => {
     mintOk();
     fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ id: 9 }) });
@@ -212,7 +208,6 @@ describe('one request on the publish path', () => {
     expect((write.headers as Record<string, string>)['Content-Type']).toBe('application/json');
   });
 
-  // cm:guard this is the case `get` cannot report. It converts a GitHubAuthError into a GitHubReadError carrying a status and nothing else, so a mint-time 404 arrives looking exactly like a repository-time 404 — and those two mean different things to an operator (criterion 24).
   it('keeps a mint failure labelled as the mint, with app-auth`s own words', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
@@ -276,7 +271,6 @@ describe('one request on the publish path', () => {
     expect(err.op).toBe('create');
   });
 
-  // cm:guard the BODY read is inside the wrapper too. GitHub can answer 200 and then stall the stream until the abort fires, and a raw `AbortError` escaping here reaches a caller with no idea which operation it came from — `contract-check.ts` labels anything unrecognised `create`, so a stalled LOOKUP would be reported as a write of unknown outcome that never happened.
   it('keeps the operation when a successful response`s body stalls to the timeout', async () => {
     mintOk();
     const abort = new Error('The operation was aborted due to timeout');

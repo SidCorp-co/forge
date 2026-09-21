@@ -1,17 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard ISS-669 — `awaiting_release` must NOT close the issue's open pipeline_run, because the release step runs inside it; only the statuses in `RUN_CLOSING_STATUSES` close a run, and these cases assert `closeOpenRunForIssue` fires on exactly those and no others.
-
-// cm:guard the default is an EMPTY ARRAY and never `undefined`. Drizzle's `.returning()` resolves to
-// a row array whatever the WHERE matched, and a double answering `undefined` is a double the real
-// thing cannot produce — `merge-record.ts` destructures the first row, so a test that got away with
-// it was passing against a runtime that could not represent the shape it was asserting about.
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const txExecute = vi.fn(async () => undefined);
-// cm:why the EMPTY row set is what keeps the reads in this transaction answering: `entry-criteria.ts` and the close stamp's read-back both go through this chain, and a link that is missing throws for a caller that never staged a value
 const selectLimit = vi.fn(async () => [] as unknown[]);
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
@@ -40,9 +33,8 @@ vi.mock('../pipeline/runs.js', () => ({
   setCurrentStepForOpenIssueRun: (...args: unknown[]) => setCurrentStepForOpenIssueRunMock(...args),
 }));
 
-const { transitionIssueStatus, TERMINAL_FOR_DISPATCH, RUN_CLOSING_STATUSES } = await import(
-  './apply-transition.js'
-);
+const { transitionIssueStatus, TERMINAL_FOR_DISPATCH } = await import('./apply-transition.js');
+const { ISSUE_TERMINAL_STATUSES } = await import('./status-sets.js');
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -89,8 +81,8 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
     expect(TERMINAL_FOR_DISPATCH.has('closed')).toBe(true);
   });
 
-  it('RUN_CLOSING_STATUSES contains only closed', () => {
-    expect(RUN_CLOSING_STATUSES.has('closed')).toBe(true);
-    expect(RUN_CLOSING_STATUSES.has('awaiting_release')).toBe(false);
+  it('ISSUE_TERMINAL_STATUSES, which closes the run, holds closed and not awaiting_release', () => {
+    expect(ISSUE_TERMINAL_STATUSES).toContain('closed');
+    expect(ISSUE_TERMINAL_STATUSES).not.toContain('awaiting_release');
   });
 });

@@ -5,17 +5,6 @@ import { useMemo } from "react";
 import { useCoolifyApplications, useCoolifyTargets } from "../../hooks";
 import type { CoolifyApplication, CoolifyTargetInput } from "../../types";
 
-/**
- * ISS-925 — the deploy targets of one Coolify binding, picked rather than
- * transcribed.
- *
- * The uuid used to be a field an operator copied out of another browser tab,
- * with nothing in Forge able to say whether the one they pasted was the app
- * they meant. Coolify lists its applications, so the field is a pick-list, and
- * a bound target renders the name, domain and branch@sha Coolify reports for
- * it — a wrong binding is then visible without leaving Forge.
- */
-// cm:guard every fixed column in a target row must be mobile-exempt (`hidden`/`w-full` below `sm`) and the flexible ones need `min-w-0` — a non-shrinking column makes the whole targets fieldset overflow its panel at 375px, measured 315px inside a 218px container on forge-beta (ISS-971)
 const ALIGN_LABEL_COL = "hidden w-40 shrink-0 sm:block";
 const ALIGN_BUTTON_COL = "hidden w-9 shrink-0 sm:block";
 
@@ -38,7 +27,6 @@ export function CoolifyTargetsField({
   onChange: (next: CoolifyTargetInput[]) => void;
   inherited: boolean;
 }) {
-  // cm:edge contract -> packages/core/src/integrations/coolify-routes.ts — the credential-in-the-form branch is not a convenience: without it the picker cannot exist until after a save, and a first save is exactly where an operator would otherwise transcribe the uuid (ISS-925).
   const auth = integrationId
     ? { integrationId }
     : baseUrl.trim() && apiToken.trim().length >= 8
