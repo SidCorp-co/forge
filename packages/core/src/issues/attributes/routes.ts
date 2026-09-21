@@ -3,22 +3,23 @@
  * `source_comment_id` pointing back at the comment that made them, and the MCP
  * `forge_issues action=setAttributes` tool was its only door — no destination a REST writer could
  * be sent to, and a refusal naming a route nobody can reach teaches nothing. This route calls the
- * same service, so there is one writer and one set of refusals.
+ * same service, so there is one writer and one set of refusals about what is written:
+ * `setIssueAttributes` raises all of them and this route only says which status carries which code.
+ * What a door still owns is its own shape — the body schema, the issue, the caller's role.
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import { db } from '../../db/client.js';
-import { comments, issues } from '../../db/schema.js';
+import { issues } from '../../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { loadIssueAttributes } from './read.js';
 import { setIssueAttributes } from './service.js';
-import { AttributeRefusal } from './write.js';
+import { AttributeRefusal, type AttributeRefusalCode } from './write.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -38,60 +39,26 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-/** The 400 an attribute refusal becomes, carrying its own code by name. */
+/**
+ * The status each refusal is rendered at. A drifted registry is the server's
+ * own two lists disagreeing, which is a conflict and not the caller's input;
+ * every other refusal names something the caller sent.
+ */
+const REFUSAL_STATUS: Record<AttributeRefusalCode, 400 | 409> = {
+  UNREGISTERED_KEY: 400,
+  WRONG_TYPE: 400,
+  OBLIGATION_UNOWNED: 400,
+  EMPTY_TEXT: 400,
+  SOURCE_COMMENT_NOT_FOUND: 400,
+  SOURCE_COMMENT_OFF_ISSUE: 400,
+  ATTRIBUTE_DEF_MISSING: 409,
+};
+
+/** The HTTP an attribute refusal becomes, carrying its own code by name. */
 function refusalHttp(err: AttributeRefusal): HTTPException {
-  return new HTTPException(400, { message: err.message, cause: { code: err.code } });
-}
-
-const DEFS_FK = 'issue_attributes_key_issue_attribute_defs_key_fk';
-
-/**
- * The drift between the two copies of the key list, said in words.
- *
- * `ATTRIBUTE_REGISTRY` validates the write and the `issue_attribute_defs`
- * seed in migration 0245 carries the foreign key, and the two are kept in step
- * by hand. A key one holds and the other does not passes validation and then
- * breaks on the constraint — which reached the caller as a 500 naming a
- * Postgres constraint, and reaches a log as an unhandled error. Named here
- * instead, because an operator told the two registries have drifted can fix it
- * and one told `500` cannot.
- */
-function driftHttp(keys: readonly string[]): HTTPException {
-  return new HTTPException(409, {
-    message: `no row in \`issue_attribute_defs\` for ${keys.map((k) => `\`${k}\``).join(', ')}, although this build's ATTRIBUTE_REGISTRY declares it — the code registry and the migration seed have drifted, and no write can land until they agree.`,
-    cause: { code: 'ATTRIBUTE_DEF_MISSING', details: { keys } },
-  });
-}
-
-/**
- * Every `sourceCommentId`, checked against its issue ahead of the insert: the
- * constraint cannot separate the two wrong values, because an id naming no
- * comment breaks a foreign key other than the one caught below, and one naming
- * a comment on ANOTHER issue violates nothing at all (ISS-1113).
- */
-async function assertSourceCommentsOnIssue(issueId: string, ids: readonly string[]): Promise<void> {
-  const wanted = [...new Set(ids)];
-  if (wanted.length === 0) return;
-  const rows = await db
-    .select({ id: comments.id, issueId: comments.issueId })
-    .from(comments)
-    .where(inArray(comments.id, wanted));
-
-  const found = new Map(rows.map((r) => [r.id, r.issueId]));
-  const missing = wanted.filter((id) => !found.has(id));
-  if (missing.length > 0) {
-    throw new HTTPException(400, {
-      message: `sourceCommentId ${missing.map((i) => `\`${i}\``).join(', ')} names no comment. It must be the id of a comment on this issue — the row exists to point back at the sentence that asserted it.`,
-      cause: { code: 'SOURCE_COMMENT_NOT_FOUND', details: { missing } },
-    });
-  }
-  const elsewhere = wanted.filter((id) => found.get(id) !== issueId);
-  if (elsewhere.length > 0) {
-    throw new HTTPException(400, {
-      message: `sourceCommentId ${elsewhere.map((i) => `\`${i}\``).join(', ')} names a comment on a different issue (${elsewhere.map((i) => `\`${i}\` is on \`${found.get(i)}\``).join(', ')}). The pointer must stay on the issue the attribute is written to, or no reader can follow it back.`,
-      cause: { code: 'SOURCE_COMMENT_OFF_ISSUE', details: { ids: elsewhere, issueId } },
-    });
-  }
+  const cause: { code: string; details?: unknown } = { code: err.code };
+  if (err.details !== undefined) cause.details = err.details;
+  return new HTTPException(REFUSAL_STATUS[err.code], { message: err.message, cause });
 }
 
 export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars }>): void {
@@ -110,11 +77,6 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
       const access = await loadProjectAccess(issue.projectId, c.get('userId'));
       assertProjectRole(access, 'member');
 
-      await assertSourceCommentsOnIssue(
-        issue.id,
-        attributes.flatMap((a) => (a.sourceCommentId ? [a.sourceCommentId] : [])),
-      );
-
       try {
         const result = await setIssueAttributes(
           attributes.map((a) => ({
@@ -128,9 +90,6 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
         return c.json(result, 201);
       } catch (err) {
         if (err instanceof AttributeRefusal) throw refusalHttp(err);
-        if (pgErrorCode(err) === '23503' && pgConstraintName(err) === DEFS_FK) {
-          throw driftHttp(attributes.map((a) => a.key));
-        }
         throw err;
       }
     },
