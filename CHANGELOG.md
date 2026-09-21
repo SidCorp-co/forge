@@ -3059,6 +3059,10 @@
 
 ### Fixed
 
+- **An attribute pointing at the wrong comment is refused whichever door writes it.** The agent
+  tool stored it and called it written, or answered with the database's insert statement. An id in
+  upper case is accepted, not refused as nothing.
+
 - **A published release entry can be corrected.** An edit keeping over half its words reads as
   that entry, not a deletion plus a new one, so a dead link can be fixed without cutting the
   entry to the 40-word budget.
