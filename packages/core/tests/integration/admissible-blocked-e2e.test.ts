@@ -20,6 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
 
+import { BLOCKER_SETTLED_STATUSES } from '../../src/issues/dependency-effects.js';
 import {
   createTestProject,
   createTestUser,
@@ -150,7 +151,7 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     await expect(admissible()).resolves.toEqual({ keys: ['ISS-2'], count: 1 });
   });
 
-  it.each(['developed', 'testing', 'awaiting_release', 'closed'])(
+  it.each(BLOCKER_SETTLED_STATUSES)(
     'releases the dependent when the blocker is %s',
     async (status) => {
       const blocker = await issue(1, status);

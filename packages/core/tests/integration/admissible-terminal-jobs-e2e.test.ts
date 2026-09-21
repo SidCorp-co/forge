@@ -19,6 +19,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
 
+import { UNHELD_LIVE_JOB_STATUSES } from '../../src/jobs/status-sets.js';
 import {
   createTestDevice,
   createTestProject,
@@ -109,7 +110,7 @@ describe('a finished job does not hide the issue it ran on (real Postgres)', () 
     expect(await offered()).toEqual([key]);
   });
 
-  it.each(['queued', 'dispatched', 'running'])('withholds an issue whose job is %s', async (s) => {
+  it.each(UNHELD_LIVE_JOB_STATUSES)('withholds an issue whose job is %s', async (s) => {
     await issueWithJob(s, { runStatus: 'running' });
     expect(await offered()).toEqual([]);
   });

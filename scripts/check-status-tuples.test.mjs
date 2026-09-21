@@ -74,9 +74,9 @@ describe('check-status-tuples — what it deliberately does not read', () => {
     expect(scan("const X = ['banana', 'plum'];\n")).toEqual([]);
   });
 
-  it('excuses a declaration that says at the declaration why it must differ', () => {
+  it('excuses a declaration whose marker NAMES the answer it mirrors', () => {
     const marked =
-      '// status-tuple: differs — mirrored across a package boundary neither side may import.\n' +
+      '// status-tuple: differs — mirrors OWNER across a package boundary neither side may import.\n' +
       "export const MIRROR = ['closed', 'dropped'];\n";
     const { twoAnswers } = judge([
       ...scan("export const OWNER = ['closed', 'dropped'];\n", 'owner.ts'),
@@ -87,7 +87,7 @@ describe('check-status-tuples — what it deliberately does not read', () => {
 
   it('does not excuse a marker further above than the marker reaches', () => {
     const tooFar =
-      '// status-tuple: differs — stated too far above to be about this declaration.\n' +
+      '// status-tuple: differs — stated too far above to be about OWNER.\n' +
       '\n'.repeat(8) +
       "export const MIRROR = ['closed', 'dropped'];\n";
     const { twoAnswers } = judge([
@@ -95,6 +95,134 @@ describe('check-status-tuples — what it deliberately does not read', () => {
       ...scan(tooFar, 'mirror.ts'),
     ]);
     expect(twoAnswers).toHaveLength(1);
+  });
+
+  it('skips a SQL ARRAY literal, which is SQL wearing brackets', () => {
+    expect(scan("await db.execute(sql`(ARRAY['closed','dropped'])[g]`);\n")).toEqual([]);
+  });
+});
+
+describe('check-status-tuples — a marker is an excuse against the answer it names', () => {
+  // ISS-1106 criterion 13: `runs-rollup.ts` declared a second `LIVE_JOB_STATUSES`
+  // holding the UNHELD tuple, and the gate read green because the one constant
+  // already holding that tuple carries a marker about a DIFFERENT one.
+  const UNHELD =
+    '/* status-tuple: differs — `held` waits on a person, so this cannot be LIVE. */\n' +
+    "export const UNHELD = ['queued', 'dispatched', 'running'];\n";
+
+  it('leaves a marked declaration standing alone as the one answer', () => {
+    const { twoAnswers } = judge(scan(UNHELD, 'owner.ts'));
+    expect(twoAnswers).toEqual([]);
+  });
+
+  it('refuses a SECOND declaration of that tuple, because the marker names neither it nor its value', () => {
+    const { twoAnswers } = judge([
+      ...scan(UNHELD, 'owner.ts'),
+      ...scan("const SECOND = ['queued', 'dispatched', 'running'];\n", 'other.ts'),
+    ]);
+    expect(twoAnswers).toHaveLength(1);
+    expect(twoAnswers[0].declarations.map((d) => d.name)).toEqual(['UNHELD', 'SECOND']);
+  });
+});
+
+describe('check-status-tuples — one name answers one question', () => {
+  // A mirror shares a name AND a value, so it is one answer in two packages.
+  // `runs-rollup.ts` shared the NAME and not the value, which by value alone
+  // never collides with the four-member answer it was shadowing.
+  it('refuses one name holding two different tuples', () => {
+    const { twoMeanings } = judge([
+      ...scan("export const LIVE = ['queued', 'dispatched', 'running', 'held'];\n", 'owner.ts'),
+      ...scan("const LIVE = ['queued', 'dispatched', 'running'];\n", 'rollup.ts'),
+    ]);
+    expect(twoMeanings).toHaveLength(1);
+    expect(twoMeanings[0].name).toBe('LIVE');
+    expect(twoMeanings[0].declarations.map((d) => d.rel)).toEqual(['owner.ts', 'rollup.ts']);
+  });
+
+  it('lets one name hold one tuple in two packages, which is what a mirror is', () => {
+    const { twoMeanings } = judge([
+      ...scan("export const LIVE = ['queued', 'dispatched', 'running', 'held'];\n", 'core.ts'),
+      ...scan("export const LIVE = ['queued', 'dispatched', 'running', 'held'];\n", 'web.ts'),
+    ]);
+    expect(twoMeanings).toEqual([]);
+  });
+
+  it('refuses it THROUGH a marker, because a marker naming the peer cannot disambiguate a shared name', () => {
+    const marked =
+      '/* status-tuple: differs — `held` waits on a person, so this cannot be LIVE. */\n' +
+      "export const UNHELD = ['queued', 'dispatched', 'running'];\n";
+    const { twoAnswers, twoMeanings } = judge([
+      ...scan("export const LIVE = ['queued', 'dispatched', 'running', 'held'];\n", 'owner.ts'),
+      ...scan(marked, 'owner2.ts'),
+      ...scan("const LIVE = ['queued', 'dispatched', 'running'];\n", 'rollup.ts'),
+    ]);
+    expect(twoAnswers).toEqual([]);
+    expect(twoMeanings.map((m) => m.name)).toEqual(['LIVE']);
+  });
+});
+
+describe('check-status-tuples — a classification is a declaration by another route', () => {
+  const RECORD =
+    'const JOB_STATUS_IS_LIVE: Record<JobStatus, boolean> = {\n' +
+    '  queued: true,\n  dispatched: true,\n  running: true,\n' +
+    '  held: false,\n  done: false,\n  failed: false,\n};\n';
+
+  it('reads the TRUE keys of a boolean classification as the tuple it answers with', () => {
+    const sites = scan(RECORD, 'rollup.ts');
+    expect(sites.map((s) => `${s.name} ${s.key}`)).toEqual([
+      'JOB_STATUS_IS_LIVE job|dispatched,queued,running',
+    ]);
+  });
+
+  it('refuses a classification holding a tuple a constant already holds', () => {
+    const { twoAnswers } = judge([
+      ...scan("export const UNHELD_LIVE = ['queued', 'dispatched', 'running'];\n", 'owner.ts'),
+      ...scan(RECORD, 'rollup.ts'),
+    ]);
+    expect(twoAnswers).toHaveLength(1);
+    expect(twoAnswers[0].declarations.map((d) => d.name)).toEqual([
+      'UNHELD_LIVE',
+      'JOB_STATUS_IS_LIVE',
+    ]);
+  });
+
+  it('leaves a lookup table alone: a Record to anything but boolean is not a yes/no question', () => {
+    const labels =
+      "const LABEL: Record<JobStatus, string> = {\n  queued: 'Queued',\n  running: 'Running',\n};\n";
+    expect(scan(labels, 'derive.ts')).toEqual([]);
+  });
+});
+
+describe('check-status-tuples — how much of a test file it reads', () => {
+  const OWNER = "export const LIVE_JOB_STATUSES = ['queued', 'dispatched', 'running', 'held'];\n";
+  const TEST = 'packages/core/tests/integration/reap-e2e.test.ts';
+
+  it('reads a `.each` case list, which is the domain a test claims to cover', () => {
+    const { restatements } = judge([
+      ...scan(OWNER, 'owner.ts'),
+      ...scan(
+        "it.each(['queued', 'dispatched', 'running', 'held'])('leaves a `%s` job', () => {});\n",
+        TEST,
+      ),
+    ]);
+    expect(restatements).toHaveLength(1);
+    expect(restatements[0].owner.name).toBe('LIVE_JOB_STATUSES');
+  });
+
+  it('leaves the assertion itself alone — importing the constant would assert nothing', () => {
+    const { restatements } = judge([
+      ...scan(OWNER, 'owner.ts'),
+      ...scan("expect(jobStatuses).toEqual(['queued', 'dispatched', 'running', 'held']);\n", TEST),
+    ]);
+    expect(restatements).toEqual([]);
+  });
+
+  it('leaves a test-local constant alone, for the same reason', () => {
+    const { twoAnswers } = judge([
+      ...scan(OWNER, 'owner.ts'),
+      ...scan("const EXPECTED = ['queued', 'dispatched', 'running', 'held'];\n", TEST),
+    ]);
+    expect(twoAnswers).toEqual([]);
   });
 });
 
