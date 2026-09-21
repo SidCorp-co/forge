@@ -124,6 +124,10 @@
 - **A session that ends takes what it started with it.** Closing a master closes the runs beneath
   it and returns their issues. One silence clock at ten minutes replaces two that could not see
   each other.
+
+- **Forge's guides are now web pages anyone can read, at `/guides`.** No login, the same text the
+  API already served, and an address for an unknown guide answers 404 naming it.
+
 - **A box can be told to stop driving a project, and stay stopped.** `forge-runner master
   stand-down <project>` places no master and sends no nudge until `stand-up`. Killing the pane
   never held: it came back on the old conversation.
