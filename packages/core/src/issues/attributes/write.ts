@@ -12,10 +12,26 @@ export interface AttributeWrite {
   readonly assertedByUserId?: string | null;
 }
 
+/**
+ * Every way a write is refused, by name. One list, because the writer owns all
+ * of them and a door renders whatever it is handed (ISS-1158) — a code here
+ * that no door maps is a refusal a caller reads as an unexplained failure.
+ */
+export type AttributeRefusalCode =
+  | 'UNREGISTERED_KEY'
+  | 'WRONG_TYPE'
+  | 'OBLIGATION_UNOWNED'
+  | 'EMPTY_TEXT'
+  | 'SOURCE_COMMENT_NOT_FOUND'
+  | 'SOURCE_COMMENT_OFF_ISSUE'
+  | 'ATTRIBUTE_DEF_MISSING';
+
 export class AttributeRefusal extends Error {
   constructor(
-    readonly code: 'UNREGISTERED_KEY' | 'WRONG_TYPE' | 'OBLIGATION_UNOWNED' | 'EMPTY_TEXT',
+    readonly code: AttributeRefusalCode,
     message: string,
+    /** What the refusal names, for a door that renders structured errors. */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = 'AttributeRefusal';
