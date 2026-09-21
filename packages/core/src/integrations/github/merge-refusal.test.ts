@@ -92,6 +92,36 @@ describe('the reads a merge makes are not the reads a check run makes', () => {
   });
 });
 
+describe('a 422 names no cause the status itself rules out', () => {
+  it('does not blame the merge method, which GitHub answers 405 for', () => {
+    const refusal = refused({ status: 422, detail: 'Validation Failed' });
+    expect(refusal.cause).toBe('rejected-payload');
+    expect(refusal.message).toContain('Validation Failed');
+    expect(refusal.message).not.toContain('a merge method this repository does not allow');
+    expect(refusal.message).toContain('405');
+  });
+
+  it('points at what GitHub said rather than naming one commonest cause', () => {
+    expect(refused({ status: 422, detail: 'Validation Failed' }).message).toContain(
+      'Nothing here names a cause beyond what GitHub sent',
+    );
+  });
+
+  it('rules out only what the status itself rules out, on the reads', () => {
+    const refusal = describeMergeRefusal(
+      new GitHubPublishError({
+        op: 'lookup',
+        status: 422,
+        message: 'unprocessable',
+        detail: 'Validation Failed',
+      }),
+      553,
+    );
+    expect(refusal.message).not.toContain('commonest cause is a pull request number');
+    expect(refusal.message).toContain('404');
+  });
+});
+
 describe('the statuses the merge path answers for itself are unchanged', () => {
   it('still refuses a 405 as a state that moved under the read', () => {
     const refusal = refused({ status: 405, detail: 'Pull Request is not mergeable' });

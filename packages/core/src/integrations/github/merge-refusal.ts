@@ -31,7 +31,9 @@ const MERGE_SUBJECT: PublishSubject<MergeOp> = {
       'first: the installation may be suspended, it may no longer cover this repository, or this ' +
       'may be a secondary rate limit. Read the installation on GitHub, then retry after a pause.',
     nothingWritten: 'so nothing was read and the merge was never sent. Retrying is safe.',
-    unprocessable: 'The commonest cause is an installation this App no longer holds.',
+    unprocessable:
+      'Nothing here names a cause beyond what GitHub sent with it. An installation ' +
+      'this App no longer holds is answered 404 and handled as that, so it is not this one.',
   },
   lookup: {
     where: 'reading the pull request and the checks on its head',
@@ -47,7 +49,9 @@ const MERGE_SUBJECT: PublishSubject<MergeOp> = {
       'rate limit. Check those two permissions, then that the App is still installed on this ' +
       'repository, then retry after a pause.',
     nothingWritten: 'so nothing was read and the merge was never sent. Retrying is safe.',
-    unprocessable: 'The commonest cause is a pull request number this repository does not hold.',
+    unprocessable:
+      'Nothing here names a cause beyond what GitHub sent with it. A pull request ' +
+      'this repository does not hold is answered 404 and handled as that, so it is not this one.',
   },
   merge: {
     where: 'merging the pull request',
@@ -63,7 +67,10 @@ const MERGE_SUBJECT: PublishSubject<MergeOp> = {
       'branch; or this may be a secondary rate limit. Check those two permissions, then the base ' +
       "branch's protection rules and rulesets, then retry after a pause.",
     nothingWritten: 'so the merge was never sent. Retrying is safe.',
-    unprocessable: 'The commonest cause is a merge method this repository does not allow.',
+    unprocessable:
+      'Nothing here names a cause beyond what GitHub sent with it. A merge method ' +
+      'this repository has switched off is answered 405 and handled as that, so it is not ' +
+      'this one.',
   },
 };
 
