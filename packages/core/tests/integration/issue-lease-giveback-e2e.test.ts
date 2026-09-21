@@ -31,6 +31,7 @@ let harness: TestDatabase;
 let app: { request: (path: string, init?: RequestInit) => Promise<Response> };
 let openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
 let assignIssuePrefix: typeof import('../../src/issues/issue-prefix-service.js').assignIssuePrefix;
+let withKernelMarker: typeof import('../../src/db/kernel-marker.js').withKernelMarker;
 
 let userId: string;
 let deviceId: string;
@@ -42,6 +43,7 @@ beforeAll(async () => {
   ({ app } = (await import('../../src/index.js')) as unknown as { app: typeof app });
   ({ openRunSession } = await import('../../src/devices/run-session.js'));
   ({ assignIssuePrefix } = await import('../../src/issues/issue-prefix-service.js'));
+  ({ withKernelMarker } = await import('../../src/db/kernel-marker.js'));
 }, 60_000);
 
 afterAll(async () => {
@@ -240,6 +242,64 @@ describe('a key that names no project this box reaches', () => {
     const res = await app.request(lease('not-a-key'), { method: 'DELETE', headers: auth });
 
     expect(res.status).toBe(400);
+  });
+});
+
+describe('a prefix whose project is gone', () => {
+  /** The state `DELETE /api/projects/:id` leaves behind: rows, not a fixture. */
+  async function aDeletedProjectThatHeldZZ(): Promise<string> {
+    const project = await aProjectThisBoxServes(880, 'ZZ');
+    await openRunSession({ deviceId, projectId: project, issueKeys: ['ISS-880'], name: 'run-a' });
+    expect(await leaseProjectsFor('ISS-880'), 'the fixture holds the lease it is about').toEqual([
+      project,
+    ]);
+    // `harness.db` as `never`: the test harness's client and the app's differ
+    // by `exactOptionalPropertyTypes` alone, and the suites here bridge it the
+    // same way (`unaudited-transition-marker.test.ts`).
+    await withKernelMarker(harness.db as never, async (tx) =>
+      tx.execute(sql`DELETE FROM projects WHERE id = ${project}`),
+    );
+    return project;
+  }
+
+  it('keeps the prefix spent with no project behind it', async () => {
+    await aDeletedProjectThatHeldZZ();
+
+    const rows = (await harness.db.execute(sql`
+      SELECT project_id FROM issue_prefix_aliases WHERE prefix = 'ZZ'
+    `)) as unknown as Array<{ project_id: string | null }>;
+
+    expect(
+      rows.map((r) => r.project_id),
+      'a spent prefix is the tombstone `issuePrefixHolder` names, and nothing a box does refills it',
+    ).toEqual([null]);
+  });
+
+  it('takes every lease of that project with it', async () => {
+    await aDeletedProjectThatHeldZZ();
+
+    expect(
+      await leaseProjectsFor('ISS-880'),
+      '`issue_leases.project_id` cascades, so no lease stands under a key naming that project, and `held: false` is the true answer rather than a softened refusal',
+    ).toEqual([]);
+  });
+
+  it('refuses the read under that prefix, which no box can clear', async () => {
+    await aDeletedProjectThatHeldZZ();
+
+    const res = await app.request(lease('ZZ-880'), { headers: auth });
+
+    expect(res.status, 'criterion 7: a prefix no project answers to is refused by name').toBe(404);
+    expect(((await res.json()) as Refusal).code).toBe('ISSUE_LEASE_KEY_UNKNOWN_PREFIX');
+  });
+
+  it('refuses the release under it too', async () => {
+    await aDeletedProjectThatHeldZZ();
+
+    const res = await app.request(lease('ZZ-880'), { method: 'DELETE', headers: auth });
+
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as Refusal).code).toBe('ISSUE_LEASE_KEY_UNKNOWN_PREFIX');
   });
 });
 

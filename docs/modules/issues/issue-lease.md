@@ -58,6 +58,14 @@ reads the candidate rows `FOR UPDATE`, and answers `not_held` for none and
 `404` and a `409`, because a delete that matched nothing acknowledged as `200`
 is read by the box as the issue handed back.
 
+The `409` is the one answer a box cannot settle from the key alone: core holds
+two rows and nothing in the request chooses between them, so the way out is
+`?projectId=`, which a runner sends off the ledger's `runs.project_id`. A box
+whose runner predates that parameter meets the refusal and keeps meeting it
+until it is upgraded, which is this change's one deploy coupling. Its close loop
+writes what core said to its own log rather than discarding it: a run that will
+not close is legible only while the sentence naming the way out survives.
+
 `releaseIssueLease` takes an executor rather than reaching for `db`, because the
 lease and the run's membership have to drop in one transaction. Between two
 autonomous writes, a replacement open on the same device can take the lease back
@@ -79,6 +87,19 @@ What it does refuse is a key that reaches nothing at all: a string that is no
 issue reference, a prefix no project anywhere answers to, and a prefix that
 contradicts the `projectId` sent beside it. All three are properties of the key,
 and none of them changes when a lease does.
+
+Two of those three say more than that they hold: no lease can stand under that
+key at all. A string that is no issue reference names nothing the store keys a
+row by, and a prefix no project answers to covers the tombstone a deleted
+project leaves — `issuePrefixAliases.projectId` is `set null` and the row stays
+spent, while the cascade on `issueLeases.projectId` has already taken every
+lease that project held. Nothing a box does refills the prefix. So the runner's
+`lease_state` reads those two codes as `held: false` and logs which one it met,
+while `ISSUE_LEASE_KEY_PROJECT_MISMATCH` stays an error: there the request names
+two identities that disagree, a lease may stand under either, and `held: false`
+would mark a standing lease returned. The match is on the code and never on the
+status, because a bare `404` from a core that does not serve the route says
+nothing about any lease.
 
 A project the asking box cannot reach is **answered, not refused** — `held:
 false`, which is true, and which the `reachableProjects` filter already
