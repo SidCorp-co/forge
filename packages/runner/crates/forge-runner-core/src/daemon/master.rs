@@ -186,6 +186,13 @@ pub(crate) enum Unplaced {
     /// exists so the sweep that learns it does not leave the registry saying
     /// nothing: the landed change cleared this map on exactly this path, at the
     /// moment the daemon found out.
+    ///
+    /// Its one reader is `run_declare`, so the only thing that ever sees this
+    /// sentence is the pane itself — which is inside tmux and reaches the
+    /// runner's own server through `$TMUX`. That is why a bare `tmux
+    /// kill-session` is the right remedy HERE and the wrong one on
+    /// `forge-runner master status`, where the reader is an operator in a shell
+    /// of their own and the runner's socket is not the default server.
     StaleCapability {
         session: String,
         pane: String,
@@ -1799,9 +1806,11 @@ pub(crate) struct Carryover<'a> {
 /// its way to somewhere a restart cannot erase it.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Authority {
-    /// The pane it is about, so a verdict is never read as being about a
-    /// different pane that later took the same name.
+    /// The pane it is about, by name and by which incarnation of that name was
+    /// running: the name is derived from the slug, so every pane this project
+    /// ever has carries it and the name alone identifies nothing.
     pane: String,
+    incarnation: Option<String>,
     /// One of `MasterAuthority`'s three.
     verdict: &'static str,
     /// Why the verdict is `unknown`, and `None` on the other two.
@@ -1820,9 +1829,16 @@ pub(crate) struct Authority {
 pub(crate) struct AuthoritySink(Mutex<Option<Authority>>);
 
 impl AuthoritySink {
-    fn set(&self, pane: &str, verdict: &'static str, detail: Option<&str>) {
+    fn set(
+        &self,
+        pane: &str,
+        incarnation: Option<String>,
+        verdict: &'static str,
+        detail: Option<&str>,
+    ) {
         *self.0.lock().expect("authority sink poisoned") = Some(Authority {
             pane: pane.to_string(),
+            incarnation,
             verdict,
             detail: detail.map(str::to_string),
         });
@@ -1903,11 +1919,14 @@ async fn ensure_master(
             );
             remember(masters, project_id, &session);
         }
+        let pane_now = terminal::incarnation(&name).await;
         return match capability_of(tokens, &session.session_id) {
             Capability::Current => {
                 masters.clear_unplaced(project_id);
                 masters.note_capability(project_id, MasterAuthority::CURRENT);
-                ports.authority.set(&name, MasterAuthority::CURRENT, None);
+                ports
+                    .authority
+                    .set(&name, pane_now, MasterAuthority::CURRENT, None);
                 PaneState::Adopted
             }
             Capability::Stale => {
@@ -1922,7 +1941,9 @@ async fn ensure_master(
                         pane: name.clone(),
                     },
                 );
-                ports.authority.set(&name, MasterAuthority::STALE, None);
+                ports
+                    .authority
+                    .set(&name, pane_now, MasterAuthority::STALE, None);
                 if masters.note_capability(project_id, MasterAuthority::STALE) {
                     tracing::error!(
                         "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `tmux kill-session -t {name}`, and a master carrying the current capability starts in its place. It is not being nudged while it stands like this. `forge-runner master status {}` says the same thing without this log.",
@@ -1937,7 +1958,7 @@ async fn ensure_master(
                 masters.clear_unplaced(project_id);
                 ports
                     .authority
-                    .set(&name, MasterAuthority::UNKNOWN, Some(&why));
+                    .set(&name, pane_now, MasterAuthority::UNKNOWN, Some(&why));
                 if masters.note_capability(project_id, MasterAuthority::UNKNOWN) {
                     tracing::warn!(
                         "[master] {}: cannot tell whether {name}'s capability is current: {why}. Saying nothing about it rather than calling it stale — an unreadable map is not evidence about any pane.",
@@ -2072,7 +2093,12 @@ async fn ensure_master(
     // who killed a stale one reads the old verdict back and concludes the kill
     // did nothing.
     masters.note_capability(project_id, MasterAuthority::CURRENT);
-    ports.authority.set(&name, MasterAuthority::CURRENT, None);
+    ports.authority.set(
+        &name,
+        terminal::incarnation(&name).await,
+        MasterAuthority::CURRENT,
+        None,
+    );
 
     let reach = crate::mcp::config::pane_reach(&resolved.repo_path, mcp_config.as_deref());
     match reach.forge() {
@@ -2219,7 +2245,7 @@ fn write_authority(ledger: Option<&Ledger>, project_id: &str, slug: &str, said: 
     if let Err(e) = led.note_master_authority(
         project_id,
         slug,
-        &said.pane,
+        (&said.pane, said.incarnation.as_deref()),
         said.verdict,
         said.detail.as_deref(),
     ) {

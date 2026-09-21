@@ -206,9 +206,15 @@ impl MasterStanding {
 pub struct MasterAuthority {
     pub project_id: String,
     pub slug: String,
-    /// The pane the verdict was reached about, so a verdict is never read as
-    /// being about a different pane that later took the same name.
+    /// The pane the verdict was reached about.
     pub pane_name: String,
+    /// Which incarnation of that name was running, as tmux's own opaque
+    /// answer: the name is derived from the slug and every incarnation carries
+    /// it, so the name alone identifies nothing. `None` where tmux could not be
+    /// asked at the moment the verdict was reached, which is not the same as a
+    /// pane that has just started — a reader that finds it `None` says it
+    /// cannot tell rather than guessing either way.
+    pub pane_incarnation: Option<String>,
     /// `current`, `stale` or `unknown` — the three `capability_of` answers, kept
     /// three here for the same reason they are kept three there.
     pub verdict: String,
@@ -380,13 +386,14 @@ CREATE TABLE IF NOT EXISTS master_standing (
   stood_up_at   INTEGER
 );
 CREATE TABLE IF NOT EXISTS master_authority (
-  project_id TEXT PRIMARY KEY,
-  slug       TEXT NOT NULL,
-  pane_name  TEXT NOT NULL,
-  verdict    TEXT NOT NULL,
-  detail     TEXT,
-  since      INTEGER NOT NULL,
-  seen_at    INTEGER NOT NULL
+  project_id      TEXT PRIMARY KEY,
+  slug            TEXT NOT NULL,
+  pane_name       TEXT NOT NULL,
+  pane_incarnation TEXT,
+  verdict         TEXT NOT NULL,
+  detail          TEXT,
+  since           INTEGER NOT NULL,
+  seen_at         INTEGER NOT NULL
 );
 ";
 
@@ -447,10 +454,11 @@ fn map_authority(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterAuthority> {
         project_id: row.get(0)?,
         slug: row.get(1)?,
         pane_name: row.get(2)?,
-        verdict: row.get(3)?,
-        detail: row.get(4)?,
-        since: row.get(5)?,
-        seen_at: row.get(6)?,
+        pane_incarnation: row.get(3)?,
+        verdict: row.get(4)?,
+        detail: row.get(5)?,
+        since: row.get(6)?,
+        seen_at: row.get(7)?,
     })
 }
 
@@ -1028,25 +1036,28 @@ impl Ledger {
         &self,
         project_id: &str,
         slug: &str,
-        pane_name: &str,
+        pane: (&str, Option<&str>),
         verdict: &str,
         detail: Option<&str>,
     ) -> Result<()> {
+        let (pane_name, pane_incarnation) = pane;
         self.conn
             .execute(
-                "INSERT INTO master_authority (project_id, slug, pane_name, verdict, detail, since, seen_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+                "INSERT INTO master_authority (project_id, slug, pane_name, pane_incarnation, verdict, detail, since, seen_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
                  ON CONFLICT(project_id) DO UPDATE SET
-                   slug      = excluded.slug,
-                   pane_name = excluded.pane_name,
-                   verdict   = excluded.verdict,
-                   detail    = excluded.detail,
-                   since     = CASE WHEN master_authority.verdict   = excluded.verdict
-                                     AND master_authority.pane_name = excluded.pane_name
-                                    THEN master_authority.since
-                                    ELSE excluded.since END,
-                   seen_at   = excluded.seen_at",
-                params![project_id, slug, pane_name, verdict, detail, now()],
+                   slug            = excluded.slug,
+                   pane_name       = excluded.pane_name,
+                   pane_incarnation = excluded.pane_incarnation,
+                   verdict         = excluded.verdict,
+                   detail          = excluded.detail,
+                   since           = CASE WHEN master_authority.verdict         =  excluded.verdict
+                                           AND master_authority.pane_name       =  excluded.pane_name
+                                           AND master_authority.pane_incarnation IS excluded.pane_incarnation
+                                          THEN master_authority.since
+                                          ELSE excluded.since END,
+                   seen_at         = excluded.seen_at",
+                params![project_id, slug, pane_name, pane_incarnation, verdict, detail, now()],
             )
             .map_err(sql_err)?;
         Ok(())
@@ -1059,7 +1070,7 @@ impl Ledger {
     pub fn master_authority_for_slug(&self, slug: &str) -> Result<Option<MasterAuthority>> {
         self.conn
             .query_row(
-                "SELECT project_id, slug, pane_name, verdict, detail, since, seen_at
+                "SELECT project_id, slug, pane_name, pane_incarnation, verdict, detail, since, seen_at
                  FROM master_authority WHERE slug = ?1",
                 params![slug],
                 map_authority,
@@ -1073,7 +1084,7 @@ impl Ledger {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT project_id, slug, pane_name, verdict, detail, since, seen_at
+                "SELECT project_id, slug, pane_name, pane_incarnation, verdict, detail, since, seen_at
                  FROM master_authority ORDER BY slug",
             )
             .map_err(sql_err)?;
@@ -2579,7 +2590,7 @@ mod tests {
             led.note_master_authority(
                 "proj-1",
                 "sidpeak",
-                "forge-master-sidpeak",
+                ("forge-master-sidpeak", Some("1700000000:$1")),
                 MasterAuthority::STALE,
                 None,
             )
@@ -2615,7 +2626,7 @@ mod tests {
         led.note_master_authority(
             "proj-1",
             "sidpeak",
-            "forge-master-sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
             MasterAuthority::STALE,
             None,
         )
@@ -2625,7 +2636,7 @@ mod tests {
         led.note_master_authority(
             "proj-1",
             "sidpeak",
-            "forge-master-sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
             MasterAuthority::STALE,
             None,
         )
@@ -2648,7 +2659,7 @@ mod tests {
         led.note_master_authority(
             "proj-1",
             "sidpeak",
-            "forge-master-sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
             MasterAuthority::CURRENT,
             None,
         )
@@ -2668,7 +2679,7 @@ mod tests {
         led.note_master_authority(
             "proj-1",
             "sidpeak",
-            "forge-master-sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
             MasterAuthority::STALE,
             None,
         )
@@ -2677,7 +2688,7 @@ mod tests {
         led.note_master_authority(
             "proj-1",
             "sidpeak",
-            "forge-master-sidpeak-2",
+            ("forge-master-sidpeak-2", Some("1700000000:$1")),
             MasterAuthority::STALE,
             None,
         )
@@ -2690,6 +2701,43 @@ mod tests {
         );
     }
 
+    /// F1 from the review of this change. A master pane's name is derived
+    /// from the project slug, so a replacement carries the name of the pane it
+    /// replaced and the name alone identifies nothing. Carrying the interval
+    /// over tells an operator their brand-new master has been refused for four
+    /// hours.
+    #[test]
+    fn a_replacement_under_the_same_name_starts_its_own_interval() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        let planted = age_authority(&led, "proj-1", 4 * 3600);
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$2")),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        let row = led.master_authority_for_slug("sidpeak").unwrap().unwrap();
+        assert_eq!(
+            row.pane_name, "forge-master-sidpeak",
+            "the name is the same"
+        );
+        assert_eq!(row.pane_incarnation.as_deref(), Some("1700000000:$2"));
+        assert!(
+            row.since > planted,
+            "the pane the four hours were measured against is gone; the one up now has been refused for seconds"
+        );
+    }
+
     /// The three verdicts stay three all the way to disk. Folding "this box
     /// could not read its own map" into "stale" would report every master on a
     /// 28-project box as unplaceable at once, off one unreadable file.
@@ -2699,7 +2747,7 @@ mod tests {
         led.note_master_authority(
             "proj-1",
             "sidpeak",
-            "forge-master-sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
             MasterAuthority::UNKNOWN,
             Some("the capability map is not valid JSON"),
         )
@@ -2721,7 +2769,7 @@ mod tests {
         led.note_master_authority(
             "proj-1",
             "b-project",
-            "forge-master-b-project",
+            ("forge-master-b-project", None),
             MasterAuthority::STALE,
             None,
         )
@@ -2729,7 +2777,7 @@ mod tests {
         led.note_master_authority(
             "proj-2",
             "a-project",
-            "forge-master-a-project",
+            ("forge-master-a-project", None),
             MasterAuthority::CURRENT,
             None,
         )
