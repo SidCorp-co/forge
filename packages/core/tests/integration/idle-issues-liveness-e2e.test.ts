@@ -1,4 +1,6 @@
 import { sql } from 'drizzle-orm';
+import { terminalAgentSessionStatuses } from '../../src/db/session-vocabulary.js';
+import { LIVE_SESSION_STATUSES } from '../../src/lifecycle/status-sets.js';
 import { describe, expect, it, vi } from 'vitest';
 import { registerIdleFixture } from '../helpers/idle-fixture.js';
 
@@ -58,7 +60,7 @@ describe('detectOrphanedRunAssertions keeps its predicate across the extraction 
     expect(await idle()).toBe(0);
   });
 
-  it.each(['idle', 'queued', 'running'])(
+  it.each(LIVE_SESSION_STATUSES)(
     'is still held back by a lease whose session is %s',
     async (sessionStatus) => {
       await seedIssue('in_progress');
@@ -68,7 +70,7 @@ describe('detectOrphanedRunAssertions keeps its predicate across the extraction 
     },
   );
 
-  it.each(['completed', 'failed', 'cancelled'])(
+  it.each(terminalAgentSessionStatuses)(
     'is NOT held back by a lease whose session is %s',
     async (sessionStatus) => {
       await seedIssue('in_progress');
