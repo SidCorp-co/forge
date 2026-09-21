@@ -21,6 +21,7 @@
 use clap::{Args as ClapArgs, Subcommand};
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
+use forge_runner_core::daemon::master::accepts_new_work;
 use forge_runner_core::daemon::master_exit::{self, Holding};
 use forge_runner_core::daemon::terminal;
 use forge_runner_core::runner::ledger::Ledger;
@@ -437,15 +438,6 @@ fn admission_line(admission: &Admission, slug: &str) -> String {
     }
 }
 
-/// Whether a runner status lets this box place a master at all.
-///
-/// The daemon's own gate, restated here so `status` answers with the same rule
-/// the sweep runs: `draining` and `disabled` both take the "no new work"
-/// branch in `daemon/master.rs`, and neither ends a pane already running.
-fn accepts_new_work(status: &str) -> bool {
-    !matches!(status, "draining" | "disabled")
-}
-
 /// The second answer, which `alive` cannot give.
 ///
 /// A pane is a fact about tmux. Whether this box's OWNER stood the project
@@ -489,6 +481,8 @@ tmux. `forge-runner master stand-down {slug}` is what withholds it"
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SOURCE: &str = include_str!("master.rs");
 
     /// The sentence this replaces — "End a master. The next sweep starts a
     /// fresh one" — was false in the one word that mattered. An owner who read
@@ -540,7 +534,6 @@ mod tests {
     /// a window in which a pane resumes exactly what `--fresh` asked it not to.
     #[test]
     fn stand_up_fresh_clears_the_conversation_before_it_lifts_the_veto() {
-        const SOURCE: &str = include_str!("master.rs");
         let body = SOURCE
             .split("async fn stand_up(")
             .nth(1)
@@ -563,7 +556,6 @@ mod tests {
     /// ever placed a master for it.
     #[test]
     fn the_standing_is_read_by_slug_and_not_through_a_pane_row() {
-        const SOURCE: &str = include_str!("master.rs");
         let body = SOURCE
             .split("fn standing_line(")
             .nth(1)
@@ -657,18 +649,23 @@ mod tests {
         );
     }
 
-    /// The rule the third line states must be the rule the daemon runs, or the
-    /// box says one thing and does another.
+    /// The rule the third line states IS the rule the daemon runs — the same
+    /// function, not a copy of it, so a change to the daemon's gate cannot
+    /// leave this surface asserting the old one.
     #[test]
     fn the_status_gate_is_the_daemons_gate() {
         for withheld in ["draining", "disabled"] {
             assert!(
                 !accepts_new_work(withheld),
-                "`{withheld}` takes the no-new-work branch in daemon/master.rs and places no master; saying otherwise here is the surface disagreeing with the box"
+                "`{withheld}` takes the no-new-work branch the sweep runs and places no master; saying otherwise here is the surface disagreeing with the box"
             );
         }
         assert!(accepts_new_work("online"));
         assert!(accepts_new_work("offline"));
+        assert!(
+            !SOURCE.contains(concat!("fn ", "accepts_new_work(")),
+            "a second copy of the daemon's admission rule in this crate is a box that says one thing and does another; call `forge_runner_core::daemon::master::accepts_new_work`"
+        );
     }
 
     #[test]

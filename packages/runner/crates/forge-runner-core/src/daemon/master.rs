@@ -686,7 +686,14 @@ pub async fn run(
     }
 }
 
-fn accepts_new_work(status: &str) -> bool {
+/// Whether a runner row's status lets this box take work for its project, and
+/// so whether it places a master for it at all.
+///
+/// Public because `forge-runner master status` answers the same question to an
+/// operator, and two copies of this rule is a box that says one thing and does
+/// another. `draining` and `disabled` both land here, which is why neither is
+/// the control that stops a resident master (ISS-1118).
+pub fn accepts_new_work(status: &str) -> bool {
     !matches!(status, "draining" | "disabled")
 }
 

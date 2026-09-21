@@ -19,12 +19,51 @@ const LIVE = {
 afterEach(cleanup);
 
 describe("what the screen says about a box that holds one", () => {
-	it("says a resident master session is running on this box for this project", () => {
+	it("says a resident master session is registered on this box for this project", () => {
 		render(
 			<ResidentMaster master={LIVE} slug="forge-dev" deviceName="sid-desk" />,
 		);
 
-		expect(screen.getByText(/running one for this project/i)).toBeTruthy();
+		expect(
+			screen.getByText(/one is registered on this box for this project/i),
+		).toBeTruthy();
+	});
+
+	it("does not claim the session is running now, which a registration does not prove", () => {
+		render(
+			<ResidentMaster master={LIVE} slug="forge-dev" deviceName="sid-desk" />,
+		);
+
+		const said = screen.getByText(/one is registered on this box/i);
+		expect(said.textContent).toMatch(/not what its terminal is doing now/i);
+		expect(said.textContent).toMatch(/went quiet/i);
+	});
+
+	it("says the same of a stale registration, where the box stopped reporting a day ago", () => {
+		render(
+			<ResidentMaster
+				master={{ ...LIVE, lastHeartbeatAt: new Date(Date.now() - 86_400_000).toISOString() }}
+				slug="forge-dev"
+				deviceName="sid-desk"
+			/>,
+		);
+
+		const said = screen.getByText(/one is registered on this box/i);
+		expect(said.textContent).toMatch(/not what its terminal is doing now/i);
+	});
+
+	it("says the same of one that has never reported at all", () => {
+		render(
+			<ResidentMaster
+				master={{ ...LIVE, lastHeartbeatAt: null }}
+				slug="forge-dev"
+				deviceName="sid-desk"
+			/>,
+		);
+
+		const said = screen.getByText(/one is registered on this box/i);
+		expect(said.textContent).toMatch(/last reported never/i);
+		expect(said.textContent).toMatch(/not what its terminal is doing now/i);
 	});
 
 	it("names the terminal session, so a reader can match it on the box", () => {
@@ -108,6 +147,39 @@ describe("the control it names, and the guessing it ends", () => {
 		expect(said.textContent).toMatch(/cannot establish what it holds/i);
 		expect(said.textContent).toMatch(/--force/);
 		expect(said.textContent).toMatch(/work it was holding/i);
+	});
+});
+
+describe("a core that does not serve the field at all", () => {
+	it("says the question could not be answered, never that there is none", () => {
+		render(
+			<ResidentMaster
+				master={undefined}
+				slug="forge-dev"
+				deviceName="sid-desk"
+			/>,
+		);
+
+		expect(
+			screen.getByText(/does not report resident master sessions/i),
+		).toBeTruthy();
+		expect(
+			screen.queryByText(/no resident master session is registered/i),
+		).toBeNull();
+	});
+
+	it("still names the controls, because the reader is still deciding what to do", () => {
+		render(
+			<ResidentMaster
+				master={undefined}
+				slug="forge-dev"
+				deviceName="sid-desk"
+			/>,
+		);
+
+		expect(
+			screen.getByText(/forge-runner master stand-down forge-dev/),
+		).toBeTruthy();
 	});
 });
 

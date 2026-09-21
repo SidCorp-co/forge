@@ -24,14 +24,21 @@ export function ResidentMaster({
 	return (
 		<div className="flex flex-col gap-1 border-line border-t pt-3">
 			<div className="fg-body-sm text-fg">Resident master session</div>
-			{master ? (
+			{master === undefined ? (
 				<p className="fg-caption text-muted">
-					This box is running one for this project:{" "}
+					This server does not report resident master sessions, so whether this box
+					is running one for this project cannot be answered here.
+				</p>
+			) : master ? (
+				<p className="fg-caption text-muted">
+					One is registered on this box for this project:{" "}
 					<code>{master.name || "unnamed session"}</code>. It last reported{" "}
 					{formatRelativeTime(master.lastHeartbeatAt, {
 						emptyLabel: "never",
 					})}
-					.
+					. That is what the box told this server, not what its terminal is doing
+					now — a box that went quiet without reporting the session closed still
+					reads as registered.
 				</p>
 			) : (
 				<p className="fg-caption text-muted">
@@ -39,6 +46,7 @@ export function ResidentMaster({
 					right now.
 				</p>
 			)}
+
 			<p className="fg-caption text-muted">
 				The pool control above does not govern it, and neither does turning the
 				device off: both decide whether work is offered, and neither ends a
