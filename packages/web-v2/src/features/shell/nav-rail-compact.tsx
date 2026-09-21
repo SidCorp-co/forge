@@ -337,13 +337,12 @@ export function NavRailCompact({
           are the only part that scrolls: the brand, the switcher and the footer
           stay pinned to the rail's own box (ISS-1119 — the rail's content runs
           to 999px, and with no scroll region here the footer was laid out past
-          the shell's `overflow-hidden` and painted nowhere at 1366x768).
-          The scrollbar is hidden because an 11px one on a 76px rail takes the
-          icons off centre and clips the active row's accent bar; the cut-off
-          row at the fold is the affordance. */}
+          the shell's `overflow-hidden` and painted nowhere at 1366x768). The
+          switcher is above it rather than in it because `overflow-y-auto`
+          computes `overflow-x` to `auto` and would clip its flyout. */}
       <div
         data-testid="rail-tiers"
-        className="flex w-full min-h-0 flex-1 flex-col items-center overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex w-full min-h-0 flex-1 flex-col items-center overflow-y-auto"
       >
         {projectItems && projectItems.length > 0 && activeProject && (
           <>
