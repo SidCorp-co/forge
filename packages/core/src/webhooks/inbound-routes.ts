@@ -3,8 +3,10 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { recordTurnedAwayInboundCall } from '../integrations/inbound-door.js';
 import { getAdapter, listIntegrations } from '../integrations/registry.js';
 import {
+  type BindingWithConnection,
   buildContextFromBinding,
   listActiveBindingsForProjectProvider,
 } from '../integrations/store.js';
@@ -18,6 +20,43 @@ const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
   new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
 const unauthorized = (code: string) =>
   new HTTPException(401, { message: 'invalid signature', cause: { code } });
+
+/**
+ * A call turned away at the door leaves a record on every binding it could have been meant for.
+ *
+ * ISS-1140: the refusals below are correct and, until this existed, invisible — nothing recorded
+ * that a call had arrived at all, so "the provider never called" and "a call reached us and we
+ * turned it away" read identically from inside Forge, and a wrong or rotated webhook secret was
+ * unfalsifiable. The call is unauthenticated, which is what its signature failing MEANS, so it is
+ * attributed to no sender and to no single binding: every active candidate gets the record and
+ * the reading says the attribution is unknown.
+ *
+ * `INTEGRATION_NOT_CONFIGURED` and a slug that resolves to no project are deliberately NOT
+ * recorded. There is no binding whose door they are, so there is nothing for the record to hang
+ * on and nothing that would ever read it.
+ *
+ * Best-effort: a write that fails must never turn a 401 into a 500. The refusal is the
+ * deliverable; the record is what makes it visible afterwards.
+ */
+async function noteTurnedAway(
+  pairs: BindingWithConnection[],
+  code: string,
+  context: { slug: string; provider: string },
+): Promise<void> {
+  try {
+    await Promise.all(
+      pairs.map((pair) =>
+        recordTurnedAwayInboundCall({
+          bindingId: pair.binding.id,
+          code,
+          eventName: 'inbound.refused',
+        }),
+      ),
+    );
+  } catch (err) {
+    logger.warn({ err, ...context }, 'integration inbound: recording the turn-away failed');
+  }
+}
 const notFound = () =>
   new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
 
@@ -78,6 +117,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     }
     const signatureHeader = c.req.header(map.signatureHeader);
     if (!signatureHeader) {
+      await noteTurnedAway(candidatePairs, 'MISSING_SIGNATURE', { slug, provider: map.provider });
       throw unauthorized('MISSING_SIGNATURE');
     }
 
@@ -87,6 +127,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
         verifyHmacSignature(p.binding.integrationSecret, rawBody, signatureHeader),
     );
     if (!pair) {
+      await noteTurnedAway(candidatePairs, 'INVALID_SIGNATURE', { slug, provider: map.provider });
       throw unauthorized('INVALID_SIGNATURE');
     }
 
@@ -114,7 +155,10 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
-      if (/signature/i.test(message)) throw unauthorized('INVALID_SIGNATURE');
+      if (/signature/i.test(message)) {
+        await noteTurnedAway([pair], 'INVALID_SIGNATURE', { slug, provider: map.provider });
+        throw unauthorized('INVALID_SIGNATURE');
+      }
       logger.error(
         { err, slug, provider: map.provider, bindingId: pair.binding.id },
         'integration adapter: handler threw',

@@ -112,12 +112,21 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     'stamps the issue as landed with the commit it landed at; naming `merge`, `close` or ' +
     '`delete-branch` is refused with that sentence rather than silently doing something near it. ' +
     "list: the project's GitHub bindings — { bindingId, repository, installed, bindingActive, " +
-    'connectionActive, agentGranted, lastHealthStatus, inboundDeliveries, lastInboundDeliveryAt }. ' +
-    'The last two are the webhook door: `inboundDeliveries: 0` with a null time on a binding that ' +
-    'is installed, active and granted means Forge has RECORDED no call — GitHub never called, or ' +
-    'its calls are turned away before they are recorded, which is what a wrong webhook secret ' +
-    'looks like from here. Either way, anything Forge knows about this repository it learned by ' +
-    'acting rather than by being told. It contacts GitHub not ' +
+    'connectionActive, agentGranted, lastHealthStatus, outboundProbeStatus, healthDetail, ' +
+    'inboundDoor, inboundReading, expectedWebhookUrl, observedWebhookUrl, inboundDeliveries, ' +
+    'lastInboundDeliveryAt, turnedAwayCalls, lastTurnedAwayAt, lastTurnedAwayCode }. ' +
+    '`lastHealthStatus` is the binding BOTH ways; `outboundProbeStatus` is what the outbound probe ' +
+    'alone found. `inboundDoor` says where the webhook door stands: `open` (something has come ' +
+    'through), `silent` (addressed here and nothing ever has), `elsewhere` (GitHub holds a ' +
+    'different address — compare `observedWebhookUrl` with `expectedWebhookUrl`), `unaddressed` ' +
+    '(no address, or the hook is switched off on GitHub), `unreadable` (GitHub could not be asked), ' +
+    '`not_expected`. Anything but `open` or `not_expected` demotes `lastHealthStatus`, because a ' +
+    'binding that receives nothing is not healthy whatever its outbound calls do. ' +
+    '`inboundReading` is the sentence saying what that is and what it is NOT: `turnedAwayCalls` ' +
+    'counts calls that reached the door and were refused, and those are unauthenticated, so ' +
+    'nothing here says GitHub sent them; a `silent` door cannot tell "GitHub called somewhere ' +
+    'else" from "GitHub did not call", and the reading names the App\'s Recent Deliveries tab ' +
+    'as the read that can. It contacts GitHub not ' +
     'at all and answers ' +
     'the same whether or not agents are granted, so it is where you find out WHY another action was ' +
     'refused. An empty array means this project has bound no repository; that is the answer, not an ' +

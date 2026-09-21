@@ -3066,6 +3066,14 @@
   tool stored it and called it written, or answered with the database's insert statement. An id in
   upper case is accepted, not refused as nothing.
 
+- **A repository connection that cannot receive anything no longer reports itself healthy.** The
+  check now asks GitHub where it has been told to call, compares that to the address this
+  repository needs, and names both when they differ.
+
+- **A webhook call Forge turns away now leaves a trace.** Rejected calls are counted apart from
+  deliveries that got through, with the reason, none of their content kept, and nobody named as
+  the sender — a failed signature means unidentified.
+
 - **A published release entry can be corrected.** An edit keeping over half its words reads as
   that entry, not a deletion plus a new one, so a dead link can be fixed without cutting the
   entry to the 40-word budget.

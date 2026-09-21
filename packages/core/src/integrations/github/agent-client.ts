@@ -1,5 +1,15 @@
 import { scrubLogText } from '@forge/observability';
+import { eq } from 'drizzle-orm';
+import { db } from '../../db/client.js';
+import { projects } from '../../db/schema.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
+import {
+  describeInboundDoor,
+  healthWithInboundDoor,
+  type InboundDoorState,
+  inboundDoorState,
+  readInboundDoorTraffic,
+} from '../inbound-door.js';
 import { getIntegration } from '../registry.js';
 import {
   type BindingWithConnection,
@@ -9,7 +19,7 @@ import {
 } from '../store.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { buildRepoClient, GitHubClientError } from './client.js';
-import { inboundDeliveriesForBinding } from './projection-health.js';
+import { inboundWebhookUrl, resolveApiBaseUrl } from './connect.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const AGENT_TIMEOUT_MS = 12_000;
@@ -61,18 +71,30 @@ export interface GitHubAgentBindingReport {
   connectionActive: boolean;
   /** Whether an agent on this project may use it — the binding's own `agent_access`. */
   agentGranted: boolean;
-  lastHealthStatus: string | null;
   /**
-   * How many webhook deliveries have arrived on this binding, and when the last one did.
-   *
-   * ISS-1123: a binding can be installed, active, granted and healthy and still have received
-   * nothing, because `lastHealthStatus` answers whether the App can call OUT. Zero here with a null
-   * time is the door nobody has knocked on, and it is reported beside the four flags an operator
-   * already reads rather than left to be inferred from a deliveries page that lists outbound calls
-   * in the same column.
+   * BOTH directions. Until ISS-1140 it was the outbound probe alone, so a binding addressed to the
+   * wrong host reported `ok`; `outboundProbeStatus` is where that verdict on its own still reads.
+   */
+  lastHealthStatus: string | null;
+  outboundProbeStatus: string | null;
+  /** The sentence the last probe produced, or null where it recorded none. */
+  healthDetail: string | null;
+  inboundDoor: InboundDoorState;
+  /** What the door reading knows, and what it says it cannot know. */
+  inboundReading: string | null;
+  /** What this binding needs GitHub to call, and what GitHub last answered that it holds. */
+  expectedWebhookUrl: string | null;
+  observedWebhookUrl: string | null;
+  /**
+   * Deliveries that came THROUGH. ISS-1123: a binding can be installed, active, granted and
+   * healthy having received nothing. ISS-1140: a turn-away is counted below, never here.
    */
   inboundDeliveries: number;
   lastInboundDeliveryAt: string | null;
+  /** Turned away at the door: unauthenticated, so attributed to no sender. */
+  turnedAwayCalls: number;
+  lastTurnedAwayAt: string | null;
+  lastTurnedAwayCode: string | null;
 }
 
 export interface GitHubAgentClient {
@@ -106,13 +128,36 @@ async function githubPairs(projectId: string): Promise<BindingWithConnection[]> 
   return rows.sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime());
 }
 
+/** The one read Forge cannot make for itself, named rather than the half it does not know. */
+const GITHUB_DELIVERY_LOG =
+  "the App's own Recent Deliveries tab on github.com, under Settings, Developer settings, GitHub Apps, this App, Advanced";
+
+/**
+ * Contacts GitHub NOT AT ALL, which is what makes this the place to find out why another action
+ * was refused. The probe stored where GitHub says it is addressed; the comparison happens per
+ * binding, because that URL carries a project slug and a connection may serve several.
+ */
 export async function githubAgentBindings(projectId: string): Promise<GitHubAgentBindingReport[]> {
   const decl = getIntegration('github');
   const pairs = await githubPairs(projectId);
+  if (pairs.length === 0) return [];
+
+  const [project] = await db
+    .select({ slug: projects.slug })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const apiBase = resolveApiBaseUrl();
+  const expectedUrl = apiBase && project?.slug ? inboundWebhookUrl(apiBase, project.slug) : null;
+  const inboundUnprompted = decl?.capabilities.inboundUnprompted ?? false;
+
   return Promise.all(
     pairs.map(async (pair) => {
       const config = effectiveConfig<GitHubConfig>(pair);
-      const inbound = await inboundDeliveriesForBinding(pair.binding.id);
+      const traffic = await readInboundDoorTraffic(pair.binding.id);
+      const observed = pair.connection.inboundEndpointObserved ?? null;
+      const state = inboundDoorState({ inboundUnprompted, expectedUrl, observed, traffic });
+      const stored = pair.connection.lastHealthStatus ?? null;
       return {
         bindingId: pair.binding.id,
         repository: config.owner && config.repo ? `${config.owner}/${config.repo}` : null,
@@ -120,9 +165,24 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
         bindingActive: pair.binding.active,
         connectionActive: pair.connection.active,
         agentGranted: grantHolds(decl, pair.binding),
-        lastHealthStatus: pair.connection.lastHealthStatus ?? null,
-        inboundDeliveries: inbound.count,
-        lastInboundDeliveryAt: inbound.lastAt ? inbound.lastAt.toISOString() : null,
+        lastHealthStatus: healthWithInboundDoor(stored, state),
+        outboundProbeStatus: stored,
+        healthDetail: pair.connection.lastHealthDetail ?? null,
+        inboundDoor: state,
+        inboundReading: describeInboundDoor({
+          state,
+          traffic,
+          expectedUrl,
+          observed,
+          providerDeliveryLog: GITHUB_DELIVERY_LOG,
+        }),
+        expectedWebhookUrl: expectedUrl,
+        observedWebhookUrl: observed?.url ?? null,
+        inboundDeliveries: traffic.accepted,
+        lastInboundDeliveryAt: traffic.lastAcceptedAt?.toISOString() ?? null,
+        turnedAwayCalls: traffic.refused,
+        lastTurnedAwayAt: traffic.lastRefusedAt?.toISOString() ?? null,
+        lastTurnedAwayCode: traffic.lastRefusalCode,
       };
     }),
   );

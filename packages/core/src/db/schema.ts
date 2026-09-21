@@ -2465,11 +2465,9 @@ export const projectGitCredentialsRelations = relations(projectGitCredentials, (
   }),
 }));
 
-export const integrationDeliveryDirections = ['outbound', 'inbound'] as const;
-export type IntegrationDeliveryDirection = (typeof integrationDeliveryDirections)[number];
+import * as ints from './schema-integration-types.js';
 
-export const integrationDeliveryStatuses = ['pending', 'ok', 'failed'] as const;
-export type IntegrationDeliveryStatus = (typeof integrationDeliveryStatuses)[number];
+export * from './schema-integration-types.js';
 
 export const integrationDeliveries = pgTable(
   'integration_deliveries',
@@ -2478,10 +2476,10 @@ export const integrationDeliveries = pgTable(
     bindingId: uuid('binding_id').references(() => integrationBindings.id, {
       onDelete: 'cascade',
     }),
-    direction: text('direction', { enum: integrationDeliveryDirections }).notNull(),
+    direction: text('direction', { enum: ints.integrationDeliveryDirections }).notNull(),
     eventName: text('event_name').notNull(),
     requestId: text('request_id'),
-    status: text('status', { enum: integrationDeliveryStatuses }).notNull().default('pending'),
+    status: text('status', { enum: ints.integrationDeliveryStatuses }).notNull().default('pending'),
     payload: jsonb('payload').notNull().default({}),
     response: jsonb('response'),
     errorMessage: text('error_message'),
@@ -2514,16 +2512,13 @@ export const integrationDeliveriesRelations = relations(integrationDeliveries, (
 // using project_integrations until the REST cutover issue flips them. Owner is a
 // generic principal so org-level sharing arrives without a data migration.
 
-export const integrationOwnerTypes = ['user', 'org'] as const;
-export type IntegrationOwnerType = (typeof integrationOwnerTypes)[number];
-
 export const integrationConnections = pgTable(
   'integration_connections',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     // Generic principal. ownerType discriminates the namespace of ownerId so we
     // can add 'org' later without re-keying rows; no FK because it is polymorphic.
-    ownerType: text('owner_type', { enum: integrationOwnerTypes }).notNull().default('user'),
+    ownerType: text('owner_type', { enum: ints.integrationOwnerTypes }).notNull().default('user'),
     ownerId: uuid('owner_id').notNull(),
     provider: text('provider').notNull(),
     displayName: text('display_name'),
@@ -2539,7 +2534,9 @@ export const integrationConnections = pgTable(
     active: boolean('active').notNull().default(true),
     breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
     lastHealthStatus: text('last_health_status'),
+    lastHealthDetail: text('last_health_detail'),
     lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
+    inboundEndpointObserved: jsonb('inbound_endpoint_observed').$type<ints.ObservedEndpoint>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
