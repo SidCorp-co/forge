@@ -33,6 +33,10 @@
     "./status-sets": {
       "types": "./src/status-sets.ts",
       "default": "./src/status-sets.ts"
+    },
+    "./document-patch": {
+      "types": "./src/document-patch.ts",
+      "default": "./src/document-patch.ts"
     }
   },
   "types": "./src/index.ts",

@@ -201,8 +201,7 @@ export function defaultStatesConfig(): NonNullable<StatesConfig> {
  * `previewEnabled`, etc.) round-trip through the API without causing 400s
  * but are not surfaced as configurable controls.
  */
-export const pipelineConfigSchema = z
-  .object({
+const pipelineConfigObject = z.object({
     enabled: z.boolean().optional(),
     intakeGate: z
       .object({
@@ -254,17 +253,18 @@ export const pipelineConfigSchema = z
     statusEntryCriteria: z
       .partialRecord(z.enum(issueStatuses), z.array(z.enum(ENTRY_CRITERION_KEYS)).min(1).max(16))
       .optional(),
-  })
-  .superRefine((cfg, ctx) => {
-    if (cfg.intakeGate?.enabled === true && cfg.poolBacklog?.statuses?.includes('draft')) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['poolBacklog', 'statuses'],
-        message:
-          'intakeGate is on, which parks every new issue at `draft` for a human to approve — so `draft` cannot also be admitted to `poolBacklog.statuses`, which lets a master approve it instead. Turn off `intakeGate`, or admit a status other than `draft`.',
-      });
-    }
-  });
+});
+
+export const pipelineConfigSchema = pipelineConfigObject.superRefine((cfg, ctx) => {
+  if (cfg.intakeGate?.enabled === true && cfg.poolBacklog?.statuses?.includes('draft')) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['poolBacklog', 'statuses'],
+      message:
+        'intakeGate is on, which parks every new issue at `draft` for a human to approve — so `draft` cannot also be admitted to `poolBacklog.statuses`, which lets a master approve it instead. Turn off `intakeGate`, or admit a status other than `draft`.',
+    });
+  }
+});
 
 export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;
 
@@ -317,15 +317,42 @@ export function refuseUnknownMcpServerNames(raw: unknown, ctx: z.RefinementCtx):
   }
 }
 
+/** Every key this document has, which is every key a patch may name. */
+export const PIPELINE_CONFIG_KEYS = Object.keys(pipelineConfigObject.shape).sort();
+
+/**
+ * A patch, not a document: it names the keys it changes and nothing else, and what the
+ * schema above judges is the MERGED result rather than the fragment on the wire.
+ *
+ * A key this config does not have is refused rather than dropped. Under the old contract a
+ * caller sent a whole document and an unknown key was silently discarded; under this one a
+ * key is an instruction, and an instruction nothing can carry out must not answer `200`.
+ */
 export const pipelineConfigPatchSchema = z
   .unknown()
   .superRefine((raw, ctx) => {
-    refuseRetiredStageKeys((raw as { states?: unknown } | null | undefined)?.states, ctx);
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'a pipeline config patch is an object holding the keys you are changing — `{"intakeGate":{"enabled":true}}`, never a whole document and never a list.',
+      });
+      return;
+    }
+    for (const key of Object.keys(raw as Record<string, unknown>)) {
+      if (PIPELINE_CONFIG_KEYS.includes(key)) continue;
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: `\`${key}\` is not a pipeline config key. The keys are: ${PIPELINE_CONFIG_KEYS.join(', ')}.`,
+      });
+    }
+    refuseRetiredStageKeys((raw as { states?: unknown }).states, ctx);
     refuseUnknownMcpServerNames(raw, ctx);
   })
-  .pipe(pipelineConfigSchema);
+  .transform((raw) => raw as Record<string, unknown>);
 
-export type PipelineConfigPatchInput = z.infer<typeof pipelineConfigPatchSchema>;
+export type PipelineConfigPatchInput = Record<string, unknown>;
 
 /**
  * Defaults surfaced by `GET /pipeline-config` when a project has no stored

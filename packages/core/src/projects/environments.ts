@@ -140,3 +140,9 @@ export const RETIRED_PREVIEW_DEPLOY_MESSAGE =
 
 export const RETIRED_PREVIEW_DEPLOY_NOTES_MESSAGE =
   'previewDeployNotes has been renamed to environmentsLimits, which writes `environments.limits`. The field it replaces invited anything and was set on 4 of 32 projects; this one asks one question — what does this environment NOT have — so write the limits a run planning a live walk would otherwise discover at the testing gate. It is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`, so never put a secret in it. null clears it.';
+
+export const ENVIRONMENTS_MOVED_MESSAGE =
+  '`environments` is a document rather than a column value, so it is written through its own door: `PATCH /api/projects/:id/environments` with `{ base, patch }`, where `base` is what `GET /api/projects/:id/environments` answered and `patch` names only the keys you are changing. Sent whole here, it replaced every key the sender did not resend, which is how a stored test credential disappeared behind a preview URL edit.';
+
+export const ENVIRONMENTS_WRITE_SHAPE_MESSAGE =
+  'an environments write is `{ base, patch }`: `patch` holds only the keys you are changing (`null` deletes one) and `base` is what `GET /api/projects/:id/environments` answered. A bare document is refused, because a document sent whole carries away every key the sender did not resend.';

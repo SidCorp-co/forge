@@ -145,6 +145,8 @@ export interface CreateTestProjectOverrides {
    * other driver.
    */
   agentConfig?: Record<string, unknown>;
+  /** Seed `projects.environments` — both sides of the deployment, as one document. */
+  environments?: Record<string, unknown>;
 }
 
 export async function createTestProject(
@@ -163,9 +165,10 @@ export async function createTestProject(
   };
 
   await db.execute(sql`
-    INSERT INTO projects (id, slug, name, org_id, created_by, agent_config)
+    INSERT INTO projects (id, slug, name, org_id, created_by, agent_config, environments)
     VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.orgId}, ${project.createdBy},
-            ${JSON.stringify(overrides.agentConfig ?? {})}::jsonb)
+            ${JSON.stringify(overrides.agentConfig ?? {})}::jsonb,
+            ${JSON.stringify(overrides.environments ?? {})}::jsonb)
   `);
 
   return project;

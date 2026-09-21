@@ -41,7 +41,15 @@ import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { PERSONA_STYLE_MAX, SYSTEM_PROMPT_MAX } from './agent-config-schema.js';
 import { announceContractInput } from './contract-input-announce.js';
-import { environmentsPatchSchema } from './environments.js';
+import {
+  ENVIRONMENTS_MOVED_MESSAGE,
+  ENVIRONMENTS_WRITE_SHAPE_MESSAGE,
+} from './environments.js';
+import {
+  environmentsHttpError,
+  readEnvironments,
+  updateEnvironments,
+} from './environments-service.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
@@ -83,7 +91,6 @@ export const updateProjectSchema = z
     rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
     systemPrompt: z.string().trim().max(SYSTEM_PROMPT_MAX).nullable().optional(),
     categories: z.array(z.string().trim().min(1).max(100)).max(50).nullable().optional(),
-    environments: environmentsPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
     // Move the project to another org. Requires org owner/admin on BOTH the
     // current org (route gate) and the target org (checked in the handler).
@@ -95,6 +102,16 @@ export const updateProjectPatchSchema = z
   .unknown()
   .superRefine(refuseRetiredProjectKeys)
   .pipe(updateProjectSchema);
+
+/** A refusal that names the door rather than the field it was typed at. */
+function refuseByName(
+  error: { issues: readonly { message: string }[] },
+  message: string,
+  code: string,
+): void {
+  if (!error.issues.some((i) => i.message === message)) return;
+  throw new HTTPException(400, { message, cause: { code } });
+}
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
@@ -380,7 +397,9 @@ projectRoutes.patch(
     if (!result.success) throw badRequest(flatten(result.error));
   }),
   zValidator('json', updateProjectPatchSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (result.success) return;
+    refuseByName(result.error, ENVIRONMENTS_MOVED_MESSAGE, 'ENVIRONMENTS_MOVED');
+    throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -424,7 +443,6 @@ projectRoutes.patch(
         patch.systemPrompt === null || patch.systemPrompt.length === 0 ? null : patch.systemPrompt;
     }
     if (patch.categories !== undefined) agentConfigPatch.categories = patch.categories;
-    if (patch.environments !== undefined) updates.environments = patch.environments;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
     const [updated] = await db.transaction(async (tx) => {
@@ -581,29 +599,123 @@ projectRoutes.get(
   },
 );
 
+export const PIPELINE_CONFIG_WRITE_SHAPE_MESSAGE =
+  'a pipeline config write is `{ base, patch }`: `patch` holds only the keys you are changing (`null` deletes one) and `base` is the `pipelineConfig` that `GET /api/projects/:id/pipeline-config` answered. A bare document is refused, because a document sent whole replaced every key the sender did not resend — which is how one settings section discarded another section\'s saved change.';
+
+const pipelineConfigWriteSchema = z
+  .unknown()
+  .superRefine((raw, ctx) => {
+    const body = raw as Record<string, unknown> | null;
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      ctx.addIssue({ code: 'custom', message: PIPELINE_CONFIG_WRITE_SHAPE_MESSAGE });
+      return;
+    }
+    if (!('patch' in body) || !('base' in body)) {
+      ctx.addIssue({ code: 'custom', message: PIPELINE_CONFIG_WRITE_SHAPE_MESSAGE });
+    }
+  })
+  .pipe(
+    z
+      .object({
+        base: z.record(z.string(), z.unknown()),
+        patch: pipelineConfigPatchSchema,
+      })
+      .strict(),
+  );
+
 projectRoutes.patch(
   '/:id/pipeline-config',
   zValidator('param', idParamSchema, (result) => {
     if (!result.success) throw badRequest(flatten(result.error));
   }),
-  zValidator('json', pipelineConfigPatchSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+  zValidator('json', pipelineConfigWriteSchema, (result) => {
+    if (result.success) return;
+    refuseByName(result.error, PIPELINE_CONFIG_WRITE_SHAPE_MESSAGE, 'CONFIG_PATCH_SHAPE');
+    throw badRequest(flatten(result.error));
   }),
   async (c) => {
     if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
 
     const { id } = c.req.valid('param');
-    const patch = c.req.valid('json');
+    const { base, patch } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     try {
-      const result = await updatePipelineConfig({ projectId: id, patch });
+      const result = await updatePipelineConfig({ projectId: id, patch, base });
       return c.json(result);
     } catch (err) {
       throw pipelineConfigHttpError(err);
+    }
+  },
+);
+
+// ─── Environments ────────────────────────────────────────────────────────────
+//
+// Both sides of the deployment, the test credentials and the limits, as ONE
+// document with one writer. It left `PATCH /:id` because a column assignment
+// there replaced the whole blob: every key the sender did not resend went with
+// the write (ISS-1170).
+
+const environmentsWriteSchema = z
+  .unknown()
+  .superRefine((raw, ctx) => {
+    const body = raw as Record<string, unknown> | null;
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      ctx.addIssue({ code: 'custom', message: ENVIRONMENTS_WRITE_SHAPE_MESSAGE });
+      return;
+    }
+    if (!('patch' in body) || !('base' in body)) {
+      ctx.addIssue({ code: 'custom', message: ENVIRONMENTS_WRITE_SHAPE_MESSAGE });
+    }
+  })
+  .pipe(
+    z
+      .object({
+        base: z.record(z.string(), z.unknown()),
+        patch: z.record(z.string(), z.unknown()),
+      })
+      .strict(),
+  );
+
+projectRoutes.get(
+  '/:id/environments',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(flatten(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const access = await loadProjectAccess(id, c.get('userId'));
+    if (!access.role) throw forbidden('not a project member');
+    try {
+      return c.json({ environments: await readEnvironments(id) });
+    } catch (err) {
+      throw environmentsHttpError(err);
+    }
+  },
+);
+
+projectRoutes.patch(
+  '/:id/environments',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(flatten(result.error));
+  }),
+  zValidator('json', environmentsWriteSchema, (result) => {
+    if (result.success) return;
+    refuseByName(result.error, ENVIRONMENTS_WRITE_SHAPE_MESSAGE, 'ENVIRONMENTS_WRITE_SHAPE');
+    throw badRequest(flatten(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { base, patch } = c.req.valid('json');
+    const access = await loadProjectAccess(id, c.get('userId'));
+    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    try {
+      return c.json(await updateEnvironments({ projectId: id, patch, base }));
+    } catch (err) {
+      throw environmentsHttpError(err);
     }
   },
 );
