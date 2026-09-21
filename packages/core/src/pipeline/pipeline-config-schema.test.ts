@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AUTONOMOUS_DRIVER_STATUSES } from './autonomous-mode.js';
 import {
   defaultStatesConfig,
   mergePipelineConfig,
@@ -362,13 +363,10 @@ describe('poolBacklog (ISS-917)', () => {
     expect(out.poolBacklog).toEqual({ statuses: ['draft', 'on_hold', 'waiting'], limit: 5 });
   });
 
-  it.each(['open', 'in_progress', 'needs_info', 'closed', 'dropped'])(
-    'rejects the driver-owned status %s',
-    (status) => {
-      const out = pipelineConfigSchema.safeParse({ poolBacklog: { statuses: [status] } });
-      expect(out.success).toBe(false);
-    },
-  );
+  it.each(AUTONOMOUS_DRIVER_STATUSES)('rejects the driver-owned status %s', (status) => {
+    const out = pipelineConfigSchema.safeParse({ poolBacklog: { statuses: [status] } });
+    expect(out.success).toBe(false);
+  });
 
   it('rejects an unknown key inside poolBacklog (strict)', () => {
     const out = pipelineConfigSchema.safeParse({

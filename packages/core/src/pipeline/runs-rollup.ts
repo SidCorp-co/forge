@@ -15,8 +15,6 @@ import {
   agentSessions,
   devices,
   issues,
-  type JobStatus,
-  jobStatuses,
   jobs,
   type PipelineRunKind,
   type PipelineRunStatus,
@@ -26,6 +24,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 
@@ -377,29 +376,20 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   };
 }
 
-/**
- * Cost rollup for many runs in one round-trip. Returns a map keyed by run id.
- * Runs with no usage rows are absent from the map; callers should fall back
- * to {@link EMPTY_COST}.
- */
-const JOB_STATUS_IS_LIVE: Record<JobStatus, boolean> = {
-  queued: true,
-  dispatched: true,
-  running: true,
-  held: false,
-  done: false,
-  failed: false,
-  cancelled: false,
-};
-const LIVE_JOB_STATUSES = jobStatuses.filter((s) => JOB_STATUS_IS_LIVE[s]);
-
 const sqlList = (values: readonly string[]) =>
   sql.join(
     values.map((v) => sql`${v}`),
     sql`, `,
   );
 
-/** Both halves of run liveness for many runs, in ONE statement. */
+/**
+ * Both halves of run liveness for many runs, in ONE statement. `live_jobs`
+ * counts work the pipeline is moving, so it asks
+ * {@link UNHELD_LIVE_JOB_STATUSES} rather than `jobs/status-sets.ts`'s
+ * `LIVE_JOB_STATUSES`: a run whose only job is parked on a person is not work
+ * in flight, and counting it would keep that run out of the stalled band for
+ * as long as it waits.
+ */
 async function loadRunLivenessByRunIds(
   runIds: string[],
 ): Promise<Map<string, { liveJobs: number; beat: string | null }>> {
@@ -414,7 +404,7 @@ async function loadRunLivenessByRunIds(
       r.id AS run_id,
       (SELECT count(*) FROM ${jobs} j
         WHERE j.pipeline_run_id = r.id
-          AND j.status IN (${sqlList(LIVE_JOB_STATUSES)})) AS live_jobs,
+          AND j.status IN (${sqlList(UNHELD_LIVE_JOB_STATUSES)})) AS live_jobs,
       (SELECT max(s.last_heartbeat_at) FROM ${agentSessions} s
         WHERE s.pipeline_run_id = r.id
           AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)})) AS last_beat
@@ -428,6 +418,11 @@ async function loadRunLivenessByRunIds(
   return out;
 }
 
+/**
+ * Cost rollup for many runs in one round-trip. Returns a map keyed by run id.
+ * Runs with no usage rows are absent from the map; callers should fall back
+ * to {@link EMPTY_COST}.
+ */
 async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineRunCostSummary>> {
   const out = new Map<string, PipelineRunCostSummary>();
   if (runIds.length === 0) return out;
