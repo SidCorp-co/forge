@@ -3079,8 +3079,8 @@
   repository needs, and names both when they differ.
 
 - **A webhook call Forge turns away now leaves a trace.** Rejected calls are counted apart from
-  deliveries that got through, with the reason, none of their content kept, and nobody named as
-  the sender — a failed signature means unidentified.
+  ones that got through, with the reason, no content kept, nobody named as sender, and repeats
+  inside ten minutes sharing one record.
 
 - **A published release entry can be corrected.** An edit of a few words reads as that entry, not
   a deletion plus a new one, so a dead link can be fixed without cutting the entry to the 40-word

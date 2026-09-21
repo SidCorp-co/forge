@@ -23,8 +23,8 @@ const HERE = 'https://api.example.test/api/webhooks/in/forge-dev';
 const QUIET = {
   accepted: 0,
   lastAcceptedAt: null,
-  refused: 0,
-  lastRefusedAt: null,
+  refusalRecords: 0,
+  lastRecordedRefusalAt: null,
   lastRefusalCode: null,
 };
 const CARRYING = {
@@ -122,6 +122,28 @@ describe('where a door stands', () => {
     expect(state({ observed: null, traffic: QUIET })).toBe('silent');
     expect(state({ observed: null, traffic: CARRYING })).toBe('open');
   });
+
+  // Review finding F1. A core with no public API origin cannot build the URL this binding needs,
+  // so the address half is UNJUDGED — and traffic having come through is not permission to call
+  // the unjudged half green, whether or not an observation exists to compare against.
+  it('says the address is unjudged where nothing could build the URL this binding needs', () => {
+    expect(state({ expectedUrl: null, traffic: CARRYING })).toBe('unaddressable');
+    expect(state({ expectedUrl: null, traffic: QUIET })).toBe('unaddressable');
+    expect(state({ expectedUrl: null, observed: null, traffic: CARRYING })).toBe('unaddressable');
+  });
+
+  // The same absence must not swallow a fault the observation alone establishes.
+  it('still names a hook switched off, or held at no address, without an expected URL', () => {
+    expect(state({ expectedUrl: null, observed: { ...HERE_AND_ON, active: false } })).toBe(
+      'unaddressed',
+    );
+    expect(
+      state({
+        expectedUrl: null,
+        observed: { url: null, active: null, observedAt: 'x', readError: 'HTTP 502' },
+      }),
+    ).toBe('unreadable');
+  });
 });
 
 describe('the status a door state produces', () => {
@@ -133,7 +155,13 @@ describe('the status a door state produces', () => {
 
   // Criterion 4 and criterion 1 at the status.
   it('refuses to report ok for a door that is silent, elsewhere, unaddressed or unreadable', () => {
-    for (const s of ['silent', 'elsewhere', 'unaddressed', 'unreadable'] as const) {
+    for (const s of [
+      'silent',
+      'elsewhere',
+      'unaddressed',
+      'unreadable',
+      'unaddressable',
+    ] as const) {
       expect(healthWithInboundDoor('ok', s)).toBe('degraded');
       expect(healthWithInboundDoor(null, s)).toBe('degraded');
     }
@@ -189,6 +217,14 @@ describe('what the reading says, and what it does not', () => {
     );
   });
 
+  // Review finding F1: the missing prerequisite is named, and no provider is blamed for it.
+  it('names what is missing where it could not build the URL this binding needs', () => {
+    const sentence = read({ state: 'unaddressable', expectedUrl: null }) ?? '';
+    expect(sentence).toContain('PUBLIC_API_BASE_URL');
+    expect(sentence).toContain('the address half of this door is unjudged');
+    expect(sentence).not.toMatch(/GitHub|the provider is addressed/);
+  });
+
   it('carries the reason a read failed rather than a verdict it did not earn', () => {
     const sentence =
       read({
@@ -206,12 +242,12 @@ describe('what the reading says, and what it does not', () => {
       read({
         traffic: {
           ...QUIET,
-          refused: 3,
-          lastRefusedAt: new Date('2026-09-21T09:00:00.000Z'),
+          refusalRecords: 3,
+          lastRecordedRefusalAt: new Date('2026-09-21T09:00:00.000Z'),
           lastRefusalCode: 'INVALID_SIGNATURE',
         },
       }) ?? '';
-    expect(sentence).toContain('3 calls');
+    expect(sentence).toContain('At least 3 calls');
     expect(sentence).toContain('INVALID_SIGNATURE');
     expect(sentence).toContain('unauthenticated, so Forge cannot say who sent it');
     expect(sentence).not.toMatch(/GitHub sent|the provider sent/);
@@ -220,9 +256,32 @@ describe('what the reading says, and what it does not', () => {
   it('counts one turned-away call in the singular', () => {
     const sentence =
       read({
-        traffic: { ...QUIET, refused: 1, lastRefusedAt: new Date(0), lastRefusalCode: 'X' },
+        traffic: {
+          ...QUIET,
+          refusalRecords: 1,
+          lastRecordedRefusalAt: new Date(0),
+          lastRefusalCode: 'X',
+        },
       }) ?? '';
-    expect(sentence).toContain('1 call carrying');
+    expect(sentence).toContain('At least 1 call carrying');
     expect(sentence).toContain('was turned away');
+  });
+
+  // Review finding F3. One record can stand for six calls inside a bucket, so the reading gives a
+  // floor and says the last one is the last RECORDED — claiming either exactly would overstate
+  // what the deduped row can carry.
+  it('gives the turn-aways as a floor and the time as the last one recorded', () => {
+    const sentence =
+      read({
+        traffic: {
+          ...QUIET,
+          refusalRecords: 1,
+          lastRecordedRefusalAt: new Date('2026-09-21T09:00:00.000Z'),
+          lastRefusalCode: 'INVALID_SIGNATURE',
+        },
+      }) ?? '';
+    expect(sentence).toContain('at most one per refusal code per ten minutes');
+    expect(sentence).toContain('the true count is higher where calls repeated');
+    expect(sentence).toContain('The last one RECORDED was at');
   });
 });

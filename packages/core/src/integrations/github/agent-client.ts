@@ -71,12 +71,9 @@ export interface GitHubAgentBindingReport {
   connectionActive: boolean;
   /** Whether an agent on this project may use it — the binding's own `agent_access`. */
   agentGranted: boolean;
-  /**
-   * BOTH directions. Until ISS-1140 it was the outbound probe alone, so a binding addressed to the
-   * wrong host reported `ok`; `outboundProbeStatus` is where that verdict on its own still reads.
-   */
+  /** BOTH directions; until ISS-1140 the outbound probe alone, so a binding addressed at the wrong host read `ok`. `connectionProbeStatus` is what the probe STORED: repository fetch and App webhook read together, since a failed hook read demotes that too. */
   lastHealthStatus: string | null;
-  outboundProbeStatus: string | null;
+  connectionProbeStatus: string | null;
   /** The sentence the last probe produced, or null where it recorded none. */
   healthDetail: string | null;
   inboundDoor: InboundDoorState;
@@ -85,15 +82,12 @@ export interface GitHubAgentBindingReport {
   /** What this binding needs GitHub to call, and what GitHub last answered that it holds. */
   expectedWebhookUrl: string | null;
   observedWebhookUrl: string | null;
-  /**
-   * Deliveries that came THROUGH. ISS-1123: a binding can be installed, active, granted and
-   * healthy having received nothing. ISS-1140: a turn-away is counted below, never here.
-   */
+  /** Deliveries that came THROUGH — a binding can be green everywhere and have received nothing (ISS-1123); a turn-away is counted below, never here. */
   inboundDeliveries: number;
   lastInboundDeliveryAt: string | null;
-  /** Turned away at the door: unauthenticated, so attributed to no sender. */
-  turnedAwayCalls: number;
-  lastTurnedAwayAt: string | null;
+  /** Turned away: unauthenticated, so attributed to nobody, and RECORDS — one per code per ten minutes — so a floor on the calls, never the calls. */
+  turnedAwayRecords: number;
+  lastRecordedTurnAwayAt: string | null;
   lastTurnedAwayCode: string | null;
 }
 
@@ -166,7 +160,7 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
         connectionActive: pair.connection.active,
         agentGranted: grantHolds(decl, pair.binding),
         lastHealthStatus: healthWithInboundDoor(stored, state),
-        outboundProbeStatus: stored,
+        connectionProbeStatus: stored,
         healthDetail: pair.connection.lastHealthDetail ?? null,
         inboundDoor: state,
         inboundReading: describeInboundDoor({
@@ -180,8 +174,8 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
         observedWebhookUrl: observed?.url ?? null,
         inboundDeliveries: traffic.accepted,
         lastInboundDeliveryAt: traffic.lastAcceptedAt?.toISOString() ?? null,
-        turnedAwayCalls: traffic.refused,
-        lastTurnedAwayAt: traffic.lastRefusedAt?.toISOString() ?? null,
+        turnedAwayRecords: traffic.refusalRecords,
+        lastRecordedTurnAwayAt: traffic.lastRecordedRefusalAt?.toISOString() ?? null,
         lastTurnedAwayCode: traffic.lastRefusalCode,
       };
     }),

@@ -10,9 +10,9 @@ import { db } from '../db/client.js';
 import { integrationDeliveries, type ObservedEndpoint } from '../db/schema.js';
 
 /**
- * `not_expected`: does not call in unprompted, so silence is not a fault. `open`: something came
- * through. `elsewhere`: holds an address that is not this binding's. `unaddressed`: holds none, or
- * the hook is off. `unreadable`: could not be asked. `silent`: addressed here, and nothing ever.
+ * `not_expected`: silence is not a fault here. `open`: something came through. `elsewhere`: an
+ * address that is not this binding's. `unaddressed`: none held, or the hook is off. `unreadable`:
+ * could not be asked. `unaddressable`: this core cannot say what URL this binding needs. `silent`.
  */
 export type InboundDoorState =
   | 'not_expected'
@@ -20,14 +20,15 @@ export type InboundDoorState =
   | 'elsewhere'
   | 'unaddressed'
   | 'unreadable'
+  | 'unaddressable'
   | 'silent';
 
-/** `accepted` got through; `refused` was turned away at the door, attributed to nobody, and never `failed`, which is a delivery accepted and then not processed and which the outbound breaker counts. */
+/** `accepted` got through; `refused` counts RECORDS, one per code per bucket, so it is a floor on the calls turned away — attributed to nobody, and never `failed`, which is a delivery accepted and then not processed and which the outbound breaker counts. */
 export interface InboundDoorTraffic {
   accepted: number;
   lastAcceptedAt: Date | null;
-  refused: number;
-  lastRefusedAt: Date | null;
+  refusalRecords: number;
+  lastRecordedRefusalAt: Date | null;
   lastRefusalCode: string | null;
 }
 
@@ -55,8 +56,8 @@ export async function readInboundDoorTraffic(bindingId: string): Promise<Inbound
       ),
     );
 
-  const refused = Number(totals?.refused ?? 0);
-  const [latestRefusal] = refused
+  const refusalRecords = Number(totals?.refused ?? 0);
+  const [latestRefusal] = refusalRecords
     ? await db
         .select({ code: integrationDeliveries.errorMessage })
         .from(integrationDeliveries)
@@ -74,8 +75,8 @@ export async function readInboundDoorTraffic(bindingId: string): Promise<Inbound
   return {
     accepted: Number(totals?.accepted ?? 0),
     lastAcceptedAt: totals?.lastAcceptedAt ? new Date(totals.lastAcceptedAt) : null,
-    refused,
-    lastRefusedAt: totals?.lastRefusedAt ? new Date(totals.lastRefusedAt) : null,
+    refusalRecords,
+    lastRecordedRefusalAt: totals?.lastRefusedAt ? new Date(totals.lastRefusedAt) : null,
     lastRefusalCode: latestRefusal?.code ?? null,
   };
 }
@@ -133,6 +134,8 @@ export function inboundDoorState(args: {
     if (args.expectedUrl !== null && !sameEndpoint(observed.url, args.expectedUrl))
       return 'elsewhere';
   }
+  // Traffic proves the door opens; it does not excuse an ADDRESS check that could not be made.
+  if (args.expectedUrl === null) return 'unaddressable';
   return args.traffic.accepted > 0 ? 'open' : 'silent';
 }
 
@@ -183,8 +186,8 @@ export function describeInboundDoor(args: {
   if (state === 'not_expected') return null;
 
   const turnedAway =
-    traffic.refused > 0
-      ? ` ${traffic.refused} call${traffic.refused === 1 ? '' : 's'} carrying this provider's webhook header reached this door and ${traffic.refused === 1 ? 'was' : 'were'} turned away, the last at ${traffic.lastRefusedAt?.toISOString() ?? 'a time nothing recorded'} with ${traffic.lastRefusalCode ?? 'no code recorded'}; a turned-away call is unauthenticated, so Forge cannot say who sent it.`
+    traffic.refusalRecords > 0
+      ? ` At least ${traffic.refusalRecords} call${traffic.refusalRecords === 1 ? '' : 's'} carrying this provider's webhook header reached this door and ${traffic.refusalRecords === 1 ? 'was' : 'were'} turned away — ${traffic.refusalRecords} record${traffic.refusalRecords === 1 ? '' : 's'}, at most one per refusal code per ten minutes, so the true count is higher where calls repeated. The last one RECORDED was at ${traffic.lastRecordedRefusalAt?.toISOString() ?? 'a time nothing recorded'} with ${traffic.lastRefusalCode ?? 'no code recorded'}; a turned-away call is unauthenticated, so Forge cannot say who sent it.`
       : '';
 
   switch (state) {
@@ -192,6 +195,12 @@ export function describeInboundDoor(args: {
       return (
         `${traffic.accepted} inbound deliver${traffic.accepted === 1 ? 'y has' : 'ies have'} come through this door, ` +
         `the last at ${traffic.lastAcceptedAt?.toISOString() ?? 'a time nothing recorded'}.${turnedAway}`
+      );
+    case 'unaddressable':
+      return (
+        `Nothing here could build the inbound URL this binding needs, so what the provider holds cannot be compared against it. ` +
+        `This core resolves no public API origin — PUBLIC_API_BASE_URL, OAUTH_REDIRECT_BASE and APP_BASE_URL are all unset — ` +
+        `or this binding's project carries no slug. Until one is set, the address half of this door is unjudged.${turnedAway}`
       );
     case 'unreadable':
       return (

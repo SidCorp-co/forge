@@ -52,8 +52,8 @@ vi.mock('../store.js', () => ({
 const NO_TRAFFIC = {
   accepted: 0,
   lastAcceptedAt: null as Date | null,
-  refused: 0,
-  lastRefusedAt: null as Date | null,
+  refusalRecords: 0,
+  lastRecordedRefusalAt: null as Date | null,
   lastRefusalCode: null as string | null,
 };
 const trafficMock = vi.fn(async (_bindingId: string) => ({ ...NO_TRAFFIC }));

@@ -50,8 +50,8 @@ vi.mock('../store.js', () => ({
 const NO_TRAFFIC = {
   accepted: 0,
   lastAcceptedAt: null as Date | null,
-  refused: 0,
-  lastRefusedAt: null as Date | null,
+  refusalRecords: 0,
+  lastRecordedRefusalAt: null as Date | null,
   lastRefusalCode: null as string | null,
 };
 const trafficMock = vi.fn(async (_bindingId: string) => ({ ...NO_TRAFFIC }));
@@ -159,11 +159,11 @@ describe('list reports what exists, whatever the grant says', () => {
         connectionActive: true,
         agentGranted: false,
         lastHealthStatus: 'ok',
-        outboundProbeStatus: 'ok',
+        connectionProbeStatus: 'ok',
         inboundDoor: 'open',
         inboundDeliveries: 3,
         lastInboundDeliveryAt: '2026-09-20T10:00:00.000Z',
-        turnedAwayCalls: 0,
+        turnedAwayRecords: 0,
       },
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -183,7 +183,7 @@ describe('list reports what exists, whatever the grant says', () => {
     const [report] = await githubAgentBindings(PROJECT);
     expect(report).toMatchObject({
       bindingId: 'bind-silent',
-      outboundProbeStatus: 'ok',
+      connectionProbeStatus: 'ok',
       lastHealthStatus: 'degraded',
       inboundDoor: 'silent',
       inboundDeliveries: 0,
@@ -261,14 +261,14 @@ describe('list reports what exists, whatever the grant says', () => {
     trafficMock.mockResolvedValue({
       accepted: 0,
       lastAcceptedAt: null,
-      refused: 4,
-      lastRefusedAt: new Date('2026-09-21T09:00:00.000Z'),
+      refusalRecords: 4,
+      lastRecordedRefusalAt: new Date('2026-09-21T09:00:00.000Z'),
       lastRefusalCode: 'INVALID_SIGNATURE',
     });
     listBindingsForProjectMock.mockResolvedValue([row({})]);
     const [report] = await githubAgentBindings(PROJECT);
     expect(report?.inboundDeliveries).toBe(0);
-    expect(report?.turnedAwayCalls).toBe(4);
+    expect(report?.turnedAwayRecords).toBe(4);
     expect(report?.lastTurnedAwayCode).toBe('INVALID_SIGNATURE');
     expect(report?.inboundReading).toContain('unauthenticated');
     expect(report?.inboundReading).not.toMatch(/GitHub (sent|called) (it|them)/);
@@ -282,7 +282,7 @@ describe('list reports what exists, whatever the grant says', () => {
     await expect(githubAgentBindings(PROJECT)).resolves.toMatchObject([
       {
         lastHealthStatus: 'needs_reauth',
-        outboundProbeStatus: 'needs_reauth',
+        connectionProbeStatus: 'needs_reauth',
         healthDetail: 'the App JWT was rejected',
         inboundDoor: 'silent',
       },

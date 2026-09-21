@@ -112,18 +112,21 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     'stamps the issue as landed with the commit it landed at; naming `merge`, `close` or ' +
     '`delete-branch` is refused with that sentence rather than silently doing something near it. ' +
     "list: the project's GitHub bindings — { bindingId, repository, installed, bindingActive, " +
-    'connectionActive, agentGranted, lastHealthStatus, outboundProbeStatus, healthDetail, ' +
+    'connectionActive, agentGranted, lastHealthStatus, connectionProbeStatus, healthDetail, ' +
     'inboundDoor, inboundReading, expectedWebhookUrl, observedWebhookUrl, inboundDeliveries, ' +
-    'lastInboundDeliveryAt, turnedAwayCalls, lastTurnedAwayAt, lastTurnedAwayCode }. ' +
-    '`lastHealthStatus` is the binding BOTH ways; `outboundProbeStatus` is what the outbound probe ' +
-    'alone found. `inboundDoor` says where the webhook door stands: `open` (something has come ' +
-    'through), `silent` (addressed here and nothing ever has), `elsewhere` (GitHub holds a ' +
+    'lastInboundDeliveryAt, turnedAwayRecords, lastRecordedTurnAwayAt, lastTurnedAwayCode }. ' +
+    '`lastHealthStatus` is the binding BOTH ways; `connectionProbeStatus` is what the last probe ' +
+    'stored on the connection. `inboundDoor` says where the webhook door stands: `open` (something ' +
+    'has come through), `silent` (addressed here and nothing ever has), `elsewhere` (GitHub holds a ' +
     'different address — compare `observedWebhookUrl` with `expectedWebhookUrl`), `unaddressed` ' +
     '(no address, or the hook is switched off on GitHub), `unreadable` (GitHub could not be asked), ' +
-    '`not_expected`. Anything but `open` or `not_expected` demotes `lastHealthStatus`, because a ' +
-    'binding that receives nothing is not healthy whatever its outbound calls do. ' +
-    '`inboundReading` is the sentence saying what that is and what it is NOT: `turnedAwayCalls` ' +
-    'counts calls that reached the door and were refused, and those are unauthenticated, so ' +
+    '`unaddressable` (this core resolves no public API origin, so it cannot say what URL this ' +
+    'binding needs and the address half is unjudged), `not_expected`. Anything but `open` or ' +
+    '`not_expected` demotes `lastHealthStatus`, because a binding that receives nothing, or whose ' +
+    'address nothing has checked, is not healthy whatever its outbound calls do. ' +
+    '`inboundReading` is the sentence saying what that is and what it is NOT: `turnedAwayRecords` ' +
+    'counts RECORDS of calls refused at the door, at most one per code per ten minutes, so it is a ' +
+    'FLOOR on the calls rather than the calls; those calls are unauthenticated, so ' +
     'nothing here says GitHub sent them; a `silent` door cannot tell "GitHub called somewhere ' +
     'else" from "GitHub did not call", and the reading names the App\'s Recent Deliveries tab ' +
     'as the read that can. It contacts GitHub not ' +

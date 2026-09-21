@@ -154,6 +154,26 @@ describe('a call turned away at the door', () => {
     expect(codes).toEqual(['INVALID_SIGNATURE', 'MISSING_SIGNATURE']);
   });
 
+  // Review finding on this head: the record is best-effort and the REFUSAL is the deliverable, so
+  // a write that cannot land must not turn a 401 into a 500. Planted by making the insert itself
+  // impossible, which is the only way to watch that branch run.
+  it('still answers 401 when the record cannot be written at all', async () => {
+    await harness.db.execute(sql`
+      ALTER TABLE integration_deliveries
+      ADD CONSTRAINT tmp_no_refusals CHECK (status <> 'refused')
+    `);
+    try {
+      const res = await knock({ 'x-hub-signature-256': sign('wrong') });
+      expect(res.status).toBe(401);
+      expect(((await res.json()) as { code?: string }).code).toBe('INVALID_SIGNATURE');
+      expect(await deliveries()).toHaveLength(0);
+    } finally {
+      await harness.db.execute(
+        sql`ALTER TABLE integration_deliveries DROP CONSTRAINT tmp_no_refusals`,
+      );
+    }
+  });
+
   // The bucket is fixed, not rolling: the next one takes its own record.
   it('records again in the next bucket, so a door that stays refused keeps saying so', async () => {
     const at = new Date('2026-09-21T09:00:00.000Z');
@@ -176,9 +196,9 @@ describe('what the door reading counts', () => {
     const traffic = await readInboundDoorTraffic(bindingId);
     expect(traffic.accepted).toBe(0);
     expect(traffic.lastAcceptedAt).toBeNull();
-    expect(traffic.refused).toBe(1);
+    expect(traffic.refusalRecords).toBe(1);
     expect(traffic.lastRefusalCode).toBe('INVALID_SIGNATURE');
-    expect(traffic.lastRefusedAt).toBeInstanceOf(Date);
+    expect(traffic.lastRecordedRefusalAt).toBeInstanceOf(Date);
   });
 
   it('counts a delivery that got in, beside the refusals, without either hiding the other', async () => {
@@ -190,15 +210,15 @@ describe('what the door reading counts', () => {
 
     const traffic = await readInboundDoorTraffic(bindingId);
     expect(traffic.accepted).toBe(1);
-    expect(traffic.refused).toBe(1);
+    expect(traffic.refusalRecords).toBe(1);
   });
 
   it('answers a door nothing has reached with zeroes rather than with nulls that read as unknown', async () => {
     await expect(readInboundDoorTraffic(bindingId)).resolves.toEqual({
       accepted: 0,
       lastAcceptedAt: null,
-      refused: 0,
-      lastRefusedAt: null,
+      refusalRecords: 0,
+      lastRecordedRefusalAt: null,
       lastRefusalCode: null,
     });
   });
