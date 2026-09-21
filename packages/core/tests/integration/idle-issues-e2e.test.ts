@@ -242,16 +242,20 @@ describe('The inverses: a detector that flags everything is the same defect', ()
     expect(await strandOf(issueId)).toBeNull();
   });
 
-  it('leaves a row alone that a live system run names', async () => {
+  it('leaves a row alone that a live session holds a lease on', async () => {
     const issueId = await seedIssue({ status: 'testing' });
-    const runIssues = JSON.stringify({ runIssues: [`ISS-${fx.lastSeq}`] });
-    await fx.db.execute(sql`
-        INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, metadata)
-        VALUES (${randomUUID()}, ${fx.projectId}, 'system', 'running', now(), ${runIssues}::jsonb)
-      `);
+    await fx.seedIssueLease(fx.lastSeq, 'running');
 
     expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(0);
     expect(await strandOf(issueId)).toBeNull();
+  });
+
+  it('reads a row as stranded once the session holding its lease is terminal', async () => {
+    const issueId = await seedIssue({ status: 'testing' });
+    await fx.seedIssueLease(fx.lastSeq, 'completed');
+
+    expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(1);
+    expect(await strandOf(issueId)).not.toBeNull();
   });
 
   it('leaves a row alone that has not yet spent its own status grace', async () => {
