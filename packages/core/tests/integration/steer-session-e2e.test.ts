@@ -75,8 +75,9 @@ describe('steer E2E', () => {
 
     const sessionId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, device_id, status, pipeline_run_id, runtime_state)
-      VALUES (${sessionId}, ${project.id}, ${device?.id ?? null}, 'running', ${runId},
+      INSERT INTO agent_sessions (id, project_id, device_id, kind, status, pipeline_run_id,
+                                  runtime_state)
+      VALUES (${sessionId}, ${project.id}, ${device?.id ?? null}, 'pipeline', 'running', ${runId},
               ${opts.runtimeState === undefined ? 'working' : opts.runtimeState})
     `);
 

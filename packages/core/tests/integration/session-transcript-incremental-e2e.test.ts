@@ -104,8 +104,8 @@ beforeEach(async () => {
 async function seedSession(): Promise<{ jobId: string; sessionId: string }> {
   const sid = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, device_id, status, pipeline_run_id)
-    VALUES (${sid}, ${projectId}, ${deviceId}, 'running', ${runId})
+    INSERT INTO agent_sessions (id, project_id, device_id, kind, status, pipeline_run_id)
+    VALUES (${sid}, ${projectId}, ${deviceId}, 'pipeline', 'running', ${runId})
   `);
   const jid = randomUUID();
   await harness.db.execute(sql`

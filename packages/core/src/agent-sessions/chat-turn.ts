@@ -183,6 +183,9 @@ export interface CreateChatSessionArgs {
   repoPath?: string | null;
   claudeSessionId?: string | null;
   metadata?: Record<string, unknown> | null;
+  /** The session this one was cut from — a rerun's source, a failover's
+   *  predecessor. Core's own record, never a caller's claim about a tree. */
+  parentSessionId?: string | null;
   /** Run kind for the one-shot pipeline_run every session belongs to (ISS-101). */
   runKind?: 'interactive' | 'system';
   runMetadata?: Record<string, unknown>;
@@ -212,6 +215,8 @@ export async function createChatSessionRow(args: CreateChatSessionArgs): Promise
       title: args.title ?? null,
       repoPath: args.repoPath ?? null,
       claudeSessionId: args.claudeSessionId ?? null,
+      kind: 'chat',
+      parentSessionId: args.parentSessionId ?? null,
       metadata: (metadata ?? null) as never,
     })
     .returning();

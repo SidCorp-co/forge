@@ -32,6 +32,16 @@ vi.mock('../db/schema.js', () => ({
 }));
 
 vi.mock('../logger.js', () => ({ logger: { error: vi.fn(), info: vi.fn() } }));
+
+// ISS-1136 — a terminal session flip now closes what that session owns, through
+// `applyKernelTransition`. This file is about the cascade's own mapping, so the
+// descent is mocked rather than run: naming it here is what keeps the coupling
+// visible instead of dragging a live db client in behind the chokepoint.
+const descendMock = vi.fn(async (..._args: unknown[]) => ({ closed: [], runsReturned: [] }));
+vi.mock('../agent-sessions/session-descent.js', () => ({
+  DESCENT_SOURCE: 'session-descent',
+  closeSessionsOwnedBy: (...args: unknown[]) => descendMock(...args),
+}));
 const requestJobKillMock = vi.fn(
   async (..._args: unknown[]): Promise<'requested' | 'no_device'> => 'requested',
 );

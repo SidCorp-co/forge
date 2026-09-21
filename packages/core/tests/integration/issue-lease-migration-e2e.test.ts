@@ -81,8 +81,10 @@ async function anOldRunSession(args: {
   `)) as unknown as Array<{ id: string }>;
   const runId = String(runs[0]?.id);
   const sessions = (await harness.db.execute(sql`
-    INSERT INTO agent_sessions (project_id, device_id, pipeline_run_id, title, status, started_at, metadata)
-    VALUES (${args.projectId}, ${args.deviceId}, ${runId}, 'run: old', ${args.status ?? 'running'},
+    INSERT INTO agent_sessions (project_id, device_id, pipeline_run_id, title, kind, status,
+                                started_at, metadata)
+    VALUES (${args.projectId}, ${args.deviceId}, ${runId}, 'run: old', 'run_session',
+            ${args.status ?? 'running'},
             now(), jsonb_build_object('type', 'run_session'))
     RETURNING id
   `)) as unknown as Array<{ id: string }>;

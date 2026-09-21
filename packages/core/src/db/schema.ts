@@ -21,6 +21,25 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
+import {
+  agentSessionFailureReasons,
+  agentSessionKinds,
+  agentSessionStatuses,
+  sessionRuntimeStates,
+} from './session-vocabulary.js';
+
+export {
+  type AgentSessionFailureReason,
+  type AgentSessionKind,
+  type AgentSessionStatus,
+  agentSessionFailureReasons,
+  agentSessionKinds,
+  agentSessionStatuses,
+  type SessionRuntimeState,
+  sessionRuntimeStates,
+  terminalAgentSessionStatuses,
+} from './session-vocabulary.js';
+
 import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
@@ -29,7 +48,6 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
-import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
 import { activityLog, actorAgencies } from './schema-activity.js';
 
 export {
@@ -1931,42 +1949,6 @@ export const agentsRelations = relations(agents, ({ one }) => ({
   project: one(projects, { fields: [agents.projectId], references: [projects.id] }),
 }));
 
-// ISS-197 — `completed_via_recovery` / `cancelled_stale` are non-failure
-// terminal markers written by the recovery-by-verification path in
-// `jobs/retry.ts`. UI filters / analytics that partition on
-// agent_sessions.status treat them as success states, not failures.
-export const agentSessionStatuses = [
-  'idle',
-  'queued',
-  'running',
-  'completed',
-  'failed',
-  'completed_via_recovery',
-  'cancelled_stale',
-  'cancelled',
-] as const;
-export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
-
-export const terminalAgentSessionStatuses = [
-  'completed',
-  'failed',
-  'completed_via_recovery',
-  'cancelled_stale',
-  'cancelled',
-] as const satisfies readonly AgentSessionStatus[];
-
-export const sessionRuntimeStates = [
-  'starting',
-  'working',
-  'awaiting_input',
-  'checkpointing',
-  'closed',
-] as const;
-export type SessionRuntimeState = (typeof sessionRuntimeStates)[number];
-
-export const agentSessionFailureReasons = FAILURE_CAUSES;
-export type AgentSessionFailureReason = FailureCause;
-
 export const agentSessions = pgTable(
   'agent_sessions',
   {
@@ -1989,6 +1971,9 @@ export const agentSessions = pgTable(
     repoPath: text('repo_path'),
     usage: jsonb('usage'),
     metadata: jsonb('metadata'),
+    kind: text('kind', { enum: agentSessionKinds }).notNull(),
+    /** Who owns this session, as CORE issued it — never as a box reported it. */
+    parentSessionId: uuid('parent_session_id'),
     diff: jsonb('diff'),
     pipelineControl: jsonb('pipeline_control').$type<
       import('../agent-sessions/pipeline-control-types.js').PipelineControl | null
@@ -2017,6 +2002,21 @@ export const agentSessions = pgTable(
     ),
     statusDispatchedIdx: index('agent_sessions_status_dispatched_idx').on(t.status, t.dispatchedAt),
     pipelineRunIdx: index('agent_sessions_pipeline_run_idx').on(t.pipelineRunId),
+    kindStatusIdx: index('agent_sessions_kind_status_idx').on(t.kind, t.status),
+    // One live master per (device, project) was an intention held by a select
+    // running before an insert. This makes it a fact; `ensureMasterSession`
+    // keeps an advisory lock so the loser waits rather than raising.
+    oneLiveMasterUq: uniqueIndex('agent_sessions_one_live_master_uq')
+      .on(t.deviceId, t.projectId)
+      .where(
+        sql`kind = 'master' AND status NOT IN ('completed', 'failed', 'completed_via_recovery', 'cancelled_stale', 'cancelled')`,
+      ),
+    parentIdx: index('agent_sessions_parent_idx').on(t.parentSessionId),
+    parentFk: foreignKey({
+      columns: [t.parentSessionId],
+      foreignColumns: [t.id],
+      name: 'agent_sessions_parent_session_id_fkey',
+    }).onDelete('set null'),
   }),
 );
 

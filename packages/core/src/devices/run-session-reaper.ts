@@ -14,10 +14,12 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { returnIssuesForRun } from './run-issue-return.js';
-import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_TYPE } from './run-session.js';
+import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from './run-session.js';
+import { SESSION_SILENCE_TIMEOUT_MS, SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
-/** How long a run session may go silent before its issues are given back. */
-export const RUN_SESSION_TIMEOUT_MS = 10 * 60 * 1000;
+/** @deprecated One clock now: {@link SESSION_SILENCE_TIMEOUT_MS}. Kept as the
+ *  name the callers and tests of this module already use. */
+export const RUN_SESSION_TIMEOUT_MS = SESSION_SILENCE_TIMEOUT_MS;
 
 export interface ReapedRunSession {
   sessionId: string;
@@ -29,13 +31,13 @@ export interface ReapedRunSession {
  * Release run sessions whose box has gone silent, naming the issues freed.
  */
 export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
-  const staleSeconds = Math.floor(RUN_SESSION_TIMEOUT_MS / 1000);
+  const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
   const rows = (await db.execute(sql`
     SELECT s.id, s.pipeline_run_id,
            COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb) AS issue_keys
     FROM agent_sessions s
     JOIN pipeline_runs r ON r.id = s.pipeline_run_id
-    WHERE s.metadata->>'type' = ${RUN_SESSION_TYPE}
+    WHERE s.kind = ${RUN_SESSION_KIND}
       AND s.status = 'running'
       AND COALESCE(s.last_heartbeat_at, s.started_at, s.created_at)
           < now() - make_interval(secs => ${staleSeconds})

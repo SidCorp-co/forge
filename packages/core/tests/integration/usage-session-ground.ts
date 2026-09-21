@@ -31,10 +31,10 @@ export async function seedFixture(db: TestDb, projectId: string, ownerId: string
     FROM generate_series(1, ${RUNS}) g`);
 
   await db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, started_at, metadata)
     SELECT ('10000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${projectId},
            ('20000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${RUNS}) + 1), 10, '0'))::uuid,
-           'idle', now() - (g * interval '1 second'),
+           'pipeline', 'idle', now() - (g * interval '1 second'),
            -- metadata.issueId maps sessions onto the same 2,000 issues the jobs use, so
            -- estimateIssueContextTokens has a real selection to be planned against.
            jsonb_build_object('issueId',

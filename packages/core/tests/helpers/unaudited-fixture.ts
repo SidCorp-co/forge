@@ -43,7 +43,10 @@ export interface UnauditedFixture {
     status?: string,
     opts?: { runId?: string | null; issueId?: string | null; payload?: unknown; type?: string },
   ): Promise<string>;
-  insertSession(status?: string, opts?: { runId?: string; metadata?: unknown }): Promise<string>;
+  insertSession(
+    status?: string,
+    opts?: { runId?: string; kind?: string; metadata?: unknown },
+  ): Promise<string>;
   insertIssuelessRun(): Promise<string>;
   detected(): Promise<Detected[]>;
 }
@@ -109,8 +112,10 @@ export async function createUnauditedFixture(): Promise<UnauditedFixture> {
     async insertSession(status = 'idle', opts = {}) {
       const id = randomUUID();
       await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, status, metadata)
-        VALUES (${id}, ${ids.projectId}, ${ids.ownerId}, ${opts.runId ?? ids.runId}, ${status},
+        INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status,
+                                    metadata)
+        VALUES (${id}, ${ids.projectId}, ${ids.ownerId}, ${opts.runId ?? ids.runId},
+                ${opts.kind ?? 'pipeline'}, ${status},
                 ${JSON.stringify(opts.metadata ?? {})}::jsonb)
       `);
       return id;

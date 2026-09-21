@@ -208,6 +208,7 @@ describe('stop is enforced on the record', () => {
         userId: user.id,
         projectId: ctx.projectId,
         pipelineRunId: run?.id as string,
+        kind: 'pm',
         status: 'running',
       })
       .returning();

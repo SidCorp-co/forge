@@ -38,8 +38,8 @@ async function seedJob(
   const jobId = randomUUID();
   const sessionId = randomUUID();
   await db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status)
-    VALUES (${sessionId}, ${opts.projectId}, ${opts.runId}, 'idle')
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status)
+    VALUES (${sessionId}, ${opts.projectId}, ${opts.runId}, 'pipeline', 'idle')
   `);
   const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
   await db.execute(sql`
