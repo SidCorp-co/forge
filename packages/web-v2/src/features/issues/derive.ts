@@ -11,6 +11,10 @@ import {
 	type StatusExits,
 } from "@forge/contracts/pipeline-registry";
 import {
+	BLOCKER_SETTLED_STATUSES,
+	REASON_REQUIRED_ISSUE_STATUSES,
+} from "@forge/contracts/status-sets";
+import {
 	type SemanticTone,
 	STATUS_KEY_TONE,
 	type StatusKey,
@@ -195,6 +199,10 @@ export interface GroupedTransition {
 }
 
 const BOUNCE_TARGETS = new Set<IssueStatus>(["needs_info", "on_hold", "reopen"]);
+/* status-tuple: differs — this is the transition MENU's discard group, not core's
+   ISSUE_TERMINAL_STATUSES. It answers which exits the menu draws under one rule, and its sibling
+   BOUNCE_TARGETS is deliberately not core's HUMAN_PARK_STATUSES for the same reason: the grouping
+   follows what the menu offers from a rung, which core's terminal set does not decide. */
 const DISCARD_TARGETS = new Set<IssueStatus>(["closed", "dropped"]);
 
 const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
@@ -267,14 +275,12 @@ export function bulkAllowedStatuses(
 			common = common.filter((s) => allowedSet.has(s));
 		}
 	}
-	return (common ?? []).filter((s) => !BULK_EXCLUDED_STATUSES.has(s));
+	return (common ?? []).filter((s) => !BULK_HAS_NO_REASON_TO_COLLECT.has(s));
 }
 
-const BULK_EXCLUDED_STATUSES = new Set<IssueStatus>([
-	"reopen",
-	"waiting",
-	"needs_info",
-]);
+const BULK_HAS_NO_REASON_TO_COLLECT: ReadonlySet<string> = new Set(
+	REASON_REQUIRED_ISSUE_STATUSES,
+);
 
 export interface DepCounts {
 	blockedBy: number;
@@ -564,14 +570,11 @@ export interface BlockerState {
 	detail?: string;
 }
 
-const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set([
-	"awaiting_release",
-	"closed",
-]);
+const SETTLED_BLOCKERS: ReadonlySet<string> = new Set(BLOCKER_SETTLED_STATUSES);
 
-/** Incoming `blocks` edges whose blocker isn't terminal — i.e. this issue is
- *  genuinely blocked-by an open issue. Exported so list/board rows can flag a
- *  genuinely-stuck issue (danger chip) without re-deriving the terminal rule. */
+/** Incoming `blocks` edges whose blocker core has not settled — i.e. this issue is genuinely
+ *  blocked-by one Forge will not dispatch past. Exported so list/board rows can flag a
+ *  genuinely-stuck issue (danger chip) without re-deriving the rule. */
 export function openBlockingRefs(
 	deps: IssueDependencies | undefined,
 ): BlockingRef[] {
@@ -580,7 +583,7 @@ export function openBlockingRefs(
 		.filter(
 			(e) =>
 				e.kind === "blocks" &&
-				!(e.fromStatus && TERMINAL_STATUSES.has(e.fromStatus)),
+				!(e.fromStatus && SETTLED_BLOCKERS.has(e.fromStatus)),
 		)
 		.map((e) => ({
 			id: e.fromIssueId,

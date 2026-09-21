@@ -78,6 +78,9 @@ const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
 ];
 const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "you", "agent", "done"];
+/* status-tuple: differs — this is the "Finished" segment's cut of the status counts, not core's
+   ISSUE_TERMINAL_STATUSES. It names which buckets that one filter chip sums, and a segment added
+   or re-cut here moves it without anything about the issue lifecycle having changed. */
 const FINISHED_CUTS = ["closed", "dropped"];
 const DEFAULT_FILTER: IssueFilter = "all";
 

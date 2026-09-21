@@ -41,9 +41,9 @@ export default [
     "no-raw-elements": "error",
     tokens: { tokenSource: "packages/web-v2/src/app/globals.css" },
     primitives: { source: "packages/web-v2/src/design/primitives" },
-    // Arguments two other gates read, not prose: check-source-language demands the phrasing its
-    // regex matches, biome demands the justification. Reworded, the gate reading it is weakened.
-    additionalDirectives: ["i18n-allow", "biome-ignore"],
+    // Arguments three other gates read, not prose: each demands the phrasing or the reason its own
+    // regex matches. Reworded, the gate reading it is weakened.
+    additionalDirectives: ["i18n-allow", "biome-ignore", "status-tuple"],
   }),
   {
     rules: { "max-lines": "off", "max-lines-per-function": "off" },

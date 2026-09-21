@@ -4,6 +4,7 @@
 
 "use client";
 
+import { REASON_REQUIRED_ISSUE_STATUSES } from "@forge/contracts/status-sets";
 import { type ReactNode, useState } from "react";
 import { useToast } from "@/providers/toast-provider";
 import { statusLabel } from "../derive";
@@ -11,7 +12,7 @@ import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
 import { type ReasonStatus, TransitionReasonDialog } from "./transition-reason-dialog";
 
-export const REASON_REQUIRED = new Set<string>(["reopen", "waiting", "needs_info"]);
+export const REASON_REQUIRED = new Set<string>(REASON_REQUIRED_ISSUE_STATUSES);
 
 const REASON_TOAST: Record<ReasonStatus, string> = {
   reopen: "Issue reopened",

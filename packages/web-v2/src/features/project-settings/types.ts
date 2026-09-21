@@ -1,3 +1,5 @@
+import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts/status-sets";
+
 /** Patch body accepted by `PATCH /api/projects/:id` (basics + repo + testing).
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */
@@ -515,14 +517,7 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 
 export type MemoryModel = "flat" | "chunked";
 
-export const MEMORY_REINDEX_STATES = [
-	"queued",
-	"running",
-	"completed",
-	"failed",
-	"cancelled",
-] as const;
-export type MemoryReindexState = (typeof MEMORY_REINDEX_STATES)[number];
+export { MEMORY_REINDEX_STATES, type MemoryReindexState };
 
 /** `app_config.memory_reindex` as `GET /api/app-config/:id/memory-model/reindex` returns it. */
 export interface MemoryReindex {
