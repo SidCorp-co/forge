@@ -19,6 +19,7 @@ import { Buffer } from 'node:buffer';
 import { GitHubPublishError, type GitHubRepoClient } from './client.js';
 import {
   describePublishThrown,
+  type PublishOpSubject,
   type PublishRefusal,
   type PublishSubject,
 } from './publish-refusal.js';
@@ -27,28 +28,35 @@ import { type ReleaseReading, RUNNER_RELEASE_TAG_PREFIX } from './runner-release
 const repoPath = (client: GitHubRepoClient) =>
   `/repos/${encodeURIComponent(client.owner)}/${encodeURIComponent(client.repo)}`;
 
-export function runnerReleaseSubject(what: { lookup: string; write?: string }): PublishSubject {
+/** The operations a runner release sends. It never sends `merge`. */
+export type RunnerReleaseOp = 'mint' | 'lookup' | 'create' | 'update';
+
+/** What each of these calls needs. The name is the claim these sentences make. */
+const NEEDS_CONTENTS_WRITE: Omit<PublishOpSubject, 'where'> = {
+  permission:
+    'the App has no `contents: write` permission. Set Contents to "Read and write" on the App, ' +
+    'then approve the resulting request on the installation — reconnecting will not change ' +
+    'this, because the credential is not what is wrong.',
+  ambiguous:
+    'sent nothing saying which of the two it was: the App may lack `contents: write`, or this ' +
+    "may be a secondary rate limit. Forge is not guessing between them. Check the App's " +
+    'Contents permission first; if it is already "Read and write", retry after a pause.',
+  nothingWritten: 'so nothing was written to the repository. Retrying is safe.',
+  unprocessable:
+    'On this path that is usually a ref that already exists, or a commit this repository does ' +
+    'not hold.',
+};
+
+export function runnerReleaseSubject(what: {
+  lookup: string;
+  write?: string;
+}): PublishSubject<RunnerReleaseOp> {
   const write = what.write ?? 'creating the tag';
   return {
-    where: {
-      mint: 'minting the installation token',
-      lookup: what.lookup,
-      create: write,
-      update: write,
-      merge: 'a merge, which the release path never sends',
-    },
-    permission:
-      'the App has no `contents: write` permission. Set Contents to "Read and write" on the App, ' +
-      'then approve the resulting request on the installation — reconnecting will not change ' +
-      'this, because the credential is not what is wrong.',
-    ambiguous:
-      'the App may lack `contents: write`, or this may be a secondary rate limit. Forge is not ' +
-      "guessing between them. Check the App's Contents permission first; if it is already " +
-      '"Read and write", retry after a pause.',
-    nothingWritten: 'so nothing was written to the repository. Retrying is safe.',
-    unprocessable:
-      'On this path that is usually a ref that already exists, or a commit this repository does ' +
-      'not hold.',
+    mint: { where: 'minting the installation token', ...NEEDS_CONTENTS_WRITE },
+    lookup: { where: what.lookup, ...NEEDS_CONTENTS_WRITE },
+    create: { where: write, ...NEEDS_CONTENTS_WRITE },
+    update: { where: write, ...NEEDS_CONTENTS_WRITE },
   };
 }
 
@@ -65,7 +73,11 @@ export class RunnerReleaseRepoError extends Error {
   }
 }
 
-function refuse(err: unknown, op: 'lookup' | 'create', subject: PublishSubject): never {
+function refuse(
+  err: unknown,
+  op: 'lookup' | 'create',
+  subject: PublishSubject<RunnerReleaseOp>,
+): never {
   const refusal = describePublishThrown(err, op, subject);
   const beforeWrite = op === 'lookup' || refusal.op === 'mint' || refusal.op === 'lookup';
   throw new RunnerReleaseRepoError(refusal, beforeWrite);
@@ -91,7 +103,7 @@ function isAbsent(err: unknown): boolean {
  */
 async function absentUnlessUnreachable(
   client: GitHubRepoClient,
-  subject: PublishSubject,
+  subject: PublishSubject<RunnerReleaseOp>,
 ): Promise<null> {
   try {
     await client.publish<{ id?: number }>({

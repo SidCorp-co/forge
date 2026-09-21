@@ -1,8 +1,71 @@
-import { type CheckRefusal, describeThrown } from './check-refusal.js';
 import { GitHubPublishError } from './client.js';
+import {
+  describePublishRefusal,
+  describePublishThrown,
+  type PublishRefusal,
+  type PublishSubject,
+} from './publish-refusal.js';
 
 /** The same shape a check refusal carries, so one reader handles both. */
-export type MergeCallRefusal = CheckRefusal;
+export type MergeCallRefusal = PublishRefusal;
+
+/**
+ * The operations a merge sends, and what a refusal of each one means.
+ *
+ * `merge.ts` sends three: the token mint every call makes, the reads of the
+ * pull request and of the checks on its head, and the merge `PUT` itself. Each
+ * needs its own permissions, so each carries its own sentences; the merge needs
+ * no check permission at all (ISS-1151).
+ */
+export type MergeOp = 'mint' | 'lookup' | 'merge';
+
+const MERGE_SUBJECT: PublishSubject<MergeOp> = {
+  mint: {
+    where: 'minting the installation token',
+    permission:
+      'the installation itself refused it. Minting a token needs no repository permission, so ' +
+      'granting one changes nothing here: open the installation on GitHub and check that it is ' +
+      'still active and still covers this repository.',
+    ambiguous:
+      'sent nothing naming a cause, so nothing here is ruled out. The readings worth trying ' +
+      'first: the installation may be suspended, it may no longer cover this repository, or this ' +
+      'may be a secondary rate limit. Read the installation on GitHub, then retry after a pause.',
+    nothingWritten: 'so nothing was read and the merge was never sent. Retrying is safe.',
+    unprocessable: 'The commonest cause is an installation this App no longer holds.',
+  },
+  lookup: {
+    where: 'reading the pull request and the checks on its head',
+    permission:
+      'the App has no `pull_requests: read` permission, or no `checks: read` — that read needs ' +
+      'both, and GitHub does not say which of them it refused. Set Pull requests and Checks to ' +
+      'at least "Read-only" on the App, then approve the resulting request on the installation — ' +
+      'reconnecting will not change this, because the credential is not what is wrong.',
+    ambiguous:
+      'sent nothing naming a cause, so nothing here is ruled out. The readings worth trying ' +
+      'first: the App may lack `pull_requests: read` or `checks: read`, which that read needs ' +
+      'both of; the installation may no longer cover this repository; or this may be a secondary ' +
+      'rate limit. Check those two permissions, then that the App is still installed on this ' +
+      'repository, then retry after a pause.',
+    nothingWritten: 'so nothing was read and the merge was never sent. Retrying is safe.',
+    unprocessable: 'The commonest cause is a pull request number this repository does not hold.',
+  },
+  merge: {
+    where: 'merging the pull request',
+    permission:
+      'the App has no `pull_requests: write` permission, or no `contents: write` — merging needs ' +
+      'both, and GitHub does not say which of them it refused. Set Pull requests and Contents to ' +
+      '"Read and write" on the App, then approve the resulting request on the installation — ' +
+      'reconnecting will not change this, because the credential is not what is wrong.',
+    ambiguous:
+      'sent nothing naming a cause, so nothing here is ruled out. The readings worth trying ' +
+      'first: the App may lack `pull_requests: write` or `contents: write`, which merging needs ' +
+      'both of; a branch protection rule or a repository ruleset may refuse this App on the base ' +
+      'branch; or this may be a secondary rate limit. Check those two permissions, then the base ' +
+      "branch's protection rules and rulesets, then retry after a pause.",
+    nothingWritten: 'so the merge was never sent. Retrying is safe.',
+    unprocessable: 'The commonest cause is a merge method this repository does not allow.',
+  },
+};
 
 function timedOut(): MergeCallRefusal {
   return {
@@ -19,8 +82,10 @@ function timedOut(): MergeCallRefusal {
 }
 
 export function describeMergeRefusal(err: unknown, number: number): MergeCallRefusal {
-  if (!(err instanceof GitHubPublishError)) return describeThrown(err, 'merge');
-  if (err.timedOut) return timedOut();
+  if (!(err instanceof GitHubPublishError)) {
+    return describePublishThrown(err, 'merge', MERGE_SUBJECT);
+  }
+  if (err.timedOut && err.op === 'merge') return timedOut();
 
   if (err.status === 405) {
     return {
@@ -48,5 +113,5 @@ export function describeMergeRefusal(err: unknown, number: number): MergeCallRef
         'it is refused rather than re-sent against whatever is there now.',
     };
   }
-  return describeThrown(err, 'merge');
+  return describePublishRefusal(err, MERGE_SUBJECT);
 }
