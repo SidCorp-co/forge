@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LIVE_JOB_STATUSES } from '../../src/jobs/status-sets.js';
 import {
   createTestProject,
   createTestUser,
@@ -180,19 +181,16 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
     expect(await runStatus(runId)).toBe('running');
   });
 
-  it.each(['queued', 'dispatched', 'running', 'held'])(
-    'leaves a run with a `%s` job however old',
-    async (jobStatus) => {
-      const runId = await seedRun();
-      await seedJob(runId, 'done', 5000);
-      await seedJob(runId, jobStatus, 5000);
+  it.each(LIVE_JOB_STATUSES)('leaves a run with a `%s` job however old', async (jobStatus) => {
+    const runId = await seedRun();
+    await seedJob(runId, 'done', 5000);
+    await seedJob(runId, jobStatus, 5000);
 
-      const res = await mods.reapConcludedRuns(new Date());
+    const res = await mods.reapConcludedRuns(new Date());
 
-      expect(res.reaped).toBe(0);
-      expect(await runStatus(runId)).toBe('running');
-    },
-  );
+    expect(res.reaped).toBe(0);
+    expect(await runStatus(runId)).toBe('running');
+  });
 
   it('leaves a run with no jobs at all', async () => {
     const runId = await seedRun();

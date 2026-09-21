@@ -1,8 +1,9 @@
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL_STATUSES = new Set<string>(TERMINAL_PIPELINE_RUN_STATUSES);
 
 export function registerReleaseBatchClaimSubscriber(bus: HooksBus): void {
   bus.on('pipelineRunStatusChanged', (p) => {
