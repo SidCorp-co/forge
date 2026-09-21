@@ -19,13 +19,13 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { TERMINAL_JOB_STATUSES } from '../jobs/status-sets.js';
-import { LIVE_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import {
   canonicalIssueKey,
   issueRefPrefixOf,
   LEGACY_ISSUE_PREFIX,
   parseIssueRef,
 } from '../lib/issue-ref.js';
+import { LIVE_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
 
 const terminalSessionList = sql.join(
