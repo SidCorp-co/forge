@@ -32,7 +32,8 @@ export interface IdleFixture {
   /** A job under a live run: the INV-1 trigger cancels one inserted under a terminal run. */
   seedLiveJob(issueId: string): Promise<string>;
   seedRunner(status: 'online' | 'draining' | 'disabled'): Promise<void>;
-  seedSystemRun(issSeq: number, status: string): Promise<void>;
+  /** A fleet-wide lease on `ISS-<seq>` held by a session in `sessionStatus` (ISS-1109). */
+  seedIssueLease(issSeq: number, sessionStatus: string): Promise<void>;
 }
 
 /**
@@ -118,11 +119,21 @@ export function registerIdleFixture(seqFrom: number): IdleFixture {
         VALUES (${randomUUID()}, ${projectId}, ${device.id}, 'claude-code', ${`runner-${status}`}, ${status})
       `);
     },
-    async seedSystemRun(issSeq, status) {
-      const metadata = JSON.stringify({ runIssues: [`ISS-${issSeq}`] });
+    async seedIssueLease(issSeq, sessionStatus) {
+      const device = await createTestDevice(harness.db, ownerId);
+      const runId = randomUUID();
+      const sessionId = randomUUID();
       await harness.db.execute(sql`
-        INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, metadata)
-        VALUES (${randomUUID()}, ${projectId}, 'system', ${status}, now(), ${metadata}::jsonb)
+        INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+        VALUES (${runId}, ${projectId}, 'system', 'running', now())
+      `);
+      await harness.db.execute(sql`
+        INSERT INTO agent_sessions (id, project_id, device_id, pipeline_run_id, kind, status)
+        VALUES (${sessionId}, ${projectId}, ${device.id}, ${runId}, 'run_session', ${sessionStatus})
+      `);
+      await harness.db.execute(sql`
+        INSERT INTO issue_leases (project_id, issue_key, device_id, session_id, run_id)
+        VALUES (${projectId}, ${`ISS-${issSeq}`}, ${device.id}, ${sessionId}, ${runId})
       `);
     },
   };

@@ -12,12 +12,11 @@ vi.mock('../../src/notifications/project-admins.js', () => ({
 }));
 
 /**
- * ISS-1122 — `live-work.ts` now holds the three probes that say whether anything is working an
- * issue, for `idle-issues.ts` and for `issue-run-invariant.ts` alike.
- *
- * `detectOrphanedRunAssertions` had no test of any kind, and this change moved those probes out of
- * its query. A textually identical fragment is still only a claim about SQL, so the claim is made
- * here: the pass fires where it fired before, and each probe holds it back on its own.
+ * ISS-1122 — both passes ask `issues/issue-lease.ts` whether anything is working an issue (ISS-1109),
+ * and sharing one fragment is still only a claim about SQL. The claim is made here against a live
+ * database: each of the three terms — a live job, a live issue run, a lease whose session is
+ * non-terminal — holds both passes back on its own, and a lease whose session has gone terminal
+ * holds neither.
  */
 const fx = registerIdleFixture(1400);
 const NOW = new Date('2026-09-20T16:00:00.000Z');
@@ -59,13 +58,22 @@ describe('detectOrphanedRunAssertions keeps its predicate across the extraction 
     expect(await idle()).toBe(0);
   });
 
-  it.each(['running', 'paused'])(
-    'is still held back by a %s system run naming the issue',
-    async (status) => {
+  it.each(['idle', 'queued', 'running'])(
+    'is still held back by a lease whose session is %s',
+    async (sessionStatus) => {
       await seedIssue('in_progress');
-      await fx.seedSystemRun(fx.lastSeq, status);
+      await fx.seedIssueLease(fx.lastSeq, sessionStatus);
       expect(await orphans()).toBe(0);
       expect(await idle()).toBe(0);
+    },
+  );
+
+  it.each(['completed', 'failed', 'cancelled'])(
+    'is NOT held back by a lease whose session is %s',
+    async (sessionStatus) => {
+      await seedIssue('in_progress');
+      await fx.seedIssueLease(fx.lastSeq, sessionStatus);
+      expect(await orphans()).toBe(1);
     },
   );
 });

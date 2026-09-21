@@ -17,6 +17,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses } from '../db/schema.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
+import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -29,7 +30,6 @@ import {
   leaseIsUnexpired,
   leaseIsWorkInProgress,
 } from './issue-lease.js';
-import { NOTHING_LIVE_ON_THIS_ISSUE } from './live-work.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import {
   SHORTEST_GRACE_MS,
@@ -40,6 +40,20 @@ import {
 } from './strand-rules.js';
 import { sweepGroupKey } from './stranded-issues.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
+
+/**
+ * Nothing anywhere is working this issue.
+ *
+ * This is a USE of the fleet-wide predicate, never a second copy of it: `issues/issue-lease.ts`
+ * is the only place that SQL is written (ISS-1109), and a sweep that answers the question its own
+ * way reports as stranded exactly the issues a box is holding. The binding exists only to carry
+ * this module's `issues i` alias into it.
+ */
+const NOTHING_LIVE_ON_THIS_ISSUE = sql`NOT ${issueWorkInFlightSql({
+  issueId: sql`i.id`,
+  projectId: sql`i.project_id`,
+  issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+})}`;
 
 /** How many rows one arm reads per pass, matching the other sweep axes. */
 export const IDLE_SCAN_LIMIT = 200;
