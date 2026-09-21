@@ -1961,13 +1961,6 @@
       "when": 1808956800000,
       "tag": "0299_closed_means_shipped",
       "breakpoints": true
-    },
-    {
-      "idx": 290,
-      "version": "7",
-      "when": 1807833600000,
-      "tag": "0290_closed_means_shipped",
-      "breakpoints": true
     }
   ]
 }
