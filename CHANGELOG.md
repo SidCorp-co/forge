@@ -3055,17 +3055,9 @@
   kinds instead of answering an empty page. A caller can also no longer declare what kind it is
   creating.
 
-- **An issue you file from your own terminal is filed by you, and an agent appears under its own
-  name.** Anything written with your own access token — a comment, an issue, whatever you typed at
-  a prompt — was recorded and shown as written by an agent, because the only thing that separated
-  the two was the browser, and a token is not a browser. Forge now reads who is writing off the
-  account the credential belongs to, which is the one place that has always known. Your issues and
-  comments carry your name; an agent's carry the name its organisation admin gave it, next to
-  people rather than instead of them, with a marker saying which it is. The creator filter and the
-  creator grouping on the issue list follow: each agent is offered and grouped by name, and a
-  single "any agent" option still gathers all of them at once when that is the question. Issues and
-  comments filed before this change read correctly too — nothing needed repairing, because the
-  answer was never in the row.
+- **What you write with your own access token is filed under your name, not an agent's.** Forge
+  reads the writer from the account behind the credential. Agents now appear under the names
+  their admins gave them.
 
 - **Two machines can no longer take the same issue at the same time.** Taking an issue is now one
   claim the database refuses, and the machine that loses is told which one holds it and since when.

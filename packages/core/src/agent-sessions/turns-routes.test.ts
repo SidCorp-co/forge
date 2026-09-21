@@ -60,8 +60,18 @@ function session(over: Record<string, unknown> = {}) {
   };
 }
 
+const CALLER_ID = '33333333-3333-4333-8333-333333333333';
+
 function app() {
   const router = new Hono();
+  // `routes.ts` mounts these behind `requireUserOrDevice()`, which sets both of
+  // these on every branch. Mounting the sub-router bare leaves a request no door
+  // has answered for, and `restActor` refuses one by name (ISS-1137).
+  router.use('*', async (c, next) => {
+    c.set('userId', CALLER_ID);
+    c.set('agency', 'human');
+    await next();
+  });
   router.route('/api/agent-sessions', agentSessionTurnsRoutes);
   router.onError((err, c) => {
     if (err instanceof HTTPException) {

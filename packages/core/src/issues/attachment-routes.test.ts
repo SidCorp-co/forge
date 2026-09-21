@@ -266,7 +266,10 @@ describe('POST /api/issues/:id/attachments', () => {
 
   it('201 via PAT: requireAnyAuth resolves userId from PAT.userId', async () => {
     const row = { id: 'pat-1', userId: USER_ID, scopes: ['read', 'write'] };
-    verifyPatMock.mockResolvedValueOnce({ row });
+    // `ownerKind` is what the door reads the writer's agency off (ISS-1137), and
+    // `verifyPat` always returns it — a fixture that leaves it out is a token
+    // belonging to nobody, which no door can answer for.
+    verifyPatMock.mockResolvedValueOnce({ row, ownerKind: 'human' });
     grantIssueAccess();
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([
