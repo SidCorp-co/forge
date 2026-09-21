@@ -36,8 +36,7 @@ export async function assertSourceCommentsOnIssue(
   }
 
   const offenders = pointers.filter(
-    (p) =>
-      caseFoldedUuid(found.get(caseFoldedUuid(p.id)) ?? '') !== caseFoldedUuid(p.issueId),
+    (p) => caseFoldedUuid(found.get(caseFoldedUuid(p.id)) ?? '') !== caseFoldedUuid(p.issueId),
   );
   if (offenders.length > 0) {
     const ids = [...new Set(offenders.map((o) => o.id))];
