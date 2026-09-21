@@ -3088,6 +3088,10 @@
   banner waited for a release Forge does not wait for. The link to the blocker stays; only the
   alarm goes.
 
+- **A merge refused on permissions names what a merge needs.** It named `checks: write`, which a
+  merge never needs. Every operation now carries its own permission sentence, and a 403 GitHub
+  does not explain rules nothing out.
+
 - **A project can be asked what commit its deployment is serving.** `GET /api/projects/:id/deployment`
   reads the declared probes and answers, deriving on every call. Health and identity stay apart,
   so a fleet mid-deploy reports healthy with no identity.

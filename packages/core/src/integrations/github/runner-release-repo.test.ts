@@ -379,13 +379,15 @@ describe('a 404 that is not the thing being absent', () => {
 });
 
 describe('the refusal sentences this path uses', () => {
-  it('name `contents: write` and never `checks: write`', () => {
+  it('name `contents: write` and never `checks: write`, on every op it sends', () => {
     const subject = runnerReleaseSubject({ lookup: 'looking the tag up' });
-    expect(subject.permission).toContain('contents: write');
-    expect(subject.permission).not.toContain('checks: write');
-    expect(subject.ambiguous).toContain('contents: write');
-    expect(subject.nothingWritten).toContain('nothing was written to the repository');
-    expect(subject.where.create).toBe('creating the tag');
-    expect(subject.where.lookup).toBe('looking the tag up');
+    for (const op of ['mint', 'lookup', 'create', 'update'] as const) {
+      expect(subject[op].permission).toContain('contents: write');
+      expect(subject[op].permission).not.toContain('checks: write');
+      expect(subject[op].ambiguous).toContain('contents: write');
+      expect(subject[op].nothingWritten).toContain('nothing was written to the repository');
+    }
+    expect(subject.create.where).toBe('creating the tag');
+    expect(subject.lookup.where).toBe('looking the tag up');
   });
 });
