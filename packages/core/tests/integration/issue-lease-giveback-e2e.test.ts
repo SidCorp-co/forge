@@ -190,6 +190,48 @@ describe('a key that names no project this box reaches', () => {
     expect(((await res.json()) as Refusal).code).toBe('ISSUE_LEASE_KEY_UNKNOWN_PREFIX');
   });
 
+  it('refuses a prefix a project out of this box reach holds, on the read', async () => {
+    await aProjectThisBoxServes(880);
+    const elsewhere = (await createTestProject(harness.db, userId)).id;
+    const assigned = await assignIssuePrefix(elsewhere, 'ZZ');
+    if (!assigned.ok) throw new Error('the fixture could not hold the prefix ZZ');
+
+    const res = await app.request(lease('ZZ-880'), { headers: auth });
+
+    expect(
+      res.status,
+      'answering held:false about a project this box may not ask about is the silent answer wearing a real prefix',
+    ).toBe(404);
+    expect(((await res.json()) as Refusal).code).toBe('ISSUE_LEASE_KEY_UNKNOWN_PREFIX');
+  });
+
+  it('refuses a projectId this box neither serves nor holds a lease in', async () => {
+    await aProjectThisBoxServes(880);
+    const elsewhere = (await createTestProject(harness.db, userId)).id;
+
+    const res = await app.request(lease('ISS-880', elsewhere), {
+      method: 'DELETE',
+      headers: auth,
+    });
+
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as Refusal).code).toBe('ISSUE_LEASE_KEY_UNREACHABLE_PROJECT');
+  });
+
+  it('still reaches a lease in a project whose binding has gone', async () => {
+    const project = await aProjectThisBoxServes(880, 'FD');
+    await openRunSession({ deviceId, projectId: project, issueKeys: ['ISS-880'], name: 'run-a' });
+    await harness.db.execute(sql`DELETE FROM runners WHERE device_id = ${deviceId}`);
+
+    const res = await app.request(lease('FD-880'), { method: 'DELETE', headers: auth });
+
+    expect(
+      res.status,
+      'a box unbound while it was working strands the lease if reachability is the binding alone',
+    ).toBe(200);
+    expect(await leaseProjectsFor('ISS-880')).toEqual([]);
+  });
+
   it('refuses a key that is no issue reference at all', async () => {
     await aProjectThisBoxServes(880);
 

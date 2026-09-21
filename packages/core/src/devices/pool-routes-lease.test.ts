@@ -36,7 +36,7 @@ type LeaseKeyAnswer =
   | { ok: true; key: { issueKey: string; projectId: string | null } }
   | { ok: false; refusal: { code: string; status: 400 | 404; message: string } };
 const resolveLeaseKey = vi.fn(
-  async (a: { rawKey: string; projectId?: string | null }) =>
+  async (a: { deviceId: string; rawKey: string; projectId?: string | null }) =>
     ({ ok: true, key: { issueKey: a.rawKey, projectId: a.projectId ?? null } }) as LeaseKeyAnswer,
 );
 type ReleaseAnswer =
@@ -48,7 +48,8 @@ const releaseIssueLease = vi.fn(
 
 vi.mock('../issues/issue-lease.js', () => ({
   readDeviceIssueLease: (a: unknown) => readDeviceIssueLease(a),
-  resolveLeaseKey: (a: { rawKey: string; projectId?: string | null }) => resolveLeaseKey(a),
+  resolveLeaseKey: (a: { deviceId: string; rawKey: string; projectId?: string | null }) =>
+    resolveLeaseKey(a),
 }));
 vi.mock('./run-session.js', () => ({
   openRunSession: vi.fn(),
@@ -260,6 +261,15 @@ describe('DELETE /me/issue-leases/:issueKey', () => {
       releaseIssueLease,
       'a key that reaches no lease must not reach a DELETE',
     ).not.toHaveBeenCalled();
+  });
+
+  it('asks the resolver on behalf of the calling device', async () => {
+    await app.request(path, { method: 'DELETE', headers: AUTH });
+
+    expect(
+      resolveLeaseKey,
+      'a prefix is resolved against the projects THIS box reaches, so the resolver needs to know which box asked',
+    ).toHaveBeenCalledWith({ deviceId: 'dev-1', rawKey: 'ISS-357', projectId: null });
   });
 
   it('refuses a projectId that is not a uuid', async () => {
