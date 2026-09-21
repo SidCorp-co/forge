@@ -346,6 +346,34 @@ describe('a comment is marked by who wrote it, and screened by the same answer',
     expect(nodes[0]?.author?.displayName).toBeTruthy();
   });
 
+  /**
+   * Criteria 16 and 17 — the screening, which is the half of the dropped column
+   * that was load-bearing rather than merely stored. `screenAgentComment` runs
+   * for an agent and not for a person, so the same body must be refused from one
+   * and taken from the other: only the writer's account differs.
+   *
+   * The body carries a `forge_pat_` string, which the secret scrubber redacts
+   * and `NO_REDACTED_SECRET` therefore refuses.
+   */
+  const SECRET_BODY =
+    'the token is forge_pat_dev_0123456789abcdef0123456789abcdef and the deploy is green';
+
+  it("refuses an agent account's comment that the screen rejects", async () => {
+    const agent = await agentAccount(`master-${randomUUID().slice(0, 8)}`);
+    const id = await createIssueWith(agent.token, 'a run about to leak a token');
+
+    const res = await postComment(agent.token, id, SECRET_BODY);
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain('redact');
+  });
+
+  it('takes the same comment from a person on their own token', async () => {
+    const token = await personPat();
+    const id = await createIssueWith(token, 'a person pasting the same thing');
+
+    expect((await postComment(token, id, SECRET_BODY)).status).toBe(201);
+  });
+
   // Criterion 19.
   it('no comment payload carries authorAgency', async () => {
     const token = await personPat();
