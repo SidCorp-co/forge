@@ -159,7 +159,14 @@ export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
   };
 }
 
-/** One read of every probe, as the single commit the fleet agrees on. */
+/**
+ * pass-through: keep — `createReleaseBatch` wants this one answer and nothing
+ * else, the commit serving before anything moved, and reads it once. It can
+ * throw where `verifyDeployed` cannot: `readProbe` builds its `URL` above the
+ * `try`, so an unparseable probe url rejects out of here rather than becoming a
+ * reading. `invalidProbeUrls` refuses at the caller first, which is why that
+ * throw is not a 500 any more (ISS-1127).
+ */
 export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> {
   return (await readLiveState(cfg)).identity;
 }
