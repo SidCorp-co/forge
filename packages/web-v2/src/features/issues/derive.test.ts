@@ -3,6 +3,10 @@ import {
 	REGISTRY_ISSUE_STATUSES,
 	type StatusExits,
 } from "@forge/contracts/pipeline-registry";
+import {
+	BLOCKER_SETTLED_STATUSES,
+	REASON_REQUIRED_ISSUE_STATUSES,
+} from "@forge/contracts/status-sets";
 import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
@@ -23,6 +27,7 @@ import {
 	heartbeatState,
 	initials,
 	memberLabel,
+	openBlockingRefs,
 	PRIORITY_LABELS,
 	parseChecklist,
 	priorityLabel,
@@ -260,8 +265,16 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		];
 		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(
 			allowedTransitions(EXITS, "approved").filter(
-				(s) => s !== "reopen" && s !== "waiting" && s !== "needs_info",
+				(s) => !(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s),
 			),
+		);
+	});
+	it("omits exactly the targets the shared reason-required answer names, whatever it grows to", () => {
+		const rows = [row({ id: "a", status: "in_progress" })];
+		const all = allowedTransitions(EXITS, "in_progress");
+		const offered = bulkAllowedStatuses(EXITS, rows);
+		expect(all.filter((s) => !offered.includes(s))).toEqual(
+			all.filter((s) => (REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s)),
 		);
 	});
 	it("never offers a status that requires an authored reason", () => {
@@ -762,6 +775,33 @@ describe("heartbeatState", () => {
 				now,
 			),
 		).toBe("stale");
+	});
+});
+
+describe("openBlockingRefs", () => {
+	it("reports a blocker core has not settled, so the row can flag it", () => {
+		const refs = openBlockingRefs(incomingBlocks({ fromStatus: "in_progress" }));
+		expect(refs.map((r) => r.displayId)).toEqual(["ISS-9"]);
+	});
+
+	it("reports nothing for a blocker core has already released for dispatch", () => {
+		for (const status of BLOCKER_SETTLED_STATUSES) {
+			expect(
+				openBlockingRefs(incomingBlocks({ fromStatus: status })),
+				status,
+			).toEqual([]);
+		}
+	});
+
+	it("flags exactly the statuses core does not count as settled", () => {
+		const flagged = REGISTRY_ISSUE_STATUSES.filter(
+			(s) => openBlockingRefs(incomingBlocks({ fromStatus: s })).length > 0,
+		);
+		expect(flagged).toEqual(
+			REGISTRY_ISSUE_STATUSES.filter(
+				(s) => !(BLOCKER_SETTLED_STATUSES as readonly string[]).includes(s),
+			),
+		);
 	});
 });
 

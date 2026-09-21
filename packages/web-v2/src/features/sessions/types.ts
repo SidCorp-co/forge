@@ -5,6 +5,7 @@ import {
   LEGACY_NEUTRAL_REASONS,
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
+import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/status-sets";
 import type { StatusKey } from "@/design/status";
 
 export type AgentSessionStatus =
@@ -17,13 +18,9 @@ export type AgentSessionStatus =
   | "cancelled_stale"
   | "cancelled";
 
-export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set<AgentSessionStatus>([
-  "completed",
-  "failed",
-  "completed_via_recovery",
-  "cancelled_stale",
-  "cancelled",
-]);
+export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set<AgentSessionStatus>(
+  TERMINAL_AGENT_SESSION_STATUSES,
+);
 
 /** Synthetic UI-only state derived from heartbeat freshness. The backend only
  *  persists `running`; the `stalled` distinction is presentational. */

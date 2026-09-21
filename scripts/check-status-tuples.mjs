@@ -16,6 +16,11 @@ const DISCRIMINATOR = {
   job: /\bjobs?\b|JobStatus/,
   session: /agentSessions?|AgentSession/i,
 };
+// A status literal in either quote style: `packages/core` and `packages/contracts`
+// are formatted with single quotes and `packages/web-v2` with double, so a
+// single-quote-only scan reads the browser package as holding no tuples at all.
+const QUOTED = /['"]([a-z_]+)['"]/g;
+const TUPLE = /\[\s*((?:['"][a-z_]+['"]\s*,\s*)+['"][a-z_]+['"]\s*),?\s*\]/g;
 const DIFFERS = /status-tuple:\s*differs\s*[—-]\s*\S/;
 const MARKER_REACH = 6;
 const DEFAULTS = {
@@ -64,7 +69,7 @@ function readVocabularies() {
           'the new name.',
       );
     }
-    const members = new Set([...hit[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+    const members = new Set([...hit[1].matchAll(QUOTED)].map((m) => m[1]));
     if (members.size === 0) die(`${symbol} parsed to an empty vocabulary`);
     read[name] = members;
   }
@@ -118,8 +123,8 @@ export function sitesIn(rel, source, vocabularies, unattributed = []) {
   const marked = markedLines(source);
   const text = stripComments(source);
   const sites = [];
-  for (const hit of text.matchAll(/\[\s*((?:'[a-z_]+'\s*,\s*)+'[a-z_]+'\s*),?\s*\]/g)) {
-    const members = [...hit[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  for (const hit of text.matchAll(TUPLE)) {
+    const members = [...hit[1].matchAll(QUOTED)].map((m) => m[1]);
     const before = text.slice(0, hit.index);
     // A tuple written as an object-literal property value is a table row, not a
     // named question: `transitions` and `JOB_TYPE_EXPECTED_EXIT_STATUS` both hold
