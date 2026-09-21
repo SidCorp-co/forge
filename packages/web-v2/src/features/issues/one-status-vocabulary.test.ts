@@ -1,16 +1,6 @@
-// ISS-1097 — one rendering decision in one place, held by a scan of the tree.
-//
-// Two negatives that no import graph can express, so this walks the files the
-// way `no-status-ladder.test.ts` does.
-//
-// 1. The lane word must not be reachable under an unqualified status-label
-//    name. `statusLabelFor`/`useStatusLabeller` returned the nine-bucket lane
-//    word, and four surfaces took the name at its word and reported a status
-//    with it: the STATUS column, the detail header, the properties rail and the
-//    post-transition toast. The rename to `laneLabel`/`useLaneLabeller` is the
-//    fix; this case stops the old name coming back on the lane function.
-// 2. A second kernel-status-to-word map must not appear. `STATUS_LABELS` is the
-//    one, and the vocabulary that folds 17 onto 9 lives in `@forge/contracts`.
+// Two negatives no import graph can express, so this walks the files the way
+// `no-status-ladder.test.ts` does: the lane word must not be reachable under an
+// unqualified status-label name, and a second kernel-status-to-word map must not appear.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
@@ -39,11 +29,8 @@ it("walks a tree that is actually there", () => {
 });
 
 describe("the lane word is not reachable under a status-label name", () => {
-  // The unqualified names only. `pipelineStatusLabel` carries its own domain in
-  // its name and is a different status vocabulary altogether — a name that says
-  // which statuses it labels is not the name this defect was made of.
+  // The unqualified names only: `pipelineStatusLabel` says which statuses it labels.
   const AMBIGUOUS = /^(?:use)?[Ss]tatus[Ll]abel/;
-  // Both answer with the KERNEL status, which is what makes the name honest.
   const KERNEL_NAMED = new Set(["statusLabel", "STATUS_LABELS"]);
   const DECLARED =
     /\b(?:export\s+)?(?:const|function|type|interface|class)\s+([A-Za-z_$][\w$]*)/g;
@@ -93,9 +80,7 @@ describe("exactly one kernel-status-to-word map", () => {
   it("declares no second one anywhere in web-v2", () => {
     const found: string[] = [];
     for (const { path, text } of FILES) {
-      // A test's own expected-word fixture is the deliberate second opinion this issue asked for:
-      // `status-cell.test.tsx` spells all 17 words precisely so a wrong value in the production map
-      // fails rather than being followed. It is not a rendering decision and is not a second map.
+      // A test's expected-word fixture is a second opinion, not a second map.
       if (path.endsWith(".test.ts") || path.endsWith(".test.tsx")) continue;
       if (path === HOME) continue;
       const n = statusesIn(text).size;

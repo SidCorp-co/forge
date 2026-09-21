@@ -107,15 +107,10 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 	xl: "XL",
 };
 
-/** The issue's own status, written out. One word per kernel status, all 17 distinct. */
+/** The issue's own status, written out: one word per kernel status, all 17 distinct. Every surface that REPORTS a status takes this one. */
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
 
-/**
- * The nine-bucket LANE word, for the surfaces that want nine buckets: the board's
- * column heads, the tabs, the grouping, the status-move menus. It is lossy by
- * design and must never label a surface that claims to report the status —
- * `statusLabel` above is that one.
- */
+/** The nine-bucket LANE word, for the board's column heads, the tabs, the grouping and the status-move menus. Lossy, so never for a surface that reports the status. */
 export const laneLabel = (s: IssueStatus): string =>
 	LABEL_VIEW[toAutonomousLabel(s)]?.label ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>

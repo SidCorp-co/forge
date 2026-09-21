@@ -1,51 +1,15 @@
-// Refuse `next build` while a `next dev` holds this worktree's `.next`, by name.
-//
-// Two shapes of the same collision have cost rounds here. `next dev` (Turbopack) writes `.next/dev`
-// continuously and `next build` reads and writes `.next` in the same worktree:
-//
-// 1. 2026-09-16, ISS-1035 — an orphaned dev server from a killed run fed the build a STALE copy of a
-//    source file. `tsc` reported four errors at line/column pairs that existed in no version of that
-//    file: not the working tree, not HEAD, not any commit on the branch, not `origin/main`. On the
-//    same tree `tsc --noEmit -p tsconfig.json` exited 0. That is a WRONG RED in a file you just
-//    edited, naming a real rule, with nothing pointing outward — the expensive shape.
-// 2. 2026-09-18, ISS-1097 — the run's own walk server, left up while the gate ran, produced
-//    `⨯ Another next build process is already running.` Next's own lock caught it, which is the
-//    cheap shape, and only because the build happened to reach the lock first.
-//
-// The second occurrence is what buys a check rather than a firmer sentence. Next's lock does not
-// cover case 1: the stale read happens below it, `turbo --force` genuinely re-runs the task, and the
-// staleness is inside `.next`.
-//
-// FAILING OPEN IS DELIBERATE. A guard that cannot tell must not block a build: CI has no `/proc`
-// shape to read on some hosts, a container may hide other processes, and a false positive here
-// stops everyone from building for a condition that is not there. Every uncertainty below exits 0.
-// The only exit 1 is a live process that invokes `next dev` AND whose resolved project directory is
-// this package — not merely one whose cwd sits inside it, which is a different claim and was the
-// first version's false positive (`next dev /other-worktree/packages/web-v2` launched from here).
-//
-// There is no unit test beside this file on purpose: `vitest.config` collects `src/**/*.test.{ts,tsx}`
-// only, so a test here would never run, which is worse than none. The pure half — `invokesNextDev`
-// and `projectDirOf` — was walked over nine cases instead, including both the ones the review named:
-// a dev server explicitly serving another worktree resolves to that worktree and is let through, one
-// explicitly serving this package resolves here and is caught. The three live states were walked too:
-// no server exit 0, a real `next dev -p 3196` in this package exit 1 naming its pid, stopped exit 0.
+// Refuse `next build` while a `next dev` holds this worktree's `.next`, by name: both read and
+// write the same directory, and Next's own lock does not cover the build type-checking a source
+// revision the dev server cached. Failing open is deliberate — a guard that cannot tell must not
+// block a build, so every uncertainty below exits 0.
 
 import { readdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const PKG = realpathSync(resolve(import.meta.dirname, ".."));
 
-/**
- * True only for an argv that INVOKES `next dev`: some element whose basename is `next`, with the
- * very next element being exactly `dev`.
- *
- * The structure is the whole point. Matching the two words anywhere in the command line is what the
- * first version did, and it refused its own first run: the shell that launched this script carried
- * `scripts/no-dev-server-holding-next.mjs` inside a `bash -c` string, so the cmdline held "next" and
- * "dev" and nothing about a server. A wrapper's `-c` payload is ONE argv element, so no wrapper can
- * satisfy the test below — only the process actually running the server, which is the one whose
- * handle on `.next` matters anyway.
- */
+/** True only for an argv that INVOKES `next dev`. A wrapper's `-c` payload is ONE argv element,
+ *  so matching the structure rather than the two words anywhere keeps this script's launcher out. */
 function invokesNextDev(argv) {
 	return argv.some((part, i) => {
 		const bin = part.split("/").pop();
@@ -65,15 +29,9 @@ const TAKES_A_VALUE = new Set([
 	"--experimental-upload-trace",
 ]);
 
-/**
- * Which project directory a `next dev` argv serves, resolved against that process's cwd — or `null`
- * where it cannot be read confidently, which is a fail-open.
- *
- * The cwd is NOT the project. `next dev [directory]` takes an optional positional, so a developer
- * running `next dev /other-worktree/packages/web-v2` from inside THIS package is serving a different
- * `.next` entirely, and refusing their build here would be the false positive this file's own policy
- * forbids. More than one positional is a shape this does not model: say nothing.
- */
+/** Which project directory a `next dev` argv serves, resolved against that process's cwd — `null`
+ *  where it cannot be read confidently. The cwd is NOT the project: `next dev [directory]` takes
+ *  an optional positional, and more than one is a shape this does not model. */
 function projectDirOf(argv, cwd) {
 	const at = argv.findIndex((part, i) => {
 		const bin = part.split("/").pop();
@@ -100,7 +58,7 @@ function devServersHere() {
 	try {
 		entries = readdirSync("/proc");
 	} catch {
-		return null; // No procfs to read. Say nothing, build.
+		return null;
 	}
 	const found = [];
 	for (const entry of entries) {
@@ -114,15 +72,15 @@ function devServersHere() {
 				.split("\0")
 				.filter(Boolean);
 		} catch {
-			continue; // Gone, or not ours to read. Not evidence of anything.
+			continue;
 		}
 		if (!invokesNextDev(argv)) continue;
 		let project = projectDirOf(argv, cwd);
-		if (project === null) continue; // Cannot tell which project. Say nothing.
+		if (project === null) continue;
 		try {
 			project = realpathSync(project);
 		} catch {
-			continue; // The named directory does not resolve. Not evidence.
+			continue;
 		}
 		if (project !== PKG) continue; // Someone else's `.next`, not ours.
 		found.push({ pid: entry, argv: argv.join(" ") });

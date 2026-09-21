@@ -8,11 +8,9 @@
 // importing test stays green while two rows report the wrong status. The
 // fixture is the second opinion, so a wrong word in the map fails here.
 //
-// The lane vocabulary folds seven kernel statuses onto "Running" and two onto
-// "Needs a human", so a case naming one status and one word can also pass
-// against a map that hardcodes it. The two collapse cases below therefore
-// assert the SHAPE of the fix — n statuses, n distinct words, and the lane
-// word absent — which no hardcoded entry satisfies by accident.
+// The lane vocabulary folds seven statuses onto "Running" and two onto "Needs a
+// human", so the two collapse cases assert the SHAPE — n statuses, n distinct
+// words, the lane word absent — which no hardcoded entry satisfies by accident.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -125,11 +123,9 @@ describe("the column headed STATUS prints the kernel status", () => {
 });
 
 describe("the word the detail header prints", () => {
-  // The header is one line inside a screen that needs a router, a query client and a dozen hooks to
-  // render, and mocking all of that would put the assertion further from the call site rather than
-  // closer. So this reads the SHIPPED call site out of the source: the mutation it has to catch is a
-  // one-expression edit to that line, and a source read catches exactly that. It is named for what
-  // it does — it does not claim to be a render.
+  // The header is one line inside a screen needing a router, a query client and a dozen hooks, and
+  // mocking all of that would put the assertion further from the call site. So this reads the
+  // SHIPPED call site out of the source, which is exactly the one-expression edit it has to catch.
   const header = readFileSync(
     join(import.meta.dirname, "issue-detail-screen.tsx"),
     "utf8",

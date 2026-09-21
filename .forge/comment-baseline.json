@@ -157,9 +157,6 @@
     "packages/web-v2/src/features/integrations/providers/registry.ts": {
       "code-quality/comment-density": 1
     },
-    "packages/web-v2/src/features/issues/components/waiting-cell.test.tsx": {
-      "code-quality/comment-density": 1
-    },
     "packages/web-v2/src/features/issues/types.ts": {
       "code-quality/comment-density": 1
     },

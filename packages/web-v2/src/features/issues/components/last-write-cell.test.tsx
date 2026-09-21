@@ -7,13 +7,6 @@
 // two facts the rendered colour actually rests on, each of which can go red on
 // its own: the span asks for the mark by a class the cascade lets through, and
 // that class is declared where it outranks `.fg-caption`.
-//
-// What shipped and failed: `font-semibold text-[color:var(--amber-600)]`
-// spelled on the same span as `fg-caption`. `.fg-caption` is unlayered, every
-// Tailwind utility lives in `@layer utilities`, and an unlayered rule beats a
-// layered one whatever its specificity — so on beta at d0389485c a row that had
-// not moved in 2d computed to rgb(118,125,138) at weight 500, identical to the
-// row above it that moved 2h ago.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
