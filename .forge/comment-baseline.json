@@ -112,9 +112,6 @@
     "packages/core/src/pipeline/hooks.ts": {
       "code-quality/comment-density": 1
     },
-    "packages/core/src/pipeline/status-sets.ts": {
-      "code-quality/comment-density": 1
-    },
     "packages/core/src/projects/health-routes.test.ts": {
       "code-quality/comment-density": 1,
       "code-quality/max-consecutive-comment-lines": 1,

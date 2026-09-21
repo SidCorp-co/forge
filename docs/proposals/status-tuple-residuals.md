@@ -28,6 +28,12 @@ declared a second time as `LIVE_RUN_STATUSES` in
 whole axis exists to refuse: a browser copy of a core answer with no marker, no parity test and
 nothing naming the two as one question.
 
+ISS-1106 landed the cheap half of the second consequence and none of the rest: the constant itself now
+lives in `packages/core/src/pipeline/status-sets.ts` beside `TERMINAL_PIPELINE_RUN_STATUSES`, which is
+the module that owns the concept, rather than in `issues/issue-lease.ts`, which had the only import.
+The eleven inline copies and the browser's second declaration are untouched, and the gate still cannot
+see any of them.
+
 What it would take: add `run` to `VOCABULARIES` and `DISCRIMINATOR` in
 `scripts/check-status-tuples.mjs`, move the eleven inline sites onto `LIVE_PIPELINE_RUN_STATUSES`,
 and resolve the web-v2 declaration the way the other browser copies were resolved — into

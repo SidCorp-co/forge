@@ -19,6 +19,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { TERMINAL_JOB_STATUSES } from '../jobs/status-sets.js';
+import { LIVE_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import {
   canonicalIssueKey,
   issueRefPrefixOf,
@@ -26,9 +27,6 @@ import {
   parseIssueRef,
 } from '../lib/issue-ref.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
-
-/** Statuses a `pipeline_runs` row carries while it is still someone's work. */
-const LIVE_PIPELINE_RUN_STATUSES = ['running', 'paused'] as const;
 
 const terminalSessionList = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),
