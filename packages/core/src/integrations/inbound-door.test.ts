@@ -117,19 +117,21 @@ describe('where a door stands', () => {
     );
   });
 
-  // A door nothing has asked about is judged on its traffic alone, never guessed green.
-  it('falls back to the traffic where nothing has observed the endpoint', () => {
-    expect(state({ observed: null, traffic: QUIET })).toBe('silent');
-    expect(state({ observed: null, traffic: CARRYING })).toBe('open');
+  // Review finding F1, second half. A door nothing has ASKED about has an unknown address, and
+  // deliveries recorded earlier say only that it opened once — the URL may have moved since,
+  // which is the exact fault this issue was filed on. Traffic never stands in for the check.
+  it('is unjudged where nothing has observed the endpoint, whatever the traffic says', () => {
+    expect(state({ observed: null, traffic: QUIET })).toBe('unjudged');
+    expect(state({ observed: null, traffic: CARRYING })).toBe('unjudged');
   });
 
   // Review finding F1. A core with no public API origin cannot build the URL this binding needs,
   // so the address half is UNJUDGED — and traffic having come through is not permission to call
   // the unjudged half green, whether or not an observation exists to compare against.
   it('says the address is unjudged where nothing could build the URL this binding needs', () => {
-    expect(state({ expectedUrl: null, traffic: CARRYING })).toBe('unaddressable');
-    expect(state({ expectedUrl: null, traffic: QUIET })).toBe('unaddressable');
-    expect(state({ expectedUrl: null, observed: null, traffic: CARRYING })).toBe('unaddressable');
+    expect(state({ expectedUrl: null, traffic: CARRYING })).toBe('unjudged');
+    expect(state({ expectedUrl: null, traffic: QUIET })).toBe('unjudged');
+    expect(state({ expectedUrl: null, observed: null, traffic: CARRYING })).toBe('unjudged');
   });
 
   // The same absence must not swallow a fault the observation alone establishes.
@@ -155,13 +157,7 @@ describe('the status a door state produces', () => {
 
   // Criterion 4 and criterion 1 at the status.
   it('refuses to report ok for a door that is silent, elsewhere, unaddressed or unreadable', () => {
-    for (const s of [
-      'silent',
-      'elsewhere',
-      'unaddressed',
-      'unreadable',
-      'unaddressable',
-    ] as const) {
+    for (const s of ['silent', 'elsewhere', 'unaddressed', 'unreadable', 'unjudged'] as const) {
       expect(healthWithInboundDoor('ok', s)).toBe('degraded');
       expect(healthWithInboundDoor(null, s)).toBe('degraded');
     }
@@ -219,10 +215,17 @@ describe('what the reading says, and what it does not', () => {
 
   // Review finding F1: the missing prerequisite is named, and no provider is blamed for it.
   it('names what is missing where it could not build the URL this binding needs', () => {
-    const sentence = read({ state: 'unaddressable', expectedUrl: null }) ?? '';
+    const sentence = read({ state: 'unjudged', expectedUrl: null }) ?? '';
     expect(sentence).toContain('PUBLIC_API_BASE_URL');
     expect(sentence).toContain('the address half of this door is unjudged');
     expect(sentence).not.toMatch(/GitHub|the provider is addressed/);
+  });
+
+  it('says the address is unknown, not absent, where nothing has asked the provider yet', () => {
+    const sentence = read({ state: 'unjudged', observed: null }) ?? '';
+    expect(sentence).toContain('Nothing has asked the provider where it calls in');
+    expect(sentence).toContain('say only that it opened once');
+    expect(sentence).not.toContain('PUBLIC_API_BASE_URL');
   });
 
   it('carries the reason a read failed rather than a verdict it did not earn', () => {

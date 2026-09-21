@@ -12,7 +12,7 @@ import { integrationDeliveries, type ObservedEndpoint } from '../db/schema.js';
 /**
  * `not_expected`: silence is not a fault here. `open`: something came through. `elsewhere`: an
  * address that is not this binding's. `unaddressed`: none held, or the hook is off. `unreadable`:
- * could not be asked. `unaddressable`: this core cannot say what URL this binding needs. `silent`.
+ * could not be asked. `unjudged`: a prerequisite of the address check is missing. `silent`.
  */
 export type InboundDoorState =
   | 'not_expected'
@@ -20,7 +20,7 @@ export type InboundDoorState =
   | 'elsewhere'
   | 'unaddressed'
   | 'unreadable'
-  | 'unaddressable'
+  | 'unjudged'
   | 'silent';
 
 /** `accepted` got through; `refused` counts RECORDS, one per code per bucket, so it is a floor on the calls turned away — attributed to nobody, and never `failed`, which is a delivery accepted and then not processed and which the outbound breaker counts. */
@@ -134,8 +134,8 @@ export function inboundDoorState(args: {
     if (args.expectedUrl !== null && !sameEndpoint(observed.url, args.expectedUrl))
       return 'elsewhere';
   }
-  // Traffic proves the door opens; it does not excuse an ADDRESS check that could not be made.
-  if (args.expectedUrl === null) return 'unaddressable';
+  // Traffic proves the door opened once; it never stands in for an address check nothing made.
+  if (args.expectedUrl === null || observed === null) return 'unjudged';
   return args.traffic.accepted > 0 ? 'open' : 'silent';
 }
 
@@ -196,11 +196,12 @@ export function describeInboundDoor(args: {
         `${traffic.accepted} inbound deliver${traffic.accepted === 1 ? 'y has' : 'ies have'} come through this door, ` +
         `the last at ${traffic.lastAcceptedAt?.toISOString() ?? 'a time nothing recorded'}.${turnedAway}`
       );
-    case 'unaddressable':
+    case 'unjudged':
       return (
-        `Nothing here could build the inbound URL this binding needs, so what the provider holds cannot be compared against it. ` +
-        `This core resolves no public API origin — PUBLIC_API_BASE_URL, OAUTH_REDIRECT_BASE and APP_BASE_URL are all unset — ` +
-        `or this binding's project carries no slug. Until one is set, the address half of this door is unjudged.${turnedAway}`
+        (expectedUrl === null
+          ? `Nothing here could build the inbound URL this binding needs: this core resolves no public API origin — PUBLIC_API_BASE_URL, OAUTH_REDIRECT_BASE and APP_BASE_URL are all unset — or this binding's project carries no slug.`
+          : `Nothing has asked the provider where it calls in since this binding was last probed, so the address it holds is unknown here. This binding needs ${expectedUrl}.`) +
+        ` Until then the address half of this door is unjudged, and deliveries recorded earlier say only that it opened once.${turnedAway}`
       );
     case 'unreadable':
       return (

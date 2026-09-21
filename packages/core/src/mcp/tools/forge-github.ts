@@ -120,8 +120,10 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     'has come through), `silent` (addressed here and nothing ever has), `elsewhere` (GitHub holds a ' +
     'different address — compare `observedWebhookUrl` with `expectedWebhookUrl`), `unaddressed` ' +
     '(no address, or the hook is switched off on GitHub), `unreadable` (GitHub could not be asked), ' +
-    '`unaddressable` (this core resolves no public API origin, so it cannot say what URL this ' +
-    'binding needs and the address half is unjudged), `not_expected`. Anything but `open` or ' +
+    '`unjudged` (a prerequisite of the address check is missing — no public API origin here, or ' +
+    'nothing has asked GitHub where it calls in since this binding was last probed — so the ' +
+    'address half is unjudged and earlier deliveries say only that the door opened once), ' +
+    '`not_expected`. Anything but `open` or ' +
     '`not_expected` demotes `lastHealthStatus`, because a binding that receives nothing, or whose ' +
     'address nothing has checked, is not healthy whatever its outbound calls do. ' +
     '`inboundReading` is the sentence saying what that is and what it is NOT: `turnedAwayRecords` ' +
