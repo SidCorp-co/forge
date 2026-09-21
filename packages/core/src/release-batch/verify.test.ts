@@ -403,3 +403,24 @@ describe('verifyServingNow', () => {
     expect(out.ok === false && out.readings.length).toBe(1);
   });
 });
+
+// ISS-1127 — `parseVerifyConfig` takes any non-empty string as a probe url, and
+// `readProbe` builds `new URL(probe.url)` outside its own try. So a binding holding
+// `"forge-beta-api.sidcorp.co/version"` makes `createReleaseBatch` throw
+// `TypeError: Invalid URL` past every mapped refusal, as a 500 with no code, while
+// `release-readiness` says nothing about it.
+describe('a probe url that does not parse (ISS-1127)', () => {
+  const MALFORMED = {
+    probes: [{ url: 'forge-beta-api.sidcorp.co/version', commitPath: 'commit' }],
+  };
+
+  it('is named by invalidProbeUrls without a request being made', async () => {
+    const { invalidProbeUrls } = await import('./verify.js');
+    expect(invalidProbeUrls(MALFORMED)).toEqual(['forge-beta-api.sidcorp.co/version']);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still throws out of readLiveCommit, which is why the caller has to refuse first', async () => {
+    await expect(readLiveCommit(MALFORMED)).rejects.toThrow();
+  });
+});

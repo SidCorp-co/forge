@@ -3,9 +3,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
-import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  ReleaseCheckUnevaluatedError,
+  ReleaseProbesUnreadableError,
+  ReleaseRosterUnusableError,
+} from './blockers.js';
 import { resolveReleaseChannels } from './channel.js';
 import { openAttempt, readAttempt, recordAccount, settleAttempt } from './ledger.js';
 import { announceMethod } from './method.js';
@@ -20,7 +24,7 @@ import {
   notFound,
   recordRefusal,
   refuseMachineKeys,
-  serviceUnavailable,
+  releaseBlockerHttp,
   undeclaredBranches,
   undeclaredProbes,
 } from './refusals.js';
@@ -92,45 +96,30 @@ releaseBatchRoutes.post(
     } catch (err) {
       const declined = declarationRefusal(err);
       if (declined) throw declined;
-      if (err instanceof NoReleaseGateError) {
-        throw conflict('NO_RELEASE_GATE', 'This project has no release gate configured');
-      }
+      if (err instanceof NoReleaseGateError) throw releaseBlockerHttp(err, 'NO_RELEASE_GATE');
       if (err instanceof ReleaseRunnerUndeclaredError) {
-        throw conflict(
-          'RELEASE_RUNNER_UNDECLARED',
-          'This project declares a release model but no live deploy binding names a release runner — set `releaseRunnerLabel` on one, and label the box that holds the deploy credential',
-        );
+        throw releaseBlockerHttp(err, 'RELEASE_RUNNER_UNDECLARED');
       }
-      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
-      if (err instanceof ReleasePoolEmptyError) {
-        throw serviceUnavailable(
-          'RELEASE_POOL_EMPTY',
-          'This project has no runner registered, so there is no box a release could run on — pair a box to this project first',
-        );
+      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes(err);
+      if (err instanceof ReleaseProbesUnreadableError) {
+        throw releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { urls: err.urls });
       }
-      if (err instanceof NoRunnerOnlineError) {
-        throw serviceUnavailable('NO_RUNNER_ONLINE', 'No runner is online for this project');
+      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
+      if (err instanceof ReleasePoolEmptyError) throw releaseBlockerHttp(err, 'RELEASE_POOL_EMPTY');
+      if (err instanceof NoRunnerOnlineError) throw releaseBlockerHttp(err, 'NO_RUNNER_ONLINE');
+      if (err instanceof ReleaseRosterUnusableError) {
+        throw releaseBlockerHttp(err, err.code, { waiting: err.waiting });
+      }
+      if (err instanceof ReleaseCheckUnevaluatedError) {
+        throw releaseBlockerHttp(err, 'RELEASE_CHECK_UNEVALUATED', { check: err.check });
       }
       if (err instanceof ClaimConflictError) {
-        throw conflict(
-          'CLAIM_CONFLICT',
-          'One or more issues could not be claimed (wrong status or already in a batch)',
-        );
+        throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
       }
       if (err instanceof ReleaseRecordMissingError) {
-        throw conflict(
-          'RELEASE_RECORD_MISSING',
-          `${err.issueIds.length} issue(s) in this batch have no release note, and closing them ` +
-            `would claim a ship nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
-        );
+        throw releaseBlockerHttp(err, 'RELEASE_RECORD_MISSING', { issueIds: err.issueIds });
       }
-      if (err instanceof BatchInFlightError) {
-        throw conflict(
-          'BATCH_IN_FLIGHT',
-          'A batch release is already in progress for this project',
-        );
-      }
+      if (err instanceof BatchInFlightError) throw releaseBlockerHttp(err, 'BATCH_IN_FLIGHT');
       if (err instanceof ReleaseRecutRefusedError) {
         throw conflict('RELEASE_RECUT_REFUSED', err.message);
       }
@@ -244,7 +233,7 @@ releaseBatchRoutes.get(
     try {
       return c.json(await loadReleaseBatchContext(runId));
     } catch (err) {
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
+      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
       throw err;
     }
   },
@@ -274,7 +263,7 @@ releaseBatchRoutes.post(
           cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
         });
       }
-      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
+      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes(err);
       if (err instanceof ReleaseVersionMissingError) {
         throw conflict('RELEASE_VERSION_MISSING', err.message);
       }

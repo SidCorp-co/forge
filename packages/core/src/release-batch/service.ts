@@ -24,7 +24,6 @@ import {
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
@@ -36,28 +35,18 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
-import { onlineCapableDeviceIds } from '../runners/select.js';
-import {
-  projectRunnerDeviceIds,
-  resolveReleaseChannels,
-  resolveReleaseDeviceIds,
-  resolveReleasePlan,
-} from './channel.js';
+import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
+import { resolveReleaseChannels, resolveReleasePlan } from './channel.js';
 import {
   BatchInFlightError,
   ClaimConflictError,
   NoReleaseGateError,
-  NoRunnerOnlineError,
   ReleaseBatchAbortedError,
-  ReleaseMultiChannelUnsupportedError,
   ReleaseNotVerifiedError,
-  ReleasePoolEmptyError,
   ReleaseProbesUndeclaredError,
-  ReleaseRecordMissingError,
-  ReleaseRunnerUndeclaredError,
   ReleaseVersionMissingError,
 } from './errors.js';
-import { resolveReleaseGate } from './gate.js';
+import { RELEASE_GATE_STATUS } from './gate.js';
 import { assertMethodFor, readMethod } from './method.js';
 import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
@@ -95,46 +84,21 @@ export async function createReleaseBatch(
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, issueIds, userId, recutOf } = args;
 
-  const gateStatus = await resolveReleaseGate(projectId);
-  if (!gateStatus) throw new NoReleaseGateError();
+  // ISS-1127 — one enumerator, and this door throws its FIRST answer. Every
+  // refusal keeps the class, the code and the wording it had; what is new is
+  // that the error carries the rest of the list, so an operator clearing this
+  // one already knows what else is standing.
+  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'batch' });
+  if (!report.projectExists) throw new NoReleaseGateError();
+  const refusal = releaseBlockerError(report);
+  if (refusal) throw refusal;
 
-  const preflightRows = await db
-    .select({ id: issues.id, status: issues.status, releaseBatchRunId: issues.releaseBatchRunId })
-    .from(issues)
-    .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds)));
-
-  const foundIds = new Set(preflightRows.map((r) => r.id));
-  const notFound = issueIds.filter((id) => !foundIds.has(id));
-  if (notFound.length > 0) throw new ClaimConflictError(notFound);
-
-  const notClaimable = preflightRows.filter(
-    (r) => r.status !== gateStatus || r.releaseBatchRunId !== null,
-  );
-  if (notClaimable.length > 0) throw new ClaimConflictError(notClaimable.map((r) => r.id));
-
-  const unrecorded = await issuesMissingReleaseRecord(issueIds);
-  if (unrecorded.length > 0) throw new ReleaseRecordMissingError(unrecorded);
-
+  const gateStatus = RELEASE_GATE_STATUS;
   const plan = await resolveReleasePlan(projectId);
-  if (!plan.releaseRunnerLabel) throw new ReleaseRunnerUndeclaredError();
-  if (plan.channels.some((c) => !c.verify)) throw new ReleaseProbesUndeclaredError();
-  // ISS-1128 — the label RANKS this pool. Boxes carrying it go first; where
-  // none of them can take the release, the pool is the fleet rather than
-  // nobody, and the unmet preference is recorded rather than dropped.
-  const labelled = await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel);
-  const preferred =
-    labelled.length === 0
-      ? []
-      : await onlineCapableDeviceIds(projectId, {}, { allowDeviceIds: labelled });
-  const preferenceMet = preferred.length > 0;
-  const releasePool = preferenceMet ? preferred : await onlineCapableDeviceIds(projectId, {});
-  if (releasePool.length === 0) {
-    if ((await projectRunnerDeviceIds(projectId)).length === 0) throw new ReleasePoolEmptyError();
-    throw new NoRunnerOnlineError();
-  }
+  const preferenceMet = report.warnings.every((w) => w.code !== 'RELEASE_RUNNER_PREFERENCE_UNMET');
   if (!preferenceMet) {
     logger.warn(
-      { projectId, releaseRunnerLabel: plan.releaseRunnerLabel, releasePool },
+      { projectId, releaseRunnerLabel: plan.releaseRunnerLabel },
       'release-batch: no box eligible to release carries the declared label, so this batch goes to the pool this project has',
     );
   }
@@ -147,8 +111,6 @@ export async function createReleaseBatch(
   };
   const { baseBranch, liveBranch, promotePlanned } = releaseBranches(project, project.releaseModel);
   const deployPlanned = plan.channels.length > 0;
-
-  if (plan.channels.length > 1) throw new ReleaseMultiChannelUnsupportedError(plan.channels.length);
   const firstVerify = plan.channels[0]?.verify ?? null;
   const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
 

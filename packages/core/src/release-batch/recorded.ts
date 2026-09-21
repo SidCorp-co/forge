@@ -5,30 +5,26 @@
 // on one commit, and that commit is the one the caller claims — so no runner,
 // label or job is needed to record a release that shipped (ISS-1129).
 //
-// It does NOT establish per-issue ancestry: seeing that each named issue's
-// merge is in the live commit needs a git provider, and requiring one would put
-// the coupling straight back. `merged_at` is required instead, the evidence is
-// persisted beside the live identity, and the residual is priced on ISS-1129.
+// It does NOT establish per-issue ancestry: that needs a git provider, and
+// requiring one would put the coupling straight back. `merged_at` is required
+// instead, and the residual is priced on ISS-1129.
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
+import { comments, issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
-import { resolveReleaseChannels } from './channel.js';
+import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
+import type { ReleaseChannel } from './channel.js';
 import {
   ClaimConflictError,
   NoReleaseGateError,
-  ReleaseMultiChannelUnsupportedError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
-  ReleaseRecordMissingError,
-  ReleaseWorkUnmergedError,
 } from './errors.js';
-import { resolveReleaseGate } from './gate.js';
+import { RELEASE_GATE_STATUS } from './gate.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
 
 /** What `metadata.source` reads on the run a recorded release writes. */
@@ -68,53 +64,20 @@ export interface RecordPerformedReleaseResult {
   issues: RecordedIssue[];
 }
 
-/**
- * The one verification config this project's live channel declares. THROWS
- * `ReleaseProbesUndeclaredError` where nothing could be read, and
- * `ReleaseMultiChannelUnsupportedError` where one reading would answer for two
- * endpoints — the same refusals, by the same names, a batch meets here.
- */
-async function soleVerifyConfig(projectId: string) {
-  const channels = await resolveReleaseChannels(projectId);
-  if (channels.length > 1) throw new ReleaseMultiChannelUnsupportedError(channels.length);
-  const verify = channels[0]?.verify ?? null;
+/** The one verification config, taken from the report rather than read again:
+ *  a second read would refuse in its own order (ISS-1127). */
+function soleVerifyConfig(channels: ReleaseChannel[] | null) {
+  const verify = channels?.[0]?.verify ?? null;
   if (!verify) throw new ReleaseProbesUndeclaredError();
   return verify;
 }
 
-/**
- * Every issue this record may close, read once and refused by name. The order
- * is what a caller should learn first: not at the gate, nothing written about
- * what shipped, and work nobody merged are three different mistakes.
- */
-async function admissibleIssues(
-  projectId: string,
-  issueIds: string[],
-  gateStatus: IssueStatus,
-): Promise<RecordedIssue[]> {
+/** Every issue this record may close, read once and refused by name. */
+async function admissibleIssues(projectId: string, issueIds: string[]): Promise<RecordedIssue[]> {
   const rows = await db
-    .select({
-      id: issues.id,
-      status: issues.status,
-      releaseBatchRunId: issues.releaseBatchRunId,
-      mergedAt: issues.mergedAt,
-      mergedCommitSha: issues.mergedCommitSha,
-    })
+    .select({ id: issues.id, mergedAt: issues.mergedAt, mergedCommitSha: issues.mergedCommitSha })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds)));
-
-  const found = new Set(rows.map((r) => r.id));
-  const notFound = issueIds.filter((id) => !found.has(id));
-  if (notFound.length > 0) throw new ClaimConflictError(notFound);
-
-  const notClaimable = rows.filter((r) => r.status !== gateStatus || r.releaseBatchRunId !== null);
-  if (notClaimable.length > 0) throw new ClaimConflictError(notClaimable.map((r) => r.id));
-
-  const unrecorded = await issuesMissingReleaseRecord(issueIds);
-  if (unrecorded.length > 0) throw new ReleaseRecordMissingError(unrecorded);
-
-  const unmerged = rows.filter((r) => r.mergedAt === null).map((r) => r.id);
-  if (unmerged.length > 0) throw new ReleaseWorkUnmergedError(unmerged);
 
   return rows.map((r) => ({
     id: r.id,
@@ -150,11 +113,15 @@ export async function recordPerformedRelease(
   const { projectId, issueIds, commit, account, userId } = args;
   const providerRef = args.providerRef ?? null;
 
-  const gateStatus = await resolveReleaseGate(projectId);
-  if (!gateStatus) throw new NoReleaseGateError();
+  // ONE pass before anything refuses, so probes, notes and merges arrive together (ISS-1127).
+  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'record' });
+  if (!report.projectExists) throw new NoReleaseGateError();
+  const refusal = releaseBlockerError(report);
+  if (refusal) throw refusal;
 
-  const verify = await soleVerifyConfig(projectId);
-  const roster = await admissibleIssues(projectId, issueIds, gateStatus);
+  const gateStatus = RELEASE_GATE_STATUS;
+  const verify = soleVerifyConfig(report.channels);
+  const roster = await admissibleIssues(projectId, issueIds);
 
   const outcome = await verifyServingNow({ cfg: verify, expected: commit });
   if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);

@@ -33,6 +33,11 @@ export function parseVerifyConfig(raw: unknown): VerifyConfig | null {
   };
 }
 
+/** Declared probe urls no request could be made to: a declaration defect rather than an outage (ISS-1127). */
+export function invalidProbeUrls(cfg: VerifyConfig): string[] {
+  return cfg.probes.map((p) => p.url).filter((url) => !URL.canParse(url));
+}
+
 function pluck(body: unknown, path: string | undefined): string | null {
   if (path === undefined) return typeof body === 'string' ? body.trim() : null;
   let cur: unknown = body;

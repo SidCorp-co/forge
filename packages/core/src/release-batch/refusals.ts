@@ -11,7 +11,17 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
-import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
+import {
+  alsoBlocking,
+  blockerHttpStatus,
+  type ReleaseBlockerCode,
+  releaseBlockerSentence,
+} from './blocker-sentences.js';
+import {
+  ReleaseCheckUnevaluatedError,
+  ReleaseProbesUnreadableError,
+  ReleaseRosterUnusableError,
+} from './blockers.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   ClaimConflictError,
@@ -42,29 +52,66 @@ export const conflict = (code: string, message: string, details?: unknown) =>
 export const serviceUnavailable = (code: string, message: string) =>
   new HTTPException(503, { message, cause: { code } });
 
+/**
+ * One refusal, carrying every reason that stood beside it.
+ *
+ * ISS-1127: releasing ISS-1103 by hand was refused twice by this same endpoint
+ * minutes apart — a missing release note, and then a merge nobody had marked —
+ * each individually correct and neither mentioning the other. The thrown code
+ * and its wording are unchanged; `alsoBlocking` is what stops the second
+ * refusal being a surprise.
+ */
+export function releaseBlockerHttp(
+  err: unknown,
+  code: ReleaseBlockerCode,
+  details?: Record<string, unknown>,
+): HTTPException {
+  const standing = alsoBlocking(err, code);
+  const body: Record<string, unknown> = { ...(details ?? {}) };
+  if (standing.length > 0) body.alsoBlocking = standing;
+  return new HTTPException(blockerHttpStatus(code), {
+    message: releaseBlockerSentence(code, details),
+    cause: Object.keys(body).length > 0 ? { code, details: body } : { code },
+  });
+}
+
 export function declarationRefusal(err: unknown): HTTPException | null {
+  // These keep their own long sentences, which name the project and the labels;
+  // what they gain is the rest of the list standing with them (ISS-1127).
   if (err instanceof ReleaseTargetUndeclaredError) {
-    return conflict('RELEASE_TARGET_UNDECLARED', err.message);
+    return carrying(err, 'RELEASE_TARGET_UNDECLARED', err.message);
   }
   if (err instanceof ReleaseRunnerAmbiguousError) {
-    return conflict('RELEASE_RUNNER_AMBIGUOUS', err.message);
+    return carrying(err, 'RELEASE_RUNNER_AMBIGUOUS', err.message);
   }
   if (err instanceof ReleaseMultiChannelUnsupportedError) {
-    return conflict('RELEASE_MULTI_CHANNEL_UNSUPPORTED', err.message);
+    return carrying(err, 'RELEASE_MULTI_CHANNEL_UNSUPPORTED', err.message);
   }
   return null;
 }
-export function undeclaredProbes(): HTTPException {
-  return conflict(
+
+/** One refusal, its own sentence, and every reason standing beside it. */
+function carrying(err: unknown, code: ReleaseBlockerCode, message: string): HTTPException {
+  const standing = alsoBlocking(err, code);
+  return new HTTPException(blockerHttpStatus(code), {
+    message,
+    cause: standing.length > 0 ? { code, details: { alsoBlocking: standing } } : { code },
+  });
+}
+
+export function undeclaredProbes(err?: unknown): HTTPException {
+  return carrying(
+    err,
     'RELEASE_PROBES_UNDECLARED',
-    'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Two ways out. Either record where this project is deployed — `environments.live.commitUrl`, the endpoint that reports the running commit, and `environments.live.commitPath`, the dot path to it inside that endpoint\'s JSON body (`commit`, or `data.commit`; leave it empty where the whole body is the commit) — which answers this for every live binding at once. Or declare probes on the binding itself, which overrides the project\'s: `verify` = `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`. A binding that declares a `verify` Forge cannot read takes NO project default: correct it or remove it.',
+    releaseBlockerSentence('RELEASE_PROBES_UNDECLARED'),
   );
 }
 
-export function undeclaredBranches(): HTTPException {
-  return conflict(
+export function undeclaredBranches(err?: unknown): HTTPException {
+  return carrying(
+    err,
     'RELEASE_BRANCHES_UNDECLARED',
-    'This project declares no baseBranch, so there is nothing a release could promote from',
+    releaseBlockerSentence('RELEASE_BRANCHES_UNDECLARED'),
   );
 }
 // so the refusal has to say where the verdict actually comes from, or the next caller sends it
@@ -124,34 +171,30 @@ export function recordRefusal(err: unknown): HTTPException {
       'This project has no release gate configured, so there is no release to record — an agent `closed` here is already `closed`',
     );
   }
-  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes();
+  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes(err);
+  if (err instanceof ReleaseProbesUnreadableError) {
+    return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { urls: err.urls });
+  }
+  if (err instanceof ReleaseCheckUnevaluatedError) {
+    return releaseBlockerHttp(err, 'RELEASE_CHECK_UNEVALUATED', { check: err.check });
+  }
+  if (err instanceof ReleaseRosterUnusableError) {
+    return releaseBlockerHttp(err, err.code, { waiting: err.waiting });
+  }
   if (err instanceof ReleaseNotVerifiedError) {
     return new HTTPException(409, {
       message: err.reason,
       cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
     });
   }
-  if (err instanceof ReleaseWorkUnmergedError) {
-    return conflict(
-      'RELEASE_WORK_UNMERGED',
-      `${err.issueIds.length} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.`,
-      { issueIds: err.issueIds },
-    );
-  }
   if (err instanceof ClaimConflictError) {
-    return conflict(
-      'CLAIM_CONFLICT',
-      'One or more issues could not be recorded (wrong status, not on this project, or already claimed by a batch)',
-      { issueIds: err.issueIds },
-    );
+    return releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
   }
   if (err instanceof ReleaseRecordMissingError) {
-    return conflict(
-      'RELEASE_RECORD_MISSING',
-      `${err.issueIds.length} issue(s) named here have no release note, and closing them ` +
-        `would claim a ship nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
-      { issueIds: err.issueIds },
-    );
+    return releaseBlockerHttp(err, 'RELEASE_RECORD_MISSING', { issueIds: err.issueIds });
+  }
+  if (err instanceof ReleaseWorkUnmergedError) {
+    return releaseBlockerHttp(err, 'RELEASE_WORK_UNMERGED', { issueIds: err.issueIds });
   }
   throw err;
 }
