@@ -3069,9 +3069,24 @@
 
 ### Fixed
 
+- **A finished run whose work this machine cannot ask a remote about now ends, instead of holding
+  its issues forever.** The work is kept where you can find it, and a release that cannot be made
+  is reported once.
+
+- **A finished run that was working in the project's own copy now ends instead of holding its
+  issues forever.** Those issues come back within seconds, and the copy is left untouched,
+  including unsaved work.
+
 - **One project that cannot be set up on a machine no longer stops the rest.** The others go
   through as normal, and the failing one is named with its reason instead of an error code with no
   cause.
+- **Two requests replacing the same token at once no longer fail one of them.** Re-pairing a
+  machine while it signs in, or rotating one token twice, could hand one caller an error instead
+  of a token.
+- **Giving a machine to someone else now takes the previous owner's access.** Their credential
+  stayed valid beside the new one, and which of the two the machine spoke as was arbitrary.
+- **A revoked machine credential can no longer be renewed into a working one.** Whoever held it
+  before could list it and rotate it back into live access to a machine already handed on.
 - **A record written into a comment now lands or is refused, never silently neither.**
   The tag may sit on the opening fence as well as after the block; one that cannot be read is
   refused as you write it.
