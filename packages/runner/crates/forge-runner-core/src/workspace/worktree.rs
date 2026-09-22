@@ -408,7 +408,10 @@ mod tests {
             Kind::Unknown,
             "one path cannot say whether it is the common dir or this tree's own"
         );
-        assert_eq!(kind_of(wt, "/repo/.git\n/repo/.git\n"), Kind::MainWorkingTree);
+        assert_eq!(
+            kind_of(wt, "/repo/.git\n/repo/.git\n"),
+            Kind::MainWorkingTree
+        );
         assert_eq!(
             kind_of(wt, "/repo/.git/worktrees/a\n/repo/.git\n"),
             Kind::Linked
