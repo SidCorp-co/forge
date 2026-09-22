@@ -17,7 +17,7 @@ const USER_ID = '44444444-4444-4444-8444-444444444444';
 const AT = new Date('2026-09-20T14:59:37.646Z');
 const OBSERVED_SHA = '9a78b0c93f1a2b3c4d5e6f708192a3b4c5d6e7f8';
 
-function issueRow(id: string, sha: string | null) {
+function issueRow(id: string, sha: string | null, at: Date | null = AT) {
   return {
     id,
     projectId: PROJECT_ID,
@@ -36,7 +36,7 @@ function issueRow(id: string, sha: string | null) {
     complexity: 'm',
     assigneeId: null,
     reopenCount: 0,
-    mergedAt: AT,
+    mergedAt: at,
     mergedCommitSha: sha,
     createdAt: AT,
     updatedAt: AT,
@@ -67,10 +67,10 @@ vi.mock('../../db/client.js', () => ({
       set: (payload: Record<string, unknown>) => {
         setPayloads.push(payload);
         return {
-            where: () => ({
-              returning: async () => stampedRows,
-              then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r),
-            }),
+          where: () => ({
+            returning: async () => stampedRows,
+            then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r),
+          }),
         };
       },
     }),
@@ -150,7 +150,7 @@ beforeEach(() => {
   setPayloads.length = 0;
 });
 
-describe("forge_issues action=get, the answer an agent reads one issue through", () => {
+describe('forge_issues action=get, the answer an agent reads one issue through', () => {
   it('answers a claim and a witnessed merge with different marks', async () => {
     asAsserted();
     const claimed = await call({ action: 'get', documentId: ISSUE_ID });
@@ -170,12 +170,12 @@ describe("forge_issues action=get, the answer an agent reads one issue through",
   });
 
   it('answers an unmarked issue unmarked rather than asserted', async () => {
-    stored = { ...issueRow(ISSUE_ID, null), mergedAt: null };
+    stored = issueRow(ISSUE_ID, null, null);
     expect((await call({ action: 'get', documentId: ISSUE_ID })).mergeMark).toBe('unmarked');
   });
 
   it('reads a sha with no timestamp as unmarked, because the timestamp decides first', async () => {
-    stored = { ...issueRow(ISSUE_ID, OBSERVED_SHA), mergedAt: null };
+    stored = issueRow(ISSUE_ID, OBSERVED_SHA, null);
     expect((await call({ action: 'get', documentId: ISSUE_ID })).mergeMark).toBe('unmarked');
   });
 
@@ -199,7 +199,7 @@ describe('forge_issues action=list, the answer an agent browses through', () => 
   });
 
   it('reports an unmarked row as unmarked on the browse surface too', async () => {
-    listRows = [{ ...issueRow(ISSUE_ID, null), mergedAt: null }];
+    listRows = [issueRow(ISSUE_ID, null, null)];
     const rows = (await call({ action: 'list' })).issues as Record<string, unknown>[];
     expect(rows[0]?.mergeMark).toBe('unmarked');
   });
@@ -235,7 +235,7 @@ describe('forge_issues action=mark_merged, the answer to the call that writes on
 
   it('answers unmark with unmarked rather than the kind it cleared', async () => {
     asObserved();
-    stored = { ...issueRow(ISSUE_ID, null), mergedAt: null };
+    stored = issueRow(ISSUE_ID, null, null);
     const cleared = await call({ action: 'unmark', data: { issueId: ISSUE_ID } });
     expect(cleared.mark).toBe('unmarked');
   });
@@ -260,7 +260,7 @@ describe('what the tool description tells an agent about the column', () => {
     expect(setPayloads.some((p) => p.mergedCommitSha === OBSERVED_SHA)).toBe(true);
   });
 
-  it('is true of the claimed path: the mark writes no sha, and not the caller\'s', async () => {
+  it("is true of the claimed path: the mark writes no sha, and not the caller's", async () => {
     asAsserted();
     await call({
       action: 'mark_merged',
