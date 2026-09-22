@@ -167,6 +167,149 @@ fn kind_of(worktree: &Path, answer: &str) -> Kind {
     }
 }
 
+/// Where the checkout a run was declared against actually is, according to
+/// git's registry rather than to whether the path resolves.
+///
+/// An absent path is not proof of removal and never was. `git worktree move`
+/// takes the directory and repoints the administrative entry, leaving a live,
+/// registered worktree behind a path that no longer resolves; a rename, a
+/// relocation, or a filesystem not mounted yet at boot does the same thing
+/// without anybody deciding it. Reading that as *released* is how three runs
+/// on sid-xeon-1 were recorded as having given back checkouts that were
+/// sitting on disk holding a `wip(salvage)` commit (ISS-1193).
+///
+/// So the question an absent path asks is *is this worktree registered
+/// somewhere else?*, and the registry is where it is put.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Residence {
+    /// A linked worktree, registered at this very path.
+    Linked,
+    /// The repository's own main working tree. It is nobody's to remove.
+    MainWorkingTree,
+    /// The path is a directory and git names no worktree at it. Something is
+    /// there; a checkout is not.
+    NotAWorktree,
+    /// The path holds nothing and git's entry for this checkout names another
+    /// path, which is there. The checkout moved; it was not removed.
+    MovedTo(PathBuf),
+    /// The path holds nothing and git still registers a worktree AT it.
+    /// Nothing removed it — `git worktree remove` takes the entry with the
+    /// directory, and this entry is still standing.
+    RegisteredButMissing,
+    /// Neither a directory nor any entry naming one. The only reading that
+    /// means removed.
+    Gone,
+    /// The registry could not be read, which is not an answer.
+    Unknown(String),
+}
+
+/// The administrative entry git keeps for one linked worktree: the name it was
+/// filed under, and the checkout it currently points at.
+///
+/// `git worktree move` rewrites the second and leaves the first alone, so the
+/// name is the identity that survives a move. Git derives it from the basename
+/// of the path the worktree was added at, which is how a run's path finds its
+/// own entry again after the directory beneath it has gone.
+fn entry_points_at(gitdir: &Path) -> Option<PathBuf> {
+    // `<checkout>/.git`, absolute, one line. The checkout is its parent.
+    let text = std::fs::read_to_string(gitdir).ok()?;
+    Some(Path::new(text.trim()).parent()?.to_path_buf())
+}
+
+fn same_path(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// `<common>/worktrees`, where every linked worktree's entry lives.
+async fn admin_root(repo: &Path) -> std::result::Result<PathBuf, String> {
+    let out = Command::new("git")
+        .args(["rev-parse", "--git-common-dir"])
+        .current_dir(repo)
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .map_err(|e| format!("git could not be run in {}: {e}", repo.display()))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git names no repository at {}: {}",
+            repo.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if said.is_empty() {
+        return Err(format!(
+            "git answered nothing when asked for {}'s common directory",
+            repo.display()
+        ));
+    }
+    let common = Path::new(&said);
+    let common = if common.is_absolute() {
+        common.to_path_buf()
+    } else {
+        repo.join(common)
+    };
+    Ok(common.join("worktrees"))
+}
+
+/// Put the absent path's question to git: registered here, moved, or gone.
+///
+/// `repo` is the repository whose registry is asked. A repository that cannot
+/// be asked answers [`Residence::Unknown`] and NOT [`Residence::Gone`]: the
+/// caller refuses on that, and a refusal costs an operator one `run release`
+/// where a guess costs them the ability to trust any row in the ledger.
+pub async fn residence_of(repo: &Path, worktree: &Path) -> Residence {
+    match kind_at(worktree).await {
+        Kind::Linked => return Residence::Linked,
+        Kind::MainWorkingTree => return Residence::MainWorkingTree,
+        Kind::Unknown => {
+            return Residence::Unknown(format!(
+                "git could not be asked what {} is",
+                worktree.display()
+            ))
+        }
+        // Something IS at the path and git says it is no checkout. That is an
+        // answer already, and a different one from the absence below; only the
+        // absence is the question this function exists to put to the registry.
+        Kind::NotAWorktree if worktree.is_dir() => return Residence::NotAWorktree,
+        Kind::NotAWorktree => {}
+    }
+    let admin = match admin_root(repo).await {
+        Ok(a) => a,
+        Err(why) => return Residence::Unknown(why),
+    };
+    let Ok(entries) = std::fs::read_dir(&admin) else {
+        // No entries directory at all: this repository holds no linked
+        // worktree, so it registers none at the path either.
+        return Residence::Gone;
+    };
+    let mut named_by_its_own_entry = None;
+    for e in entries.flatten() {
+        let Some(at) = entry_points_at(&e.path().join("gitdir")) else {
+            continue;
+        };
+        if same_path(&at, worktree) {
+            return Residence::RegisteredButMissing;
+        }
+        if Some(e.file_name().as_os_str()) == worktree.file_name() {
+            named_by_its_own_entry = Some(at);
+        }
+    }
+    match named_by_its_own_entry {
+        Some(at) if at.is_dir() => Residence::MovedTo(at),
+        // The entry names a path that is not there either: git registers this
+        // checkout nowhere a caller could act on, which is the same standing
+        // as no entry at all.
+        _ => Residence::Gone,
+    }
+}
+
 pub async fn remove_at(repo: &str, worktree: &std::path::Path) -> Result<()> {
     let out = git(
         repo,
@@ -451,5 +594,124 @@ mod tests {
             "a repeated append would grow a tracked file on every job"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+    #[tokio::test]
+    async fn a_worktree_git_moved_is_found_at_its_new_path_and_not_called_gone() {
+        let root = repo("moved").await;
+        let r = root.to_string_lossy().to_string();
+        let old = create(&r, "ISS-964", None).await.unwrap();
+        let new = root.join(".claude/worktrees/ISS-964");
+        std::fs::create_dir_all(new.parent().unwrap()).unwrap();
+        run(
+            &root,
+            &[
+                "worktree",
+                "move",
+                &old.to_string_lossy(),
+                &new.to_string_lossy(),
+            ],
+        )
+        .await;
+
+        assert!(!old.exists(), "the fixture must have moved it");
+        assert_eq!(
+            residence_of(&root, &old).await,
+            Residence::MovedTo(new.clone()),
+            "`git worktree move` repoints the entry and leaves its name alone, so a path that \
+             no longer resolves is a moved checkout and not a removed one"
+        );
+        assert_eq!(residence_of(&root, &new).await, Residence::Linked);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn only_a_removal_git_took_part_in_reads_as_gone() {
+        let root = repo("removed").await;
+        let r = root.to_string_lossy().to_string();
+        let wt = create(&r, "ISS-8", None).await.unwrap();
+        assert_eq!(residence_of(&root, &wt).await, Residence::Linked);
+
+        remove_at(&r, &wt).await.expect("git takes it");
+        assert_eq!(
+            residence_of(&root, &wt).await,
+            Residence::Gone,
+            "`git worktree remove` takes the administrative entry with the directory, and the \
+             entry's absence is what says the checkout is gone"
+        );
+        assert_eq!(
+            residence_of(&root, &root.join(".worktrees/ISS-never")).await,
+            Residence::Gone,
+            "and a path git never registered is in the same standing"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_directory_deleted_out_from_under_git_is_still_registered() {
+        let root = repo("byhand").await;
+        let r = root.to_string_lossy().to_string();
+        let wt = create(&r, "ISS-9", None).await.unwrap();
+        std::fs::remove_dir_all(&wt).expect("the operator's rm -rf");
+
+        assert_eq!(
+            residence_of(&root, &wt).await,
+            Residence::RegisteredButMissing,
+            "the entry is still standing, so nothing took this checkout back — pruning it is \
+             an operator's decision and not a release's"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_repository_that_cannot_be_asked_answers_unknown_and_never_gone() {
+        let root = repo("noregistry").await;
+        let absent = root.join(".worktrees/ISS-7");
+        let not_a_repo = std::env::temp_dir().join(format!(
+            "forge-worktree-notarepo-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&not_a_repo);
+        std::fs::create_dir_all(&not_a_repo).unwrap();
+
+        assert!(matches!(
+            residence_of(&not_a_repo, &absent).await,
+            Residence::Unknown(_)
+        ));
+        assert!(matches!(
+            residence_of(Path::new("/nonexistent-repo"), &absent).await,
+            Residence::Unknown(_)
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&not_a_repo);
+    }
+
+    #[tokio::test]
+    async fn a_directory_that_is_no_checkout_is_said_to_be_one_rather_than_gone() {
+        let root = repo("plaindir").await;
+        let plain = root.join("docs");
+        std::fs::create_dir_all(&plain).unwrap();
+
+        assert_eq!(
+            residence_of(&root, &root).await,
+            Residence::MainWorkingTree,
+            "the repository's own checkout is nobody's to give back"
+        );
+
+        let outside = std::env::temp_dir().join(format!(
+            "forge-worktree-outside-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&outside).unwrap();
+        assert_eq!(
+            residence_of(&root, &outside).await,
+            Residence::NotAWorktree,
+            "something is at the path and git says it is no checkout — which is an answer, \
+             and a different one from the absence the registry is asked about"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 }

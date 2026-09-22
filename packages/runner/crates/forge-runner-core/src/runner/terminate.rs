@@ -33,7 +33,7 @@ use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::inflight::Reaped;
 use crate::runner::ledger::{Incarnation, Ledger, Run};
 use crate::workspace::salvage::{self, Outcome, Salvage};
-use crate::workspace::worktree::Kind as WorktreeKind;
+use crate::workspace::worktree::Residence;
 
 /// How a run's process group is stopped. A port so the verb is testable
 /// without a real agent on the box.
@@ -75,11 +75,16 @@ pub struct Forced {
 /// What the release did with the path the run was declared against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorktreeOutcome {
-    /// The run's own checkout was released, or there was none at the path.
+    /// The run's own checkout was preserved and then removed.
     Released,
     /// The run named the repository's MAIN working tree, which it never held
     /// and which has to outlive it. Nothing was preserved and nothing removed.
     MainWorkingTreeKept,
+    /// Git registered no checkout at the path and none that had ever been at
+    /// it, so there was nothing to preserve and nothing to remove. This used
+    /// to wear `Released`, which said the release had done something it had
+    /// not (ISS-1193).
+    NothingRegistered,
 }
 
 pub fn verb_for(run: &Run, this_boot: &str) -> Result<Verb> {
@@ -180,24 +185,53 @@ async fn keep_before_release(
     }
 }
 
-/// Whether the path the run names is a checkout this run has to give back.
+/// What this release may do about the path the run names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Held {
+    /// A linked checkout this run took from the pool and owes back. Preserve
+    /// it, then remove it.
+    Ours,
+    /// The repository's own MAIN working tree. The run never took it from the
+    /// pool, so there is nothing to preserve and nothing to remove, and it has
+    /// to outlive the run (ISS-1183).
+    MainWorkingTree,
+    /// Git registers no checkout at the path and none that was ever at it.
+    /// There is nothing here to release.
+    Nothing,
+}
+
+/// Read git's answer about the path, or refuse the verb by name.
 ///
-/// `true` means it is the repository's own MAIN working tree: the run never
-/// took it from the pool, so there is nothing to preserve and nothing to
-/// remove, and it has to outlive the run. `false` means an ordinary checkout,
-/// released the way it always was.
+/// Three of the five readings refuse, and each refuses for the same reason in
+/// a different shape: this box has not established that the checkout is gone,
+/// and releasing on an unestablished fact is what writes a ledger row nobody
+/// can trust. A refusal costs an operator one `forge-runner run release`; the
+/// alternative cost three runs on sid-xeon-1 a record saying their work had
+/// been given back while it sat on disk under a new path (ISS-1193).
 ///
-/// An unidentifiable path is neither, and is refused rather than guessed at.
-/// Falling through to the release on `Unknown` would publish and remove a path
-/// this box could not name — not knowing what something is is not a licence to
-/// delete it, and a run whose kind could not be read has not been released.
-fn holds_no_checkout(kind: WorktreeKind, verb: Verb, run_id: &str, path: &Path) -> Result<bool> {
-    match kind {
-        WorktreeKind::MainWorkingTree => Ok(true),
-        WorktreeKind::Linked | WorktreeKind::NotAWorktree => Ok(false),
-        WorktreeKind::Unknown => Err(Error::Other(format!(
-            "refusing to {verb:?} run {run_id}: this box could not ask git what {} is — the \
-             checkout stays, because not knowing is not the same as knowing it is safe",
+/// None of them loops: a refusal is given a window and then decided (ISS-1188).
+fn held_checkout(residence: &Residence, verb: Verb, run_id: &str, path: &Path) -> Result<Held> {
+    match residence {
+        Residence::MainWorkingTree => Ok(Held::MainWorkingTree),
+        Residence::Linked | Residence::NotAWorktree => Ok(Held::Ours),
+        Residence::Gone => Ok(Held::Nothing),
+        Residence::MovedTo(now_at) => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: git still registers this run's checkout, moved \
+             to {} — the ledger names {}, which holds nothing. Nothing was preserved and \
+             nothing removed; point the run at the new path or move the checkout back",
+            now_at.display(),
+            path.display()
+        ))),
+        Residence::RegisteredButMissing => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: git still registers a worktree at {}, and the \
+             directory is not there — nothing on this box removed it, so what the checkout held \
+             cannot be examined. `git worktree prune` in the repository is the operator's \
+             decision to make, not this release's",
+            path.display()
+        ))),
+        Residence::Unknown(why) => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: this box could not ask git about {} ({why}) — \
+             the checkout stays, because not knowing is not the same as knowing it is safe",
             path.display()
         ))),
     }
@@ -222,19 +256,16 @@ pub async fn force_terminal(
 
     let worktree = Path::new(&run.worktree_path);
 
-    // A run declared against the repository's OWN checkout never took a
-    // worktree from the pool, so it has none to preserve and none to give
-    // back, and the checkout has to outlive it. Both branches below ask after
-    // a tree this run never held: `git worktree remove` refuses a main working
-    // tree by design, and `salvage::pick_target` already excludes the repo
-    // root, so the preserve step could not have saved anything there either —
-    // a dirty checkout would just fail the guard instead. Reading that out of
-    // a failed removal, as this used to, cannot tell a refusal that will never
-    // succeed from one that might, so the run was retried every sweep forever
-    // and its leases never came back (ISS-1183). Git is asked instead, before
-    // anything here is touched.
-    let main_working_tree = holds_no_checkout(
-        crate::workspace::worktree::kind_at(worktree).await,
+    // What is at the path is git's answer and never the filesystem's, asked
+    // before anything here is touched. A run declared against the repository's
+    // OWN checkout never took a worktree from the pool, so it has none to
+    // preserve and none to give back (ISS-1183); a path that does not resolve
+    // is a question about where the checkout went and not an answer that it is
+    // gone (ISS-1193). Both used to be read off `exists()`, one of them
+    // wrongly, and the wrong one skipped the salvage guard below on its way
+    // past.
+    let held = held_checkout(
+        &crate::workspace::worktree::residence_of(what.repo_root, worktree).await,
         verb,
         run_id,
         worktree,
@@ -245,9 +276,9 @@ pub async fn force_terminal(
     // builds a push refspec and what `salvage_wip` picks a target by; the
     // question the release turns on is asked by sha and needs neither.
     let mut commits = None;
-    let salvage = if main_working_tree {
+    let salvage = if held != Held::Ours {
         None
-    } else if worktree.exists() && crate::workspace::worktree_reap::holds_work(worktree).await {
+    } else if crate::workspace::worktree_reap::holds_work(worktree).await {
         let branch = branch_of(worktree).await;
         // `salvage::pick_target` drops detached entries by design, so a detached
         // checkout has no salvage to run rather than a failed one. The guard
@@ -282,16 +313,20 @@ pub async fn force_terminal(
         crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree).await?;
         report
     } else {
-        if worktree.exists() {
-            let branch = branch_of(worktree).await;
-            commits = Some(keep_before_release(run_id, verb, worktree, branch.as_deref()).await?);
-            crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree)
-                .await?;
-        }
+        let branch = branch_of(worktree).await;
+        commits = Some(keep_before_release(run_id, verb, worktree, branch.as_deref()).await?);
+        crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree).await?;
         None
     };
 
-    let close = close_loop::close(ledger, run_id, ports.sessions, ports.leases).await?;
+    let close = close_loop::close(
+        ledger,
+        run_id,
+        Some(what.repo_root),
+        ports.sessions,
+        ports.leases,
+    )
+    .await?;
     if close.is_closed() {
         ledger.end_run(run_id, what.by, what.reason)?;
     }
@@ -299,10 +334,10 @@ pub async fn force_terminal(
         verb,
         salvage,
         close,
-        worktree: if main_working_tree {
-            WorktreeOutcome::MainWorkingTreeKept
-        } else {
-            WorktreeOutcome::Released
+        worktree: match held {
+            Held::Ours => WorktreeOutcome::Released,
+            Held::MainWorkingTree => WorktreeOutcome::MainWorkingTreeKept,
+            Held::Nothing => WorktreeOutcome::NothingRegistered,
         },
         commits,
     })
@@ -417,7 +452,14 @@ pub async fn release(
             // The leases first and the decision second: a run ended over a
             // refusal whose leases were never asked for is the defect wearing
             // a terminal state.
-            let close = close_loop::close(ledger, run_id, ports.sessions, ports.leases).await?;
+            let close = close_loop::close(
+                ledger,
+                run_id,
+                Some(what.repo_root),
+                ports.sessions,
+                ports.leases,
+            )
+            .await?;
             ledger.conclude_release_refusal(run_id, now_secs, what.by, &why)?;
             Ok(Release::Terminal { why, after, close })
         }
@@ -1310,9 +1352,14 @@ mod tests {
 
     #[tokio::test]
     async fn a_run_whose_tree_is_already_gone_still_reaches_terminal() {
-        let gone = std::env::temp_dir().join("forge-terminate-absent-by-construction");
-        let _ = std::fs::remove_dir_all(&gone);
-        let mut led = ledger_for(&gone, Incarnation::Exited, "boot-a");
+        let (root, wt) = repo("alreadygone").await;
+        let _fx = Fixture(root.clone());
+        git(
+            &root,
+            &["worktree", "remove", &wt.to_string_lossy(), "--force"],
+        )
+        .await;
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
         let (p, s, l) = (
             Procs(Mutex::new(Vec::new())),
             Sessions,
@@ -1322,15 +1369,63 @@ mod tests {
         let out = force_terminal(
             &mut led,
             "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("git registers nothing at the path and nothing that was ever at it");
+
+        assert!(out.salvage.is_none(), "{:?}", out.salvage);
+        assert_eq!(
+            out.worktree,
+            WorktreeOutcome::NothingRegistered,
+            "the release removed nothing, and says so rather than reporting a removal"
+        );
+        assert!(out.close.is_closed(), "{:?}", out.close);
+        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_some());
+        assert!(
+            led.run("run-1")
+                .unwrap()
+                .unwrap()
+                .worktree_gone_at
+                .is_some(),
+            "and the checkout really is off the disk, which is what that mark claims"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_repository_this_box_cannot_ask_decides_nothing_about_the_checkout() {
+        let gone = std::env::temp_dir().join("forge-terminate-absent-by-construction");
+        let _ = std::fs::remove_dir_all(&gone);
+        let mut led = ledger_for(&gone, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
             forcing(Path::new("/nonexistent-repo"), "boot-a"),
             ports(&p, &s, &l),
         )
         .await
-        .unwrap();
+        .expect_err(
+            "with no registry to ask, an absent path says nothing about whether the checkout \
+             was removed — and this used to be the shape that released it",
+        )
+        .to_string();
 
-        assert!(out.salvage.is_none(), "{:?}", out.salvage);
-        assert!(out.close.is_closed(), "{:?}", out.close);
-        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_some());
+        assert!(err.contains("could not ask git"), "{err}");
+        assert!(
+            led.run("run-1")
+                .unwrap()
+                .unwrap()
+                .worktree_gone_at
+                .is_none(),
+            "nothing is recorded as gone on a reading nobody could take"
+        );
     }
 
     #[test]
@@ -1924,10 +2019,12 @@ mod tests {
             Leases(Mutex::new(HashSet::new())),
         );
 
-        let state = close_loop::close(&mut led, "run-1", &s, &l).await.unwrap();
+        let state = close_loop::close(&mut led, "run-1", Some(&root), &s, &l)
+            .await
+            .unwrap();
 
         assert!(
-            !state.worktree_gone,
+            !state.checkout_returned,
             "a checkout that is still on the disk has not been given back, \
              and only a main working tree is released without being removed"
         );
@@ -1936,13 +2033,18 @@ mod tests {
     #[test]
     fn a_path_git_could_not_identify_is_refused_rather_than_released() {
         let p = Path::new("/some/checkout");
-        let err = holds_no_checkout(WorktreeKind::Unknown, Verb::Abandon, "run-1", p)
-            .expect_err(
-                "an unidentifiable path must not fall through to the release: publishing and \
-                 removing a path this box could not name is exactly the silent substitution \
-                 the refusal exists to prevent",
-            )
-            .to_string();
+        let err = held_checkout(
+            &Residence::Unknown("the repository answered nothing".into()),
+            Verb::Abandon,
+            "run-1",
+            p,
+        )
+        .expect_err(
+            "an unidentifiable path must not fall through to the release: publishing and \
+             removing a path this box could not name is exactly the silent substitution \
+             the refusal exists to prevent",
+        )
+        .to_string();
         assert!(err.contains("could not ask git"), "{err}");
         assert!(
             err.contains("/some/checkout"),
@@ -1951,16 +2053,39 @@ mod tests {
     }
 
     #[test]
-    fn only_the_main_working_tree_is_a_checkout_the_run_never_held() {
+    fn every_reading_but_a_checked_one_refuses_rather_than_releases() {
         let p = Path::new("/some/checkout");
-        assert!(
-            holds_no_checkout(WorktreeKind::MainWorkingTree, Verb::Abandon, "run-1", p).unwrap(),
+        assert_eq!(
+            held_checkout(&Residence::MainWorkingTree, Verb::Abandon, "run-1", p).unwrap(),
+            Held::MainWorkingTree,
             "the repo's own checkout is not the run's to give back"
         );
-        for kind in [WorktreeKind::Linked, WorktreeKind::NotAWorktree] {
+        for there in [Residence::Linked, Residence::NotAWorktree] {
+            assert_eq!(
+                held_checkout(&there, Verb::Abandon, "run-1", p).unwrap(),
+                Held::Ours,
+                "{there:?} still takes the release path it always took"
+            );
+        }
+        assert_eq!(
+            held_checkout(&Residence::Gone, Verb::Abandon, "run-1", p).unwrap(),
+            Held::Nothing,
+            "git registering nothing at the path, and nothing that was ever at it, is the one \
+             reading that means removed"
+        );
+        for unestablished in [
+            Residence::MovedTo(PathBuf::from("/elsewhere")),
+            Residence::RegisteredButMissing,
+        ] {
+            let err = held_checkout(&unestablished, Verb::Abandon, "run-1", p)
+                .expect_err(
+                    "a checkout git still registers has not been given back, whatever the \
+                     path resolves to",
+                )
+                .to_string();
             assert!(
-                !holds_no_checkout(kind, Verb::Abandon, "run-1", p).unwrap(),
-                "{kind:?} still takes the release path it always took"
+                err.contains("still registers"),
+                "the refusal must say what git said, not that something went wrong: {err}"
             );
         }
     }
@@ -1971,13 +2096,20 @@ mod tests {
             .split("pub async fn force_terminal(")
             .nth(1)
             .expect("force_terminal must be findable");
-        let asked = body.find("kind_at").expect("the question put to git");
+        let asked = body.find("residence_of").expect("the question put to git");
         let salvage = body.find("salvage_wip").expect("the preserve step");
         let release = body.find("worktree::remove").expect("the release");
         assert!(
             asked < salvage && asked < release,
-            "a main working tree must be recognised BEFORE the preserve step and before \
-             `git worktree remove` — reading it out of the removal's failure is the defect"
+            "what the path is must be settled BEFORE the preserve step and before \
+             `git worktree remove` — reading it out of the removal's failure is one defect \
+             (ISS-1183) and reading it off `exists()` is the other (ISS-1193)"
+        );
+        assert!(
+            !body.contains("worktree.exists()"),
+            "and it is settled by asking git, never by whether the path resolves: an absent \
+             path is a moved checkout as often as a removed one, and the branch it used to \
+             skip is the salvage guard (ISS-1193)"
         );
     }
 
@@ -2018,5 +2150,245 @@ mod tests {
             "the commit must survive on the branch after the checkout is gone"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The incident on sid-xeon-1 (ISS-1193): a live, registered worktree
+    /// holding a salvage commit and an unpreserved file, moved with `git
+    /// worktree move` into a canonical location. Git's registry follows the
+    /// move and the ledger still names the old path.
+    async fn moved_worktree(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let (root, wt) = repo(tag).await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "wip(salvage)"]).await;
+        std::fs::write(wt.join("never-preserved.txt"), "the diff nobody looked at").unwrap();
+        let moved = root.join(".claude/worktrees/ISS-964");
+        std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
+        git(
+            &root,
+            &[
+                "worktree",
+                "move",
+                &wt.to_string_lossy(),
+                &moved.to_string_lossy(),
+            ],
+        )
+        .await;
+        (root, wt, moved)
+    }
+
+    #[tokio::test]
+    async fn a_worktree_that_moved_is_refused_by_name_rather_than_recorded_released() {
+        let (root, old, moved) = moved_worktree("moved").await;
+        assert!(
+            !old.exists() && moved.exists(),
+            "the fixture must have moved it"
+        );
+        let mut led = ledger_for(&old, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err("git still registers this checkout, so nothing here was released")
+        .to_string();
+
+        assert!(
+            err.contains(&*moved.to_string_lossy()),
+            "the refusal must name where git says the checkout now is: {err}"
+        );
+        assert!(
+            led.run("run-1")
+                .unwrap()
+                .unwrap()
+                .worktree_gone_at
+                .is_none(),
+            "the ledger must not record a release that did not happen"
+        );
+        assert!(moved.exists(), "and the checkout is untouched");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn the_sweep_does_not_conclude_a_release_from_a_path_that_does_not_resolve() {
+        let (root, old, _moved) = moved_worktree("sweep").await;
+        let mut led = ledger_for(&old, Incarnation::Exited, "boot-a");
+        let (s, l) = (Sessions, Leases(Mutex::new(HashSet::new())));
+
+        let _ = close_loop::close(&mut led, "run-1", Some(&root), &s, &l)
+            .await
+            .unwrap();
+
+        assert!(
+            led.run("run-1")
+                .unwrap()
+                .unwrap()
+                .worktree_gone_at
+                .is_none(),
+            "an absent path is a question for git's registry, never proof of removal"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_path_that_never_held_anything_is_released_because_git_says_so() {
+        let (root, _wt) = repo("neverwas").await;
+        let _fx = Fixture(root.clone());
+        let never = root.join(".worktrees/ISS-no-such-run");
+        let mut led = ledger_for(&never, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("a path git registers nothing at, and never did, holds nothing to give back");
+
+        assert_eq!(out.worktree, WorktreeOutcome::NothingRegistered);
+        assert!(out.close.is_closed(), "{:?}", out.close);
+    }
+
+    #[tokio::test]
+    async fn a_checkout_deleted_by_hand_is_still_registered_and_is_refused() {
+        let (root, wt) = repo("byhand").await;
+        let _fx = Fixture(root.clone());
+        std::fs::remove_dir_all(&wt).expect("the operator's rm -rf");
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err("nothing on this box removed it, and what it held cannot be examined")
+        .to_string();
+
+        assert!(err.contains("still registers"), "{err}");
+        assert!(
+            err.contains("worktree prune"),
+            "the refusal must name the act that ends it, or an operator is left guessing: {err}"
+        );
+        assert!(led
+            .run("run-1")
+            .unwrap()
+            .unwrap()
+            .worktree_gone_at
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn the_main_working_tree_earns_its_own_mark_and_never_the_gone_one() {
+        let (_fx, root, mut led) = main_tree_run("twofacts").await;
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("ISS-1183's exit stays open");
+
+        assert!(out.close.is_closed(), "{:?}", out.close);
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            run.released_as.as_deref(),
+            Some("main_working_tree_kept"),
+            "the fact that closes the loop is *this run owes no checkout back*, and it has its \
+             own home now"
+        );
+        assert!(
+            run.worktree_gone_at.is_none(),
+            "and the column that says a checkout went says nothing, because none did — a row \
+             reading `worktree gone` over a checkout somebody is standing in is the state \
+             lying (ISS-1193)"
+        );
+        assert!(root.is_dir());
+    }
+
+    /// The business rule, over every reading a release can take.
+    #[tokio::test]
+    async fn worktree_gone_at_is_stamped_exactly_where_the_checkout_left_the_disk() {
+        // Released: a linked checkout, preserved and removed.
+        let (root, wt) = repo("rule-released").await;
+        let _fx = Fixture(root.clone());
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+        force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(!wt.exists() && run.worktree_gone_at.is_some());
+        assert_eq!(run.released_as.as_deref(), Some("gone"));
+
+        // Kept: the main working tree, alive on disk.
+        let (_fx2, main, mut led2) = main_tree_run("rule-kept").await;
+        force_terminal(
+            &mut led2,
+            "run-1",
+            forcing(&main, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .unwrap();
+        let kept = led2.run("run-1").unwrap().unwrap();
+        assert!(main.is_dir() && kept.worktree_gone_at.is_none());
+
+        // Moved: alive on disk under another path, and refused.
+        let (root3, old, moved) = moved_worktree("rule-moved").await;
+        let _fx3 = Fixture(root3.clone());
+        let mut led3 = ledger_for(&old, Incarnation::Exited, "boot-a");
+        force_terminal(
+            &mut led3,
+            "run-1",
+            forcing(&root3, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            moved.is_dir()
+                && led3
+                    .run("run-1")
+                    .unwrap()
+                    .unwrap()
+                    .worktree_gone_at
+                    .is_none()
+        );
     }
 }

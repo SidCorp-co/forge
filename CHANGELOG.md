@@ -3069,6 +3069,10 @@
 
 ### Fixed
 
+- **A run counts as having given its checkout back only once git says so.** Moving a checkout left
+  the ledger claiming the work was released while it sat on disk. The box asks git now, and says
+  when it cannot.
+
 - **A finished run whose work this machine cannot ask a remote about now ends, instead of holding
   its issues forever.** The work is kept where you can find it, and a release that cannot be made
   is reported once.

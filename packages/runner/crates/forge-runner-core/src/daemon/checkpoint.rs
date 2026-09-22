@@ -303,6 +303,7 @@ mod tests {
             resume_id: None,
             session_terminal_at: None,
             worktree_gone_at: None,
+            released_as: None,
             claim_owner: None,
             claim_generation: 0,
             claim_expires_at: None,

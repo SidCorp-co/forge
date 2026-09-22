@@ -1243,6 +1243,17 @@ struct Reclaim<'a> {
     closer: &'a dyn close_loop::RunCloser,
 }
 
+/// The same binding the release resolves, handed to the sweep that runs before
+/// it: the close loop's worktree mark is a question about a repository's
+/// registry, and this is where that repository is (ISS-1193).
+impl recovery::RepoRoots for Reclaim<'_> {
+    fn root_for(&self, project_id: &str) -> Option<std::path::PathBuf> {
+        resolve_repo(self.served, self.cfg, project_id)
+            .ok()
+            .map(|r| r.repo_path)
+    }
+}
+
 async fn release_held_tree(
     led: &mut Ledger,
     r: &recovery::Recovered,
@@ -1439,7 +1450,12 @@ async fn give_back_lost_runs(
         tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
         return;
     }
-    match recovery::reconcile(led, boot_id, live, world.procs, sessions, leases, watch).await {
+    let closing = recovery::Closing {
+        sessions,
+        leases,
+        roots: world,
+    };
+    match recovery::reconcile(led, boot_id, live, world.procs, closing, watch).await {
         Ok(done) => {
             for r in done {
                 if r.owed_idle_exit {
@@ -1458,10 +1474,10 @@ async fn give_back_lost_runs(
                     continue;
                 }
                 tracing::warn!(
-                    "[master] run {} is partially closed: session_terminal={} worktree_gone={} leases={}/{}",
+                    "[master] run {} is partially closed: session_terminal={} checkout_returned={} leases={}/{}",
                     r.run_id,
                     r.state.session_terminal,
-                    r.state.worktree_gone,
+                    r.state.checkout_returned,
                     r.state.leases_returned,
                     r.state.leases_total
                 );

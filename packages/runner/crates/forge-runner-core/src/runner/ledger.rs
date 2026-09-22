@@ -147,6 +147,17 @@ pub struct Run {
     pub resume_id: Option<String>,
     pub session_terminal_at: Option<i64>,
     pub worktree_gone_at: Option<i64>,
+    /// How this run stopped holding a checkout it owed back, in the words of
+    /// [`CheckoutReturn`]. `None` is a run that still holds one.
+    ///
+    /// It is a second fact and not a second spelling of the one above.
+    /// `worktree_gone_at` says the checkout left the disk; this says why the
+    /// run no longer owes it, and the two part company on the one case where
+    /// the checkout is alive and owed to nobody — the repository's own main
+    /// working tree, which a run declared against it never took from the pool
+    /// (ISS-1183). One column carrying both meanings is a row that reads
+    /// `worktree gone` over a checkout somebody is standing in (ISS-1193).
+    pub released_as: Option<String>,
     pub claim_owner: Option<String>,
     pub claim_generation: i64,
     pub claim_expires_at: Option<i64>,
@@ -301,6 +312,7 @@ const RUN_COLUMNS: &[&str] = &[
     "park_deadline_at",
     "session_terminal_at",
     "worktree_gone_at",
+    "released_as",
     "claim_owner",
     "claim_generation",
     "claim_expires_at",
@@ -366,6 +378,7 @@ CREATE TABLE IF NOT EXISTS runs (
   park_deadline_at    INTEGER,
   session_terminal_at INTEGER,
   worktree_gone_at    INTEGER,
+  released_as         TEXT,
   claim_owner         TEXT,
   claim_generation    INTEGER NOT NULL DEFAULT 0,
   claim_expires_at    INTEGER,
@@ -450,6 +463,7 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "release_refusal", "TEXT"),
     ("runs", "release_terminal_at", "INTEGER"),
     ("runs", "release_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    ("runs", "released_as", "TEXT"),
     ("masters", "session_id", "TEXT"),
 ];
 
@@ -476,7 +490,7 @@ const CLEAR_REFUSAL: &str = "release_refused_at = NULL, release_refusal = NULL,
 
 const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_id, worktree_path, pid, boot_id,
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
-        claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
+        released_as, claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
         ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
         release_refused_at, release_refusal, release_terminal_at, release_attempts
  FROM runs";
@@ -549,22 +563,48 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         resume_id: row.get(11)?,
         session_terminal_at: row.get(12)?,
         worktree_gone_at: row.get(13)?,
-        claim_owner: row.get(14)?,
-        claim_generation: row.get(15)?,
-        claim_expires_at: row.get(16)?,
-        revival_token: row.get(17)?,
-        revival_deadline_at: row.get(18)?,
-        ended_by: row.get(19)?,
-        ended_reason: row.get(20)?,
-        agent_id: row.get(21)?,
-        resume_choice: row.get(22)?,
-        resume_choice_why: row.get(23)?,
-        resume_owed_at: row.get(24)?,
-        release_refused_at: row.get(25)?,
-        release_refusal: row.get(26)?,
-        release_terminal_at: row.get(27)?,
-        release_attempts: row.get(28)?,
+        released_as: row.get(14)?,
+        claim_owner: row.get(15)?,
+        claim_generation: row.get(16)?,
+        claim_expires_at: row.get(17)?,
+        revival_token: row.get(18)?,
+        revival_deadline_at: row.get(19)?,
+        ended_by: row.get(20)?,
+        ended_reason: row.get(21)?,
+        agent_id: row.get(22)?,
+        resume_choice: row.get(23)?,
+        resume_choice_why: row.get(24)?,
+        resume_owed_at: row.get(25)?,
+        release_refused_at: row.get(26)?,
+        release_refusal: row.get(27)?,
+        release_terminal_at: row.get(28)?,
+        release_attempts: row.get(29)?,
     })
+}
+
+/// How a run came to stop holding a checkout it owed back.
+///
+/// Two facts that one timestamp used to carry between them, told apart because
+/// only one of them means a directory left the disk. Each is READ BACK off the
+/// world by the close loop and never inferred from the verb having run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckoutReturn {
+    /// Git registers no worktree at the path and the path holds none. The
+    /// checkout is off the disk, so `worktree_gone_at` is stamped with it.
+    Gone,
+    /// The path is the repository's own MAIN working tree. The run never took
+    /// it from the pool and it has to outlive the run, so nothing was removed
+    /// and `worktree_gone_at` is NOT stamped (ISS-1183).
+    MainWorkingTreeKept,
+}
+
+impl CheckoutReturn {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Gone => "gone",
+            Self::MainWorkingTreeKept => "main_working_tree_kept",
+        }
+    }
 }
 
 impl Ledger {
@@ -594,6 +634,7 @@ impl Ledger {
             .map_err(sql_err)?;
         conn.execute_batch(SCHEMA).map_err(sql_err)?;
         Self::add_missing_columns(&conn)?;
+        Self::carry_the_old_mark_forward(&conn)?;
         Ok(Self { conn })
     }
 
@@ -758,7 +799,7 @@ impl Ledger {
         let mut stmt = self
             .conn
             .prepare(&format!(
-                "{SELECT_RUN} WHERE (session_terminal_at IS NULL OR worktree_gone_at IS NULL
+                "{SELECT_RUN} WHERE (session_terminal_at IS NULL OR released_as IS NULL
                  OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL))
                  AND (release_terminal_at IS NULL
                  OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL))
@@ -1194,9 +1235,24 @@ impl Ledger {
         self.stamp("session_terminal_at", run_id)
     }
 
-    /// Stamp *worktree gone*, once the filesystem said the path is absent.
-    pub fn mark_worktree_gone_observed(&self, run_id: &str) -> Result<()> {
-        self.stamp("worktree_gone_at", run_id)
+    /// Record that the run no longer holds a checkout it owes back, and which
+    /// of the two ways that came about.
+    ///
+    /// The one writer of both columns, so the pair cannot drift: `Gone` stamps
+    /// `worktree_gone_at` as well, and `MainWorkingTreeKept` deliberately does
+    /// not — the checkout is standing right there and a row saying otherwise
+    /// is the state lying (ISS-1193).
+    pub fn mark_checkout_returned_observed(&self, run_id: &str, how: CheckoutReturn) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET released_as = ?2 WHERE run_id = ?1 AND released_as IS NULL",
+                params![run_id, how.wire()],
+            )
+            .map_err(sql_err)?;
+        if how == CheckoutReturn::Gone {
+            self.stamp("worktree_gone_at", run_id)?;
+        }
+        Ok(())
     }
 
     fn stamp(&self, column: &str, run_id: &str) -> Result<()> {
@@ -1263,6 +1319,31 @@ impl Ledger {
                 have.push((*name).to_string());
             }
         }
+        Ok(())
+    }
+
+    /// Give every row an earlier build closed the new fact's value.
+    ///
+    /// `released_as` is what the close loop now reads for its third mark, and
+    /// a ledger upgraded in place holds runs whose only record of that mark is
+    /// the old timestamp. Left alone they would read as still holding a
+    /// checkout and go back in front of the sweep — a fix that reopens every
+    /// run it inherits is a worse defect than the one it closes.
+    ///
+    /// `gone` is what those rows said and all they said. The one case that
+    /// deserves `main_working_tree_kept` is indistinguishable here, because
+    /// the build that wrote them could not tell the two apart — that being
+    /// this issue. It is not guessed at; a row wrongly reading `gone` over a
+    /// main checkout is the state the upgrade found, carried across unchanged
+    /// rather than invented, and the next release of that run writes the fact
+    /// it reads off git.
+    fn carry_the_old_mark_forward(conn: &Connection) -> Result<()> {
+        conn.execute(
+            "UPDATE runs SET released_as = 'gone'
+              WHERE released_as IS NULL AND worktree_gone_at IS NOT NULL",
+            [],
+        )
+        .map_err(sql_err)?;
         Ok(())
     }
 
@@ -1484,7 +1565,10 @@ impl Ledger {
         if run.claim_generation != generation {
             return Err(RevivalRefusal::FenceSuperseded);
         }
-        if run.worktree_gone_at.is_some() {
+        // Either fact ends a revival: the checkout went, or the run stopped
+        // owing one. Reading only the timestamp would revive a run whose
+        // release is already concluded (ISS-1193).
+        if run.worktree_gone_at.is_some() || run.released_as.is_some() {
             return Err(RevivalRefusal::WorktreeGone);
         }
         if matches!(run.work, Work::Done) {
@@ -2291,7 +2375,8 @@ mod tests {
         let g = gone.hold_claim("run-1", "m", 9_999).unwrap();
         park_human(&mut gone, "run-1", "q", None, None).unwrap();
         gone.answer_arrived("run-1").unwrap();
-        gone.mark_worktree_gone_observed("run-1").unwrap();
+        gone.mark_checkout_returned_observed("run-1", CheckoutReturn::Gone)
+            .unwrap();
         assert_eq!(
             gone.begin_revival("run-1", g, "t", 9_999).unwrap_err(),
             RevivalRefusal::WorktreeGone
@@ -3287,5 +3372,91 @@ mod tests {
         let mut declared: Vec<String> = QUESTION_COLUMNS.iter().map(|s| (*s).to_string()).collect();
         declared.sort();
         assert_eq!(columns(&led, "questions"), declared);
+    }
+    #[test]
+    fn a_run_an_earlier_build_closed_keeps_its_close_rather_than_being_reopened() {
+        let dir = std::env::temp_dir().join(format!("forge-ledger-carry-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE runs (
+                   run_id TEXT PRIMARY KEY, master_session_id TEXT NOT NULL, session_id TEXT,
+                   worktree_path TEXT NOT NULL, pid INTEGER, boot_id TEXT NOT NULL,
+                   incarnation TEXT NOT NULL, work TEXT NOT NULL, blocker_kind TEXT,
+                   waiting_on TEXT, resume_id TEXT, park_deadline_at INTEGER,
+                   session_terminal_at INTEGER, worktree_gone_at INTEGER,
+                   created_at INTEGER NOT NULL);
+                 INSERT INTO runs (run_id, master_session_id, worktree_path, boot_id,
+                                   incarnation, work, session_terminal_at, worktree_gone_at,
+                                   created_at)
+                 VALUES ('closed-run', 'm', '/tmp/w', 'boot-1', 'exited', 'done', 5, 7, 1);
+                 INSERT INTO runs (run_id, master_session_id, worktree_path, boot_id,
+                                   incarnation, work, created_at)
+                 VALUES ('open-run', 'm', '/tmp/w2', 'boot-1', 'live', 'runnable', 1);",
+            )
+            .unwrap();
+        }
+        let led = Ledger::open(&path).unwrap();
+        assert_eq!(
+            led.run("closed-run")
+                .unwrap()
+                .unwrap()
+                .released_as
+                .as_deref(),
+            Some("gone"),
+            "a row the old build closed said its checkout was gone, and that is carried across \
+             — an upgrade that reopened every closed run would be a worse defect than the one \
+             it fixes"
+        );
+        assert_eq!(
+            led.run("closed-run").unwrap().unwrap().worktree_gone_at,
+            Some(7),
+            "and the timestamp it was written with is untouched: the upgrade gives the row the \
+             new fact, it does not restate the old one"
+        );
+        let open_run = led.run("open-run").unwrap().unwrap();
+        assert!(
+            open_run.released_as.is_none() && open_run.worktree_gone_at.is_none(),
+            "and a run that never closed gains nothing it did not have"
+        );
+
+        led.mark_checkout_returned_observed("open-run", CheckoutReturn::Gone)
+            .unwrap();
+        let released = led.run("open-run").unwrap().unwrap();
+        assert_eq!(
+            released.released_as.as_deref(),
+            Some("gone"),
+            "a release taken after the upgrade writes the new fact for itself"
+        );
+        assert!(released.worktree_gone_at.is_some());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_two_facts_are_written_together_and_only_one_of_them_claims_a_removal() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.mark_checkout_returned_observed("run-1", CheckoutReturn::MainWorkingTreeKept)
+            .unwrap();
+        let kept = led.run("run-1").unwrap().unwrap();
+        assert_eq!(kept.released_as.as_deref(), Some("main_working_tree_kept"));
+        assert!(
+            kept.worktree_gone_at.is_none(),
+            "nothing was removed, so nothing may say a checkout went"
+        );
+
+        let mut gone = Ledger::open_in_memory().unwrap();
+        gone.create_run_group(seed(&["ISS-2"])).unwrap();
+        gone.mark_checkout_returned_observed("run-1", CheckoutReturn::Gone)
+            .unwrap();
+        let g = gone.run("run-1").unwrap().unwrap();
+        assert_eq!(g.released_as.as_deref(), Some("gone"));
+        assert!(
+            g.worktree_gone_at.is_some(),
+            "and the one reading that does mean removed stamps both, from one writer"
+        );
     }
 }
