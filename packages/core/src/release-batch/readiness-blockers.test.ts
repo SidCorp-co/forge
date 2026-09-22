@@ -139,13 +139,21 @@ describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
     expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_POOL_EMPTY');
   });
 
-  it('answers with the reason it could not evaluate rather than throwing the whole report away', async () => {
+  it('answers with the reason it could not evaluate BESIDE every reason it could', async () => {
     project({ ...RELEASING, environments: LIVE_DECLARED });
     listBindings.mockRejectedValue(new Error('binding store unreachable'));
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
-    expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+    // Each check below takes a project id alone, so a failed declaration may not drop it.
+    expect(out?.blockers.map((b) => b.code)).toEqual([
+      'RELEASE_CHECK_UNEVALUATED',
+      'RELEASE_ROSTER_EMPTY',
+      'RELEASE_CHECK_UNEVALUATED',
+      'RELEASE_POOL_EMPTY',
+    ]);
+    expect(out?.blockers[0]?.details).toMatchObject({ check: 'declaration' });
+    expect(out?.blockers[2]?.details).toMatchObject({ check: 'channels' });
   });
 });
 

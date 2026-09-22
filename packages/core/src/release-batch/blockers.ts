@@ -305,21 +305,9 @@ export async function collectReleaseBlockers(
   const blockers: ReleaseBlocker[] = [];
   const warnings: ReleaseWarning[] = [];
 
-  const read = await evaluate(
-    'declaration',
-    async () => await resolveReleaseDeclaration(projectId),
-    blockers,
-  );
-  if (read === undefined) {
-    return {
-      projectId,
-      projectExists: true,
-      declaration: null,
-      channels: null,
-      blockers,
-      warnings,
-    };
-  }
+  const decl = await attempt('declaration', async () => await resolveReleaseDeclaration(projectId));
+  if (decl.failure) blockers.push(decl.failure);
+  const read = decl.value;
   if (read === null) {
     return {
       projectId,
@@ -330,15 +318,50 @@ export async function collectReleaseBlockers(
       warnings,
     };
   }
-  if (read.kind === 'no-release') blockers.push(blocker('NO_RELEASE_GATE'));
-  if (read.kind === 'undeclared-target') {
-    blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { releaseModel: read.releaseModel }));
+  if (read) {
+    if (read.kind === 'no-release') blockers.push(blocker('NO_RELEASE_GATE'));
+    if (read.kind === 'undeclared-target') {
+      blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { releaseModel: read.releaseModel }));
+    }
+    if (read.kind !== 'gated') {
+      return {
+        projectId,
+        projectExists: true,
+        declaration: read,
+        channels: [],
+        blockers,
+        warnings,
+      };
+    }
   }
 
-  if (read.kind !== 'gated') {
-    return { projectId, projectExists: true, declaration: read, channels: [], blockers, warnings };
-  }
+  // `read === undefined` means the declaration THREW, and the checks below run
+  // anyway. The declaration is a precondition for exactly two reasons — the two
+  // above — and for the judgement that the rest are moot; where it cannot be
+  // read that judgement cannot be made, and none of the checks below reads it:
+  // each takes a project id and the gate status. Returning here instead reported
+  // one reason, and it was the one reason the operator could not act on
+  // (ISS-1127).
+  const channels = await gatedBlockers(projectId, door, options.issueIds, blockers, warnings);
+  return {
+    projectId,
+    projectExists: true,
+    declaration: read ?? null,
+    channels,
+    blockers,
+    warnings,
+  };
+}
 
+/** Everything a project WITH a release gate owes, and what a project whose gate
+ *  could not be read is checked for all the same. Appends to `out`. */
+async function gatedBlockers(
+  projectId: string,
+  door: ReleaseDoor,
+  issueIds: string[] | undefined,
+  out: ReleaseBlocker[],
+  warnings: ReleaseWarning[],
+): Promise<ReleaseChannel[] | null> {
   // Both groups are READ here and REPORTED in the order the door refuses in.
   // A channel read that failed must not outrank a roster reason the batch door
   // reached first, or a 409 an operator already knows becomes a 503.
@@ -346,9 +369,9 @@ export async function collectReleaseBlockers(
   const channels = ch.value ?? null;
 
   const roster: ReleaseBlocker[] = [];
-  const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, options.issueIds, roster);
-  if (options.issueIds && options.issueIds.length > 0) {
-    await claimBlockers(projectId, RELEASE_GATE_STATUS, options.issueIds, roster);
+  const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, roster);
+  if (issueIds && issueIds.length > 0) {
+    await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, roster);
   }
   await rosterBlockers(door, found ?? [], roster);
 
@@ -369,19 +392,18 @@ export async function collectReleaseBlockers(
     await branchBlockers(projectId, machinery);
   }
 
-  blockers.push(...(door === 'batch' ? [...roster, ...machinery] : [...machinery, ...roster]));
-  if (door === 'record' && channels) unreadableProbeBlockers(channels, blockers);
+  out.push(...(door === 'batch' ? [...roster, ...machinery] : [...machinery, ...roster]));
+  if (door === 'record' && channels) unreadableProbeBlockers(channels, out);
 
   if (door === 'batch') {
     const active = await evaluate(
       'in-flight',
       async () => await getActiveReleaseBatch(projectId),
-      blockers,
+      out,
     );
-    if (active) blockers.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId }));
+    if (active) out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId }));
   }
-
-  return { projectId, projectExists: true, declaration: read, channels, blockers, warnings };
+  return channels;
 }
 
 /**
