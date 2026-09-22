@@ -5,7 +5,6 @@ import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
 import { assertHookDelivered, hooks } from './hooks.js';
-import { LANDING_DEPLOY_SUBSCRIBER } from './landing-deploy.js';
 import { emitPipelineWedge } from './wedge.js';
 
 const POLL_INTERVAL_MS = 1_000;
@@ -96,7 +95,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
         outboxId: row.id,
         ...(row.reason ? { reason: row.reason } : {}),
       });
-      assertHookDelivered(result, { owned: ['pipeline-orchestrator', LANDING_DEPLOY_SUBSCRIBER] });
+      assertHookDelivered(result, { owned: ['pipeline-orchestrator'] });
       delivered.push(row.id);
       processed++;
       if (isSentryEnabled()) {

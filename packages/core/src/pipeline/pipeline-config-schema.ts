@@ -245,8 +245,6 @@ const pipelineConfigObject = z.object({
     .optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
   autoProdDeploy: z.boolean().optional(),
-  /** ISS-1152 — deploy when a change LANDS, not when RELEASE is pressed. */
-  deployOnLanding: z.boolean().optional(),
   lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
   sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
   [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),
@@ -319,6 +317,12 @@ export function refuseUnknownMcpServerNames(raw: unknown, ctx: z.RefinementCtx):
 
 export const PIPELINE_CONFIG_KEYS = Object.keys(pipelineConfigObject.shape).sort();
 
+/** Keys once declared, each with its refusal — dropped from the shape alone, one reads as a typo. */
+export const RETIRED_PIPELINE_CONFIG_KEYS: Record<string, string> = {
+  deployOnLanding:
+    'pipelineConfig.deployOnLanding no longer exists. It armed a `transition` subscriber that dispatched a Coolify deployment the moment an issue reached `developed`, and ISS-1186 removed that subscriber outright rather than defaulting it off: a deploy is never a side effect of code, it is a tool call an agent makes, and `developed` is before any verdict exists in any case. Nothing replaces it here — reach a landed change on a local preview, and release through the deploy tool at the release rung. Remove deployOnLanding and resend.',
+};
+
 /**
  * A patch, not a document: it names the keys it changes, the schema above judges the MERGED
  * result, and a key this config does not have is refused rather than dropped.
@@ -336,10 +340,16 @@ export const pipelineConfigPatchSchema = z
     }
     for (const key of Object.keys(raw as Record<string, unknown>)) {
       if (PIPELINE_CONFIG_KEYS.includes(key)) continue;
+      // `hasOwn`, never a bare lookup: `toString` would come back refused with a function body.
+      const retired = Object.hasOwn(RETIRED_PIPELINE_CONFIG_KEYS, key)
+        ? RETIRED_PIPELINE_CONFIG_KEYS[key]
+        : undefined;
       ctx.addIssue({
         code: 'custom',
         path: [key],
-        message: `\`${key}\` is not a pipeline config key. The keys are: ${PIPELINE_CONFIG_KEYS.join(', ')}.`,
+        message:
+          retired ??
+          `\`${key}\` is not a pipeline config key. The keys are: ${PIPELINE_CONFIG_KEYS.join(', ')}.`,
       });
     }
     refuseRetiredStageKeys((raw as { states?: unknown }).states, ctx);
