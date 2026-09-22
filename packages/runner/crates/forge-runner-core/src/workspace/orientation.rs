@@ -162,6 +162,105 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../..")
     }
 
+    /// Why the committed file and the generator disagree, or `None` where they do not.
+    ///
+    /// The line-wise scan alone is blind to the difference that actually happens. `str::lines`
+    /// strips a trailing `\r`, so a checkout that landed the file as CRLF agrees on every line
+    /// and disagrees on every byte — and the old message called that "a length difference",
+    /// which sends the reader hunting for content that is not there. It cost a Windows-only CI
+    /// red whose cause was invisible in its own panic. Each arm below names its own cause.
+    fn describe_orientation_drift(committed: &str, generated: &str) -> Option<String> {
+        if committed == generated {
+            return None;
+        }
+
+        if let Some((n, (a, b))) = committed
+            .lines()
+            .zip(generated.lines())
+            .enumerate()
+            .find(|(_, (a, b))| a != b)
+        {
+            return Some(format!(
+                "line {}:\n  committed: {a}\n  generated: {b}",
+                n + 1
+            ));
+        }
+
+        // The two invisible causes come before the line count, because both of them ALSO move the
+        // count — a trailing `\n` adds an empty line — and a report naming a blank line is the
+        // unhelpful answer this function exists to stop giving.
+        if committed.replace("\r\n", "\n") == generated {
+            return Some(
+                "every line agrees and every byte does not: the committed file holds CRLF line \
+                 endings and `orientation_body` emits LF. That is a checkout, not an edit — git \
+                 converts on checkout where `core.autocrlf` is set, which the GitHub Windows \
+                 runner sets. `.gitattributes` pins this file to `eol=lf` so the checkout holds \
+                 what the provision writes back; if you are seeing this, that pin is missing or \
+                 the file was written by hand with CRLF."
+                    .to_string(),
+            );
+        }
+
+        // Shown rather than guessed at: `{:?}` renders a lone `\n` visibly, which is the whole
+        // point — the cause here is bytes a reader cannot see in their editor.
+        if let Some(tail) = committed.strip_prefix(generated) {
+            return Some(format!(
+                "one is a prefix of the other, so the difference is trailing bytes: the committed \
+                 file is {} byte(s) against the generator's {}. What only the committed file has, \
+                 at the end, is {tail:?}",
+                committed.len(),
+                generated.len(),
+            ));
+        }
+        if let Some(tail) = generated.strip_prefix(committed) {
+            return Some(format!(
+                "one is a prefix of the other, so the difference is trailing bytes: the committed \
+                 file is {} byte(s) against the generator's {}. What only the generator has, at \
+                 the end, is {tail:?}",
+                committed.len(),
+                generated.len(),
+            ));
+        }
+
+        let (committed_lines, generated_lines) =
+            (committed.lines().count(), generated.lines().count());
+        if committed_lines != generated_lines {
+            let (longer, shorter, extra) = if committed_lines > generated_lines {
+                (
+                    "the committed file",
+                    "the generator",
+                    committed.lines().nth(generated_lines).unwrap_or(""),
+                )
+            } else {
+                (
+                    "the generator",
+                    "the committed file",
+                    generated.lines().nth(committed_lines).unwrap_or(""),
+                )
+            };
+            return Some(format!(
+                "every shared line agrees, but {longer} has {} line(s) and {shorter} has {}. \
+                 The first line only {longer} has:\n  {extra}",
+                committed_lines.max(generated_lines),
+                committed_lines.min(generated_lines),
+            ));
+        }
+
+        let at = committed
+            .as_bytes()
+            .iter()
+            .zip(generated.as_bytes())
+            .position(|(a, b)| a != b)
+            .unwrap_or(0);
+        Some(format!(
+            "every line agrees and the bytes do not. First difference at byte {at}: the committed \
+             file has {:?} and the generator has {:?}. A difference no line can show is a \
+             line-ending or whitespace difference.",
+            committed.as_bytes()[at] as char,
+            generated.as_bytes()[at] as char,
+        ))
+    }
+
     #[test]
     fn this_repo_committed_orientation_matches_the_generator() {
         let path = repo_root().join(".forge/orientation.md");
@@ -170,20 +269,74 @@ mod tests {
         });
         let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
 
-        if committed != generated {
-            let first_difference = committed
-                .lines()
-                .zip(generated.lines())
-                .enumerate()
-                .find(|(_, (a, b))| a != b)
-                .map(|(n, (a, b))| format!("line {}:\n  committed: {a}\n  generated: {b}", n + 1))
-                .unwrap_or_else(|| "the two differ in length only".to_string());
+        if let Some(cause) = describe_orientation_drift(&committed, &generated) {
             panic!(
                 "`.forge/orientation.md` has drifted from `orientation_body`, so the next \
                  provision of this repo will overwrite the committed file and dirty the tree. \
-                 Edit the generator, then regenerate the file — never the file alone.\n{first_difference}"
+                 Edit the generator, then regenerate the file — never the file alone.\n{cause}"
             );
         }
+    }
+
+    #[test]
+    fn drift_reports_nothing_when_the_two_agree() {
+        let body = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        assert_eq!(describe_orientation_drift(&body, &body), None);
+    }
+
+    #[test]
+    fn drift_names_line_endings_rather_than_a_length_difference() {
+        // Exactly what a Windows checkout with `core.autocrlf=true` hands the test, and what CI
+        // reported as "the two differ in length only" before this arm existed.
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let as_checked_out_on_windows = generated.replace('\n', "\r\n");
+
+        let cause = describe_orientation_drift(&as_checked_out_on_windows, &generated)
+            .expect("CRLF against LF is a drift");
+
+        assert!(cause.contains("CRLF"), "{cause}");
+        assert!(cause.contains("eol=lf"), "{cause}");
+        assert!(!cause.contains("length only"), "{cause}");
+    }
+
+    #[test]
+    fn drift_names_a_trailing_newline_rather_than_a_length_difference() {
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let with_an_extra_newline = format!("{generated}\n");
+
+        let cause = describe_orientation_drift(&with_an_extra_newline, &generated)
+            .expect("a trailing newline is a drift");
+
+        assert!(cause.contains("trailing bytes"), "{cause}");
+        // Rendered, not described: the reader sees the byte rather than a word for it.
+        assert!(cause.contains("\\n"), "{cause}");
+        assert!(!cause.contains("length only"), "{cause}");
+    }
+
+    #[test]
+    fn drift_still_names_the_line_where_one_really_differs() {
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let edited = generated.replace("## Operating affordances", "## Operating affordanceS");
+
+        let cause =
+            describe_orientation_drift(&edited, &generated).expect("an edited line is a drift");
+
+        assert!(cause.starts_with("line "), "{cause}");
+        assert!(cause.contains("affordanceS"), "{cause}");
+    }
+
+    #[test]
+    fn drift_names_the_line_only_one_side_has() {
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let with_a_row = format!("{generated}| a row the generator does not emit |\n");
+
+        let cause =
+            describe_orientation_drift(&with_a_row, &generated).expect("an extra line is a drift");
+
+        assert!(
+            cause.contains("a row the generator does not emit"),
+            "{cause}"
+        );
     }
 
     fn tmp_repo(tag: &str) -> PathBuf {
