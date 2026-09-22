@@ -77,6 +77,23 @@ pub fn state(ledger: &Ledger, run_id: &str) -> Result<CloseState> {
     })
 }
 
+/// Whether the run still holds a checkout it owes back.
+///
+/// An absent path is one way to hold none. The other is a path that is a
+/// repository's own MAIN working tree: a run declared against one never took a
+/// checkout from the pool, `git worktree remove` refuses it by design, and the
+/// checkout has to outlive the run — so a run kept open until that directory
+/// disappears can never close, and its leases never come back (ISS-1183). Git
+/// is asked rather than the filesystem, and a git that cannot answer leaves
+/// the run holding, because not knowing is not release.
+async fn holds_a_worktree(path: &Path) -> bool {
+    if !path.exists() {
+        return false;
+    }
+    crate::workspace::worktree::kind_at(path).await
+        != crate::workspace::worktree::Kind::MainWorkingTree
+}
+
 pub async fn close(
     ledger: &mut Ledger,
     run_id: &str,
@@ -95,7 +112,7 @@ pub async fn close(
         ledger.mark_session_terminal_observed(run_id)?;
     }
 
-    if run.worktree_gone_at.is_none() && !Path::new(&run.worktree_path).exists() {
+    if run.worktree_gone_at.is_none() && !holds_a_worktree(Path::new(&run.worktree_path)).await {
         ledger.mark_worktree_gone_observed(run_id)?;
     }
 
