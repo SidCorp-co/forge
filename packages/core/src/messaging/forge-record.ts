@@ -1,6 +1,6 @@
 const INFO = 'forge-record';
-/** Any fence line, so a scan can tell an opener from content of an enclosing fence. */
-const FENCE_LINE = /^(`{3,})(.*)$/u;
+/** Any fence line, either character, so a scan can tell an opener from enclosed content. */
+const FENCE_LINE = /^([`~]{3,})(.*)$/u;
 /** The info string of a fence that means a record: the tag, and whatever follows it. */
 const RECORD_INFO = new RegExp(`^${INFO}(?![\\w-])(.*)$`, 'u');
 const KEY = /^([a-z][a-z0-9-]*): ?(.*)$/u;
@@ -89,10 +89,14 @@ function offsets(lines: readonly string[]): number[] {
   return out;
 }
 
-/** A line closing a fence: backticks alone, at least as many as opened it. */
+/**
+ * A line closing a fence: the same character, at least as many, indented no more than the three
+ * spaces markdown allows. Past that it is content, and a field may hold it.
+ */
 function closes(line: string, fence: string): boolean {
-  const text = line.trim();
-  return /^`+$/u.test(text) && text.length >= fence.length;
+  const found = /^ {0,3}([`~]+)[ \t]*$/u.exec(line);
+  const run = found?.[1];
+  return run !== undefined && run[0] === fence[0] && run.length >= fence.length;
 }
 
 /**
@@ -107,10 +111,10 @@ function openerIn(lines: readonly string[]): Opener | null {
     const fence = found[1] as string;
     const info = found[2] as string;
     if (open) {
-      if (info.trim() === '' && fence.length >= open.length) open = null;
+      if (closes(lines[at] ?? '', open)) open = null;
       continue;
     }
-    const record = RECORD_INFO.exec(info);
+    const record = fence.startsWith('`') ? RECORD_INFO.exec(info) : null;
     if (record) return { at, fence, info: record[1] as string };
     open = fence;
   }
@@ -214,19 +218,12 @@ function recordFrom(block: Block): ForgeRecord {
   };
 }
 
-/**
- * What a comment body says about a record: the record it carries, or the reason a
- * body that opened a record fence carries none. A body that opened no fence has
- * neither, which is every ordinary comment.
- */
+/** Both arms at once; a body that opened no fence has neither, which is most comments. */
 export function readForgeRecord(body: string | null | undefined): ForgeRecordRead {
   const { block, fault } = blockIn(String(body ?? ''));
   return { record: block ? recordFrom(block) : null, fault };
 }
 
-/**
- * The record a comment body carries, or null where it carries none.
- */
 export function parseForgeRecord(body: string | null | undefined): ForgeRecord | null {
   return readForgeRecord(body).record;
 }

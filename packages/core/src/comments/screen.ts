@@ -13,10 +13,9 @@ import {
 import { screenMessage } from '../messaging/screen.js';
 
 /**
- * The fence rules at the comment door. A fence carrying no record is refused whatever the caller
- * declared, because no caller writes one on purpose. A fence carrying one is refused where the
- * caller declared it can write a record elsewhere and warned where it did not — both off one
- * message, so the two cannot drift.
+ * A fence carrying no record is refused whatever the caller declared; one carrying a record is
+ * refused where the caller declared it can write elsewhere and warned where it did not, both off
+ * one message so the two cannot drift.
  */
 export function screenRecordFence(body: string, declaresRecordRoute: boolean): string[] {
   const { record, fault } = readForgeRecord(body);

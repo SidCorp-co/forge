@@ -80,6 +80,28 @@ describe('the fence a body means as a record', () => {
     expect(parseForgeRecord(quoted.join('\n'))).toBeNull();
   });
 
+  it('leaves an example enclosed by a tilde fence as prose, as a backtick one is', () => {
+    const body = ['~~~', `${FENCE}forge-record`, 'criterion: 13', FENCE, '~~~'].join('\n');
+    expect(parseForgeRecord(body)).toBeNull();
+  });
+
+  it('does not let a tilde fence open a record', () => {
+    const body = ['~~~forge-record', 'criterion: 13', '~~~'].join('\n');
+    expect(parseForgeRecord(body)).toBeNull();
+  });
+
+  it('keeps a field holding backticks indented past the close column', () => {
+    const body = [`${FENCE}forge-record`, 'criterion: 13', '    ```', 'verdict: pass', FENCE].join(
+      '\n',
+    );
+    expect(parseForgeRecord(body)?.fields.map((f) => f.key)).toEqual(['criterion', 'verdict']);
+  });
+
+  it('closes on a fence indented within the three spaces markdown allows', () => {
+    const body = [`${FENCE}forge-record`, 'criterion: 13', '  ```', 'verdict: pass'].join('\n');
+    expect(parseForgeRecord(body)?.fields.map((f) => f.key)).toEqual(['criterion']);
+  });
+
   it('does not read a longer word that merely opens with the tag', () => {
     const body = [`${FENCE}forge-recording`, 'criterion: 13', FENCE].join('\n');
     expect(parseForgeRecord(body)).toBeNull();

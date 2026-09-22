@@ -3072,20 +3072,9 @@
 - **One project that cannot be set up on a machine no longer stops the rest.** The others go
   through as normal, and the failing one is named with its reason instead of an error code with no
   cause.
-- **A comment written to carry a record now either carries one or says it does not.**
-  Records ride in a fenced `forge-record` block, and only one arrangement of its tag was read: the
-  tag had to sit on its own line after the block closed. Written the ordinary markdown way, on the
-  opening fence itself, the block parsed as nothing — the comment was stored, the thread showed the
-  text, and no record existed. Nothing reported it, because a body with no record is
-  indistinguishable from a body never meant to carry one. A verdict written that way counted as
-  never judged, and a correction meant to replace a stale record silently replaced nothing. Both
-  arrangements are now read, and a block that opens `forge-record` and cannot be read as a record is
-  refused at the write door under `record-fence-shape`, quoting the line it read and showing a shape
-  that is valid, rather than being answered `201` and dropped. Three shapes earn that refusal: an
-  info string that is not the tag, a block that is opened and never closed — which used to swallow
-  the rest of the comment as fields — and a block whose own tag is contradicted by a tag line after
-  it. A `forge-record` block quoted inside an enclosing fence is now that fence's content rather
-  than a record, so a comment showing somebody an example no longer files one.
+- **A record written into a comment now lands or is refused, never silently neither.**
+  The tag may sit on the opening fence as well as after the block; one that cannot be read is
+  refused as you write it.
 - **A machine now says when it can no longer be heard by a session it is running.**
   `forge-runner master status` gives that answer, how long it has stood, and a command that ends
   the session it names.
