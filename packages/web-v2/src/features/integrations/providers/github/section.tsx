@@ -202,8 +202,8 @@ function RepositoryField({
  * (project, provider, label) with no `active` predicate, so a row left behind by
  * a Disconnect still holds the slot and a create against it is refused 409. The
  * PATCH merges binding-tier config onto the surviving row instead, and sends
- * `active` only when the row is switched off — a project admin changing
- * repositories must not be made to clear the org-admin bar that field carries.
+ * `active` only when the row is switched off, so a write that changes nothing
+ * about whether the binding resolves does not say it does.
  */
 function SetRepository({
   projectId,

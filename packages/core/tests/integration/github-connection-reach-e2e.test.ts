@@ -83,11 +83,13 @@ beforeAll(async () => {
   };
 
   const { githubConnectRoutes } = await import('../../src/integrations/github/connect-routes.js');
+  const { integrationsRoutes } = await import('../../src/integrations/routes.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<AppVars>();
   app.use('*', requestId());
   app.route('/api/projects', githubConnectRoutes);
+  app.route('/api/projects', integrationsRoutes);
   app.onError(errorHandler);
 }, 60_000);
 
@@ -291,5 +293,110 @@ describe('the Apps an install-completion may probe', () => {
     const connection = await appOwnedBy(clicker.id, foreign.id);
 
     expect(await idsOf(outsider.id)).toEqual([connection.id]);
+  });
+});
+
+/**
+ * Disconnecting is reversible from the screen that offers it — ISS-1115's own
+ * rule, and the half that only started biting once a project's App became
+ * org-owned.
+ *
+ * DELETE on a binding asks for project admin and throws `binding.active` off.
+ * The PATCH that throws it back on carried an org-admin bar, because `active`
+ * was gated beside the connection-tier config and secrets although it writes
+ * the binding. A project admin who is only an org member could therefore
+ * disconnect and could not undo it.
+ */
+describe('putting back a binding this admin was allowed to disconnect', () => {
+  let connectionId: string;
+  let bindingId: string;
+
+  /** The org-owned shape a Connect now mints, bound and carrying a repository. */
+  beforeEach(async () => {
+    const connection = await mods.createConnection({
+      ownerType: 'org',
+      ownerId: orgId,
+      provider: 'github',
+      displayName: 'GitHub App forge-test',
+      secrets: { appId: '1', privateKey: 'pem' },
+    });
+    connectionId = connection.id;
+    const binding = await mods.createBinding({
+      connectionId,
+      projectId,
+      provider: 'github',
+      role: 'service',
+      config: { owner: 'SidCorp-co', repo: 'forge', installationId: 159473037 },
+    });
+    bindingId = binding.id;
+  });
+
+  const asUser = async (userId: string) => ({
+    authorization: `Bearer ${await mods.signUserToken(userId)}`,
+    'content-type': 'application/json',
+  });
+
+  const disconnect = async (userId: string) =>
+    app.request(`/api/projects/${projectId}/integrations/${bindingId}`, {
+      method: 'DELETE',
+      headers: await asUser(userId),
+    });
+
+  const repick = async (userId: string, body: Record<string, unknown>) =>
+    app.request(`/api/projects/${projectId}/integrations/${bindingId}`, {
+      method: 'PATCH',
+      headers: await asUser(userId),
+      body: JSON.stringify(body),
+    });
+
+  const bindingActive = async () => {
+    const rows = (await harness.db.execute(
+      sql`SELECT active FROM integration_bindings WHERE id = ${bindingId}`,
+    )) as unknown as Array<{ active: boolean }>;
+    return rows[0]?.active ?? null;
+  };
+
+  it('lets the project admin who disconnected it switch it back on', async () => {
+    expect((await disconnect(clicker.id)).status).toBe(200);
+    expect(await bindingActive()).toBe(false);
+
+    const res = await repick(clicker.id, {
+      config: { owner: 'SidCorp-co', repo: 'forge', installationId: 159473037 },
+      active: true,
+    });
+
+    expect(res.status).toBe(200);
+    expect(await bindingActive()).toBe(true);
+  });
+
+  it('still refuses that admin the connection-tier write an org owns', async () => {
+    const res = await repick(clicker.id, { secrets: { appId: '2', privateKey: 'other' } });
+
+    expect(res.status).toBe(403);
+    expect(await bindingActive()).toBe(true);
+  });
+
+  it('lets an org admin switch it back on too, and is not barred from the credential', async () => {
+    await disconnect(orgOwner.id);
+
+    const back = await repick(orgOwner.id, {
+      config: { owner: 'SidCorp-co', repo: 'forge', installationId: 159473037 },
+      active: true,
+    });
+    expect(back.status).toBe(200);
+    expect(await bindingActive()).toBe(true);
+
+    // Whatever the credential schema makes of it, the org tier is not the
+    // thing refusing: that is the 403 the project admin gets above.
+    const rotate = await repick(orgOwner.id, { secrets: { appId: '2', privateKey: 'other' } });
+    expect(rotate.status).not.toBe(403);
+  });
+
+  it('refuses a project member who is not an admin either way', async () => {
+    const plain = await verifiedUser();
+    await createTestProjectMember(harness.db, { userId: plain.id, projectId, role: 'member' });
+
+    expect((await disconnect(plain.id)).status).toBe(403);
+    expect((await repick(plain.id, { active: false })).status).toBe(403);
   });
 });
