@@ -17,10 +17,19 @@ interface CommentRow {
 const insertedComments: CommentRow[] = [];
 let existingCommentsByIssue: Record<string, string[]> = {};
 
-const selectFrom = vi.fn((_columns: Record<string, unknown>) => ({
+interface IssueState {
+  status: string;
+  releaseBatchRunId: string | null;
+}
+/** Defaults every issue to untouched; a test overrides one entry to prove the claimed-already case. */
+let issueStateByIssue: Record<string, IssueState> = {};
+
+const selectFrom = vi.fn((columns: Record<string, unknown>) => ({
   from: (_table: unknown) => ({
     where: async () => {
-      // Only the failure-comment dedup read goes through select().from(comments).where(...)
+      if ('status' in columns) {
+        return Object.entries(issueStateByIssue).map(([id, s]) => ({ id, ...s }));
+      }
       return Object.entries(existingCommentsByIssue).flatMap(([, bodies]) =>
         bodies.map((body) => ({ body })),
       );
@@ -38,7 +47,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-vi.mock('../db/schema.js', () => ({ comments: {} }));
+vi.mock('../db/schema.js', () => ({ comments: {}, issues: {} }));
 
 const projectAutoProdDeployMock = vi.fn(async (_projectId: string) => true);
 vi.mock('./release-coolify.js', () => ({
@@ -110,6 +119,7 @@ beforeEach(() => {
   dbExecute.mockImplementation(async () => candidateRows);
   insertedComments.length = 0;
   existingCommentsByIssue = {};
+  issueStateByIssue = { 'iss-1': { status: 'awaiting_release', releaseBatchRunId: null } };
   selectFrom.mockClear();
   insertValues.mockClear();
   projectAutoProdDeployMock.mockReset();
@@ -228,6 +238,26 @@ describe('sweepAutomaticReleases — failure reporting', () => {
     expect(insertedComments).toHaveLength(1);
     expect(insertedComments[0]?.issueId).toBe('iss-1');
     expect(insertedComments[0]?.body).toContain('advisory lock timeout');
+    expect(insertedComments[0]?.body).toContain('not claimed, not moved');
+  });
+
+  it('never claims the issue is untouched when createReleaseBatch failed after claiming it', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
+    loadReleaseRosterMock.mockResolvedValueOnce({
+      issues: [{ id: 'iss-1', claimedByRunId: null }],
+    });
+    issueStateByIssue = { 'iss-1': { status: 'releasing', releaseBatchRunId: 'run-9' } };
+    cutWaitingReleaseMock.mockResolvedValueOnce({
+      status: 'failed',
+      output: 'the cut failed',
+      error: 'enqueue failed after claiming issues',
+    });
+
+    await sweepAutomaticReleases();
+
+    expect(insertedComments).toHaveLength(1);
+    expect(insertedComments[0]?.body).not.toContain('not claimed, not moved');
+    expect(insertedComments[0]?.body).toContain('run-9');
   });
 
   it('does not repeat an identical failure comment on a later tick', async () => {

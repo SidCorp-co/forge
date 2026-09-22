@@ -5,9 +5,9 @@
 // doors (`collectReleaseBlockers`, `forge advance`) are untouched; this only filters the
 // unattended path.
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments } from '../db/schema.js';
+import { comments, issues } from '../db/schema.js';
 import { issuesWithUnearnedCriteria } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
 import { resolveReleaseGate } from '../release-batch/gate.js';
@@ -69,16 +69,28 @@ async function candidateProjectIds(now: Date): Promise<string[]> {
   return [...new Set(rows.map((r) => r.project_id))];
 }
 
-function sweepFailureBody(message: string): string {
+// `createReleaseBatch` claims issues and moves them to `releasing` in separate statements
+// AFTER its own transaction, so a failure past that point (an enqueue error, say) can leave an
+// issue claimed even though the attempt overall threw — the comment must say which happened,
+// never assume the untouched case.
+function sweepFailureBody(
+  message: string,
+  issue: { status: string; releaseBatchRunId: string | null },
+): string {
+  const untouched = issue.status === 'awaiting_release' && issue.releaseBatchRunId === null;
+  const state = untouched
+    ? 'This issue is unchanged: not claimed, not moved, no half-release. The next tick tries ' +
+      'again on its own — nothing here needs a retry command.'
+    : `This issue was already claimed into run ${issue.releaseBatchRunId ?? '(unknown)'} before ` +
+      'the attempt failed, so it will not be picked up again by this sweep — its status and ' +
+      'claim need a person to look at them.';
   return [
     '**An automatic release attempt failed.**',
     '',
     `This issue was named in an automatic release sweep (ISS-1117) and the attempt did not go ` +
       `through: ${message}`,
     '',
-    'This issue is unchanged: not claimed, not moved, no half-release. The next tick tries again ' +
-      'on its own — nothing here needs a retry command. If this keeps recurring, the message above ' +
-      'is what a person needs to look at.',
+    state,
   ].join('\n');
 }
 
@@ -89,17 +101,21 @@ async function reportSweepFailure(
   authorId: string,
   message: string,
 ): Promise<void> {
-  const body = sweepFailureBody(message);
-  for (const issueId of issueIds) {
+  const rows = await db
+    .select({ id: issues.id, status: issues.status, releaseBatchRunId: issues.releaseBatchRunId })
+    .from(issues)
+    .where(inArray(issues.id, issueIds));
+  for (const row of rows) {
+    const body = sweepFailureBody(message, row);
     try {
       const existing = await db
         .select({ body: comments.body })
         .from(comments)
-        .where(eq(comments.issueId, issueId));
+        .where(eq(comments.issueId, row.id));
       if (existing.some((c) => c.body === body)) continue;
-      await db.insert(comments).values({ issueId, authorId, body });
+      await db.insert(comments).values({ issueId: row.id, authorId, body });
     } catch (err) {
-      logger.error({ err, issueId }, 'release-sweep: failed to post the failure comment');
+      logger.error({ err, issueId: row.id }, 'release-sweep: failed to post the failure comment');
     }
   }
 }
