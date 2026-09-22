@@ -5,11 +5,12 @@
 //! belongs to which project and where its transcript went, and that is the gap
 //! this fills.
 //!
-//! Three of those answers are different questions and are printed as three
+//! Four of those answers are different questions and are printed as four
 //! lines: whether a pane exists, whether this box's owner stood the project
-//! down, and whether this box's runner row for the project takes work at all.
-//! A box whose runner is online and whose pane is alive while a human drives
-//! the project is not an error, and `alive` alone cannot say it (ISS-1118).
+//! down, whether this box's runner row for the project takes work at all, and
+//! whether this box can still be heard by the pane it has. A box whose runner
+//! is online and whose pane is alive while a human drives the project is not an
+//! error, and `alive` alone cannot say it (ISS-1118).
 //!
 //! The third line is there because the second one used to answer for it. The
 //! standing line said "driving — this box places a master for <slug> whenever
@@ -17,6 +18,12 @@
 //! that is `draining` places none — which is exactly what the pool toggle in
 //! the web UI sets, so the owner in ISS-1118's own story got a confident wrong
 //! answer from the surface built to stop them guessing.
+//!
+//! The fourth is there because none of the first three can say it. A pane that
+//! is alive, on a project nobody stood down, on a runner that takes work, can
+//! still be one every declaration of which is refused — and on 2026-09-18 one
+//! was, for four hours, with a daemon log line as the only account of it
+//! (ISS-1099).
 
 use std::time::Duration;
 
@@ -26,7 +33,7 @@ use forge_runner_core::config::Config;
 use forge_runner_core::daemon::master::accepts_new_work;
 use forge_runner_core::daemon::master_exit::{self, Holding};
 use forge_runner_core::daemon::terminal;
-use forge_runner_core::runner::ledger::Ledger;
+use forge_runner_core::runner::ledger::{Ledger, MasterAuthority};
 use forge_runner_core::transport::{runners, CoreClient};
 
 use super::Ctx;
@@ -39,7 +46,8 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Whether a master pane is up, and whether this box may keep one.
+    /// Whether a master pane is up, whether this box may keep one, and whether
+    /// it can still be heard by the one it has.
     Status(ProjectArgs),
     /// Where the master's transcript is, and its last lines.
     Log(LogArgs),
@@ -315,6 +323,13 @@ admissible work, a runner that accepts work, a repo path and tmux — rather tha
     Ok(())
 }
 
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 fn whoami() -> String {
     std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
@@ -346,6 +361,20 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
         );
         println!("{:<20} standing  {}", "", standing_line(led.as_ref(), &s));
         println!("{:<20} runner    {}", "", admission_line(&admission, &s));
+        let running = Running {
+            name: &name,
+            incarnation: if alive {
+                terminal::incarnation(&name).await
+            } else {
+                None
+            },
+            alive,
+        };
+        println!(
+            "{:<20} authority {}",
+            "",
+            authority_line(led.as_ref(), &s, now_unix(), &running)
+        );
         if alive {
             println!("{:<20} attach: tmux attach -t {name}", "");
         }
@@ -371,6 +400,16 @@ fn listed(base: &std::path::Path, led: Option<&Ledger>) -> Vec<String> {
         for standing in led.standings().unwrap_or_default() {
             if !slugs.contains(&standing.slug) {
                 slugs.push(standing.slug);
+            }
+        }
+        // And a project whose pane this box adopted rather than started, which
+        // has no transcript directory here and may have no standing row either.
+        // That is exactly the pane this issue is about, so leaving it out of the
+        // list would put the new answer where the one project that needs it
+        // cannot be asked for it (ISS-1099).
+        for authority in led.authorities().unwrap_or_default() {
+            if !slugs.contains(&authority.slug) {
+                slugs.push(authority.slug);
             }
         }
     }
@@ -496,6 +535,135 @@ Whether one is placed then answers to the runner line below, admissible work, a 
 tmux. `forge-runner master stand-down {slug}` is what withholds it"
         ),
     }
+}
+
+/// The third answer, which neither of the other two gives.
+///
+/// A pane is a fact about tmux and a standing is a fact about what the owner
+/// decided. Whether this box can still be heard by the pane it has is a third,
+/// and on 2026-09-18 a project stood still for four hours with `alive` and
+/// `driving` both saying yes while every declaration that pane made was
+/// refused. The only account of it was a daemon log line, which is what this
+/// issue's Outcome says nobody should have to read (ISS-1099).
+///
+/// Suppressed where the pane is not running: a verdict about a pane that is
+/// gone is not an answer about anything, and printing the last one would tell
+/// an operator who has just killed a stale pane that the kill did nothing.
+/// What the pane running under this name is, as far as this command can tell
+/// it from the one that ran before it.
+pub(crate) struct Running<'a> {
+    pub name: &'a str,
+    /// Which incarnation of that name is up, as tmux's own opaque answer.
+    /// `None` where no pane is up, or tmux could not be asked. Those are not
+    /// the same and the line says which.
+    pub incarnation: Option<String>,
+    pub alive: bool,
+}
+
+fn authority_line(led: Option<&Ledger>, slug: &str, now: i64, running: &Running<'_>) -> String {
+    let pane = running.name;
+    if !running.alive {
+        return format!(
+            "not asked — no pane is running for {slug}, and whether this box could be heard by one \
+is only a question about a pane that exists"
+        );
+    }
+    let Some(led) = led else {
+        return "unknown — this box's ledger could not be opened, so what its own sweep \
+established about this pane cannot be read here"
+            .into();
+    };
+    let row = match led.master_authority_for_slug(slug) {
+        Err(e) => {
+            return format!("unknown — the authority verdict for {slug} could not be read: {e}")
+        }
+        Ok(None) => {
+            return format!(
+                "not yet established — no sweep has judged {pane} since this box's ledger was \
+written. The daemon judges it on the sweep that adopts or places the pane"
+            )
+        }
+        Ok(Some(r)) => r,
+    };
+    if let Some(mismatch) = judged_another_pane(&row, running, slug) {
+        return mismatch;
+    }
+    // Every sentence below is about an observation a sweep made, not about the
+    // state of the pane right now. The daemon can have stopped, or its last
+    // pass can have failed before it reached this project, and the row would
+    // read exactly the same — so the age of the observation is part of the
+    // answer rather than a detail under it (ISS-1099).
+    let seen = ago(now.saturating_sub(row.seen_at));
+    let held = span(row.held_for().as_secs());
+    let stood = format!("last confirmed {seen} ago, after {held} of the same answer");
+    match row.verdict.as_str() {
+        MasterAuthority::STALE => format!(
+            "STALE — {stood}. {pane} is up and this box cannot hear it: the capability that pane \
+holds names a session core has since replaced, and a running pane cannot be handed a new one. Every \
+declaration it makes is refused and the daemon stopped nudging it. \
+`forge-runner master kill {slug}` ends it — a bare `tmux kill-session` reaches a different tmux \
+server than the one masters run on. Whether a replacement is then placed is the standing and \
+runner lines' answer and needs work for one to do; ending this pane is what makes a replacement \
+possible, not what makes it happen"
+        ),
+        MasterAuthority::UNKNOWN => format!(
+            "unknown — {stood}. This box could not read its own capability map ({}), so it says \
+nothing about {pane} rather than calling it stale. An unreadable map is not evidence about any pane",
+            row.detail.as_deref().unwrap_or("no reason recorded")
+        ),
+        MasterAuthority::CURRENT => format!(
+            "current — {stood}. A capability this box minted named the session core gave it, which \
+is what this sweep looked at and all of it: whether any one declaration {pane} made was served \
+turns on what it asked for"
+        ),
+        other => format!(
+            "unrecognised verdict `{other}` — {stood}. This ledger was written by a build this one \
+does not know, and nothing here will guess what it meant"
+        ),
+    }
+}
+
+/// Whether the verdict on the record is about some pane other than the one
+/// running now, and what to say if it is.
+///
+/// A master pane's name comes from the slug, so a replacement carries the name
+/// of the pane it replaced. Reading the old verdict onto the new pane tells an
+/// operator who has just killed a stale master that the kill did nothing —
+/// which is the same lie this issue is about, pointing the other way.
+fn judged_another_pane(row: &MasterAuthority, running: &Running<'_>, slug: &str) -> Option<String> {
+    if row.pane_name != running.name {
+        return Some(format!(
+            "not asked — the last verdict this box reached was about {}, and the pane running for \
+{slug} now is {}. The next sweep judges this one",
+            row.pane_name, running.name
+        ));
+    }
+    match (row.pane_incarnation.as_deref(), running.incarnation.as_deref()) {
+        (Some(judged), Some(up)) if judged != up => Some(
+            "not asked — the verdict this box holds was reached about the pane that ran under this \
+name before the one up now. The next sweep judges this one"
+                .to_string(),
+        ),
+        (None, _) | (_, None) => Some(format!(
+            "unknown — this box cannot ask tmux which pane is running as {}, so it cannot tell the \
+one its verdict was about from the one up now, and it will not read the verdict onto either",
+            running.name
+        )),
+        _ => None,
+    }
+}
+
+/// A duration in the coarsest unit that still says it.
+fn span(secs: u64) -> String {
+    match secs {
+        0..=90 => format!("{secs}s"),
+        91..=5400 => format!("{}m", secs / 60),
+        _ => format!("{}h{:02}m", secs / 3600, (secs % 3600) / 60),
+    }
+}
+
+fn ago(secs: i64) -> String {
+    span(u64::try_from(secs).unwrap_or(0))
 }
 
 #[cfg(test)]
@@ -730,6 +898,273 @@ mod tests {
             !SOURCE.contains(concat!("fn ", "accepts_new_work(")),
             "a second copy of the daemon's admission rule in this crate is a box that says one thing and does another; call `forge_runner_core::daemon::master::accepts_new_work`"
         );
+    }
+
+    const PANE: &str = "forge-master-sidpeak";
+    /// tmux's own answer for one incarnation: when it was created, and the
+    /// session id that is unique within the server's life.
+    const UP: &str = "1700000000:$1";
+
+    /// A ledger holding one verdict, so the line can be read as an operator
+    /// reads it rather than as a source scan.
+    fn led_saying(verdict: &'static str, detail: Option<&str>) -> Ledger {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_authority("proj-1", "sidpeak", (PANE, Some(UP)), verdict, detail)
+            .unwrap();
+        led
+    }
+
+    /// The pane the verdict was reached about, still running.
+    fn same_pane() -> Running<'static> {
+        Running {
+            name: PANE,
+            incarnation: Some(UP.to_string()),
+            alive: true,
+        }
+    }
+
+    /// `now` for a reading taken a few seconds after the sweep that wrote it.
+    fn shortly_after(led: &Ledger) -> i64 {
+        led.master_authority_for_slug("sidpeak")
+            .unwrap()
+            .unwrap()
+            .seen_at
+            + 4
+    }
+
+    /// The third answer. On 2026-09-18 a project stood still for four hours
+    /// while the two lines above this one both said yes: the pane was `alive`
+    /// and nothing had stood the project down, and every declaration that pane
+    /// made was refused. The only account of it was a daemon log line
+    /// (ISS-1099 criteria 11 and 12).
+    #[test]
+    fn a_pane_this_box_cannot_hear_says_so_and_names_the_act_that_ends_it() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &same_pane());
+        assert!(
+            line.contains("STALE"),
+            "an operator scanning three lines for the one that is wrong has to be able to see it: {line}"
+        );
+        assert!(
+            line.contains("forge-runner master kill sidpeak"),
+            "and the act that ends it, because no sweep resolves this state and waiting is what cost four hours: {line}"
+        );
+        let standing = standing_line(Some(&led), "sidpeak");
+        assert!(
+            !standing.contains("master kill"),
+            "the standing line answers a different question and must not be mistaken for this one: {standing}"
+        );
+    }
+
+    /// F2 from the whole-set read at the replayed head. Ending the pane is
+    /// what makes a replacement POSSIBLE; whether one is placed answers to the
+    /// standing, the runner row and whether there is work for it — the three
+    /// questions the other lines exist for. A line that promises the sweep will
+    /// place one is this surface making a promise the box does not keep, which
+    /// is the defect it was built to stop.
+    #[test]
+    fn ending_a_refused_pane_is_not_promised_to_produce_a_replacement() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &same_pane());
+        assert!(
+            !line.contains("the next sweep places"),
+            "a stood-down project, a draining runner or nothing claimable each place no master, and this line can see none of the three: {line}"
+        );
+        assert!(
+            line.contains("standing and runner lines"),
+            "so it sends the reader to the answers that can: {line}"
+        );
+    }
+
+    /// F1 from the whole-set read at the replayed head. The sweep looks at the
+    /// capability and at nothing else. A declaration can still be refused for
+    /// its own reasons — an inherited run awaiting a choice, an issue key that
+    /// is not one — and a line claiming the pane's declarations were served is
+    /// asserting something no sweep looked at.
+    #[test]
+    fn a_current_capability_is_not_reported_as_a_declaration_that_was_served() {
+        let led = led_saying(MasterAuthority::CURRENT, None);
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &same_pane());
+        assert!(
+            !line.contains("declared then was served"),
+            "run_declare refuses a pane holding a current capability for reasons of its own — an inherited run awaiting a choice, an issue key that is not one — and this sweep looked at none of them: {line}"
+        );
+        assert!(
+            line.contains("turns on what it asked for"),
+            "so the line says what it looked at, that that is the whole of it, and what the rest turns on: {line}"
+        );
+    }
+
+    /// F2 from the review of this change. Masters run on a tmux server of the
+    /// runner's own, at a socket under its config directory. A bare
+    /// `tmux kill-session` typed into an ordinary shell reaches the DEFAULT
+    /// server, so the remedy either does nothing or kills a same-named session
+    /// belonging to something else — and the line that prints it is the one
+    /// surface an operator reaches for when a project has stopped.
+    #[test]
+    fn the_remedy_named_is_one_that_reaches_the_server_masters_actually_run_on() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &same_pane());
+        assert!(
+            !line.contains("tmux kill-session -t forge-master-sidpeak"),
+            "this is the command that does not work from an operator's own shell, and printing it spends their ten minutes: {line}"
+        );
+        assert!(
+            line.contains("forge-runner master kill sidpeak"),
+            "the verb that goes through the runner's own socket is the one to name: {line}"
+        );
+    }
+
+    /// Three verdicts stay three on the surface too. Reporting an unreadable
+    /// map as `stale` would tell an operator to kill every pane on the box.
+    #[test]
+    fn a_map_this_box_could_not_read_is_neither_current_nor_stale_on_the_line() {
+        let led = led_saying(MasterAuthority::UNKNOWN, Some("the map is not valid JSON"));
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &same_pane());
+        assert!(
+            !line.contains("STALE") && !line.starts_with("current"),
+            "an unreadable map is evidence about the map and about no pane: {line}"
+        );
+        assert!(
+            line.contains("the map is not valid JSON"),
+            "and it says which map and why, or `unknown` is a shrug: {line}"
+        );
+        assert!(
+            !line.contains("master kill"),
+            "telling an operator to end a pane on evidence this box has not got is the substitution this verdict exists to refuse: {line}"
+        );
+    }
+
+    /// A verdict about a pane that is gone is not an answer about anything,
+    /// and printing the last one tells an operator who has just killed a stale
+    /// pane that the kill did nothing (ISS-1099 criterion 15).
+    #[test]
+    fn a_dead_pane_is_given_no_verdict_however_recent_the_last_one_was() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let gone = Running {
+            name: PANE,
+            incarnation: None,
+            alive: false,
+        };
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &gone);
+        assert!(
+            !line.contains("STALE") && !line.contains("master kill"),
+            "the row still says stale; the pane it was about is gone: {line}"
+        );
+        assert!(
+            line.contains("no pane is running"),
+            "and the line says why it is not answering rather than going quiet: {line}"
+        );
+    }
+
+    /// F1 from the review of this change. A master pane's name comes from the
+    /// slug, so a replacement carries the name of the pane it replaced. Only
+    /// the moment tmux created it tells the two apart, and without that an
+    /// operator who has just ended a stale master is told their replacement is
+    /// stale too — the same lie, pointing the other way.
+    #[test]
+    fn a_same_second_replacement_under_the_same_name_is_not_given_the_old_panes_verdict() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        // Same name, same second, a different tmux session id — which is the
+        // case a whole-second creation time could not see.
+        let replacement = Running {
+            name: PANE,
+            incarnation: Some("1700000000:$2".to_string()),
+            alive: true,
+        };
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &replacement);
+        assert!(
+            !line.contains("STALE") && !line.contains("master kill"),
+            "this pane has not been judged; telling its operator to end it would cost them the master they just placed: {line}"
+        );
+        assert!(
+            line.contains("before the one up now") && line.contains("next sweep"),
+            "and it says which pane the verdict it holds was about, and when this one gets judged: {line}"
+        );
+    }
+
+    #[test]
+    fn a_pane_under_a_different_name_entirely_is_not_given_the_old_verdict() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let other = Running {
+            name: "forge-master-sidpeak-2",
+            incarnation: Some(UP.to_string()),
+            alive: true,
+        };
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &other);
+        assert!(
+            !line.contains("STALE"),
+            "this is a pane no sweep has judged yet: {line}"
+        );
+        assert!(
+            line.contains(PANE) && line.contains("next sweep"),
+            "and it names the pane the verdict was about: {line}"
+        );
+    }
+
+    /// Where tmux cannot be asked which incarnation is up, the box says it
+    /// cannot tell. It does not read the verdict on either assumption: one
+    /// direction ends a working master, the other hides a refused one.
+    #[test]
+    fn a_pane_this_box_cannot_identify_is_answered_with_that_and_not_with_a_guess() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let unidentifiable = Running {
+            name: PANE,
+            incarnation: None,
+            alive: true,
+        };
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &unidentifiable);
+        assert!(
+            !line.contains("STALE") && !line.contains("master kill"),
+            "an answer this box cannot stand behind is not an answer: {line}"
+        );
+        assert!(
+            line.contains("cannot ask tmux"),
+            "and it says what it could not do, rather than going quiet: {line}"
+        );
+    }
+
+    #[test]
+    fn a_project_no_sweep_has_judged_is_not_reported_as_working() {
+        let led = Ledger::open_in_memory().unwrap();
+        let line = authority_line(Some(&led), "sidpeak", 1_700_000_000, &same_pane());
+        assert!(
+            !line.starts_with("current"),
+            "no verdict is not the same answer as a good one — that equivalence is what let a refused pane read as healthy for four hours: {line}"
+        );
+        assert!(
+            line.contains("not yet established"),
+            "and an absent verdict says so in its own words: {line}"
+        );
+    }
+
+    /// F3 from the review of this change. Every verdict on the record is an
+    /// observation a sweep made. The daemon can have stopped, or its last pass
+    /// can have failed before it reached this project, and the row would read
+    /// exactly the same — so a line that asserts a present state from a past
+    /// reading is the surface lying in the way this issue is about.
+    #[test]
+    fn the_line_says_when_the_verdict_was_last_confirmed_and_not_only_that_it_holds() {
+        let led = led_saying(MasterAuthority::CURRENT, None);
+        let row = led.master_authority_for_slug("sidpeak").unwrap().unwrap();
+        let hours_later = row.seen_at + 9 * 3600;
+        let line = authority_line(Some(&led), "sidpeak", hours_later, &same_pane());
+        assert!(
+            line.contains("last confirmed 9h00m ago"),
+            "an observation nine hours old is not a statement about now, and the reader is owed its age: {line}"
+        );
+        assert!(
+            !line.contains("is served"),
+            "nor may the sentence claim the present tense off a nine-hour-old row: {line}"
+        );
+    }
+
+    #[test]
+    fn a_span_reads_in_the_coarsest_unit_that_still_says_it() {
+        assert_eq!(span(5), "5s");
+        assert_eq!(span(600), "10m");
+        assert_eq!(span(4 * 3600 + 12 * 60), "4h12m");
+        assert_eq!(ago(-1), "0s", "a clock that went backwards says nothing");
     }
 
     #[test]

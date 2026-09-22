@@ -15,6 +15,7 @@
 //! both.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -186,6 +187,60 @@ impl MasterStanding {
     }
 }
 
+/// What this box last established about the authority of one project's
+/// resident master pane: whether the control capability that pane holds is one
+/// this daemon can still resolve to the session core gives it (ISS-1099).
+///
+/// On disk rather than in the daemon's own registry because the state it
+/// describes is produced by a restart. An in-process record of why a project
+/// has no working master is erased by the very event that creates the state,
+/// and the only account left was a journal line — which is what this issue's
+/// Outcome says nobody should have to read.
+///
+/// A table of its own rather than columns on `masters`: that row is written
+/// from one place, `control.rs:note_master_pane`, which is gated on the pane's
+/// capability resolving. A pane in the state this records writes nothing there,
+/// so a row that had to exist for the verdict to be kept would have to invent
+/// the `pane_name` and `boot_id` it declares NOT NULL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MasterAuthority {
+    pub project_id: String,
+    pub slug: String,
+    /// The pane the verdict was reached about.
+    pub pane_name: String,
+    /// Which incarnation of that name was running, as tmux's own opaque
+    /// answer: the name is derived from the slug and every incarnation carries
+    /// it, so the name alone identifies nothing. `None` where tmux could not be
+    /// asked at the moment the verdict was reached, which is not the same as a
+    /// pane that has just started — a reader that finds it `None` says it
+    /// cannot tell rather than guessing either way.
+    pub pane_incarnation: Option<String>,
+    /// `current`, `stale` or `unknown` — the three `capability_of` answers, kept
+    /// three here for the same reason they are kept three there.
+    pub verdict: String,
+    /// Why the answer is `unknown`, and `None` on the other two.
+    pub detail: Option<String>,
+    /// When this verdict was first reached. A sweep reaching the same verdict
+    /// again leaves it alone, so it answers "how long has this stood".
+    pub since: i64,
+    pub seen_at: i64,
+}
+
+impl MasterAuthority {
+    /// Some capability this box minted names the session core gives it.
+    pub const CURRENT: &'static str = "current";
+    /// None does, so every frame that pane sends is refused.
+    pub const STALE: &'static str = "stale";
+    /// This box could not read its own capability map, which is evidence about
+    /// the map and not about any pane.
+    pub const UNKNOWN: &'static str = "unknown";
+
+    /// How long this verdict has stood, at the moment it was last confirmed.
+    pub fn held_for(&self) -> Duration {
+        Duration::from_secs(self.seen_at.saturating_sub(self.since).max(0) as u64)
+    }
+}
+
 /// One issue's membership in a run, and whether its lease came back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Membership {
@@ -330,6 +385,16 @@ CREATE TABLE IF NOT EXISTS master_standing (
   why           TEXT,
   stood_up_at   INTEGER
 );
+CREATE TABLE IF NOT EXISTS master_authority (
+  project_id      TEXT PRIMARY KEY,
+  slug            TEXT NOT NULL,
+  pane_name       TEXT NOT NULL,
+  pane_incarnation TEXT,
+  verdict         TEXT NOT NULL,
+  detail          TEXT,
+  since           INTEGER NOT NULL,
+  seen_at         INTEGER NOT NULL
+);
 ";
 
 /// Columns a build added after the table shipped, by table. A ledger written by
@@ -381,6 +446,19 @@ fn map_standing(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterStanding> {
         stood_down_by: row.get(3)?,
         why: row.get(4)?,
         stood_up_at: row.get(5)?,
+    })
+}
+
+fn map_authority(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterAuthority> {
+    Ok(MasterAuthority {
+        project_id: row.get(0)?,
+        slug: row.get(1)?,
+        pane_name: row.get(2)?,
+        pane_incarnation: row.get(3)?,
+        verdict: row.get(4)?,
+        detail: row.get(5)?,
+        since: row.get(6)?,
+        seen_at: row.get(7)?,
     })
 }
 
@@ -942,6 +1020,75 @@ impl Ledger {
             )
             .map_err(sql_err)?;
         let rows = stmt.query_map([], map_standing).map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// Record what this box has just established about a project's master
+    /// pane authority.
+    ///
+    /// `since` moves only when the answer moves — a different verdict, or the
+    /// same verdict about a different pane. A sweep that reaches the same
+    /// verdict about the same pane refreshes `seen_at` alone, so the pair says
+    /// how long this has stood rather than how recently it was looked at. That
+    /// interval is the whole point: the incident this issue was filed from ran
+    /// for four hours and nothing on the box could say so (ISS-1099).
+    pub fn note_master_authority(
+        &self,
+        project_id: &str,
+        slug: &str,
+        pane: (&str, Option<&str>),
+        verdict: &str,
+        detail: Option<&str>,
+    ) -> Result<()> {
+        let (pane_name, pane_incarnation) = pane;
+        self.conn
+            .execute(
+                "INSERT INTO master_authority (project_id, slug, pane_name, pane_incarnation, verdict, detail, since, seen_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+                 ON CONFLICT(project_id) DO UPDATE SET
+                   slug            = excluded.slug,
+                   pane_name       = excluded.pane_name,
+                   pane_incarnation = excluded.pane_incarnation,
+                   verdict         = excluded.verdict,
+                   detail          = excluded.detail,
+                   since           = CASE WHEN master_authority.verdict         =  excluded.verdict
+                                           AND master_authority.pane_name       =  excluded.pane_name
+                                           AND master_authority.pane_incarnation IS excluded.pane_incarnation
+                                          THEN master_authority.since
+                                          ELSE excluded.since END,
+                   seen_at         = excluded.seen_at",
+                params![project_id, slug, pane_name, pane_incarnation, verdict, detail, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// The authority verdict for the project this box knows by this slug.
+    ///
+    /// Keyed by slug for the reason `master_standing_for_slug` is: a command,
+    /// and `master status`, may hold only the slug.
+    pub fn master_authority_for_slug(&self, slug: &str) -> Result<Option<MasterAuthority>> {
+        self.conn
+            .query_row(
+                "SELECT project_id, slug, pane_name, pane_incarnation, verdict, detail, since, seen_at
+                 FROM master_authority WHERE slug = ?1",
+                params![slug],
+                map_authority,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    /// Every project this box holds an authority verdict about.
+    pub fn authorities(&self) -> Result<Vec<MasterAuthority>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT project_id, slug, pane_name, pane_incarnation, verdict, detail, since, seen_at
+                 FROM master_authority ORDER BY slug",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt.query_map([], map_authority).map_err(sql_err)?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 
@@ -2411,6 +2558,241 @@ mod tests {
         assert!(by_slug.stands());
         assert_eq!(by_slug.project_id, "proj-1");
         assert!(led.master_standing_for_slug("other").unwrap().is_none());
+    }
+
+    /// Plant a verdict as having been reached `ago` seconds back, which no
+    /// pair of writes inside one test second can produce: `now()` has
+    /// one-second granularity, so a case that wrote twice and compared would
+    /// pass whether the statement preserved `since` or overwrote it.
+    fn age_authority(led: &Ledger, project_id: &str, ago: i64) -> i64 {
+        let planted = now() - ago;
+        led.conn
+            .execute(
+                "UPDATE master_authority SET since = ?2, seen_at = ?2 WHERE project_id = ?1",
+                params![project_id, planted],
+            )
+            .unwrap();
+        planted
+    }
+
+    /// The whole point of writing the verdict down. The daemon that reaches it
+    /// is the one a restart replaces, and the registry that held it before was
+    /// in-process: the state this records is *produced* by the restart that
+    /// erased the record of it (ISS-1099 criterion 10).
+    #[test]
+    fn an_authority_verdict_outlives_the_process_that_reached_it() {
+        let dir = std::env::temp_dir().join(format!("forge-ledger-1099a-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let led = Ledger::open(&path).unwrap();
+            led.note_master_authority(
+                "proj-1",
+                "sidpeak",
+                ("forge-master-sidpeak", Some("1700000000:$1")),
+                MasterAuthority::STALE,
+                None,
+            )
+            .unwrap();
+        }
+        let reopened = Ledger::open(&path).expect("a later daemon opens the same ledger");
+        let row = reopened
+            .master_authority_for_slug("sidpeak")
+            .unwrap()
+            .expect("the verdict survives the process that reached it");
+        assert_eq!(row.verdict, MasterAuthority::STALE);
+        assert_eq!(row.project_id, "proj-1");
+        assert_eq!(row.pane_name, "forge-master-sidpeak");
+        assert!(
+            reopened
+                .master_authority_for_slug("never-judged")
+                .unwrap()
+                .is_none(),
+            "a project no sweep has judged has no verdict, which is not the same as a current one"
+        );
+        drop(reopened);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// `since` answers "how long has this stood", which is the number the
+    /// incident behind this issue turned on: four hours, and nothing on the box
+    /// could say so. A sweep that finds the same thing again is not news
+    /// (ISS-1099 criterion 14).
+    #[test]
+    fn a_repeat_of_the_same_verdict_leaves_the_time_it_has_stood_since_alone() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        let planted = age_authority(&led, "proj-1", 4 * 3600);
+
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        let again = led.master_authority_for_slug("sidpeak").unwrap().unwrap();
+        assert_eq!(
+            again.since, planted,
+            "the 45th sweep to find the same refusal has learned nothing the first did not"
+        );
+        assert!(
+            again.seen_at > planted,
+            "but it has confirmed it now, which is what makes the interval a live one rather than a stale reading"
+        );
+        assert!(
+            again.held_for().as_secs() >= 4 * 3600,
+            "and the pair says four hours, which is the sentence this issue exists to make sayable: {:?}",
+            again.held_for()
+        );
+
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
+            MasterAuthority::CURRENT,
+            None,
+        )
+        .unwrap();
+        let moved = led.master_authority_for_slug("sidpeak").unwrap().unwrap();
+        assert!(
+            moved.since > planted,
+            "a pane that recovers starts its own interval, or the box reports a current capability as four hours old"
+        );
+    }
+
+    /// A pane replaced under the same project is a different pane, and a
+    /// verdict reached about the one before it says nothing about this one.
+    #[test]
+    fn a_verdict_about_a_replaced_pane_does_not_carry_its_interval_over() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        let planted = age_authority(&led, "proj-1", 4 * 3600);
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak-2", Some("1700000000:$1")),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        let row = led.master_authority_for_slug("sidpeak").unwrap().unwrap();
+        assert_eq!(row.pane_name, "forge-master-sidpeak-2");
+        assert!(
+            row.since > planted,
+            "the same verdict about a different pane is a new verdict; carrying the interval would tell an operator their replacement pane has been refused for four hours"
+        );
+    }
+
+    /// F1 from the review of this change. A master pane's name is derived
+    /// from the project slug, so a replacement carries the name of the pane it
+    /// replaced and the name alone identifies nothing. Carrying the interval
+    /// over tells an operator their brand-new master has been refused for four
+    /// hours.
+    #[test]
+    fn a_replacement_under_the_same_name_starts_its_own_interval() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        let planted = age_authority(&led, "proj-1", 4 * 3600);
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$2")),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        let row = led.master_authority_for_slug("sidpeak").unwrap().unwrap();
+        assert_eq!(
+            row.pane_name, "forge-master-sidpeak",
+            "the name is the same"
+        );
+        assert_eq!(row.pane_incarnation.as_deref(), Some("1700000000:$2"));
+        assert!(
+            row.since > planted,
+            "the pane the four hours were measured against is gone; the one up now has been refused for seconds"
+        );
+    }
+
+    /// The three verdicts stay three all the way to disk. Folding "this box
+    /// could not read its own map" into "stale" would report every master on a
+    /// 28-project box as unplaceable at once, off one unreadable file.
+    #[test]
+    fn an_unreadable_map_is_recorded_as_neither_current_nor_stale() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_authority(
+            "proj-1",
+            "sidpeak",
+            ("forge-master-sidpeak", Some("1700000000:$1")),
+            MasterAuthority::UNKNOWN,
+            Some("the capability map is not valid JSON"),
+        )
+        .unwrap();
+        let row = led.master_authority_for_slug("sidpeak").unwrap().unwrap();
+        assert_eq!(row.verdict, MasterAuthority::UNKNOWN);
+        assert_ne!(row.verdict, MasterAuthority::STALE);
+        assert_ne!(row.verdict, MasterAuthority::CURRENT);
+        assert_eq!(
+            row.detail.as_deref(),
+            Some("the capability map is not valid JSON"),
+            "and it carries why, because `unknown` with no reason is a shrug rather than a report"
+        );
+    }
+
+    #[test]
+    fn every_project_this_box_holds_an_authority_verdict_about_is_listable() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_authority(
+            "proj-1",
+            "b-project",
+            ("forge-master-b-project", None),
+            MasterAuthority::STALE,
+            None,
+        )
+        .unwrap();
+        led.note_master_authority(
+            "proj-2",
+            "a-project",
+            ("forge-master-a-project", None),
+            MasterAuthority::CURRENT,
+            None,
+        )
+        .unwrap();
+        let slugs: Vec<String> = led
+            .authorities()
+            .unwrap()
+            .into_iter()
+            .map(|a| a.slug)
+            .collect();
+        assert_eq!(
+            slugs,
+            vec!["a-project".to_string(), "b-project".to_string()],
+            "`master status` lists what it can answer for, and a pane this box adopted has no transcript directory to be found by"
+        );
     }
 
     #[test]
