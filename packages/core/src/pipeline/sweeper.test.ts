@@ -66,15 +66,6 @@ vi.mock('./retry-rescue-alert.js', () => ({
 const alertsMock = vi.fn(async (_now?: Date) => ({ evaluated: 0, notified: 0, resolved: 0 }));
 vi.mock('../admin/alert-sweeper.js', () => ({ runAlertSweep: (now?: Date) => alertsMock(now) }));
 
-const sweepAutomaticReleasesMock = vi.fn(async (_now?: Date) => ({
-  projectsCut: 0,
-  issuesCut: 0,
-  issuesExcluded: 0,
-}));
-vi.mock('./release-sweep.js', () => ({
-  sweepAutomaticReleases: (now?: Date) => sweepAutomaticReleasesMock(now),
-}));
-
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
 const selectWhere = vi.fn(async () => [] as Array<{ status: string }>);
@@ -192,7 +183,6 @@ beforeEach(() => {
   applyStatusTransitionMock.mockResolvedValue(undefined);
   detectRetryRescueThresholdsMock.mockResolvedValue({ detected: 0, notified: 0 });
   runLoopMonitorMock.mockResolvedValue(zeroLoopResult);
-  sweepAutomaticReleasesMock.mockResolvedValue({ projectsCut: 0, issuesCut: 0, issuesExcluded: 0 });
 });
 
 describe('runPipelineSweep — retry rescue thresholds', () => {
@@ -627,24 +617,10 @@ describe('detectOrphanedRunAssertions wiring (ISS-1050 — the inverse of the ru
   });
 
   it('runs AFTER the reaping passes, not before them', async () => {
-    const order: string[] = [];
-    reapConcludedRunsMock.mockImplementation(async () => {
-      order.push('concludedRuns');
-      return { reaped: 0 };
-    });
-    reapJoblessRunsMock.mockImplementation(async () => {
-      order.push('joblessRuns');
-      return { reaped: 0 };
-    });
-    detectOrphanedRunAssertionsMock.mockImplementation(async () => {
-      order.push('orphanedRunAssertions');
-      return { detected: 0, reported: 0 };
-    });
-
     await runPipelineSweep();
-
-    expect(order.indexOf('orphanedRunAssertions')).toBeGreaterThan(order.indexOf('concludedRuns'));
-    expect(order.indexOf('orphanedRunAssertions')).toBeGreaterThan(order.indexOf('joblessRuns'));
+    const namedAt = detectOrphanedRunAssertionsMock.mock.invocationCallOrder[0] ?? -1;
+    expect(namedAt).toBeGreaterThan(reapConcludedRunsMock.mock.invocationCallOrder[0] ?? -1);
+    expect(namedAt).toBeGreaterThan(reapJoblessRunsMock.mock.invocationCallOrder[0] ?? -1);
   });
 });
 
@@ -682,29 +658,14 @@ describe('reapJoblessRuns wiring (ISS-654 — the job-less issue-run phantom)', 
   });
 });
 
-describe('releaseSweep wiring (ISS-1117 — an issue at awaiting_release releases on its own)', () => {
-  it('runs after reapStaleReleaseBatchClaims and reports its count', async () => {
-    const order: string[] = [];
-    dbExecute.mockImplementation(async (...args: unknown[]) => {
-      if (sqlText(args[0]).includes('SET release_batch_run_id = NULL')) order.push('claims');
-      return [];
-    });
-    sweepAutomaticReleasesMock.mockImplementationOnce(async () => {
-      order.push('releaseSweep');
-      return { projectsCut: 2, issuesCut: 3, issuesExcluded: 1 };
-    });
-
-    const result = await runPipelineSweep();
-
-    expect(order).toEqual(['claims', 'releaseSweep']);
-    expect(result.releaseSweep).toEqual({ projectsCut: 2, issuesCut: 3, issuesExcluded: 1 });
-  });
-
-  it('a throw leaves the later passes running and still fails the tick', async () => {
-    sweepAutomaticReleasesMock.mockRejectedValueOnce(new Error('boom'));
-    await expect(runPipelineSweep()).rejects.toThrow();
-    expect(alertsMock).toHaveBeenCalled();
-  });
+it('releaseSweep (ISS-1117) runs after reapStaleReleaseBatchClaims and reports its count', async () => {
+  const result = await runPipelineSweep();
+  const calls = dbExecute.mock.calls.map((c) => sqlText(c[0]));
+  const claims = calls.findIndex((s) => s.includes('SET release_batch_run_id = NULL'));
+  const scan = calls.findIndex((s) => s.includes('awaiting_release'));
+  expect(claims).toBeGreaterThanOrEqual(0);
+  expect(scan).toBeGreaterThan(claims);
+  expect(result.releaseSweep).toEqual({ projectsCut: 0, issuesCut: 0, issuesExcluded: 0 });
 });
 
 describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {

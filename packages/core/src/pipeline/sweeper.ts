@@ -112,7 +112,6 @@ export interface SweepResult {
   rejectionStreaks: Inv7AlarmResult;
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
-  /** ISS-1117 — an earned `awaiting_release` issue on a no-human-owed project is cut on its own. */
   releaseSweep: AutomaticReleaseSweepResult;
   /** ISS-1050 — issues asserting work in progress with no live run behind them (report only). */
   orphanedRunAssertions: IssueRunInvariantResult;
