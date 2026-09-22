@@ -17,7 +17,7 @@ const BINDING = "3f7c1a44-9e52-4d6b-8a21-0b5c9d2e7f61";
 
 const bind = vi.fn();
 /** The connect start: asserted for the ownership choice it must NOT carry. */
-const connectStart = vi.fn(async () => ({
+const connectStart = vi.fn(async (_params: { org?: string; orgId?: string }) => ({
   postUrl: "https://github.com/settings/apps/new",
   state: "signed-state",
   manifest: { name: "Forge — Forge", default_permissions: { contents: "write" } },
