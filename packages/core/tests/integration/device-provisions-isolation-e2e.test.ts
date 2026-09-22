@@ -346,5 +346,43 @@ describe('a device with one unprovisionable project still provisions the rest (I
     };
     expect(parsed.failures[0]?.projectId).toBe(poisoned.id);
     expect(parsed.failures[0]?.reason).toContain('the credential vault is not reachable');
+    // The guard says what it caught rather than swallowing it: a report that
+    // reached no row must not read like one that did.
+    expect(parsed.failures[0]?.reason).toContain('nothing here reached a runner row');
+    expect(parsed.failures[0]?.reason).toContain('lock timeout');
+  });
+
+  it('keeps both of one row\u2019s reports on it, rather than the second overwriting the first', async () => {
+    const { deviceToken, org, projects } = await seed(['both']);
+    const only = projects[0] as SeededProject;
+    const [key] = await harness.db
+      .insert(schema.workspaceSshKeys)
+      .values({
+        orgId: org.id,
+        name: 'forge-both',
+        source: 'forge_generated',
+        publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 forge-both',
+        privateKeyEnc: Buffer.from('not a vault ciphertext'),
+      })
+      .returning({ id: schema.workspaceSshKeys.id });
+    await harness.db
+      .insert(schema.projectGitCredentials)
+      .values({ projectId: only.id, sshKeyId: key?.id as string });
+    failures.set(only.id, async () => {
+      throw new Error('the credential vault is not reachable');
+    });
+
+    const res = await get(deviceToken);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+
+    const parsed = JSON.parse(res.headers.get('x-forge-provision-failures') as string) as {
+      failures: Array<{ kind: string }>;
+    };
+    expect(parsed.failures.map((f) => f.kind)).toEqual(['degraded', 'omitted']);
+
+    const row = await runnerRow(only.runnerId);
+    expect(row?.provisionDetail).toContain('could not be decrypted');
+    expect(row?.provisionDetail).toContain('the credential vault is not reachable');
   });
 });

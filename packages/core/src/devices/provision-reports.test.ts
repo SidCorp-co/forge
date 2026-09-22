@@ -25,7 +25,22 @@ beforeEach(() => {
 });
 
 describe('recordProvisionReports', () => {
-  it('writes each report to its own row', async () => {
+  it('writes one row\u2019s reports once, so the second does not overwrite the first', async () => {
+    // A row can be short its ssh key AND unable to mint. Criterion 7 says every
+    // reported failure is on the row, and a write per report leaves only the last.
+    await recordProvisionReports([
+      report({ kind: 'degraded', reason: 'the ssh key could not be decrypted' }),
+      report({ kind: 'omitted', reason: 'the credential could not be minted', terminal: true }),
+    ]);
+    expect(update).toHaveBeenCalledTimes(1);
+    const [patch] = set.mock.calls[0] as [Record<string, unknown>];
+    expect(patch.provisionDetail).toContain('the ssh key could not be decrypted');
+    expect(patch.provisionDetail).toContain('the credential could not be minted');
+    // Terminal if any of them is: the row cannot succeed on the next tick either.
+    expect(patch.provisionStatus).toBe('failed');
+  });
+
+  it('writes each row to its own row', async () => {
     const out = await recordProvisionReports([
       report({ runnerId: 'runner-1' }),
       report({ runnerId: 'runner-2', slug: 'portal' }),
@@ -39,7 +54,10 @@ describe('recordProvisionReports', () => {
   });
 
   it('takes a terminal report out of the queue, and leaves the others in it', async () => {
-    await recordProvisionReports([report({ terminal: true }), report({ terminal: false })]);
+    await recordProvisionReports([
+      report({ runnerId: 'runner-1', terminal: true }),
+      report({ runnerId: 'runner-2', terminal: false }),
+    ]);
     expect(set).toHaveBeenNthCalledWith(1, expect.objectContaining({ provisionStatus: 'failed' }));
     expect(set.mock.calls[1]?.[0]).not.toHaveProperty('provisionStatus');
   });

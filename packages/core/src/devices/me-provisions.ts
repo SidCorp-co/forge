@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { projectGitCredentials, projects, runners, workspaceSshKeys } from '../db/schema.js';
 import { isHttpsGitUrl, projectsWithGitHubAppCredential } from '../git/github-app-credential.js';
 import { deviceGitCredentialRoutes } from '../git/github-credential-routes.js';
+import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { recordProvisionReports } from './provision-reports.js';
 import {
@@ -98,8 +99,22 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
 
   // Guarded although `recordProvisionReports` contracts not to throw: the one
   // thing this endpoint may never do again is lose every project's provision to
-  // one row's fault, and a diagnostic write is not worth that risk twice.
-  const recorded = await recordProvisionReports(reports).catch(() => reports);
+  // one row's fault. The guard says what it caught rather than swallowing it.
+  const recorded = await recordProvisionReports(reports).catch((err: unknown) => {
+    const why = err instanceof Error ? err.message : String(err);
+    return reports.map((r) => ({
+      ...r,
+      terminal: false,
+      reason: `${r.reason} \u2014 and nothing here reached a runner row: ${why}`,
+    }));
+  });
+  // Every report, whatever else carries it: the header has a budget and a row's
+  // detail can be overwritten by the runner's next step, so the server log is
+  // the one place a diagnostic cannot be dropped.
+  for (const report of recorded) {
+    logger.warn({ deviceId: device.id, ...report }, 'provision.report');
+  }
+
   const header = provisionFailuresHeader(recorded);
   if (header) c.header(PROVISION_FAILURES_HEADER, header);
 
