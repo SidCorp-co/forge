@@ -28,24 +28,20 @@ export interface ScheduledCutOutcome {
   error?: string;
 }
 
-export async function runScheduledReleaseCut(args: {
+// One classified `createReleaseBatch` attempt, shared with ISS-1117's sweep pass.
+export async function cutWaitingRelease(args: {
   projectId: string;
   userId: string;
+  issueIds: string[];
 }): Promise<ScheduledCutOutcome> {
-  const roster = await loadReleaseRoster(args.projectId);
-  if (!roster.gateStatus) {
-    return { status: 'skipped', output: 'this project has no release gate' };
-  }
-
-  const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
-  if (waiting.length === 0) {
+  if (args.issueIds.length === 0) {
     return { status: 'skipped', output: 'nothing is waiting at the release gate' };
   }
 
   try {
     const result = await createReleaseBatch({
       projectId: args.projectId,
-      issueIds: waiting,
+      issueIds: args.issueIds,
       userId: args.userId,
     });
     return {
@@ -71,4 +67,17 @@ export async function runScheduledReleaseCut(args: {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+export async function runScheduledReleaseCut(args: {
+  projectId: string;
+  userId: string;
+}): Promise<ScheduledCutOutcome> {
+  const roster = await loadReleaseRoster(args.projectId);
+  if (!roster.gateStatus) {
+    return { status: 'skipped', output: 'this project has no release gate' };
+  }
+
+  const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
+  return cutWaitingRelease({ projectId: args.projectId, userId: args.userId, issueIds: waiting });
 }
