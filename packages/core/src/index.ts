@@ -80,6 +80,8 @@ import { integrationConnectionsRoutes, integrationsRoutes } from './integrations
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
+import { closeBacklogStreams } from './issues/backlog/open-streams.js';
+import { backlogStreamRoutes } from './issues/backlog/routes.js';
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueMergeRoutes } from './issues/merge-routes.js';
@@ -240,6 +242,7 @@ export async function runShutdown(
 
   const sequence = (async () => {
     await closeWs();
+    await closeBacklogStreams();
     await stopRocketChatManager();
     await unregisterScheduleTicker();
     await unregisterPmCadenceTicker();
@@ -325,6 +328,7 @@ app.route('/api/projects', reconcileRoutes);
 app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', searchRoutes);
+app.route('/api/projects', backlogStreamRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', moduleDiagramRoutes);
 app.route('/api/projects', projectActivityRoutes);
