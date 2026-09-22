@@ -94,6 +94,79 @@ async fn reusable(repo: &str, abs: &Path, branch: &str) -> Option<PathBuf> {
         .then(|| abs.to_path_buf())
 }
 
+/// What git says is at a path.
+///
+/// `git worktree remove` refuses a main working tree by design, so a caller
+/// that learns this from a failed removal cannot tell a refusal that will
+/// never succeed from one that might, and retries it forever (ISS-1183). The
+/// question is put to git at the path itself rather than derived from the
+/// path's shape, which is why it needs no repo root and why it holds wherever
+/// the worktree sits: a checkout under `<repo>/.claude/worktrees/` answers
+/// `Linked` exactly as one under `<repo>/.worktrees/` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// A linked worktree. `git worktree remove` takes it.
+    Linked,
+    /// The repository's main working tree. It is nobody's to remove.
+    MainWorkingTree,
+    /// Git names no worktree here.
+    NotAWorktree,
+    /// Git could not be asked, which is not an answer.
+    Unknown,
+}
+
+/// Ask git what `worktree` is.
+///
+/// A main working tree's `--git-dir` and `--git-common-dir` are the same
+/// directory; a linked worktree's `--git-dir` is `<common>/worktrees/<name>`
+/// and differs. Both are resolved against the checkout before they are
+/// compared, because git answers either one relatively.
+pub async fn kind_at(worktree: &Path) -> Kind {
+    if !worktree.is_dir() {
+        return Kind::NotAWorktree;
+    }
+    let out = Command::new("git")
+        .args(["rev-parse", "--git-dir", "--git-common-dir"])
+        .current_dir(worktree)
+        .stdin(Stdio::null())
+        .output()
+        .await;
+    let Ok(out) = out else {
+        return Kind::Unknown;
+    };
+    if !out.status.success() {
+        return Kind::NotAWorktree;
+    }
+    kind_of(worktree, &String::from_utf8_lossy(&out.stdout))
+}
+
+/// What git's two-line answer means, split from the asking so the reading is
+/// testable without a git that can be made to answer wrongly.
+///
+/// An answer that is not two paths is `Unknown` rather than a guess: the
+/// caller refuses on that, and refusing costs an operator a sweep where
+/// guessing could cost them a checkout.
+fn kind_of(worktree: &Path, answer: &str) -> Kind {
+    let mut lines = answer.lines();
+    let (Some(git_dir), Some(common_dir)) = (lines.next(), lines.next()) else {
+        return Kind::Unknown;
+    };
+    let resolve = |p: &str| {
+        let p = Path::new(p);
+        let abs = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            worktree.join(p)
+        };
+        abs.canonicalize().unwrap_or(abs)
+    };
+    if resolve(git_dir) == resolve(common_dir) {
+        Kind::MainWorkingTree
+    } else {
+        Kind::Linked
+    }
+}
+
 pub async fn remove_at(repo: &str, worktree: &std::path::Path) -> Result<()> {
     let out = git(
         repo,
@@ -284,6 +357,85 @@ mod tests {
             "the BRANCH keeps its slash"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn git_names_the_repo_root_a_main_working_tree_and_its_worktrees_linked() {
+        let root = repo("kind").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-8", None).await.unwrap();
+
+        assert_eq!(
+            kind_at(&root).await,
+            Kind::MainWorkingTree,
+            "the repo root is the one path `git worktree remove` refuses by design"
+        );
+        assert_eq!(kind_at(&linked).await, Kind::Linked);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn where_a_worktree_sits_does_not_change_what_it_is() {
+        let root = repo("kindnested").await;
+        let nested = root.join(".claude/worktrees/ISS-9");
+        std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
+        run(
+            &root,
+            &["worktree", "add", &nested.to_string_lossy(), "-b", "ISS-9"],
+        )
+        .await;
+
+        assert_eq!(
+            kind_at(&nested).await,
+            Kind::Linked,
+            "a worktree nested INSIDE the repository is still a linked worktree — \
+             the answer comes from git, not from the shape of the path"
+        );
+        assert_eq!(
+            kind_at(&root).await,
+            Kind::MainWorkingTree,
+            "and the repository holding it is still the main working tree"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_answer_that_is_not_two_paths_identifies_nothing() {
+        let wt = Path::new("/repo");
+        assert_eq!(kind_of(wt, ""), Kind::Unknown, "no answer at all");
+        assert_eq!(
+            kind_of(wt, "/repo/.git\n"),
+            Kind::Unknown,
+            "one path cannot say whether it is the common dir or this tree's own"
+        );
+        assert_eq!(
+            kind_of(wt, "/repo/.git\n/repo/.git\n"),
+            Kind::MainWorkingTree
+        );
+        assert_eq!(
+            kind_of(wt, "/repo/.git/worktrees/a\n/repo/.git\n"),
+            Kind::Linked
+        );
+        assert_eq!(
+            kind_of(wt, ".git\n.git\n"),
+            Kind::MainWorkingTree,
+            "git answers relatively in the main tree, and both sides resolve the same way"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_directory_that_is_no_repository_is_named_as_such_and_an_absent_one_too() {
+        let plain = std::env::temp_dir().join(format!(
+            "forge-worktree-kind-plain-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&plain);
+        std::fs::create_dir_all(&plain).unwrap();
+
+        assert_eq!(kind_at(&plain).await, Kind::NotAWorktree);
+        assert_eq!(kind_at(&plain.join("nope")).await, Kind::NotAWorktree);
+        let _ = std::fs::remove_dir_all(&plain);
     }
 
     #[tokio::test]

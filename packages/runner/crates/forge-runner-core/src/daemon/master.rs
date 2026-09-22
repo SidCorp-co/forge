@@ -1288,10 +1288,11 @@ async fn release_held_tree(
     {
         Ok(forced) => {
             tracing::info!(
-                "[master] run {} reclaimed by {:?}: diff {:?}, close {:?}",
+                "[master] run {} reclaimed by {:?}: diff {:?}, checkout {:?}, close {:?}",
                 r.run_id,
                 forced.verb,
                 forced.salvage.as_ref().map(|s| s.outcome),
+                forced.worktree,
                 forced.close
             );
             forced.close.is_closed()
@@ -3965,7 +3966,7 @@ mod give_back_tests {
 
         assert!(
             !wt.exists(),
-            "the checkout must actually leave the disk: while it is there the `worktree_gone` mark cannot be observed, so `end_run` is never reached and the reap refuses the tree because the run is `ended_by IS NULL` — the cycle has no other exit"
+            "a LINKED checkout must actually leave the disk: while it is there the `worktree_gone` mark cannot be observed, so `end_run` is never reached and the reap refuses the tree because the run is `ended_by IS NULL` — the cycle has no other exit. A main working tree is the one path that earns the mark without going, because it is not a checkout the run ever held (ISS-1183)"
         );
         let run = ledger.as_ref().unwrap().run("run-1").unwrap().unwrap();
         assert_eq!(
