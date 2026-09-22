@@ -3087,6 +3087,9 @@
   stayed valid beside the new one, and which of the two the machine spoke as was arbitrary.
 - **A revoked machine credential can no longer be renewed into a working one.** Whoever held it
   before could list it and rotate it back into live access to a machine already handed on.
+- **A record written into a comment now lands or is refused, never silently neither.**
+  The tag may sit on the opening fence as well as after the block; one that cannot be read is
+  refused as you write it.
 - **A machine now says when it can no longer be heard by a session it is running.**
   `forge-runner master status` gives that answer, how long it has stood, and a command that ends
   the session it names.

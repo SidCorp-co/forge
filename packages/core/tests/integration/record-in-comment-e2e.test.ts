@@ -213,6 +213,77 @@ describe('the dormancy — a caller that declared nothing is not refused', () =>
   });
 });
 
+describe('a fence that carries no record at all', () => {
+  const unreadable = [`${FENCE}forge-record verdict`, 'criterion: 3', FENCE].join('\n');
+  const neverClosed = [`${FENCE}forge-record`, 'criterion: 3', 'verdict: pass'].join('\n');
+
+  it('is refused 400 under record-fence-shape with no capability declared', async () => {
+    const { issueId, jwt } = await seed();
+    const res = await post(issueId, jwt, unreadable);
+    expect(res.status).toBe(400);
+    const refused = (await res.json()) as Refused;
+    expect(refused.details?.refusals?.map((r) => r.rule)).toEqual(['record-fence-shape']);
+  });
+
+  it('is refused the same way when the caller does declare record-route', async () => {
+    const { issueId, jwt } = await seed();
+    const res = await post(issueId, jwt, unreadable, 'record-route');
+    expect(res.status).toBe(400);
+    const refused = (await res.json()) as Refused;
+    expect(refused.details?.refusals?.map((r) => r.rule)).toEqual(['record-fence-shape']);
+  });
+
+  it('refuses a fence that is never closed', async () => {
+    const { issueId, jwt } = await seed();
+    const res = await post(issueId, jwt, neverClosed);
+    expect(res.status).toBe(400);
+  });
+
+  it('writes nothing when it is refused', async () => {
+    const { issueId, jwt } = await seed();
+    await post(issueId, jwt, unreadable);
+    const rows = await harness.db.execute<{ n: string }>(
+      sql`SELECT count(*)::text AS n FROM comments WHERE issue_id = ${issueId}`,
+    );
+    expect((rows[0] as { n: string }).n).toBe('0');
+  });
+
+  it('shows a shape that is valid rather than only naming what was wrong', async () => {
+    const { issueId, jwt } = await seed();
+    const refused = (await (await post(issueId, jwt, unreadable)).json()) as Refused;
+    const why = refused.details?.refusals?.[0]?.why ?? '';
+    expect(why).toContain('records-and-comments');
+    expect(why).toContain('either carries one or is told it does not');
+  });
+});
+
+describe('a fence whose tag rides on the fence itself', () => {
+  const onTheFence = [
+    'Criterion 3 passed at the head the review judged.',
+    '',
+    `${FENCE}forge-record: verdict · contract 1`,
+    'criterion: 3',
+    'verdict: pass',
+    FENCE,
+  ].join('\n');
+
+  it('is refused 400 under record-in-comment, as the other shape already was', async () => {
+    const { issueId, jwt } = await seed();
+    const res = await post(issueId, jwt, onTheFence, 'record-route');
+    expect(res.status).toBe(400);
+    const refused = (await res.json()) as Refused;
+    expect(refused.details?.refusals?.map((r) => r.rule)).toEqual(['record-in-comment']);
+    expect(refused.details?.refusals?.[0]?.why).toContain('POST /api/issue-step-contexts');
+  });
+
+  it('is written 201 with the warning where the caller declared nothing', async () => {
+    const { issueId, jwt } = await seed();
+    const res = await post(issueId, jwt, onTheFence);
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as Written).warnings?.[0]).toContain('records-and-comments');
+  });
+});
+
 describe('the edit door is screened by the same rule', () => {
   const edit = async (id: string, jwt: string, body: string, capabilities?: string) =>
     app.request(`/api/comments/${id}`, {

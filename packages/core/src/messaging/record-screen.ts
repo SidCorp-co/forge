@@ -10,12 +10,17 @@ export type RecordLens = 'product' | 'technical';
 import {
   FORGE_RECORD_FIELD_BUDGET,
   type ForgeRecord,
+  type ForgeRecordFault,
   type ForgeRecordField,
 } from './forge-record.js';
 import { screenMessage } from './screen.js';
 
 /** The rules this module owns, for the document that has to name them all. */
-export const RECORD_RULE_IDS: readonly string[] = ['field-budget', 'record-in-comment'];
+export const RECORD_RULE_IDS: readonly string[] = [
+  'field-budget',
+  'record-in-comment',
+  'record-fence-shape',
+];
 
 /** The guide that holds the whole table, named by every record-in-comment message. */
 export const RECORD_GUIDE_SLUG = 'records-and-comments';
@@ -65,6 +70,30 @@ export function recordInCommentRefusal(record: ForgeRecord | null): MessageRefus
 /** The same sentence as a warning, for a caller that declared nothing. */
 export function recordInCommentWarning(record: ForgeRecord | null): string | null {
   return record ? recordInCommentMessage(record) : null;
+}
+
+const FENCE_SHAPE =
+  'a `forge-record` block opens ```forge-record and closes with backticks alone, and names its kind either on a `forge-record: <kind> · contract <n>` line after the close or on the opening fence itself as ```forge-record: <kind> · contract <n>';
+
+const FENCE_EXAMPLE = [
+  '```forge-record: verdict · contract 1',
+  'criterion: 13',
+  'verdict: skipped',
+  '```',
+].join('\n');
+
+/**
+ * A body that opened a record fence and carries no record, told to whoever wrote it.
+ */
+export function recordFenceRefusal(fault: ForgeRecordFault | null): MessageRefusal | null {
+  if (!fault) return null;
+  return {
+    rule: 'record-fence-shape',
+    why: `${fault.why} — so this comment would be stored carrying no record at all, which is the one outcome that is not allowed: a body meant to carry a record either carries one or is told it does not. The shapes that are read are below, and the store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``,
+    quote: fault.quote,
+    shape: FENCE_SHAPE,
+    example: FENCE_EXAMPLE,
+  };
 }
 
 const SHAPE = `every field of a \`forge-record\` block is at most ${FORGE_RECORD_FIELD_BUDGET} characters`;

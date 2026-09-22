@@ -174,6 +174,44 @@ describe('the record the read path ships', () => {
   });
 });
 
+describe('the record a fence-tagged comment ships to the card', () => {
+  const ON_THE_FENCE = [
+    '## Confirmation',
+    '',
+    `${FENCE}forge-record: confirmation · contract 1`,
+    'where: the comment read path',
+    'why: written the way a markdown writer writes one',
+    FENCE,
+    '',
+    'And a sentence below.',
+  ].join('\n');
+
+  it('ships a drawable record for a comment whose tag rides on the fence', async () => {
+    const { issueId, jwt, owner } = await seed();
+    await harness.db.execute(sql`
+      INSERT INTO comments (issue_id, author_id, body, created_at)
+      VALUES (${issueId}, ${owner.id}, ${ON_THE_FENCE}, now() + interval '1 minute')
+    `);
+    const node = (await read(issueId, jwt)).items.find((n) => n.body === ON_THE_FENCE) as Node;
+    const record = node.record as RecordView;
+    expect(record.kind).toBe('confirmation');
+    expect(record.contract).toBe(1);
+    expect(record.fields.map((f) => f.key)).toEqual(['where', 'why']);
+  });
+
+  it('leaves the prose either side of the block in its place', async () => {
+    const { issueId, jwt, owner } = await seed();
+    await harness.db.execute(sql`
+      INSERT INTO comments (issue_id, author_id, body, created_at)
+      VALUES (${issueId}, ${owner.id}, ${ON_THE_FENCE}, now() + interval '1 minute')
+    `);
+    const node = (await read(issueId, jwt)).items.find((n) => n.body === ON_THE_FENCE) as Node;
+    const record = node.record as RecordView;
+    expect(node.body.slice(0, record.at)).toBe('## Confirmation\n\n');
+    expect(node.body.slice(record.to)).toBe('\n\nAnd a sentence below.');
+  });
+});
+
 describe('the lens the read path resolves', () => {
   it('reads as product where the project’s only member carries no lens', async () => {
     const { issueId, jwt } = await seed();
