@@ -276,6 +276,41 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     expect(await liveCount(owner.id, name)).toBe(1);
   });
 
+  it('refuses to rotate a device credential the box no longer holds', async () => {
+    const a = await createTestUser(harness.db);
+    const b = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, a.id);
+    const name = deviceTokenNameFor(device.id);
+
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: a.id });
+    const [aRow] = await rowsNamed(a.id);
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: b.id });
+    expect(await liveCount(a.id, name)).toBe(0);
+
+    // `GET /api/pat` lists revoked device-bound rows, so the previous holder
+    // has this id. Rotating it would mint a live credential for a box that is
+    // no longer theirs, undoing the supersession.
+    await expect(rotatePat({ id: aRow?.id as string, userId: a.id })).resolves.toBeNull();
+
+    expect(await liveCount(a.id, name)).toBe(0);
+    expect(await liveCount(b.id, name)).toBe(1);
+  });
+
+  it('lets the current holder rotate the box credential it does hold', async () => {
+    const holder = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, holder.id);
+    const name = deviceTokenNameFor(device.id);
+
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: holder.id });
+    const [row] = await rowsNamed(holder.id);
+
+    const rotated = await rotatePat({ id: row?.id as string, userId: holder.id });
+
+    expect(rotated?.plaintext).toMatch(/^forge_pat_/);
+    expect(rotated?.row.deviceId).toBe(device.id);
+    expect(await liveCount(holder.id, name)).toBe(1);
+  });
+
   it('lets a person create a token under a name they once revoked', async () => {
     const user = await createTestUser(harness.db);
     await harness.db.execute(

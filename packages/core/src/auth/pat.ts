@@ -217,6 +217,21 @@ export interface RotatePatInput {
  * to the id read: a read taken outside is the race (ISS-1184), and under
  * {@link lockPatName} the second of two rotations supersedes the first's insert.
  */
+async function deviceCredentialIsHeldBy(tx: Tx, row: Pat, userId: string): Promise<boolean> {
+  const [live] = await tx
+    .select({ userId: personalAccessTokens.userId })
+    .from(personalAccessTokens)
+    .where(
+      and(
+        eq(personalAccessTokens.deviceId, row.deviceId as string),
+        eq(personalAccessTokens.name, row.name),
+        isNull(personalAccessTokens.revokedAt),
+      ),
+    )
+    .limit(1);
+  return live?.userId === userId;
+}
+
 export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null> {
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
@@ -233,6 +248,14 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
     if (!existing) return null;
 
     await lockPatName(tx, existing.name);
+
+    // A device-bound row names a box, and a box has one holder. Rotating one the
+    // box has superseded would mint a second live credential for a machine this
+    // user no longer holds, so it is refused rather than resurrected (ISS-1184).
+    if (existing.deviceId && !(await deviceCredentialIsHeldBy(tx, existing, input.userId))) {
+      return null;
+    }
+
     await tx
       .update(personalAccessTokens)
       .set({ revokedAt: sql`now()` })
