@@ -1,8 +1,8 @@
 /**
  * The comment write door's own field: a body is stored as it was written, and a body with nothing
- * in it is refused by name. Leading whitespace is markdown — four spaces open an indented code
- * block and one to three open a fence — so a door that strips the first line's indent hands the
- * parser a body its author never wrote.
+ * in it is refused by name. Leading whitespace decides what markdown draws, so a door that strips
+ * the first line's indent and no other line's hands the parser a body its author never wrote.
+ * Whether a record is read out of it afterwards is the record reader's rule, not this door's.
  */
 
 import { describe, expect, it } from 'vitest';
