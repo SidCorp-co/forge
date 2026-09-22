@@ -684,12 +684,16 @@ published turns it red. Prose already orphaned at the base revision is therefore
 an entry may still be corrected with its paragraphs left as they are, which is what ISS-1112's
 citation sweep needs.
 
-**The exemption is read off the entry, not off the file.** A set of every orphaned text in the
-record is transferable: an unrelated published bullet whose paragraph happens to hold the same words
-would exempt a fresh truncation elsewhere, and a change could arrange that deliberately. So the
-orphan is grandfathered only where the published entry this one PAIRS WITH already carried exactly
-it. That is why the pairing is computed twice — once as the candidate that says which published
-entry to ask, then again over what is left once the truncations are excluded. What is NOT covered: prose orphaned under a `###` heading with no
+**The exemption is asked of the candidate edges, not of the file and not of the matching.** Not of
+the file, because a set of every orphaned text in the record is transferable: an unrelated published
+bullet whose paragraph holds the same words would exempt a fresh truncation elsewhere, and a change
+could arrange that. Not of the matching either, because the matching maximises pairs and then
+similarity and knows nothing of paragraphs: where two corrections' CROSS pairing scores higher than
+their own — two entries sharing most of their words, each taking two of the other's — both would be
+handed the wrong predecessor, both refused, and the valid pairing is unreachable once they are
+excluded. So `correctionEdges` is asked instead, and a correction is exempt where ANY predecessor
+the rule admits for it already carried exactly that prose. Both bounds and the span still apply, so
+the set it can borrow from is the set it could have been a correction of. What is NOT covered: prose orphaned under a `###` heading with no
 bullet above it at all — the record holds none, and there is no entry to attach it to.
 
 **What the pairing does not claim.** A change inside the span can still reverse what an entry says —

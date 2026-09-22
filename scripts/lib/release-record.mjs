@@ -248,6 +248,17 @@ function augmentOnce({ adjacency, weightOf, matchedTo, matchedFrom, leftCount, r
  * paired entry answers to, which is the larger of the budget and what it replaced.
  */
 export function pairEdits(removed, added) {
+  const edges = correctionEdges(removed, added);
+  const matchedFrom = bestMatching(edges, removed.length, added.length);
+  const paired = new Map();
+  for (const [right, after] of added.entries()) {
+    if (matchedFrom[right] !== -1) paired.set(after, removed[matchedFrom[right]]);
+  }
+  return paired;
+}
+
+/** Every removed/added pair the rule above admits, before the matching picks among them. */
+function correctionEdges(removed, added) {
   const edges = [];
   for (const [left, before] of removed.entries()) {
     const was = before.split(' ');
@@ -267,13 +278,7 @@ export function pairEdits(removed, added) {
       edges.push({ left, right, share: survived / longest });
     }
   }
-
-  const matchedFrom = bestMatching(edges, removed.length, added.length);
-  const paired = new Map();
-  for (const [right, after] of added.entries()) {
-    if (matchedFrom[right] !== -1) paired.set(after, removed[matchedFrom[right]]);
-  }
-  return paired;
+  return edges;
 }
 
 /**
@@ -281,19 +286,27 @@ export function pairEdits(removed, added) {
  * drops it and the feed never renders it — so an entry THIS CHANGE adds that carries such prose is
  * named rather than read as a shorter entry that happens to pair with what it truncated.
  *
- * The one exemption is prose ALREADY ORPHANED AFTER THE ENTRY THIS ONE CORRECTS, and it is read off
- * that entry rather than off the record as a whole: a set of every orphaned text in the file is
- * transferable, so an unrelated bullet whose published paragraph happens to hold the same words
- * would exempt a fresh truncation somewhere else. It is the candidate pairing that says which
- * published entry to ask, which is why it is taken before the pairing this function then narrows.
+ * The one exemption is prose ALREADY ORPHANED AFTER AN ENTRY THIS ONE COULD BE A CORRECTION OF, and
+ * it is asked of the EDGES rather than of the matching or of the file. Of the file, because a set of
+ * every orphaned text in the record is transferable: an unrelated bullet whose published paragraph
+ * holds the same words would exempt a fresh truncation elsewhere. Of the matching, because the
+ * matching optimises similarity and knows nothing of paragraphs — two corrections whose cross
+ * pairing scores higher would each be handed the other's predecessor and both refused, with the
+ * valid pairing unreachable afterwards. The edges are every predecessor the rule admits, so a
+ * correction is exempt where ANY of them already carried exactly this prose.
  */
-function orphanedEntries(now, was, added, candidate) {
+function orphanedEntries(now, was, added, removed, edges) {
+  const sources = new Map();
+  for (const { left, right } of edges) {
+    if (!sources.has(right)) sources.set(right, []);
+    sources.get(right).push(removed[left]);
+  }
   const out = [];
-  for (const entry of added) {
+  for (const [right, entry] of added.entries()) {
     const prose = now.orphans.get(entry);
     if (prose === undefined) continue;
-    const before = candidate.get(entry);
-    if (before !== undefined && was.orphans.get(before) === prose) continue;
+    const from = sources.get(right) ?? [];
+    if (from.some((before) => was.orphans.get(before) === prose)) continue;
     out.push({ entry, prose });
   }
   return out;
@@ -372,8 +385,7 @@ export function judge({ head, base, amnesty }) {
   const removed = [...was.entries].filter((entry) => !now.entries.has(entry));
   const added = [...now.entries].filter((entry) => !was.entries.has(entry));
 
-  const candidate = pairEdits(removed, added);
-  const orphaned = orphanedEntries(now, was, added, candidate);
+  const orphaned = orphanedEntries(now, was, added, removed, correctionEdges(removed, added));
   for (const { entry, prose } of orphaned) {
     violations.push({
       rule: 'structure',
@@ -388,13 +400,10 @@ export function judge({ head, base, amnesty }) {
   }
 
   const split = new Set(orphaned.map((o) => o.entry));
-  const edited =
-    split.size === 0
-      ? candidate
-      : pairEdits(
-          removed,
-          added.filter((entry) => !split.has(entry)),
-        );
+  const edited = pairEdits(
+    removed,
+    added.filter((entry) => !split.has(entry)),
+  );
 
   const unpardoned = lostEntries(removed, edited, forgiven(amnesty));
   if (unpardoned.length > 0) {

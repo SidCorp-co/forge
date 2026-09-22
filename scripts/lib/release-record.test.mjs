@@ -615,6 +615,16 @@ describe('an entry a blank line split in two', () => {
     expect(judge({ head, base, amnesty: null }).code).toBe(0);
   });
 
+  it('takes two corrections whose likeliest pairing is the cross one, each keeping its own paragraph', () => {
+    const shared = prose(30, 'c');
+    const withProse = (entry, tail) => `- ${shared} ${entry}\n\n  ${tail}\n`;
+    const base = `# Changelog\n\n## [Unreleased]\n\n${withProse('a0 a1 a2', prose(10, 'p'))}\n${withProse('b0 b1 b2', prose(10, 'q'))}`;
+    const head = `# Changelog\n\n## [Unreleased]\n\n${withProse('b0 b1 a2', prose(10, 'p'))}\n${withProse('a0 a1 b2', prose(10, 'q'))}`;
+    const verdict = judge({ head, base, amnesty: null });
+    expect(structureOf(verdict)).toEqual([]);
+    expect(verdict.code).toBe(0);
+  });
+
   it('refuses a brand-new entry split the same way, which loses nothing but records less than it says', () => {
     const head = `${BASE}\n- ${prose(20, 'n')}\n\n${prose(10, 'm')}\n`;
     const verdict = judge({ head, base: BASE, amnesty: null });
