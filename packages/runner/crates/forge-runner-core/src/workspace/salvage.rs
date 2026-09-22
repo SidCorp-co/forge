@@ -249,9 +249,26 @@ pub async fn retention_of(worktree: &Path) -> Retention {
 /// For the one shape nothing else covers: a detached checkout that committed.
 /// Its work is on no branch, so removing the checkout would leave the commits
 /// unnamed — and refusing the release over that is what wedged the run. A ref
-/// costs nothing, survives the removal, and is a place a person can look.
+/// costs nothing, survives the removal, and is a place a person can look:
+/// `git for-each-ref refs/forge/kept`.
+///
+/// The name carries the commit as well as the run, so writing one can never
+/// take a name off another. A run refused, worked on by hand and released
+/// again would otherwise point its one ref at the new HEAD and leave the
+/// commits it had been keeping with no name at all — a preserve step that
+/// loses work is worse than one that never ran.
 pub async fn keep_at(worktree: &Path, run_id: &str) -> std::result::Result<String, String> {
-    let name = format!("{KEPT_REFS}/{run_id}");
+    let head = match git(worktree, &["rev-parse", "--short=12", "HEAD"]).await {
+        Some(out) if out.status.success() => stdout_trim(&out),
+        Some(out) => {
+            return Err(format!(
+                "`git rev-parse HEAD` failed, so there is no name to keep these commits under: {}",
+                stderr_brief(&out)
+            ))
+        }
+        None => return Err("`git rev-parse HEAD` could not be spawned".into()),
+    };
+    let name = format!("{KEPT_REFS}/{run_id}-{head}");
     match git(worktree, &["update-ref", &name, "HEAD"]).await {
         Some(out) if out.status.success() => Ok(name),
         Some(out) => Err(format!(
@@ -700,9 +717,9 @@ mod tests {
             );
 
             let name = keep_at(&wt, "run-1").await.expect("a ref can be written");
-            assert_eq!(
-                name, "refs/forge/kept/run-1",
-                "the ref is named after the run, so a person can find it from the refusal"
+            assert!(
+                name.starts_with("refs/forge/kept/run-1-"),
+                "the ref is named after the run, so a person can find it from the refusal: {name}"
             );
             assert_eq!(
                 retention_of(&wt).await,
@@ -723,6 +740,38 @@ mod tests {
                 kept, head,
                 "and the commit is still named, by the ref written for it"
             );
+            cleanup(&root);
+        }
+
+        #[tokio::test]
+        async fn keeping_a_second_commit_does_not_take_the_name_off_the_first() {
+            let (root, wt) = repo("twokeeps", "ISS-8-twice").await;
+            run(&wt, &["switch", "--detach", "-q"]).await;
+            std::fs::write(wt.join("first.txt"), "the first thing kept\n").unwrap();
+            run(&wt, &["add", "-A"]).await;
+            run(&wt, &["commit", "-qm", "first"]).await;
+            let first_head = stdout_trim(&git(&wt, &["rev-parse", "HEAD"]).await.unwrap());
+            let first = keep_at(&wt, "run-1").await.expect("the first is kept");
+
+            // The run was refused, somebody worked in the checkout by hand, and
+            // the next sweep tries again — which is exactly what the window and
+            // `run release` make possible.
+            std::fs::write(wt.join("second.txt"), "and then a second\n").unwrap();
+            run(&wt, &["add", "-A"]).await;
+            run(&wt, &["commit", "-qm", "second"]).await;
+            let second = keep_at(&wt, "run-1").await.expect("the second is kept");
+
+            assert_ne!(
+                first, second,
+                "one name for two commits would point at the later one and leave the earlier \
+                 with none — a preserve step that loses work is worse than one that never ran"
+            );
+            assert_eq!(
+                stdout_trim(&git(&wt, &["rev-parse", &first]).await.unwrap()),
+                first_head,
+                "the first ref must still name what it named"
+            );
+            assert_eq!(retention_of(&wt).await, Retention::Kept);
             cleanup(&root);
         }
 

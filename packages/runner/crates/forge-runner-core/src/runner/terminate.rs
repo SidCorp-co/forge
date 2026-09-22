@@ -1616,15 +1616,17 @@ mod tests {
         .await
         .expect("commits nothing names are given a name, not held against the release");
 
-        assert_eq!(
-            out.commits,
-            Some(Commits::NamedBy("refs/forge/kept/run-1".into())),
-            "the release must say where it put them, or the report is no use to anyone"
-        );
+        let Some(Commits::NamedBy(name)) = out.commits.clone() else {
+            panic!(
+                "the release must say where it put them, or the report is no use to anyone: {:?}",
+                out.commits
+            );
+        };
+        assert!(name.starts_with("refs/forge/kept/run-1-"), "{name}");
         assert!(!wt.exists(), "the checkout is released");
         assert!(l.0.lock().unwrap().contains("ISS-964"));
         let kept = tokio::process::Command::new("git")
-            .args(["rev-parse", "refs/forge/kept/run-1"])
+            .args(["rev-parse", &name])
             .current_dir(&root)
             .output()
             .await
