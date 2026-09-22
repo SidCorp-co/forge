@@ -49,6 +49,7 @@ import {
   updateTask as updateTaskRow,
 } from '../../tasks/task-service.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
+import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -80,7 +81,7 @@ const filtersSchema = z
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
-    issue: z.uuid().optional(),
+    issue: issueRefSchema.optional(),
     taskStatus: z.enum(taskStatuses).optional(),
     label: z
       .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
@@ -120,7 +121,7 @@ const dataObject = z
     commit: mergedCommitShaSchema.optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
-    issueId: z.uuid().optional(),
+    issueId: issueRefSchema.optional(),
     taskTitle: z.string().trim().min(1).max(500).optional(),
     taskDescription: z.string().max(50_000).nullable().optional(),
     taskStatus: z.enum(taskStatuses).optional(),
@@ -190,7 +191,7 @@ const inputSchema = z
       'setAttributes',
     ]),
     projectId: z.uuid().optional(),
-    documentId: z.uuid().optional(),
+    documentId: issueRefSchema.optional(),
     filters: filtersSchema,
     data: dataSchema,
     attributes: z
@@ -451,8 +452,7 @@ function parseDate(value: string, field: string): Date {
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   description:
-    'Issues and their tasks; every sub-action is in the action enum, and documentId takes a ' +
-    'uuid or the short ISS-<n>.\n' +
+    `Issues and their tasks; every sub-action is in the action enum. ${ISSUE_REF_CLAUSE}\n` +
     'READING. list returns a summary projection - it omits the five heavy fields the fields ' +
     'enum names - to stay under the response token cap; get returns the full body. ' +
     'filters.issue and filters.taskStatus belong to listTasks - list REFUSES them, use get. ' +
@@ -508,6 +508,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const { principal } = ctx;
+    const refs = refsFor(input, ctx, principal);
 
     if (
       input.data?.relations !== undefined &&
@@ -574,7 +575,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'get': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
-        const issue = await loadIssue(input.documentId);
+        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsMember(principal, issue.projectId);
         if (input.fields && input.fields.length > 0) {
           const full = serialize(issue, await activeIssuePrefix(issue.projectId));
@@ -602,7 +603,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error(
             'BAD_REQUEST: attributes is required for setAttributes — each entry is { key, value }, and the registered keys come back on action=get under `attributes`',
           );
-        const issue = await loadIssue(input.documentId);
+        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
         try {
           return await setIssueAttributes(
@@ -668,7 +669,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'update': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
-        const issue = await loadIssue(input.documentId);
+        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
 
         let labelIds: ResolvedLabelAttach[] | undefined;
@@ -752,12 +753,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'transition': {
-        if (!input.documentId) {
+        if (!input.documentId)
           throw new Error('BAD_REQUEST: documentId is required for transition');
-        }
         const target = input.data?.status;
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
-        const issue = await loadIssue(input.documentId);
+        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
         await transitionIssueStatus(issue, target, principalActor(principal), {
           transitionReason: input.data?.reason ?? input.data?.note,
@@ -778,15 +778,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'mark_merged':
       case 'unmark': {
-        const issueId = input.data?.issueId;
-        if (!issueId) {
-          throw new Error(`BAD_REQUEST: data.issueId is required for ${input.action}`);
-        }
+        const ref = input.data?.issueId;
+        if (!ref) throw new Error(`BAD_REQUEST: data.issueId is required for ${input.action}`);
         const marking = input.action === 'mark_merged';
         if (marking && !input.data?.target) {
           throw new Error('BAD_REQUEST: data.target is required for mark_merged');
         }
-        const issue = await loadIssue(issueId);
+        const issue = await loadIssue(await refs.issue('data.issueId', ref));
         await assertPrincipalIsWriter(principal, issue.projectId);
 
         try {
@@ -813,8 +811,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'listTasks': {
-        const issueId = input.filters?.issue;
-        if (!issueId) throw new Error('BAD_REQUEST: filters.issue required for listTasks');
+        const ref = input.filters?.issue;
+        if (!ref) throw new Error('BAD_REQUEST: filters.issue required for listTasks');
+        const issueId = await refs.issue('filters.issue', ref);
         const projectId = await loadIssueProjectId(issueId);
         await assertPrincipalIsMember(principal, projectId);
 
@@ -837,11 +836,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const data = input.data;
         if (!data?.issueId) throw new Error('BAD_REQUEST: data.issueId required for createTask');
         if (!data.taskTitle) throw new Error('BAD_REQUEST: data.taskTitle required for createTask');
-        const projectId = await loadIssueProjectId(data.issueId);
+        const issueId = await refs.issue('data.issueId', data.issueId);
+        const projectId = await loadIssueProjectId(issueId);
         await assertPrincipalIsWriter(principal, projectId);
 
         const created = await createTaskRow({
-          issueId: data.issueId,
+          issueId,
           projectId,
           title: data.taskTitle,
           description: data.taskDescription ?? null,
@@ -856,10 +856,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'updateTask': {
-        if (!input.documentId) {
-          throw new Error('BAD_REQUEST: documentId required for updateTask');
-        }
-        const row = await loadTaskForAccess(input.documentId);
+        if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for updateTask');
+        const row = await loadTaskForAccess(refs.task('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, row.projectId);
 
         const data = input.data ?? {};
@@ -882,13 +880,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'deleteTask': {
-        if (!input.documentId) {
-          throw new Error('BAD_REQUEST: documentId required for deleteTask');
-        }
-        const row = await loadTaskForAccess(input.documentId);
+        if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for deleteTask');
+        const row = await loadTaskForAccess(refs.task('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, row.projectId);
         await deleteTaskRow(row, principalHookActor(principal));
-        return { deleted: true, documentId: input.documentId };
+        return { deleted: true, documentId: row.id };
       }
     }
   },

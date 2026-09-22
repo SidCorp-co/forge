@@ -47,7 +47,7 @@ export const forgeAgentSessionsListTool: ContextScopedMcpToolFactory = ({ princi
       key: 'sessions',
       items: rows,
       limit: sessionsLimit,
-      hint: 'narrow with status/issueId/jobId filters',
+      hint: 'narrow with the status/issueId filters',
     });
   },
 });
