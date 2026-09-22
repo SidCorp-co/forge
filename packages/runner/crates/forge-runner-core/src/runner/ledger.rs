@@ -1525,11 +1525,23 @@ impl Ledger {
     /// restart inside the window resumes the refusal's age instead of starting
     /// it again, which is how a run kept its leases across restarts for as long
     /// as the box lived.
+    ///
+    /// A stamp LATER than the clock now reading it is a clock that moved
+    /// backwards — ntp correcting a box that booted with a bad RTC is the
+    /// ordinary way — and it is pulled back to now rather than kept. Kept, it
+    /// would put the end of the window that many seconds further away every
+    /// sweep until the clock caught up, which is this issue's own defect in
+    /// miniature: a decision deferred for as long as an input stays where it
+    /// is. Pulled back, the window ends within the grace of the correction
+    /// whatever the jump was. The other direction is left alone: a clock
+    /// jumping FORWARD past the window decides the refusal early, and deciding
+    /// early is the safe end of that trade — the leases come back and the
+    /// checkout is untouched.
     pub fn note_release_refusal(&mut self, run_id: &str, why: &str, at: i64) -> Result<Refusal> {
         self.conn
             .execute(
                 "UPDATE runs SET release_refusal = ?2,
-                        release_refused_at = COALESCE(release_refused_at, ?3)
+                        release_refused_at = MIN(COALESCE(release_refused_at, ?3), ?3)
                   WHERE run_id = ?1",
                 params![run_id, why, at],
             )

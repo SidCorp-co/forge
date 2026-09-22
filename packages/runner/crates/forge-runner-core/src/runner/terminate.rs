@@ -352,6 +352,11 @@ pub enum Release {
 /// `worktree_gone_at`, because the checkout really is still there, and a ledger
 /// that said otherwise would be lying about the one thing this verb exists to
 /// keep honest.
+///
+/// `now_secs` is the caller's clock, which on a box is the wall clock and can
+/// move either way. What that does to the window is `note_release_refusal`'s
+/// own documentation; the short of it is that the window always ends, and a
+/// correction can only make it end sooner.
 pub async fn release(
     ledger: &mut Ledger,
     run_id: &str,
@@ -897,6 +902,66 @@ mod tests {
                 .iter()
                 .any(|(path, _)| path == &wt),
             "a checkout the release refused to remove is not the reaper's to remove either"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&not_a_repo);
+    }
+
+    #[tokio::test]
+    async fn a_clock_that_moves_backwards_cannot_push_the_window_away_for_ever() {
+        let (root, wt, not_a_repo) = a_release_that_will_never_succeed("rollback").await;
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        release(
+            &mut led,
+            "run-1",
+            forcing(&not_a_repo, "boot-a"),
+            ports(&p, &s, &l),
+            T0,
+        )
+        .await
+        .unwrap();
+
+        // ntp corrects a box that booted on a bad clock. A stamp kept in the
+        // future would move the end of the window further off every sweep
+        // until the clock caught up, which is this issue's defect again.
+        let after_the_correction = release(
+            &mut led,
+            "run-1",
+            forcing(&not_a_repo, "boot-a"),
+            ports(&p, &s, &l),
+            T0 - 3600,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(after_the_correction, Release::Refusing { .. }),
+            "a correction is not a reason to decide early either: {after_the_correction:?}"
+        );
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().release_refused_at,
+            Some(T0 - 3600),
+            "the stamp is pulled back to the clock now reading it"
+        );
+
+        let decided = release(
+            &mut led,
+            "run-1",
+            forcing(&not_a_repo, "boot-a"),
+            ports(&p, &s, &l),
+            T0 - 3600 + RELEASE_GRACE_SECS,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(decided, Release::Terminal { .. }),
+            "and the window ends one grace after the correction, not one hour and one grace \
+             after it: {decided:?}"
         );
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&not_a_repo);
