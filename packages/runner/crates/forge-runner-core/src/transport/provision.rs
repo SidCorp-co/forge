@@ -2,7 +2,8 @@
 //!
 //! - `pull_pending`  — `GET /api/devices/me/provisions`: the device's `queued`
 //!   provisions (clone target + the project's git SSH private key, decrypted +
-//!   delivered once over TLS — mirrors the ISS-305 credential side-channel).
+//!   delivered once over TLS — mirrors the ISS-305 credential side-channel),
+//!   plus whatever core could not build, named in a header beside them.
 //! - `report_status` — `POST /api/devices/me/runners/:runnerId/provision-status`:
 //!   advance the live stepper (`cloning` → `syncing_skills` → `writing_mcp` →
 //!   `ready` | `needs_manual_setup` | `failed`).
@@ -66,8 +67,62 @@ struct ReportBody<'a> {
     detail: Option<&'a str>,
 }
 
-/// Fetch the device's queued provisions. Empty when nothing is queued.
-pub async fn pull_pending(client: &CoreClient) -> Result<Vec<Provision>> {
+/// One queued provision this device was NOT given, and why.
+///
+/// Core omits the row from the array and names it in the
+/// `X-Forge-Provision-Failures` header instead, so one project's fault costs
+/// this box that project rather than every other one it was waiting on
+/// (ISS-1184). `kind` is `omitted` for a row that yielded no provision, and
+/// `degraded` for one that was served with something core could not supply.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionFailure {
+    pub slug: String,
+    pub project_id: String,
+    pub runner_id: String,
+    pub kind: String,
+    pub reason: String,
+}
+
+/// What one poll came back with. `dropped` counts failures that did not fit the
+/// header's budget — those are on the runner's own row in web.
+#[derive(Debug, Clone, Default)]
+pub struct Pending {
+    pub provisions: Vec<Provision>,
+    pub failures: Vec<ProvisionFailure>,
+    pub dropped: usize,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Reported {
+    #[serde(default)]
+    pub failures: Vec<ProvisionFailure>,
+    #[serde(default)]
+    pub dropped: usize,
+}
+
+pub(crate) const FAILURES_HEADER: &str = "x-forge-provision-failures";
+
+/// What core reported this poll, or nothing when it reported nothing. A header
+/// this build cannot read is not a reason to discard the provisions that came
+/// with it, so it degrades to no failures and says so.
+pub(crate) fn parse_failures(raw: Option<&str>) -> Reported {
+    let Some(raw) = raw else {
+        return Reported::default();
+    };
+    match serde_json::from_str::<Reported>(raw) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            tracing::warn!("[provision] could not read the failures core reported: {e}");
+            Reported::default()
+        }
+    }
+}
+
+/// Fetch the device's queued provisions, and whatever core could not build.
+/// Empty when nothing is queued.
+pub async fn pull_pending(client: &CoreClient) -> Result<Pending> {
     let url = client.url("/api/devices/me/provisions");
     let resp = client
         .http()
@@ -82,9 +137,20 @@ pub async fn pull_pending(client: &CoreClient) -> Result<Vec<Provision>> {
             resp.status()
         )));
     }
-    resp.json::<Vec<Provision>>()
+    let reported = parse_failures(
+        resp.headers()
+            .get(FAILURES_HEADER)
+            .and_then(|v| v.to_str().ok()),
+    );
+    let provisions = resp
+        .json::<Vec<Provision>>()
         .await
-        .map_err(|e| Error::Other(format!("provisions decode: {e}")))
+        .map_err(|e| Error::Other(format!("provisions decode: {e}")))?;
+    Ok(Pending {
+        provisions,
+        failures: reported.failures,
+        dropped: reported.dropped,
+    })
 }
 
 /// Report provision progress for one runner. Best-effort: callers log on `Err`.
@@ -112,4 +178,36 @@ pub async fn report_status(
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_failures_core_named() {
+        let reported = parse_failures(Some(
+            r#"{"failures":[{"slug":"epod-cli","projectId":"p1","runnerId":"r1","kind":"omitted","reason":"duplicate key value"}],"dropped":2}"#,
+        ));
+        assert_eq!(reported.failures.len(), 1);
+        assert_eq!(reported.failures[0].slug, "epod-cli");
+        assert_eq!(reported.failures[0].reason, "duplicate key value");
+        assert_eq!(reported.dropped, 2);
+    }
+
+    #[test]
+    fn reports_nothing_when_the_header_is_absent() {
+        let reported = parse_failures(None);
+        assert!(reported.failures.is_empty());
+        assert_eq!(reported.dropped, 0);
+    }
+
+    #[test]
+    fn keeps_the_provisions_when_the_header_cannot_be_read() {
+        // A build older or newer than the server's shape must not lose the
+        // provisions that came with the header it could not parse.
+        let reported = parse_failures(Some("not json at all"));
+        assert!(reported.failures.is_empty());
+        assert_eq!(reported.dropped, 0);
+    }
 }

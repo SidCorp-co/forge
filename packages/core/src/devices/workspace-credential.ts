@@ -1,18 +1,13 @@
 /**
  * The credential a provisioned checkout carries in its `.mcp.json`.
  *
- * Provisioning writes that file so a person running `claude` in the folder
- * reaches Forge. The box's own device credential cannot serve it: for a human
- * holder it is fenced to no project at all (`projectIds: []`, which
- * `visibleProjectsWhere` turns into `false`), so the entry would authenticate
- * and then see nothing. Before this, the box needed a PAT pasted in by hand,
- * and a UI-driven assignment could not finish on the machine.
- *
- * So the server mints one per (device × project), because the server is where
- * both the identity the box acts as and that identity's reach are known. It is
- * NARROWER than the token a person would have pasted: fenced to this one
- * project, named after the pair so it is revocable on its own, and revoked
- * along with every other credential of the device when the device is revoked
+ * The box's own device credential cannot serve it: for a human holder it is
+ * fenced to no project at all (`projectIds: []`, which `visibleProjectsWhere`
+ * turns into `false`), so the entry would authenticate and see nothing. The
+ * server mints one per (device × project) instead, being where both the
+ * identity the box acts as and that identity's reach are known. It is NARROWER
+ * than a hand-pasted token: fenced to one project, named after the pair so it
+ * is revocable on its own, and revoked with the device
  * (`revokeDeviceCredentials`).
  */
 
@@ -45,9 +40,15 @@ export async function deviceHolderUserId(deviceId: string): Promise<string | nul
 /**
  * Mint this device's credential for one project's checkout, superseding the
  * previous one. A PAT's plaintext exists only at mint, so a delivery that has
- * to carry the token mints a fresh one rather than reading the old back; the
- * old is revoked in the same breath so a checkout that was re-provisioned
- * leaves no live credential behind it.
+ * to carry the token mints a fresh one rather than reading the old back.
+ *
+ * Revoke and mint are ONE transaction under an advisory lock on the token name
+ * (ISS-1184), which buys two things. A mint that fails leaves the checkout the
+ * credential it had, rather than a revoked one and nothing to replace it. And
+ * two requests for the same checkout — the ninety-second sweep meeting a
+ * `provision.request` — are ordered, which is the one way `pat_user_name_uniq`
+ * can still refuse a mint now that it is partial on `revoked_at is null`. The
+ * lock shape is `orgs/agent-fence.ts:withAgentFenceLock`'s.
  */
 export async function issueWorkspaceCredential(args: {
   deviceId: string;
@@ -55,17 +56,23 @@ export async function issueWorkspaceCredential(args: {
   holderUserId: string;
 }): Promise<string> {
   const name = workspaceTokenNameFor(args.deviceId, args.projectId);
-  await db
-    .update(personalAccessTokens)
-    .set({ revokedAt: sql`now()` })
-    .where(and(eq(personalAccessTokens.name, name), isNull(personalAccessTokens.revokedAt)));
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
+    await tx
+      .update(personalAccessTokens)
+      .set({ revokedAt: sql`now()` })
+      .where(and(eq(personalAccessTokens.name, name), isNull(personalAccessTokens.revokedAt)));
 
-  const { plaintext } = await mintPat({
-    userId: args.holderUserId,
-    name,
-    scopes: ['read', 'write'],
-    projectIds: [args.projectId],
-    deviceId: args.deviceId,
+    const { plaintext } = await mintPat(
+      {
+        userId: args.holderUserId,
+        name,
+        scopes: ['read', 'write'],
+        projectIds: [args.projectId],
+        deviceId: args.deviceId,
+      },
+      tx,
+    );
+    return plaintext;
   });
-  return plaintext;
 }

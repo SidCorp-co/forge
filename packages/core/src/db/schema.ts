@@ -1,4 +1,4 @@
-import { type InferSelectModel, relations, type SQL, sql } from 'drizzle-orm';
+import { type InferSelectModel, isNull, relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
@@ -509,7 +509,7 @@ export const personalAccessTokens = pgTable(
     rateLimitMax: integer('rate_limit_max'),
   },
   (t) => ({
-    userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name),
+    userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name).where(isNull(t.revokedAt)),
     userActiveIdx: index('pat_user_active_idx').on(t.userId, t.revokedAt),
     tokenPrefixIdx: index('pat_token_prefix_idx').on(t.tokenPrefix),
     deviceIdIdx: index('pat_device_id_idx').on(t.deviceId),

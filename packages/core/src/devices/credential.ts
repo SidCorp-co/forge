@@ -30,10 +30,7 @@ export async function issueDeviceCredential(args: {
   const name = deviceTokenNameFor(args.deviceId);
   await db
     .update(personalAccessTokens)
-    .set({
-      name: sql`${personalAccessTokens.name} || '.superseded.' || extract(epoch from now())::bigint`,
-      revokedAt: sql`now()`,
-    })
+    .set({ revokedAt: sql`now()` })
     .where(
       and(
         eq(personalAccessTokens.userId, args.holderUserId),

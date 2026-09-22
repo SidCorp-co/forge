@@ -3069,6 +3069,9 @@
 
 ### Fixed
 
+- **One project that cannot be set up on a machine no longer stops the rest.** The others go
+  through as normal, and the failing one is named with its reason instead of an error code with no
+  cause.
 - **A machine now says when it can no longer be heard by a session it is running.**
   `forge-runner master status` gives that answer, how long it has stood, and a command that ends
   the session it names.
