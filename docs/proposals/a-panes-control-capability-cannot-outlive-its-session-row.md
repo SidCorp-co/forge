@@ -73,8 +73,8 @@ ISS-1099 landed two things that do not turn on the identity model, and they are 
   this box's own minted map, rather than only where core replaced the session row at that very call.
   Three verdicts — current, stale, unknown — and an unreadable map is never reported as stale.
 - **The verdict has a durable, readable home.** `master_authority` in the box's ledger, printed by
-  `forge-runner master status` as a third answer beside the pane and the standing, with how long it
-  has stood and the act that ends it. A pane the box cannot place is not nudged.
+  `forge-runner master status` as a fourth answer beside the pane, the standing and the runner row,
+  with how long it has stood and the act that ends it. A pane the box cannot place is not nudged.
 
 Neither lets a pane keep its authority. A pane in this state is still recovered only by ending it,
 which is an operator action. The box now says so, once, by name, on a surface that is not a log.
