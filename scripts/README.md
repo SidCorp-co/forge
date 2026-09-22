@@ -610,9 +610,9 @@ Three rules:
 
 | | Fails when |
 |---|---|
-| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice |
+| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
 | `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
-| `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held |
+| `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held. The refusal names each entry with the ceiling actually applied to it and whether it paired as a correction, because an inherited ceiling advertised to an entry that did not inherit one reads as a rule the checker is not following |
 
 Entries are compared as a **set of whitespace-normalised bullet texts, position-independent**. That
 is what lets `forge-cut-release` promote `## [Unreleased]` to `## [X.Y.Z]` and open a fresh one — a
@@ -660,6 +660,30 @@ entry's best match is also the only match another removed entry has, the greedy 
 entry lost and the other over budget while a pairing satisfying both exists. `bestMatching` grows the
 matching along augmenting paths, so a pair already held is given up to buy two, and similarity only
 breaks ties between pairings of the same size.
+
+### Prose a blank line orphaned is named, not dropped
+
+A blank line ends an entry, so a bullet's second paragraph belongs to no bullet: `parseRecord` drops
+it, the What's New feed never renders it, and neither the loss rule nor the budget can see it. That
+was tolerable while every entry was compared by byte identity, and it stopped being tolerable the
+moment corrections paired: a published 50-word bullet split after word 40 by a blank line leaves a
+40-word bullet that pairs with what it truncated, inherits its ceiling, and passes green — where the
+same edit before ISS-1145 raised `no-silent-loss`. Ten published words leave the record and the gate
+reports nothing, which is the silent substitution CLAUDE.md refuses, made by the gate that exists to
+catch it.
+
+So an entry the change ADDS that carries orphaned prose is refused under `structure`, before the
+pairing runs, and it is excluded from the pairing: the truncation is named as a truncation rather
+than forgiven as a trim. The refusal says how to join the prose back — an indented continuation with
+no blank line — or to give it a bullet of its own.
+
+**Only prose this change added.** The published record carries 1,718 such lines under 2-space
+indents, inherited from before anything bounded the file, and refusing those would turn every change
+red on bytes nobody in it wrote — the opposite of the rule's own promise that nothing already
+published turns it red. The orphan prose at the base revision is therefore grandfathered by its
+text, so an entry may still be corrected with its paragraphs left as they are, which is what
+ISS-1112's citation sweep needs. What is NOT covered: prose orphaned under a `###` heading with no
+bullet above it at all — the record holds none, and there is no entry to attach it to.
 
 **What the pairing does not claim.** A change inside the span can still reverse what an entry says —
 one word can — and no rule that counts words can tell that from a typo fix. The gate bounds how much

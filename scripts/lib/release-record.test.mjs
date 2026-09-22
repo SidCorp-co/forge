@@ -212,7 +212,9 @@ describe('entry-budget', () => {
     const v = budgetOf(verdict);
     expect(verdict.code).toBe(1);
     expect(v.detail).toContain(String(wordCount(long)));
-    expect(v.removed[0]).toContain(`[${wordCount(long)} words]`);
+    expect(v.removed[0]).toContain(
+      `[${wordCount(long)} words, new entry; ceiling ${ENTRY_WORD_BUDGET}]`,
+    );
   });
 
   it('admits a new entry exactly at the budget — the boundary is not off by one', () => {
@@ -272,14 +274,16 @@ describe('correcting a published entry', () => {
     const verdict = judge({ head: record(PUBLISHED, SHORT, fresh), base: BASE, amnesty: null });
     expect(verdict.code).toBe(1);
     expect(budgetOf(verdict).detail).toContain('80 words');
-    expect(budgetOf(verdict).removed[0]).toContain('[80 words]');
+    expect(budgetOf(verdict).removed[0]).toContain('[80 words, new entry; ceiling 40]');
   });
 
   it('refuses an edit that grows an already-over-budget entry past what it held', () => {
     const grown = `${PUBLISHED} ${prose(10, 'x')}`;
     const verdict = judge({ head: record(grown, SHORT), base: BASE, amnesty: null });
     expect(verdict.code).toBe(1);
-    expect(budgetOf(verdict).removed[0]).toContain('[130 words, was 120]');
+    expect(budgetOf(verdict).removed[0]).toContain(
+      '[130 words, correcting an entry of 120; ceiling 120]',
+    );
     expect(lossOf(verdict)).toBeUndefined();
   });
 
@@ -315,8 +319,9 @@ describe('correcting a published entry', () => {
       base: record(was),
       amnesty: null,
     });
-    expect(budgetOf(verdict).removed[0]).toContain('[43 words]');
-    expect(budgetOf(verdict).removed[0]).not.toContain('was');
+    expect(budgetOf(verdict).removed[0]).toContain(
+      '[43 words, correcting an entry of 38; ceiling 40]',
+    );
   });
 
   it('still raises no-silent-loss for a genuine deletion made beside an addition', () => {
@@ -355,7 +360,7 @@ describe('correcting a published entry', () => {
     const verdict = judge({ head, base: BASE, amnesty: null });
     expect(lossOf(verdict)).toBeUndefined();
     expect(budgetOf(verdict).removed).toHaveLength(1);
-    expect(budgetOf(verdict).removed[0]).toContain('[106 words]');
+    expect(budgetOf(verdict).removed[0]).toContain('[106 words, new entry; ceiling 40]');
   });
 
   it('reads the correction this gate was built for: a long entry losing a dead link', () => {
@@ -554,5 +559,81 @@ describe('pairEdits', () => {
   it('pairs nothing when the change only removed, or only added', () => {
     expect(pairEdits([prose(60, 'w')], []).size).toBe(0);
     expect(pairEdits([], [prose(60, 'w')]).size).toBe(0);
+  });
+});
+
+describe('an entry a blank line split in two', () => {
+  const prose = (n, tag = 'w') => Array.from({ length: n }, (_, i) => `${tag}${i}`).join(' ');
+  const structureOf = (verdict) => (verdict.violations ?? []).filter((v) => v.rule === 'structure');
+  const lossOf = (verdict) => (verdict.violations ?? []).find((v) => v.rule === 'no-silent-loss');
+
+  const PUBLISHED = prose(50);
+  const BASE = `# Changelog\n\n## [Unreleased]\n\n- ${PUBLISHED}\n`;
+
+  it('refuses the prose a blank line orphaned, which the record drops and the pairing would forgive', () => {
+    const head = `# Changelog\n\n## [Unreleased]\n\n- ${prose(40)}\n\n${prose(50).split(' ').slice(40).join(' ')}\n`;
+    const verdict = judge({ head, base: BASE, amnesty: null });
+    expect(verdict.code).toBe(1);
+    expect(structureOf(verdict)[0].detail).toContain('w40');
+  });
+
+  it('reports the orphan before the entry is treated as a correction of what it truncated', () => {
+    const head = `# Changelog\n\n## [Unreleased]\n\n- ${prose(40)}\n\n${prose(50).split(' ').slice(40).join(' ')}\n`;
+    const verdict = judge({ head, base: BASE, amnesty: null });
+    expect(verdict.violations[0].rule).toBe('structure');
+    expect(lossOf(verdict).removed).toEqual([PUBLISHED]);
+  });
+
+  it('takes the same trim made as one entry: an indented continuation and ten words deliberately gone', () => {
+    const kept = prose(40).split(' ');
+    const head = `# Changelog\n\n## [Unreleased]\n\n- ${kept.slice(0, 20).join(' ')}\n  ${kept.slice(20).join(' ')}\n`;
+    const verdict = judge({ head, base: BASE, amnesty: null });
+    expect(verdict.code).toBe(0);
+  });
+
+  it('leaves prose already orphaned at the base revision alone, entry and all', () => {
+    const published = `# Changelog\n\n## [Unreleased]\n\n- ${PUBLISHED}\n\n  ${prose(30, 'p')}\n`;
+    const head = `${published}\n- A new entry that is well inside the budget.\n`;
+    const verdict = judge({ head, base: published, amnesty: null });
+    expect(verdict.code).toBe(0);
+  });
+
+  it('refuses a brand-new entry split the same way, which loses nothing but records less than it says', () => {
+    const head = `${BASE}\n- ${prose(20, 'n')}\n\n${prose(10, 'm')}\n`;
+    const verdict = judge({ head, base: BASE, amnesty: null });
+    expect(structureOf(verdict)).toHaveLength(1);
+    expect(structureOf(verdict)[0].detail).toContain('m0');
+  });
+});
+
+describe('an over-budget entry that is not a correction', () => {
+  const prose = (n, tag = 'w') => Array.from({ length: n }, (_, i) => `${tag}${i}`).join(' ');
+  const budgetOf = (verdict) => (verdict.violations ?? []).find((v) => v.rule === 'entry-budget');
+  const record = (...entries) =>
+    `# Changelog\n\n## [Unreleased]\n\n${entries.map((e) => `- ${e}\n`).join('\n')}`;
+
+  const SHORT = 'A short entry that also shipped.';
+  const PUBLISHED = prose(120);
+  const BASE = record(PUBLISHED, SHORT);
+
+  it('names a replacement too wide to pair as a new entry, not as an edit of what it replaced', () => {
+    const replacement = prose(103, 'r');
+    const verdict = judge({ head: record(replacement, SHORT), base: BASE, amnesty: null });
+    expect(verdict.code).toBe(1);
+    expect(budgetOf(verdict).removed[0]).toContain('new entry');
+    expect(budgetOf(verdict).removed[0]).not.toContain('120');
+  });
+
+  it('does not advertise the inherited ceiling to a refusal no entry in it inherited', () => {
+    const replacement = prose(103, 'r');
+    const verdict = judge({ head: record(replacement, SHORT), base: BASE, amnesty: null });
+    expect(budgetOf(verdict).detail).not.toContain('the larger of');
+  });
+
+  it('does advertise it where an entry in the refusal did inherit one', () => {
+    const grown = `${PUBLISHED} ${prose(10, 'x')}`;
+    const verdict = judge({ head: record(grown, SHORT), base: BASE, amnesty: null });
+    expect(budgetOf(verdict).removed[0]).toContain('correcting an entry of 120');
+    expect(budgetOf(verdict).detail).toContain('what that entry held');
   });
 });
