@@ -17,9 +17,8 @@ export function hashMachineId(raw: string): string {
  * Issue the token a box authenticates with — the plaintext exists only here.
  * Revoke and mint are ONE transaction under {@link lockPatName}, or a re-pair
  * meeting a login both revoke before either inserts and `pat_user_name_uniq`
- * refuses the second. The revoke reaches that name WHOEVER holds it, since a box
- * has one identity and `deviceHolderUserId` reads an arbitrary one of two live
- * rows (ISS-1184). An agent holder locks inside the fence lock.
+ * refuses the second. The revoke reaches that name WHOEVER holds it: a box has
+ * one identity, and two live rows make `deviceHolderUserId` arbitrary (ISS-1184).
  */
 export async function issueDeviceCredential(args: {
   deviceId: string;
