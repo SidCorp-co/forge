@@ -15,10 +15,11 @@ export function hashMachineId(raw: string): string {
 
 /**
  * Issue the token a box authenticates with — the plaintext exists only here.
- * Revoke and mint are ONE transaction under {@link lockPatName} (ISS-1184), or a
- * re-pair meeting a login both revoke the live row before either inserts and
- * `pat_user_name_uniq` refuses the second. An agent holder takes the name lock
- * inside the fence lock, the only place both are held.
+ * Revoke and mint are ONE transaction under {@link lockPatName}, or a re-pair
+ * meeting a login both revoke before either inserts and `pat_user_name_uniq`
+ * refuses the second. The revoke reaches that name WHOEVER holds it, since a box
+ * has one identity and `deviceHolderUserId` reads an arbitrary one of two live
+ * rows (ISS-1184). An agent holder locks inside the fence lock.
  */
 export async function issueDeviceCredential(args: {
   deviceId: string;
@@ -41,13 +42,7 @@ export async function issueDeviceCredential(args: {
     await tx
       .update(personalAccessTokens)
       .set({ revokedAt: sql`now()` })
-      .where(
-        and(
-          eq(personalAccessTokens.userId, args.holderUserId),
-          eq(personalAccessTokens.name, name),
-          isNull(personalAccessTokens.revokedAt),
-        ),
-      );
+      .where(and(eq(personalAccessTokens.name, name), isNull(personalAccessTokens.revokedAt)));
   };
 
   if (!args.holderIsAgent) {
@@ -65,10 +60,7 @@ export async function issueDeviceCredential(args: {
   });
 }
 
-/**
- * Revoke every live credential issued to a box. Called when the device itself
- * is revoked, so unpairing a machine takes its reach with it.
- */
+/** Revoke every live credential issued to a box, so unpairing takes its reach with it. */
 export async function revokeDeviceCredentials(deviceId: string): Promise<number> {
   const rows = await db
     .update(personalAccessTokens)

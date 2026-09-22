@@ -26,6 +26,7 @@ let rotatePat: typeof import('../../src/auth/pat.js').rotatePat;
 let pairDevice: typeof import('../helpers/pair-device.js').pairDevice;
 let issueDeviceCredential: typeof import('../../src/devices/credential.js').issueDeviceCredential;
 let issueWorkspaceCredential: typeof import('../../src/devices/workspace-credential.js').issueWorkspaceCredential;
+let deviceHolderUserId: typeof import('../../src/devices/workspace-credential.js').deviceHolderUserId;
 let workspaceTokenNameFor: typeof import('../../src/auth/pat-format.js').workspaceTokenNameFor;
 let deviceTokenNameFor: typeof import('../../src/auth/pat-format.js').deviceTokenNameFor;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
@@ -50,7 +51,9 @@ beforeAll(async () => {
   schema = await import('../../src/db/schema.js');
   ({ mintPat, rotatePat } = await import('../../src/auth/pat.js'));
   ({ issueDeviceCredential } = await import('../../src/devices/credential.js'));
-  ({ issueWorkspaceCredential } = await import('../../src/devices/workspace-credential.js'));
+  ({ issueWorkspaceCredential, deviceHolderUserId } = await import(
+    '../../src/devices/workspace-credential.js'
+  ));
   ({ workspaceTokenNameFor, deviceTokenNameFor } = await import('../../src/auth/pat-format.js'));
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
   pairDevice = (await import('../helpers/pair-device.js')).pairDevice;
@@ -188,6 +191,23 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     expect(await liveCount(user.id, name)).toBe(1);
     const rows = await rowsNamed(user.id);
     expect(rows.every((r) => r.name === name)).toBe(true);
+  });
+
+  it('supersedes the box credential of a device whose holder changed', async () => {
+    const a = await createTestUser(harness.db);
+    const b = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: a.id, name: 'box', platform: 'linux' });
+    const name = deviceTokenNameFor(device.id);
+    expect(await liveCount(a.id, name)).toBe(1);
+
+    // The same box signing in as someone else — a person's machine paired as an
+    // agent. A device has ONE identity, so the previous holder's credential
+    // must stop working rather than stand beside the new one.
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: b.id });
+
+    expect(await liveCount(a.id, name)).toBe(0);
+    expect(await liveCount(b.id, name)).toBe(1);
+    expect(await deviceHolderUserId(device.id)).toBe(b.id);
   });
 
   it('lets a person create a token under a name they once revoked', async () => {
