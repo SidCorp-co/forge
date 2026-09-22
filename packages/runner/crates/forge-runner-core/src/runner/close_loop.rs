@@ -110,7 +110,8 @@ async fn checkout_returned(repo: Option<&Path>, path: &Path) -> Option<CheckoutR
         Residence::Linked
         | Residence::NotAWorktree
         | Residence::MovedTo(_)
-        | Residence::RegisteredButMissing => None,
+        | Residence::RegisteredButMissing(_)
+        | Residence::Ambiguous(_) => None,
         Residence::Unknown(why) => {
             tracing::warn!(
                 "[close] {}: git could not be asked whether this checkout is still registered ({why}) — the run keeps holding it",

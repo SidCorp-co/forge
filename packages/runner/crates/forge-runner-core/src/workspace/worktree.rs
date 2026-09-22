@@ -192,12 +192,19 @@ pub enum Residence {
     /// The path holds nothing and git's entry for this checkout names another
     /// path, which is there. The checkout moved; it was not removed.
     MovedTo(PathBuf),
-    /// The path holds nothing and git still registers a worktree AT it.
-    /// Nothing removed it — `git worktree remove` takes the entry with the
-    /// directory, and this entry is still standing.
-    RegisteredButMissing,
-    /// Neither a directory nor any entry naming one. The only reading that
-    /// means removed.
+    /// The path holds nothing and git still registers a worktree — here, or at
+    /// the path it was moved to, which is not there either. Nothing removed
+    /// it: `git worktree remove` takes the entry with the directory, and this
+    /// entry is still standing. The path carried is the one git registers.
+    RegisteredButMissing(PathBuf),
+    /// The path holds nothing and git registers more than one entry that could
+    /// be this checkout's. Git names a second worktree after the first's
+    /// basename plus a digit, so a basename alone stops being an identity as
+    /// soon as two exist — and answering `Gone` on a name that could belong to
+    /// either is the guess this whole function exists to refuse.
+    Ambiguous(Vec<PathBuf>),
+    /// Neither a directory nor any entry that could name one. The only reading
+    /// that means removed.
     Gone,
     /// The registry could not be read, which is not an answer.
     Unknown(String),
@@ -210,10 +217,33 @@ pub enum Residence {
 /// name is the identity that survives a move. Git derives it from the basename
 /// of the path the worktree was added at, which is how a run's path finds its
 /// own entry again after the directory beneath it has gone.
-fn entry_points_at(gitdir: &Path) -> Option<PathBuf> {
+fn entry_points_at(gitdir: &Path) -> std::result::Result<Option<PathBuf>, String> {
     // `<checkout>/.git`, absolute, one line. The checkout is its parent.
-    let text = std::fs::read_to_string(gitdir).ok()?;
-    Some(Path::new(text.trim()).parent()?.to_path_buf())
+    match std::fs::read_to_string(gitdir) {
+        Ok(text) => Ok(Path::new(text.trim()).parent().map(Path::to_path_buf)),
+        // Not every directory entry under `worktrees/` is a worktree's: git
+        // writes other files there, and one that holds no `gitdir` names no
+        // checkout. That is an answer, and a different thing from a read this
+        // box was not allowed to take, which is not (ISS-1193).
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => Ok(None),
+        Err(e) if e.raw_os_error() == Some(20) => Ok(None),
+        Err(e) => Err(format!("{} could not be read: {e}", gitdir.display())),
+    }
+}
+
+/// Whether the entry name `have` could be the one git filed `want` under.
+///
+/// Git names a linked worktree's administrative entry after the basename of
+/// the path it was added at, and where that name is taken it appends a digit
+/// and tries again. So the names that could belong to a path are its basename
+/// and that basename followed by digits — and where more than one of them is
+/// standing, none of them is an identity.
+fn could_be_filed_as(have: &std::ffi::OsStr, want: &std::ffi::OsStr) -> bool {
+    let (Some(have), Some(want)) = (have.to_str(), want.to_str()) else {
+        return have == want;
+    };
+    have.strip_prefix(want)
+        .is_some_and(|tail| tail.chars().all(|c| c.is_ascii_digit()))
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
@@ -284,29 +314,49 @@ pub async fn residence_of(repo: &Path, worktree: &Path) -> Residence {
         Ok(a) => a,
         Err(why) => return Residence::Unknown(why),
     };
-    let Ok(entries) = std::fs::read_dir(&admin) else {
-        // No entries directory at all: this repository holds no linked
-        // worktree, so it registers none at the path either.
-        return Residence::Gone;
+    let Some(want) = worktree.file_name() else {
+        return Residence::Unknown(format!("{} names no entry", worktree.display()));
     };
-    let mut named_by_its_own_entry = None;
-    for e in entries.flatten() {
-        let Some(at) = entry_points_at(&e.path().join("gitdir")) else {
-            continue;
+    let entries = match std::fs::read_dir(&admin) {
+        Ok(e) => e,
+        // No entries directory at all: this repository holds no linked
+        // worktree, so it registers none at the path either. Any OTHER reason
+        // the directory would not open is a read this box could not take, and
+        // a read nobody took says nothing about what is registered.
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => return Residence::Gone,
+        Err(e) => return Residence::Unknown(format!("{} could not be read: {e}", admin.display())),
+    };
+    let mut could_be_ours = Vec::new();
+    for e in entries {
+        let e = match e {
+            Ok(e) => e,
+            Err(why) => {
+                return Residence::Unknown(format!(
+                    "{} could not be listed to the end: {why}",
+                    admin.display()
+                ))
+            }
+        };
+        let at = match entry_points_at(&e.path().join("gitdir")) {
+            Ok(Some(at)) => at,
+            Ok(None) => continue,
+            Err(why) => return Residence::Unknown(why),
         };
         if same_path(&at, worktree) {
-            return Residence::RegisteredButMissing;
+            return Residence::RegisteredButMissing(at);
         }
-        if Some(e.file_name().as_os_str()) == worktree.file_name() {
-            named_by_its_own_entry = Some(at);
+        if could_be_filed_as(&e.file_name(), want) {
+            could_be_ours.push(at);
         }
     }
-    match named_by_its_own_entry {
-        Some(at) if at.is_dir() => Residence::MovedTo(at),
-        // The entry names a path that is not there either: git registers this
-        // checkout nowhere a caller could act on, which is the same standing
-        // as no entry at all.
-        _ => Residence::Gone,
+    match could_be_ours.len() {
+        0 => Residence::Gone,
+        1 if could_be_ours[0].is_dir() => Residence::MovedTo(could_be_ours.remove(0)),
+        // The entry survived and the checkout it names did not. That is the
+        // same standing as an entry over an absent directory here: nothing
+        // took this checkout back, and pruning the entry is an operator's act.
+        1 => Residence::RegisteredButMissing(could_be_ours.remove(0)),
+        _ => Residence::Ambiguous(could_be_ours),
     }
 }
 
@@ -655,7 +705,7 @@ mod tests {
 
         assert_eq!(
             residence_of(&root, &wt).await,
-            Residence::RegisteredButMissing,
+            Residence::RegisteredButMissing(wt.clone()),
             "the entry is still standing, so nothing took this checkout back — pruning it is \
              an operator's decision and not a release's"
         );
@@ -713,5 +763,117 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&outside);
+    }
+    #[tokio::test]
+    async fn two_checkouts_sharing_a_basename_leave_neither_of_them_identified() {
+        let root = repo("dedup").await;
+        let a = root.join("one/ISS-964");
+        let b = root.join("two/ISS-964");
+        for p in [&a, &b] {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        }
+        run(
+            &root,
+            &["worktree", "add", &a.to_string_lossy(), "-b", "ISS-964-a"],
+        )
+        .await;
+        run(
+            &root,
+            &["worktree", "add", &b.to_string_lossy(), "-b", "ISS-964-b"],
+        )
+        .await;
+        // Git filed the second under the first's basename plus a digit, so the
+        // basename now names two entries and identifies neither.
+        let filed: Vec<String> = std::fs::read_dir(root.join(".git/worktrees"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            filed.iter().any(|n| n == "ISS-964") && filed.iter().any(|n| n == "ISS-9641"),
+            "the fixture rests on git's own deduplication: {filed:?}"
+        );
+
+        let elsewhere = root.join("three/ISS-964");
+        std::fs::create_dir_all(elsewhere.parent().unwrap()).unwrap();
+        run(
+            &root,
+            &[
+                "worktree",
+                "move",
+                &b.to_string_lossy(),
+                &elsewhere.to_string_lossy(),
+            ],
+        )
+        .await;
+
+        match residence_of(&root, &b).await {
+            Residence::Ambiguous(candidates) => assert_eq!(
+                candidates.len(),
+                2,
+                "both entries could be this path's, and saying which would be a guess"
+            ),
+            other => panic!(
+                "a name two checkouts share may not read as proof either of them was removed: \
+                 {other:?}"
+            ),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_registry_this_box_may_not_read_is_unknown_rather_than_empty() {
+        let root = repo("unreadable").await;
+        let r = root.to_string_lossy().to_string();
+        let wt = create(&r, "ISS-5", None).await.unwrap();
+        std::fs::remove_dir_all(&wt).unwrap();
+        let admin = root.join(".git/worktrees");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&admin, std::fs::Permissions::from_mode(0o000)).unwrap();
+            let said = residence_of(&root, &wt).await;
+            std::fs::set_permissions(&admin, std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(
+                matches!(said, Residence::Unknown(_)),
+                "a directory this box could not open registers nothing it can SEE, which is not \
+                 the same as registering nothing: {said:?}"
+            );
+        }
+        assert_eq!(
+            residence_of(&root, &wt).await,
+            Residence::RegisteredButMissing(wt.clone()),
+            "and once it can be read, the entry standing there is the answer"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_moved_checkout_whose_new_path_is_gone_is_still_a_registration() {
+        let root = repo("movedgone").await;
+        let r = root.to_string_lossy().to_string();
+        let old = create(&r, "ISS-6", None).await.unwrap();
+        let new = root.join(".claude/worktrees/ISS-6");
+        std::fs::create_dir_all(new.parent().unwrap()).unwrap();
+        run(
+            &root,
+            &[
+                "worktree",
+                "move",
+                &old.to_string_lossy(),
+                &new.to_string_lossy(),
+            ],
+        )
+        .await;
+        std::fs::remove_dir_all(&new).expect("and then the destination goes, unpruned");
+
+        assert_eq!(
+            residence_of(&root, &old).await,
+            Residence::RegisteredButMissing(new.clone()),
+            "the entry outlived both paths, so nothing took this checkout back — a destination \
+             that is not there is not a reason to call the run released"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

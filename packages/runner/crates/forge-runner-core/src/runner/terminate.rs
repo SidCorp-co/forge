@@ -222,12 +222,25 @@ fn held_checkout(residence: &Residence, verb: Verb, run_id: &str, path: &Path) -
             now_at.display(),
             path.display()
         ))),
-        Residence::RegisteredButMissing => Err(Error::Other(format!(
-            "refusing to {verb:?} run {run_id}: git still registers a worktree at {}, and the \
-             directory is not there — nothing on this box removed it, so what the checkout held \
-             cannot be examined. `git worktree prune` in the repository is the operator's \
-             decision to make, not this release's",
+        Residence::RegisteredButMissing(registered) => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: git still registers this run's checkout at {}, \
+             and that directory is not there — the ledger names {}. Nothing on this box removed \
+             it, so what the checkout held cannot be examined; `git worktree prune` in the \
+             repository is the operator's decision to make, not this release's",
+            registered.display(),
             path.display()
+        ))),
+        Residence::Ambiguous(candidates) => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: {} holds nothing and git registers {} worktrees \
+             that could be this run's ({}) — a basename is not an identity once two checkouts \
+             share one, and releasing on the wrong one of them is what this refusal is for",
+            path.display(),
+            candidates.len(),
+            candidates
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         ))),
         Residence::Unknown(why) => Err(Error::Other(format!(
             "refusing to {verb:?} run {run_id}: this box could not ask git about {} ({why}) — \
@@ -2075,7 +2088,11 @@ mod tests {
         );
         for unestablished in [
             Residence::MovedTo(PathBuf::from("/elsewhere")),
-            Residence::RegisteredButMissing,
+            Residence::RegisteredButMissing(PathBuf::from("/some/checkout")),
+            Residence::Ambiguous(vec![
+                PathBuf::from("/a/checkout"),
+                PathBuf::from("/b/checkout"),
+            ]),
         ] {
             let err = held_checkout(&unestablished, Verb::Abandon, "run-1", p)
                 .expect_err(
@@ -2084,7 +2101,7 @@ mod tests {
                 )
                 .to_string();
             assert!(
-                err.contains("still registers"),
+                err.contains("registers"),
                 "the refusal must say what git said, not that something went wrong: {err}"
             );
         }
