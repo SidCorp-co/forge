@@ -283,6 +283,48 @@ describe('a box credential belongs to the device’s current holder (ISS-1184)',
     expect(await liveCount(owner.id, name)).toBe(1);
   });
 
+  it('refuses to rotate the ordinary predecessor of a name the box credential now holds', async () => {
+    const holder = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, holder.id);
+    const name = deviceTokenNameFor(device.id);
+    const ordinary = await mintPat({ userId: holder.id, name });
+
+    // Issuing the credential supersedes that ordinary row, so the live row under
+    // this name is now device-bound. Rotating the revoked predecessor must not
+    // displace it — the replacement would carry the predecessor's null binding
+    // and leave the box with no holder at all.
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: holder.id });
+
+    await expect(rotatePat({ id: ordinary.row.id, userId: holder.id })).rejects.toThrow();
+
+    expect(await liveCount(holder.id, name)).toBe(1);
+    expect(await deviceHolderUserId(device.id)).toBe(holder.id);
+  });
+
+  it('refuses to rotate the ordinary predecessor of a workspace credential name', async () => {
+    const holder = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, holder.id);
+    const projectId = '651c720d-8243-49ff-bf4c-f295ef98818f';
+    const name = workspaceTokenNameFor(device.id, projectId);
+    const ordinary = await mintPat({ userId: holder.id, name });
+
+    await issueWorkspaceCredential({ deviceId: device.id, projectId, holderUserId: holder.id });
+
+    await expect(rotatePat({ id: ordinary.row.id, userId: holder.id })).rejects.toThrow();
+
+    const [live] = await harness.db
+      .select({ deviceId: schema.personalAccessTokens.deviceId })
+      .from(schema.personalAccessTokens)
+      .where(
+        and(
+          eq(schema.personalAccessTokens.userId, holder.id),
+          eq(schema.personalAccessTokens.name, name),
+          isNull(schema.personalAccessTokens.revokedAt),
+        ),
+      );
+    expect(live?.deviceId).toBe(device.id);
+  });
+
   it('refuses to rotate a device credential the box no longer holds', async () => {
     const a = await createTestUser(harness.db);
     const b = await createTestUser(harness.db);

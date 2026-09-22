@@ -213,9 +213,9 @@ export interface RotatePatInput {
 
 /**
  * Replace a token with a fresh one of the same name. The row is read INSIDE the
- * transaction and the revoke scoped to what is live under `(user_id, name)`, not
- * to the id read: a read taken outside is the race (ISS-1184), and under
- * {@link lockPatName} the second of two rotations supersedes the first's insert.
+ * transaction and the revoke scoped to what is live under `(user_id, name)` with
+ * the SAME binding (ISS-1184): a read outside is the race, and a rotation may
+ * not displace a device-bound row when it is not one — it collides, loudly.
  */
 async function deviceCredentialIsHeldBy(tx: Tx, row: Pat, userId: string): Promise<boolean> {
   const [live] = await tx
@@ -264,6 +264,7 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
           eq(personalAccessTokens.userId, existing.userId),
           eq(personalAccessTokens.name, existing.name),
           isNull(personalAccessTokens.revokedAt),
+          sql`${personalAccessTokens.deviceId} is not distinct from ${existing.deviceId}`,
         ),
       );
 
