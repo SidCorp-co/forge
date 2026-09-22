@@ -255,7 +255,7 @@ export async function detectOwedCloses(
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),
         title: `${ref} shipped but never closed — ${row.projectName}`,
-        body: `Its code has carried a merge mark for ${age} while the issue still reads \`${row.status}\`, and nothing is running on it. The step that owed the close did not write it. Read the branch, then close it — or clear the mark with \`unmark\` if it never landed.`,
+        body: `Its code has carried a merge mark for ${age} while the issue still reads \`${row.status}\`, and nothing is running on it. The step that owed the close did not write it. Read the branch, then close it — or, if it never landed, clear the mark with \`unmark\` and move the issue to \`dropped\`.`,
       });
       if (sent < 0) unreachable += 1;
       else notified += sent;

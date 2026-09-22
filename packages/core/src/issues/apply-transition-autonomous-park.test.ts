@@ -28,6 +28,7 @@ vi.mock('../db/client.js', () => {
     select: vi.fn(() => ({ from: txSelectFrom })),
     update: dbUpdate,
     execute: txExecute,
+    insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
   };
   return {
     db: {
@@ -62,8 +63,8 @@ vi.mock('./park-question.js', () => ({
 
 vi.mock('./transition-evidence.js', () => ({ checkTransitionEvidence: vi.fn(async () => null) }));
 vi.mock('./merged-at.js', () => ({
-  markMergedIfLeavingBase: vi.fn(async () => undefined),
-  markMergedOnClose: vi.fn(async () => ({ stamped: false })),
+  BASE_MERGE_STATE: 'awaiting_release',
+  refuseUnshippedClose: vi.fn(async () => null),
 }));
 vi.mock('./pipeline-health.js', () => ({
   publishPipelineHealthChanged: vi.fn(async () => undefined),

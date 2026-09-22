@@ -1,0 +1,10 @@
+# `.forge/orientation.md` is written by `forge-runner-core`'s provision step, which emits LF
+# unconditionally, and ISS-1108 criterion 9 is that the committed file holds EXACTLY those bytes.
+# Without this line a Windows checkout (`core.autocrlf=true`, which the GitHub runner sets) lands
+# the file as CRLF, and the byte-equality this repo asserts is false in that working tree — the
+# CI red that found this compared a CRLF file against an LF generator and could name no differing
+# line, because `str::lines` strips the `\r`.
+#
+# Scoped to the one file the invariant is about. A repo-wide `* text=auto eol=lf` would change
+# what every other file checks out as on Windows, which is a decision nobody has taken here.
+.forge/orientation.md text eol=lf

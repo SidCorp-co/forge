@@ -50,8 +50,8 @@ export function forgeIssuesDescription(refClause: string): string {
     'and relations.blockedBy (they block this), each flagged expired when its validUntil has ' +
     'passed and it no longer gates dispatch.\n' +
     'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
-    'closed auto-stamps merged_at when still NULL as an asserted mark (closed = done), so a ' +
-    'close meaning "abandoned, code never landed" needs unmark after it.\n' +
+    'closed means the work shipped: a close on an issue with no merged_at is refused ' +
+    '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped.\n' +
     'MERGE MARK. mark_merged (data.issueId, data.target, optional data.commit / data.mergedAt ' +
     'ISO / data.note) stamps merged_at. It writes merged_commit_sha ONLY where Forge already ' +
     'holds its own record of the merge - a pull request it saw merged - and the sha it writes ' +
@@ -61,7 +61,8 @@ export function forgeIssuesDescription(refClause: string): string {
     'Forge witnessed the merge itself, asserted means it witnessed none and took your word ' +
     "for it. Marking unblocks nothing: a blocks edge is released by the blocker's STATUS " +
     '(ISS-1100) and no dispatch decision reads merged_at. target is an audit label. unmark ' +
-    'clears both columns when a merge is rolled back.\n' +
+    'clears both columns when a merge is rolled back, and is refused on a closed issue: ' +
+    'move it off closed first.\n' +
     'TASKS. createTask needs data.issueId + data.taskTitle; listTasks needs filters.issue and ' +
     'accepts filters.taskStatus; updateTask/deleteTask take the task UUID as documentId. Tasks ' +
     'inherit project membership from their issue.\n' +

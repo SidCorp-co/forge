@@ -72,14 +72,25 @@ describe('release record required E2E', () => {
     `);
   }
 
-  async function insertIssue(status: string, note: unknown = null): Promise<string> {
+  /**
+   * `merged` is off by default: most cases here assert a refusal and read back
+   * `mergedAt: null` as part of "nothing moved". A case that expects the close to
+   * LAND asks for the claim, because ISS-1108 made the claim its precondition.
+   */
+  async function insertIssue(
+    status: string,
+    note: unknown = null,
+    merged = false,
+  ): Promise<string> {
     const id = randomUUID();
     seq += 1;
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes,
+                          merged_at)
       VALUES (
         ${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId},
-        ${note === null ? null : JSON.stringify(note)}::jsonb
+        ${note === null ? null : JSON.stringify(note)}::jsonb,
+        ${merged ? sql`now()` : null}
       )
     `);
     return id;
@@ -122,7 +133,7 @@ describe('release record required E2E', () => {
   it('refuses from `released` too, and lets it through once a note exists', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const bare = await insertIssue('awaiting_release');
-    const noted = await insertIssue('awaiting_release', SKIP_NOTE);
+    const noted = await insertIssue('awaiting_release', SKIP_NOTE, true);
 
     await expect(applyStatusTransition(await load(bare), 'closed', device())).rejects.toThrow(
       'RELEASE_RECORD_REQUIRED',
@@ -137,7 +148,7 @@ describe('release record required E2E', () => {
 
   it('leaves a human close alone — the claim is theirs to make', async () => {
     const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
-    const id = await insertIssue('in_progress');
+    const id = await insertIssue('in_progress', null, true);
 
     await transitionIssueStatus(await load(id), 'closed', human());
 

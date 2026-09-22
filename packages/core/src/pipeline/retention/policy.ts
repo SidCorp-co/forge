@@ -46,7 +46,7 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     days: 90,
     env: 'RETENTION_KERNEL_TRANSITIONS_DAYS',
     floorDays: 30,
-    why: 'The audit of every terminal kernel flip. A row is never deleted while the job, session or run it records is still non-terminal, whatever its age. A month is the shortest span over which this table still answers an incident question.',
+    why: 'The audit of every terminal kernel flip, and of every issue status transition. A row is never deleted while the job, session, run or issue it records is still non-terminal, whatever its age. A month is the shortest span over which this table still answers an incident question.',
   },
   {
     table: 'retrieval_analytics',

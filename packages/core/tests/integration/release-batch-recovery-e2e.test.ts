@@ -25,7 +25,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 let projectId: string;
@@ -87,7 +87,15 @@ describe('a release batch that ends without an outcome', () => {
     );
     const { HooksBus } = await import('../../src/pipeline/hooks.js');
     const a = await insertIssue();
-    const b = await insertIssue();
+    // One roster issue carries the claim and one does not, so "neither writes a
+    // stamp nor clears one" is proved in both directions rather than only where
+    // there was already something to preserve.
+    const b = await insertIssue('awaiting_release', SKIP_NOTE, false);
+    const before = new Map([
+      [a, (await stored(a)).mergedAt],
+      [b, (await stored(b)).mergedAt],
+    ]);
+    expect(before.get(b)).toBeNull();
     const { runId } = await claim([a, b]);
     expect((await stored(a)).status).toBe('releasing');
 
@@ -108,7 +116,10 @@ describe('a release batch that ends without an outcome', () => {
       const after = await stored(id);
       expect(after.status).toBe('awaiting_release');
       expect(after.claim).toBeNull();
-      expect(after.mergedAt).toBeNull();
+      // ISS-1108 — the stamp is the merge mark's and says nothing about whether a
+      // batch closed anything; the STATUS above carries that. What is still worth
+      // pinning is that a rescue neither writes a stamp nor clears one.
+      expect(after.mergedAt).toEqual(before.get(id));
     }
   });
 
@@ -118,6 +129,7 @@ describe('a release batch that ends without an outcome', () => {
     );
     const a = await insertIssue();
     const b = await insertIssue();
+    const before = (await stored(b)).mergedAt;
     await claim([a]);
 
     await expect(
@@ -127,7 +139,7 @@ describe('a release batch that ends without an outcome', () => {
     const after = await stored(b);
     expect(after.status).toBe('awaiting_release');
     expect(after.claim).toBeNull();
-    expect(after.mergedAt).toBeNull();
+    expect(after.mergedAt).toEqual(before);
   });
 });
 

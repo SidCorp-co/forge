@@ -19,6 +19,12 @@ export interface ProjectProgress {
 
 const REMAINING_STATUSES = new Set<IssueStatus>(['draft', 'waiting', 'needs_info', 'on_hold']);
 
+/**
+ * ISS-1108 — `closed` without shipped evidence is HISTORICAL from 0304 onward. A `closed` row
+ * written after that migration always carries `merged_at`, so the only `closed` issues this can
+ * still bucket as `closed_unshipped` are ones closed before the rule, plus `dropped`, which is
+ * where non-work goes now and has never carried a claim. It is not a rule still in force.
+ */
 export function bucketOf(status: IssueStatus, hasShippedEvidence: boolean): ProgressBucket {
   if (status === 'awaiting_release' || (status === 'closed' && hasShippedEvidence))
     return 'shipped';
@@ -46,6 +52,9 @@ export async function computeProjectProgress(
         and ${activityLog.payload}->>'to' = ${BASE_MERGE_STATE}
     )`;
 
+    // ISS-1108 — HISTORICAL, and kept for exactly that. The close stopped stamping `merged_at`,
+    // so nothing can produce this shape any more; every row it still matches was closed before
+    // 0304. Delete it once no `issues` row predates that migration.
     const stampedByCloseItself = sql`exists (
       select 1 from ${activityLog}
       where ${activityLog.issueId} = ${issues.id}

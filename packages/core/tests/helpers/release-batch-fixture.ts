@@ -34,7 +34,9 @@ export interface ReleaseBatchFixture {
   /** Announce the method a run loaded, as an agent would. */
   announceMethod(runId: string, over?: { skill?: string; loaded?: boolean }): Promise<void>;
   seedReleaseRunner(): Promise<void>;
-  insertIssue(status?: string, note?: unknown): Promise<string>;
+  /** `merged` defaults to true: a roster issue is work that LANDED, which ISS-1108 made the
+   *  precondition of the close, so a fixture leaving the claim off is asking for the refusal. */
+  insertIssue(status?: string, note?: unknown, merged?: boolean): Promise<string>;
   stored(id: string): Promise<StoredIssue>;
   runStatus(runId: string): Promise<string>;
   storedJob(jobId: string): Promise<StoredJob>;
@@ -110,15 +112,18 @@ export function releaseBatchFixture(
   async function insertIssue(
     status = 'awaiting_release',
     note: unknown = SKIP_NOTE,
+    merged = true,
   ): Promise<string> {
     const { projectId, ownerId } = ids();
     const id = randomUUID();
     seq += 1;
     await harness().db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes,
+                          merged_at)
       VALUES (
         ${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId},
-        ${note === null ? null : JSON.stringify(note)}::jsonb
+        ${note === null ? null : JSON.stringify(note)}::jsonb,
+        ${merged ? sql`now()` : null}
       )
     `);
     return id;

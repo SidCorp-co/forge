@@ -1,5 +1,6 @@
 import { and, count, eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
+import { stampKernelTxn } from '../db/kernel-marker.js';
 import {
   comments,
   type IssueStatus,
@@ -8,11 +9,11 @@ import {
   pipelineRuns,
   type WaitingKind,
 } from '../db/schema.js';
+import { type KernelActor, recordKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipeline/state-machine.js';
-import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
@@ -22,7 +23,7 @@ import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
-import { markMergedOnClose } from './merged-at.js';
+import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
@@ -42,11 +43,8 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'dropped',
 ]);
 
-/**
- * Who is performing the transition. `id` feeds the outbox actor context
- * (ISS-196 trigger attribution); the WS `actorId` is the user id for user
- * actors and the device owner for device actors.
- */
+/** Who is performing the transition. `id` feeds the outbox actor context (ISS-196 trigger
+ *  attribution); the WS `actorId` is the user id, or the device owner for a device actor. */
 
 export type TransitionErrorCode =
   | 'NO_OP'
@@ -57,6 +55,7 @@ export type TransitionErrorCode =
   | 'NO_WORK_EVIDENCE'
   | 'RELEASE_RECORD_REQUIRED'
   | 'ENTRY_CRITERIA_UNMET'
+  | 'CLOSE_REQUIRES_SHIPPED'
   | 'WAITING_KIND_NOT_APPLICABLE';
 
 /**
@@ -140,12 +139,8 @@ export interface StatusTransitionResult {
   unblockedDependents: UnblockedDependent[];
 }
 
-/**
- * WS `issue.statusChanged` publish. The bus subscriber for `transition`
- * intentionally does NOT broadcast `issue.statusChanged` (see
- * `ws/broadcast-subscribers.ts:38`); writers must publish inline to avoid
- * double-emit on the single-issue path.
- */
+/** WS `issue.statusChanged` publish. The bus subscriber for `transition` deliberately does NOT
+ *  broadcast it, so writers publish inline to avoid a double-emit on the single-issue path. */
 export function publishIssueStatusChange(
   projectId: string,
   payload: {
@@ -165,14 +160,10 @@ export function publishIssueStatusChange(
 }
 
 /**
- * ISS-787 — `draft` is the safe entry status you only get by remembering to
- * ask for it, and `open` (the default) auto-triages and spawns a pipeline run.
- * Three agents on three projects made that mistake, and `ILLEGAL_TRANSITION`
- * left them no way back: one parked at `on_hold`, another left the run going.
- *
- * So `draft` is reachable, but only while the mistake is still only a mistake:
- * nothing has run. A run or a job means work exists, and demoting to `draft`
- * would make the status claim the issue was never started.
+ * ISS-787 — `draft` is the safe entry status you get only by asking for it, and
+ * `open` auto-triages and spawns a run, which left three agents no way back. So
+ * `draft` is reachable, but only while nothing has run: a run or a job means
+ * work exists, and demoting would make the status claim it never started.
  */
 /** `null` when the counts could not be read — callers must treat that as "refuse". */
 async function countRunsAndJobs(
@@ -222,12 +213,8 @@ async function assertIssueNeverEnteredPipeline(
   );
 }
 
-/**
- * Two conditions share the `draft` UPDATE's WHERE — the status must still be
- * `fromStatus`, and the never-ran counts must still be zero — so a zero-row
- * result alone does not say which one bit. Re-read both and name the one that
- * did, rather than reporting a lost status race as a run appearing.
- */
+/** Two conditions share the `draft` UPDATE's WHERE — the status still `fromStatus`, the never-ran
+ *  counts still zero — so a zero-row result does not say which bit. Re-read both and name it. */
 async function explainDraftRace(
   issueId: string,
   fromStatus: IssueStatus,
@@ -263,12 +250,12 @@ async function explainDraftRace(
  * THE issue state-machine writer. Every surface — REST `/transition`,
  * REST `PATCH /batch`, MCP `forge_issues`, orchestrator soft-skip,
  * reconciler, finalize-failure — routes through here so
- * guard semantics, the conditional UPDATE, `merged_at` stamping, WS
- * broadcast, pipeline-health refresh and run close cannot drift apart.
+ * guard semantics, the conditional UPDATE, the shipped-work rule on `closed`,
+ * WS broadcast, pipeline-health refresh and run close cannot drift apart.
  *
  * Throws `TransitionError` (NO_OP / ILLEGAL_TRANSITION /
- * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED); callers map it
- * onto their own error surface.
+ * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED /
+ * CLOSE_REQUIRES_SHIPPED); callers map it onto their own error surface.
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
@@ -374,35 +361,13 @@ export async function transitionIssueStatus(
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-        body: `Held at the release gate — merged, not shipped. \`merged_at\` is stamped, so every \`blocks\`-dependent can dispatch now; the issue closes when a release ships it.`,
+        body: `Held at the release gate — merged, not shipped. Every \`blocks\`-dependent can dispatch now, because a dependent is held by this issue's STATUS and \`awaiting_release\` is one that releases it; nothing here writes \`merged_at\`. The issue closes when a release ships it, and that close is refused until the shipped-work claim is on the row — \`forge_issues\` \`mark_merged\` naming where it landed.`,
         parentId: null,
       });
     } catch (err) {
       logger.warn(
         { err, issueId: issue.id },
         'transition: release-gate hold comment failed (transition already committed)',
-      );
-    }
-  }
-
-  if (txResult?.stampedOnClose && !held) {
-    try {
-      const evidenceFound = await collectWorkEvidence(issue.id)
-        .then(hasCodeEvidence)
-        .catch(() => true);
-      const evidenceNote = evidenceFound
-        ? "If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to withdraw the shipped-work claim. That alone does NOT re-block the dependents: they are held by this issue's STATUS, and `closed` releases them whatever `merged_at` says (ISS-1100). Move this issue back off `closed` to hold them again."
-        : "No branch, commit or code handoff is recorded for this issue — if its code never landed, run `forge_issues` `unmark` to withdraw the shipped-work claim. That alone does NOT re-block the dependents: they are held by this issue's STATUS, and `closed` releases them whatever `merged_at` says (ISS-1100). Move this issue back off `closed` to hold them again.";
-      await db.insert(comments).values({
-        issueId: issue.id,
-        authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-        body: `merged_at auto-stamped on close — \`closed\` counts as done, so \`blocks\`-dependents can now dispatch. ${evidenceNote}`,
-        parentId: null,
-      });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: issue.id },
-        'transition: close-stamp audit comment failed (transition already committed)',
       );
     }
   }
@@ -442,9 +407,23 @@ type TransitionWriteInput = {
 
 type TransitionWriteResult = {
   row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
-  stampedOnClose: boolean;
   unblockedDependents: UnblockedDependent[];
 };
+
+/**
+ * ISS-1107 — the transition actor as `kernel_transitions` stores one. The two
+ * vocabularies differ: `TransitionActor` has `device`, which
+ * `kernelTransitionActorTypes` has not, and a device IS a runner box, so it
+ * records under that type carrying its own id. `agency` goes through
+ * `actorAgency` rather than a spread — `null` is an agent-driven user there and
+ * `undefined` is a human.
+ */
+function kernelActorFor(actor: TransitionActor): KernelActor {
+  if (actor.type === 'user') {
+    return { type: 'user', id: actor.id, agency: actorAgency(actor) };
+  }
+  return { type: 'runner', id: actor.id };
+}
 
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, requestedStatus, toStatus, actor, options, reopening } = input;
@@ -457,6 +436,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       : [];
   try {
     return await db.transaction(async (tx) => {
+      // ISS-1107 — stamped before any write, so the trigger reads this transaction's marker
+      // whichever statement moves the status.
+      await stampKernelTxn(tx);
       await options.beforeStatusWrite?.(tx);
       if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
         await postTransitionReasonComment(
@@ -481,6 +463,12 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         executor: tx,
       });
       if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);
+      // Judged on the status the issue LANDS at, and asked BEFORE the UPDATE: a close diverted to
+      // the release gate lands at `awaiting_release` and is no close, and a refusal after the
+      // conditional UPDATE is indistinguishable from the lost race it reports as STALE_TRANSITION.
+      const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
+      if (unshipped)
+        throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
       // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
       const result = await withActorContext(
         tx,
@@ -503,15 +491,22 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
               updatedAt: issues.updatedAt,
             });
           if (!row) return null;
-          const closeStamp = await markMergedOnClose(t, {
-            issueId: issue.id,
-            toStatus: requestedStatus,
-          });
+          await recordKernelTransition(t, [
+            {
+              entity: 'issue',
+              entityId: row.id,
+              fromStatus,
+              toStatus,
+              reason: options.transitionReason?.trim() || options.reason || null,
+              actor: kernelActorFor(actor),
+              source: 'issues',
+            },
+          ]);
           const unblockedDependents =
             toStatus === 'dropped'
               ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id)
               : [];
-          return { row, stampedOnClose: closeStamp.stamped, unblockedDependents };
+          return { row, unblockedDependents };
         },
       );
       if (!result)
@@ -529,13 +524,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   }
 }
 
-/**
- * Device-actor convenience wrapper used by MCP tools and pipeline internals
- * (orchestrator, reconciler, finalize-failure, runs-control).
- * Same semantics as `transitionIssueStatus`; failures surface as
- * `TransitionError` (an `Error` with the legacy `CODE: detail` message) so
- * MCP tool handlers can wrap them uniformly.
- */
+/** Device-actor wrapper for MCP tools and pipeline internals. Same semantics as
+ *  `transitionIssueStatus`; failures surface as `TransitionError`, whose legacy `CODE: detail`
+ *  message MCP tool handlers wrap uniformly. */
 export async function applyStatusTransition(
   issue: TransitionIssueRow,
   toStatus: IssueStatus,

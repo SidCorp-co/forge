@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -42,11 +42,8 @@ export function mergeMarkFields(row: MergeMarkColumns): {
   return { mergedCommitSha: row.mergedCommitSha, mergeMark: mergeMarkKindOf(row) };
 }
 
-/**
- * The sentence saying which kind this is. One author, because the audit comment and the
- * caller's answer are both built from it and two builders are two records that can disagree.
- * `claimedCommit` is the caller's word and deliberately not the column.
- */
+/** The sentence saying which kind this is, written once: the audit comment and the caller's
+ *  answer are both built from it. `claimedCommit` is the caller's word, not the column. */
 export function describeMergeMark(args: {
   kind: MergeMarkKind;
   commitSha?: string | null;
@@ -122,15 +119,19 @@ export async function recordIssueMerge(
   return { wrote: false, mergedAt: held.mergedAt, commitSha: held.commitSha };
 }
 
-/** Clearing the stamp re-blocks every downstream child (ISS-286 AC4). */
+/** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
+ *  `closed` guard is IN the statement: a read then a write leaves a window where the row is closed
+ *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). */
 export async function clearIssueMerge(
   executor: MergeRecordExecutor,
   issueId: string,
-): Promise<void> {
-  await executor
+): Promise<boolean> {
+  const rows = await executor
     .update(issues)
     .set({ mergedAt: null, mergedCommitSha: null, updatedAt: sql`now()` })
-    .where(eq(issues.id, issueId));
+    .where(and(eq(issues.id, issueId), ne(issues.status, 'closed')))
+    .returning({ id: issues.id });
+  return rows.length > 0;
 }
 
 export async function observedMergeForIssue(

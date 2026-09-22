@@ -197,6 +197,11 @@ async function drive(
       WHERE id = ${live.id}
     `);
   }
+  if (to === 'closed') {
+    // ISS-1108 — `closed` means the work shipped, and the close no longer stamps
+    // the claim itself. The fixture makes it, as the merge mark does in a real run.
+    await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${live.id}`);
+  }
   await mods.applyStatusTransition(live, to, { id: ownerId, ownerId });
   // ISS-196 — applyStatusTransition no longer emits `transition` inline; it
   // writes a pipeline_outbox row via the AFTER UPDATE trigger. Drain it so

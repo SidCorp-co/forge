@@ -15,6 +15,12 @@ const JOB_TERMINAL = sql`(${sql.join(
 const SESSION_TERMINAL = sql`('completed', 'failed', 'completed_via_recovery', 'cancelled_stale')`;
 /** Terminal `pipeline_runs.status`. */
 const RUN_TERMINAL = sql`('completed', 'failed', 'cancelled')`;
+/**
+ * Terminal `issues.status` (ISS-1107). `awaiting_release` and `releasing` are
+ * NOT here: the issue is still moving at both, and an audit row is kept while
+ * the thing it records can still change.
+ */
+const ISSUE_TERMINAL = sql`('closed', 'dropped')`;
 
 function olderThan(column: SQL, days: number): SQL {
   return sql`${column} < now() - make_interval(days => ${days})`;
@@ -120,6 +126,10 @@ const ENTITY_IS_TERMINAL = sql`
     WHEN 'run' THEN NOT EXISTS (
       SELECT 1 FROM pipeline_runs r
       WHERE r.id = k.entity_id AND r.status NOT IN ${RUN_TERMINAL}
+    )
+    WHEN 'issue' THEN NOT EXISTS (
+      SELECT 1 FROM issues i
+      WHERE i.id = k.entity_id AND i.status NOT IN ${ISSUE_TERMINAL}
     )
     ELSE false
   END
