@@ -279,16 +279,22 @@ export function pairEdits(removed, added) {
 /**
  * cm:guard prose a blank line cut off from its bullet is NOT part of the entry — `parseRecord`
  * drops it and the feed never renders it — so an entry THIS CHANGE adds that carries such prose is
- * named rather than read as a shorter entry that happens to pair with what it truncated. Only where
- * the prose is new: prose the base revision already carried stays silent, which is what "nothing
- * already published turns this red" rests on.
+ * named rather than read as a shorter entry that happens to pair with what it truncated.
+ *
+ * The one exemption is prose ALREADY ORPHANED AFTER THE ENTRY THIS ONE CORRECTS, and it is read off
+ * that entry rather than off the record as a whole: a set of every orphaned text in the file is
+ * transferable, so an unrelated bullet whose published paragraph happens to hold the same words
+ * would exempt a fresh truncation somewhere else. It is the candidate pairing that says which
+ * published entry to ask, which is why it is taken before the pairing this function then narrows.
  */
-function orphanedEntries(now, was, added) {
-  const published = new Set(was.orphans.values());
+function orphanedEntries(now, was, added, candidate) {
   const out = [];
   for (const entry of added) {
     const prose = now.orphans.get(entry);
-    if (prose !== undefined && !published.has(prose)) out.push({ entry, prose });
+    if (prose === undefined) continue;
+    const before = candidate.get(entry);
+    if (before !== undefined && was.orphans.get(before) === prose) continue;
+    out.push({ entry, prose });
   }
   return out;
 }
@@ -366,7 +372,8 @@ export function judge({ head, base, amnesty }) {
   const removed = [...was.entries].filter((entry) => !now.entries.has(entry));
   const added = [...now.entries].filter((entry) => !was.entries.has(entry));
 
-  const orphaned = orphanedEntries(now, was, added);
+  const candidate = pairEdits(removed, added);
+  const orphaned = orphanedEntries(now, was, added, candidate);
   for (const { entry, prose } of orphaned) {
     violations.push({
       rule: 'structure',
@@ -381,10 +388,13 @@ export function judge({ head, base, amnesty }) {
   }
 
   const split = new Set(orphaned.map((o) => o.entry));
-  const edited = pairEdits(
-    removed,
-    added.filter((entry) => !split.has(entry)),
-  );
+  const edited =
+    split.size === 0
+      ? candidate
+      : pairEdits(
+          removed,
+          added.filter((entry) => !split.has(entry)),
+        );
 
   const unpardoned = lostEntries(removed, edited, forgiven(amnesty));
   if (unpardoned.length > 0) {

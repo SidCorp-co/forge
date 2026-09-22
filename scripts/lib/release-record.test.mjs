@@ -598,6 +598,23 @@ describe('an entry a blank line split in two', () => {
     expect(verdict.code).toBe(0);
   });
 
+  it('refuses a truncation whose orphaned words another entry happens to carry already', () => {
+    const tail = PUBLISHED.split(' ').slice(40).join(' ');
+    const base = `# Changelog\n\n## [Unreleased]\n\n- ${PUBLISHED}\n\n- An unrelated bullet of its own.\n\n  ${tail}\n`;
+    const head = `# Changelog\n\n## [Unreleased]\n\n- ${prose(40)}\n\n${tail}\n\n- An unrelated bullet of its own.\n\n  ${tail}\n`;
+    const verdict = judge({ head, base, amnesty: null });
+    expect(verdict.code).toBe(1);
+    expect(structureOf(verdict)).toHaveLength(1);
+    expect(lossOf(verdict).removed).toEqual([PUBLISHED]);
+  });
+
+  it('takes a correction to an entry that carries orphaned prose, leaving the prose where it was', () => {
+    const orphan = prose(30, 'p');
+    const base = `# Changelog\n\n## [Unreleased]\n\n- ${PUBLISHED}\n\n  ${orphan}\n`;
+    const head = base.replace('w20 ', 'w20-corrected ');
+    expect(judge({ head, base, amnesty: null }).code).toBe(0);
+  });
+
   it('refuses a brand-new entry split the same way, which loses nothing but records less than it says', () => {
     const head = `${BASE}\n- ${prose(20, 'n')}\n\n${prose(10, 'm')}\n`;
     const verdict = judge({ head, base: BASE, amnesty: null });

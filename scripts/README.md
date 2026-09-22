@@ -680,9 +680,16 @@ no blank line — or to give it a bullet of its own.
 **Only prose this change added.** The published record carries 1,718 such lines under 2-space
 indents, inherited from before anything bounded the file, and refusing those would turn every change
 red on bytes nobody in it wrote — the opposite of the rule's own promise that nothing already
-published turns it red. The orphan prose at the base revision is therefore grandfathered by its
-text, so an entry may still be corrected with its paragraphs left as they are, which is what
-ISS-1112's citation sweep needs. What is NOT covered: prose orphaned under a `###` heading with no
+published turns it red. Prose already orphaned at the base revision is therefore grandfathered, so
+an entry may still be corrected with its paragraphs left as they are, which is what ISS-1112's
+citation sweep needs.
+
+**The exemption is read off the entry, not off the file.** A set of every orphaned text in the
+record is transferable: an unrelated published bullet whose paragraph happens to hold the same words
+would exempt a fresh truncation elsewhere, and a change could arrange that deliberately. So the
+orphan is grandfathered only where the published entry this one PAIRS WITH already carried exactly
+it. That is why the pairing is computed twice — once as the candidate that says which published
+entry to ask, then again over what is left once the truncations are excluded. What is NOT covered: prose orphaned under a `###` heading with no
 bullet above it at all — the record holds none, and there is no entry to attach it to.
 
 **What the pairing does not claim.** A change inside the span can still reverse what an entry says —
