@@ -118,6 +118,15 @@ impl Work {
     }
 }
 
+/// A refusal as the ledger now holds it: when its streak began, and whether
+/// this call is the one that began it — which is what tells a caller to say it
+/// out loud rather than to say it again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Refusal {
+    pub since: i64,
+    pub opened_the_streak: bool,
+}
+
 /// One run session: a worktree, a group of issues, and the marks that close it.
 #[derive(Debug, Clone)]
 pub struct Run {
@@ -148,6 +157,16 @@ pub struct Run {
     pub resume_choice_why: Option<String>,
     /// Set when this pane was RESUMED over the run, which is what makes a choice owed.
     pub resume_owed_at: Option<i64>,
+    /// When the refusal this run's release is currently standing on was FIRST
+    /// seen. Cleared the moment a release gets past it, so it is the age of one
+    /// streak and not a count of every refusal this run ever had.
+    pub release_refused_at: Option<i64>,
+    /// That refusal in its own words, kept so a person reading the row is told
+    /// what the box could not answer rather than that something went wrong.
+    pub release_refusal: Option<String>,
+    /// When that refusal was decided to be one no retry can get past. From here
+    /// the leases are back, the run is over, and the checkout is still on disk.
+    pub release_terminal_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,6 +307,9 @@ const RUN_COLUMNS: &[&str] = &[
     "resume_choice",
     "resume_choice_why",
     "resume_owed_at",
+    "release_refused_at",
+    "release_refusal",
+    "release_terminal_at",
 ];
 
 #[cfg(test)]
@@ -348,7 +370,10 @@ CREATE TABLE IF NOT EXISTS runs (
   agent_id            TEXT,
   resume_choice       TEXT,
   resume_choice_why   TEXT,
-  resume_owed_at      INTEGER
+  resume_owed_at      INTEGER,
+  release_refused_at  INTEGER,
+  release_refusal     TEXT,
+  release_terminal_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -413,6 +438,9 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "resume_choice", "TEXT"),
     ("runs", "resume_choice_why", "TEXT"),
     ("runs", "resume_owed_at", "INTEGER"),
+    ("runs", "release_refused_at", "INTEGER"),
+    ("runs", "release_refusal", "TEXT"),
+    ("runs", "release_terminal_at", "INTEGER"),
     ("masters", "session_id", "TEXT"),
 ];
 
@@ -435,7 +463,8 @@ fn sql_err(e: rusqlite::Error) -> Error {
 const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_id, worktree_path, pid, boot_id,
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
         claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
-        ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at
+        ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
+        release_refused_at, release_refusal, release_terminal_at
  FROM runs";
 
 fn map_standing(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterStanding> {
@@ -517,6 +546,9 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         resume_choice: row.get(22)?,
         resume_choice_why: row.get(23)?,
         resume_owed_at: row.get(24)?,
+        release_refused_at: row.get(25)?,
+        release_refusal: row.get(26)?,
+        release_terminal_at: row.get(27)?,
     })
 }
 
@@ -668,7 +700,13 @@ impl Ledger {
     pub fn held_worktrees(&self) -> Result<Vec<(PathBuf, String)>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT worktree_path, run_id FROM runs WHERE ended_by IS NULL")
+            // A checkout the release terminally refused to remove is not the
+            // reaper's to remove either: the same refusal binds both, and
+            // ending the run is what would otherwise hand it over (ISS-1188).
+            .prepare(
+                "SELECT worktree_path, run_id FROM runs
+                  WHERE ended_by IS NULL OR release_terminal_at IS NOT NULL",
+            )
             .map_err(sql_err)?;
         let rows = stmt
             .query_map([], |row| {
@@ -693,12 +731,22 @@ impl Ledger {
             .map_err(sql_err)
     }
 
+    /// Every run whose close loop still has something owed.
+    ///
+    /// A run whose release was decided terminal leaves as soon as its leases
+    /// are back, and not before: its checkout is staying on disk by decision,
+    /// so `worktree_gone_at` will never be stamped and reading the three marks
+    /// alone would keep answering "still owed" every sweep for ever. The leases
+    /// are the half that must still be chased, because a lease nobody returns
+    /// is an issue no run on this box can take (ISS-1188).
     pub fn unclosed_runs(&self) -> Result<Vec<Run>> {
         let mut stmt = self
             .conn
             .prepare(&format!(
-                "{SELECT_RUN} WHERE session_terminal_at IS NULL OR worktree_gone_at IS NULL
-                 OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL)
+                "{SELECT_RUN} WHERE (session_terminal_at IS NULL OR worktree_gone_at IS NULL
+                 OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL))
+                 AND (release_terminal_at IS NULL
+                 OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL))
                  ORDER BY created_at"
             ))
             .map_err(sql_err)?;
@@ -1469,6 +1517,67 @@ impl Ledger {
     }
 
     /// Close a run on the record, with who ended it and why.
+    /// Record that this run's release was refused, and answer WHEN the streak
+    /// it belongs to began — which is this refusal's own stamp where it is the
+    /// first, and the earlier one where it is not.
+    ///
+    /// The stamp is in the ledger rather than in the daemon's memory so that a
+    /// restart inside the window resumes the refusal's age instead of starting
+    /// it again, which is how a run kept its leases across restarts for as long
+    /// as the box lived.
+    pub fn note_release_refusal(&mut self, run_id: &str, why: &str, at: i64) -> Result<Refusal> {
+        self.conn
+            .execute(
+                "UPDATE runs SET release_refusal = ?2,
+                        release_refused_at = COALESCE(release_refused_at, ?3)
+                  WHERE run_id = ?1",
+                params![run_id, why, at],
+            )
+            .map_err(sql_err)?;
+        let since: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT release_refused_at FROM runs WHERE run_id = ?1",
+                params![run_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sql_err)?
+            .flatten();
+        let since = since.unwrap_or(at);
+        Ok(Refusal {
+            since,
+            opened_the_streak: since == at,
+        })
+    }
+
+    /// Say this refusal is one no retry gets past.
+    pub fn mark_release_terminal(&mut self, run_id: &str, at: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET release_terminal_at = ?2 WHERE run_id = ?1",
+                params![run_id, at],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Forget a refusal: a release got past it, or an operator is asking for
+    /// the next sweep to try again. Answers whether the row carried one.
+    pub fn clear_release_refusal(&mut self, run_id: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET release_refused_at = NULL, release_refusal = NULL,
+                        release_terminal_at = NULL
+                  WHERE run_id = ?1
+                    AND (release_refused_at IS NOT NULL OR release_terminal_at IS NOT NULL)",
+                params![run_id],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
     pub fn end_run(&self, run_id: &str, ended_by: &str, reason: &str) -> Result<()> {
         self.conn
             .execute(
@@ -2859,6 +2968,134 @@ mod tests {
             Some("sess-1"),
             "and nothing else about the pane is forgotten with it"
         );
+    }
+
+    /// The other direction of the same compatibility question: a ledger this
+    /// build has migrated, opened by one that predates the columns. Every read
+    /// of `runs` goes through `SELECT_RUN`, which names its columns and maps
+    /// them positionally against that list, so a column a build has never heard
+    /// of is one it never selects. The extra column below stands in for that
+    /// build's blind spot — if anything here ever reaches for `SELECT *` or
+    /// counts columns off the table, this goes red rather than a runner going
+    /// down on a box somebody rolled back.
+    #[test]
+    fn a_ledger_carrying_columns_this_build_does_not_know_is_still_read_by_name() {
+        assert!(
+            !SELECT_RUN.contains('*'),
+            "a `SELECT *` over `runs` binds every reader to the table's exact shape, and the one \
+             that loses is whichever build is older: {SELECT_RUN}"
+        );
+
+        let dir = std::env::temp_dir().join(format!("forge-ledger-newer-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut led = Ledger::open(&path).unwrap();
+            led.create_run_group(NewRun {
+                run_id: "run-1".into(),
+                project_id: "proj-1".into(),
+                master_session_id: "m".into(),
+                worktree_path: PathBuf::from("/tmp/w"),
+                boot_id: "boot-1".into(),
+                issue_keys: vec!["ISS-1".into()],
+            })
+            .unwrap();
+            led.note_release_refusal("run-1", "a refusal a later build recorded", 1_790_000_000)
+                .unwrap();
+        }
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("ALTER TABLE runs ADD COLUMN a_column_from_the_future TEXT;")
+                .unwrap();
+        }
+
+        let led = Ledger::open(&path).unwrap();
+        let run = led
+            .run("run-1")
+            .unwrap()
+            .expect("the row is still readable");
+        assert_eq!(run.release_refused_at, Some(1_790_000_000));
+        assert_eq!(led.unclosed_runs().unwrap().len(), 1);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_run_given_up_on_leaves_the_close_loop_when_its_leases_are_back_and_not_before() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: PathBuf::from("/tmp/w"),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.mark_session_terminal_observed("run-1").unwrap();
+        led.mark_release_terminal("run-1", 1_790_000_300).unwrap();
+
+        assert_eq!(
+            led.unclosed_runs().unwrap().len(),
+            1,
+            "a lease still out is the one thing worth sweeping for: an issue nobody returned is \
+             admissible to no other run on this box"
+        );
+
+        led.mark_lease_returned_observed("run-1", "ISS-1").unwrap();
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "and once it is back the run has nothing left owed — its checkout is staying by \
+             decision, so reading `worktree_gone_at` would keep it here for ever"
+        );
+    }
+
+    #[test]
+    fn a_refusal_is_retracted_once_and_then_there_is_nothing_to_retract() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: PathBuf::from("/tmp/w"),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        assert!(
+            !led.clear_release_refusal("run-1").unwrap(),
+            "a row carrying no refusal has nothing to retract, and saying otherwise would tell \
+             an operator their act landed when it did nothing"
+        );
+
+        let first = led
+            .note_release_refusal("run-1", "could not reach git", 1_790_000_000)
+            .unwrap();
+        assert_eq!(
+            first,
+            Refusal {
+                since: 1_790_000_000,
+                opened_the_streak: true
+            }
+        );
+        let later = led
+            .note_release_refusal("run-1", "could not reach git", 1_790_000_020)
+            .unwrap();
+        assert_eq!(
+            later,
+            Refusal {
+                since: 1_790_000_000,
+                opened_the_streak: false
+            },
+            "the streak keeps the age of its first refusal, or a window measured from the last \
+             sweep never ends"
+        );
+
+        assert!(led.clear_release_refusal("run-1").unwrap());
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.release_refused_at, None);
+        assert_eq!(run.release_refusal, None);
+        assert_eq!(run.release_terminal_at, None);
     }
 
     #[test]

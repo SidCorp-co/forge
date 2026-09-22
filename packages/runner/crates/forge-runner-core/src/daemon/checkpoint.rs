@@ -314,6 +314,9 @@ mod tests {
             resume_choice: None,
             resume_choice_why: None,
             resume_owed_at: None,
+            release_refused_at: None,
+            release_refusal: None,
+            release_terminal_at: None,
         }
     }
 
