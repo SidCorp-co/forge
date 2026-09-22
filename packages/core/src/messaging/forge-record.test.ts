@@ -102,6 +102,25 @@ describe('the fence a body means as a record', () => {
     expect(parseForgeRecord(body)?.fields.map((f) => f.key)).toEqual(['criterion']);
   });
 
+  it('keeps a field holding a run of mixed fence characters', () => {
+    const body = [`${FENCE}forge-record`, 'criterion: 13', '`~~', 'verdict: pass', FENCE].join(
+      '\n',
+    );
+    expect(parseForgeRecord(body)?.fields.map((f) => f.key)).toEqual(['criterion', 'verdict']);
+  });
+
+  it('does not let a run of mixed fence characters open a record', () => {
+    const body = ['`~~forge-record', 'criterion: 13', FENCE].join('\n');
+    expect(parseForgeRecord(body)).toBeNull();
+  });
+
+  it('does not close a backtick block on a tilde run', () => {
+    const body = [`${FENCE}forge-record`, 'criterion: 13', '~~~', 'verdict: pass', FENCE].join(
+      '\n',
+    );
+    expect(parseForgeRecord(body)?.fields.map((f) => f.key)).toEqual(['criterion', 'verdict']);
+  });
+
   it('does not read a longer word that merely opens with the tag', () => {
     const body = [`${FENCE}forge-recording`, 'criterion: 13', FENCE].join('\n');
     expect(parseForgeRecord(body)).toBeNull();

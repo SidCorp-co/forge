@@ -1,6 +1,6 @@
 const INFO = 'forge-record';
-/** Any fence line, either character, so a scan can tell an opener from enclosed content. */
-const FENCE_LINE = /^([`~]{3,})(.*)$/u;
+/** Any fence line, either character but never mixed, so a scan can tell an opener from content. */
+const FENCE_LINE = /^(`{3,}|~{3,})(.*)$/u;
 /** The info string of a fence that means a record: the tag, and whatever follows it. */
 const RECORD_INFO = new RegExp(`^${INFO}(?![\\w-])(.*)$`, 'u');
 const KEY = /^([a-z][a-z0-9-]*): ?(.*)$/u;
@@ -94,7 +94,7 @@ function offsets(lines: readonly string[]): number[] {
  * spaces markdown allows. Past that it is content, and a field may hold it.
  */
 function closes(line: string, fence: string): boolean {
-  const found = /^ {0,3}([`~]+)[ \t]*$/u.exec(line);
+  const found = /^ {0,3}(`+|~+)[ \t]*$/u.exec(line);
   const run = found?.[1];
   return run !== undefined && run[0] === fence[0] && run.length >= fence.length;
 }
