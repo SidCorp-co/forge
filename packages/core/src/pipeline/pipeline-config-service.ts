@@ -2,6 +2,7 @@ import {
   applyDocumentPatch,
   comparePatchBase,
   describeConflicts,
+  formatPath,
   patchLeafPaths,
 } from '@forge/contracts/document-patch';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -158,13 +159,11 @@ async function assertStageChangesAreLegal(
 }
 
 /**
- * What a patch is applied to and compared against: the stored document with the
- * defaults filled in for a top-level key it does not have.
- *
- * `GET /pipeline-config` answers with those same defaults, so a caller editing a
- * stage of a project that has never saved one is comparing against — and writing
- * into — what it was shown, rather than into a `states` map that has no stage in
- * it at all.
+ * What a patch is COMPARED against: the stored document with the defaults filled in for a
+ * top-level key it does not have. `GET /pipeline-config` answers with those same defaults, so a
+ * caller editing a stage of a project that has never saved one is comparing against what it was
+ * shown. What is WRITTEN is the stored document, never this one — expanding the defaults into
+ * storage would make every save persist keys the caller never named.
  */
 function mergeTargetOf(stored: Record<string, unknown>): Record<string, unknown> {
   return { ...PIPELINE_CONFIG_DEFAULTS, ...stored } as Record<string, unknown>;
@@ -214,10 +213,11 @@ export async function updatePipelineConfig(
         (pipelinePatch as { states?: StagesConfig }).states,
       );
 
-      const nextPipeline = applyDocumentPatch(target, pipelinePatch);
-      assertMergedConfigValid(currentPipeline, nextPipeline, patchLeafPaths(pipelinePatch));
+      const nextStored = applyDocumentPatch(currentPipeline, pipelinePatch);
+      const writtenPaths = patchLeafPaths(pipelinePatch).map(formatPath);
+      assertMergedConfigValid(currentPipeline, mergeTargetOf(nextStored), writtenPaths);
 
-      const subkey = JSON.stringify({ pipelineConfig: nextPipeline });
+      const subkey = JSON.stringify({ pipelineConfig: nextStored });
       await tx.execute(
         sql`UPDATE projects
             SET agent_config = COALESCE(agent_config, '{}'::jsonb) || ${subkey}::jsonb

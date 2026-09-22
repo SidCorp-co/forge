@@ -6,6 +6,7 @@ import {
 	comparePatchBase,
 	describeConflicts,
 	patchLeafPaths,
+	formatPath,
 	readPath,
 	sameStoredValue,
 } from "./document-patch.js";
@@ -67,12 +68,12 @@ describe("patchLeafPaths", () => {
 				states: { open: { deviceIds: ["d1"] } },
 				enabled: true,
 			}),
-		).toEqual(["states.open.deviceIds", "enabled"]);
+		).toEqual([["states", "open", "deviceIds"], ["enabled"]]);
 	});
 
 	it("claims a null, which is a write", () => {
 		expect(patchLeafPaths({ states: { open: { deviceIds: null } } })).toEqual([
-			"states.open.deviceIds",
+			["states", "open", "deviceIds"],
 		]);
 	});
 
@@ -83,9 +84,9 @@ describe("patchLeafPaths", () => {
 
 describe("readPath", () => {
 	it("answers undefined through a missing or non-object segment", () => {
-		expect(readPath({ a: { b: 1 } }, "a.b")).toBe(1);
-		expect(readPath({ a: { b: 1 } }, "a.c")).toBeUndefined();
-		expect(readPath({ a: 3 }, "a.b")).toBeUndefined();
+		expect(readPath({ a: { b: 1 } }, ["a", "b"])).toBe(1);
+		expect(readPath({ a: { b: 1 } }, ["a", "c"])).toBeUndefined();
+		expect(readPath({ a: 3 }, ["a", "b"])).toBeUndefined();
 	});
 });
 
@@ -199,5 +200,46 @@ describe("canonicalJson", () => {
 
 	it("keeps array order, which is a value and not a set", () => {
 		expect(canonicalJson([1, 2])).not.toBe(canonicalJson([2, 1]));
+	});
+});
+
+// A record key may legally hold a period — an MCP server named `team.prod`, a preview key a
+// project invented. Joined into one string it reads as two levels of nesting, and a comparison
+// that looks for it there finds `undefined` on both sides and lets a stale write through.
+describe("a key that contains a period", () => {
+	it("is one segment of the path, not two", () => {
+		expect(
+			patchLeafPaths({ mcpServers: { "team.prod": { url: "x" } } }),
+		).toEqual([["mcpServers", "team.prod", "url"]]);
+	});
+
+	it("is read back off the document it names", () => {
+		expect(
+			readPath({ mcpServers: { "team.prod": { url: "old" } } }, [
+				"mcpServers",
+				"team.prod",
+				"url",
+			]),
+		).toBe("old");
+	});
+
+	it("conflicts when the store moved under it", () => {
+		const stored = { mcpServers: { "team.prod": { url: "new" } } };
+		const base = { mcpServers: { "team.prod": { url: "old" } } };
+		const conflicts = comparePatchBase(stored, base, {
+			mcpServers: { "team.prod": { url: "mine" } },
+		});
+		expect(conflicts).toHaveLength(1);
+		expect(conflicts[0]?.base).toBe("old");
+		expect(conflicts[0]?.stored).toBe("new");
+	});
+
+	it("is quoted where the refusal prints it, so a reader can tell it from nesting", () => {
+		expect(formatPath(["mcpServers", "team.prod", "url"])).toBe(
+			'mcpServers."team.prod".url',
+		);
+		expect(formatPath(["states", "open", "deviceIds"])).toBe(
+			"states.open.deviceIds",
+		);
 	});
 });

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
@@ -161,6 +162,31 @@ describe('two settings sections writing from one read', () => {
     const open = stage(await storedPipeline(), 'open');
     expect('allowedTools' in open).toBe(false);
     expect(open.enabled).toBe(true);
+  });
+
+  // The stored document is sparse and stays sparse: a save writes the keys the patch named and
+  // no others. A project that has never saved a stage is the case that shows it — the read it
+  // is compared against carries this codebase's default `states`, and writing THAT into storage
+  // would freeze today's defaults into the row and make an unrelated edit rewrite every stage.
+  it('writes no key the patch did not name, not even a default its read showed it', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects
+      SET agent_config = ${JSON.stringify({ pipelineConfig: { intakeGate: { enabled: false } } })}::jsonb
+      WHERE id = ${projectId}
+    `);
+    const base = await readPipeline();
+    expect(base.states).toBeDefined();
+    expect(base.enabled).toBe(true);
+
+    const res = await call('PATCH', `/api/projects/${projectId}/pipeline-config`, {
+      base,
+      patch: { intakeGate: { enabled: true } },
+    });
+    expect(res.status).toBe(200);
+
+    const after = await storedPipeline();
+    expect(Object.keys(after)).toEqual(['intakeGate']);
+    expect(after.states).toBeUndefined();
   });
 });
 

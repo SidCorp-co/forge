@@ -1,10 +1,9 @@
 /**
  * The write contract for a stored settings document: a caller sends the values it read
- * (`base`) beside the keys it wants changed (`patch`), and the store applies the write whole
- * or refuses it whole. A patch is sparse — a key it does not name is untouched at any depth,
- * an object merges, an array or a scalar replaces, `null` deletes. Comparison happens at the
- * paths the patch writes and nowhere else, so two writers naming no common path both land
- * from one read, and two naming the same path cannot both be applied.
+ * (`base`) beside the keys it wants changed (`patch`), and the store applies the write whole or
+ * refuses it whole. A patch is sparse — an unnamed key is untouched at any depth, an object
+ * merges, an array or scalar replaces, `null` deletes — and comparison happens at the paths the
+ * patch writes and nowhere else, so writers naming no common path both land from one read.
  */
 
 export type DocumentPatch = Record<string, unknown>;
@@ -75,13 +74,18 @@ export function applyDocumentPatch(
 }
 
 /**
- * The dotted paths a patch writes. A nested object is walked rather than claimed, so a patch
- * naming `states.open.deviceIds` conflicts with nothing else under `states`.
+ * The paths a patch writes, each as its own SEGMENTS — a nested object is walked rather than
+ * claimed. Segments and not a dotted string, because a record key may legally hold a period
+ * (`mcpServers: { "team.prod": {...} }`) and joining makes it indistinguishable from nesting,
+ * which reads `undefined` on both sides and lets a stale write through the compare-and-swap.
  */
-export function patchLeafPaths(patch: DocumentPatch, prefix = ""): string[] {
-	const out: string[] = [];
+export function patchLeafPaths(
+	patch: DocumentPatch,
+	prefix: string[] = [],
+): string[][] {
+	const out: string[][] = [];
 	for (const [key, value] of Object.entries(patch)) {
-		const path = prefix === "" ? key : `${prefix}.${key}`;
+		const path = [...prefix, key];
 		if (isPlainObject(value) && Object.keys(value).length > 0) {
 			out.push(...patchLeafPaths(value, path));
 			continue;
@@ -92,13 +96,18 @@ export function patchLeafPaths(patch: DocumentPatch, prefix = ""): string[] {
 	return out;
 }
 
-export function readPath(document: unknown, path: string): unknown {
+export function readPath(document: unknown, path: readonly string[]): unknown {
 	let cursor: unknown = document;
-	for (const segment of path.split(".")) {
+	for (const segment of path) {
 		if (!isPlainObject(cursor)) return undefined;
 		cursor = cursor[segment];
 	}
 	return cursor;
+}
+
+/** One path as a reader sees it; a segment holding a period is quoted. */
+export function formatPath(path: readonly string[]): string {
+	return path.map((s) => (s.includes(".") ? JSON.stringify(s) : s)).join(".");
 }
 
 /**
@@ -115,7 +124,11 @@ export function comparePatchBase(
 		const expected = readPath(base, path);
 		const actual = readPath(stored, path);
 		if (!sameStoredValue(expected, actual)) {
-			conflicts.push({ path, base: expected, stored: actual });
+			conflicts.push({
+				path: formatPath(path),
+				base: expected,
+				stored: actual,
+			});
 		}
 	}
 	return conflicts;
