@@ -246,14 +246,47 @@ fn could_be_filed_as(have: &std::ffi::OsStr, want: &std::ffi::OsStr) -> bool {
         .is_some_and(|tail| tail.chars().all(|c| c.is_ascii_digit()))
 }
 
-fn same_path(a: &Path, b: &Path) -> bool {
-    if a == b {
-        return true;
+/// The spelling of `path` that two callers naming the same checkout both
+/// arrive at.
+///
+/// Neither side of the comparison this serves can be trusted to spell a path
+/// the way the other does. Git answers out of its own registry; the ledger
+/// holds whatever [`path`] built out of the repo root it was given. macOS
+/// resolves `/var` to `/private/var`, Windows hands back a long name where the
+/// caller holds an 8.3 one, and either can differ in its separators. Comparing
+/// those raw is how a checkout git still registers reads as one nobody
+/// registers — which on a path whose directory is not named after its branch
+/// is a false `Gone`, and a false release (ISS-1193).
+///
+/// `canonicalize` settles all of that and needs the file to be there, and the
+/// whole subject here is a path that is not. So the longest ANCESTOR that does
+/// exist is canonicalised and the rest re-attached: a checkout that has gone
+/// still sits under a repository that has not, and that is enough to settle
+/// the spelling of everything above it. A path with no existing ancestor at
+/// all is returned as it came, because nothing was found to settle it with.
+///
+/// The spelling this returns is the one that COMPARES, so it is also the one
+/// the refusals carry. On Windows that is the verbatim `\\?\` form, which is
+/// uglier to read than git's answer and is the only one a caller can hold
+/// against a row; the refusals name the ledger's own path beside it.
+fn resolved_for_compare(path: &Path) -> PathBuf {
+    if let Ok(real) = path.canonicalize() {
+        return real;
     }
-    match (a.canonicalize(), b.canonicalize()) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => false,
+    let mut tail = Vec::new();
+    let mut at = path;
+    while let (Some(parent), Some(name)) = (at.parent(), at.file_name()) {
+        tail.push(name);
+        if let Ok(real) = parent.canonicalize() {
+            let mut out = real;
+            for part in tail.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        at = parent;
     }
+    path.to_path_buf()
 }
 
 /// `<common>/worktrees`, where every linked worktree's entry lives.
@@ -314,7 +347,11 @@ pub async fn residence_of(repo: &Path, worktree: &Path) -> Residence {
         Ok(a) => a,
         Err(why) => return Residence::Unknown(why),
     };
-    let Some(want) = worktree.file_name() else {
+    // One spelling, taken once, and every path compared against it is put
+    // through the same reading — so there is no second way to decide that two
+    // paths are the same checkout.
+    let want_at = resolved_for_compare(worktree);
+    let Some(want) = want_at.file_name().map(std::ffi::OsStr::to_os_string) else {
         return Residence::Unknown(format!("{} names no entry", worktree.display()));
     };
     let entries = match std::fs::read_dir(&admin) {
@@ -337,15 +374,23 @@ pub async fn residence_of(repo: &Path, worktree: &Path) -> Residence {
                 ))
             }
         };
+        // Both sides of the comparison below go through the one reading, so
+        // there is no second way to decide two paths are one checkout. Git
+        // hands back an already-resolved path on Linux and macOS, so no test
+        // on those platforms can turn THIS call red; it earns its place on
+        // Windows, where git answers forward slashes and a long name and
+        // `canonicalize` answers the verbatim form. The `runner
+        // (windows-latest)` job is its witness, and it is named here so the
+        // next reader does not read a local green as evidence for it.
         let at = match entry_points_at(&e.path().join("gitdir")) {
-            Ok(Some(at)) => at,
+            Ok(Some(at)) => resolved_for_compare(&at),
             Ok(None) => continue,
             Err(why) => return Residence::Unknown(why),
         };
-        if same_path(&at, worktree) {
+        if at == want_at {
             return Residence::RegisteredButMissing(at);
         }
-        if could_be_filed_as(&e.file_name(), want) {
+        if could_be_filed_as(&e.file_name(), &want) {
             could_be_ours.push(at);
         }
     }
@@ -460,6 +505,21 @@ mod tests {
             .output()
             .await
             .unwrap();
+    }
+
+    /// The spelling a caller naming `<root>/<tail>` arrives at, built without
+    /// going anywhere near the function under test: the root is there on every
+    /// platform, so canonicalising IT settles `/var` against `/private/var`,
+    /// an 8.3 name against its long one and the separators, and the tail this
+    /// fixture chose is joined on after. A test that called
+    /// `resolved_for_compare` to say what it expected would pass whatever that
+    /// function did.
+    fn named_as_any_caller_would(root: &Path, tail: &str) -> PathBuf {
+        let mut at = root.canonicalize().expect("the repository is there");
+        for part in tail.split('/') {
+            at.push(part);
+        }
+        at
     }
 
     /// Unique temp repo per test on `main` with one commit (no tempfile dep in
@@ -666,9 +726,13 @@ mod tests {
         assert!(!old.exists(), "the fixture must have moved it");
         assert_eq!(
             residence_of(&root, &old).await,
-            Residence::MovedTo(new.clone()),
+            Residence::MovedTo(named_as_any_caller_would(
+                &root,
+                ".claude/worktrees/ISS-964"
+            )),
             "`git worktree move` repoints the entry and leaves its name alone, so a path that \
-             no longer resolves is a moved checkout and not a removed one"
+             no longer resolves is a moved checkout and not a removed one — named the way a \
+             caller holding a row would name it, not the way git happened to spell it"
         );
         assert_eq!(residence_of(&root, &new).await, Residence::Linked);
         let _ = std::fs::remove_dir_all(&root);
@@ -705,7 +769,7 @@ mod tests {
 
         assert_eq!(
             residence_of(&root, &wt).await,
-            Residence::RegisteredButMissing(wt.clone()),
+            Residence::RegisteredButMissing(named_as_any_caller_would(&root, ".worktrees/ISS-9")),
             "the entry is still standing, so nothing took this checkout back — pruning it is \
              an operator's decision and not a release's"
         );
@@ -843,7 +907,7 @@ mod tests {
         }
         assert_eq!(
             residence_of(&root, &wt).await,
-            Residence::RegisteredButMissing(wt.clone()),
+            Residence::RegisteredButMissing(named_as_any_caller_would(&root, ".worktrees/ISS-5")),
             "and once it can be read, the entry standing there is the answer"
         );
         let _ = std::fs::remove_dir_all(&root);
@@ -870,10 +934,126 @@ mod tests {
 
         assert_eq!(
             residence_of(&root, &old).await,
-            Residence::RegisteredButMissing(new.clone()),
+            Residence::RegisteredButMissing(named_as_any_caller_would(
+                &root,
+                ".claude/worktrees/ISS-6"
+            )),
             "the entry outlived both paths, so nothing took this checkout back — a destination \
              that is not there is not a reason to call the run released"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn two_spellings_of_one_path_resolve_together_even_where_the_leaf_is_gone() {
+        let base = std::env::temp_dir().join(format!(
+            "forge-worktree-spelling-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let real = base.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+
+        // The shape macOS puts every temp path through: a directory reached by
+        // two names, one of them a link. Built by hand so the mechanism is
+        // under test on whatever platform is running it, rather than only on
+        // the one that ships it.
+        let link = base.join("by-another-name");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        #[cfg(not(unix))]
+        std::os::windows::fs::symlink_dir(&real, &link).unwrap();
+
+        assert_eq!(
+            resolved_for_compare(&link),
+            resolved_for_compare(&real),
+            "one directory reached by two names is one directory"
+        );
+        assert_eq!(
+            resolved_for_compare(&link.join(".worktrees/ISS-3")),
+            resolved_for_compare(&real.join(".worktrees/ISS-3")),
+            "and it stays one directory under a leaf that is not there — which is the ONLY \
+             kind of path this is ever asked about, and the kind `canonicalize` alone cannot \
+             answer for"
+        );
+        assert_eq!(
+            resolved_for_compare(&real.join("a/b/c")),
+            real.canonicalize().unwrap().join("a").join("b").join("c"),
+            "the tail below the last existing ancestor is re-attached whole, not dropped"
+        );
+
+        let nowhere = Path::new("/forge-no-such-root-1193/x/y");
+        assert_eq!(
+            resolved_for_compare(nowhere),
+            nowhere.to_path_buf(),
+            "and a path with no ancestor to settle it against comes back as it came, rather \
+             than being reported as something it was not"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn a_repository_reached_by_a_link_still_identifies_its_own_checkout() {
+        // macOS puts every temp path behind a `/var` -> `/private/var` link and
+        // Windows hands back a long name where the caller holds an 8.3 one, so
+        // on those boxes git's spelling of a path and the ledger's are two
+        // different strings for one checkout. Neither happens under /tmp on
+        // Linux, so the shape is built by hand here rather than left to the
+        // platform that ships it (ISS-1193).
+        let base = std::env::temp_dir().join(format!(
+            "forge-worktree-linkedroot-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let real = base.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        for args in [
+            &["init", "-b", "main"][..],
+            &["config", "user.email", "t@t"][..],
+            &["config", "user.name", "t"][..],
+        ] {
+            run(&real, args).await;
+        }
+        std::fs::write(real.join("f.txt"), "one\n").unwrap();
+        run(&real, &["add", "f.txt"]).await;
+        run(&real, &["commit", "-m", "init"]).await;
+
+        let link = base.join("by-another-name");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        #[cfg(not(unix))]
+        std::os::windows::fs::symlink_dir(&real, &link).unwrap();
+
+        // Two checkouts sharing a basename, so git files the second under the
+        // first's name plus a digit and the BASENAME can no longer settle
+        // which is which. Only the exact-path reading can, and it is the one
+        // that needs both spellings to meet.
+        let ours = link.join("one/ISS-964");
+        let other = link.join("two/ISS-964");
+        for p in [&ours, &other] {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        }
+        run(
+            &link,
+            &["worktree", "add", &ours.to_string_lossy(), "-b", "ours"],
+        )
+        .await;
+        run(
+            &link,
+            &["worktree", "add", &other.to_string_lossy(), "-b", "other"],
+        )
+        .await;
+        std::fs::remove_dir_all(&ours).expect("the operator's rm -rf");
+
+        assert_eq!(
+            residence_of(&link, &ours).await,
+            Residence::RegisteredButMissing(named_as_any_caller_would(&real, "one/ISS-964")),
+            "the run's path and git's answer are two spellings of one checkout, and the exact \
+             reading has to see through that — falling back to the basename here would name \
+             the OTHER checkout, or both of them"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

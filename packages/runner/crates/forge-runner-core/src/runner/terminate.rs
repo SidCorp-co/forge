@@ -2217,8 +2217,13 @@ mod tests {
         .expect_err("git still registers this checkout, so nothing here was released")
         .to_string();
 
+        // The refusal carries the spelling a caller holding a row arrives at,
+        // not the one git happened to answer with, so the expectation is
+        // canonical too — `/var` against `/private/var`, an 8.3 name against
+        // its long one (ISS-1193).
+        let names = moved.canonicalize().expect("the moved checkout is there");
         assert!(
-            err.contains(&*moved.to_string_lossy()),
+            err.contains(&*names.to_string_lossy()),
             "the refusal must name where git says the checkout now is: {err}"
         );
         assert!(
