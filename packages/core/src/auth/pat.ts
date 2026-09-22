@@ -91,9 +91,9 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
 
 /**
  * Order the writers that both mean to own the one live token called `name`.
- * `pat_user_name_uniq` is partial on `revoked_at is null` (ISS-1184), so two
- * callers collide only by both revoking the live row and both inserting. Taken
- * on the revoking transaction, and derived here so three sites share one lock.
+ * The key is the name ALONE, wider than `pat_user_name_uniq`'s `(user_id,
+ * name)`: `devices/workspace-credential.ts` revokes by name ACROSS holders, and
+ * a user-scoped key would leave that writer ordered against nothing (ISS-1184).
  */
 export async function lockPatName(tx: Tx, name: string): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
