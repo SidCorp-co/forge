@@ -36,7 +36,7 @@ describe('bucketOf', () => {
     expect(bucketOf('closed', true)).toBe('shipped');
   });
 
-  it('closed WITHOUT ever leaving the base merge state is closed_unshipped, not shipped', () => {
+  it('a row closed before ISS-1108, with no shipped evidence, is closed_unshipped', () => {
     expect(bucketOf('closed', false)).toBe('closed_unshipped');
   });
 
