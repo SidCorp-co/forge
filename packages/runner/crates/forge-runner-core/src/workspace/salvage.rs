@@ -192,6 +192,93 @@ pub async fn publish(worktree: &Path, branch: &str) -> Publication {
     publication_of(worktree).await
 }
 
+/// The namespace [`keep_at`] writes into, so a commit nothing else names is
+/// still findable by a person: `git for-each-ref refs/forge/kept`.
+const KEPT_REFS: &str = "refs/forge/kept";
+
+/// The refs that outlive `git worktree remove`. `--all` cannot stand here: it
+/// lists HEAD alongside the refs, which is the very thing being asked about, so
+/// it answers "nothing at risk" for every input including the one that is.
+const SURVIVING_REFS: [&str; 4] = ["--branches", "--tags", "--remotes", "--glob=refs/forge"];
+
+/// Whether the commits in a checkout outlive the checkout itself.
+///
+/// This is the question a release actually turns on, and it is a different one
+/// from [`Publication`]. A remote is one way for work to survive this box; a
+/// ref in this repository is another, and `git worktree remove` touches neither
+/// — it takes the directory and its administrative entry, and leaves every ref
+/// where it was. Asking it by sha rather than by branch name is what lets a
+/// detached HEAD answer at all (ISS-1188).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Retention {
+    /// Every commit at HEAD is reachable from a ref the repository keeps.
+    Kept,
+    /// This many commits are named by this checkout's HEAD and by nothing else.
+    AtRisk { commits: u32 },
+    /// The question could not be answered, in the reader's words.
+    Unknown { why: String },
+}
+
+pub async fn retention_of(worktree: &Path) -> Retention {
+    let mut argv = vec!["rev-list", "--count", "HEAD", "--not"];
+    argv.extend_from_slice(&SURVIVING_REFS);
+    let Some(out) = git(worktree, &argv).await else {
+        return Retention::Unknown {
+            why: "`git rev-list --count HEAD --not <refs>` could not be spawned".into(),
+        };
+    };
+    if !out.status.success() {
+        return Retention::Unknown {
+            why: format!(
+                "`git rev-list --count HEAD --not <refs>` failed: {}",
+                stderr_brief(&out)
+            ),
+        };
+    }
+    match stdout_trim(&out).parse::<u32>() {
+        Ok(0) => Retention::Kept,
+        Ok(commits) => Retention::AtRisk { commits },
+        Err(e) => Retention::Unknown {
+            why: format!("could not read the at-risk count: {e}"),
+        },
+    }
+}
+
+/// Give the commits at HEAD a name this repository keeps, and answer with it.
+///
+/// For the one shape nothing else covers: a detached checkout that committed.
+/// Its work is on no branch, so removing the checkout would leave the commits
+/// unnamed — and refusing the release over that is what wedged the run. A ref
+/// costs nothing, survives the removal, and is a place a person can look:
+/// `git for-each-ref refs/forge/kept`.
+///
+/// The name carries the commit as well as the run, so writing one can never
+/// take a name off another. A run refused, worked on by hand and released
+/// again would otherwise point its one ref at the new HEAD and leave the
+/// commits it had been keeping with no name at all — a preserve step that
+/// loses work is worse than one that never ran.
+pub async fn keep_at(worktree: &Path, run_id: &str) -> std::result::Result<String, String> {
+    let head = match git(worktree, &["rev-parse", "--short=12", "HEAD"]).await {
+        Some(out) if out.status.success() => stdout_trim(&out),
+        Some(out) => {
+            return Err(format!(
+                "`git rev-parse HEAD` failed, so there is no name to keep these commits under: {}",
+                stderr_brief(&out)
+            ))
+        }
+        None => return Err("`git rev-parse HEAD` could not be spawned".into()),
+    };
+    let name = format!("{KEPT_REFS}/{run_id}-{head}");
+    match git(worktree, &["update-ref", &name, "HEAD"]).await {
+        Some(out) if out.status.success() => Ok(name),
+        Some(out) => Err(format!(
+            "`git update-ref {name} HEAD` failed: {}",
+            stderr_brief(&out)
+        )),
+        None => Err(format!("`git update-ref {name} HEAD` could not be spawned")),
+    }
+}
+
 async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
     Command::new("git")
         .args(args)
@@ -543,6 +630,165 @@ mod tests {
             job_id: "job-1",
             attempt: 2,
             failure: "spend limit",
+        }
+    }
+
+    /// The retention question is what a release turns on, and every one of
+    /// these shapes is one the publication question could not answer at all.
+    mod retention {
+        use super::*;
+
+        /// A repo with NO remote configured, one commit, and one worktree on
+        /// its own branch — the shape every MCP-only storefront project has.
+        async fn local_only(tag: &str, branch: &str) -> (PathBuf, PathBuf) {
+            let root = std::env::temp_dir().join(format!(
+                "forge-retention-{tag}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            run(&root, &["init", "-b", "main"]).await;
+            run(&root, &["config", "user.email", "t@t"]).await;
+            run(&root, &["config", "user.name", "t"]).await;
+            std::fs::write(root.join("f.txt"), "one\n").unwrap();
+            run(&root, &["add", "."]).await;
+            run(&root, &["commit", "-m", "init"]).await;
+            let wt = add_worktree(&root, branch).await;
+            (root, wt)
+        }
+
+        #[tokio::test]
+        async fn a_repository_with_no_remote_still_keeps_its_own_commits() {
+            let (root, wt) = local_only("noremote", "ISS-43-listing").await;
+            std::fs::write(wt.join("new.txt"), "work\n").unwrap();
+            run(&wt, &["add", "-A"]).await;
+            run(&wt, &["commit", "-qm", "work"]).await;
+
+            assert_eq!(
+                publication_of(&wt).await,
+                Publication::Unpublished { commits: 2 },
+                "the publication question counts every commit here, because there is no remote \
+                 for any of them to be on — and no sequence of events can ever change that"
+            );
+            assert_eq!(
+                retention_of(&wt).await,
+                Retention::Kept,
+                "the branch is a ref this repository keeps, and `git worktree remove` does not \
+                 touch refs, so the commits outlive the checkout"
+            );
+            cleanup(&root);
+        }
+
+        #[tokio::test]
+        async fn a_detached_head_answers_the_question_a_branch_name_cannot() {
+            let (root, wt) = repo("detached", "ISS-6-detach").await;
+            std::fs::write(wt.join("new.txt"), "work\n").unwrap();
+            run(&wt, &["add", "-A"]).await;
+            run(&wt, &["commit", "-qm", "work"]).await;
+            run(&wt, &["switch", "--detach", "-q"]).await;
+
+            assert!(
+                git(&wt, &["symbolic-ref", "--short", "HEAD"])
+                    .await
+                    .is_some_and(|o| !o.status.success()),
+                "the premise: this checkout has no branch name to give anyone"
+            );
+            assert_eq!(
+                retention_of(&wt).await,
+                Retention::Kept,
+                "the commit is on `ISS-6-detach`, which the detachment did not move"
+            );
+            cleanup(&root);
+        }
+
+        #[tokio::test]
+        async fn a_commit_no_ref_holds_is_at_risk_until_keep_at_names_it() {
+            let (root, wt) = repo("atrisk", "ISS-7-loose").await;
+            run(&wt, &["switch", "--detach", "-q"]).await;
+            std::fs::write(wt.join("new.txt"), "work on no branch\n").unwrap();
+            run(&wt, &["add", "-A"]).await;
+            run(&wt, &["commit", "-qm", "loose"]).await;
+
+            assert_eq!(
+                retention_of(&wt).await,
+                Retention::AtRisk { commits: 1 },
+                "this commit is named by HEAD and by nothing else"
+            );
+
+            let name = keep_at(&wt, "run-1").await.expect("a ref can be written");
+            assert!(
+                name.starts_with("refs/forge/kept/run-1-"),
+                "the ref is named after the run, so a person can find it from the refusal: {name}"
+            );
+            assert_eq!(
+                retention_of(&wt).await,
+                Retention::Kept,
+                "the exact ref `keep_at` writes must be one the retention question negates — a \
+                 ref set that misses it would leave the release refusing work it had just saved"
+            );
+
+            let head = stdout_trim(&git(&wt, &["rev-parse", "HEAD"]).await.unwrap());
+            run(
+                &root,
+                &["worktree", "remove", "--force", &wt.to_string_lossy()],
+            )
+            .await;
+            assert!(!wt.exists(), "the checkout is gone");
+            let kept = stdout_trim(&git(&root, &["rev-parse", &name]).await.unwrap());
+            assert_eq!(
+                kept, head,
+                "and the commit is still named, by the ref written for it"
+            );
+            cleanup(&root);
+        }
+
+        #[tokio::test]
+        async fn keeping_a_second_commit_does_not_take_the_name_off_the_first() {
+            let (root, wt) = repo("twokeeps", "ISS-8-twice").await;
+            run(&wt, &["switch", "--detach", "-q"]).await;
+            std::fs::write(wt.join("first.txt"), "the first thing kept\n").unwrap();
+            run(&wt, &["add", "-A"]).await;
+            run(&wt, &["commit", "-qm", "first"]).await;
+            let first_head = stdout_trim(&git(&wt, &["rev-parse", "HEAD"]).await.unwrap());
+            let first = keep_at(&wt, "run-1").await.expect("the first is kept");
+
+            // The run was refused, somebody worked in the checkout by hand, and
+            // the next sweep tries again — which is exactly what the window and
+            // `run release` make possible.
+            std::fs::write(wt.join("second.txt"), "and then a second\n").unwrap();
+            run(&wt, &["add", "-A"]).await;
+            run(&wt, &["commit", "-qm", "second"]).await;
+            let second = keep_at(&wt, "run-1").await.expect("the second is kept");
+
+            assert_ne!(
+                first, second,
+                "one name for two commits would point at the later one and leave the earlier \
+                 with none — a preserve step that loses work is worse than one that never ran"
+            );
+            assert_eq!(
+                stdout_trim(&git(&wt, &["rev-parse", &first]).await.unwrap()),
+                first_head,
+                "the first ref must still name what it named"
+            );
+            assert_eq!(retention_of(&wt).await, Retention::Kept);
+            cleanup(&root);
+        }
+
+        #[tokio::test]
+        async fn a_path_git_cannot_answer_for_is_unknown_and_never_kept() {
+            let dir = std::env::temp_dir().join(format!(
+                "forge-retention-notarepo-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            assert!(
+                matches!(retention_of(&dir).await, Retention::Unknown { .. }),
+                "a directory that is no repository cannot answer, and not knowing is not Kept"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
         }
     }
 

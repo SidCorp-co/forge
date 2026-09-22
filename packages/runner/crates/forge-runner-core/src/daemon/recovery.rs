@@ -118,8 +118,17 @@ pub async fn reconcile(
             continue;
         }
         let state = close_loop::close(ledger, &run.run_id, sessions, leases).await?;
-        let owed_release =
-            agent_gone && run.boot_id == boot_id && state.session_terminal && !state.worktree_gone;
+        // A run whose release was decided terminal is NOT owed one. Its
+        // checkout is staying on disk by decision, so `worktree_gone` will
+        // never go true and the three marks alone would put it back on the
+        // release path every sweep for ever — which is the loop that held its
+        // leases in the first place (ISS-1188). The one act that puts it back
+        // is an operator's `run release`.
+        let owed_release = agent_gone
+            && run.boot_id == boot_id
+            && state.session_terminal
+            && !state.worktree_gone
+            && run.release_terminal_at.is_none();
         let owed_death_report = agent_gone
             && run.ended_by.is_none()
             && run.boot_id == boot_id
@@ -332,6 +341,52 @@ mod tests {
         .unwrap();
         let _ = std::fs::remove_dir_all(&wt);
         done
+    }
+
+    #[tokio::test]
+    async fn a_run_whose_release_was_given_up_on_is_never_handed_back_to_it() {
+        let (mut led, wt) = seeded_holding_a_tree(424_242, "boot-a");
+        led.note_release_refusal(
+            "run-1",
+            "the diff in the checkout was not preserved",
+            1_790_000_000,
+        )
+        .unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff in the checkout was not preserved",
+        )
+        .unwrap();
+
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &Gone([424_242].into_iter().collect()),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&wt);
+
+        assert_eq!(
+            done.len(),
+            1,
+            "the run is still read, so its leases keep being chased"
+        );
+        assert!(
+            !done[0].owed_release,
+            "its checkout is staying on disk by decision, so the three marks alone would put it \
+             back on the release path every sweep for ever — which is the loop that held its \
+             leases in the first place"
+        );
     }
 
     #[tokio::test]
