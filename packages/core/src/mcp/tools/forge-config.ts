@@ -36,14 +36,17 @@ import {
 
 /** What a write says it read, so the store can refuse one whose ground moved. */
 export const PIPELINE_CONFIG_BASE_MESSAGE =
-  '`pipelineConfig` is a patch now, and a patch says what it read: send `pipelineConfigBase` beside it, holding the `config.pipelineConfig` that `forge_config action=get` answered with. The patch itself names ONLY the keys you are changing (`null` deletes one) — a whole document sent here replaced every key it did not carry, which is how one settings section discarded another\'s saved change. So: `get`, then `update` with `{ pipelineConfig: { intakeGate: { enabled: true } }, pipelineConfigBase: <what get returned> }`.';
+  "`pipelineConfig` is a patch now, and a patch says what it read: send `pipelineConfigBase` beside it, holding the `config.pipelineConfig` that `forge_config action=get` answered with. The patch itself names ONLY the keys you are changing (`null` deletes one) — a whole document sent here replaced every key it did not carry, which is how one settings section discarded another's saved change. So: `get`, then `update` with `{ pipelineConfig: { intakeGate: { enabled: true } }, pipelineConfigBase: <what get returned> }`.";
 
 const inputSchema = z
   .object({
     action: z.enum(['get', 'update']).default('get'),
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
-    pipelineConfig: pipelineConfigPatchSchema.optional(),
+    // A record and not `pipelineConfigPatchSchema` itself: that schema ends in a transform,
+    // and a transform cannot be represented in the JSON Schema this tool publishes. The patch's
+    // own refusals run in the handler, where they answer by name.
+    pipelineConfig: z.record(z.string(), z.unknown()).optional(),
     pipelineConfigBase: z.record(z.string(), z.unknown()).optional(),
     plugins: pluginDesignationsPatchSchema.optional(),
   })
@@ -121,10 +124,16 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.pipelineConfigBase) {
           throw new Error(`BAD_REQUEST: CONFIG_PATCH_SHAPE: ${PIPELINE_CONFIG_BASE_MESSAGE}`);
         }
+        const patch = pipelineConfigPatchSchema.safeParse(input.pipelineConfig);
+        if (!patch.success) {
+          throw new Error(
+            `BAD_REQUEST: CONFIG_PATCH_INVALID: ${patch.error.issues.map((i) => i.message).join(' ')}`,
+          );
+        }
         try {
           await updatePipelineConfig({
             projectId: input.projectId,
-            patch: input.pipelineConfig,
+            patch: patch.data,
             base: input.pipelineConfigBase,
           });
         } catch (err) {

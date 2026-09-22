@@ -202,57 +202,57 @@ export function defaultStatesConfig(): NonNullable<StatesConfig> {
  * but are not surfaced as configurable controls.
  */
 const pipelineConfigObject = z.object({
-    enabled: z.boolean().optional(),
-    intakeGate: z
-      .object({
-        enabled: z.boolean(),
-        notify: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
-    githubIntake: z
-      .object({
-        enabled: z.boolean(),
-      })
-      .strict()
-      .optional(),
-    knowledgePromotion: z
-      .object({
-        enabled: z.boolean(),
-        candidatesPerRun: z.number().int().min(1).max(10).optional(),
-        minRetrievals: z.number().int().min(1).max(100).optional(),
-      })
-      .strict()
-      .optional(),
-    assistantWeekly: z
-      .object({
-        enabled: z.boolean(),
-        pinnedIssue: z.string().regex(/^[A-Z]{2,6}-\d+$/, 'an issue key such as ISS-1060'),
-        judgeProviderId: z.string().min(1),
-        judgeModel: z.string().min(1),
-        source: z.string().min(1).optional(),
-      })
-      .strict()
-      .optional(),
-    poolBacklog: poolBacklogSchema.optional(),
-    states: statesConfigSchema,
-    maxResumeTokens: z.number().int().min(0).optional(),
-    reopenPolicy: z
-      .object({
-        noProgressRounds: z.number().int().min(1).max(100),
-      })
-      .strict()
-      .optional(),
-    mcpServers: z.record(z.string(), z.unknown()).optional(),
-    autoProdDeploy: z.boolean().optional(),
-    /** ISS-1152 — deploy when a change LANDS, not when RELEASE is pressed. */
-    deployOnLanding: z.boolean().optional(),
-    lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
-    sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
-    [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),
-    statusEntryCriteria: z
-      .partialRecord(z.enum(issueStatuses), z.array(z.enum(ENTRY_CRITERION_KEYS)).min(1).max(16))
-      .optional(),
+  enabled: z.boolean().optional(),
+  intakeGate: z
+    .object({
+      enabled: z.boolean(),
+      notify: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
+  githubIntake: z
+    .object({
+      enabled: z.boolean(),
+    })
+    .strict()
+    .optional(),
+  knowledgePromotion: z
+    .object({
+      enabled: z.boolean(),
+      candidatesPerRun: z.number().int().min(1).max(10).optional(),
+      minRetrievals: z.number().int().min(1).max(100).optional(),
+    })
+    .strict()
+    .optional(),
+  assistantWeekly: z
+    .object({
+      enabled: z.boolean(),
+      pinnedIssue: z.string().regex(/^[A-Z]{2,6}-\d+$/, 'an issue key such as ISS-1060'),
+      judgeProviderId: z.string().min(1),
+      judgeModel: z.string().min(1),
+      source: z.string().min(1).optional(),
+    })
+    .strict()
+    .optional(),
+  poolBacklog: poolBacklogSchema.optional(),
+  states: statesConfigSchema,
+  maxResumeTokens: z.number().int().min(0).optional(),
+  reopenPolicy: z
+    .object({
+      noProgressRounds: z.number().int().min(1).max(100),
+    })
+    .strict()
+    .optional(),
+  mcpServers: z.record(z.string(), z.unknown()).optional(),
+  autoProdDeploy: z.boolean().optional(),
+  /** ISS-1152 — deploy when a change LANDS, not when RELEASE is pressed. */
+  deployOnLanding: z.boolean().optional(),
+  lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
+  sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
+  [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),
+  statusEntryCriteria: z
+    .partialRecord(z.enum(issueStatuses), z.array(z.enum(ENTRY_CRITERION_KEYS)).min(1).max(16))
+    .optional(),
 });
 
 export const pipelineConfigSchema = pipelineConfigObject.superRefine((cfg, ctx) => {
@@ -317,16 +317,11 @@ export function refuseUnknownMcpServerNames(raw: unknown, ctx: z.RefinementCtx):
   }
 }
 
-/** Every key this document has, which is every key a patch may name. */
 export const PIPELINE_CONFIG_KEYS = Object.keys(pipelineConfigObject.shape).sort();
 
 /**
- * A patch, not a document: it names the keys it changes and nothing else, and what the
- * schema above judges is the MERGED result rather than the fragment on the wire.
- *
- * A key this config does not have is refused rather than dropped. Under the old contract a
- * caller sent a whole document and an unknown key was silently discarded; under this one a
- * key is an instruction, and an instruction nothing can carry out must not answer `200`.
+ * A patch, not a document: it names the keys it changes, the schema above judges the MERGED
+ * result, and a key this config does not have is refused rather than dropped.
  */
 export const pipelineConfigPatchSchema = z
   .unknown()

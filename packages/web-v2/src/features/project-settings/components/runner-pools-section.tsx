@@ -10,10 +10,10 @@
 // Rendered as a stage × runner matrix so the answer to "where does Review
 // run?" is one row, and "what does this box run?" is one column.
 //
-// Save-island contract, same as session-groups-section.tsx: take the full
-// fetched config, edit one slice, resend the FULL `states` map (the PATCH
-// merge is wholesale-replace at that key) with every sibling key spread
-// through untouched.
+// Save contract: this section writes `states.<stage>.deviceIds` and nothing else. The
+// patch it sends names only the stages whose pool it moved, compared against the pools it
+// was seeded with — so a stage-permissions save from the same page load, which writes
+// other leaves of the same `states` map, overlaps at no path and both land (ISS-1170).
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -24,11 +24,11 @@ import {
   Icon,
   Skeleton,
 } from "@/design";
-import { formatPipelineConfigError } from "@/lib/api/error";
 import { useProjectRunners } from "@/features/runners/hooks";
 import type { ProjectRunner } from "@/features/runners/types";
 import { useUpdatePipelineConfig } from "../hooks";
-import { PIPELINE_STATUS_ROWS, type PipelineConfig } from "../types";
+import { PIPELINE_STATUS_ROWS, type PipelineConfig, sectionWrite } from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 
 type StatesMap = Record<string, Record<string, unknown>>;
 type PoolMap = Record<string, string[]>;
@@ -114,18 +114,15 @@ export function RunnerPoolsSection({
   }
 
   function save() {
-    const nextStates: StatesMap = {};
-    for (const [status, st] of Object.entries(asStates(config))) {
-      const base: Record<string, unknown> = st && typeof st === "object" ? { ...st } : {};
-      const ids = pools[status] ?? [];
-      if (ids.length > 0) base.deviceIds = ids;
-      else delete base.deviceIds;
-      nextStates[status] = base;
+    const before: StatesMap = {};
+    const after: StatesMap = {};
+    for (const status of new Set([...Object.keys(asStates(config)), ...Object.keys(pools)])) {
+      const read = seeded[status];
+      const want = pools[status] ?? [];
+      before[status] = read ? { deviceIds: read } : {};
+      after[status] = want.length > 0 ? { deviceIds: want } : {};
     }
-    for (const [status, ids] of Object.entries(pools)) {
-      if (ids.length > 0 && !(status in nextStates)) nextStates[status] = { deviceIds: ids };
-    }
-    update.mutate({ ...config, states: nextStates });
+    update.mutate(sectionWrite({ states: before }, { states: after }));
   }
 
   const saveDisabled = !dirty || staleIds.length > 0 || update.isPending;
@@ -252,9 +249,11 @@ export function RunnerPoolsSection({
           )}
 
           {update.isError && (
-            <Banner tone="danger" onDismiss={() => update.reset()}>
-              {formatPipelineConfigError(update.error)}
-            </Banner>
+            <SaveRefusedBanner
+              projectId={projectId}
+              error={update.error}
+              onDismiss={() => update.reset()}
+            />
           )}
 
           {update.isSuccess && !dirty && (

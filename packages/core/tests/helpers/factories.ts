@@ -164,11 +164,20 @@ export async function createTestProject(
     createdBy,
   };
 
+  // `environments` is named only where a caller seeds it: the migration suites stand at a
+  // schema that has no such column yet, and naming it unconditionally fails their INSERT.
+  const environments =
+    overrides.environments === undefined
+      ? { columns: sql``, values: sql`` }
+      : {
+          columns: sql`, environments`,
+          values: sql`, ${JSON.stringify(overrides.environments)}::jsonb`,
+        };
+
   await db.execute(sql`
-    INSERT INTO projects (id, slug, name, org_id, created_by, agent_config, environments)
+    INSERT INTO projects (id, slug, name, org_id, created_by, agent_config${environments.columns})
     VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.orgId}, ${project.createdBy},
-            ${JSON.stringify(overrides.agentConfig ?? {})}::jsonb,
-            ${JSON.stringify(overrides.environments ?? {})}::jsonb)
+            ${JSON.stringify(overrides.agentConfig ?? {})}::jsonb${environments.values})
   `);
 
   return project;

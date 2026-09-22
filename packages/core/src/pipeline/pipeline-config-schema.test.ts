@@ -55,39 +55,29 @@ describe('pipelineConfigPatchSchema', () => {
     expect(pipelineConfigPatchSchema.parse(patch)).toEqual(patch);
   });
 
-  it('strips every staged key it used to accept', () => {
-    const staged = {
-      enabled: true,
-      autoTriage: true,
-      autoClarify: true,
-      autoPlan: true,
-      autoCode: true,
-      autoReview: true,
-      autoTest: true,
-      autoFix: true,
-      autoRelease: true,
-      sessionGroups: { build: ['open'] },
-      mergeStates: { baseBranch: 'awaiting_release', liveBranch: 'awaiting_release' },
-      mode: 'staged',
-      states: { open: { enabled: true, sessionGroup: 'build', skipComplexities: ['xs'] } },
-    };
-    expect(pipelineConfigPatchSchema.parse(staged)).toEqual({
-      enabled: true,
-      states: { open: { enabled: true } },
-    });
+  // A patch key is an instruction, so a key this config does not have is refused by name
+  // rather than dropped: under the old whole-document contract an unknown key was silently
+  // discarded and the caller was answered 200 (ISS-1170).
+  it.each([
+    ['autoTriage', { enabled: true, autoTriage: true }],
+    ['sessionGroups', { sessionGroups: { build: ['open'] } }],
+    ['mode', { mode: 'staged' }],
+    ['runnerFallback', { enabled: true, runnerFallback: ['claude-code'] }],
+  ])('refuses the staged-era key `%s` by name', (key, patch) => {
+    const out = pipelineConfigPatchSchema.safeParse(patch);
+    expect(out.success).toBe(false);
+    const message = out.error?.issues.map((i) => i.message).join(' ') ?? '';
+    expect(message).toContain(`\`${key}\` is not a pipeline config key`);
   });
 
-  it('silently drops legacy `runnerFallback` field (unknown keys ignored)', () => {
-    const out = pipelineConfigPatchSchema.parse({
-      enabled: true,
-      runnerFallback: ['claude-code'],
-    });
-    expect(out).toEqual({ enabled: true });
+  it('names the keys it does have in that refusal', () => {
+    const out = pipelineConfigPatchSchema.safeParse({ runnerFallback: [] });
+    expect(out.error?.issues[0]?.message).toContain('intakeGate');
   });
 
-  it('drops the removed concurrency cap rather than echoing it back', () => {
-    const out = pipelineConfigPatchSchema.parse({ enabled: true, maxConcurrentIssues: 4 });
-    expect(out).toEqual({ enabled: true });
+  it('refuses the removed concurrency cap rather than echoing it back', () => {
+    const out = pipelineConfigPatchSchema.safeParse({ enabled: true, maxConcurrentIssues: 4 });
+    expect(out.success).toBe(false);
   });
 });
 
@@ -489,11 +479,12 @@ describe('statusEntryCriteria (ISS-959)', () => {
     expect(out.success).toBe(false);
   });
 
-  it('refuses the same unknown key through the PATCH schema the config route validates with', () => {
-    const out = pipelineConfigPatchSchema.safeParse({
-      statusEntryCriteria: { closed: ['deploy_receipt'] },
-    });
-    expect(out.success).toBe(false);
+  // The patch schema judges SHAPE, and the value above is shaped like a patch; what refuses
+  // it is the schema run over the merged document, which is where every value rule now lives.
+  it('takes the same unknown key through the PATCH schema and refuses it on the merge', () => {
+    const patch = { statusEntryCriteria: { closed: ['deploy_receipt'] } };
+    expect(pipelineConfigPatchSchema.safeParse(patch).success).toBe(true);
+    expect(pipelineConfigSchema.safeParse(patch).success).toBe(false);
   });
 
   it('leaves a document that declares nothing without the key at all', () => {

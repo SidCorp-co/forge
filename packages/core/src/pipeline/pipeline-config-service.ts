@@ -59,20 +59,12 @@ export interface UpdatePipelineConfigResult {
 }
 
 /**
- * Re-run the canonical schema over the MERGED document.
- *
- * The route validates the PATCH's shape; a cross-field rule
- * (`pipelineConfigSchema`'s `superRefine`) can only be violated by the pair
- * that ends up STORED, and a patch carrying one half of a forbidden pair
- * passes on its own. ISS-917 B5 is exactly that shape:
- * `{poolBacklog:{statuses:['draft']}}` then `{intakeGate:{enabled:true}}` are
- * each individually legal and together are the state the schema exists to make
- * unrepresentable.
- *
- * A stored document that is already invalid does not make every later write to
- * it impossible, but the amnesty reaches only the paths this patch did NOT
- * write: an error the caller has just introduced is its own, whatever else was
- * broken before it arrived.
+ * Re-run the canonical schema over the MERGED document. The route validates the PATCH's shape;
+ * a cross-field rule (`pipelineConfigSchema`'s `superRefine`) can only be violated by the pair
+ * that ends up STORED — `{poolBacklog:{statuses:['draft']}}` and `{intakeGate:{enabled:true}}`
+ * are each legal alone and together are what the schema exists to forbid (ISS-917 B5). An
+ * already-invalid stored document keeps its amnesty, but only at the paths this patch did NOT
+ * write: an error the caller just introduced is its own.
  */
 function assertMergedConfigValid(
   currentPipeline: Record<string, unknown>,

@@ -165,7 +165,7 @@ describe('two settings sections writing from one read', () => {
 });
 
 describe('a write whose ground moved', () => {
-  it('is refused, writes nothing, and leaves the first writer\'s value standing', async () => {
+  it("is refused, writes nothing, and leaves the first writer's value standing", async () => {
     const base = await readPipeline();
 
     const first = await call('PATCH', `/api/projects/${projectId}/pipeline-config`, {

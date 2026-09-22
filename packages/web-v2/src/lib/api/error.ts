@@ -106,6 +106,8 @@ export function formatPipelineConfigError(err: unknown): string {
   }
 
   switch (err.code) {
+    case 'CONFIG_STALE':
+      return formatSettingsWriteError(err);
     case 'CONFIG_CONFLICT':
       return err.message;
     case 'MISSING_SKILL_FOR_ENABLED_STAGE':
@@ -135,4 +137,93 @@ export function formatPipelineConfigError(err: unknown): string {
   }
 
   return formatApiError(err);
+}
+
+
+// ─── A save refused because the document moved under it ──────────────────────
+//
+// `CONFIG_STALE` / `ENVIRONMENTS_STALE` carry `details.conflicts`: one row per path the
+// write named, with the value the caller read and the value stored now. The person is owed
+// three things from that (ISS-1170): WHICH settings changed under them, that NOTHING was
+// written, and the re-read that makes the save possible.
+
+interface WriteConflict {
+  path: string;
+  base: unknown;
+  stored: unknown;
+}
+
+/** Dotted paths, as the settings screen labels them. Longest prefix wins. */
+const SETTING_LABELS: [prefix: string, label: string][] = [
+  ['states.', 'Stage settings'],
+  ['intakeGate', 'Intake gate'],
+  ['poolBacklog', 'Master backlog'],
+  ['knowledgePromotion', 'Knowledge promotion'],
+  ['assistantWeekly', 'Assistant weekly reading'],
+  ['mcpServers', 'MCP servers'],
+  ['plugins', 'Plugins'],
+  ['enabled', 'Pipeline enabled'],
+  ['live', 'Live'],
+  ['preview', 'Preview'],
+  ['testCredentials', 'Test credentials'],
+  ['limits', 'Limits'],
+];
+
+const STAGE_SETTING_LABELS: Record<string, string> = {
+  deviceIds: 'Runner pools',
+  allowedTools: 'Stage permissions',
+  disallowedTools: 'Stage permissions',
+  mcpServers: 'Stage permissions',
+};
+
+/** A stage as the SETTINGS rows name it, which is not what the auto-stage toggles are
+ *  called: mirrors `PIPELINE_STATUS_ROWS` in `features/project-settings/types.ts`. */
+const SETTINGS_STAGE_LABELS: Record<string, string> = {
+  open: 'Queued',
+  in_progress: 'Running',
+  needs_info: 'Needs a human',
+  awaiting_release: 'Awaiting release',
+};
+
+/** `states.open.deviceIds` → "Runner pools (Queued)"; `intakeGate.enabled` → "Intake gate". */
+export function settingLabel(path: string): string {
+  const parts = path.split('.');
+  if (parts[0] === 'states' && parts.length >= 3) {
+    const leaf = STAGE_SETTING_LABELS[parts[2]] ?? 'Stage settings';
+    return `${leaf} (${SETTINGS_STAGE_LABELS[parts[1]] ?? parts[1]})`;
+  }
+  for (const [prefix, label] of SETTING_LABELS) {
+    if (path === prefix || path.startsWith(prefix)) return label;
+  }
+  return path;
+}
+
+export function writeConflicts(err: unknown): WriteConflict[] {
+  if (!(err instanceof ApiError)) return [];
+  if (err.code !== 'CONFIG_STALE' && err.code !== 'ENVIRONMENTS_STALE') return [];
+  const rows = (err.details as { conflicts?: unknown } | undefined)?.conflicts;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter(
+    (row): row is WriteConflict =>
+      typeof row === 'object' && row !== null && typeof (row as WriteConflict).path === 'string',
+  );
+}
+
+function listOf(names: string[]): string {
+  const unique = [...new Set(names)];
+  if (unique.length <= 1) return unique[0] ?? 'These settings';
+  return `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}`;
+}
+
+/**
+ * What a refused settings save reads as on screen: the settings that moved, in the
+ * screen's own names, and that nothing was written. The re-read is an action beside this
+ * sentence rather than an instruction inside it.
+ */
+export function formatSettingsWriteError(err: unknown): string {
+  const conflicts = writeConflicts(err);
+  if (conflicts.length === 0) return formatApiError(err);
+  const names = listOf(conflicts.map((c) => settingLabel(c.path)));
+  const changed = conflicts.length === 1 ? 'was changed' : 'were changed';
+  return `${names} ${changed} by someone else while this page was open. Nothing was saved — your edits are still here.`;
 }

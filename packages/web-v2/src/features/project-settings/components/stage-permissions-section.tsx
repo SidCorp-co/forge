@@ -4,7 +4,6 @@
 import { useState } from "react";
 import {
   Badge,
-  Banner,
   Button,
   CardTitle,
   Checkbox,
@@ -12,7 +11,6 @@ import {
   MonoTag,
 } from "@/design";
 import { providerForMcpServerName } from "@/features/integrations/providers/registry";
-import { formatPipelineConfigError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import {
   denylistBaseline,
@@ -24,11 +22,12 @@ import {
   PIPELINE_STATUS_ROWS,
   pipelineStatusLabel,
   summarizeStageConfig,
-  withStagePatch,
+  sectionWrite,
   type PipelineConfig,
   type PipelineStateConfig,
   type StagePermissionRow,
 } from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 import { ToolListEditor } from "./tool-list-editor";
 
 function ToolChips({ tools }: { tools: string[] }) {
@@ -105,13 +104,20 @@ function StageEditor({
     snapshot(denied, allowed, mcp) !==
     snapshot(stored.disallowedTools ?? [], stored.allowedTools ?? [], stored.mcpServers ?? {});
 
+  // This stage's three permission leaves, and no other key of the document: a runner-pool
+  // save from the same page load writes `states.<stage>.deviceIds`, which is not among them.
   function save() {
-    const patch: PipelineStateConfig = {
+    const before: PipelineStateConfig = {
+      disallowedTools: stored.disallowedTools,
+      allowedTools: stored.allowedTools,
+      mcpServers: stored.mcpServers,
+    };
+    const after: PipelineStateConfig = {
       disallowedTools: denied.length > 0 ? denied : undefined,
       allowedTools: allowed.length > 0 ? allowed : undefined,
       mcpServers: Object.keys(mcp).length > 0 ? mcp : undefined,
     };
-    update.mutate(withStagePatch(config, status, patch));
+    update.mutate(sectionWrite({ states: { [status]: before } }, { states: { [status]: after } }));
   }
 
   return (
@@ -173,9 +179,11 @@ function StageEditor({
       </div>
 
       {update.isError && (
-        <Banner tone="danger" onDismiss={() => update.reset()}>
-          {formatPipelineConfigError(update.error)}
-        </Banner>
+        <SaveRefusedBanner
+          projectId={projectId}
+          error={update.error}
+          onDismiss={() => update.reset()}
+        />
       )}
 
       <Button

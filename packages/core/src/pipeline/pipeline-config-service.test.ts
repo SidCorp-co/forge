@@ -198,9 +198,7 @@ describe('updatePipelineConfig — CONFIG_STALE', () => {
       name: 'PipelineConfigError',
       code: 'CONFIG_STALE',
       details: {
-        conflicts: [
-          { path: 'states.open.allowedTools', base: ['Read'], stored: ['Grep'] },
-        ],
+        conflicts: [{ path: 'states.open.allowedTools', base: ['Read'], stored: ['Grep'] }],
       },
     });
     expect(dbExecute).not.toHaveBeenCalled();

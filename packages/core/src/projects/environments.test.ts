@@ -167,3 +167,83 @@ describe('environmentsPatchSchema — the catchall, at every level', () => {
     expect(parsed.testCredentials[0]?.credKnob).toBe('c');
   });
 });
+
+// The value rules the environments document holds, asserted on the schema that holds them.
+// They were route tests on `PATCH /api/projects/:id` until that door stopped taking this
+// document at all; the door itself is asserted in `routes.test.ts`, and the write contract
+// over the new one in `tests/integration/settings-write-contract-e2e.test.ts` (ISS-1170).
+describe('environmentsPatchSchema — the values it refuses, and the field each refusal names', () => {
+  const REFUSED_ENVIRONMENTS: [string, Record<string, unknown>, string][] = [
+    ['a preview.url that is not a URL', { preview: { url: 'nope' } }, 'preview'],
+    ['a preview.apiUrl that is not a URL', { preview: { apiUrl: 'nope' } }, 'apiUrl'],
+    ['a live.url that is not a URL', { live: { url: 'nope' } }, 'live'],
+    ['a live.apiUrl that is not a URL', { live: { apiUrl: 'nope' } }, 'apiUrl'],
+    ['a live.commitUrl that is not a URL', { live: { commitUrl: 'nope' } }, 'commitUrl'],
+    [
+      'a preview.urls row missing its label',
+      { preview: { urls: [{ url: 'https://x.example.com' }] } },
+      'label',
+    ],
+    ['a preview.urls row missing its url', { preview: { urls: [{ label: 'X' }] } }, 'url'],
+    [
+      'a preview.urls row whose label is whitespace only',
+      { preview: { urls: [{ label: '   ', url: 'https://x.example.com' }] } },
+      'label',
+    ],
+    [
+      'a testCredentials row missing its label',
+      { testCredentials: [{ username: 'u', password: 'p' }] },
+      'label',
+    ],
+    [
+      'a testCredentials row missing its username',
+      { testCredentials: [{ label: 'A', password: 'p' }] },
+      'username',
+    ],
+    [
+      'a testCredentials row missing its password',
+      { testCredentials: [{ label: 'A', username: 'u' }] },
+      'password',
+    ],
+    [
+      'a testCredentials row whose username is not a string',
+      { testCredentials: [{ label: 'A', username: 7, password: 'p' }] },
+      'username',
+    ],
+    [
+      'more than 50 preview.urls rows',
+      {
+        preview: {
+          urls: Array.from({ length: 51 }, (_, i) => ({
+            label: `L${i}`,
+            url: 'https://x.example.com',
+          })),
+        },
+      },
+      'urls',
+    ],
+    [
+      'more than 50 testCredentials rows',
+      {
+        testCredentials: Array.from({ length: 51 }, (_, i) => ({
+          label: `L${i}`,
+          username: 'u',
+          password: 'p',
+        })),
+      },
+      'testCredentials',
+    ],
+    ['a limits longer than 8000 characters', { limits: 'x'.repeat(8001) }, 'limits'],
+    [
+      'a commitPath longer than 200 characters',
+      { live: { commitPath: 'x'.repeat(201) } },
+      'commitPath',
+    ],
+  ];
+
+  it.each(REFUSED_ENVIRONMENTS)('refuses %s', (_label, environments, names) => {
+    const out = environmentsPatchSchema.safeParse(environments);
+    expect(out.success).toBe(false);
+    expect(out.error?.issues.flatMap((i) => i.path.map(String)).join('.')).toContain(names);
+  });
+});

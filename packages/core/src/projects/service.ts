@@ -212,7 +212,6 @@ export async function readProjectSummary(projectId: string) {
   return row ?? null;
 }
 
-
 export async function updateProject(projectId: string, updates: Record<string, unknown>) {
   const [row] = await db.update(projects).set(updates).where(eq(projects.id, projectId)).returning({
     id: projects.id,
