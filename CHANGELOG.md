@@ -3072,6 +3072,10 @@
 - **Two tool descriptions that told you to call something the wrong way have been corrected.** One
   named the project list as an action on another tool; the other offered a filter that did not exist.
 
+- **A refusal while minting a GitHub token no longer sends you to check repository access.**
+  Minting needs no repository permission at all; the message now names the installation's own
+  state instead — suspended, or its access revoked.
+
 - **A landed change can now be deployed straight away, rather than waiting for an unrelated
   release to carry it.** Turn it on under Coolify settings; who may deploy to production is
   unchanged.

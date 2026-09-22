@@ -20,6 +20,12 @@ const refused = (over: Partial<ConstructorParameters<typeof GitHubPublishError>[
     553,
   );
 
+const mint = (over: Partial<ConstructorParameters<typeof GitHubPublishError>[0]> = {}) =>
+  describeMergeRefusal(
+    new GitHubPublishError({ op: 'mint', status: 403, message: 'forbidden', ...over }),
+    553,
+  );
+
 const NOT_ACCESSIBLE = '{"message":"Resource not accessible by integration"}';
 
 describe('a merge refused on permissions names what a merge needs', () => {
@@ -145,5 +151,53 @@ describe('the statuses the merge path answers for itself are unchanged', () => {
     expect(refusal.op).toBe('merge');
     expect(refusal.message).toContain('merging the pull request');
     expect(refusal.message).toContain('socket hang up');
+  });
+});
+
+// ISS-1182: a mint needs no repository permission at all — it posts to
+// /app/installations/{id}/access_tokens, which names no repository — so a
+// refusal of it must never send the reader at repository coverage. Settled by
+// exact equality on the full rendered message, not a fragment, so an extra
+// wrong sentence tacked onto an otherwise-correct one still fails the case.
+const MINT_PERMISSION_REFUSAL =
+  'GitHub refused Forge while minting the installation token because the installation itself ' +
+  'refused it: minting a token needs no repository permission, so coverage of any repository is ' +
+  'not why. What is left, short of removal — which GitHub answers 404 for, and is handled ' +
+  'separately — is the state of the installation itself: it may be suspended, or its access may ' +
+  'have been revoked some other way. Open the installation on GitHub and act on what it says ' +
+  'there — reactivate it if it is suspended, or reinstall it if its access was revoked.';
+
+const MINT_AMBIGUOUS_REFUSAL =
+  'GitHub answered 403 while minting the installation token and sent nothing naming a cause, so ' +
+  'nothing here is ruled out. The readings worth trying first: the installation may be ' +
+  'suspended, its access may have been revoked some other way short of removal, or this may be a ' +
+  'secondary rate limit — minting needs no repository permission, so coverage of this repository ' +
+  'is not among them. Read the installation on GitHub, then retry after a pause.';
+
+describe('a mint refused on permission names only what can refuse a mint', () => {
+  it('renders the exact message, naming the installation and not repository coverage', () => {
+    const refusal = mint({ detail: NOT_ACCESSIBLE });
+    expect(refusal.cause).toBe('permission-missing');
+    expect(refusal.message).toBe(MINT_PERMISSION_REFUSAL);
+  });
+
+  it('names no repository coverage as a cause', () => {
+    const refusal = mint({ detail: NOT_ACCESSIBLE });
+    expect(refusal.message).not.toContain('covers this repository');
+    expect(refusal.message).not.toContain('active and still covers');
+  });
+});
+
+describe('a mint 403 GitHub did not explain rules out repository coverage too', () => {
+  const unexplainedMint = () => mint({ headers: headers({ 'x-ratelimit-remaining': '4999' }) });
+
+  it('renders the exact message, naming the installation and not repository coverage', () => {
+    const refusal = unexplainedMint();
+    expect(refusal.cause).toBe('access-refused');
+    expect(refusal.message).toBe(MINT_AMBIGUOUS_REFUSAL);
+  });
+
+  it('names no repository coverage among the readings', () => {
+    expect(unexplainedMint().message).not.toContain('may no longer cover this repository');
   });
 });
