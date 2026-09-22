@@ -4,7 +4,15 @@ import { bodyRefusalHttp, prepareBodyOrThrow, rethrowBodyInvalid } from '../body
 
 export const COMMENT_BODY_MAX_CHARS = 64_000;
 
-export const commentBodyField = z.string().trim().min(1).max(COMMENT_BODY_MAX_CHARS);
+const BLANK_BODY =
+  'the comment body is whitespace only — write the sentence somebody is meant to read';
+
+/** Stored as written: leading whitespace decides what markdown draws, so this door decides none of it. */
+export const commentBodyField = z
+  .string()
+  .max(COMMENT_BODY_MAX_CHARS)
+  .refine((body) => body.trim().length > 0, { message: BLANK_BODY });
+
 const formatField = z.enum(BODY_FORMATS).optional();
 
 export const commentCreateSchema = z

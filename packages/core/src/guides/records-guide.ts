@@ -97,6 +97,11 @@ carry a record either carries one or is told it does not.
 A fence written inside an enclosing fence is that fence's content and opens nothing, so a comment
 quoting either shape as an example stays ordinary prose.
 
+A fence is read only where it opens at the left margin, and the body is stored exactly as it was
+written, so where you put the block is where it is read. Indent it at all — the four spaces of an
+indented code block, or the one to three markdown would still call a fence — and it is prose, as a
+blockquoted one is. An example belongs indented; a record does not.
+
 ### When the rule refuses and when it only warns
 
 This section is about \`record-in-comment\`, the rule for a fence that DID parse. It does not

@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { MessageRefusedError } from '../messaging/contract.js';
+import { commentBodyField } from './body-input.js';
 import { screenRecordFence } from './screen.js';
 
 const FENCE = '```';
@@ -70,5 +71,61 @@ describe('a body the door has nothing to say about', () => {
   it('passes a fence quoted inside another fence through as prose', () => {
     const quoted = ['````', `${FENCE}forge-record`, 'criterion: 13', FENCE, '````'].join('\n');
     expect(screenRecordFence(quoted, false)).toEqual([]);
+  });
+});
+
+/** The body as the route hands it to the door, which is what the door actually judges. */
+const asDelivered = (body: string): string => commentBodyField.parse(body);
+
+const blockAt = (indent: string): string =>
+  [`${indent}${FENCE}forge-record`, `${indent}criterion: 6`, `${indent}${FENCE}`].join('\n');
+
+describe('a fence the author indented', () => {
+  it('stays prose when the indented block is the first thing in the body', () => {
+    for (const indent of [' ', '  ', '   ', '    ']) {
+      expect(screenRecordFence(asDelivered(blockAt(indent)), false)).toEqual([]);
+    }
+  });
+
+  it('stays prose for a client that declared it writes records elsewhere', () => {
+    for (const indent of [' ', '  ', '   ', '    ']) {
+      expect(screenRecordFence(asDelivered(blockAt(indent)), true)).toEqual([]);
+    }
+  });
+
+  it('stays prose when the same block carries a kind on its opening fence', () => {
+    const body = [
+      `    ${FENCE}forge-record: verdict · contract 1`,
+      '    criterion: 13',
+      '    verdict: skipped',
+      `    ${FENCE}`,
+    ].join('\n');
+    expect(screenRecordFence(asDelivered(body), false)).toEqual([]);
+  });
+
+  it('stays prose when prose stands in front of it', () => {
+    const body = ['Like this:', '', blockAt('    ')].join('\n');
+    expect(screenRecordFence(asDelivered(body), false)).toEqual([]);
+  });
+
+  it('stays prose on a blockquote line', () => {
+    const body = [`> ${FENCE}forge-record`, '> criterion: 6', `> ${FENCE}`].join('\n');
+    expect(screenRecordFence(asDelivered(body), false)).toEqual([]);
+  });
+});
+
+describe('a record fence at the left margin', () => {
+  it('is still read when the body opens with blank lines', () => {
+    const body = ['', '', `${FENCE}forge-record: verdict · contract 1`, 'criterion: 6', FENCE].join(
+      '\n',
+    );
+    expect(screenRecordFence(asDelivered(body), false)).toHaveLength(1);
+  });
+
+  it('is still refused when it is never closed', () => {
+    const body = ['', `${FENCE}forge-record`, 'criterion: 6'].join('\n');
+    expect(refusalFrom(asDelivered(body), false).refusals.map((r) => r.rule)).toContain(
+      'record-fence-shape',
+    );
   });
 });
