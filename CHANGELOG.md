@@ -3069,15 +3069,9 @@
 
 ### Fixed
 
-- **A finished run that was working in the repository's own checkout now ends, instead of holding
-  its work for as long as the machine lives.** Such a run asked to be given a checkout back that
-  was never lent to it, and the answer — that this one cannot be handed back, because it is the
-  copy of the project everything else on the machine is using — was retried every few seconds
-  forever rather than read as final. Nothing about the run was unfinished; it simply could never
-  be filed as done, so the issues it had taken stayed taken and no other machine could pick them
-  up. Those issues now come back within seconds of the run finishing. The checkout itself is left
-  exactly as it was found, down to work somebody had started and not yet saved, and the machine's
-  own log says once whether it handed a checkout back or kept one.
+- **A finished run that was working in the project's own copy now ends instead of holding its
+  issues forever.** Those issues come back within seconds, and the copy is left untouched,
+  including unsaved work.
 
 - **One project that cannot be set up on a machine no longer stops the rest.** The others go
   through as normal, and the failing one is named with its reason instead of an error code with no
