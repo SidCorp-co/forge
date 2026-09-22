@@ -684,16 +684,20 @@ published turns it red. Prose already orphaned at the base revision is therefore
 an entry may still be corrected with its paragraphs left as they are, which is what ISS-1112's
 citation sweep needs.
 
-**The exemption is asked of the candidate edges, not of the file and not of the matching.** Not of
-the file, because a set of every orphaned text in the record is transferable: an unrelated published
-bullet whose paragraph holds the same words would exempt a fresh truncation elsewhere, and a change
-could arrange that. Not of the matching either, because the matching maximises pairs and then
-similarity and knows nothing of paragraphs: where two corrections' CROSS pairing scores higher than
-their own — two entries sharing most of their words, each taking two of the other's — both would be
-handed the wrong predecessor, both refused, and the valid pairing is unreachable once they are
-excluded. So `correctionEdges` is asked instead, and a correction is exempt where ANY predecessor
-the rule admits for it already carried exactly that prose. Both bounds and the span still apply, so
-the set it can borrow from is the set it could have been a correction of. What is NOT covered: prose orphaned under a `###` heading with no
+**The exemption is an edge the pairing runs over, and the pairing stays one-to-one.** Three readings
+of "already published" were tried and two of them were holes, so the shape is worth stating in full:
+
+| Read as | Hole |
+|---|---|
+| a set of every orphaned text in the record | transferable — an unrelated published bullet whose paragraph holds the same words exempts a fresh truncation elsewhere, and a change can arrange that |
+| a test applied to the pairing once it is chosen | the matching maximises pairs and then similarity and knows nothing of paragraphs, so two corrections whose CROSS pairing scores higher are each handed the other's predecessor, both refused, and the valid pairing is unreachable once they are excluded |
+| any predecessor the rule admits, asked of the edges | pairwise feasibility is not a joint assignment: two added entries both borrow the one predecessor's paragraph, the matching pairs one, and the other is a brand-new unpaired entry whose prose is dropped in silence |
+
+What holds is the third question asked of the *assignment* rather than of edge existence.
+`correctionEdges` is split out of `pairEdits`, an edge from an orphan-carrying added entry survives
+only where that removed entry already carried exactly that prose, and the matching is run over what
+is left. An orphan-carrying entry the matching does not pair is refused — so one predecessor exempts
+one correction, which is the same one-to-one rule corrections already answer to. What is NOT covered: prose orphaned under a `###` heading with no
 bullet above it at all — the record holds none, and there is no entry to attach it to.
 
 **What the pairing does not claim.** A change inside the span can still reverse what an entry says —

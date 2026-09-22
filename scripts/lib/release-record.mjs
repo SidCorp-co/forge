@@ -248,7 +248,10 @@ function augmentOnce({ adjacency, weightOf, matchedTo, matchedFrom, leftCount, r
  * paired entry answers to, which is the larger of the budget and what it replaced.
  */
 export function pairEdits(removed, added) {
-  const edges = correctionEdges(removed, added);
+  return matchEdges(correctionEdges(removed, added), removed, added);
+}
+
+function matchEdges(edges, removed, added) {
   const matchedFrom = bestMatching(edges, removed.length, added.length);
   const paired = new Map();
   for (const [right, after] of added.entries()) {
@@ -283,33 +286,16 @@ function correctionEdges(removed, added) {
 
 /**
  * cm:guard prose a blank line cut off from its bullet is NOT part of the entry — `parseRecord`
- * drops it and the feed never renders it — so an entry THIS CHANGE adds that carries such prose is
- * named rather than read as a shorter entry that happens to pair with what it truncated.
- *
- * The one exemption is prose ALREADY ORPHANED AFTER AN ENTRY THIS ONE COULD BE A CORRECTION OF, and
- * it is asked of the EDGES rather than of the matching or of the file. Of the file, because a set of
- * every orphaned text in the record is transferable: an unrelated bullet whose published paragraph
- * holds the same words would exempt a fresh truncation elsewhere. Of the matching, because the
- * matching optimises similarity and knows nothing of paragraphs — two corrections whose cross
- * pairing scores higher would each be handed the other's predecessor and both refused, with the
- * valid pairing unreachable afterwards. The edges are every predecessor the rule admits, so a
- * correction is exempt where ANY of them already carried exactly this prose.
+ * drops it — so an added entry carrying such prose is refused unless the published entry it PAIRS
+ * WITH already carried exactly it. Compatibility is an edge the one-to-one matching runs over,
+ * never a test on edge existence or on a matching already chosen; scripts/README.md holds the two
+ * holes each looser reading opened.
  */
-function orphanedEntries(now, was, added, removed, edges) {
-  const sources = new Map();
-  for (const { left, right } of edges) {
-    if (!sources.has(right)) sources.set(right, []);
-    sources.get(right).push(removed[left]);
-  }
-  const out = [];
-  for (const [right, entry] of added.entries()) {
-    const prose = now.orphans.get(entry);
-    if (prose === undefined) continue;
-    const from = sources.get(right) ?? [];
-    if (from.some((before) => was.orphans.get(before) === prose)) continue;
-    out.push({ entry, prose });
-  }
-  return out;
+function orphanCompatible(now, was, removed, added) {
+  return ({ left, right }) => {
+    const prose = now.orphans.get(added[right]);
+    return prose === undefined || was.orphans.get(removed[left]) === prose;
+  };
 }
 
 const opening = (text, words) => {
@@ -385,7 +371,11 @@ export function judge({ head, base, amnesty }) {
   const removed = [...was.entries].filter((entry) => !now.entries.has(entry));
   const added = [...now.entries].filter((entry) => !was.entries.has(entry));
 
-  const orphaned = orphanedEntries(now, was, added, removed, correctionEdges(removed, added));
+  const edges = correctionEdges(removed, added).filter(orphanCompatible(now, was, removed, added));
+  const edited = matchEdges(edges, removed, added);
+  const orphaned = added
+    .filter((entry) => now.orphans.has(entry) && !edited.has(entry))
+    .map((entry) => ({ entry, prose: now.orphans.get(entry) }));
   for (const { entry, prose } of orphaned) {
     violations.push({
       rule: 'structure',
@@ -398,12 +388,6 @@ export function judge({ head, base, amnesty }) {
         `own. Only prose this change added is refused here; what the record already carried stands.`,
     });
   }
-
-  const split = new Set(orphaned.map((o) => o.entry));
-  const edited = pairEdits(
-    removed,
-    added.filter((entry) => !split.has(entry)),
-  );
 
   const unpardoned = lostEntries(removed, edited, forgiven(amnesty));
   if (unpardoned.length > 0) {

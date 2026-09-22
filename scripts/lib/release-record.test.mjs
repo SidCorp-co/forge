@@ -625,6 +625,16 @@ describe('an entry a blank line split in two', () => {
     expect(verdict.code).toBe(0);
   });
 
+  it("lets only one added entry borrow a predecessor's published paragraph, never two", () => {
+    const shared = prose(30, 'c');
+    const orphan = prose(10, 'p');
+    const base = `# Changelog\n\n## [Unreleased]\n\n- ${shared} a0 a1 a2\n\n  ${orphan}\n`;
+    const head = `# Changelog\n\n## [Unreleased]\n\n- ${shared} a0 a1 x\n\n  ${orphan}\n\n- ${shared} a0 a1 y\n\n  ${orphan}\n`;
+    const verdict = judge({ head, base, amnesty: null });
+    expect(verdict.code).toBe(1);
+    expect(structureOf(verdict)).toHaveLength(1);
+  });
+
   it('refuses a brand-new entry split the same way, which loses nothing but records less than it says', () => {
     const head = `${BASE}\n- ${prose(20, 'n')}\n\n${prose(10, 'm')}\n`;
     const verdict = judge({ head, base: BASE, amnesty: null });
