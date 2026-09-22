@@ -262,8 +262,11 @@ fn could_be_filed_as(have: &std::ffi::OsStr, want: &std::ffi::OsStr) -> bool {
 /// whole subject here is a path that is not. So the longest ANCESTOR that does
 /// exist is canonicalised and the rest re-attached: a checkout that has gone
 /// still sits under a repository that has not, and that is enough to settle
-/// the spelling of everything above it. A path with no existing ancestor at
-/// all is returned as it came, because nothing was found to settle it with.
+/// the spelling of everything above it. Only a RELATIVE path can run out of
+/// ancestors — every absolute one bottoms out at a root that exists, and on
+/// Windows that root is the current drive's, so `/x` there resolves against it
+/// exactly as the platform means it to. A relative path is returned as it
+/// came, because nothing was found to settle it with.
 ///
 /// The spelling this returns is the one that COMPARES, so it is also the one
 /// the refusals carry. On Windows that is the verbatim `\\?\` form, which is
@@ -982,13 +985,40 @@ mod tests {
             "the tail below the last existing ancestor is re-attached whole, not dropped"
         );
 
-        let nowhere = Path::new("/forge-no-such-root-1193/x/y");
+        // Only a RELATIVE path can run out of ancestors. An absolute one always
+        // bottoms out at a root that exists — including on Windows, where `/x`
+        // is the CURRENT DRIVE's `x` and canonicalises against it, which is the
+        // platform's own meaning and not a failure to resolve. Asserting the
+        // fallback over `/no-such-root/x` passed on Linux for the wrong reason
+        // (re-attaching under `/` reproduces the input) and went red on Windows
+        // for the right one.
+        let relative = Path::new("forge-no-such-dir-1193/x/y");
         assert_eq!(
-            resolved_for_compare(nowhere),
-            nowhere.to_path_buf(),
-            "and a path with no ancestor to settle it against comes back as it came, rather \
-             than being reported as something it was not"
+            resolved_for_compare(relative),
+            relative.to_path_buf(),
+            "a path with no ancestor to settle it against comes back as it came, rather than \
+             being reported as something it was not"
         );
+
+        // Whatever it returns, it returns again: a spelling that two callers
+        // are supposed to meet at is worth nothing if it moves when it is read
+        // twice. This holds on every platform and over every branch above,
+        // including the one no assertion here can reach on its own.
+        for p in [
+            &real,
+            &link,
+            &real.join(".worktrees/ISS-3"),
+            &link.join("a/b/c"),
+            relative,
+        ] {
+            let once = resolved_for_compare(p);
+            assert_eq!(
+                resolved_for_compare(&once),
+                once,
+                "resolving {} twice must not move it",
+                p.display()
+            );
+        }
         let _ = std::fs::remove_dir_all(&base);
     }
 
