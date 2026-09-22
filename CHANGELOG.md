@@ -3069,6 +3069,10 @@
 
 ### Fixed
 
+- **Splitting a release note in two with a blank line is now refused instead of quietly losing the
+  second half.** The words after the break reached no reader, and the shortened note passed as a
+  trim of what it replaced.
+
 - **An issue can now be named by its short key everywhere the issue tools take one.** They
   answered with that key and refused it back. A key naming nothing is now refused saying which.
 
