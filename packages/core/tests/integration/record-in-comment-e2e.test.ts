@@ -328,3 +328,47 @@ describe('the character cap is not the lever', () => {
     expect(res.status).toBe(201);
   });
 });
+
+describe('an indented block the body opens with', () => {
+  const INDENTS = [' ', '  ', '   ', '    '];
+
+  const blockAt = (indent: string): string =>
+    [`${indent}${FENCE}forge-record`, `${indent}criterion: 3`, `${indent}${FENCE}`].join('\n');
+
+  it('is written 201 whatever the caller declared', async () => {
+    const { issueId, jwt } = await seed();
+    for (const indent of INDENTS) {
+      for (const capabilities of [undefined, 'record-route']) {
+        const res = await post(issueId, jwt, blockAt(indent), capabilities);
+        expect(res.status).toBe(201);
+        expect((await res.json()) as Written).not.toHaveProperty('warnings');
+      }
+    }
+  });
+
+  it('is stored with the indent its author wrote', async () => {
+    const { issueId, jwt } = await seed();
+    for (const indent of INDENTS) await post(issueId, jwt, blockAt(indent));
+    const rows = await harness.db.execute<{ body: string }>(
+      sql`SELECT body FROM comments WHERE issue_id = ${issueId} ORDER BY created_at, id`,
+    );
+    expect((rows as Array<{ body: string }>).map((r) => r.body)).toEqual(INDENTS.map(blockAt));
+  });
+
+  it('is read as a record once the author moves it to the left margin', async () => {
+    const { issueId, jwt } = await seed();
+    const res = await post(issueId, jwt, blockAt(''), 'record-route');
+    expect(res.status).toBe(400);
+    const refused = (await res.json()) as Refused;
+    expect(refused.details?.refusals?.map((r) => r.rule)).toEqual(['record-in-comment']);
+  });
+});
+
+describe('a body holding nothing but whitespace', () => {
+  it('is refused 400 saying so, rather than by a length the caller cannot see', async () => {
+    const { issueId, jwt } = await seed();
+    const res = await post(issueId, jwt, '   \n\t\n');
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain('whitespace only');
+  });
+});
