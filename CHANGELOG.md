@@ -3070,8 +3070,8 @@
 ### Fixed
 
 - **A machine now says when it can no longer be heard by a session it is running.**
-  `forge-runner master status` gives that answer, how long it has stood, and the one command that
-  ends it.
+  `forge-runner master status` gives that answer, how long it has stood, and a command that ends
+  the session it names.
 
 - **An issue can now be named by its short key everywhere the issue tools take one.** They
   answered with that key and refused it back. A key naming nothing is now refused saying which.

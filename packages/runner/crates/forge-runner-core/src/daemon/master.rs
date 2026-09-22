@@ -253,7 +253,7 @@ impl std::fmt::Display for Unplaced {
             ),
             Self::StaleCapability { session, pane } => write!(
                 f,
-                "its pane {pane} is up but this box cannot hear it — the capability that pane holds names a session core has since replaced, core's session for it is now {session}, and a running pane cannot be handed a new capability. Every declaration it makes is refused and it is not being nudged while it stands like this. `tmux kill-session -t {pane}` ends it, and the next sweep places a master carrying the current capability"
+                "its pane {pane} is up but this box cannot hear it — the capability that pane holds names a session core has since replaced, core's session for it is now {session}, and a running pane cannot be handed a new capability. Every declaration it makes is refused and it is not being nudged while it stands like this. `tmux kill-session -t {pane}` ends it, which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other"
             ),
         }
     }
@@ -980,7 +980,8 @@ async fn sweep(
                 StandingRead::Known(s) => s,
                 StandingRead::Unreadable(detail) => {
                     tracing::error!(
-                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end — and it is NOT being nudged either. If it was stood down, `tmux kill-session -t {pane_name}`.",
+                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end — and it is NOT being nudged either. If it was stood down, `forge-runner master kill {}` — a bare `tmux kill-session` typed in your own shell reaches a different tmux server than the one masters run on.",
+                        runner.slug,
                         runner.slug
                     );
                     standing_unknown = true;
@@ -999,7 +1000,8 @@ async fn sweep(
                 let mut left_running = None;
                 if let Err(e) = terminal::kill(&pane_name).await {
                     tracing::error!(
-                        "[master] {}: could not withdraw {pane_name}: {e} — it is running against a stand-down and `tmux kill-session -t {pane_name}` is what ends it",
+                        "[master] {}: could not withdraw {pane_name}: {e} — it is running against a stand-down and `forge-runner master kill {}` is what ends it, a bare `tmux kill-session` in your own shell reaching a different tmux server than the one masters run on",
+                        resolved.slug,
                         resolved.slug
                     );
                     left_running = Some(pane_name.clone());
@@ -1767,7 +1769,7 @@ fn report_stale_pane_config(
         return;
     }
     tracing::error!(
-        "[master] {slug}: the resident session {name} was started before this project's MCP servers were resolved, or before they last changed, so its runs do NOT have {}. A pane cannot be told a new MCP config — end it with `tmux kill-session -t {name}` and the next sweep starts one that carries them.",
+        "[master] {slug}: the resident session {name} was started before this project's MCP servers were resolved, or before they last changed, so its runs do NOT have {}. A pane cannot be told a new MCP config — end it with `forge-runner master kill {slug}`, which reaches the tmux server masters run on where a bare `tmux kill-session` does not, and the next sweep starts one that carries them.",
         if declared.resolved_names.is_empty() {
             "the servers it now declares".to_string()
         } else {
@@ -1959,9 +1961,10 @@ async fn ensure_master(
                     .set(&name, pane_now, MasterAuthority::STALE, None);
                 if masters.note_capability(project_id, MasterAuthority::STALE) {
                     tracing::error!(
-                        "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `tmux kill-session -t {name}`, and a master carrying the current capability starts in its place. It is not being nudged while it stands like this. `forge-runner master status {}` says the same thing without this log.",
+                        "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `forge-runner master kill {}`, which reaches the tmux server masters actually run on where a bare `tmux kill-session` does not, and which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other. It is not being nudged while it stands like this. `forge-runner master status {}` says the same thing without this log.",
                         resolved.slug,
                         session.session_id,
+                        resolved.slug,
                         resolved.slug
                     );
                 }
@@ -5015,6 +5018,43 @@ mod unplaced_tests {
         assert!(
             masters.note_capability("proj-1", MasterAuthority::STALE),
             "a different thing said about the same project is said"
+        );
+    }
+
+    /// Every remedy this daemon prints to its own journal is typed by an
+    /// operator into a shell of their own, and masters run on a tmux server of
+    /// the runner's own at a socket under the config directory. A bare `tmux
+    /// kill-session` there reaches the DEFAULT server: it ends nothing, or it
+    /// ends a same-named session belonging to something else. The one place
+    /// the bare form is right is `Unplaced`'s `Display`, whose only reader is
+    /// `run_declare` — that is, the pane, which is inside tmux and finds its
+    /// own server through `$TMUX`.
+    ///
+    /// The status line was fixed for this under ISS-1099's own review; these
+    /// four journal lines said the same wrong thing to the same reader.
+    ///
+    /// It is `-t` that is looked for and not the two words: an operator copies
+    /// a command with a target in it, and naming the bare form to say it is
+    /// NOT the remedy is the sentence that stops them reaching for it.
+    #[test]
+    fn no_line_this_daemon_logs_sends_an_operator_at_a_bare_tmux_kill_session() {
+        let offenders: Vec<&str> = production()
+            .lines()
+            .filter(|l| l.contains("[master] ") && l.contains("tmux kill-session -t"))
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "a journal line is read in the operator's own shell, where `tmux kill-session` reaches a different server than the one masters run on — name `forge-runner master kill <slug>`: {offenders:#?}"
+        );
+        let display = production()
+            .split("impl std::fmt::Display for Unplaced {")
+            .nth(1)
+            .and_then(|r| r.split("\nimpl Unplaced {").next())
+            .expect("Unplaced's Display must be findable");
+        assert!(
+            display.contains("tmux kill-session -t {pane}"),
+            "and the one sentence a PANE reads keeps the bare form, because a pane is inside tmux and reaches the right server without being told which: {display}"
         );
     }
 

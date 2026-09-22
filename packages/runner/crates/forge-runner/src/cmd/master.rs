@@ -602,8 +602,9 @@ written. The daemon judges it on the sweep that adopts or places the pane"
 holds names a session core has since replaced, and a running pane cannot be handed a new one. Every \
 declaration it makes is refused and the daemon stopped nudging it. \
 `forge-runner master kill {slug}` ends it — a bare `tmux kill-session` reaches a different tmux \
-server than the one masters run on — and the next sweep places a master carrying the current \
-capability"
+server than the one masters run on. Whether a replacement is then placed is the standing and \
+runner lines' answer and needs work for one to do; ending this pane is what makes a replacement \
+possible, not what makes it happen"
         ),
         MasterAuthority::UNKNOWN => format!(
             "unknown — {stood}. This box could not read its own capability map ({}), so it says \
@@ -611,8 +612,9 @@ nothing about {pane} rather than calling it stale. An unreadable map is not evid
             row.detail.as_deref().unwrap_or("no reason recorded")
         ),
         MasterAuthority::CURRENT => format!(
-            "current — {stood}. A capability this box minted named the session core gave it, so \
-what {pane} declared then was served"
+            "current — {stood}. A capability this box minted named the session core gave it, which \
+is what this sweep looked at and all of it: whether any one declaration {pane} made was served \
+turns on what it asked for"
         ),
         other => format!(
             "unrecognised verdict `{other}` — {stood}. This ledger was written by a build this one \
@@ -951,6 +953,45 @@ mod tests {
         assert!(
             !standing.contains("master kill"),
             "the standing line answers a different question and must not be mistaken for this one: {standing}"
+        );
+    }
+
+    /// F2 from the whole-set read at the replayed head. Ending the pane is
+    /// what makes a replacement POSSIBLE; whether one is placed answers to the
+    /// standing, the runner row and whether there is work for it — the three
+    /// questions the other lines exist for. A line that promises the sweep will
+    /// place one is this surface making a promise the box does not keep, which
+    /// is the defect it was built to stop.
+    #[test]
+    fn ending_a_refused_pane_is_not_promised_to_produce_a_replacement() {
+        let led = led_saying(MasterAuthority::STALE, None);
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &same_pane());
+        assert!(
+            !line.contains("the next sweep places"),
+            "a stood-down project, a draining runner or nothing claimable each place no master, and this line can see none of the three: {line}"
+        );
+        assert!(
+            line.contains("standing and runner lines"),
+            "so it sends the reader to the answers that can: {line}"
+        );
+    }
+
+    /// F1 from the whole-set read at the replayed head. The sweep looks at the
+    /// capability and at nothing else. A declaration can still be refused for
+    /// its own reasons — an inherited run awaiting a choice, an issue key that
+    /// is not one — and a line claiming the pane's declarations were served is
+    /// asserting something no sweep looked at.
+    #[test]
+    fn a_current_capability_is_not_reported_as_a_declaration_that_was_served() {
+        let led = led_saying(MasterAuthority::CURRENT, None);
+        let line = authority_line(Some(&led), "sidpeak", shortly_after(&led), &same_pane());
+        assert!(
+            !line.contains("declared then was served"),
+            "run_declare refuses a pane holding a current capability for reasons of its own — an inherited run awaiting a choice, an issue key that is not one — and this sweep looked at none of them: {line}"
+        );
+        assert!(
+            line.contains("turns on what it asked for"),
+            "so the line says what it looked at, that that is the whole of it, and what the rest turns on: {line}"
         );
     }
 
