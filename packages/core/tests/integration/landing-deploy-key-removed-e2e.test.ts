@@ -110,6 +110,24 @@ describe('migration 0305 removes the landing-deploy key (ISS-1186)', () => {
 
   const pipelineOf = (row: Row): Stored => row.agent_config.pipelineConfig as Stored;
 
+  /**
+   * Running the file directly proves what the SQL does, not that anything runs it. Drizzle applies
+   * what the journal names, so a file present and unregistered is a cleanup that never happens.
+   */
+  it('is registered in the journal drizzle reads, under its own tag', () => {
+    const journal = JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL('../../drizzle/migrations/meta/_journal.json', import.meta.url)),
+        'utf8',
+      ),
+    ) as { entries: { idx: number; tag: string; when: number }[] };
+    const entry = journal.entries.find((e) => e.tag === '0305_no_code_fires_a_deploy');
+    expect(entry).toBeDefined();
+    expect(entry?.when).toBeGreaterThan(
+      Math.max(...journal.entries.filter((e) => e.tag !== entry?.tag).map((e) => e.when)),
+    );
+  });
+
   it('removes the key from a project that had it on', () => {
     expect(pipelineOf(after[armedId] as Row)).not.toHaveProperty('deployOnLanding');
   });

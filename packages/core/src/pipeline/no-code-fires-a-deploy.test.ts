@@ -94,6 +94,9 @@ describe('no code path fires a deployment on its own (ISS-1186)', () => {
     'setTimeout(',
     'setImmediate(',
     'queueMicrotask(',
+    'process.nextTick(',
+    'Promise.resolve(',
+    '.then(',
     '.on(',
     'cron',
     'schedule',
@@ -126,7 +129,12 @@ describe('no code path fires a deployment on its own (ISS-1186)', () => {
 describe('the key that armed the landing deploy survives nowhere but its own retirement', () => {
   const RETIRED_KEY = 'deployOnLanding';
 
-  /** Where the retirement itself speaks. Every other occurrence anywhere is a reader. */
+  /**
+   * Where the retirement itself speaks. Whole files, which is what the exemption can be: of the
+   * five, only the schema is code the product runs with, and its own occurrences are held to the
+   * retired-key literal by the case below. A mention in a test, in the migration that deletes the
+   * key or in the changelog reads nothing at runtime.
+   */
   const RETIREMENT_SITES = new Set([
     'packages/core/src/pipeline/pipeline-config-schema.ts',
     'packages/core/src/pipeline/no-code-fires-a-deploy.test.ts',
