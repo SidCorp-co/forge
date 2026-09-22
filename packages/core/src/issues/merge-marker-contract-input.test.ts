@@ -68,12 +68,7 @@ const ACTOR = {
   },
 };
 
-const issue = {
-  id: ISSUE_ID,
-  projectId: PROJECT_ID,
-  mergedAt: null,
-  status: 'in_progress' as const,
-};
+const issue = { id: ISSUE_ID, projectId: PROJECT_ID, mergedAt: null };
 
 beforeEach(() => {
   heard.length = 0;

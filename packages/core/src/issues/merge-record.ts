@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -119,16 +119,19 @@ export async function recordIssueMerge(
   return { wrote: false, mergedAt: held.mergedAt, commitSha: held.commitSha };
 }
 
-/** Clear the claim. It re-blocks nothing — a `blocks` edge is released by STATUS (ISS-1100) — and
- *  whether the row may lose the claim at all is `refuseUnmarkOnClosed`'s, not this function's. */
+/** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
+ *  `closed` guard is IN the statement: a read then a write leaves a window where the row is closed
+ *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). */
 export async function clearIssueMerge(
   executor: MergeRecordExecutor,
   issueId: string,
-): Promise<void> {
-  await executor
+): Promise<boolean> {
+  const rows = await executor
     .update(issues)
     .set({ mergedAt: null, mergedCommitSha: null, updatedAt: sql`now()` })
-    .where(eq(issues.id, issueId));
+    .where(and(eq(issues.id, issueId), ne(issues.status, 'closed')))
+    .returning({ id: issues.id });
+  return rows.length > 0;
 }
 
 export async function observedMergeForIssue(

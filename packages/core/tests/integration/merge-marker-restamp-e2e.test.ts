@@ -17,7 +17,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
 
-import type { IssueStatus } from '../../src/db/schema.js';
 import {
   createTestProject,
   createTestUser,
@@ -46,19 +45,14 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     projectId = (await createTestProject(harness.db, userId)).id;
   });
 
-  async function insertIssue(): Promise<{
-    id: string;
-    projectId: string;
-    mergedAt: null;
-    status: IssueStatus;
-  }> {
+  async function insertIssue(): Promise<{ id: string; projectId: string; mergedAt: null }> {
     const id = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, session_context)
       VALUES (${id}, ${projectId}, 1, 'marker specimen', 'open', ${userId},
               ${JSON.stringify({ branch: 'ISS-1' })}::jsonb)
     `);
-    return { id, projectId, mergedAt: null, status: 'open' };
+    return { id, projectId, mergedAt: null };
   }
 
   const actor = () => ({
@@ -68,7 +62,7 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
   });
 
   async function mark(
-    issue: { id: string; projectId: string; mergedAt: Date | null; status: IssueStatus },
+    issue: { id: string; projectId: string; mergedAt: Date | null },
     note: string,
   ) {
     const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');

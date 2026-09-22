@@ -72,12 +72,7 @@ async function runMergeMarker(
   const userId = c.get('userId');
 
   const [issue] = await db
-    .select({
-      id: issues.id,
-      projectId: issues.projectId,
-      mergedAt: issues.mergedAt,
-      status: issues.status,
-    })
+    .select({ id: issues.id, projectId: issues.projectId, mergedAt: issues.mergedAt })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);

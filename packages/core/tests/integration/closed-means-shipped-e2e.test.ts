@@ -16,6 +16,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+// The unmark cases below import the marker, which reads the environment at module load.
+process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
+process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
+
 import {
   createTestProject,
   createTestUser,
@@ -88,6 +93,8 @@ async function runMigration() {
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
+  // The unmark cases import `merge-marker`, which builds its own pool from the environment.
+  process.env.DATABASE_URL = harness.url;
 });
 
 beforeEach(async () => {
@@ -199,5 +206,62 @@ describe('migration 0304 is decided by the rows it finds (ISS-1108)', () => {
         harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${id}`),
       ),
     ).toContain('ISS-1108');
+  });
+});
+
+describe('withdrawing the claim from under a closed issue (ISS-1108)', () => {
+  it('answers a caller whose status is already stale with the named refusal, not the trigger', async () => {
+    const { id } = await seedIssue({ status: 'awaiting_release', merged: true });
+    const { applyMergeMarker, MergeMarkerError } = await import('../../src/issues/merge-marker.js');
+    const actor = {
+      agency: 'human' as const,
+      commentAuthorId: userId,
+      hookActor: { type: 'user' as const, id: userId, agency: 'human' as const },
+    };
+
+    // The caller reads the row, and it is closed before the unmark reaches the database. Passing
+    // the row it read IS that race: the guard the statement carries is the only thing standing
+    // between this call and the trigger's own message, which names a close nobody attempted.
+    const asRead = { id, projectId, mergedAt: new Date() };
+    await harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${id}`);
+
+    const err = await applyMergeMarker({ issue: asRead, op: 'unmark', actor }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(MergeMarkerError);
+    expect((err as InstanceType<typeof MergeMarkerError>).code).toBe('UNMARK_REQUIRES_NOT_CLOSED');
+    expect((err as Error).message).not.toContain('cannot enter');
+    const rows = await harness.db.execute<{ status: string; merged_at: Date | null }>(
+      sql`SELECT status, merged_at FROM issues WHERE id = ${id}`,
+    );
+    expect(rows[0]?.status).toBe('closed');
+    expect(rows[0]?.merged_at).not.toBeNull();
+    expect(
+      await harness.db.execute<{ n: number }>(
+        sql`SELECT count(*)::int AS n FROM comments WHERE issue_id = ${id}`,
+      ),
+    ).toMatchObject([{ n: 0 }]);
+  });
+
+  it('clears the claim on a row the guard admits', async () => {
+    const { id } = await seedIssue({ status: 'awaiting_release', merged: true });
+    const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');
+
+    const res = await applyMergeMarker({
+      issue: { id, projectId, mergedAt: new Date() },
+      op: 'unmark',
+      actor: {
+        agency: 'human' as const,
+        commentAuthorId: userId,
+        hookActor: { type: 'user' as const, id: userId, agency: 'human' as const },
+      },
+    });
+
+    expect(res.action).toBe('unmarked');
+    const rows = await harness.db.execute<{ merged_at: Date | null }>(
+      sql`SELECT merged_at FROM issues WHERE id = ${id}`,
+    );
+    expect(rows[0]?.merged_at).toBeNull();
   });
 });

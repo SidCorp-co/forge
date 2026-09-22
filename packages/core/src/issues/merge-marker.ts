@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus } from '../db/schema.js';
+import { comments } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
@@ -81,9 +81,8 @@ export type MergeMarkerActor = {
 };
 
 export async function applyMergeMarker(args: {
-  /** Already loaded AND authorised by the caller — this function does neither. `status` is
-   *  read, not written: it is what decides whether the claim may be withdrawn (ISS-1108). */
-  issue: { id: string; projectId: string; mergedAt: Date | null; status: IssueStatus };
+  /** Already loaded AND authorised by the caller — this function does neither. */
+  issue: { id: string; projectId: string; mergedAt: Date | null };
   op: 'mark' | 'unmark';
   target?: string;
   note?: string | undefined;
@@ -138,9 +137,22 @@ export async function applyMergeMarker(args: {
       claimedCommit = args.commit ?? (await resolveRecordedCommit(before.id));
     }
   } else {
-    const refusal = refuseUnmarkOnClosed(before.status);
-    if (refusal) throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
-    await clearIssueMerge(db, before.id);
+    // The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between the
+    // decision and the write. A zero-row answer is read back rather than guessed at: the row is
+    // gone, or it is closed, and anything else is a state those two conditions cannot produce.
+    if (!(await clearIssueMerge(db, before.id))) {
+      const still = await findIssueById(before.id);
+      if (!still) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
+      const refusal = refuseUnmarkOnClosed(still.status);
+      if (!refusal) {
+        throw new Error(
+          `unmark cleared no row on issue ${before.id}, which is neither missing nor \`closed\` but ` +
+            `\`${still.status}\`. The UPDATE's only other condition is the id, so this is a state ` +
+            `clearIssueMerge cannot produce and must not be reported as either of them.`,
+        );
+      }
+      throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
+    }
   }
 
   const commitLabel = stampResult.commitSha
