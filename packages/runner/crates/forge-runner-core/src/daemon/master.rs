@@ -1268,7 +1268,7 @@ async fn release_held_tree(
             return false;
         }
     };
-    match terminate::force_terminal(
+    match terminate::release(
         led,
         &r.run_id,
         terminate::Forcing {
@@ -1283,25 +1283,75 @@ async fn release_held_tree(
             sessions,
             leases,
         },
+        now_secs(),
     )
     .await
     {
-        Ok(forced) => {
+        Ok(terminate::Release::Done(forced)) => {
             tracing::info!(
-                "[master] run {} reclaimed by {:?}: diff {:?}, checkout {:?}, close {:?}",
+                "[master] run {} reclaimed by {:?}: diff {:?}, checkout {:?}, commits {:?}, close {:?}",
                 r.run_id,
                 forced.verb,
                 forced.salvage.as_ref().map(|s| s.outcome),
                 forced.worktree,
+                forced.commits,
                 forced.close
             );
             forced.close.is_closed()
+        }
+        // Said once at the head of the window and then left alone: the
+        // sweep runs every twenty seconds, and a line per sweep is how a
+        // refusal that mattered got lost among nine hundred that did not.
+        Ok(terminate::Release::Refusing {
+            why,
+            first,
+            standing_secs: _,
+        }) => {
+            if first {
+                tracing::warn!(
+                    "[master] run {} could not be released: {why} — trying again each sweep for the next {}s",
+                    r.run_id,
+                    terminate::RELEASE_GRACE_SECS
+                );
+            }
+            false
+        }
+        Ok(terminate::Release::Terminal { why, after, close }) => {
+            tracing::error!(
+                "[master] run {} will not be released and is over: {why}. {} — so it is not one a \
+                 retry gets past. Its leases are back ({}/{}) and its checkout is still on disk, \
+                 which nothing on this box will remove. Fix what the refusal names and run \
+                 `forge-runner run release {}` to have the next sweep try again.",
+                r.run_id,
+                match after {
+                    terminate::Decided::ByTheWindow { standing_secs } =>
+                        format!("It stood for {standing_secs}s of retrying"),
+                    terminate::Decided::ByTheAttempts { attempts } => format!(
+                        "It was taken {attempts} times, and this box's clock never let the \
+                         window it should have ended in arrive"
+                    ),
+                },
+                close.leases_returned,
+                close.leases_total,
+                r.run_id
+            );
+            // Not `is_closed()`: the checkout is still there by decision, so
+            // the run is over without that mark and the caller must not read
+            // this as a close.
+            true
         }
         Err(e) => {
             tracing::warn!("[master] run {} could not be released: {e}", r.run_id);
             false
         }
     }
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 async fn report_run_death(run: Option<Run>, r: &recovery::Recovered, world: &Reclaim<'_>) {

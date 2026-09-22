@@ -65,9 +65,46 @@ tell a 4,000-character record from a 4,000-character explanation somebody wants,
 meeting a cap splits across comments rather than writing less. \`COMMENT_BODY_MAX_CHARS\` is not the
 lever and is not moved.
 
+### The shapes a fence is read in
+
+Two, and the parser takes either. The tag may sit on a line after the close, which is what the
+\`forge\` CLI writes:
+
+\`\`\`\`
+\`\`\`forge-record
+criterion: 13
+verdict: skipped
+\`\`\`
+
+\`forge-record: verdict · contract 1\`
+\`\`\`\`
+
+or on the opening fence itself, which is where a markdown writer puts it:
+
+\`\`\`\`
+\`\`\`forge-record: verdict · contract 1
+criterion: 13
+verdict: skipped
+\`\`\`
+\`\`\`\`
+
+A body that opens a \`forge-record\` fence and matches neither is refused at the write door under
+\`record-fence-shape\`, naming what it read and showing a shape that is valid. An info string that
+is not that tag, a fence that is never closed, and a fence whose own tag is contradicted by a tag
+line after it are the three that are refused. None of them is stored silently: a comment meant to
+carry a record either carries one or is told it does not.
+
+A fence written inside an enclosing fence is that fence's content and opens nothing, so a comment
+quoting either shape as an example stays ordinary prose.
+
 ### When the rule refuses and when it only warns
 
-The refusal is reachable only through a capability the caller declares in the
+This section is about \`record-in-comment\`, the rule for a fence that DID parse. It does not
+govern \`record-fence-shape\`: a fence carrying no record is refused whatever the caller declared,
+because the dormancy below protects callers obeying a rule on another release clock and nobody
+writes an unreadable fence on purpose.
+
+The \`record-in-comment\` refusal is reachable only through a capability the caller declares in the
 \`x-forge-capabilities\` request header: a client that sends \`record-route\` is saying it has
 somewhere else to write, so a fence from it is a bug and is refused 400. A client that declares
 nothing is written and answered with a warning carrying the same sentence. That is deliberate — the
@@ -75,6 +112,7 @@ writer lives in a second repo on a different release clock, and a refusal that l
 callers could obey would break every one of them on a deploy they did not ask for.
 
 The MCP comment door declares nothing and cannot: a tool handler is given its arguments and no
-request context, so a fence written through \`forge_comments\` is warned and never refused. It is
-still the wrong place to put a record.`,
+request context, so a fence written through \`forge_comments\` that parses is warned and never
+refused. It is still the wrong place to put a record. A fence that parses as nothing is refused
+there too — that refusal reads no header.`,
 };

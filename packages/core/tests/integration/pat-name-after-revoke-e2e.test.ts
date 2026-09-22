@@ -10,6 +10,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  createTestDevice,
   createTestUser,
   setupTestDatabase,
   type TestDatabase,
@@ -26,6 +27,7 @@ let rotatePat: typeof import('../../src/auth/pat.js').rotatePat;
 let pairDevice: typeof import('../helpers/pair-device.js').pairDevice;
 let issueDeviceCredential: typeof import('../../src/devices/credential.js').issueDeviceCredential;
 let issueWorkspaceCredential: typeof import('../../src/devices/workspace-credential.js').issueWorkspaceCredential;
+let deviceHolderUserId: typeof import('../../src/devices/workspace-credential.js').deviceHolderUserId;
 let workspaceTokenNameFor: typeof import('../../src/auth/pat-format.js').workspaceTokenNameFor;
 let deviceTokenNameFor: typeof import('../../src/auth/pat-format.js').deviceTokenNameFor;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
@@ -50,7 +52,9 @@ beforeAll(async () => {
   schema = await import('../../src/db/schema.js');
   ({ mintPat, rotatePat } = await import('../../src/auth/pat.js'));
   ({ issueDeviceCredential } = await import('../../src/devices/credential.js'));
-  ({ issueWorkspaceCredential } = await import('../../src/devices/workspace-credential.js'));
+  ({ issueWorkspaceCredential, deviceHolderUserId } = await import(
+    '../../src/devices/workspace-credential.js'
+  ));
   ({ workspaceTokenNameFor, deviceTokenNameFor } = await import('../../src/auth/pat-format.js'));
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
   pairDevice = (await import('../helpers/pair-device.js')).pairDevice;
@@ -154,6 +158,206 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.name === 'laptop')).toBe(true);
     expect(rows.filter((r) => r.revokedAt === null)).toHaveLength(1);
+  });
+
+  it('lets two concurrent rotations of one token both mint without either being refused', async () => {
+    const user = await createTestUser(harness.db);
+    const minted = await mintPat({ userId: user.id, name: 'laptop' });
+    const input = { id: minted.row.id, userId: user.id };
+
+    // Two requests rotating the same live token. Read outside the transaction,
+    // both see the same live row; the first replacement takes the name and the
+    // second insert is refused by the partial index.
+    const [a, b] = await Promise.all([rotatePat(input), rotatePat(input)]);
+    expect(a?.plaintext).toMatch(/^forge_pat_/);
+    expect(b?.plaintext).toMatch(/^forge_pat_/);
+    expect(a?.plaintext).not.toBe(b?.plaintext);
+
+    expect(await liveCount(user.id, 'laptop')).toBe(1);
+  });
+
+  it('lets two concurrent device-credential issues both mint without either being refused', async () => {
+    const user = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: user.id, name: 'box', platform: 'linux' });
+    const name = deviceTokenNameFor(device.id);
+    const args = { deviceId: device.id, holderUserId: user.id };
+
+    // A re-pair meeting a login for the same box. Revoke and mint apart, both
+    // revoke the one live row before either inserts under its name.
+    const [a, b] = await Promise.all([issueDeviceCredential(args), issueDeviceCredential(args)]);
+    expect(a).toMatch(/^forge_pat_/);
+    expect(b).toMatch(/^forge_pat_/);
+    expect(a).not.toBe(b);
+
+    expect(await liveCount(user.id, name)).toBe(1);
+    const rows = await rowsNamed(user.id);
+    expect(rows.every((r) => r.name === name)).toBe(true);
+  });
+});
+
+/**
+ * Who the box's credential belongs to — ISS-1184.
+ *
+ * The generated names are not a reserved namespace: `POST /api/pat` takes any
+ * name under 80 characters and sets no `device_id`, so an ordinary token may
+ * carry one. Each case below fixes which rows a credential write may take.
+ */
+describe('a box credential belongs to the device’s current holder (ISS-1184)', () => {
+  it('supersedes the box credential of a device whose holder changed', async () => {
+    const a = await createTestUser(harness.db);
+    const b = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: a.id, name: 'box', platform: 'linux' });
+    const name = deviceTokenNameFor(device.id);
+    expect(await liveCount(a.id, name)).toBe(1);
+
+    // The same box signing in as someone else — a person's machine paired as an
+    // agent. A device has ONE identity, so the previous holder's credential
+    // must stop working rather than stand beside the new one.
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: b.id });
+
+    expect(await liveCount(a.id, name)).toBe(0);
+    expect(await liveCount(b.id, name)).toBe(1);
+    expect(await deviceHolderUserId(device.id)).toBe(b.id);
+  });
+
+  it('leaves alone an ordinary token that merely borrowed the box credential name', async () => {
+    const owner = await createTestUser(harness.db);
+    const squatter = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: owner.id, name: 'box', platform: 'linux' });
+    const name = deviceTokenNameFor(device.id);
+
+    // A third party's, so superseding the box's own credential must not reach it.
+    await mintPat({ userId: squatter.id, name });
+
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: owner.id });
+
+    expect(await liveCount(squatter.id, name)).toBe(1);
+    expect(await liveCount(owner.id, name)).toBe(1);
+  });
+
+  it('leaves alone an ordinary token that merely borrowed a workspace name', async () => {
+    const owner = await createTestUser(harness.db);
+    const squatter = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: owner.id, name: 'box', platform: 'linux' });
+    const projectId = '651c720d-8243-49ff-bf4c-f295ef98818f';
+    const name = workspaceTokenNameFor(device.id, projectId);
+
+    await mintPat({ userId: squatter.id, name });
+
+    await issueWorkspaceCredential({ deviceId: device.id, projectId, holderUserId: owner.id });
+
+    expect(await liveCount(squatter.id, name)).toBe(1);
+    expect(await liveCount(owner.id, name)).toBe(1);
+  });
+
+  it('supersedes the holder’s own token that borrowed the box credential name', async () => {
+    const owner = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, owner.id);
+    const name = deviceTokenNameFor(device.id);
+
+    // Their own ordinary token, minted before the box was ever issued one: no
+    // device_id, and the same (user, name) the credential is about to want.
+    await mintPat({ userId: owner.id, name });
+
+    const token = await issueDeviceCredential({ deviceId: device.id, holderUserId: owner.id });
+
+    expect(token).toMatch(/^forge_pat_/);
+    expect(await liveCount(owner.id, name)).toBe(1);
+  });
+
+  it('supersedes the holder’s own token that borrowed a workspace name', async () => {
+    const owner = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, owner.id);
+    const projectId = '651c720d-8243-49ff-bf4c-f295ef98818f';
+    const name = workspaceTokenNameFor(device.id, projectId);
+
+    await mintPat({ userId: owner.id, name });
+
+    const token = await issueWorkspaceCredential({
+      deviceId: device.id,
+      projectId,
+      holderUserId: owner.id,
+    });
+
+    expect(token).toMatch(/^forge_pat_/);
+    expect(await liveCount(owner.id, name)).toBe(1);
+  });
+
+  it('refuses to rotate the ordinary predecessor of a name the box credential now holds', async () => {
+    const holder = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, holder.id);
+    const name = deviceTokenNameFor(device.id);
+    const ordinary = await mintPat({ userId: holder.id, name });
+
+    // Issuing the credential supersedes that ordinary row, so the live row under
+    // this name is now device-bound. Rotating the revoked predecessor must not
+    // displace it — the replacement would carry the predecessor's null binding
+    // and leave the box with no holder at all.
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: holder.id });
+
+    await expect(rotatePat({ id: ordinary.row.id, userId: holder.id })).rejects.toThrow();
+
+    expect(await liveCount(holder.id, name)).toBe(1);
+    expect(await deviceHolderUserId(device.id)).toBe(holder.id);
+  });
+
+  it('refuses to rotate the ordinary predecessor of a workspace credential name', async () => {
+    const holder = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, holder.id);
+    const projectId = '651c720d-8243-49ff-bf4c-f295ef98818f';
+    const name = workspaceTokenNameFor(device.id, projectId);
+    const ordinary = await mintPat({ userId: holder.id, name });
+
+    await issueWorkspaceCredential({ deviceId: device.id, projectId, holderUserId: holder.id });
+
+    await expect(rotatePat({ id: ordinary.row.id, userId: holder.id })).rejects.toThrow();
+
+    const [live] = await harness.db
+      .select({ deviceId: schema.personalAccessTokens.deviceId })
+      .from(schema.personalAccessTokens)
+      .where(
+        and(
+          eq(schema.personalAccessTokens.userId, holder.id),
+          eq(schema.personalAccessTokens.name, name),
+          isNull(schema.personalAccessTokens.revokedAt),
+        ),
+      );
+    expect(live?.deviceId).toBe(device.id);
+  });
+
+  it('refuses to rotate a device credential the box no longer holds', async () => {
+    const a = await createTestUser(harness.db);
+    const b = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, a.id);
+    const name = deviceTokenNameFor(device.id);
+
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: a.id });
+    const [aRow] = await rowsNamed(a.id);
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: b.id });
+    expect(await liveCount(a.id, name)).toBe(0);
+
+    // `GET /api/pat` lists revoked device-bound rows, so the previous holder
+    // has this id. Rotating it would mint a live credential for a box that is
+    // no longer theirs, undoing the supersession.
+    await expect(rotatePat({ id: aRow?.id as string, userId: a.id })).resolves.toBeNull();
+
+    expect(await liveCount(a.id, name)).toBe(0);
+    expect(await liveCount(b.id, name)).toBe(1);
+  });
+
+  it('lets the current holder rotate the box credential it does hold', async () => {
+    const holder = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, holder.id);
+    const name = deviceTokenNameFor(device.id);
+
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: holder.id });
+    const [row] = await rowsNamed(holder.id);
+
+    const rotated = await rotatePat({ id: row?.id as string, userId: holder.id });
+
+    expect(rotated?.plaintext).toMatch(/^forge_pat_/);
+    expect(rotated?.row.deviceId).toBe(device.id);
+    expect(await liveCount(holder.id, name)).toBe(1);
   });
 
   it('lets a person create a token under a name they once revoked', async () => {

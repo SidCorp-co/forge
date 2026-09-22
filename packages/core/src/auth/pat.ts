@@ -89,6 +89,16 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
   return { row, plaintext };
 }
 
+/**
+ * Order the writers that both mean to own the one live token called `name`.
+ * The key is the name ALONE, wider than `pat_user_name_uniq`'s `(user_id,
+ * name)`: the device credential writers take that name from another HOLDER as
+ * well as their own, so a user-scoped key would order them against nothing.
+ */
+export async function lockPatName(tx: Tx, name: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
+}
+
 export interface VerifiedPat {
   row: Pat;
   /**
@@ -177,10 +187,8 @@ export async function revokePat(id: string, userId: string): Promise<Pat | null>
 
 /**
  * Bulk revoke every live PAT for a user. Called from password-change /
- * account-disable hooks (T1, T4 mitigations in the threat model).
- *
- * `reason` is logged but not persisted in this PR — when the audit-log
- * partitioning lands the reason will land alongside.
+ * account-disable hooks (T1, T4 mitigations in the threat model). `reason` is
+ * logged, never persisted.
  */
 export async function revokeAllPatsForUser(
   userId: string,
@@ -203,27 +211,62 @@ export interface RotatePatInput {
   expiresAt?: Date | null;
 }
 
-export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null> {
-  const [existing] = await db
-    .select()
+/**
+ * Replace a token with a fresh one of the same name. The row is read INSIDE the
+ * transaction and the revoke scoped to what is live under `(user_id, name)` with
+ * the SAME binding (ISS-1184): a read outside is the race, and a rotation may
+ * not displace a device-bound row when it is not one — it collides, loudly.
+ */
+async function deviceCredentialIsHeldBy(tx: Tx, row: Pat, userId: string): Promise<boolean> {
+  const [live] = await tx
+    .select({ userId: personalAccessTokens.userId })
     .from(personalAccessTokens)
     .where(
-      and(eq(personalAccessTokens.id, input.id), eq(personalAccessTokens.userId, input.userId)),
+      and(
+        eq(personalAccessTokens.deviceId, row.deviceId as string),
+        eq(personalAccessTokens.name, row.name),
+        isNull(personalAccessTokens.revokedAt),
+      ),
     )
     .limit(1);
-  if (!existing) return null;
+  return live?.userId === userId;
+}
 
+export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null> {
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
   const tokenHash = await hashPatPlaintext(plaintext);
 
   return db.transaction(async (tx) => {
-    // The replacement reuses the name: `pat_user_name_uniq` is partial on
-    // `revoked_at is null`, so `revoked_at` alone marks the row it supersedes.
+    const [existing] = await tx
+      .select()
+      .from(personalAccessTokens)
+      .where(
+        and(eq(personalAccessTokens.id, input.id), eq(personalAccessTokens.userId, input.userId)),
+      )
+      .limit(1);
+    if (!existing) return null;
+
+    await lockPatName(tx, existing.name);
+
+    // A device-bound row names a box, and a box has one holder. Rotating one the
+    // box has superseded would mint a second live credential for a machine this
+    // user no longer holds, so it is refused rather than resurrected (ISS-1184).
+    if (existing.deviceId && !(await deviceCredentialIsHeldBy(tx, existing, input.userId))) {
+      return null;
+    }
+
     await tx
       .update(personalAccessTokens)
       .set({ revokedAt: sql`now()` })
-      .where(eq(personalAccessTokens.id, existing.id));
+      .where(
+        and(
+          eq(personalAccessTokens.userId, existing.userId),
+          eq(personalAccessTokens.name, existing.name),
+          isNull(personalAccessTokens.revokedAt),
+          sql`${personalAccessTokens.deviceId} is not distinct from ${existing.deviceId}`,
+        ),
+      );
 
     const [row] = await tx
       .insert(personalAccessTokens)
