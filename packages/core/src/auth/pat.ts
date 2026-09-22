@@ -216,12 +216,13 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
   const tokenHash = await hashPatPlaintext(plaintext);
-  const stamp = Date.now();
 
   return db.transaction(async (tx) => {
+    // The replacement reuses the name: `pat_user_name_uniq` is partial on
+    // `revoked_at is null`, so `revoked_at` alone marks the row it supersedes.
     await tx
       .update(personalAccessTokens)
-      .set({ name: `${existing.name}.rotated.${stamp}`, revokedAt: sql`now()` })
+      .set({ revokedAt: sql`now()` })
       .where(eq(personalAccessTokens.id, existing.id));
 
     const [row] = await tx
