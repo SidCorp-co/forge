@@ -3066,17 +3066,11 @@
 
 ### Fixed
 
-- **An issue can now be named by the short key everywhere the issue tools take one, instead of
-  only by its long internal id.** The issue tools answered with the short key — `ISS-42` — and
-  then refused it back, so anyone who read a key off one answer and used it in the next was told
-  their input was malformed. The key now works wherever an issue is named, resolved inside the
-  project you are working in, and one that names nothing is refused saying so: which key, and that
-  nothing was read or written. A key that belongs to another project is refused by naming that
-  project's prefix rather than being looked up in yours.
+- **An issue can now be named by its short key everywhere the issue tools take one.** They
+  answered with that key and refused it back. A key naming nothing is now refused saying which.
 
 - **Two tool descriptions that told you to call something the wrong way have been corrected.** One
-  said the project list was an action on another tool; the other offered a filter that did not
-  exist. Both refused the caller who followed them.
+  named the project list as an action on another tool; the other offered a filter that did not exist.
 
 - **A landed change can now be deployed straight away, rather than waiting for an unrelated
   release to carry it.** Turn it on under Coolify settings; who may deploy to production is

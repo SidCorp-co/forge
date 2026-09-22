@@ -9,8 +9,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-/** ISS-1179 — `projectSlug` stands in for the `X-Forge-Project-Slug` header, which is one of the
- *  two ways a call gets the project scope a display key resolves inside. */
+/** ISS-1179 — `projectSlug` stands in for the `X-Forge-Project-Slug` header. */
 export async function connectClientAsPat(patPlaintext: string, projectSlug: string | null = null) {
   const { verifyPat } = await import('../../src/auth/pat.js');
   const { createMcpServer } = await import('../../src/mcp/server.js');
