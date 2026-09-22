@@ -19,6 +19,7 @@ use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::inflight::Reaped;
 use crate::runner::ledger::{Incarnation, Ledger, Run};
 use crate::workspace::salvage::{self, Outcome, Salvage};
+use crate::workspace::worktree::Kind as WorktreeKind;
 
 /// How a run's process group is stopped. A port so the verb is testable
 /// without a real agent on the box.
@@ -122,6 +123,29 @@ async fn publish_before_release(
     }
 }
 
+/// Whether the path the run names is a checkout this run has to give back.
+///
+/// `true` means it is the repository's own MAIN working tree: the run never
+/// took it from the pool, so there is nothing to preserve and nothing to
+/// remove, and it has to outlive the run. `false` means an ordinary checkout,
+/// released the way it always was.
+///
+/// An unidentifiable path is neither, and is refused rather than guessed at.
+/// Falling through to the release on `Unknown` would publish and remove a path
+/// this box could not name — not knowing what something is is not a licence to
+/// delete it, and a run whose kind could not be read has not been released.
+fn holds_no_checkout(kind: WorktreeKind, verb: Verb, run_id: &str, path: &Path) -> Result<bool> {
+    match kind {
+        WorktreeKind::MainWorkingTree => Ok(true),
+        WorktreeKind::Linked | WorktreeKind::NotAWorktree => Ok(false),
+        WorktreeKind::Unknown => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: this box could not ask git what {} is — the \
+             checkout stays, because not knowing is not the same as knowing it is safe",
+            path.display()
+        ))),
+    }
+}
+
 pub async fn force_terminal(
     ledger: &mut Ledger,
     run_id: &str,
@@ -152,8 +176,12 @@ pub async fn force_terminal(
     // succeed from one that might, so the run was retried every sweep forever
     // and its leases never came back (ISS-1183). Git is asked instead, before
     // anything here is touched.
-    let main_working_tree = crate::workspace::worktree::kind_at(worktree).await
-        == crate::workspace::worktree::Kind::MainWorkingTree;
+    let main_working_tree = holds_no_checkout(
+        crate::workspace::worktree::kind_at(worktree).await,
+        verb,
+        run_id,
+        worktree,
+    )?;
 
     let salvage = if main_working_tree {
         None
@@ -1173,6 +1201,38 @@ mod tests {
             "a checkout that is still on the disk has not been given back, \
              and only a main working tree is released without being removed"
         );
+    }
+
+    #[test]
+    fn a_path_git_could_not_identify_is_refused_rather_than_released() {
+        let p = Path::new("/some/checkout");
+        let err = holds_no_checkout(WorktreeKind::Unknown, Verb::Abandon, "run-1", p)
+            .expect_err(
+                "an unidentifiable path must not fall through to the release: publishing and \
+                 removing a path this box could not name is exactly the silent substitution \
+                 the refusal exists to prevent",
+            )
+            .to_string();
+        assert!(err.contains("could not ask git"), "{err}");
+        assert!(
+            err.contains("/some/checkout"),
+            "the refusal must name the path, or an operator cannot act on it: {err}"
+        );
+    }
+
+    #[test]
+    fn only_the_main_working_tree_is_a_checkout_the_run_never_held() {
+        let p = Path::new("/some/checkout");
+        assert!(
+            holds_no_checkout(WorktreeKind::MainWorkingTree, Verb::Abandon, "run-1", p).unwrap(),
+            "the repo's own checkout is not the run's to give back"
+        );
+        for kind in [WorktreeKind::Linked, WorktreeKind::NotAWorktree] {
+            assert!(
+                !holds_no_checkout(kind, Verb::Abandon, "run-1", p).unwrap(),
+                "{kind:?} still takes the release path it always took"
+            );
+        }
     }
 
     #[test]

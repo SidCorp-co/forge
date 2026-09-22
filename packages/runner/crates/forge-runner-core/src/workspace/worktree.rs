@@ -137,8 +137,17 @@ pub async fn kind_at(worktree: &Path) -> Kind {
     if !out.status.success() {
         return Kind::NotAWorktree;
     }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let mut lines = text.lines();
+    kind_of(worktree, &String::from_utf8_lossy(&out.stdout))
+}
+
+/// What git's two-line answer means, split from the asking so the reading is
+/// testable without a git that can be made to answer wrongly.
+///
+/// An answer that is not two paths is `Unknown` rather than a guess: the
+/// caller refuses on that, and refusing costs an operator a sweep where
+/// guessing could cost them a checkout.
+fn kind_of(worktree: &Path, answer: &str) -> Kind {
+    let mut lines = answer.lines();
     let (Some(git_dir), Some(common_dir)) = (lines.next(), lines.next()) else {
         return Kind::Unknown;
     };
@@ -388,6 +397,27 @@ mod tests {
             "and the repository holding it is still the main working tree"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_answer_that_is_not_two_paths_identifies_nothing() {
+        let wt = Path::new("/repo");
+        assert_eq!(kind_of(wt, ""), Kind::Unknown, "no answer at all");
+        assert_eq!(
+            kind_of(wt, "/repo/.git\n"),
+            Kind::Unknown,
+            "one path cannot say whether it is the common dir or this tree's own"
+        );
+        assert_eq!(kind_of(wt, "/repo/.git\n/repo/.git\n"), Kind::MainWorkingTree);
+        assert_eq!(
+            kind_of(wt, "/repo/.git/worktrees/a\n/repo/.git\n"),
+            Kind::Linked
+        );
+        assert_eq!(
+            kind_of(wt, ".git\n.git\n"),
+            Kind::MainWorkingTree,
+            "git answers relatively in the main tree, and both sides resolve the same way"
+        );
     }
 
     #[tokio::test]
