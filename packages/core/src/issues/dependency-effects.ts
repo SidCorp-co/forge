@@ -21,7 +21,7 @@ export const BLOCKER_SETTLED_STATUSES: readonly IssueStatus[] = [
   'closed',
 ];
 
-const GATES_DISPATCH_NOTE =
+export const GATES_DISPATCH_NOTE =
   'B is held out of the admissible set a master reads while a live `blocks` edge points at it ' +
   `from an A that has not reached \`${BLOCKER_SETTLED_STATUSES[0]}\` — the statuses that release ` +
   `it are ${BLOCKER_SETTLED_STATUSES.map((s) => `\`${s}\``).join(', ')}. A reopened A blocks ` +
