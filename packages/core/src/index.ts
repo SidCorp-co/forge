@@ -80,8 +80,7 @@ import { integrationConnectionsRoutes, integrationsRoutes } from './integrations
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
-import { closeBacklogStreams } from './issues/backlog/open-streams.js';
-import { backlogStreamRoutes } from './issues/backlog/routes.js';
+import { backlogStreamRoutes, closeBacklogStreams } from './issues/backlog/routes.js';
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueMergeRoutes } from './issues/merge-routes.js';
@@ -270,11 +269,8 @@ export async function runShutdown(
 
 registerEagerSubscribers(hooks);
 
-app.use('/mcp', mcpRequestClass());
-app.use('/mcp', requirePat());
-app.post('/mcp', mcpHandler);
-app.get('/mcp', mcpHandler);
-app.delete('/mcp', mcpHandler);
+app.use('/mcp', mcpRequestClass(), requirePat());
+app.on(['POST', 'GET', 'DELETE'], '/mcp', mcpHandler);
 
 app.route('/', installRoutes);
 app.route('/api', installRoutes);

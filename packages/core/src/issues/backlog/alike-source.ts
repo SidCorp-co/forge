@@ -70,6 +70,20 @@ async function readSeeds(input: AlikeInput, after: Cursor) {
     .limit(EMBED_BATCH_SIZE);
 }
 
+/**
+ * A seed skipped for want of a vector would leave the sweep reporting itself complete over issues
+ * it never searched, so a short batch is refused by name instead.
+ */
+function shortBatch(wanted: number, got: number): Error {
+  return Object.assign(
+    new Error(
+      `embeddings returned ${got} vector(s) for ${wanted} seed(s); refusing rather than sweeping ` +
+        'past the seeds that have none and reporting the answer complete',
+    ),
+    { code: 'EMBEDDING_COUNT_MISMATCH' },
+  );
+}
+
 async function neighboursOf(
   input: AlikeInput,
   seed: { title: string },
@@ -109,11 +123,12 @@ export async function* alikeSource(input: AlikeInput): BacklogSource<unknown> {
 
     if (input.cancellation.cancelled) return { exhausted: false } satisfies SourceDone;
     const vectors = await embedBatch(seeds.map((s) => s.title.slice(0, SEED_QUERY_MAX)));
+    if (vectors.length !== seeds.length) throw shortBatch(seeds.length, vectors.length);
 
     for (const [index, seed] of seeds.entries()) {
       if (input.cancellation.cancelled) return { exhausted: false } satisfies SourceDone;
       const queryVec = vectors[index];
-      if (!queryVec) continue;
+      if (!queryVec) throw shortBatch(seeds.length, index);
       yield {
         issueId: seed.id,
         displayId: displayIdOf(seed.issSeq),

@@ -155,6 +155,16 @@ describe('alikeSource, before it starts anything', () => {
     expect(runMemorySearch).not.toHaveBeenCalled();
   });
 
+  it('refuses a short embedding batch rather than sweeping past the seeds it cannot search', async () => {
+    const cancellation = new Cancellation();
+    selectSpy.mockImplementation(pageOf([ROW, { ...ROW, id: 'i2', issSeq: 2, title: 'two' }]));
+    embedBatch.mockResolvedValue([[0.1]]);
+
+    await expect(
+      drain(alikeSource({ projectId: 'p', statuses: ['open'], topK: 10, cancellation })),
+    ).rejects.toMatchObject({ code: 'EMBEDDING_COUNT_MISMATCH' });
+  });
+
   it('searches once per seed while nothing has stopped it', async () => {
     const cancellation = new Cancellation();
 

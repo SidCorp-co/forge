@@ -90,6 +90,11 @@ async function drain<T>(
     }
     const step = await opts.source.next();
     if (step.done) return { emitted, done: step.value, hitItemBound: false };
+    // Work in flight when the stop landed is allowed to finish and is then DISCARDED; emitting it
+    // would put an item on the wire after the answer was already over.
+    if (opts.cancellation.cancelled) {
+      return { emitted, done: { exhausted: false }, hitItemBound: false };
+    }
     emitted += 1;
     onEmit();
     await writer.write({ type: 'item', seq: emitted, payload: step.value });
@@ -131,9 +136,24 @@ export async function emitBacklogStream<T>(
   stream.onAbort(() => cancellation.cancel('disconnect'));
   if (stream.aborted) cancellation.cancel('disconnect');
 
+  let terminated = false;
+  const writeTerminal = async (frame: BacklogFrame): Promise<void> => {
+    if (terminated) return;
+    terminated = true;
+    await writer.write(frame);
+  };
+
   const unregister = registerBacklogStream({
     cancellation,
     close: async () => {
+      if (cancellation.reason !== 'disconnect') {
+        await writeTerminal({
+          type: 'error',
+          code: SHUTTING_DOWN,
+          message: 'core is shutting down',
+          emitted,
+        });
+      }
       await writer.settled();
       await stream.close();
     },
@@ -167,7 +187,7 @@ export async function emitBacklogStream<T>(
     });
     clearInterval(ticker);
     if (cancellation.reason === 'disconnect') return;
-    await writer.write(
+    await writeTerminal(
       terminalFrame(run.emitted, opts.total, run.done, run.hitItemBound, cancellation),
     );
   } catch (err) {
@@ -180,7 +200,7 @@ export async function emitBacklogStream<T>(
       { kind: opts.kind, projectId: opts.projectId, code, emitted },
       'backlog.stream failed',
     );
-    await writer.write({ type: 'error', code, message, emitted });
+    await writeTerminal({ type: 'error', code, message, emitted });
   } finally {
     clearInterval(ticker);
     stopBudget();

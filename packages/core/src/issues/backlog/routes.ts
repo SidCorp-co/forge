@@ -96,6 +96,9 @@ const alikeQuerySchema = z
   })
   .strict();
 
+/** The module's surface to the composition root: what it mounts, and what winds it down. */
+export { closeBacklogStreams } from './open-streams.js';
+
 export const backlogStreamRoutes = new Hono<{ Variables: AuthVars }>();
 
 backlogStreamRoutes.use(

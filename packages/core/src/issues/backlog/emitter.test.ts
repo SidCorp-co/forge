@@ -124,7 +124,9 @@ describe('emitBacklogStream', () => {
       emitted: 3,
     });
   });
+});
 
+describe('emitBacklogStream, when something stops it', () => {
   it('ends truncated by budget when the clock stopped it', async () => {
     const cancellation = new Cancellation();
     const source: BacklogSource<unknown> = (async function* () {
@@ -280,6 +282,50 @@ describe('emitBacklogStream', () => {
       truncated: true,
       truncatedBy: 'budget',
     });
+  });
+
+  it('puts the shutdown frame on the wire even while the source is still in a search', async () => {
+    // The registry closes the socket; a source blocked in a search cannot be relied on to come
+    // back and write the terminal frame, so shutdown writes it itself.
+    const cancellation = new Cancellation();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const source: BacklogSource<unknown> = (async function* () {
+      yield { i: 0 };
+      await held;
+      return { exhausted: false };
+    })();
+    const stream = fakeStream();
+    const running = run({ items: 9, limit: 100, cancellation, source: () => source, stream });
+
+    // Wait for the ITEM, not for registration: shutting down before the source has produced
+    // anything leaves drain's own top-of-loop check to write the frame, which proves nothing
+    // about a source blocked mid-search.
+    await vi.waitFor(() => expect(itemsIn(stream)).toHaveLength(1));
+    await closeBacklogStreams();
+
+    // Read BEFORE the source is released: the frame must already be out.
+    expect(terminal(stream)).toMatchObject({ type: 'error', code: 'SERVER_SHUTTING_DOWN' });
+    release();
+    await running;
+    expect(stream.written.filter((w) => w.data.type === 'error')).toHaveLength(1);
+  });
+
+  it('discards an item produced by work that finished after the stop', async () => {
+    const cancellation = new Cancellation();
+    const source: BacklogSource<unknown> = (async function* () {
+      yield { i: 0 };
+      // Stands for a relations read or a seed search that was already in flight.
+      cancellation.cancel('budget');
+      yield { i: 1 };
+      return { exhausted: true };
+    })();
+    const s = await run({ items: 9, limit: 100, cancellation, source: () => source });
+
+    expect(itemsIn(s)).toHaveLength(1);
+    expect(terminal(s)).toMatchObject({ type: 'end', complete: false, truncatedBy: 'budget' });
   });
 
   it('leaves the shutdown registry empty once it is done', async () => {
