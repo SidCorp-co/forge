@@ -87,7 +87,7 @@ async function runMergeMarker(
 
   const actor = restActor(c);
   try {
-    const { action } = await applyMergeMarker({
+    const { action, mark, markDetail } = await applyMergeMarker({
       issue,
       op,
       ...(body.target ? { target: body.target } : {}),
@@ -100,7 +100,11 @@ async function runMergeMarker(
         hookActor: { type: actor.type, id: actor.id, agency: actor.agency },
       },
     });
-    return c.json({ id: issueId, action });
+    // ISS-1126 — `mark` and `detail` say which kind of record this call left. Without them a
+    // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
+    // Forge did not observe; the sentence has been composed for the audit trail since ISS-959
+    // and never reached the one party that could act on it.
+    return c.json({ id: issueId, action, mark, detail: markDetail });
   } catch (err) {
     if (err instanceof MergeMarkerError) {
       if (err.code === 'ISSUE_NOT_FOUND') throw notFound('issue not found');
