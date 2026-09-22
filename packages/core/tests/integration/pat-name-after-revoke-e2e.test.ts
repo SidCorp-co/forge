@@ -156,6 +156,43 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     expect(rows.filter((r) => r.revokedAt === null)).toHaveLength(1);
   });
 
+  it('lets two concurrent rotations of one token both mint without either being refused', async () => {
+    const user = await createTestUser(harness.db);
+    const minted = await mintPat({ userId: user.id, name: 'laptop' });
+    const input = { id: minted.row.id, userId: user.id };
+
+    // Two requests rotating the same live token. Read outside the transaction,
+    // both see the same live row; the first replacement takes the name and the
+    // second insert is refused by the partial index.
+    const [a, b] = await Promise.all([rotatePat(input), rotatePat(input)]);
+    expect(a?.plaintext).toMatch(/^forge_pat_/);
+    expect(b?.plaintext).toMatch(/^forge_pat_/);
+    expect(a?.plaintext).not.toBe(b?.plaintext);
+
+    expect(await liveCount(user.id, 'laptop')).toBe(1);
+  });
+
+  it('lets two concurrent device-credential issues both mint without either being refused', async () => {
+    const user = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: user.id, name: 'box', platform: 'linux' });
+    const name = deviceTokenNameFor(device.id);
+    const args = { deviceId: device.id, holderUserId: user.id };
+
+    // A re-pair meeting a login for the same box. Revoke and mint apart, both
+    // revoke the one live row before either inserts under its name.
+    const [a, b] = await Promise.all([
+      issueDeviceCredential(args),
+      issueDeviceCredential(args),
+    ]);
+    expect(a).toMatch(/^forge_pat_/);
+    expect(b).toMatch(/^forge_pat_/);
+    expect(a).not.toBe(b);
+
+    expect(await liveCount(user.id, name)).toBe(1);
+    const rows = await rowsNamed(user.id);
+    expect(rows.every((r) => r.name === name)).toBe(true);
+  });
+
   it('lets a person create a token under a name they once revoked', async () => {
     const user = await createTestUser(harness.db);
     await harness.db.execute(

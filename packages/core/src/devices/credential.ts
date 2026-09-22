@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { mintPat } from '../auth/pat.js';
+import { lockPatName, mintPat } from '../auth/pat.js';
 import { deviceTokenNameFor } from '../auth/pat-format.js';
 import { env } from '../config/env.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import { agentCredentialFence, withAgentFenceLock } from '../orgs/agent-fence.js';
 
@@ -16,6 +16,14 @@ export function hashMachineId(raw: string): string {
 /**
  * Issue the token a box authenticates with. Returns the plaintext, which is
  * the only time it exists.
+ *
+ * Revoke and mint are ONE transaction under {@link lockPatName}, the shape
+ * `workspace-credential.ts:issueWorkspaceCredential` has. Without it two calls
+ * for one box — a re-pair meeting a login — both revoke the live row before
+ * either inserts, and the second insert is refused by `pat_user_name_uniq`
+ * (ISS-1184). For an agent holder the name lock is taken inside the fence lock,
+ * which is the only place both are held and so the only order either is taken
+ * in.
  */
 export async function issueDeviceCredential(args: {
   deviceId: string;
@@ -28,17 +36,6 @@ export async function issueDeviceCredential(args: {
   holderIsAgent?: boolean;
 }): Promise<string> {
   const name = deviceTokenNameFor(args.deviceId);
-  await db
-    .update(personalAccessTokens)
-    .set({ revokedAt: sql`now()` })
-    .where(
-      and(
-        eq(personalAccessTokens.userId, args.holderUserId),
-        eq(personalAccessTokens.name, name),
-        isNull(personalAccessTokens.revokedAt),
-      ),
-    );
-
   const common = {
     userId: args.holderUserId,
     name,
@@ -47,11 +44,29 @@ export async function issueDeviceCredential(args: {
     rateLimitMax: DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE,
   };
 
+  const supersede = async (tx: Tx) => {
+    await lockPatName(tx, name);
+    await tx
+      .update(personalAccessTokens)
+      .set({ revokedAt: sql`now()` })
+      .where(
+        and(
+          eq(personalAccessTokens.userId, args.holderUserId),
+          eq(personalAccessTokens.name, name),
+          isNull(personalAccessTokens.revokedAt),
+        ),
+      );
+  };
+
   if (!args.holderIsAgent) {
-    const { plaintext } = await mintPat({ ...common, projectIds: [] });
-    return plaintext;
+    return db.transaction(async (tx) => {
+      await supersede(tx);
+      const { plaintext } = await mintPat({ ...common, projectIds: [] }, tx);
+      return plaintext;
+    });
   }
   return withAgentFenceLock(args.holderUserId, async (tx) => {
+    await supersede(tx);
     const fence = await agentCredentialFence(args.holderUserId, tx);
     const { plaintext } = await mintPat({ ...common, ...fence }, tx);
     return plaintext;

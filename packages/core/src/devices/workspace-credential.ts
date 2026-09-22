@@ -12,7 +12,7 @@
  */
 
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { mintPat } from '../auth/pat.js';
+import { lockPatName, mintPat } from '../auth/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
@@ -47,8 +47,7 @@ export async function deviceHolderUserId(deviceId: string): Promise<string | nul
  * credential it had, rather than a revoked one and nothing to replace it. And
  * two requests for the same checkout — the ninety-second sweep meeting a
  * `provision.request` — are ordered, which is the one way `pat_user_name_uniq`
- * can still refuse a mint now that it is partial on `revoked_at is null`. The
- * lock shape is `orgs/agent-fence.ts:withAgentFenceLock`'s.
+ * can still refuse a mint now that it is partial on `revoked_at is null`.
  */
 export async function issueWorkspaceCredential(args: {
   deviceId: string;
@@ -57,7 +56,7 @@ export async function issueWorkspaceCredential(args: {
 }): Promise<string> {
   const name = workspaceTokenNameFor(args.deviceId, args.projectId);
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
+    await lockPatName(tx, name);
     await tx
       .update(personalAccessTokens)
       .set({ revokedAt: sql`now()` })

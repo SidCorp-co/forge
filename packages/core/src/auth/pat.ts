@@ -89,6 +89,21 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
   return { row, plaintext };
 }
 
+/**
+ * Order the writers that both mean to own the one live token called `name`.
+ *
+ * `pat_user_name_uniq` is partial on `revoked_at is null` (ISS-1184), so the
+ * only way two callers still collide is by both revoking the live row and both
+ * inserting a replacement. Taking this on the transaction that does the revoke
+ * makes the second caller wait for the first to commit, so it revokes what the
+ * first left and inserts behind it. Every caller derives the key the same way
+ * or they queue on different locks and the ordering buys nothing; the shape is
+ * `orgs/agent-fence.ts:withAgentFenceLock`'s.
+ */
+export async function lockPatName(tx: Tx, name: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
+}
+
 export interface VerifiedPat {
   row: Pat;
   /**
@@ -203,27 +218,43 @@ export interface RotatePatInput {
   expiresAt?: Date | null;
 }
 
+/**
+ * Replace a token with a fresh one of the same name.
+ *
+ * The row is read INSIDE the transaction and the revoke is scoped to whatever
+ * is live under `(user_id, name)` rather than to the id that was read, because
+ * a read taken outside is the race (ISS-1184): two rotations of one token both
+ * saw the same live row, and the second inserted a duplicate of the name the
+ * first had just taken. Under {@link lockPatName} the second rotation instead
+ * supersedes the first one's replacement, so both callers get a token and the
+ * name keeps exactly one live row.
+ */
 export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null> {
-  const [existing] = await db
-    .select()
-    .from(personalAccessTokens)
-    .where(
-      and(eq(personalAccessTokens.id, input.id), eq(personalAccessTokens.userId, input.userId)),
-    )
-    .limit(1);
-  if (!existing) return null;
-
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
   const tokenHash = await hashPatPlaintext(plaintext);
 
   return db.transaction(async (tx) => {
-    // The replacement reuses the name: `pat_user_name_uniq` is partial on
-    // `revoked_at is null`, so `revoked_at` alone marks the row it supersedes.
+    const [existing] = await tx
+      .select()
+      .from(personalAccessTokens)
+      .where(
+        and(eq(personalAccessTokens.id, input.id), eq(personalAccessTokens.userId, input.userId)),
+      )
+      .limit(1);
+    if (!existing) return null;
+
+    await lockPatName(tx, existing.name);
     await tx
       .update(personalAccessTokens)
       .set({ revokedAt: sql`now()` })
-      .where(eq(personalAccessTokens.id, existing.id));
+      .where(
+        and(
+          eq(personalAccessTokens.userId, existing.userId),
+          eq(personalAccessTokens.name, existing.name),
+          isNull(personalAccessTokens.revokedAt),
+        ),
+      );
 
     const [row] = await tx
       .insert(personalAccessTokens)
