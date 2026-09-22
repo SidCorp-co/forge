@@ -69,6 +69,12 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('either carries one or is told it does not');
   });
 
+  it('says where a fence has to sit to be read at all', () => {
+    expect(prose).toContain('read only where it opens at the left margin');
+    expect(prose).toContain('stored exactly as it was written');
+    expect(prose).toContain('An example belongs indented; a record does not');
+  });
+
   it('says a fence quoted inside another fence opens nothing', () => {
     expect(prose).toContain(
       'inside an enclosing fence is that fence\u2019s content'.replace('\u2019', "'"),

@@ -80,6 +80,24 @@ describe('the fence a body means as a record', () => {
     expect(parseForgeRecord(quoted.join('\n'))).toBeNull();
   });
 
+  it('leaves an indented example as prose when it is the first thing in the body', () => {
+    for (const indent of [' ', '  ', '   ', '    ']) {
+      const body = [
+        `${indent}${FENCE}forge-record`,
+        `${indent}criterion: 13`,
+        `${indent}${FENCE}`,
+      ].join('\n');
+      expect(parseForgeRecord(body)).toBeNull();
+    }
+  });
+
+  it('reads a fence at the left margin that the body opens with blank lines before', () => {
+    const body = ['', '', `${FENCE}forge-record: verdict · contract 1`, 'criterion: 13', FENCE].join(
+      '\n',
+    );
+    expect(parseForgeRecord(body)?.kind).toBe('verdict');
+  });
+
   it('leaves an example enclosed by a tilde fence as prose, as a backtick one is', () => {
     const body = ['~~~', `${FENCE}forge-record`, 'criterion: 13', FENCE, '~~~'].join('\n');
     expect(parseForgeRecord(body)).toBeNull();

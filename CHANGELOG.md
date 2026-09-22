@@ -3105,6 +3105,13 @@
 - **A record written into a comment now lands or is refused, never silently neither.**
   The tag may sit on the opening fence as well as after the block; one that cannot be read is
   refused as you write it.
+- **A comment is stored exactly as you wrote it, indentation and all.** The first line of a comment
+  used to have its indentation stripped on the way in, and no other line's, so a comment that opened
+  with an indented block arrived mangled: a record example indented four spaces was refused as a
+  fence you never closed — when you had closed it, indented, exactly as you opened it — and one
+  indented two spaces was read as a record holding no fields, which warned you about a record that
+  was not there. Indented and quoted blocks are examples again, at any indent. A comment holding
+  nothing but spaces is still refused, now saying that is what it is.
 - **A machine now says when it can no longer be heard by a session it is running.**
   `forge-runner master status` gives that answer, how long it has stood, and a command that ends
   the session it names.
