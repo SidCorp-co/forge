@@ -3069,6 +3069,10 @@
 
 ### Fixed
 
+- **A finished run whose work this machine cannot ask a remote about now ends, instead of holding
+  its issues forever.** The work is kept where you can find it, and a release that cannot be made
+  is reported once.
+
 - **A finished run that was working in the project's own copy now ends instead of holding its
   issues forever.** Those issues come back within seconds, and the copy is left untouched,
   including unsaved work.

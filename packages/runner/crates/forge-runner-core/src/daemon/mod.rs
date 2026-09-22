@@ -918,8 +918,9 @@ mod tests {
         // A declared run is bound to its subagent the moment `SubagentStart` arrives, and a master
         // may hold only ONE unbound row at a time (ISS-1050), so a helper that seeds several runs
         // under one master has to bind each before seeding the next. Binding changes nothing any
-        // assertion in this module reads — `unclosed_runs` predicates on the three marks, never on
-        // `agent_id` — it only makes the setup a shape the ledger will still accept.
+        // assertion in this module reads — `unclosed_runs` predicates on the three marks and the
+        // terminal-refusal stamp, never on `agent_id` — it only makes the setup a shape the
+        // ledger will still accept.
         led.bind_agent(run_id, &format!("child-{run_id}")).unwrap();
         if let Some(p) = pid {
             led.attach_pid(run_id, p).unwrap();
