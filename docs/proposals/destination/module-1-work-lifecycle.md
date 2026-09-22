@@ -9,7 +9,7 @@ page in the set that touches the module. Nothing here is fixed.
 | # | Claim, and where the set states it | What the code does | Verdict |
 |---|---|---|---|
 | 1 | A cancelled blocker does not release (`lifecycle.html` §3, §7) | `issues/drop-cascade.ts` expires a dropped issue's outgoing `blocks` edges; `issues/drop-unblock.ts` comments on each dependent asking a human to re-point. The master ignores `valid_until` (forge-plugin ISS-347), so core releases and the master does not | conflict |
-| 2 | `done` and `cancelled` never collapse (`lifecycle.html` §1) | `issueStatuses` has `closed` and `dropped`; `closed` is both the shipped terminal and where a non-work issue goes (`closed` + `unmark`). Only `merged_at` separates them | conflict |
+| 2 | `done` and `cancelled` never collapse (`lifecycle.html` §1) | Resolved by ISS-1108 on the owner's decision of 2026-09-20: `closed` means the work shipped and nothing else. A close with no `merged_at` is refused in `issues/merged-at.ts:refuseUnshippedClose` and again by `trg_issues_closed_means_shipped`, and `dropped` is the non-work exit. Status alone separates them | **resolved** |
 | 3 | Only `done` releases an edge (`lifecycle.html` §3) | `BLOCKER_SETTLED_STATUSES` = `developed, testing, awaiting_release, closed` — a dependent starts four rungs before its blocker ships | deliberate divergence |
 | 4 | One lease per Intent, as a conditional write (`lifecycle.html` §5) | Split verdict. **Jobs**: real uniqueness, `jobs_active_unique (issue_id, type)` and `pipeline_runs_issue_open_uq`. **The thing named a lease**: `isIssueLeaseHeld` derives held-ness from `pipeline_runs.metadata->'runIssues'` — a JSONB array — **filtered on the asking device**, with no acquisition endpoint, no uniqueness, and a read-modify-write release | jobs **pass** · lease **fail** |
 | 5 | An attempt is the unit the harness counts (`lifecycle.html` §6) | Modelled on two axes: `jobs.attempts` with a cycle-guarded `jobs.retryOf` chain (`jobs/prior-attempts.ts` walks it and refuses to inherit prior sessions — what §6 asks for), and `issue_step_contexts.attempt` unique per `(issue, step, attempt)` | **pass** |
@@ -72,10 +72,11 @@ provenance of its own.
 
 ## Owner decisions this module is blocked on
 
-- **Does `dropped` release dependents?** Today it does, via edge expiry, and core and the master
-  disagree about it. Either answer is defensible; the disagreement is not.
-- **Does `closed` mean shipped?** If it keeps both meanings, `merged_at` is load-bearing for
-  correctness and every reader must consult it. If not, the non-work exit needs its own terminal.
+- **Does `dropped` release dependents?** Answered 2026-09-20: it does, which is what edge expiry
+  already did. The residual is not the answer but the disagreement — the master ignores
+  `valid_until` (forge-plugin ISS-347), so core releases and the master does not.
+- ~~**Does `closed` mean shipped?**~~ Answered 2026-09-20 and built in ISS-1108: it does, with no
+  second column to consult, and work that is not work leaves by `dropped`.
 - **Is the review/test handoff to become mandatory?** If it stays best-effort, `approve_rate` and
   `pass_rate` should be deleted rather than displayed as zero.
 

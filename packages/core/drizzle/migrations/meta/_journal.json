@@ -1968,6 +1968,20 @@
       "when": 1809216000000,
       "tag": "0302_pat_name_unique_while_live",
       "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1809302400000,
+      "tag": "0303_issue_transition_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 304,
+      "version": "7",
+      "when": 1809388800000,
+      "tag": "0304_closed_means_shipped",
+      "breakpoints": true
     }
   ]
 }

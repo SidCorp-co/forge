@@ -21,6 +21,7 @@ export type UnauditedMods = {
   resumeRun: typeof import('../../src/pipeline/run-pause.js').resumeRun;
   startJobForMaster: typeof import('../../src/devices/claim.js').startJobForMaster;
   resumeHeldJob: typeof import('../../src/jobs/resume-job.js').resumeHeldJob;
+  transitionIssueStatus: typeof import('../../src/issues/apply-transition.js').transitionIssueStatus;
 };
 
 export type Detected = {
@@ -57,12 +58,13 @@ export async function createUnauditedFixture(): Promise<UnauditedFixture> {
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
-  const [transition, marker, runPause, claim, resume] = await Promise.all([
+  const [transition, marker, runPause, claim, resume, issueTransition] = await Promise.all([
     import('../../src/lifecycle/transition.js'),
     import('../../src/db/kernel-marker.js'),
     import('../../src/pipeline/run-pause.js'),
     import('../../src/devices/claim.js'),
     import('../../src/jobs/resume-job.js'),
+    import('../../src/issues/apply-transition.js'),
   ]);
   const ids = { projectId: '', ownerId: '', issueId: '', runId: '' };
 
@@ -76,6 +78,7 @@ export async function createUnauditedFixture(): Promise<UnauditedFixture> {
       resumeRun: runPause.resumeRun,
       startJobForMaster: claim.startJobForMaster,
       resumeHeldJob: resume.resumeHeldJob,
+      transitionIssueStatus: issueTransition.transitionIssueStatus,
     },
 
     async reset() {

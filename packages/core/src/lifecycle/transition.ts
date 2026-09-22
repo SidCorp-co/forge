@@ -1,10 +1,8 @@
 /**
- * ISS-447 (ISS-442 C1) — the SINGLE writer of terminal status across the three
- * kernel tables (`jobs`, `agent_sessions`, `pipeline_runs`).
- *
- * A thin PRIMITIVE by design: the guarded CAS write plus the audit row, and
- * nothing else. Every downstream side-effect (cascade fan-out, WS broadcast,
- * hooks, dispatch re-tick) stays in the caller.
+ * ISS-447 (ISS-442 C1) — the SINGLE writer of terminal status across `jobs`,
+ * `agent_sessions` and `pipeline_runs`. A thin PRIMITIVE by design: the guarded
+ * CAS write plus the audit row, and nothing else. Every downstream side-effect
+ * — cascade fan-out, WS broadcast, hooks, dispatch re-tick — stays in the caller.
  */
 
 import { eq, type SQL } from 'drizzle-orm';
@@ -18,6 +16,7 @@ import {
   agentSessions,
   type JobStatus,
   jobs,
+  type KernelTransitionEntity,
   kernelTransitions,
   type PipelineRunStatus,
   pipelineRuns,
@@ -26,11 +25,13 @@ import {
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 
-/** Re-exported so a caller that already imports the chokepoint keeps one import.
- *  The UPDATE + audit INSERT run on whichever executor is passed; pass a `tx`
- *  when atomicity with a cascade or a sibling write is required. */
+/** Re-exported so a caller importing the chokepoint keeps one import. The UPDATE + audit INSERT
+ *  run on whichever executor is passed; pass a `tx` where atomicity is required. */
 export type { KernelExecutor };
 
+/** The entities this module's CAS write can drive. `issues` is audited too (ISS-1107) and is NOT
+ *  one of them: its writer carries a compare-and-set and columns no row type here has, so it writes
+ *  its own UPDATE and calls `recordKernelTransition`. `issue` reaching here is refused by name. */
 export type KernelEntity = 'job' | 'session' | 'run';
 export type KernelActorType = 'user' | 'system' | 'runner' | 'sweeper';
 
@@ -92,13 +93,9 @@ export interface RunTransitionArgs<K extends keyof RunRow = keyof RunRow> extend
   returning?: readonly K[];
 }
 
-/**
- * What a bulk session sweep reads off each row it flips: the three ids the WS
- * broadcast needs, the run the wedge looks its issue up through, and the status
- * the row landed on.
- *
- * Shared so the five sweep call sites cannot drift apart into five projections.
- */
+/** What a bulk session sweep reads off each row it flips: the three ids the WS broadcast needs, the
+ *  run the wedge looks its issue up through, and the status the row landed on. Shared so the five
+ *  sweep call sites cannot drift into five projections. */
 export const SWEEP_SESSION_COLUMNS = [
   'id',
   'projectId',
@@ -146,13 +143,9 @@ export async function applyKernelTransition(
   return updated;
 }
 
-/**
- * A session that just went terminal closes what it owns.
- *
- * Here rather than at twenty-three call sites, none of which can see a leaked
- * subtree. A flip the descent itself wrote is skipped: the walk owns its own
- * depth bound, and re-entering would run one walk per row.
- */
+/** A session that just went terminal closes what it owns — here rather than at twenty-three call
+ *  sites, none of which can see a leaked subtree. A flip the descent itself wrote is skipped: the
+ *  walk owns its depth bound, and re-entering would run one walk per row. */
 async function descendFrom(
   rows: Array<Record<string, unknown> & { id: string }>,
   args: SessionTransitionArgs,
@@ -194,9 +187,7 @@ async function fireSessionBridges(
   }
 }
 
-/**
- * The whole row behind one bridge-marked id, or `null` with the reason logged.
- */
+/** The whole row behind one bridge-marked id, or `null` with the reason logged. */
 async function hydrateSession(exec: KernelExecutor, sessionId: string): Promise<SessionRow | null> {
   try {
     const [row] = await exec
@@ -219,13 +210,9 @@ async function hydrateSession(exec: KernelExecutor, sessionId: string): Promise<
   }
 }
 
-/**
- * The drizzle `.returning()` argument for a named projection, or `undefined`
- * when the caller asked for the whole row.
- *
- * The guard above the three argument shapes says why `id` — and, on a session,
- * `metadata` — are in every projection whether or not the caller named them.
- */
+/** The drizzle `.returning()` argument for a named projection, or `undefined` for the whole row.
+ *  The guard above the three argument shapes says why `id` — and `metadata` on a session — are in
+ *  every projection whether or not the caller named them. */
 function projectionFor(
   table: typeof jobs | typeof agentSessions | typeof pipelineRuns,
   entity: KernelEntity,
@@ -247,13 +234,67 @@ function projectionFor(
   return projection;
 }
 
+/** What one audit row says, whoever wrote the UPDATE it belongs to. */
+export interface KernelTransitionRecord {
+  entity: KernelTransitionEntity;
+  entityId: string;
+  fromStatus?: string | null;
+  toStatus: string;
+  reason?: string | null;
+  actor: KernelActor;
+  source: string;
+}
+
+/** THE writer of `kernel_transitions`: `writeTransition` for its three tables,
+ *  `issues/apply-transition.ts` for the fourth. Run it on the same executor as
+ *  the UPDATE — a row that can go missing reads as "nobody did this". */
+export async function recordKernelTransition(
+  exec: KernelExecutor,
+  rows: readonly KernelTransitionRecord[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await exec.insert(kernelTransitions).values(
+    rows.map((row) => ({
+      entity: row.entity,
+      entityId: row.entityId,
+      fromStatus: row.fromStatus ?? null,
+      toStatus: row.toStatus,
+      reason: row.reason ?? null,
+      actorType: row.actor.type,
+      actorAgency: agencyOf(row.actor),
+      actorId: row.actor.id ?? null,
+      source: row.source,
+    })),
+  );
+}
+
+type KernelTable = typeof jobs | typeof agentSessions | typeof pipelineRuns;
+
+/** The table this chokepoint writes for an entity. A switch and not a ternary chain, whose last arm
+ *  would absorb an unknown entity into `pipeline_runs`; here it is refused by name. Read lazily and
+ *  never captured at module load — a module-level map of drizzle objects is evaluated before a
+ *  caller's partial mock of the schema exists. */
+function tableForEntity(entity: KernelEntity): KernelTable {
+  switch (entity) {
+    case 'job':
+      return jobs;
+    case 'session':
+      return agentSessions;
+    case 'run':
+      return pipelineRuns;
+    default:
+      throw new Error(
+        `applyKernelTransition drives job, session and run, and has no table for \`${entity}\`. An \`issue\` status write goes through \`issues/apply-transition.ts:transitionIssueStatus\`, which carries the compare-and-set this chokepoint cannot express and calls \`recordKernelTransition\` for its own audit row.`,
+      );
+  }
+}
+
 async function writeTransition(
   exec: KernelExecutor,
   args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,
 ): Promise<Array<Record<string, unknown> & { id: string }>> {
+  const table = tableForEntity(args.entity);
   await stampKernelTxn(exec);
-  const table =
-    args.entity === 'job' ? jobs : args.entity === 'session' ? agentSessions : pipelineRuns;
   const projection = projectionFor(table, args.entity, args.returning);
   const write = exec
     .update(table as typeof jobs)
@@ -262,21 +303,18 @@ async function writeTransition(
   const updated = ((projection ? await write.returning(projection) : await write.returning()) ??
     []) as Array<Record<string, unknown> & { id: string }>;
 
-  if (updated.length > 0) {
-    await exec.insert(kernelTransitions).values(
-      updated.map((row) => ({
-        entity: args.entity,
-        entityId: row.id,
-        fromStatus: args.fromStatus ?? null,
-        toStatus: args.to,
-        reason: args.reason ?? null,
-        actorType: args.actor.type,
-        actorAgency: agencyOf(args.actor),
-        actorId: args.actor.id ?? null,
-        source: args.source,
-      })),
-    );
-  }
+  await recordKernelTransition(
+    exec,
+    updated.map((row) => ({
+      entity: args.entity,
+      entityId: row.id,
+      fromStatus: args.fromStatus ?? null,
+      toStatus: args.to,
+      reason: args.reason ?? null,
+      actor: args.actor,
+      source: args.source,
+    })),
+  );
 
   return updated;
 }
