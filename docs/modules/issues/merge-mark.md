@@ -14,8 +14,8 @@ holds that — and `mergeMarkKindOf` is the only reading of what the pair MEANS.
 observed: somebody's claim that work shipped. `observed` is a merge Forge holds its own
 record of. The two are as different as a receipt is from a promise, and until ISS-1126
 the distinction lived only in the columns — every surface that wanted it had to re-derive
-it from a null test, and none of them did. 851 of 851 marks on forge-dev are asserted and
-nothing an agent read said so.
+it from a null test, and none of them did. Measured on forge-dev, 2026-09-20: 851 of 851 marks
+were asserted and nothing an agent read said so.
 
 A second place deciding what the pair means would be the single-writer defect one axis
 over: a reader that disagrees with the writer about which state it is looking at is how
@@ -52,9 +52,9 @@ same commit.
 
 That is an amnesty and this is its price. `observedMergeForIssue` needs a
 `repo_pull_requests` row in state `merged`; until ISS-1123 (`9a78b0c93`) nothing but an
-inbound webhook could write one, and no inbound delivery has ever been recorded on this
-project's binding. Refusing asserted marks today would fail the criterion on every issue
-the project has and stop every run.
+inbound webhook could write one, and as of 2026-09-20 no inbound delivery had been recorded
+on this project's binding. Refusing asserted marks then would have failed the criterion on
+every issue the project has and stopped every run.
 
 **What ends it:** when observed marks are being written here — a pull request opened
 through Forge and merged through the kernel door leaves a row and stamps the commit —
