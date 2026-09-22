@@ -118,6 +118,7 @@ describe('GET /pipeline-config over a document that already stores a non-entry m
           states: {
             open: { enabled: true, mode: 'manual' },
             needs_info: { mode: 'manual' },
+            in_progress: { enabled: true, mode: 'auto', model: 'sonnet' },
             awaiting_release: { enabled: true, mode: 'auto', model: 'sonnet' },
           },
         },
@@ -132,10 +133,17 @@ describe('GET /pipeline-config over a document that already stores a non-entry m
     expect((get.json.pipelineConfig as { enabled?: boolean }).enabled).toBe(true);
   });
 
-  it('strips the non-entry mode and keeps the rest of that stage', async () => {
+  it('strips the non-reading mode and keeps the rest of that stage', async () => {
     const states = statesOf((await call('GET', `/api/projects/${projectId}/pipeline-config`)).json);
-    expect(states.awaiting_release).toEqual({ enabled: true, model: 'sonnet' });
+    expect(states.in_progress).toEqual({ enabled: true, model: 'sonnet' });
     expect(states.needs_info).toEqual({});
     expect(states.open?.mode).toBe('manual');
+  });
+
+  // ISS-1189 — the release stage now reads `mode`, so the read must hand it back rather than
+  // strip it; stripping it would make a project declaring `auto` stop releasing in silence.
+  it('keeps the mode the release stage reads', async () => {
+    const states = statesOf((await call('GET', `/api/projects/${projectId}/pipeline-config`)).json);
+    expect(states.awaiting_release).toEqual({ enabled: true, mode: 'auto', model: 'sonnet' });
   });
 });

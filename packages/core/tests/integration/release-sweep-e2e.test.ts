@@ -94,7 +94,12 @@ describe('release sweep E2E (ISS-1117)', () => {
     ownerId = owner.id;
     projectId = (
       await createTestProject(harness.db, owner.id, {
-        agentConfig: { pipelineConfig: { enabled: true, autoProdDeploy: true } },
+        agentConfig: {
+          pipelineConfig: {
+            enabled: true,
+            states: { awaiting_release: { mode: 'auto' } },
+          },
+        },
       })
     ).id;
     await declareProduction();
@@ -154,9 +159,32 @@ describe('release sweep E2E (ISS-1117)', () => {
     expect(after).toEqual(before);
   }, 30_000);
 
-  it('does nothing for a project that has not opted into autoProdDeploy', async () => {
+  it('does nothing for a project that declares no release mode at all', async () => {
     await harness.db.execute(sql`
       UPDATE projects SET agent_config = '{}'::jsonb WHERE id = ${projectId}
+    `);
+    const id = await insertIssue();
+    await setCriteria(id, '1. ok');
+    await postVerdict(id, verdictComment([verdictBlock(1, 'a', 'pass')]));
+
+    const { sweepAutomaticReleases } = await import('../../src/pipeline/release-sweep.js');
+    const result = await sweepAutomaticReleases();
+
+    expect(result.issuesCut).toBe(0);
+    const after = await stored(id);
+    expect(after.status).toBe('awaiting_release');
+    expect(after.claim).toBeNull();
+  }, 30_000);
+
+  // ISS-1189 — the sweep asks the release declaration, not `autoProdDeploy`, whose own question
+  // is whether a live-reaching deploy skips its human-confirm gate. A project carrying only the
+  // old boolean has declared nothing about releasing, and migration 0301 is what moved the
+  // answer across; without this the two questions silently share one switch again.
+  it('does nothing for a project carrying autoProdDeploy and no release mode', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects
+         SET agent_config = '{"pipelineConfig":{"enabled":true,"autoProdDeploy":true}}'::jsonb
+       WHERE id = ${projectId}
     `);
     const id = await insertIssue();
     await setCriteria(id, '1. ok');
