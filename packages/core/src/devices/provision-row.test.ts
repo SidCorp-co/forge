@@ -23,18 +23,19 @@ const row = (over: Partial<ProvisionRow> = {}): ProvisionRow => ({
 });
 
 const ctx = { deviceId: 'dev-1', holderUserId: 'agent-7', githubAppCredential: false };
-const violation = () => Object.assign(new Error('duplicate key value'), { code: '23505' });
+const violation = (constraint = 'pat_user_name_uniq') =>
+  Object.assign(new Error('duplicate key value'), { code: '23505', constraint_name: constraint });
 
 describe('integrityViolation', () => {
   it('reads a SQLSTATE class 23 off the error itself', () => {
-    expect(integrityViolation(violation())).toBe('23505');
+    expect(integrityViolation(violation())).toBe('23505:pat_user_name_uniq');
   });
 
   it('reads one off a cause drizzle wrapped, which is the shape the endpoint actually meets', () => {
     const wrapped = new Error('Failed query: insert into "personal_access_tokens" …', {
       cause: violation(),
     });
-    expect(integrityViolation(wrapped)).toBe('23505');
+    expect(integrityViolation(wrapped)).toBe('23505:pat_user_name_uniq');
   });
 
   it('is null for a connection error, which says nothing about the next attempt', () => {
@@ -101,13 +102,26 @@ describe('buildProvisionRow', () => {
       .fn<() => Promise<string>>()
       .mockRejectedValueOnce(violation())
       .mockRejectedValueOnce(
-        Object.assign(new Error('violates foreign key constraint'), { code: '23503' }),
+        Object.assign(new Error('violates foreign key constraint'), {
+          code: '23503',
+          constraint_name: 'pat_user_id_fk',
+        }),
       );
     const built = await buildProvisionRow(row(), ctx, { issueCredential });
     expect(issueCredential).toHaveBeenCalledTimes(2);
     expect(built.provision).toBeNull();
     expect(built.reports[0]).toMatchObject({ kind: 'omitted', terminal: false });
     expect(built.reports[0]?.reason).toContain('foreign key');
+  });
+
+  it('leaves the row queued when the same SQLSTATE names a DIFFERENT constraint', async () => {
+    const issueCredential = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(violation('pat_user_name_uniq'))
+      .mockRejectedValueOnce(violation('personal_access_tokens_pkey'));
+    const built = await buildProvisionRow(row(), ctx, { issueCredential });
+    expect(issueCredential).toHaveBeenCalledTimes(2);
+    expect(built.reports[0]).toMatchObject({ kind: 'omitted', terminal: false });
   });
 
   it('does not build a second time for an error that says nothing about the next attempt', async () => {

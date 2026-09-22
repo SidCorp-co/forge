@@ -80,14 +80,17 @@ export interface ProvisionRowContext {
 }
 
 /**
- * SQLSTATE class 23: the data itself refusing, which is the only cause this code
- * can tell from a blip — a timeout says nothing about the next poll, and burning
- * a row on one costs a re-bind. Walked, because drizzle wraps what pg threw.
+ * SQLSTATE class 23 and the constraint it names: the data itself refusing, the
+ * only cause this code can tell from a blip. Walked, because drizzle wraps what
+ * pg threw. Null for anything else.
  */
 export function integrityViolation(err: unknown): string | null {
   for (let cur: unknown = err, depth = 0; cur && depth < 5; depth++) {
-    const code = (cur as { code?: unknown }).code;
-    if (typeof code === 'string' && code.startsWith('23')) return code;
+    const e = cur as { code?: unknown; constraint_name?: unknown };
+    if (typeof e.code === 'string' && e.code.startsWith('23')) {
+      const named = typeof e.constraint_name === 'string' ? e.constraint_name : '';
+      return named ? `${e.code}:${named}` : e.code;
+    }
     cur = (cur as { cause?: unknown }).cause;
   }
   return null;
@@ -118,8 +121,8 @@ interface MintFailure {
  * Mint, and on an integrity violation mint once more.
  * `issueWorkspaceCredential` serialises callers for one token name, so the
  * second attempt runs after whatever held it has finished. Only the SAME
- * SQLSTATE twice is a reproduction: a 23505 followed by a 23503 is two
- * different faults, and calling that permanent would burn a row on a race.
+ * violation twice is a reproduction — same SQLSTATE, same constraint; two
+ * different faults are a race, and calling one permanent burns a healthy row.
  */
 async function mintWithOneRetry(
   deps: ProvisionRowDeps,

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProvisionReport } from './provision-row.js';
 
-const where = vi.fn(async () => undefined);
-const set = vi.fn(() => ({ where }));
-const update = vi.fn(() => ({ set }));
+const where = vi.fn(async (_predicate?: unknown) => undefined);
+const set = vi.fn((_patch: Record<string, unknown>) => ({ where }));
+const update = vi.fn((_table?: unknown) => ({ set }));
 
 vi.mock('../db/client.js', () => ({ db: { update } }));
 

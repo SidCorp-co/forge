@@ -47,9 +47,7 @@ vi.mock('../../src/devices/provision-reports.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/devices/provision-reports.js')>();
   return {
     ...real,
-    recordProvisionReports: async (
-      reports: Parameters<typeof real.recordProvisionReports>[0],
-    ) => {
+    recordProvisionReports: async (reports: Parameters<typeof real.recordProvisionReports>[0]) => {
       const err = recordingFailure.next;
       if (err) {
         recordingFailure.next = null;
