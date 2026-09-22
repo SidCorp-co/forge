@@ -343,7 +343,11 @@ export const pipelineConfigPatchSchema = z
     }
     for (const key of Object.keys(raw as Record<string, unknown>)) {
       if (PIPELINE_CONFIG_KEYS.includes(key)) continue;
-      const retired = RETIRED_PIPELINE_CONFIG_KEYS[key];
+      // `Object.hasOwn`, never a bare lookup: a patch naming `toString` would otherwise be
+      // refused with a function body where its message should be.
+      const retired = Object.hasOwn(RETIRED_PIPELINE_CONFIG_KEYS, key)
+        ? RETIRED_PIPELINE_CONFIG_KEYS[key]
+        : undefined;
       ctx.addIssue({
         code: 'custom',
         path: [key],

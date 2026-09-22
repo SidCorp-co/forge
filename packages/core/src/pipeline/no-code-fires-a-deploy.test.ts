@@ -85,6 +85,30 @@ describe('no code path fires a deployment on its own (ISS-1186)', () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * A file-granular allowlist would let a timer be added INSIDE a door and still pass, so the four
+   * are held to a second rule: none of them may register anything that runs without being called.
+   */
+  const SELF_STARTERS = [
+    'setInterval(',
+    'setTimeout(',
+    'setImmediate(',
+    'queueMicrotask(',
+    '.on(',
+    'cron',
+    'schedule',
+  ];
+
+  it('no file that may name a deploy also registers something that runs by itself', () => {
+    const offenders = [...ALLOWED_TO_NAME_A_DEPLOY]
+      .map((path) => [path, readFileSync(join(SRC_ROOT, path), 'utf8')] as const)
+      .filter(([, src]) => SELF_STARTERS.some((token) => src.includes(token)))
+      .map(([path]) => path)
+      .sort();
+
+    expect(offenders).toEqual([]);
+  });
+
   it('the four allowed files are all present, so the allowlist cannot pass by naming nothing', () => {
     const naming = new Set(
       walk(SRC_ROOT, isSourceFile)
@@ -188,4 +212,13 @@ describe('a caller who names the retired key is told what replaced it (ISS-1186)
     expect(out.success).toBe(false);
     expect(out.error?.issues.map((i) => i.path.join('.'))).toEqual(['deployOnLanding']);
   });
+
+  it.each(['toString', 'constructor', 'hasOwnProperty', '__proto__'])(
+    'answers `%s` with the unknown-key sentence, never a value off the prototype',
+    (key) => {
+      const message = refusal({ [key]: true });
+      expect(message).toContain('is not a pipeline config key');
+      expect(message).not.toContain('function');
+    },
+  );
 });
