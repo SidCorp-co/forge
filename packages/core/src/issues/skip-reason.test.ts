@@ -1,15 +1,15 @@
 /**
  * ISS-1189 — "no deployment contains the change" stops being a reason to skip a criterion on a
- * project whose preview is local. Local IS the preview there.
+ * project whose preview is local.
  *
- * Every string below is a `why` a real judging run wrote on this tracker, not a paraphrase. The
- * two halves are the whole point: the first is the absence a local preview answers, the second is
- * an absence it does not, and a rule that could not tell them apart would make runs claim a route
- * they do not have. The issue named all six skipped criteria as one set; read back, they are two.
+ * Every string below but the last two is a `why` a real judging run wrote on this tracker. The two
+ * halves are the point: the first is the absence a local preview answers, the second is an absence
+ * it does not, and a rule that could not tell them apart would make runs claim a route they have
+ * not got. The issue named all six skipped criteria as one set; read back, they are two.
  */
 
 import { describe, expect, it } from 'vitest';
-import { namesNoDeployment } from './skip-reason.js';
+import { namesNoDeployment, shapeScreensVerdicts } from './skip-reason.js';
 
 /** ISS-1152, judged at 382502c884 — the change was in no deployment at all. */
 const ABSENCE_A_LOCAL_PREVIEW_ANSWERS = {
@@ -25,7 +25,7 @@ const ABSENCE_A_LOCAL_PREVIEW_ANSWERS = {
     'product predates it, so nobody could render the Coolify settings section.',
 };
 
-/** ISS-1114 and ISS-1118 — a separately installed binary, and a box that refuses work. */
+/** ISS-1114 and ISS-1118 — a separately installed binary, a box refusing work, and two controls. */
 const ABSENCE_A_LOCAL_PREVIEW_DOES_NOT_ANSWER = {
   'ISS-1114 c13':
     'No route reached it. The criterion is about the daemon log on the sweep that starts a pane, ' +
@@ -41,6 +41,9 @@ const ABSENCE_A_LOCAL_PREVIEW_DOES_NOT_ANSWER = {
   'a criterion nobody could reach for want of a credential':
     'No route: the QA account is not a member of this organisation, so the screen the criterion ' +
     'names cannot be opened at all.',
+  'a deployment credential, which is a resource and not a deployment':
+    'No deployment credentials exist for this environment, so the local product cannot start ' +
+    'without the database secret and no deployment key is mintable here.',
 };
 
 describe('a `why` that says no deployment carries the change', () => {
@@ -57,4 +60,22 @@ describe('a `why` that says something else is absent', () => {
       expect(namesNoDeployment(why)).toBe(false);
     });
   }
+});
+
+describe('which projects the rule screens at all', () => {
+  it('screens a standard project whose preview is local', () => {
+    expect(shapeScreensVerdicts({ previewShape: 'local', kind: 'standard' })).toBe(true);
+  });
+
+  it('leaves a standard project with a deployed preview alone', () => {
+    expect(shapeScreensVerdicts({ previewShape: 'deployed', kind: 'standard' })).toBe(false);
+  });
+
+  it('leaves a website project alone, whose store is its own source of truth', () => {
+    expect(shapeScreensVerdicts({ previewShape: 'local', kind: 'website' })).toBe(false);
+  });
+
+  it('leaves a project it could not read alone', () => {
+    expect(shapeScreensVerdicts(undefined)).toBe(false);
+  });
 });

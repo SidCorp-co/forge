@@ -5,21 +5,23 @@ import { logger } from '../logger.js';
 import type { MessageRefusal } from '../messaging/contract.js';
 import type { ForgeRecord } from '../messaging/forge-record.js';
 
-/** The rule this module owns, named on every refusal it produces. */
 export const LOCAL_PREVIEW_SKIP_RULE = 'skip-reason-local-preview';
 
+/** A resource right after `no deployment` makes the sentence about it, not about a deployment. */
+const RESOURCE = /(?!\s+(?:credential|secret|key|token|account|access|permission|log|url)\w*)/
+  .source;
+
 /**
- * The claims a `why` makes when what is absent is a DEPLOYMENT of the change itself.
- *
- * This is a matcher over a stated reason, so its bounds are fixtures rather than theory, and
- * `skip-reason.test.ts` holds both halves: the real `why` lines ISS-1152 c12, c13 and c14 carry,
- * which a local preview answers, and the real lines ISS-1114 c13, ISS-1118 and ISS-1139 c16 carry,
- * which it does not — those name a separately installed runner binary or a box refusing work, and
- * standing the product up locally reaches none of them. A probe that swallowed the second set
- * would make a run claim a route it has not got, which is worse than the skip.
+ * The claims a `why` makes when what is absent is a DEPLOYMENT OF THE CHANGE. A matcher over stated
+ * prose, bounded both ways by the real lines in `skip-reason.test.ts`: ISS-1152 c12/c13/c14, which
+ * a local preview answers, against ISS-1114 c13, ISS-1118 and ISS-1139 c16, which it does not.
  */
 const NO_DEPLOYMENT_CLAIMS: readonly RegExp[] = [
-  /\bno deployments?\b/u,
+  new RegExp(
+    `\\bno deployments?\\b${RESOURCE}\\s+(?:\\w+\\s+){0,3}?(?:contain\\w*|carr\\w+|hold\\w*|serv\\w+|includ\\w+|dispatch\\w*|exercis\\w+|exists?)\\b`,
+    'u',
+  ),
+  /\bno deployments? of (?:this|the) change\b/u,
   /\bnot (?:running|deployed) anywhere\b/u,
   /\brunning product predates\b/u,
   /\bnothing (?:is|has been) deployed\b/u,
@@ -32,12 +34,9 @@ export function namesNoDeployment(why: string): boolean {
   return NO_DEPLOYMENT_CLAIMS.some((probe) => probe.test(text));
 }
 
-/**
- * The criteria this record skips for want of a deployment, in the order written.
- *
- * `criterion` opens a block and `why` closes the reason inside it, which is the layout
- * `forge record verdict` writes and the one `criteria-verdicts.ts` already reads pairs out of.
- */
+/** The criteria this record skips for want of a deployment, in the order written. `criterion`
+ *  opens a block and `why` closes the reason inside it — the layout `forge record verdict` writes
+ *  and `criteria-verdicts.ts` reads pairs out of. */
 export function criteriaSkippedForNoDeployment(record: ForgeRecord | null): number[] {
   if (record?.kind !== 'verdict') return [];
   const out: number[] = [];
@@ -71,19 +70,21 @@ export function localPreviewSkipRefusal(criteria: readonly number[]): MessageRef
     criteria.length === 1 ? `criterion ${criteria[0]}` : `criteria ${criteria.join(', ')}`;
   return {
     rule: LOCAL_PREVIEW_SKIP_RULE,
-    why: `${named} is skipped for want of a deployment, and this project declares \`previewShape: "local"\` — it has no deployed preview and is not waiting to get one. LOCAL IS THE PREVIEW here: stand the product up in this run's own worktree at the commit being judged and exercise the criterion there. A criterion out of reach for some OTHER reason — a credential nobody minted, a separately installed binary, a box that refuses work — is skipped with THAT reason and stands; this refusal is about the one reason this project's shape already answers.`,
+    why: `${named} is skipped for want of a deployment, and this project declares \`previewShape: "local"\` — it has no deployed preview and is not waiting to get one. LOCAL IS THE PREVIEW here: stand the product up in this run's own worktree at the commit being judged and exercise the criterion there, citing that commit and the artefact of the exercise. A criterion out of reach for some OTHER reason — a credential nobody minted, a separately installed binary, a box that refuses work — is skipped with THAT reason and stands.`,
     quote: 'verdict: skipped',
     shape: SHAPE,
     example: "why: exercised against the product stood up locally at <sha>, in this run's worktree",
   };
 }
 
-/**
- * What this record is refused for on account of the project's declared shape.
- *
- * Read fails open: a comment is not lost because one column could not be read, and the read is
- * logged so a silence here is visible rather than inferred.
- */
+/** Whether this project's declaration puts a verdict under this rule. `kind` sits beside the shape
+ *  because the preview axis splits `standard` and says nothing about `website`. */
+export function shapeScreensVerdicts(row?: { previewShape: string; kind: string }): boolean {
+  return row?.previewShape === 'local' && row.kind === 'standard';
+}
+
+/** What this record is refused for on account of that declaration. A read that fails leaves the
+ *  comment alone and says so in the log. */
 export async function verdictShapeRefusals(
   projectId: string,
   record: ForgeRecord | null,
@@ -94,11 +95,11 @@ export async function verdictShapeRefusals(
   const handle = executor ?? db;
   try {
     const [row] = await handle
-      .select({ previewShape: projects.previewShape })
+      .select({ previewShape: projects.previewShape, kind: projects.kind })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    if (row?.previewShape !== 'local') return [];
+    if (!shapeScreensVerdicts(row)) return [];
   } catch (err) {
     logger.warn(
       { err, projectId },

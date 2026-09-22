@@ -32,10 +32,7 @@ export interface DispatchOutcome {
  * skipping the human-confirm gate. Default false keeps the gate. Best-effort —
  * a read failure falls back to the safe (gated) behavior.
  *
- * This is the WHOLE of what the key decides, and ISS-1189 took the other reading off it: whether
- * an issue releases without a person acting at all is `states.awaiting_release.mode`, read by
- * `auto-release.ts`. The two were one boolean until then, and a project could not say yes to one
- * and no to the other.
+ * ISS-1189 took the other reading off it: whether an issue releases without a person is `states.awaiting_release.mode`, read by `auto-release.ts`.
  */
 export async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
   try {

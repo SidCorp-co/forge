@@ -16,15 +16,7 @@ export type BindingRole = (typeof bindingRoles)[number];
 export const deployStages = ['preview', 'live'] as const;
 export type DeployStage = (typeof deployStages)[number];
 
-/**
- * Where a `standard` project's work is exercised before it reaches live.
- *
- * `deployed` is a preview deployment somebody opens; `local` is the run's own box, which is the
- * normal shape for a one-box project rather than a degraded one. It is DECLARED: a reader asks
- * this column and never asks whether `environments.preview` happens to be null. What keeps the
- * two agreeing is `projects/release-shape.ts`, which refuses a write that would make them
- * disagree. Meaningless for `website`, whose store is its own source of truth.
- */
+/** Where a `standard` project's work is exercised before live — DECLARED, and `release-shape.ts` keeps `environments.preview` in step with it. */
 export const previewShapes = ['deployed', 'local'] as const;
 export type PreviewShape = (typeof previewShapes)[number];
 

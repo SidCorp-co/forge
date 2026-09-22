@@ -93,6 +93,10 @@ export const updateProjectSchema = z
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
+/** A rule's answered refusal as the 400 it becomes. The rules do not know they serve HTTP. */
+const refuseGap = (gap: { code: string; message: string }) =>
+  new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
+
 export const updateProjectPatchSchema = z
   .unknown()
   .superRefine(refuseRetiredProjectKeys)
@@ -403,8 +407,8 @@ projectRoutes.patch(
       const value = (patch as Record<string, unknown>)[key];
       if (value !== undefined) updates[key] = value;
     }
-    const gap = (await releaseModelGap(id, updates)) ?? (await releaseShapeGap(id, updates));
-    if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
+    const gap = await releaseModelGap(id, updates);
+    if (gap) throw refuseGap(gap);
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.personaStyle !== undefined) {
@@ -421,6 +425,8 @@ projectRoutes.patch(
     if (patch.categories !== undefined) agentConfigPatch.categories = patch.categories;
 
     const [updated] = await db.transaction(async (tx) => {
+      const shape = await releaseShapeGap(id, updates, tx);
+      if (shape) throw refuseGap(shape);
       await patchAgentConfigKeys(id, agentConfigPatch, tx);
       if (patch.issuePrefix !== undefined) {
         await applyIssuePrefixPatch(id, patch.issuePrefix, userId, tx);

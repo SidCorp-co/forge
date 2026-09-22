@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import postgres from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
@@ -26,6 +27,8 @@ let server: TestServer;
 let mods: {
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   projects: typeof import('../../src/db/schema.js').projects;
+  db: typeof import('../../src/db/client.js').db;
+  releaseShapeGap: typeof import('../../src/projects/release-shape.js').releaseShapeGap;
 };
 let ownerId: string;
 let projectId: string;
@@ -91,11 +94,18 @@ beforeAll(async () => {
   process.env.DATABASE_URL = harness.url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  const [jwt, schema] = await Promise.all([
+  const [jwt, schema, client, shape] = await Promise.all([
     import('../../src/auth/jwt.js'),
     import('../../src/db/schema.js'),
+    import('../../src/db/client.js'),
+    import('../../src/projects/release-shape.js'),
   ]);
-  mods = { signUserToken: jwt.signUserToken, projects: schema.projects };
+  mods = {
+    signUserToken: jwt.signUserToken,
+    projects: schema.projects,
+    db: client.db,
+    releaseShapeGap: shape.releaseShapeGap,
+  };
   server = await startTestServer();
 }, 180_000);
 
@@ -175,5 +185,48 @@ describe('forge-dev’s pre-fix blob, sent at the door it was stored through', (
   it('leaves the stored environments untouched', async () => {
     await patch({ previewShape: 'deployed', environments: FORGE_DEV_BEFORE_THE_FIX });
     expect((await stored()).environments).toBeNull();
+  });
+});
+
+/**
+ * Two writers, each sending one side, each legal against the row as it stood.
+ *
+ * This is the half of the invariant a sequential test cannot reach: without the row lock both pass
+ * their check against the pre-change row and whichever commits second lands a contradiction
+ * neither of them sent. The first writer here is a connection of its own holding an uncommitted
+ * UPDATE, so the lock is genuinely held while the second asks — the second must WAIT for it, and
+ * then be judged against what the first left behind.
+ */
+describe('two concurrent writes touching one side each', () => {
+  it('blocks the second on the row, then refuses it against what the first left', async () => {
+    await patch({ previewShape: 'deployed', environments: A_REAL_PREVIEW });
+
+    const holder = postgres(harness.url, { max: 1, onnotice: () => {} });
+    const cleared = JSON.stringify({ preview: null, live: A_REAL_PREVIEW.live });
+    let settled = false;
+    try {
+      await holder.unsafe('BEGIN');
+      await holder.unsafe(
+        `UPDATE projects SET preview_shape = 'local', environments = $1::jsonb WHERE id = $2`,
+        [cleared, projectId],
+      );
+
+      const gap = mods.db
+        .transaction(async (tx) =>
+          mods.releaseShapeGap(projectId, { environments: A_REAL_PREVIEW }, tx),
+        )
+        .then((g) => {
+          settled = true;
+          return g;
+        });
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(settled).toBe(false);
+
+      await holder.unsafe('COMMIT');
+      expect((await gap)?.code).toBe('PREVIEW_SHAPE_LOCAL_WITH_HOST');
+    } finally {
+      await holder.end({ timeout: 5 });
+    }
   });
 });

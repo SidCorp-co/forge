@@ -1,13 +1,7 @@
 import type { PreviewShape } from '../../db/schema.js';
 import type { NormalizedEnvironments } from '../../projects/environments.js';
 
-/**
- * What a run is told when this project declares no deployed preview — ISS-1189.
- *
- * Before the declaration existed, a project with no preview side simply had no Preview line, which
- * reads exactly like a project whose preview host has not been filled in yet. That silence is what
- * six criteria were parked against on 2026-09-22 for want of a deployment nobody was going to make.
- */
+/** What a run is told when a project declares no deployed preview (ISS-1189): without it, having none reads exactly like a host nobody filled in. */
 const LOCAL_PREVIEW =
   "- Preview: local — this project declares no deployed preview side, and is not waiting for one. A criterion that needs the running product is exercised by standing it up in this run's own worktree at the commit being judged.";
 

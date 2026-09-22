@@ -24,6 +24,7 @@ import {
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { assertReleaseShape } from './release-shape.js';
 
 /** The project's id, or `null` when no project carries that slug. */
 export async function findProjectIdBySlug(slug: string): Promise<string | null> {
@@ -231,20 +232,31 @@ export async function readEnvironments(projectId: string): Promise<Record<string
     : {};
 }
 
+/**
+ * The other door onto the project row, and it answers to the same rules as the route.
+ *
+ * `releaseShapeGap` is asked inside the transaction that writes, so a caller here cannot store a
+ * declaration and a blob that disagree — which is what `environments` being writable from two
+ * places would otherwise allow. ISS-1189.
+ */
 export async function updateProject(projectId: string, updates: Record<string, unknown>) {
-  const [row] = await db.update(projects).set(updates).where(eq(projects.id, projectId)).returning({
-    id: projects.id,
-    slug: projects.slug,
-    name: projects.name,
-    orgId: projects.orgId,
-    description: projects.description,
-    repoPath: projects.repoPath,
-    workspaceSetup: projects.workspaceSetup,
-    baseBranch: projects.baseBranch,
-    liveBranch: projects.liveBranch,
-    releaseModel: projects.releaseModel,
-    releaseStrategy: projects.releaseStrategy,
-    kind: projects.kind,
+  const [row] = await db.transaction(async (tx) => {
+    await assertReleaseShape(projectId, updates, tx);
+    return tx.update(projects).set(updates).where(eq(projects.id, projectId)).returning({
+      id: projects.id,
+      slug: projects.slug,
+      name: projects.name,
+      orgId: projects.orgId,
+      description: projects.description,
+      repoPath: projects.repoPath,
+      workspaceSetup: projects.workspaceSetup,
+      baseBranch: projects.baseBranch,
+      liveBranch: projects.liveBranch,
+      releaseModel: projects.releaseModel,
+      releaseStrategy: projects.releaseStrategy,
+      kind: projects.kind,
+      previewShape: projects.previewShape,
+    });
   });
   return row ?? null;
 }

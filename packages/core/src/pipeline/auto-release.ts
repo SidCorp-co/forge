@@ -6,15 +6,9 @@ import { releasesAutomatically } from './autonomous-mode.js';
 import { pipelineConfigSchema } from './pipeline-config-schema.js';
 
 /**
- * Whether this project's release is taken without a person acting — ISS-1189.
- *
- * The declaration is `states.awaiting_release.mode`, and absent is `manual`: the issue stops at
- * the rung and waits for somebody. Before this existed the sweep read
- * `pipelineConfig.autoProdDeploy` for the same answer, which is a different question — whether a
- * live-reaching deploy skips its human-confirm gate — and `release-coolify.ts` still owns that one.
- *
- * Best-effort in the same direction the confirm gate fails: a read that cannot be made answers
- * `false`, which leaves the issue standing for a person rather than releasing on a guess.
+ * Whether this project's release is taken without a person acting — ISS-1189. The declaration is
+ * `states.awaiting_release.mode`; absent is `manual`, and the issue waits at the rung. A read that
+ * cannot be made answers `false`, leaving the issue for a person rather than releasing on a guess.
  */
 export async function projectReleasesAutomatically(projectId: string): Promise<boolean> {
   try {

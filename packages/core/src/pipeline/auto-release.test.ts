@@ -1,10 +1,8 @@
 /**
  * ISS-1189 — whether releasing is automatic is its own declaration, and `autoProdDeploy` is not it.
- *
- * The last case is the whole point of the change: a project carrying `autoProdDeploy: true` and no
- * release declaration does NOT release by itself. That is what migration 0301 exists to prevent
- * happening by accident — it writes the declaration for every project that held the old key, so
- * nothing's behaviour moves when this predicate does.
+ * A project carrying `autoProdDeploy: true` and no release declaration does NOT release by itself,
+ * which is what migration 0301 exists to prevent happening by accident: it writes the declaration
+ * for every project that held the old key, so nothing's behaviour moves when this predicate does.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';

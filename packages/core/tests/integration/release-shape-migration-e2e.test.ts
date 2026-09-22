@@ -217,6 +217,42 @@ describe('the release declaration carried over from autoProdDeploy', () => {
     await runForward();
     expect(await releaseModeOf(id)).toBeNull();
   });
+
+  it('leaves an explicitly declared manual alone, so a replay cannot undo it', async () => {
+    const id = await seed('p-explicit-manual', LIVE_ONLY, {
+      pipelineConfig: {
+        enabled: true,
+        autoProdDeploy: true,
+        states: { awaiting_release: { enabled: true, mode: 'manual' } },
+      },
+    });
+    await runForward();
+    expect(await releaseModeOf(id)).toBe('manual');
+  });
+
+  it('aborts on a JSON-null states, which would swallow the carry-over in silence', async () => {
+    await seed('p-null-states', LIVE_ONLY, {
+      pipelineConfig: { enabled: true, autoProdDeploy: true, states: null },
+    });
+    const message = await forwardError();
+    expect(message).toContain('p-null-states');
+    expect(message).toContain('ISS-1189');
+  });
+
+  it('aborts on a JSON-null awaiting_release for the same reason', async () => {
+    await seed('p-null-stage', LIVE_ONLY, {
+      pipelineConfig: { enabled: true, autoProdDeploy: true, states: { awaiting_release: null } },
+    });
+    expect(await forwardError()).toContain('p-null-stage');
+  });
+
+  it('leaves a project alone whose states is null but which does not release automatically', async () => {
+    const id = await seed('p-null-states-manual', LIVE_ONLY, {
+      pipelineConfig: { enabled: true, autoProdDeploy: false, states: null },
+    });
+    expect(await forwardError()).toBeNull();
+    expect(await releaseModeOf(id)).toBeNull();
+  });
 });
 
 describe('a stored preview side that names live’s host', () => {
@@ -265,6 +301,31 @@ describe('a stored preview side that names live’s host', () => {
       live: { url: 'https://app.example.com' },
     });
     expect(await forwardError()).toContain('p-labelled-collision');
+  });
+
+  it('catches a collision the two sides spell differently — an explicit :443 against none', async () => {
+    await seed('p-default-port', {
+      preview: { url: 'https://app.example.com:443' },
+      live: { url: 'https://app.example.com' },
+    });
+    expect(await forwardError()).toContain('p-default-port');
+  });
+
+  it('catches a collision hidden behind credentials in the authority', async () => {
+    await seed('p-userinfo', {
+      preview: { url: 'https://qa:secret@app.example.com' },
+      live: { url: 'https://app.example.com' },
+    });
+    expect(await forwardError()).toContain('p-userinfo');
+  });
+
+  it('lets a preview side on a different port through, which is a different address', async () => {
+    const id = await seed('p-other-port', {
+      preview: { url: 'https://app.example.com:8443' },
+      live: { url: 'https://app.example.com' },
+    });
+    expect(await forwardError()).toBeNull();
+    expect(await shapeOf(id)).toBe('deployed');
   });
 
   it('lets a preview side on its own host through', async () => {

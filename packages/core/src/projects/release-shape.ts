@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type PreviewShape, previewShapes, projects } from '../db/schema.js';
 import { type NormalizedEnvironments, normalizeEnvironments } from './environments.js';
 
@@ -15,10 +15,8 @@ export const PREVIEW_IS_LIVE_HOST = 'PREVIEW_IS_LIVE_HOST';
 export const PREVIEW_SHAPE_LOCAL_WITH_HOST = 'PREVIEW_SHAPE_LOCAL_WITH_HOST';
 export const PREVIEW_SHAPE_DEPLOYED_WITHOUT_HOST = 'PREVIEW_SHAPE_DEPLOYED_WITHOUT_HOST';
 
-/**
- * A refusal this rule produces, ANSWERED rather than thrown — the shape `release-model.ts`
- * already has, for the same reason: the rule does not know it is serving HTTP.
- */
+/** A refusal ANSWERED rather than thrown, as `release-model.ts` does: the rule does not know it is
+ *  serving HTTP. */
 export interface ReleaseShapeGap {
   code: string;
   message: string;
@@ -73,13 +71,8 @@ const DEPLOYED_WITHOUT_HOST: ReleaseShapeGap = {
     '`previewShape: "deployed"` says a preview deployment is where work on this project is exercised, and `environments.preview` names no host to send anyone to. Give the preview side a `url` or an `apiUrl`, or declare `previewShape: "local"` — which is the normal shape for a one-box project, not a degraded one.',
 };
 
-/**
- * What is wrong with this configuration, judged as one thing rather than field by field.
- *
- * The collision comes first because it is the line to delete: a preview side on live's host is
- * wrong under either declaration, so telling the operator to flip the declaration would send them
- * round again.
- */
+/** What is wrong with this configuration, judged as one thing. The collision comes first because it
+ *  is the line to delete: a preview side on live's host is wrong under either declaration. */
 export function shapeGapOf(
   shape: PreviewShape,
   environments: NormalizedEnvironments,
@@ -94,24 +87,35 @@ export function shapeGapOf(
 const SHAPE_KEYS = ['previewShape', 'environments'] as const;
 
 /**
- * The rule applied to the configuration the PATCH would LEAVE BEHIND, never to the body.
- *
- * A PATCH may carry either field alone, so a body holding only `previewShape` is judged against
- * the stored `environments` and a body holding only `environments` against the stored
- * declaration. Judging the body would let a project reach a contradiction in two legal writes.
+ * The rule applied to the configuration the write would LEAVE BEHIND, never to the body: a caller
+ * may send either field alone, and judging the body lets a project reach a contradiction in two
+ * legal writes. Read FOR UPDATE inside the caller's transaction, so the value judged is the value
+ * overwritten — outside it, two writes touching one side each both pass against the row as it was.
  */
 export async function releaseShapeGap(
   projectId: string,
   updates: Record<string, unknown>,
+  tx: Tx = db,
 ): Promise<ReleaseShapeGap | null> {
   if (!SHAPE_KEYS.some((k) => k in updates)) return null;
-  const [row] = await db
+  const [row] = await tx
     .select({ previewShape: projects.previewShape, environments: projects.environments })
     .from(projects)
     .where(eq(projects.id, projectId))
+    .for('update')
     .limit(1);
   if (!row) return null;
   const shape = (updates.previewShape as PreviewShape | undefined) ?? row.previewShape;
   const raw = 'environments' in updates ? updates.environments : row.environments;
   return shapeGapOf(shape, normalizeEnvironments(raw));
+}
+
+/** The same rule as a throw, for a writer whose caller has no place to put an answered refusal. */
+export async function assertReleaseShape(
+  projectId: string,
+  updates: Record<string, unknown>,
+  tx: Tx = db,
+): Promise<void> {
+  const gap = await releaseShapeGap(projectId, updates, tx);
+  if (gap) throw new Error(`${gap.code}: ${gap.message}`);
 }

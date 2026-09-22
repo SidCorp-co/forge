@@ -128,14 +128,9 @@ function keptCredentials(rows: CredRow[]): CredRow[] {
     .map((c) => ({ ...c, label: c.label.trim(), username: c.username.trim(), password: c.password }));
 }
 
-/**
- * Whether a preview side is stored at all — ISS-1189, and it is the DECLARATION that decides.
- *
- * It used to be derived here, from whether any preview field happened to be filled in, which is
- * exactly the inference this screen now replaces: a project's shape was whatever its blob looked
- * like, and nobody could be told they had got it wrong. `local` sends `preview: null`, which is
- * this project saying it has no preview side rather than having forgotten to fill one in.
- */
+/** Whether a preview side is stored at all — the DECLARATION decides, never the fields. `local`
+ *  sends `preview: null`, which is this project saying it has no preview side rather than having
+ *  forgotten to fill one in (ISS-1189). */
 function previewDeclared(form: Form): boolean {
   return form.previewShape === "deployed";
 }
@@ -225,13 +220,19 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
       ? "A deployed preview needs an address. Give it a URL, or declare the preview local."
       : undefined;
 
+  // A preview field only counts while the preview side is declared: under `local` the save path
+  // sends `preview: null` and drops them, so an error in a field nobody can see must not block it.
+  const previewInvalid =
+    form.previewShape === "deployed" &&
+    (!!previewUrlError ||
+      !!previewApiUrlError ||
+      form.previewUrls.some((r) => !!testingUrlError(r)));
+
   const hasErrors =
     !!previewShapeError ||
     !!liveUrlError ||
     !!liveCommitUrlError ||
-    !!previewUrlError ||
-    !!previewApiUrlError ||
-    form.previewUrls.some((r) => !!testingUrlError(r)) ||
+    previewInvalid ||
     form.testCredentials.some((r) => !!credentialError(r));
 
   function setField(key: keyof Form, value: string) {

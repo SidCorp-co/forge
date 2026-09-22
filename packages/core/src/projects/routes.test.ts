@@ -9,7 +9,7 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-const selectWhere = vi.fn((): unknown => ({ limit: selectLimit }));
+const selectWhere = vi.fn((): unknown => ({ limit: selectLimit, for: () => selectWhere() }));
 const selectOn = vi.fn(() => ({ where: selectWhere }));
 const innerJoin = vi.fn(() => ({ on: selectOn, where: selectWhere }));
 const selectFrom = vi.fn(() => ({
@@ -142,7 +142,7 @@ const notFoundErr = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  selectLimit.mockReset();
+  selectLimit.mockReset().mockResolvedValue([]);
   selectWhere.mockClear();
   innerJoin.mockClear();
   distinctWhere.mockReset();

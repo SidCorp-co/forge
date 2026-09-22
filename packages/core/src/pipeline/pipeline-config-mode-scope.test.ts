@@ -2,10 +2,9 @@
  * ISS-994, widened by ISS-1189 — how far `states[X].mode` reaches, held by the two schemas that
  * decide it.
  *
- * It reaches two stages now, not one: `open`, where it decides whether a person starts the work,
- * and `awaiting_release`, where it decides whether a person releases it. Those are the two rungs a
- * person may stand in front of. Every other stage's `mode` is still stripped by the canonical
- * schema and refused by the PATCH one.
+ * It reaches two stages now: `open`, where it decides whether a person starts the work, and
+ * `awaiting_release`, where it decides whether a person releases it. Every other stage's `mode` is
+ * still stripped by the canonical schema and refused by the PATCH one.
  *
  * The pair is deliberately asymmetric and each half is load-bearing: the
  * canonical schema STRIPS a non-entry `mode` so a project that stored one

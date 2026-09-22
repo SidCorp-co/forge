@@ -54,14 +54,8 @@ export function isEntryGateClosed(cfg: PipelineConfig | null): boolean {
   return entry?.enabled === false || entry?.mode === 'manual';
 }
 
-/**
- * Whether this project's release is taken without a person acting — ISS-1189.
- *
- * Absent is `manual`, which is an issue STOPPING at `awaiting_release` and waiting for somebody:
- * the rung doing its job rather than a stall. This is a different question from
- * `pipelineConfig.autoProdDeploy`, which decides whether a live-reaching deploy skips its
- * human-confirm gate; the sweep read that one for this answer until this declaration existed.
- */
+/** Whether this project's release is taken without a person acting — ISS-1189. Absent is `manual`:
+ *  the issue STOPS at `awaiting_release` and waits, which is the rung doing its job. */
 export function releasesAutomatically(cfg: PipelineConfig | null): boolean {
   return cfg?.states?.awaiting_release?.mode === 'auto';
 }

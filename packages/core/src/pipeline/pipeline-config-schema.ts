@@ -142,20 +142,11 @@ export const entryStageConfigSchema = stageConfigSchema.extend({
 
 export type EntryStageConfig = z.infer<typeof entryStageConfigSchema>;
 
-/**
- * ISS-1189 — the release stage carries `mode` too, and it is the auto-release axis.
- *
- * `auto`: the issue does not stop at `awaiting_release`; it releases and closes. `manual`, which
- * is what absent means: it stops and waits for a person. The two stages that read `mode` are the
- * two a person may stand in front of, and `MODE_READING_STAGES` is the one list saying so.
- */
+/** ISS-1189 — `mode` at the release stage is the auto-release axis: `auto` releases and closes, `manual` (what absent means) waits for a person. */
 export const releaseStageConfigSchema = stageConfigSchema.extend({
   mode: z.enum(['auto', 'manual']).optional(),
 });
 
-export type ReleaseStageConfig = z.infer<typeof releaseStageConfigSchema>;
-
-/** The stages at which `mode` decides something. Every other stage's `mode` is refused. */
 export const MODE_READING_STAGES: readonly string[] = [
   AUTONOMOUS_ENTRY_STATUS,
   AUTONOMOUS_RELEASE_STATUS,

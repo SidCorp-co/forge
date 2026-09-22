@@ -11,15 +11,25 @@
 -- `states.awaiting_release.mode` says whether releasing is automatic. `release-sweep.ts` read
 -- `pipelineConfig.autoProdDeploy` for that, whose own question is whether a live-reaching deploy
 -- skips its human-confirm gate. The two are different and one boolean was answering both, so the
--- second UPDATE below carries every project's existing answer onto the field that now holds it —
--- without it, a project releasing automatically today would silently stop.
+-- third UPDATE below carries every project's existing answer onto the field that now holds it —
+-- without it, a project releasing automatically today would silently stop. It BACKFILLS: a project
+-- that already declares a mode keeps the one it declares, so a replay cannot undo an operator's
+-- later `manual`.
 --
--- The abort is deliberate and comes first. A stored preview side naming live's host is not
--- representable under a column that says what the preview side IS: deriving `deployed` for it
--- would leave the contradiction standing under a field claiming to have answered it. forge-dev
--- carried exactly that value until 2026-09-22 (preview and live on forge-beta.sidcorp.co and
--- forge-beta-api.sidcorp.co, labelled "Beta Version (Staging Here)"), so the row this refuses is
--- one that really existed. Clear the preview side on each project named, then run again.
+-- The two aborts are deliberate and come first, because each names a row the new schema cannot
+-- represent honestly.
+--
+-- A stored preview side naming live's host would derive `deployed` and leave the contradiction
+-- standing under a field claiming to have answered it. Hosts are compared the way
+-- `projects/release-shape.ts:hostOf` compares them — user-info dropped, the scheme's default port
+-- dropped — so the migration and the running refusal cannot disagree about what "the same host"
+-- means. forge-dev carried exactly such a value until 2026-09-22 (preview and live both on
+-- forge-beta.sidcorp.co and forge-beta-api.sidcorp.co, labelled "Beta Version (Staging Here)").
+--
+-- An `agent_config` whose `pipelineConfig.states` or `states.awaiting_release` is a JSON null or a
+-- scalar cannot receive the carry-over: JSON null is not SQL NULL, so a COALESCE would keep it and
+-- the declaration would silently fail to land while the old boolean said `true`. That row is named
+-- rather than skipped.
 --
 -- Running it backwards: DROP COLUMN "preview_shape" and delete `mode` from
 -- agent_config -> 'pipelineConfig' -> 'states' -> 'awaiting_release' on every project this wrote
@@ -32,31 +42,55 @@ BEGIN
     SELECT
       p.slug,
       ARRAY(
-        SELECT lower(substring(u FROM '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)'))
+        SELECT h.host
           FROM unnest(
-            ARRAY[
-              p.environments -> 'preview' ->> 'url',
-              p.environments -> 'preview' ->> 'apiUrl'
-            ] || COALESCE((
-              SELECT array_agg(e ->> 'url')
-                FROM jsonb_array_elements(
-                  CASE WHEN jsonb_typeof(p.environments -> 'preview' -> 'urls') = 'array'
-                       THEN p.environments -> 'preview' -> 'urls'
-                       ELSE '[]'::jsonb END
-                ) e
-            ), ARRAY[]::text[])
-          ) AS u
-         WHERE u IS NOT NULL
-           AND substring(u FROM '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)') IS NOT NULL
+                 ARRAY[
+                   p.environments -> 'preview' ->> 'url',
+                   p.environments -> 'preview' ->> 'apiUrl'
+                 ] || COALESCE((
+                   SELECT array_agg(e ->> 'url')
+                     FROM jsonb_array_elements(
+                            CASE WHEN jsonb_typeof(p.environments -> 'preview' -> 'urls') = 'array'
+                                 THEN p.environments -> 'preview' -> 'urls'
+                                 ELSE '[]'::jsonb END
+                          ) e
+                 ), ARRAY[]::text[])
+               ) AS u,
+               LATERAL (
+                 SELECT lower(substring(u FROM '^([a-zA-Z][a-zA-Z0-9+.-]*)://')) AS scheme,
+                        lower(substring(u FROM '^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^/?#@]*@)?([^/?#]+)')) AS authority
+               ) parts,
+               LATERAL (
+                 SELECT CASE
+                          WHEN parts.scheme = 'https' AND parts.authority LIKE '%:443'
+                            THEN left(parts.authority, length(parts.authority) - 4)
+                          WHEN parts.scheme = 'http' AND parts.authority LIKE '%:80'
+                            THEN left(parts.authority, length(parts.authority) - 3)
+                          ELSE parts.authority
+                        END AS host
+               ) h
+         WHERE u IS NOT NULL AND h.host IS NOT NULL
       ) AS preview_hosts,
       ARRAY(
-        SELECT lower(substring(u FROM '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)'))
+        SELECT h.host
           FROM unnest(ARRAY[
-            p.environments -> 'live' ->> 'url',
-            p.environments -> 'live' ->> 'apiUrl'
-          ]) AS u
-         WHERE u IS NOT NULL
-           AND substring(u FROM '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)') IS NOT NULL
+                 p.environments -> 'live' ->> 'url',
+                 p.environments -> 'live' ->> 'apiUrl'
+               ]) AS u,
+               LATERAL (
+                 SELECT lower(substring(u FROM '^([a-zA-Z][a-zA-Z0-9+.-]*)://')) AS scheme,
+                        lower(substring(u FROM '^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^/?#@]*@)?([^/?#]+)')) AS authority
+               ) parts,
+               LATERAL (
+                 SELECT CASE
+                          WHEN parts.scheme = 'https' AND parts.authority LIKE '%:443'
+                            THEN left(parts.authority, length(parts.authority) - 4)
+                          WHEN parts.scheme = 'http' AND parts.authority LIKE '%:80'
+                            THEN left(parts.authority, length(parts.authority) - 3)
+                          ELSE parts.authority
+                        END AS host
+               ) h
+         WHERE u IS NOT NULL AND h.host IS NOT NULL
       ) AS live_hosts
       FROM projects p
      WHERE jsonb_typeof(p.environments -> 'preview') = 'object'
@@ -78,6 +112,34 @@ BEGIN
   END IF;
 END
 $shape$;--> statement-breakpoint
+DO $carry$
+DECLARE
+  unrepresentable text;
+BEGIN
+  SELECT string_agg(format('%s (states is %s, awaiting_release is %s)',
+                           slug,
+                           COALESCE(jsonb_typeof(agent_config -> 'pipelineConfig' -> 'states'), 'absent'),
+                           COALESCE(jsonb_typeof(agent_config -> 'pipelineConfig' -> 'states' -> 'awaiting_release'), 'absent')),
+                    ', ' ORDER BY slug)
+    INTO unrepresentable
+    FROM projects
+   WHERE jsonb_typeof(agent_config -> 'pipelineConfig') = 'object'
+     AND agent_config -> 'pipelineConfig' ->> 'autoProdDeploy' = 'true'
+     AND (
+       COALESCE(jsonb_typeof(agent_config -> 'pipelineConfig' -> 'states'), 'object') <> 'object'
+       OR COALESCE(
+            jsonb_typeof(agent_config -> 'pipelineConfig' -> 'states' -> 'awaiting_release'),
+            'object'
+          ) <> 'object'
+     );
+
+  IF unrepresentable IS NOT NULL THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'ISS-1189: a project declares autoProdDeploy true and holds a pipelineConfig.states shape the release declaration cannot be written into: ' || unrepresentable,
+      HINT = 'states and states.awaiting_release must each be a JSON object or absent. A JSON null or a scalar there would swallow the carry-over in silence and the project would stop releasing automatically. Repair those keys, then run this migration again.';
+  END IF;
+END
+$carry$;--> statement-breakpoint
 ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "preview_shape" text DEFAULT 'local' NOT NULL;--> statement-breakpoint
 ALTER TABLE "projects" DROP CONSTRAINT IF EXISTS "projects_preview_shape_chk";--> statement-breakpoint
 ALTER TABLE "projects" ADD CONSTRAINT "projects_preview_shape_chk"
@@ -109,4 +171,5 @@ UPDATE "projects"
          true
        )
  WHERE jsonb_typeof("agent_config" -> 'pipelineConfig') = 'object'
-   AND "agent_config" -> 'pipelineConfig' ->> 'autoProdDeploy' = 'true';
+   AND "agent_config" -> 'pipelineConfig' ->> 'autoProdDeploy' = 'true'
+   AND "agent_config" -> 'pipelineConfig' -> 'states' -> 'awaiting_release' ->> 'mode' IS NULL;
