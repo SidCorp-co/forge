@@ -1,5 +1,5 @@
 /**
- * Which of the caller's GitHub Apps owns an installation.
+ * Which GitHub App the caller can reach owns an installation.
  *
  * GitHub sends `state` back to `setup_url` only when the operator followed the
  * link Forge handed them. Installing the App from its own settings page — the
@@ -12,9 +12,9 @@ import {
   type BindingWithConnection,
   decryptConnectionSecrets,
   listBindingsForConnection,
-  listConnectionsForPrincipalUser,
 } from '../store.js';
 import { buildAppJwt } from './app-auth.js';
+import { listGithubAppsReachableBy } from './install-candidates.js';
 import { GITHUB_API_BASE } from './types.js';
 
 export async function findBindingOwningInstallation(args: {
@@ -23,9 +23,7 @@ export async function findBindingOwningInstallation(args: {
   fetchImpl?: typeof fetch;
 }): Promise<BindingWithConnection | null> {
   const doFetch = args.fetchImpl ?? fetch;
-  const connections = (await listConnectionsForPrincipalUser(args.userId)).filter(
-    (c) => c.provider === 'github',
-  );
+  const connections = await listGithubAppsReachableBy(args.userId);
 
   for (const connection of connections) {
     const { appId, privateKey } = decryptConnectionSecrets<{

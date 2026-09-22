@@ -23,14 +23,15 @@ import {
   assertProjectMember,
   assertVaultConfigured,
   badRequest,
-  forbidden,
   notFound,
 } from '../route-helpers.js';
 import {
   createBinding,
   createConnection,
   decryptConnectionSecrets,
+  type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
+  listBindingsForProject,
   listConnectionsForPrincipalUser,
 } from '../store.js';
 import {
@@ -82,6 +83,51 @@ function assertApiOriginReachable(c: Context, api: string): void {
   });
 }
 
+/**
+ * Which principal the App this flow is about to create will belong to.
+ *
+ * The App is named after the project, bound to it and used by its runners, so
+ * an org project's App belongs to that org. Keyed instead to the individual
+ * who pressed Connect it is resolvable by nobody else, and every other admin
+ * of the same project — the org's own owner included — is answered
+ * `connection not found` (ISS-1115). A project that belongs to no org has no
+ * second principal to name and stays the operator's.
+ *
+ * The refusal is taken HERE rather than in the callback because by callback
+ * time a real App exists on github.com: refusing then would strand it.
+ */
+async function ownerOrgForProjectApp(args: {
+  projectOrgId: string | null;
+  asked: string | null;
+  userId: string;
+}): Promise<string | undefined> {
+  if (args.asked && args.asked !== args.projectOrgId) {
+    throw new HTTPException(409, {
+      message:
+        "org connection must belong to the project's own org — this project belongs to " +
+        `${args.projectOrgId ?? 'no org'}, and the request named ${args.asked}.`,
+      cause: { code: 'ORG_MISMATCH' },
+    });
+  }
+  if (!args.projectOrgId) return undefined;
+  const orgRole = await loadOrgRole(args.projectOrgId, args.userId);
+  if (!orgRoleAtLeast(orgRole, 'admin')) {
+    // Its own code rather than a bare FORBIDDEN: the web maps FORBIDDEN to one
+    // generic sentence and drops the server's, and a refusal that cannot say
+    // org admin, which org, or that binding an existing App is the way round
+    // sends the operator back round the loop this issue exists to end.
+    throw new HTTPException(403, {
+      message:
+        `this project belongs to org ${args.projectOrgId}, so a GitHub App created here is ` +
+        'owned by that org and reachable by every admin of the project. Creating one requires ' +
+        `org admin there; you are ${orgRole ?? 'not a member of that org'}. Ask an org admin to ` +
+        'run Connect, or bind an existing GitHub App to this project instead.',
+      cause: { code: 'ORG_ADMIN_REQUIRED' },
+    });
+  }
+  return args.projectOrgId;
+}
+
 githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
@@ -89,7 +135,7 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   assertVaultConfigured();
 
   const [project] = await db
-    .select({ slug: projects.slug, name: projects.name })
+    .select({ slug: projects.slug, name: projects.name, orgId: projects.orgId })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -97,13 +143,11 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
 
   const url = new URL(c.req.url);
   const org = url.searchParams.get('org');
-  const orgId = url.searchParams.get('orgId') ?? undefined;
-
-  if (orgId) {
-    const orgRole = await loadOrgRole(orgId, userId);
-    if (!orgRole) throw notFound('org');
-    if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
-  }
+  const orgId = await ownerOrgForProjectApp({
+    projectOrgId: project.orgId,
+    asked: url.searchParams.get('orgId'),
+    userId,
+  });
 
   const api = apiBaseUrl();
   assertApiOriginReachable(c, api);
@@ -124,6 +168,41 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   });
 });
 
+/**
+ * The App whose repositories this project's picker may list.
+ *
+ * Two grants, and the route has already proved the caller is an admin of the
+ * project before either is read:
+ *
+ *  - the project's own binding points at it. Ownership of the connection is
+ *    not asked, because binding it here was itself an act of somebody who
+ *    could manage it plus an admin of this project, and listing the App's
+ *    repositories is exactly what the binding is for. Asking the caller's
+ *    personal principal INSTEAD is what answered every admin but the one who
+ *    pressed Connect with `connection not found` (ISS-1115 criterion 7). The
+ *    binding is read whether or not it is switched off: a repick starts from
+ *    a disconnected row.
+ *  - the caller can see it as a principal. This is the create path, which
+ *    lists an App's repositories BEFORE any binding to this project exists.
+ *
+ * Neither is a fallback for the other: they are two different grants, and a
+ * connection under neither is refused rather than reached by a third route.
+ */
+async function githubConnectionForPicker(args: {
+  projectId: string;
+  userId: string;
+  connectionId: string;
+}): Promise<IntegrationConnectionRow | null> {
+  const bound = (await listBindingsForProject(args.projectId)).find(
+    (pair) => pair.binding.provider === 'github' && pair.connection.id === args.connectionId,
+  );
+  if (bound) return bound.connection;
+  const owned = (await listConnectionsForPrincipalUser(args.userId)).find(
+    (x) => x.id === args.connectionId && x.provider === 'github',
+  );
+  return owned ?? null;
+}
+
 githubConnectRoutes.get('/:projectId/integrations/github/repositories', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
@@ -132,9 +211,7 @@ githubConnectRoutes.get('/:projectId/integrations/github/repositories', async (c
   const connectionId = c.req.query('connectionId');
   if (!connectionId) throw badRequest({ connectionId: 'required' });
 
-  const connection = (await listConnectionsForPrincipalUser(userId)).find(
-    (x) => x.id === connectionId && x.provider === 'github',
-  );
+  const connection = await githubConnectionForPicker({ projectId, userId, connectionId });
   if (!connection) throw notFound('connection');
 
   const { appId, privateKey } = decryptConnectionSecrets<{
