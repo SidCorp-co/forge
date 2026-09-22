@@ -168,10 +168,45 @@ mod tests {
     /// strips a trailing `\r`, so a checkout that landed the file as CRLF agrees on every line
     /// and disagrees on every byte — and the old message called that "a length difference",
     /// which sends the reader hunting for content that is not there. It cost a Windows-only CI
-    /// red whose cause was invisible in its own panic. Each arm below names its own cause.
+    /// red whose cause was invisible in its own panic.
+    ///
+    /// The arms are ordered by what explains the most: line endings first, because they are a
+    /// whole-file property that accounts for every later scan's answer; then a differing line;
+    /// then the two that a line-wise reading cannot see at all.
     fn describe_orientation_drift(committed: &str, generated: &str) -> Option<String> {
         if committed == generated {
             return None;
+        }
+
+        // Line endings are a whole-file property, so they are settled BEFORE anything that reads
+        // the file line by line. A CRLF checkout explains every other difference the scans below
+        // would report, and naming one of those instead is how the Windows red went unread — so
+        // this arm is taken on the ASYMMETRY rather than on normalisation making the two equal,
+        // and it recurses to describe whatever survives the normalising.
+        if committed.contains("\r\n") != generated.contains("\r\n") {
+            let (crlf_side, lf_side) = if committed.contains("\r\n") {
+                ("the committed file", "`orientation_body`")
+            } else {
+                ("`orientation_body`", "the committed file")
+            };
+            let cause = format!(
+                "{crlf_side} holds CRLF line endings and {lf_side} holds LF, so every byte \
+                 differs and no line does. That is a checkout, not an edit — git converts on \
+                 checkout where `core.autocrlf` is set, which the GitHub Windows runner sets. \
+                 `.gitattributes` pins this file to `eol=lf`; if you are seeing this, that pin is \
+                 missing or the file was written by hand with CRLF."
+            );
+            let both_lf = (
+                committed.replace("\r\n", "\n"),
+                generated.replace("\r\n", "\n"),
+            );
+            return Some(match describe_orientation_drift(&both_lf.0, &both_lf.1) {
+                None => cause,
+                Some(rest) => format!(
+                    "{cause}\nAfter normalising those line endings a second difference \
+                         remains:\n{rest}"
+                ),
+            });
         }
 
         if let Some((n, (a, b))) = committed
@@ -186,21 +221,9 @@ mod tests {
             ));
         }
 
-        // The two invisible causes come before the line count, because both of them ALSO move the
-        // count — a trailing `\n` adds an empty line — and a report naming a blank line is the
-        // unhelpful answer this function exists to stop giving.
-        if committed.replace("\r\n", "\n") == generated {
-            return Some(
-                "every line agrees and every byte does not: the committed file holds CRLF line \
-                 endings and `orientation_body` emits LF. That is a checkout, not an edit — git \
-                 converts on checkout where `core.autocrlf` is set, which the GitHub Windows \
-                 runner sets. `.gitattributes` pins this file to `eol=lf` so the checkout holds \
-                 what the provision writes back; if you are seeing this, that pin is missing or \
-                 the file was written by hand with CRLF."
-                    .to_string(),
-            );
-        }
-
+        // Trailing bytes come before the line count, because they ALSO move the count — a final
+        // `\n` adds an empty line — and a report naming a blank line is the unhelpful answer
+        // this function exists to stop giving.
         // Shown rather than guessed at: `{:?}` renders a lone `\n` visibly, which is the whole
         // point — the cause here is bytes a reader cannot see in their editor.
         if let Some(tail) = committed.strip_prefix(generated) {
@@ -297,6 +320,21 @@ mod tests {
         assert!(cause.contains("CRLF"), "{cause}");
         assert!(cause.contains("eol=lf"), "{cause}");
         assert!(!cause.contains("length only"), "{cause}");
+    }
+
+    #[test]
+    fn drift_names_line_endings_and_what_survives_normalising_them() {
+        // The finding codex raised on this change: a Windows checkout that ALSO carries a second
+        // drift used to fall through to the line count and lose the line-ending cause entirely.
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let crlf_and_a_stray_newline = format!("{}\r\n", generated.replace('\n', "\r\n"));
+
+        let cause = describe_orientation_drift(&crlf_and_a_stray_newline, &generated)
+            .expect("CRLF plus a trailing newline is a drift");
+
+        assert!(cause.contains("CRLF"), "{cause}");
+        assert!(cause.contains("trailing bytes"), "{cause}");
+        assert!(cause.contains("second difference"), "{cause}");
     }
 
     #[test]
