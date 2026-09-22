@@ -43,11 +43,8 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'dropped',
 ]);
 
-/**
- * Who is performing the transition. `id` feeds the outbox actor context
- * (ISS-196 trigger attribution); the WS `actorId` is the user id for user
- * actors and the device owner for device actors.
- */
+/** Who is performing the transition. `id` feeds the outbox actor context (ISS-196 trigger
+ *  attribution); the WS `actorId` is the user id, or the device owner for a device actor. */
 
 export type TransitionErrorCode =
   | 'NO_OP'
@@ -142,12 +139,8 @@ export interface StatusTransitionResult {
   unblockedDependents: UnblockedDependent[];
 }
 
-/**
- * WS `issue.statusChanged` publish. The bus subscriber for `transition`
- * intentionally does NOT broadcast `issue.statusChanged` (see
- * `ws/broadcast-subscribers.ts:38`); writers must publish inline to avoid
- * double-emit on the single-issue path.
- */
+/** WS `issue.statusChanged` publish. The bus subscriber for `transition` deliberately does NOT
+ *  broadcast it, so writers publish inline to avoid a double-emit on the single-issue path. */
 export function publishIssueStatusChange(
   projectId: string,
   payload: {
@@ -167,14 +160,10 @@ export function publishIssueStatusChange(
 }
 
 /**
- * ISS-787 — `draft` is the safe entry status you only get by remembering to
- * ask for it, and `open` (the default) auto-triages and spawns a pipeline run.
- * Three agents on three projects made that mistake, and `ILLEGAL_TRANSITION`
- * left them no way back: one parked at `on_hold`, another left the run going.
- *
- * So `draft` is reachable, but only while the mistake is still only a mistake:
- * nothing has run. A run or a job means work exists, and demoting to `draft`
- * would make the status claim the issue was never started.
+ * ISS-787 — `draft` is the safe entry status you get only by asking for it, and
+ * `open` auto-triages and spawns a run, which left three agents no way back. So
+ * `draft` is reachable, but only while nothing has run: a run or a job means
+ * work exists, and demoting would make the status claim it never started.
  */
 /** `null` when the counts could not be read — callers must treat that as "refuse". */
 async function countRunsAndJobs(
@@ -224,12 +213,8 @@ async function assertIssueNeverEnteredPipeline(
   );
 }
 
-/**
- * Two conditions share the `draft` UPDATE's WHERE — the status must still be
- * `fromStatus`, and the never-ran counts must still be zero — so a zero-row
- * result alone does not say which one bit. Re-read both and name the one that
- * did, rather than reporting a lost status race as a run appearing.
- */
+/** Two conditions share the `draft` UPDATE's WHERE — the status still `fromStatus`, the never-ran
+ *  counts still zero — so a zero-row result does not say which bit. Re-read both and name it. */
 async function explainDraftRace(
   issueId: string,
   fromStatus: IssueStatus,
@@ -426,14 +411,12 @@ type TransitionWriteResult = {
 };
 
 /**
- * ISS-1107 — the transition actor as `kernel_transitions` stores one.
- *
- * The two vocabularies do not line up: `TransitionActor` has `device`, which
- * `kernelTransitionActorTypes` has not, and a device IS a runner box, so that
- * is the type it records under, carrying the device's own id rather than its
- * owner's. `agency` is the third value of a three-valued input, so it goes
- * through `actorAgency` rather than a spread — `null` there means an
- * agent-driven user and `undefined` means a human.
+ * ISS-1107 — the transition actor as `kernel_transitions` stores one. The two
+ * vocabularies differ: `TransitionActor` has `device`, which
+ * `kernelTransitionActorTypes` has not, and a device IS a runner box, so it
+ * records under that type carrying its own id. `agency` goes through
+ * `actorAgency` rather than a spread — `null` is an agent-driven user there and
+ * `undefined` is a human.
  */
 function kernelActorFor(actor: TransitionActor): KernelActor {
   if (actor.type === 'user') {
@@ -453,8 +436,8 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       : [];
   try {
     return await db.transaction(async (tx) => {
-      // ISS-1107 — stamped before anything writes, so `trg_issues_unaudited_transition`
-      // reads this transaction's marker whichever statement moves the status.
+      // ISS-1107 — stamped before any write, so the trigger reads this transaction's marker
+      // whichever statement moves the status.
       await stampKernelTxn(tx);
       await options.beforeStatusWrite?.(tx);
       if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
@@ -480,10 +463,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         executor: tx,
       });
       if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);
-      // The shipped-work rule is judged on the status the issue LANDS at and asked before the
-      // UPDATE: a close diverted to the release gate lands at `awaiting_release` and is not a
-      // close, and a refusal raised after the conditional UPDATE is indistinguishable from the
-      // lost race that UPDATE reports, which answers `STALE_TRANSITION` instead of naming the rule.
+      // Judged on the status the issue LANDS at, and asked BEFORE the UPDATE: a close diverted to
+      // the release gate lands at `awaiting_release` and is no close, and a refusal after the
+      // conditional UPDATE is indistinguishable from the lost race it reports as STALE_TRANSITION.
       const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
       if (unshipped)
         throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
@@ -542,13 +524,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   }
 }
 
-/**
- * Device-actor convenience wrapper used by MCP tools and pipeline internals
- * (orchestrator, reconciler, finalize-failure, runs-control).
- * Same semantics as `transitionIssueStatus`; failures surface as
- * `TransitionError` (an `Error` with the legacy `CODE: detail` message) so
- * MCP tool handlers can wrap them uniformly.
- */
+/** Device-actor wrapper for MCP tools and pipeline internals. Same semantics as
+ *  `transitionIssueStatus`; failures surface as `TransitionError`, whose legacy `CODE: detail`
+ *  message MCP tool handlers wrap uniformly. */
 export async function applyStatusTransition(
   issue: TransitionIssueRow,
   toStatus: IssueStatus,

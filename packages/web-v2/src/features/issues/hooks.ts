@@ -18,10 +18,9 @@ import type {
 } from "./types";
 
 /**
- * Create an issue in `projectId`. On success invalidates `['issues']` so the
- * new row appears live in the list, then hands the created row back to the
- * caller (the dialog navigates to its detail page). No toast here — the dialog
- * owns the success/failure path (mirrors `useCreateProject`).
+ * Create an issue in `projectId`. On success invalidates `['issues']` so the new
+ * row appears live, then hands it back — the dialog navigates to its detail page
+ * and owns the success/failure path, so no toast here (mirrors `useCreateProject`).
  */
 export function useCreateIssue(projectId: string) {
   const qc = useQueryClient();

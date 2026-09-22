@@ -1,11 +1,7 @@
 import type { TransitionErrorCode } from './apply-transition.js';
 
-/**
- * The wire word `PATCH /issues/batch` reports for each transition it could not
- * make. It lives beside no route on purpose: the map is exhaustive over
- * `TransitionErrorCode`, so it has to be edited every time a refusal is added,
- * and finding it inside a 500-line route file is how it gets missed.
- */
+/** The wire word `PATCH /issues/batch` reports per refusal. It sits beside no route because the
+ *  map is exhaustive over `TransitionErrorCode` and is missed inside a 500-line route file. */
 export const BATCH_SKIP_BY_CODE = {
   NO_OP: 'no_op',
   ILLEGAL_TRANSITION: 'illegal_transition',

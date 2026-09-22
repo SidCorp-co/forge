@@ -34,7 +34,8 @@ export interface ReleaseBatchFixture {
   /** Announce the method a run loaded, as an agent would. */
   announceMethod(runId: string, over?: { skill?: string; loaded?: boolean }): Promise<void>;
   seedReleaseRunner(): Promise<void>;
-  /** `merged` defaults to true — a roster issue is work that landed (ISS-1108). */
+  /** `merged` defaults to true: a roster issue is work that LANDED, which ISS-1108 made the
+   *  precondition of the close, so a fixture leaving the claim off is asking for the refusal. */
   insertIssue(status?: string, note?: unknown, merged?: boolean): Promise<string>;
   stored(id: string): Promise<StoredIssue>;
   runStatus(runId: string): Promise<string>;
@@ -108,13 +109,6 @@ export function releaseBatchFixture(
     `);
   }
 
-  /**
-   * `merged` defaults to true because a roster issue is work that LANDED: the
-   * branch is on the base branch by the time a release batch carries it. ISS-1108
-   * made that the precondition of the close rather than its side effect, so a
-   * fixture that leaves the claim off is asking for the refusal, and one test
-   * below does exactly that on purpose.
-   */
   async function insertIssue(
     status = 'awaiting_release',
     note: unknown = SKIP_NOTE,

@@ -1,19 +1,11 @@
 /**
- * ISS-1107 — one writer of `issues.status`, checked rather than asserted.
- *
- * `issues/apply-transition.ts` stamps `forge.kernel_txn` and writes the
- * `kernel_transitions` row in the same transaction as the status UPDATE. A
- * second writer would not fail: it would land in `unaudited_transitions` and
- * charge the interventions metric as a hand on the database, which is the
- * trigger doing its job on code that should never have reached it.
- *
- * So the trigger is the backstop and this is the front door. What it can see is
- * a `.set()` that literally names `status`, or raw SQL that literally updates
- * the column. What it cannot see is a `.set(updates)` whose object is built
- * elsewhere — `issues/update-service.ts` and `issues/extras-routes.ts` are both
- * that shape, neither writes `status`, and routing them through the chokepoint
- * is named out of scope on ISS-1107. Those are exactly the writes the trigger
- * exists to catch at runtime.
+ * ISS-1107 — one writer of `issues.status`, checked rather than asserted. A second writer lands in
+ * `unaudited_transitions` and is charged to the interventions metric; the trigger is that backstop
+ * and this is the front door, seeing a `.set()` naming `status` or raw SQL updating the column,
+ * never a `.set(updates)` built elsewhere — the shape of `update-service.ts` and `extras-routes.ts`,
+ * neither of which writes `status`. A RATCHET, not this issue's evidence: the property held on
+ * `main` before it, so what goes red on a revert is `lifecycle/kernel-entity.test.ts` and
+ * `unaudited-issue-transition.test.ts`, not this.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -51,11 +43,7 @@ interface StatusWrite {
   how: string;
 }
 
-/**
- * The scan itself. The planted cases below measure this same function rather
- * than a copy of it, so a scan that stops catching a write fails here before it
- * fails as a silent green over the tree.
- */
+/** The scan itself, measured by the planted cases rather than by a copy of it. */
 function statusWritesIn(rel: string, source: string): StatusWrite[] {
   const text = stripComments(source);
   const found: StatusWrite[] = [];
@@ -70,10 +58,9 @@ function statusWritesIn(rel: string, source: string): StatusWrite[] {
     }
   }
 
-  // The `(?!\bwhere\b)` is not decoration. `release-batch/service.ts` sets
-  // `release_batch_run_id` and filters `AND status = ...`, so a scan that runs
-  // from SET to the first `status =` anywhere reads the WHERE clause as a write
-  // and reports the one release path that is doing exactly the right thing.
+  // `(?!\bwhere\b)` is load-bearing: `release-batch/service.ts` sets
+  // `release_batch_run_id` and filters `AND status = ...`, which a scan reaching
+  // past WHERE would report as a write.
   for (const hit of text.matchAll(
     /update\s+(?:only\s+)?"?issues"?\s+set\b(?:(?!\bwhere\b)[\s\S]){0,400}?\bstatus\b\s*=/gi,
   )) {

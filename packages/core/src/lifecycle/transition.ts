@@ -1,10 +1,8 @@
 /**
- * ISS-447 (ISS-442 C1) — the SINGLE writer of terminal status across the three
- * kernel tables (`jobs`, `agent_sessions`, `pipeline_runs`).
- *
- * A thin PRIMITIVE by design: the guarded CAS write plus the audit row, and
- * nothing else. Every downstream side-effect (cascade fan-out, WS broadcast,
- * hooks, dispatch re-tick) stays in the caller.
+ * ISS-447 (ISS-442 C1) — the SINGLE writer of terminal status across `jobs`,
+ * `agent_sessions` and `pipeline_runs`. A thin PRIMITIVE by design: the guarded
+ * CAS write plus the audit row, and nothing else. Every downstream side-effect
+ * — cascade fan-out, WS broadcast, hooks, dispatch re-tick — stays in the caller.
  */
 
 import { eq, type SQL } from 'drizzle-orm';
@@ -27,19 +25,13 @@ import {
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 
-/** Re-exported so a caller that already imports the chokepoint keeps one import.
- *  The UPDATE + audit INSERT run on whichever executor is passed; pass a `tx`
- *  when atomicity with a cascade or a sibling write is required. */
+/** Re-exported so a caller importing the chokepoint keeps one import. The UPDATE + audit INSERT
+ *  run on whichever executor is passed; pass a `tx` where atomicity is required. */
 export type { KernelExecutor };
 
-/**
- * The entities this module's CAS write can drive. `issues` is audited too
- * (ISS-1107) but is NOT one of them: its writer carries a compare-and-set on
- * the prior status and columns no row type here has, so it writes its own
- * UPDATE and calls `recordKernelTransition` for the audit row. Anything that
- * reaches `applyKernelTransition` with `issue` is refused by name rather than
- * falling through to `pipeline_runs`.
- */
+/** The entities this module's CAS write can drive. `issues` is audited too (ISS-1107) and is NOT
+ *  one of them: its writer carries a compare-and-set and columns no row type here has, so it writes
+ *  its own UPDATE and calls `recordKernelTransition`. `issue` reaching here is refused by name. */
 export type KernelEntity = 'job' | 'session' | 'run';
 export type KernelActorType = 'user' | 'system' | 'runner' | 'sweeper';
 
@@ -101,13 +93,9 @@ export interface RunTransitionArgs<K extends keyof RunRow = keyof RunRow> extend
   returning?: readonly K[];
 }
 
-/**
- * What a bulk session sweep reads off each row it flips: the three ids the WS
- * broadcast needs, the run the wedge looks its issue up through, and the status
- * the row landed on.
- *
- * Shared so the five sweep call sites cannot drift apart into five projections.
- */
+/** What a bulk session sweep reads off each row it flips: the three ids the WS broadcast needs, the
+ *  run the wedge looks its issue up through, and the status the row landed on. Shared so the five
+ *  sweep call sites cannot drift into five projections. */
 export const SWEEP_SESSION_COLUMNS = [
   'id',
   'projectId',
@@ -155,13 +143,9 @@ export async function applyKernelTransition(
   return updated;
 }
 
-/**
- * A session that just went terminal closes what it owns.
- *
- * Here rather than at twenty-three call sites, none of which can see a leaked
- * subtree. A flip the descent itself wrote is skipped: the walk owns its own
- * depth bound, and re-entering would run one walk per row.
- */
+/** A session that just went terminal closes what it owns — here rather than at twenty-three call
+ *  sites, none of which can see a leaked subtree. A flip the descent itself wrote is skipped: the
+ *  walk owns its depth bound, and re-entering would run one walk per row. */
 async function descendFrom(
   rows: Array<Record<string, unknown> & { id: string }>,
   args: SessionTransitionArgs,
@@ -203,9 +187,7 @@ async function fireSessionBridges(
   }
 }
 
-/**
- * The whole row behind one bridge-marked id, or `null` with the reason logged.
- */
+/** The whole row behind one bridge-marked id, or `null` with the reason logged. */
 async function hydrateSession(exec: KernelExecutor, sessionId: string): Promise<SessionRow | null> {
   try {
     const [row] = await exec
@@ -228,13 +210,9 @@ async function hydrateSession(exec: KernelExecutor, sessionId: string): Promise<
   }
 }
 
-/**
- * The drizzle `.returning()` argument for a named projection, or `undefined`
- * when the caller asked for the whole row.
- *
- * The guard above the three argument shapes says why `id` — and, on a session,
- * `metadata` — are in every projection whether or not the caller named them.
- */
+/** The drizzle `.returning()` argument for a named projection, or `undefined` for the whole row.
+ *  The guard above the three argument shapes says why `id` — and `metadata` on a session — are in
+ *  every projection whether or not the caller named them. */
 function projectionFor(
   table: typeof jobs | typeof agentSessions | typeof pipelineRuns,
   entity: KernelEntity,
@@ -267,12 +245,9 @@ export interface KernelTransitionRecord {
   source: string;
 }
 
-/**
- * THE writer of `kernel_transitions`. `writeTransition` calls it for the three
- * tables it owns; `issues/apply-transition.ts` calls it for the fourth, whose
- * UPDATE it writes itself. Run it on the same executor as that UPDATE — a row
- * that can be missing when the update succeeded reads as "nobody did this".
- */
+/** THE writer of `kernel_transitions`: `writeTransition` for its three tables,
+ *  `issues/apply-transition.ts` for the fourth. Run it on the same executor as
+ *  the UPDATE — a row that can go missing reads as "nobody did this". */
 export async function recordKernelTransition(
   exec: KernelExecutor,
   rows: readonly KernelTransitionRecord[],
@@ -293,23 +268,12 @@ export async function recordKernelTransition(
   );
 }
 
-/**
- * The table each entity this chokepoint drives writes to. An entity with no
- * entry is refused where the gap is, rather than defaulting to the last arm of
- * a ternary chain — which is what `issue` would have done.
- */
 type KernelTable = typeof jobs | typeof agentSessions | typeof pipelineRuns;
 
-/**
- * The table this chokepoint writes for an entity. Resolved here rather than by
- * a ternary chain, because a chain has a last arm: an entity with no table of
- * its own would have landed silently on `pipeline_runs`, which is how `issue`
- * would have been absorbed. It is refused by name instead.
- *
- * Read lazily, never captured at module load — the tables are drizzle objects
- * and a module-level map of them is evaluated before a caller's partial mock
- * of the schema exists.
- */
+/** The table this chokepoint writes for an entity. A switch and not a ternary chain, whose last arm
+ *  would absorb an unknown entity into `pipeline_runs`; here it is refused by name. Read lazily and
+ *  never captured at module load — a module-level map of drizzle objects is evaluated before a
+ *  caller's partial mock of the schema exists. */
 function tableForEntity(entity: KernelEntity): KernelTable {
   switch (entity) {
     case 'job':

@@ -1,12 +1,8 @@
 /**
- * ISS-1080 criteria 6-13 — a release batch nothing ever started does not keep
- * its roster.
- *
- * `createReleaseBatch` claims the roster and moves every issue to `releasing`
- * before the job runs, and the liveness it checked was true once, at the cut.
- * When no box takes the job, the only writer that reaches those issues runs on
- * the run going terminal, and nothing made it do that. `pixelight` held one
- * there for 16 hours.
+ * ISS-1080 criteria 6-13 — a release batch nothing ever started does not keep its roster.
+ * `createReleaseBatch` claims the roster and moves every issue to `releasing` before the job runs;
+ * when no box takes it, the only writer reaching those issues runs on the run going terminal, and
+ * nothing makes it. `pixelight` held one there for 16 hours.
  *
  * Integration because every proposition here is about rows under real
  * constraints: which arm a CAS matches, what a transition is permitted to do to

@@ -226,11 +226,8 @@ describe('who may still write `closed`', () => {
   });
 
   /**
-   * ISS-1108 — the close used to post an audit comment telling the reader to run
-   * `unmark` if the code had never landed, because it had just stamped `merged_at`
-   * on their behalf. It stamps nothing now, so there is nothing to withdraw and no
-   * comment to write. A close that lands must be silent, or the instruction
-   * outlives the stamp that made it necessary.
+   * ISS-1108 — a close stamps no `merged_at`, so it has nothing to tell the reader
+   * to withdraw and posts no audit comment at all. A close that lands is silent.
    */
   it('and a close that lands writes no audit comment at all', async () => {
     ungated();

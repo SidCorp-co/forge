@@ -4,12 +4,9 @@ import { applyKernelTransition, type KernelEntity } from './transition.js';
 /**
  * ISS-1107 — `issues` is audited by the same table as the three kernel entities
  * but is NOT driven by this chokepoint: its writer carries a compare-and-set on
- * the prior status and columns no row type here has.
- *
- * The table pick used to be a ternary chain, whose last arm is `pipeline_runs`.
- * A fourth entity reaching it would have UPDATEd the wrong table and returned
- * rows as though it had worked. This is the case that fails without the
- * refusal.
+ * the prior status and columns no row type here has. A fourth entity reaching
+ * the table pick must be refused by name rather than routed to `pipeline_runs`,
+ * which would UPDATE the wrong table and return rows as though it had worked.
  */
 function stubExecutor(): {
   exec: Parameters<typeof applyKernelTransition>[0];
