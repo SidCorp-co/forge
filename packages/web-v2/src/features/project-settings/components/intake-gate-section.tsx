@@ -19,9 +19,9 @@ import {
   CardTitle,
   Toggle,
 } from "@/design";
-import { formatPipelineConfigError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
-import type { PipelineConfig } from "../types";
+import { type PipelineConfig, sectionWrite } from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 
 export function IntakeGateSection({
 	projectId,
@@ -47,11 +47,12 @@ export function IntakeGateSection({
 	const dirty = enabled !== seededEnabled || notify !== seededNotify;
 
 	function save() {
-		const next: PipelineConfig = {
-			...config,
-			intakeGate: { enabled, notify },
-		};
-		update.mutate(next);
+		update.mutate(
+			sectionWrite(
+				{ intakeGate: config.intakeGate },
+				{ intakeGate: { enabled, notify } },
+			),
+		);
 	}
 
 	return (
@@ -95,9 +96,11 @@ export function IntakeGateSection({
 			{canEdit && (
 				<div className="mt-3 space-y-3">
 					{update.isError && (
-						<Banner tone="danger" onDismiss={() => update.reset()}>
-							{formatPipelineConfigError(update.error)}
-						</Banner>
+						<SaveRefusedBanner
+							projectId={projectId}
+							error={update.error}
+							onDismiss={() => update.reset()}
+						/>
 					)}
 					{update.isSuccess && !dirty && (
 						<Banner tone="success" onDismiss={() => update.reset()}>

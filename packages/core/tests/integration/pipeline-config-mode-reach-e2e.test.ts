@@ -77,20 +77,25 @@ beforeEach(async () => {
   await createTestProjectMember(harness.db, { userId: ownerId, projectId, role: 'admin' });
 });
 
+/** A pipeline-config write says what it read, so every PATCH here reads first (ISS-1170). */
+async function patchConfig(patch: Record<string, unknown>) {
+  const read = await call('GET', `/api/projects/${projectId}/pipeline-config`);
+  return call('PATCH', `/api/projects/${projectId}/pipeline-config`, {
+    base: read.json.pipelineConfig ?? {},
+    patch,
+  });
+}
+
 describe('states[X].mode over PATCH /pipeline-config (ISS-994)', () => {
   it('refuses a mode at a stage that is not the entry status, naming the stage and the entry status', async () => {
-    const res = await call('PATCH', `/api/projects/${projectId}/pipeline-config`, {
-      states: { in_progress: { mode: 'manual' } },
-    });
+    const res = await patchConfig({ states: { in_progress: { mode: 'manual' } } });
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.json)).toContain('in_progress');
     expect(JSON.stringify(res.json)).toContain('open');
   });
 
   it('writes nothing when it refuses', async () => {
-    await call('PATCH', `/api/projects/${projectId}/pipeline-config`, {
-      states: { in_progress: { mode: 'manual' } },
-    });
+    await patchConfig({ states: { in_progress: { mode: 'manual' } } });
     const rows = (await harness.db.execute(
       sql`SELECT agent_config FROM projects WHERE id = ${projectId}`,
     )) as unknown as { agent_config: { pipelineConfig: { states: Record<string, unknown> } } }[];
@@ -98,7 +103,7 @@ describe('states[X].mode over PATCH /pipeline-config (ISS-994)', () => {
   });
 
   it('accepts a mode at the entry status and reads it back', async () => {
-    const patch = await call('PATCH', `/api/projects/${projectId}/pipeline-config`, {
+    const patch = await patchConfig({
       enabled: true,
       states: { open: { enabled: true, mode: 'manual' } },
     });

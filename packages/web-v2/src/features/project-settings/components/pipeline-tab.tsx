@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
-  Banner,
   Button,
   Card,
   CardContent,
@@ -16,7 +15,7 @@ import {
   Skeleton,
   Toggle,
 } from "@/design";
-import { formatApiError, formatPipelineConfigError } from "@/lib/api/error";
+import { formatApiError, } from "@/lib/api/error";
 import { useProjectRunners } from "@/features/runners/hooks";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
@@ -28,7 +27,8 @@ import { StagePermissionsSection } from "./stage-permissions-section";
 import { RunnerPoolsSection } from "./runner-pools-section";
 import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
-import { API_ONLY_KEYS, type PipelineConfig } from "../types";
+import { API_ONLY_KEYS, type PipelineConfig, sectionWrite } from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 
 const ENTRY_STATUS = "open";
 
@@ -56,6 +56,16 @@ function withEntryGate(cfg: PipelineConfig, open: boolean): PipelineConfig {
       },
     },
   };
+}
+
+/** The two switches this card owns — the master one and the entry gate — and no other key
+ *  of the document, so a section below saving from the same page load is not touched. */
+function masterWrite(server: PipelineConfig, draft: PipelineConfig) {
+  const slice = (cfg: PipelineConfig) => ({
+    enabled: cfg.enabled,
+    states: { [ENTRY_STATUS]: { enabled: entryOf(cfg)?.enabled, mode: entryOf(cfg)?.mode } },
+  });
+  return sectionWrite(slice(server), slice(draft));
 }
 
 function StageRow({
@@ -193,15 +203,17 @@ export function PipelineTab({
         {canEdit && (
           <div className="mt-4 space-y-3">
             {update.isError && (
-              <Banner tone="danger" onDismiss={() => update.reset()}>
-                {formatPipelineConfigError(update.error)}
-              </Banner>
+              <SaveRefusedBanner
+                projectId={projectId}
+                error={update.error}
+                onDismiss={() => update.reset()}
+              />
             )}
             <Button
               variant="primary"
               loading={update.isPending}
               disabled={!dirty}
-              onClick={() => update.mutate(draft)}
+              onClick={() => update.mutate(masterWrite(server, draft))}
               className="min-h-11"
             >
               Save pipeline config

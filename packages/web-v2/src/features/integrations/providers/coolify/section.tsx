@@ -19,6 +19,7 @@ import {
   usePipelineConfig,
   useUpdatePipelineConfig,
 } from "@/features/project-settings/hooks";
+import { sectionWrite } from "@/features/project-settings/types";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import {
@@ -120,7 +121,8 @@ function LandingDeploySection({ projectId }: { projectId: string }) {
 
   function handleToggle(next: boolean) {
     if (!cfgQ.data) return;
-    update.mutate({ ...cfgQ.data.pipelineConfig, deployOnLanding: next });
+    const read = cfgQ.data.pipelineConfig;
+    update.mutate(sectionWrite({ deployOnLanding: read.deployOnLanding }, { deployOnLanding: next }));
   }
 
   return (
@@ -448,11 +450,13 @@ function ProdGateSection({
   // flag (or any read error) must never auto-deploy a project to its live stage.
   const autoProd = cfgQ.data?.pipelineConfig?.autoProdDeploy === true;
 
+  // This toggle lives on the Integrations tab and writes the same document the Pipeline tab
+  // edits. It names its own key and the value it read there, so neither tab's save can carry
+  // the other's away (ISS-1170).
   function handleToggle(next: boolean) {
     if (!cfgQ.data) return;
-    // Spread the full current config — the PATCH persists the whole object, so
-    // sending a partial would clobber every other pipeline key.
-    update.mutate({ ...cfgQ.data.pipelineConfig, autoProdDeploy: next });
+    const read = cfgQ.data.pipelineConfig;
+    update.mutate(sectionWrite({ autoProdDeploy: read.autoProdDeploy }, { autoProdDeploy: next }));
   }
 
 

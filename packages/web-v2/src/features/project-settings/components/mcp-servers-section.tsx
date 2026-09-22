@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Banner,
   Button,
   CardTitle,
   Icon,
@@ -11,14 +10,15 @@ import {
   Textarea,
   Toggle,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import { providerForMcpServerName } from "@/features/integrations/providers/registry";
 import {
   MCP_CATALOG,
   MCP_CATALOG_NAMES,
   type PipelineConfig,
+  sectionWrite,
 } from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 
 type ServerMap = Record<string, unknown>;
 
@@ -117,9 +117,7 @@ export function McpServersSection({
   }
 
   function save() {
-    // Round-trip the full config; only override mcpServers.
-    const next: PipelineConfig = { ...config, mcpServers: draft };
-    update.mutate(next);
+    update.mutate(sectionWrite({ mcpServers: config.mcpServers }, { mcpServers: draft }));
   }
 
   const custom = customEntries(draft);
@@ -230,9 +228,11 @@ export function McpServersSection({
           )}
 
           {update.isError && (
-            <Banner tone="danger" onDismiss={() => update.reset()}>
-              {formatApiError(update.error)}
-            </Banner>
+            <SaveRefusedBanner
+              projectId={projectId}
+              error={update.error}
+              onDismiss={() => update.reset()}
+            />
           )}
 
           <Button

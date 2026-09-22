@@ -5,16 +5,21 @@
 // the dashboard, the console and the WS reconnect-replay read, and a private key updates none.
 
 import { ApiError } from "@/lib/api/client";
-import { formatApiError, formatPipelineConfigError } from "@/lib/api/error";
+import {
+	formatApiError,
+	formatPipelineConfigError,
+	formatSettingsWriteError,
+} from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectSettingsApi } from "./api";
 import type {
+	DocumentWrite,
+	EnvironmentsConfig,
 	LabelCreateInput,
 	LabelPatchInput,
 	MemoryModel,
 	MemoryModelStatus,
-	PipelineConfig,
 	PluginDesignation,
 	ProjectUpdateInput,
 } from "./types";
@@ -97,8 +102,8 @@ export function useUpdatePipelineConfig(id: string | undefined) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
-		mutationFn: (cfg: PipelineConfig) =>
-			projectSettingsApi.updatePipelineConfig(id as string, cfg),
+		mutationFn: (write: DocumentWrite) =>
+			projectSettingsApi.updatePipelineConfig(id as string, write),
 		onSuccess: (data) => {
 			qc.setQueryData(["project", id, "pipeline-config"], data);
 			toast({ title: "Pipeline config saved", tone: "success" });
@@ -114,6 +119,41 @@ export function useUpdatePipelineConfig(id: string | undefined) {
 			toast({
 				title: "Couldn't save pipeline config",
 				description: formatPipelineConfigError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/** GET the environments document. This is what a write's `base` is read from —
+ *  the project detail carries the same values, but a section compares against what
+ *  it actually read rather than against a second copy. */
+export function useEnvironments(id: string | undefined) {
+	return useQuery({
+		queryKey: ["project", id, "environments"],
+		queryFn: () => projectSettingsApi.getEnvironments(id as string),
+		enabled: !!id,
+		retry: false,
+	});
+}
+
+/** PATCH the environments document: the keys the Testing tab changed, and the values it
+ *  read them against. A cleared field sends `null` for that key alone, so a key the form
+ *  never showed survives the save (ISS-1170). */
+export function useUpdateEnvironments(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (write: DocumentWrite) =>
+			projectSettingsApi.updateEnvironments(id as string, write),
+		onSuccess: (data: { environments: EnvironmentsConfig }) => {
+			qc.setQueryData(["project", id, "environments"], data);
+			qc.invalidateQueries({ queryKey: ["project", id] });
+			toast({ title: "Testing settings saved", tone: "success" });
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't save testing settings",
+				description: formatSettingsWriteError(err),
 				tone: "error",
 			}),
 	});

@@ -2,10 +2,10 @@
 
 // Project settings → Testing. View/edit the project's `environments` blob: BOTH sides of the
 // deployment — the live address a release ships to and the preview one QA opens — plus the test
-// credentials and the limits of either. Persisted via PATCH /api/projects/:id (owner-gated
-// server-side, validated by `environmentsPatchSchema`). Mirrors the basics-tab dirty/save pattern
-// and the labels-tab add/remove-row UI. Passwords are masked by default with a per-row reveal
-// toggle; values are never logged.
+// credentials and the limits of either. Written through PATCH /api/projects/:id/environments
+// (owner-gated, validated by `environmentsPatchSchema`) as the keys this form changed beside
+// the values it read them against; `PATCH /api/projects/:id` refuses `environments` by name
+// (ISS-1170). Passwords are masked by default with a per-row reveal; values are never logged.
 import { useEffect, useMemo, useState } from "react";
 import {
   Button,
@@ -18,8 +18,14 @@ import {
   Textarea,
 } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
-import { useUpdateProject } from "../hooks";
-import type { EnvironmentsConfig, TestCredential, TestingUrl } from "../types";
+import { useUpdateEnvironments } from "../hooks";
+import {
+  type EnvironmentsConfig,
+  sectionWrite,
+  type TestCredential,
+  type TestingUrl,
+} from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 
 // Backend caps (see `testingUrlSchema` / `testCredentialSchema` in core).
 const MAX_ROWS = 50;
@@ -110,8 +116,6 @@ function trimmedOrNull(value: string): string | null {
   return value.trim() === "" ? null : value.trim();
 }
 
-const RENDERED_PREVIEW_KEYS = new Set(["url", "apiUrl", "urls"]);
-
 function keptUrlRows(rows: UrlRow[]): UrlRow[] {
   return rows
     .filter((u) => u.label.trim() !== "" && u.url.trim() !== "")
@@ -124,40 +128,29 @@ function keptCredentials(rows: CredRow[]): CredRow[] {
     .map((c) => ({ ...c, label: c.label.trim(), username: c.username.trim(), password: c.password }));
 }
 
-function previewDeclared(form: Form, storedPreview: Record<string, unknown> | null): boolean {
-  return (
-    form.previewUrl.trim() !== "" ||
-    form.previewApiUrl.trim() !== "" ||
-    keptUrlRows(form.previewUrls).length > 0 ||
-    (storedPreview !== null &&
-      Object.keys(storedPreview).some((k) => !RENDERED_PREVIEW_KEYS.has(k)))
-  );
-}
-
-/** Canonical JSON of the known fields, used for dirty detection. Empty URL fields normalize to
- *  null; blank/partial rows are dropped — matching what the save path actually sends, so a
- *  freshly-loaded form reads as not-dirty. */
-function canonical(form: Form, storedPreview: Record<string, unknown> | null): string {
+/** Canonical JSON of the RENDERED fields, used for dirty detection. Empty URL fields normalize
+ *  to null; blank/partial rows are dropped — matching what the save path actually sends, so a
+ *  freshly-loaded form reads as not-dirty. A stored key this form does not render appears in
+ *  neither side, because neither the comparison nor the write reaches it. */
+function canonical(form: Form): string {
   return JSON.stringify({
     live: {
       url: trimmedOrNull(form.liveUrl),
       commitUrl: trimmedOrNull(form.liveCommitUrl),
       commitPath: trimmedOrNull(form.liveCommitPath),
     },
-    preview: previewDeclared(form, storedPreview)
-      ? {
-          url: trimmedOrNull(form.previewUrl),
-          apiUrl: trimmedOrNull(form.previewApiUrl),
-          urls: keptUrlRows(form.previewUrls),
-        }
-      : null,
+    preview: {
+      url: trimmedOrNull(form.previewUrl),
+      apiUrl: trimmedOrNull(form.previewApiUrl),
+      urls: keptUrlRows(form.previewUrls),
+    },
     testCredentials: keptCredentials(form.testCredentials),
     limits: trimmedOrNull(form.limits),
   });
 }
 
 export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
-  const update = useUpdateProject(project.id);
+  const update = useUpdateEnvironments(project.id);
 
   const [form, setForm] = useState<Form>(() => parse(project.environments));
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
@@ -173,10 +166,10 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
     [project.environments],
   );
   const original = useMemo(
-    () => canonical(parse(project.environments), storedPreview),
-    [project.environments, storedPreview],
+    () => canonical(parse(project.environments)),
+    [project.environments],
   );
-  const dirty = canonical(form, storedPreview) !== original;
+  const dirty = canonical(form) !== original;
 
   // Validation — block save on malformed URLs or partially-filled rows.
   function urlError(value: string): string | undefined {
@@ -271,30 +264,41 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
     });
   }
 
+  // Only the fields this form renders, and only where their value moved. Clearing every
+  // rendered preview field sends `null` for those three keys alone: a key the form never
+  // showed is named by no path here, so nothing can carry it away (ISS-1170).
   function save() {
     if (!dirty || hasErrors) return;
     const stored = (project.environments ?? {}) as Record<string, unknown>;
     const storedLive = (stored.live ?? {}) as Record<string, unknown>;
-    const environments: EnvironmentsConfig = {
-      ...stored,
-      live: {
-        ...storedLive,
-        url: trimmedOrNull(form.liveUrl),
-        commitUrl: trimmedOrNull(form.liveCommitUrl),
-        commitPath: trimmedOrNull(form.liveCommitPath),
-      },
-      preview: previewDeclared(form, storedPreview)
-        ? {
-            ...(storedPreview ?? {}),
-            url: trimmedOrNull(form.previewUrl),
-            apiUrl: trimmedOrNull(form.previewApiUrl),
-            urls: keptUrlRows(form.previewUrls),
-          }
-        : null,
-      testCredentials: keptCredentials(form.testCredentials),
-      limits: trimmedOrNull(form.limits),
+    const rendered = (side: Record<string, unknown>, fields: Record<string, unknown>) =>
+      Object.fromEntries(Object.keys(fields).map((k) => [k, side[k]]));
+    const liveFields = {
+      url: trimmedOrNull(form.liveUrl),
+      commitUrl: trimmedOrNull(form.liveCommitUrl),
+      commitPath: trimmedOrNull(form.liveCommitPath),
     };
-    update.mutate({ environments });
+    const previewFields = {
+      url: trimmedOrNull(form.previewUrl),
+      apiUrl: trimmedOrNull(form.previewApiUrl),
+      urls: keptUrlRows(form.previewUrls).length > 0 ? keptUrlRows(form.previewUrls) : null,
+    };
+    update.mutate(
+      sectionWrite(
+        {
+          live: rendered(storedLive, liveFields),
+          preview: rendered(storedPreview ?? {}, previewFields),
+          testCredentials: stored.testCredentials,
+          limits: stored.limits,
+        },
+        {
+          live: liveFields,
+          preview: previewFields,
+          testCredentials: keptCredentials(form.testCredentials),
+          limits: trimmedOrNull(form.limits),
+        },
+      ),
+    );
   }
 
   return (
@@ -586,7 +590,15 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
       </Card>
 
       {canEdit && (
-        <div>
+        <div className="space-y-3">
+          {update.isError && (
+            <SaveRefusedBanner
+              projectId={project.id}
+              error={update.error}
+              onDismiss={() => update.reset()}
+              document="environments"
+            />
+          )}
           <Button
             variant="primary"
             loading={update.isPending}

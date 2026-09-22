@@ -3072,6 +3072,10 @@
 
 ### Fixed
 
+- **Editing one part of project settings no longer wipes another part you just saved.** Each save
+  sends only what it changed. A setting somebody else moved is refused by name, not overwritten,
+  and the screen offers the re-read.
+
 - **A release record no longer verifies on an abbreviation the caller chose.** A short prefix of
   the serving commit used to pass, closing issues nobody released. A claim must be the whole sha;
   production may report a short one.

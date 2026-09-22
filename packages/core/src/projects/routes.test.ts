@@ -673,108 +673,34 @@ describe('PATCH /api/projects/:id', () => {
  * budget: every case here is about one field of one column, and the cases above are about the rest
  * of the route.
  */
-describe('PATCH /api/projects/:id · environments', () => {
-  it('200 REPLACES environments outright — a patch sending only limits leaves no live, no preview and no credentials', async () => {
+describe('PATCH /api/projects/:id · environments has its own door now', () => {
+  it('400 refuses `environments` by name rather than writing the column', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([patchedRow({ environments: { limits: 'no email' } })]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
       body: JSON.stringify({ environments: { limits: 'no email' } }),
       token,
     });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ environments: { limits: 'no email' } });
-    const written = updateSet.mock.calls[0]?.[0] as { environments: Record<string, unknown> };
-    expect(written.environments.live).toBeUndefined();
-    expect(written.environments.preview).toBeUndefined();
-    expect(written.environments.testCredentials).toBeUndefined();
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(body.code).toBe('ENVIRONMENTS_MOVED');
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
-  it('200 updates environments with both sides, credentials and limits', async () => {
+  it('names the route that owns the document now, and the shape it takes', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    const environments = {
-      preview: {
-        url: 'https://staging.example.com',
-        apiUrl: null,
-        urls: [{ label: 'Staging', url: 'https://staging.example.com' }],
-      },
-      live: {
-        url: 'https://app.example.com',
-        apiUrl: null,
-        commitUrl: 'https://api.example.com/health',
-        commitPath: 'data.commit',
-      },
-      testCredentials: [{ label: 'Admin', username: 'qa@example.com', password: 'pw123' }],
-      limits: 'the QA account reaches no other project',
-    };
-    updateReturning.mockResolvedValueOnce([patchedRow({ environments })]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ environments }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ environments });
-  });
-
-  it('200 stores an unknown key at the top level, inside preview, inside live, and inside a row', async () => {
-    const token = await signUserToken('uuid-owner');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    const environments = {
-      futureKnob: 'top',
-      preview: { url: 'https://stg.example.com', previewKnob: 'p' },
-      live: { url: 'https://app.example.com', liveKnob: 'l' },
-      testCredentials: [{ label: 'Admin', username: 'u', password: 'p', credKnob: 'c' }],
-    };
-    updateReturning.mockResolvedValueOnce([patchedRow({ environments })]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ environments }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ environments });
-  });
-
-  it('200 stores an unknown key inside a preview.urls row', async () => {
-    const token = await signUserToken('uuid-owner');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    const environments = {
-      preview: { urls: [{ label: 'Beta', url: 'https://beta.example.com', rowKnob: 'r' }] },
-    };
-    updateReturning.mockResolvedValueOnce([patchedRow({ environments })]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ environments }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ environments });
-  });
-
-  it('200 accepts null environments to clear the column', async () => {
-    const token = await signUserToken('uuid-owner');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([patchedRow({ environments: null })]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
       body: JSON.stringify({ environments: null }),
       token,
     });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ environments: null });
+    const body = (await res.json()) as { message?: string };
+    expect(body.message).toContain('PATCH /api/projects/:id/environments');
+    expect(body.message).toContain('{ base, patch }');
   });
 
   it('200 leaves the column alone for a patch that omits environments', async () => {
@@ -792,161 +718,6 @@ describe('PATCH /api/projects/:id · environments', () => {
     expect(updateSet).toHaveBeenCalledWith({ name: 'Renamed' });
     expect(updateSet.mock.calls[0]?.[0]).not.toHaveProperty('environments');
   });
-
-  const REFUSED_ENVIRONMENTS: [string, Record<string, unknown>, string][] = [
-    ['a preview.url that is not a URL', { preview: { url: 'nope' } }, 'preview'],
-    ['a preview.apiUrl that is not a URL', { preview: { apiUrl: 'nope' } }, 'apiUrl'],
-    ['a live.url that is not a URL', { live: { url: 'nope' } }, 'live'],
-    ['a live.apiUrl that is not a URL', { live: { apiUrl: 'nope' } }, 'apiUrl'],
-    ['a live.commitUrl that is not a URL', { live: { commitUrl: 'nope' } }, 'commitUrl'],
-    [
-      'a preview.urls row missing its label',
-      { preview: { urls: [{ url: 'https://x.example.com' }] } },
-      'label',
-    ],
-    ['a preview.urls row missing its url', { preview: { urls: [{ label: 'X' }] } }, 'url'],
-    [
-      'a preview.urls row whose label is whitespace only',
-      { preview: { urls: [{ label: '   ', url: 'https://x.example.com' }] } },
-      'label',
-    ],
-    [
-      'a testCredentials row missing its label',
-      { testCredentials: [{ username: 'u', password: 'p' }] },
-      'label',
-    ],
-    [
-      'a testCredentials row missing its username',
-      { testCredentials: [{ label: 'A', password: 'p' }] },
-      'username',
-    ],
-    [
-      'a testCredentials row missing its password',
-      { testCredentials: [{ label: 'A', username: 'u' }] },
-      'password',
-    ],
-    [
-      'a testCredentials row whose username is not a string',
-      { testCredentials: [{ label: 'A', username: 7, password: 'p' }] },
-      'username',
-    ],
-    [
-      'more than 50 preview.urls rows',
-      {
-        preview: {
-          urls: Array.from({ length: 51 }, (_, i) => ({
-            label: `L${i}`,
-            url: 'https://x.example.com',
-          })),
-        },
-      },
-      'urls',
-    ],
-    [
-      'more than 50 testCredentials rows',
-      {
-        testCredentials: Array.from({ length: 51 }, (_, i) => ({
-          label: `L${i}`,
-          username: 'u',
-          password: 'p',
-        })),
-      },
-      'testCredentials',
-    ],
-    ['a limits longer than 8000 characters', { limits: 'x'.repeat(8001) }, 'limits'],
-    [
-      'a commitPath longer than 200 characters',
-      { live: { commitPath: 'x'.repeat(201) } },
-      'commitPath',
-    ],
-  ];
-
-  for (const [label, environments, names] of REFUSED_ENVIRONMENTS) {
-    it(`400 BAD_REQUEST naming the field for ${label}`, async () => {
-      const token = await signUserToken('uuid-owner');
-      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-
-      const res = await req('/11111111-1111-4111-8111-111111111111', {
-        method: 'PATCH',
-        body: JSON.stringify({ environments }),
-        token,
-      });
-      expect(res.status).toBe(400);
-      expect(await res.text()).toContain(names);
-      expect(updateSet).not.toHaveBeenCalled();
-    });
-  }
-
-  const NULLABLE_PATHS: [string, Record<string, unknown>][] = [
-    ['preview', { preview: null }],
-    ['live', { live: null }],
-    ['limits', { limits: null }],
-    ['live.commitPath', { live: { commitPath: null } }],
-    ['preview.url', { preview: { url: null } }],
-    ['preview.apiUrl', { preview: { apiUrl: null } }],
-    ['live.url', { live: { url: null } }],
-    ['live.apiUrl', { live: { apiUrl: null } }],
-    ['live.commitUrl', { live: { commitUrl: null } }],
-  ];
-
-  for (const [label, environments] of NULLABLE_PATHS) {
-    it(`200 accepts JSON null for ${label}`, async () => {
-      const token = await signUserToken('uuid-owner');
-      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-      projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-      updateReturning.mockResolvedValueOnce([patchedRow({ environments })]);
-
-      const res = await req('/11111111-1111-4111-8111-111111111111', {
-        method: 'PATCH',
-        body: JSON.stringify({ environments }),
-        token,
-      });
-      expect(res.status).toBe(200);
-      expect(updateSet).toHaveBeenCalledWith({ environments });
-    });
-  }
-
-  const NON_NULLABLE_PATHS: [string, Record<string, unknown>, string][] = [
-    ['preview.urls', { preview: { urls: null } }, 'urls'],
-    ['testCredentials', { testCredentials: null }, 'testCredentials'],
-    [
-      'a preview.urls row label',
-      { preview: { urls: [{ label: null, url: 'https://x.example.com' }] } },
-      'label',
-    ],
-    ['a preview.urls row url', { preview: { urls: [{ label: 'X', url: null }] } }, 'url'],
-    [
-      'a testCredentials row label',
-      { testCredentials: [{ label: null, username: 'u', password: 'p' }] },
-      'label',
-    ],
-    [
-      'a testCredentials row username',
-      { testCredentials: [{ label: 'A', username: null, password: 'p' }] },
-      'username',
-    ],
-    [
-      'a testCredentials row password',
-      { testCredentials: [{ label: 'A', username: 'u', password: null }] },
-      'password',
-    ],
-  ];
-
-  for (const [label, environments, names] of NON_NULLABLE_PATHS) {
-    it(`400 BAD_REQUEST naming the field for a JSON null at ${label}`, async () => {
-      const token = await signUserToken('uuid-owner');
-      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-
-      const res = await req('/11111111-1111-4111-8111-111111111111', {
-        method: 'PATCH',
-        body: JSON.stringify({ environments }),
-        token,
-      });
-      expect(res.status).toBe(400);
-      expect(await res.text()).toContain(names);
-      expect(updateSet).not.toHaveBeenCalled();
-    });
-  }
 });
 
 describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', () => {
