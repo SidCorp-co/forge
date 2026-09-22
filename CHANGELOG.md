@@ -2459,6 +2459,10 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **"Deploy when a change lands" is gone from the Coolify settings.** Nothing ever deployed
+  through it. A deploy is now only ever something a person or an agent asks for, at the point
+  of releasing.
+
 - **The dead second copy of four project settings is gone** — checkout path, base branch,
   production branch and default device. Nothing you set changes. A save naming a dead copy is now
   refused, saying which setting owns that value.

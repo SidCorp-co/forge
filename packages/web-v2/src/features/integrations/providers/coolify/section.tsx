@@ -100,49 +100,9 @@ export function CoolifySection({ projectId }: { projectId: string }) {
             existing={existing}
             onRefetch={() => list.refetch()}
           />
-          <LandingDeploySection projectId={projectId} />
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-/**
- * ISS-1152 — the landing deploy is a PROJECT-level opt-in, not a property of
- * the live binding, so it sits outside the stage panel: a project whose only
- * binding is preview still needs it. Default OFF — running the pipeline is not
- * by itself consent to deploy at a moment the project did not choose.
- */
-function LandingDeploySection({ projectId }: { projectId: string }) {
-  const cfgQ = usePipelineConfig(projectId);
-  const update = useUpdatePipelineConfig(projectId);
-  if (cfgQ.isError && isFeatureOff(cfgQ.error)) return null;
-  const deployOnLanding = cfgQ.data?.pipelineConfig?.deployOnLanding === true;
-
-  function handleToggle(next: boolean) {
-    if (!cfgQ.data) return;
-    const read = cfgQ.data.pipelineConfig;
-    update.mutate(sectionWrite({ deployOnLanding: read.deployOnLanding }, { deployOnLanding: next }));
-  }
-
-  return (
-    <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
-      <div className="flex items-center justify-between gap-3">
-        <span className="fg-label text-subtle">Deploy when a change lands</span>
-        <Toggle
-          checked={deployOnLanding}
-          onChange={handleToggle}
-          disabled={update.isPending || cfgQ.isLoading || !cfgQ.data}
-          aria-label="Deploy when a change lands"
-        />
-      </div>
-      <span className="fg-body-sm text-muted">
-        When on, a deploy dispatches as soon as a change lands, so work can be
-        checked on the running product without waiting for a release. Off
-        (default) deploys only on release. Production still waits for the
-        approval gate unless auto-approve is on.
-      </span>
-    </div>
   );
 }
 

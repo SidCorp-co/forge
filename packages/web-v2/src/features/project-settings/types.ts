@@ -287,7 +287,6 @@ export interface PipelineConfig {
 		source?: string;
 	};
 	autoProdDeploy?: boolean;
-	deployOnLanding?: boolean;
 	[key: string]: unknown;
 }
 

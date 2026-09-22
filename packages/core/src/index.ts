@@ -133,7 +133,6 @@ import {
 } from './pipeline/analytics-routes.js';
 import { registerAnswerResume } from './pipeline/answer-resume.js';
 import { hooks } from './pipeline/hooks.js';
-import { registerLandedChangeDeploySubscriber } from './pipeline/landing-deploy.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
 import { registerPausedRunWedgeResolve } from './pipeline/paused-run-wedge-resolve.js';
@@ -429,7 +428,6 @@ if (isMain) {
   await assertVaultBootSafety();
   registerAllIntegrations();
   await registerIntegrationsWorker();
-  registerLandedChangeDeploySubscriber(hooks);
   const skillSeed = await seedBuiltinSkills(db);
   for (const change of skillSeed.changes) {
     await hooks.emit('globalSkillUpdated', {

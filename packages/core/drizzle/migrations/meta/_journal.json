@@ -1982,6 +1982,13 @@
       "when": 1809388800000,
       "tag": "0304_closed_means_shipped",
       "breakpoints": true
+    },
+    {
+      "idx": 305,
+      "version": "7",
+      "when": 1809475200000,
+      "tag": "0305_no_code_fires_a_deploy",
+      "breakpoints": true
     }
   ]
 }
