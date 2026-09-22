@@ -78,6 +78,10 @@ interface Opener {
   readonly info: string;
 }
 
+function typed(line: string): string {
+  return line.endsWith('\r') ? line.slice(0, -1) : line;
+}
+
 /** The offset each line starts at, so a block can say where it sits in the body. */
 function offsets(lines: readonly string[]): number[] {
   const out: number[] = [];
@@ -106,15 +110,15 @@ function closes(line: string, fence: string): boolean {
 function openerIn(lines: readonly string[]): Opener | null {
   let open: string | null = null;
   for (let at = 0; at < lines.length; at += 1) {
-    const found = FENCE_LINE.exec(lines[at] ?? '');
-    if (!found) continue;
-    const fence = found[1] as string;
-    const info = found[2] as string;
+    const line = lines[at] ?? '';
     if (open) {
-      if (closes(lines[at] ?? '', open)) open = null;
+      if (closes(line, open)) open = null;
       continue;
     }
-    const record = fence.startsWith('`') ? RECORD_INFO.exec(info) : null;
+    const found = FENCE_LINE.exec(line);
+    if (!found) continue;
+    const fence = found[1] as string;
+    const record = fence.startsWith('`') ? RECORD_INFO.exec(found[2] as string) : null;
     if (record) return { at, fence, info: record[1] as string };
     open = fence;
   }
@@ -163,10 +167,11 @@ function entriesFrom(lines: readonly string[], from: number, to: number): [strin
  * The fenced block a body carries, or why it carries none although it opened one.
  */
 function blockIn(body: string): { block: Block | null; fault: ForgeRecordFault | null } {
-  const lines = body.split('\n');
+  const raw = body.split('\n');
+  const lines = raw.map(typed);
   const opener = openerIn(lines);
   if (!opener) return { block: null, fault: null };
-  const starts = offsets(lines);
+  const starts = offsets(raw);
   const quote = lines[opener.at] as string;
   const rest = opener.info.trim();
   const onFence = rest === '' ? null : TAG_ON_FENCE.exec(rest);

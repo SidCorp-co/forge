@@ -133,6 +133,54 @@ describe('the fence a body means as a record', () => {
     expect(parseForgeRecord(unclosed)).toBeNull();
   });
 
+  it('finds a record after an enclosing block closed on an indented fence', () => {
+    const body = [
+      `${FENCE}text`,
+      'example',
+      '  ```',
+      `${FENCE}forge-record`,
+      'criterion: 13',
+      FENCE,
+      '',
+      '`forge-record: verdict \u00b7 contract 1`',
+    ].join('\n');
+    const record = parseForgeRecord(body);
+    expect(record?.kind).toBe('verdict');
+    expect(record?.fields.map((f) => f.key)).toEqual(['criterion']);
+  });
+
+  it('reads a record written with carriage returns', () => {
+    const body = [
+      `${FENCE}forge-record`,
+      'criterion: 13',
+      'verdict: skipped',
+      FENCE,
+      '',
+      '`forge-record: verdict \u00b7 contract 1`',
+    ].join('\r\n');
+    const record = parseForgeRecord(body);
+    expect(record?.kind).toBe('verdict');
+    expect(record?.contract).toBe(1);
+    expect(record?.fields.map((f) => f.key)).toEqual(['criterion', 'verdict']);
+    expect(record?.fields.map((f) => f.value)).toEqual(['13', 'skipped']);
+  });
+
+  it('reads the on-fence shape written with carriage returns', () => {
+    const body = [`${FENCE}forge-record: verdict \u00b7 contract 1`, 'criterion: 13', FENCE].join(
+      '\r\n',
+    );
+    expect(parseForgeRecord(body)?.kind).toBe('verdict');
+  });
+
+  it('says where the block sits when the body carries carriage returns', () => {
+    const body = ['Before.', '', `${FENCE}forge-record`, 'criterion: 13', FENCE, '', 'After.'].join(
+      '\r\n',
+    );
+    const record = parseForgeRecord(body);
+    expect(body.slice(0, record?.at)).toBe('Before.\r\n\r\n');
+    expect(body.slice(record?.to)).toBe('\r\n\r\nAfter.');
+  });
+
   it('says nothing about a body carrying no fence', () => {
     expect(parseForgeRecord('Just a sentence somebody wrote for somebody to read.')).toBeNull();
   });

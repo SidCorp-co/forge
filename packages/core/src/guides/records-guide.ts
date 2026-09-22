@@ -99,7 +99,12 @@ quoting either shape as an example stays ordinary prose.
 
 ### When the rule refuses and when it only warns
 
-The refusal is reachable only through a capability the caller declares in the
+This section is about \`record-in-comment\`, the rule for a fence that DID parse. It does not
+govern \`record-fence-shape\`: a fence carrying no record is refused whatever the caller declared,
+because the dormancy below protects callers obeying a rule on another release clock and nobody
+writes an unreadable fence on purpose.
+
+The \`record-in-comment\` refusal is reachable only through a capability the caller declares in the
 \`x-forge-capabilities\` request header: a client that sends \`record-route\` is saying it has
 somewhere else to write, so a fence from it is a bug and is refused 400. A client that declares
 nothing is written and answered with a warning carrying the same sentence. That is deliberate — the
@@ -107,6 +112,7 @@ writer lives in a second repo on a different release clock, and a refusal that l
 callers could obey would break every one of them on a deploy they did not ask for.
 
 The MCP comment door declares nothing and cannot: a tool handler is given its arguments and no
-request context, so a fence written through \`forge_comments\` is warned and never refused. It is
-still the wrong place to put a record.`,
+request context, so a fence written through \`forge_comments\` that parses is warned and never
+refused. It is still the wrong place to put a record. A fence that parses as nothing is refused
+there too — that refusal reads no header.`,
 };

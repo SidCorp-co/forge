@@ -80,6 +80,14 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('no request context');
   });
 
+  it('says which of the two rules the dormancy governs, and which it does not', () => {
+    expect(prose).toContain(
+      'This section is about `record-in-comment`, the rule for a fence that DID parse',
+    );
+    expect(prose).toContain('It does not govern `record-fence-shape`');
+    expect(prose).toContain('refused whatever the caller declared');
+  });
+
   it('explains the dormancy the refusal is reachable through', () => {
     expect(body).toContain('x-forge-capabilities');
     expect(body).toContain('record-route');
