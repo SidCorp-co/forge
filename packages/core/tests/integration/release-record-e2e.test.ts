@@ -330,6 +330,62 @@ describe('a release that did not happen is refused by name', () => {
     expect(await stored(b)).toEqual({ status: 'awaiting_release', claim: null });
   });
 
+  // ISS-1161 — measured 2026-09-21. A record written to be refused claimed `6D3F607`,
+  // which was a seven-digit prefix of what the deployment was serving, so it verified and
+  // closed an issue on a project nobody was working. Through the real route, because the
+  // damage was the close and not the comparison.
+  it('refuses a seven-character prefix of the commit the probes report', async () => {
+    const w = await seed();
+    const a = await insertIssue(w);
+
+    const res = await record(w, {
+      issueIds: [a],
+      commit: RELEASED.slice(0, 7).toUpperCase(),
+      account: ACCOUNT,
+    });
+
+    expect(res.status).toBe(409);
+    const cause = await causeOf(res);
+    expect(cause.code).toBe('RELEASE_NOT_VERIFIED');
+    expect(cause.message).toContain('is not a whole commit');
+    expect(cause.message).toContain(RELEASED);
+  });
+
+  it('leaves the issues a prefix claim named exactly where they stood', async () => {
+    const w = await seed();
+    const a = await insertIssue(w);
+    const b = await insertIssue(w);
+
+    await record(w, {
+      issueIds: [a, b],
+      commit: RELEASED.slice(0, 7).toUpperCase(),
+      account: ACCOUNT,
+    });
+
+    expect(await stored(a)).toEqual({ status: 'awaiting_release', claim: null });
+    expect(await stored(b)).toEqual({ status: 'awaiting_release', claim: null });
+  });
+
+  it('refuses an empty commit at the route, before any release work begins', async () => {
+    const w = await seed();
+    const a = await insertIssue(w);
+
+    const res = await record(w, { issueIds: [a], commit: '   ', account: ACCOUNT });
+
+    expect(res.status).toBe(400);
+    expect((await stored(a)).status).toBe('awaiting_release');
+  });
+
+  it('refuses a body carrying no commit at all', async () => {
+    const w = await seed();
+    const a = await insertIssue(w);
+
+    const res = await record(w, { issueIds: [a], account: ACCOUNT });
+
+    expect(res.status).toBe(400);
+    expect((await stored(a)).status).toBe('awaiting_release');
+  });
+
   it('refuses a project that declares no probes, naming RELEASE_PROBES_UNDECLARED', async () => {
     const w = await seed({ probes: false });
     const a = await insertIssue(w);
