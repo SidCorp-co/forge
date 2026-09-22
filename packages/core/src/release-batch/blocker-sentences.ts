@@ -122,7 +122,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   BATCH_IN_FLIGHT:
     'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
   RELEASE_CHECK_UNEVALUATED:
-    'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed. Everything else below was evaluated; this one was not.',
+    'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
 
 /** The one copy of each sentence. */
