@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Asking about a whole backlog now costs one request, not one per issue.** Two new streamed
+  endpoints answer the ranked next-work question and the duplicate sweep as they work, reporting
+  progress and saying plainly when an answer is partial.
 - **An issue at `awaiting_release` on a project that already leaves nobody an act now releases
   itself** once every acceptance criterion is judged `pass` or `short`; one left `skipped`,
   failed, or unjudged holds the issue in place.
