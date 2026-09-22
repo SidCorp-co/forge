@@ -32,6 +32,12 @@ const DEFAULTS = {
   memoryWrite: { windowMs: 60_000, max: 30, by: 'user' },
   memorySearch: { windowMs: 60_000, max: 60, by: 'user' },
   knowledgeSearch: { windowMs: 60_000, max: 60, by: 'user' },
+  /**
+   * A whole-backlog answer fans out inside ONE request (ISS-1173), so the bucket is sized for
+   * questions rather than for rows: twenty a minute is a dispatcher's wave asking both of them a
+   * few times over, and anything above that is a caller looping where it should be streaming.
+   */
+  backlogStream: { windowMs: 60_000, max: 20, by: 'user' },
 } as const satisfies Record<string, RateLimitRule>;
 
 function resolve(
@@ -96,6 +102,11 @@ export const RULES: Record<keyof typeof DEFAULTS, RateLimitRule> = {
     DEFAULTS.knowledgeSearch,
     env.RATE_LIMIT_KNOWLEDGE_SEARCH_MAX,
     env.RATE_LIMIT_KNOWLEDGE_SEARCH_WINDOW_MS,
+  ),
+  backlogStream: resolve(
+    DEFAULTS.backlogStream,
+    env.RATE_LIMIT_BACKLOG_STREAM_MAX,
+    env.RATE_LIMIT_BACKLOG_STREAM_WINDOW_MS,
   ),
 };
 

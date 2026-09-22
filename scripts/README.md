@@ -308,6 +308,14 @@ claim; this is the check that tests the claim.
 Also fails when an axis is declared with no probe, or probed with no declaration, so neither half can
 drift out of the other's sight.
 
+**Both sides of a direction check are read out of git, never off disk.** `ratchetFault` in
+`lib/baseline-ratchet.mjs` reads the declared baseline at `baseRev()` and again at `HEAD` — so a
+baseline file corrected in the working tree is invisible to it, and `pnpm verify` goes on reporting
+the committed number until the fix is committed. The other checkers read the tree, which is why the
+two can disagree inside one run: `check-size-budget` can pass on a file the working tree has already
+brought back under budget while this one still faults on the number `HEAD` holds. Commit the
+baseline, then re-measure.
+
 An axis whose probe is not on disk has **no measured level** — reported as `n/a`, compared against
 nothing, and taking the script to exit `2`. Level `0` is not the answer there: `0` means "no checker
 exists", a measured fact about the repo, and returning it for an absent binary reported three axes

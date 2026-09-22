@@ -93,6 +93,17 @@ describe('verdictPairsIn', () => {
     expect(verdictPairsIn(body)).toEqual([]);
   });
 
+  it('reads a verdict whose tag is carried on the fence itself', () => {
+    const body = [
+      '## Judged',
+      '',
+      '```forge-record: verdict · contract 1',
+      verdictBlock(13, 'The daemon log carries the three-way verdict.', 'pass'),
+      '```',
+    ].join('\n');
+    expect(verdictPairsIn(body)).toEqual([{ criterion: 13, verdict: 'pass' }]);
+  });
+
   it('reads nothing out of plain prose with no fence', () => {
     expect(verdictPairsIn('just a comment, no record here')).toEqual([]);
   });

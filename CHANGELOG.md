@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Asking about a whole backlog now costs one request, not one per issue.** Two new streamed
+  endpoints answer the ranked next-work question and the duplicate sweep as they work, reporting
+  progress and saying plainly when an answer is partial.
 - **An issue at `awaiting_release` on a project that already leaves nobody an act now releases
   itself** once every acceptance criterion is judged `pass` or `short`; one left `skipped`,
   failed, or unjudged holds the issue in place.
@@ -3091,6 +3094,9 @@
   stayed valid beside the new one, and which of the two the machine spoke as was arbitrary.
 - **A revoked machine credential can no longer be renewed into a working one.** Whoever held it
   before could list it and rotate it back into live access to a machine already handed on.
+- **A record written into a comment now lands or is refused, never silently neither.**
+  The tag may sit on the opening fence as well as after the block; one that cannot be read is
+  refused as you write it.
 - **A machine now says when it can no longer be heard by a session it is running.**
   `forge-runner master status` gives that answer, how long it has stood, and a command that ends
   the session it names.
