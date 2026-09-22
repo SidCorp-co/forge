@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { baseRev } from './lib/baseline-ratchet.mjs';
-import { ENTRY_WORD_BUDGET, judge } from './lib/release-record.mjs';
+import { CORRECTION_SPAN, ENTRY_WORD_BUDGET, judge } from './lib/release-record.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RECORD = 'CHANGELOG.md';
@@ -57,20 +57,34 @@ function report(verdict) {
   const rules = new Set((verdict.violations ?? []).map((v) => v.rule));
   if (rules.has('no-silent-loss')) {
     console.error(
-      `\nAn entry in ${RECORD} is a line someone published about what shipped. Restore what went\n` +
-        `missing, or — if a removal is deliberate — declare it in ${AMNESTY} as\n` +
-        `{"removals": [{"entry": "<the entry, verbatim>", "reason": "<why it goes>"}]} so the\n` +
-        `trade-off is visible in the diff rather than only in the deletion.`,
+      `\nAn entry in ${RECORD} is a line someone published about what shipped. A CORRECTION to one is\n` +
+        `read as that entry and is not listed here. A correction is an added entry into which more than\n` +
+        `half the words of the LONGER of the two survived in order, AND which moved at most ${CORRECTION_SPAN} words each\n` +
+        `way: at most ${CORRECTION_SPAN} of the published entry's words gone, and at most ${CORRECTION_SPAN} new ones standing where\n` +
+        `they were. One removed entry pairs with one added entry, and the pairing takes as many pairs as\n` +
+        `it can before it prefers the likeliest single one. What IS listed found no such correction among\n` +
+        `what this change added — a wider change is a withdrawal and a new entry however much of the\n` +
+        `wording it carries over. Restore it, or — if the removal is deliberate — declare it in\n` +
+        `${AMNESTY} as\n` +
+        `{"removals": [{"entry": "<the entry, verbatim>", "reason": "<why it goes>"}]} so the trade-off is\n` +
+        `visible in the diff rather than only in the deletion.`,
     );
   }
   // Deliberately no amnesty for this one: an over-long entry is rewritten, and a file that
   // let you declare your way past the budget would be the budget's off switch.
   if (rules.has('entry-budget')) {
     console.error(
-      `\nThe budget is ${ENTRY_WORD_BUDGET} words per entry and it applies only to entries this change\n` +
-        `adds — nothing already published turns this red. There is no amnesty for it: rewrite the\n` +
-        `entry. Say what changed and what it means for the reader; leave the reasoning in the issue\n` +
-        `and the commit message, where it is not competing with every other release for attention.`,
+      `\nThe budget is ${ENTRY_WORD_BUDGET} words for an entry this change ADDS. An entry it CORRECTS may spend the\n` +
+        `larger of the ${ENTRY_WORD_BUDGET} and the words that entry already held, so a published entry can be corrected\n` +
+        `without first being cut to a budget written after it. A correction is an added entry into which\n` +
+        `more than half the words of the LONGER of the two survived in order, AND which moved at most ${CORRECTION_SPAN}\n` +
+        `words each way — at most ${CORRECTION_SPAN} of the published entry's words gone, at most ${CORRECTION_SPAN} new ones standing\n` +
+        `where they were — one removed entry to one added entry. Anything wider is a new entry and pays\n` +
+        `the ${ENTRY_WORD_BUDGET}, whatever share of the wording it keeps: a long entry holding enough background can\n` +
+        `clear a SHARE with its whole claim replaced, and no share can be set high enough to say\n` +
+        `otherwise. An entry left alone turns this red under no circumstance. There is no amnesty for it:\n` +
+        `rewrite the entry. Say what changed and what it means for the reader; leave the reasoning in the\n` +
+        `issue and the commit message.`,
     );
   }
 }

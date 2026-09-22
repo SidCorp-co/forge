@@ -38,8 +38,8 @@ import {
 import { groupedTransitions, transitionLabels } from "../derive";
 import { useStatusExits } from "../hooks";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
-import { useStatusLabeller } from "../vocabulary";
-import { waitedFor } from "../waiting";
+import { useLaneLabeller } from "../vocabulary";
+import { sinceLastWrite } from "../waiting";
 import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
@@ -53,7 +53,7 @@ import {
   ModuleCell,
   type RowActions,
   type RowSelection,
-  WaitingCell,
+  LastWriteCell,
 } from "./issue-table-row";
 
 /** ISS-700 — shared row-open behaviour: a pending flag set synchronously
@@ -115,7 +115,6 @@ function AgentChip({
 /** ISS-436 merged status cell: the issue's lifecycle chip, the live agent's chip, and the gate
  *  holding a queued step — three chips, each carrying a fact something recorded. */
 export function StatusCell({ row }: { row: IssueRow }) {
-  const statusLabel = useStatusLabeller();
   const queuedStep = deriveQueuedStep(
     row.pipelineHealth,
     hasLiveAgentSession(row.agentStatus),
@@ -188,7 +187,7 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
-  const statusLabel = useStatusLabeller();
+  const laneLabel = useLaneLabeller();
   const { exits, isPending, isError } = useStatusExits();
   const items: MenuItem[] = [
     { label: "Open issue", icon: "arrowRight", onSelect: open },
@@ -209,7 +208,7 @@ function useRowMenuItems(
   }
   const statusNames = transitionLabels(
     grouped.map((g) => g.to),
-    statusLabel,
+    laneLabel,
   );
   for (const [i, g] of grouped.entries()) {
     items.push({
@@ -344,7 +343,7 @@ export function IssueTableRow({
         <StatusCell row={row} />
       </TD>
       <TD>
-        <WaitingCell waited={waitedFor(row, now)} />
+        <LastWriteCell written={sinceLastWrite(row, now)} />
       </TD>
       <TD>
         <PriorityCell priority={row.priority} />
@@ -428,7 +427,7 @@ export function IssueMobileCard({
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <StatusCell row={row} />
-          <WaitingCell waited={waitedFor(row, now)} />
+          <LastWriteCell written={sinceLastWrite(row, now)} />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">

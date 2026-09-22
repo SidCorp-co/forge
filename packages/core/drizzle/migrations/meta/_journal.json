@@ -1921,17 +1921,66 @@
       "breakpoints": true
     },
     {
-      "idx": 289,
+      "idx": 292,
       "version": "7",
-      "when": 1807747200000,
-      "tag": "0289_issue_transition_audit",
+      "when": 1808352000000,
+      "tag": "0292_issue_leases",
       "breakpoints": true
     },
     {
-      "idx": 290,
+      "idx": 294,
       "version": "7",
-      "when": 1807833600000,
-      "tag": "0290_closed_means_shipped",
+      "when": 1808524800000,
+      "tag": "0294_release_cuts_a_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1808611200000,
+      "tag": "0295_a_session_says_what_it_is",
+      "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1808697600000,
+      "tag": "0296_agency_is_the_users_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1808784000000,
+      "tag": "0297_a_box_says_which_build",
+      "breakpoints": true
+    },
+    {
+      "idx": 300,
+      "version": "7",
+      "when": 1809043200000,
+      "tag": "0300_the_inbound_door",
+      "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1809216000000,
+      "tag": "0302_pat_name_unique_while_live",
+      "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1809302400000,
+      "tag": "0303_issue_transition_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 304,
+      "version": "7",
+      "when": 1809388800000,
+      "tag": "0304_closed_means_shipped",
       "breakpoints": true
     }
   ]

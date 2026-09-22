@@ -31,6 +31,13 @@ const CFG = {
   stableReads: 1,
 };
 
+/** Whole object names. A claim under test may be nothing else. */
+const NEW = 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e';
+const OLD = 'a12b34c5d6e7f8091a2b3c4d5e6f708192a3b4c5';
+const SAME = 'c0ffee1234567890abcdef1234567890abcdef12';
+const ELSEWHERE = 'dead0beef1234567890abcdef1234567890abcde';
+const FLAP = 'f1a99109876543210fedcba9876543210fedcba9';
+
 const nowFake = () => 0;
 const noSleep = async () => undefined;
 
@@ -76,26 +83,26 @@ describe('readLiveCommit', () => {
 
 describe('verifyDeployed', () => {
   it('goes green when the live build changed and matches what the release pushed', async () => {
-    answers('new-sha');
+    answers(NEW);
 
     const out = await verifyDeployed({
       cfg: CFG,
-      commitBefore: 'old-sha',
-      expected: 'new-sha',
+      commitBefore: OLD,
+      expected: NEW,
       now: nowFake,
       sleep: noSleep,
     });
 
-    expect(out).toEqual({ ok: true, commit: 'new-sha', health: 'up', identity: 'new-sha' });
+    expect(out).toEqual({ ok: true, commit: NEW, health: 'up', identity: NEW });
   });
 
   it('goes red when the site is healthy and still serving the pre-release build', async () => {
-    answers('old-sha', 'old-sha', 'old-sha', 'old-sha');
+    answers(OLD, OLD, OLD, OLD);
 
     const out = await verifyDeployed({
       cfg: { ...CFG, timeoutSeconds: 1 },
-      commitBefore: 'old-sha',
-      expected: 'new-sha',
+      commitBefore: OLD,
+      expected: NEW,
       now: (() => {
         let t = 0;
         return () => (t += 600);
@@ -108,12 +115,12 @@ describe('verifyDeployed', () => {
   });
 
   it('goes red when the release reports the commit that was already serving', async () => {
-    answers('same-sha', 'same-sha');
+    answers(SAME, SAME);
 
     const out = await verifyDeployed({
       cfg: { ...CFG, timeoutSeconds: 1 },
-      commitBefore: 'same-sha',
-      expected: 'same-sha',
+      commitBefore: SAME,
+      expected: SAME,
       now: (() => {
         let t = 0;
         return () => (t += 600);
@@ -125,12 +132,12 @@ describe('verifyDeployed', () => {
   });
 
   it('goes red when the live build is not the one the release pushed', async () => {
-    answers('someone-elses-sha', 'someone-elses-sha');
+    answers(ELSEWHERE, ELSEWHERE);
 
     const out = await verifyDeployed({
       cfg: { ...CFG, timeoutSeconds: 1 },
-      commitBefore: 'old-sha',
-      expected: 'new-sha',
+      commitBefore: OLD,
+      expected: NEW,
       now: (() => {
         let t = 0;
         return () => (t += 600);
@@ -139,15 +146,15 @@ describe('verifyDeployed', () => {
     });
 
     expect(out.ok).toBe(false);
-    expect(out.ok === false && out.reason).toContain('new-sha');
+    expect(out.ok === false && out.reason).toContain(NEW);
   });
 
   it('accepts a release that reports no commit, as long as the build actually moved', async () => {
-    answers('new-sha');
+    answers(NEW);
 
     const out = await verifyDeployed({
       cfg: CFG,
-      commitBefore: 'old-sha',
+      commitBefore: OLD,
       expected: null,
       now: nowFake,
       sleep: noSleep,
@@ -161,8 +168,8 @@ describe('verifyDeployed', () => {
 
     const out = await verifyDeployed({
       cfg: { ...CFG, timeoutSeconds: 1 },
-      commitBefore: 'old-sha',
-      expected: 'new-sha',
+      commitBefore: OLD,
+      expected: NEW,
       now: (() => {
         let t = 0;
         return () => (t += 600);
@@ -176,17 +183,17 @@ describe('verifyDeployed', () => {
   });
 
   it('requires the reads to hold still before believing them', async () => {
-    answers('new-sha', 'flapping', 'new-sha', 'new-sha');
+    answers(NEW, FLAP, NEW, NEW);
 
     const out = await verifyDeployed({
       cfg: { ...CFG, stableReads: 2, timeoutSeconds: 100 },
-      commitBefore: 'old-sha',
+      commitBefore: OLD,
       expected: null,
       now: nowFake,
       sleep: noSleep,
     });
 
-    expect(out).toEqual({ ok: true, commit: 'new-sha', health: 'up', identity: 'new-sha' });
+    expect(out).toEqual({ ok: true, commit: NEW, health: 'up', identity: NEW });
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });
@@ -266,8 +273,8 @@ describe('verifyDeployed, health before identity', () => {
   const runOut = (cfg: typeof CFG) =>
     verifyDeployed({
       cfg: { ...cfg, timeoutSeconds: 1 },
-      commitBefore: 'old-sha',
-      expected: 'new-sha',
+      commitBefore: OLD,
+      expected: NEW,
       now: (() => {
         let t = 0;
         return () => (t += 600);
@@ -301,12 +308,33 @@ describe('verifyDeployed, health before identity', () => {
   });
 
   it('carries health and identity as two readable fields on a red', async () => {
-    answers('old-sha', 'old-sha', 'old-sha', 'old-sha');
+    answers(OLD, OLD, OLD, OLD);
 
     const out = await runOut(CFG);
 
     expect(out.ok === false && out.health).toBe('up');
-    expect(out.ok === false && out.identity).toBe('old-sha');
+    expect(out.ok === false && out.identity).toBe(OLD);
     expect(out.ok === false && out.readings.length).toBe(1);
+  });
+});
+
+// ISS-1127 — `parseVerifyConfig` takes any non-empty string as a probe url, and
+// `readProbe` builds `new URL(probe.url)` outside its own try. So a binding holding
+// `"forge-beta-api.sidcorp.co/version"` makes `createReleaseBatch` throw
+// `TypeError: Invalid URL` past every mapped refusal, as a 500 with no code, while
+// `release-readiness` says nothing about it.
+describe('a probe url that does not parse (ISS-1127)', () => {
+  const MALFORMED = {
+    probes: [{ url: 'forge-beta-api.sidcorp.co/version', commitPath: 'commit' }],
+  };
+
+  it('is named by invalidProbeUrls without a request being made', async () => {
+    const { invalidProbeUrls } = await import('./verify.js');
+    expect(invalidProbeUrls(MALFORMED)).toEqual(['forge-beta-api.sidcorp.co/version']);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still throws out of readLiveCommit, which is why the caller has to refuse first', async () => {
+    await expect(readLiveCommit(MALFORMED)).rejects.toThrow();
   });
 });

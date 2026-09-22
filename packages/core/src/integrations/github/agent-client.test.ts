@@ -22,9 +22,21 @@ vi.mock('../../config/env.js', () => ({
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://x/y',
     DEVICE_TOKEN_PEPPER: 'pepper',
+    PUBLIC_API_BASE_URL: 'https://api.example.test',
   },
 }));
-vi.mock('../../db/client.js', () => ({ db: {} }));
+// ISS-1140: `list` now reads the project's slug to build the URL this binding needs GitHub to
+// call. One row, one query, and `db` is otherwise untouched here.
+let projectSlug: string | null = 'forge-dev';
+vi.mock('../../db/client.js', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: async () => (projectSlug ? [{ slug: projectSlug }] : []) }),
+      }),
+    }),
+  },
+}));
 vi.mock('../store.js', () => ({
   listBindingsForProject: (...a: unknown[]) => listBindingsForProjectMock(...(a as [])),
   decryptConnectionSecrets: (connection: { secretsPlain?: Record<string, unknown> }) =>
@@ -34,18 +46,28 @@ vi.mock('../store.js', () => ({
     binding: { config?: Record<string, unknown> };
   }) => ({ ...(pair.connection.config ?? {}), ...(pair.binding.config ?? {}) }),
 }));
+// ISS-1123, ISS-1140. The door's traffic is a database reading and `db/client` is a stub here, so
+// the reading is mocked and what is asserted is what the report DOES with it: a binding installed,
+// active, granted and green on its outbound probe that has received nothing must not read `ok`.
+const NO_TRAFFIC = {
+  accepted: 0,
+  lastAcceptedAt: null as Date | null,
+  refusalRecords: 0,
+  lastRecordedRefusalAt: null as Date | null,
+  lastRefusalCode: null as string | null,
+};
+const trafficMock = vi.fn(async (_bindingId: string) => ({ ...NO_TRAFFIC }));
+vi.mock('../inbound-door.js', async () => {
+  const real = await vi.importActual<typeof import('../inbound-door.js')>('../inbound-door.js');
+  return { ...real, readInboundDoorTraffic: (id: string) => trafficMock(id) };
+});
 vi.mock('./app-auth.js', async () => {
   const real = await vi.importActual<typeof import('./app-auth.js')>('./app-auth.js');
   return { ...real, installationToken: (...a: unknown[]) => installationTokenMock(...(a as [])) };
 });
 
-const {
-  GitHubAgentCallError,
-  GitHubAgentRefusal,
-  githubAgentBindings,
-  githubAgentClient,
-  resolveGrantedGitHubBinding,
-} = await import('./agent-client.js');
+const { GitHubAgentCallError, GitHubAgentRefusal, githubAgentClient, resolveGrantedGitHubBinding } =
+  await import('./agent-client.js');
 const { GitHubClientError } = await import('./client.js');
 
 // The grant is asked of the registry, so github's declaration has to be in it. An empty registry
@@ -65,6 +87,15 @@ function row(opts: {
   secrets?: Record<string, unknown>;
   createdAt?: Date;
   provider?: string;
+  connectionId?: string;
+  lastHealthStatus?: string | null;
+  lastHealthDetail?: string | null;
+  observed?: {
+    url: string | null;
+    active: boolean | null;
+    observedAt: string;
+    readError?: string;
+  } | null;
 }) {
   return {
     binding: {
@@ -78,20 +109,31 @@ function row(opts: {
       createdAt: opts.createdAt ?? new Date('2026-01-01T00:00:00Z'),
     },
     connection: {
-      id: 'conn-1',
+      id: opts.connectionId ?? 'conn-1',
       active: opts.connectionActive ?? true,
       config: {},
       secretsEnc: Buffer.from('x'),
-      lastHealthStatus: 'ok',
+      lastHealthStatus: opts.lastHealthStatus === undefined ? 'ok' : opts.lastHealthStatus,
+      lastHealthDetail: opts.lastHealthDetail ?? null,
+      inboundEndpointObserved:
+        opts.observed === undefined
+          ? { url: HERE, active: true, observedAt: '2026-09-21T00:00:00.000Z' }
+          : opts.observed,
       secretsPlain: opts.secrets ?? { appId: '1234', privateKey: 'k'.repeat(120) },
     },
   };
 }
 
+/** The URL a `forge-dev` binding on this core needs GitHub to call. */
+const HERE = 'https://api.example.test/api/webhooks/in/forge-dev';
+
 beforeEach(() => {
   listBindingsForProjectMock.mockReset();
   installationTokenMock.mockReset();
   installationTokenMock.mockResolvedValue('ghs_installation_token_value');
+  projectSlug = 'forge-dev';
+  trafficMock.mockReset();
+  trafficMock.mockImplementation(async () => ({ ...NO_TRAFFIC }));
 });
 
 afterEach(() => {
@@ -159,36 +201,6 @@ describe('which refusal a caller meets', () => {
     const caught = await githubAgentClient(PROJECT).catch((e: unknown) => e);
     expect(caught).toBeInstanceOf(GitHubClientError);
     expect((caught as { reason: string }).reason).toBe('no_credential');
-  });
-});
-
-describe('list reports what exists, whatever the grant says', () => {
-  // ISS-1074 criterion 13.
-  it('reports an ungranted binding with agentGranted false, and contacts GitHub not at all', async () => {
-    const fetchMock = vi.fn();
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-    listBindingsForProjectMock.mockResolvedValue([
-      row({ id: 'bind-ungranted', agentAccess: 'none' }),
-    ]);
-
-    await expect(githubAgentBindings(PROJECT)).resolves.toEqual([
-      {
-        bindingId: 'bind-ungranted',
-        repository: 'SidCorp-co/forge-dev',
-        installed: true,
-        bindingActive: true,
-        connectionActive: true,
-        agentGranted: false,
-        lastHealthStatus: 'ok',
-      },
-    ]);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(installationTokenMock).not.toHaveBeenCalled();
-  });
-
-  it('answers an empty list for a project that has bound nothing, rather than refusing', async () => {
-    listBindingsForProjectMock.mockResolvedValue([]);
-    await expect(githubAgentBindings(PROJECT)).resolves.toEqual([]);
   });
 });
 

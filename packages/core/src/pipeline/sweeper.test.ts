@@ -264,17 +264,17 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
     expect(dbExecute).toHaveBeenCalledTimes(4);
     const [pass1, pass2, pass3, pass4] = dbExecute.mock.calls.map((c) => sqlText(c[0]));
 
-    expect(pass1).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass2).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass3).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass4).toMatch(/COALESCE/i);
+    expect(pass1).toMatch(/\bs\.kind\s+IN\s*\(\s*pipeline\s*,\s*pm\s*\)/);
+    expect(pass2).toMatch(/\bs\.kind\s+IN\s*\(\s*pipeline\s*,\s*pm\s*\)/);
+    expect(pass3).toMatch(/\bs\.kind\s+IN\s*\(\s*pipeline\s*,\s*pm\s*\)/);
     expect(
       pass4,
-      'this arm and the no-client hop it alarms for are ONE predicate, and both must exclude every type that never reports a `claude_session_id`: a run session (reaped by `devices/run-session-reaper.ts` — two sweeps over one row is two writers on one fact) and a master (a tmux pane, which matches every term of this arm and survives only on the daemon re-registering it) (ISS-933 criteria 21 and 25a)',
-    ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'master'\s*,\s*'run_session'\s*\)/);
+      'this arm and the no-client hop it alarms for are ONE predicate, and both must see ONLY the kind that reports a `claude_session_id`. It used to say so by excluding the other four; it now names the one, which is the same rule written the way round that cannot silently admit a sixth kind. A run session is reaped by `devices/run-session-reaper.ts` — two sweeps over one row is two writers on one fact — and a master is a tmux pane that matches every other term of this arm and survives only on the daemon re-registering it (ISS-933 criteria 21 and 25a)',
+    ).toMatch(/\bs\.kind\s+IN\s*\(\s*chat\s*\)/);
+    expect(pass4).not.toMatch(/\bmaster\b|\brun_session\b/);
     expect(pass4).toMatch(/claude_session_id\s+IS\s+NULL/i);
-    expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
-    expect(pass3).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+    expect(pass1).not.toMatch(/\bchat\b/);
+    expect(pass3).not.toMatch(/\bchat\b/);
   });
 
   it("mirrors the loop's two queue arms, split on last_heartbeat_at in opposite senses", async () => {
@@ -617,24 +617,10 @@ describe('detectOrphanedRunAssertions wiring (ISS-1050 — the inverse of the ru
   });
 
   it('runs AFTER the reaping passes, not before them', async () => {
-    const order: string[] = [];
-    reapConcludedRunsMock.mockImplementation(async () => {
-      order.push('concludedRuns');
-      return { reaped: 0 };
-    });
-    reapJoblessRunsMock.mockImplementation(async () => {
-      order.push('joblessRuns');
-      return { reaped: 0 };
-    });
-    detectOrphanedRunAssertionsMock.mockImplementation(async () => {
-      order.push('orphanedRunAssertions');
-      return { detected: 0, reported: 0 };
-    });
-
     await runPipelineSweep();
-
-    expect(order.indexOf('orphanedRunAssertions')).toBeGreaterThan(order.indexOf('concludedRuns'));
-    expect(order.indexOf('orphanedRunAssertions')).toBeGreaterThan(order.indexOf('joblessRuns'));
+    const namedAt = detectOrphanedRunAssertionsMock.mock.invocationCallOrder[0] ?? -1;
+    expect(namedAt).toBeGreaterThan(reapConcludedRunsMock.mock.invocationCallOrder[0] ?? -1);
+    expect(namedAt).toBeGreaterThan(reapJoblessRunsMock.mock.invocationCallOrder[0] ?? -1);
   });
 });
 
@@ -670,6 +656,16 @@ describe('reapJoblessRuns wiring (ISS-654 — the job-less issue-run phantom)', 
     await expect(runPipelineSweep()).rejects.toThrow();
     expect(alertsMock).toHaveBeenCalled();
   });
+});
+
+it('releaseSweep (ISS-1117) runs after reapStaleReleaseBatchClaims and reports its count', async () => {
+  const result = await runPipelineSweep();
+  const calls = dbExecute.mock.calls.map((c) => sqlText(c[0]));
+  const claims = calls.findIndex((s) => s.includes('SET release_batch_run_id = NULL'));
+  const scan = calls.findIndex((s) => s.includes('awaiting_release'));
+  expect(claims).toBeGreaterThanOrEqual(0);
+  expect(scan).toBeGreaterThan(claims);
+  expect(result.releaseSweep).toEqual({ projectsCut: 0, issuesCut: 0, issuesExcluded: 0 });
 });
 
 describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {

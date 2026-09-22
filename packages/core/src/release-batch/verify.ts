@@ -33,6 +33,11 @@ export function parseVerifyConfig(raw: unknown): VerifyConfig | null {
   };
 }
 
+/** Declared probe urls no request could be made to: a declaration defect rather than an outage (ISS-1127). */
+export function invalidProbeUrls(cfg: VerifyConfig): string[] {
+  return cfg.probes.map((p) => p.url).filter((url) => !URL.canParse(url));
+}
+
 function pluck(body: unknown, path: string | undefined): string | null {
   if (path === undefined) return typeof body === 'string' ? body.trim() : null;
   let cur: unknown = body;
@@ -44,12 +49,9 @@ function pluck(body: unknown, path: string | undefined): string | null {
 }
 
 /**
- * One probe's answer, kept as the shape it actually had.
- *
- * `unreachable` and `http-error` are the application failing to answer;
- * `unparseable` and `no-commit` are the application answering and the probe
- * declaration not finding a commit in what it said. Collapsing the four is what
- * made a `commitPath` typo indistinguishable from an outage.
+ * One probe's answer, kept as the shape it had: `unreachable` and `http-error`
+ * are a failure to answer, `unparseable` and `no-commit` are an answer with no
+ * commit. The four stay apart so a `commitPath` typo is not read as an outage.
  */
 export type ProbeReading =
   | { kind: 'commit'; commit: string }
@@ -121,11 +123,9 @@ export interface LiveState {
 }
 
 /**
- * One read of every probe, kept as two answers.
- *
- * Health is every probe answering; identity is every probe agreeing on one
- * commit. A fleet half on the new build is healthy and has no identity — which
- * is the state the old single-value read reported as "nothing answered".
+ * One read of every probe, kept as two answers: health is every probe
+ * answering, identity is every probe agreeing on one commit. A fleet half on
+ * the new build is healthy and has no identity, so the two stay apart.
  */
 export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
   const reads = await Promise.all(cfg.probes.map(readProbe));
@@ -160,10 +160,14 @@ export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
 }
 
 /**
- * One read of every probe, as the single commit the fleet agrees on.
- *
- * Kept because the pre-release baseline in `createReleaseBatch` wants exactly
- * this and nothing else: what was serving before anything moved.
+ * pass-through: keep — `createReleaseBatch` wants this one answer and nothing
+ * else, the commit serving before anything moved, and reads it once. It throws
+ * rather than reading: `readProbe` builds its `URL` above the `try`, so an
+ * unparseable probe url rejects out of here instead of becoming a reading.
+ * `verifyDeployed` and `verifyServingNow` throw the same way. Two doors screen
+ * ahead of them — `createReleaseBatch` and `recordPerformedRelease`, both
+ * through `collectReleaseBlockers` — which is why that throw is a 409 and not a
+ * 500. `finishReleaseBatch` screens nothing (ISS-1127, ISS-1129 F3, F4).
  */
 export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> {
   return (await readLiveState(cfg)).identity;
@@ -184,7 +188,7 @@ export interface VerifyArgs {
   cfg: VerifyConfig;
   /** What was serving before the release started. */
   commitBefore: string | null;
-  /** What the release says it pushed. */
+  /** The whole sha the release says it pushed, or `null` to ask only that the deploy arrived. */
   expected: string | null;
   /** Injected so the poll loop is testable without real time. */
   now?: () => number;
@@ -198,6 +202,7 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
   const deadline = now() + (cfg.timeoutSeconds ?? 300) * 1000;
   const needed = cfg.stableReads ?? 2;
 
+  const claim = expected == null ? null : claimedCommit(expected);
   let stable = 0;
   let last: string | null = null;
   let state: LiveState = {
@@ -211,9 +216,12 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
 
   while (now() < deadline) {
     state = await readLiveState(cfg);
+    if (expected != null && claim === null) {
+      return { ...failureFor(state, commitBefore, null, expected), readings: state.readings };
+    }
     const live = state.identity;
     const acceptable =
-      live != null && live !== commitBefore && (expected == null || live === expected);
+      live != null && live !== commitBefore && (claim === null || deploymentConfirms(claim, live));
     stable = acceptable && live === last ? stable + 1 : acceptable ? 1 : 0;
     last = live;
     if (stable >= needed && live != null) {
@@ -223,16 +231,18 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
     await sleep(5000);
   }
 
-  return { ...failureFor(state, commitBefore, expected), readings: state.readings };
+  return { ...failureFor(state, commitBefore, claim), readings: state.readings };
 }
 
 /**
- * Why the window closed red, health first and identity second.
+ * Why the window closed red: health, then identity, then the claim — which is
+ * only judgeable once there is a reading to judge it against.
  */
 function failureFor(
   state: LiveState,
   commitBefore: string | null,
-  expected: string | null,
+  claim: string | null,
+  unusableClaim: string | null = null,
 ): Omit<Extract<VerifyOutcome, { ok: false }>, 'readings'> {
   const base = { ok: false as const, live: state.identity, identity: state.identity };
   if (state.health === 'down') {
@@ -263,12 +273,118 @@ function failureFor(
       reason: `the live build is unchanged (${state.identity}) — the site is healthy and still serving the pre-release commit`,
     };
   }
-  if (expected != null && state.identity !== expected) {
+  if (unusableClaim !== null) {
+    return { ...base, health: 'up', reason: notAWholeCommit(unusableClaim, state.identity) };
+  }
+  if (claim != null && !deploymentConfirms(claim, state.identity)) {
     return {
       ...base,
       health: 'up',
-      reason: `live is ${state.identity}, the release pushed ${expected}`,
+      reason: `live is ${state.identity}, the release pushed ${claim}`,
     };
   }
   return { ...base, health: 'up', reason: 'the live commit never held still' };
+}
+
+/** A whole git object name. The only shape a claim under test may take. */
+const WHOLE_COMMIT = /^[0-9a-f]{40}$/;
+
+/** What a deployment may report: a whole object name, or git's own abbreviation of one. */
+const REPORTED_COMMIT = /^[0-9a-f]{7,40}$/;
+
+/**
+ * The commit a caller claims, or `null` where it is not a whole object name. An
+ * abbreviation is refused rather than compared: it is confirmed by every commit
+ * it prefixes, so the caller would be choosing how much has to match (ISS-1161).
+ */
+export function claimedCommit(raw: string): string | null {
+  const text = raw.trim().toLowerCase();
+  return WHOLE_COMMIT.test(text) ? text : null;
+}
+
+/**
+ * The commit a deployment reports, whole or abbreviated, or `null` where it is
+ * neither. Seven is git's own floor on an abbreviation and the floor here.
+ */
+export function reportedCommit(raw: string): string | null {
+  const text = raw.trim().toLowerCase();
+  return REPORTED_COMMIT.test(text) ? text : null;
+}
+
+/**
+ * Whether what the deployment reports confirms the commit a caller claimed.
+ * One direction only: the reading may abbreviate the claim, never the reverse.
+ */
+export function deploymentConfirms(claimed: string, reported: string): boolean {
+  const claim = claimedCommit(claimed);
+  const reading = reportedCommit(reported);
+  if (claim === null || reading === null) return false;
+  return claim.startsWith(reading);
+}
+
+/** The one sentence a claim that is not a whole object name is refused with. */
+function notAWholeCommit(raw: string, identity: string | null): string {
+  const reported = identity === null ? '' : ` The deployment reports \`${identity}\`.`;
+  return (
+    `\`${raw.trim()}\` is not a whole commit — a release names all 40 hexadecimal characters ` +
+    `of the sha, because a shorter value is confirmed by every commit it is a prefix of and so ` +
+    `says how much of an identity the caller wanted checked rather than which commit is ` +
+    `serving.${reported}`
+  );
+}
+
+export interface ServingNowArgs {
+  cfg: VerifyConfig;
+  /** The whole sha the caller says production is serving. */
+  expected: string;
+}
+
+/**
+ * Like {@link VerifyOutcome}, except that the probe readings survive a GREEN.
+ *
+ * `verifyDeployed` drops them on its ok arm because the deploy it watched is
+ * its own evidence. A recorded release has no such act to point at: the
+ * readings ARE the record, so they travel on both arms.
+ */
+export type ServingNowOutcome =
+  | { ok: true; identity: string; health: 'up'; readings: string[] }
+  | {
+      ok: false;
+      reason: string;
+      live: string | null;
+      health: 'up' | 'down';
+      identity: string | null;
+      readings: string[];
+    };
+
+/**
+ * Whether the application is serving this commit RIGHT NOW, in one read.
+ *
+ * {@link verifyDeployed} answers a different question — did the deploy this run
+ * started arrive — so it polls, and it refuses an identity equal to what was
+ * serving before. A release that already happened has no before and nothing to
+ * wait for: it either is live at the moment of the call or the record is not
+ * earned. Polling here would turn a false claim into a five-minute wait and
+ * then the same refusal.
+ */
+export async function verifyServingNow(args: ServingNowArgs): Promise<ServingNowOutcome> {
+  const state = await readLiveState(args.cfg);
+  const claimed = claimedCommit(args.expected);
+  if (claimed === null) {
+    return { ...failureFor(state, null, null, args.expected), readings: state.readings };
+  }
+  if (state.health === 'up' && state.identity !== null) {
+    if (deploymentConfirms(claimed, state.identity)) {
+      return { ok: true, health: 'up', identity: state.identity, readings: state.readings };
+    }
+    return {
+      ok: false,
+      reason: `the application is healthy and serving ${state.identity}; this record claims ${claimed}`,
+      live: state.identity,
+      health: 'up',
+      identity: state.identity,
+      readings: state.readings,
+    };
+  }
+  return { ...failureFor(state, null, null), readings: state.readings };
 }

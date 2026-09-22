@@ -7,20 +7,33 @@
 //! via git:
 //!
 //!   - `.forge/orientation.md` — Forge owns this file; it is fully overwritten on
-//!     every provision. The content is DETERMINISTIC (projectId + slug + fixed
-//!     pointers, nothing device-specific), so a re-provision rewrites identical
-//!     bytes and leaves the git tree clean — but only while the committed copy
-//!     and `orientation_body` agree. They did not: two rows had been edited on
-//!     one side and never the other, so every provision of this repo dirtied
-//!     `main` and silently reverted whichever row the generator lacked. The test
-//!     `this_repo_committed_orientation_matches_the_generator` is what makes the
+//!     every provision. The content is deterministic in the project (projectId +
+//!     slug + fixed pointers, nothing device-specific), so two boxes provisioning
+//!     the same project write the same bytes.
+//!
+//!     It is NOT deterministic across versions of this crate, and the tree is
+//!     only left clean when the committed copy already matches what
+//!     `orientation_body` emits now. A hand edit to this file is lost at the next
+//!     provision; the generator is the only place its content can be changed.
+//!     On forge-dev the two had drifted apart on two table rows, so every
+//!     provision dirtied `main` and silently reverted whichever row the generator
+//!     lacked. Both rows are folded back here, and the test
+//!     `this_repo_committed_orientation_matches_the_generator` is what keeps the
 //!     paragraph above true rather than merely intended (ISS-1108).
 //!
 //!   - `CLAUDE.md` — gets ONE fixed, marker-delimited block prepended IFF the
-//!     marker is absent (idempotent). We never rewrite the rest of the file,
-//!     never auto-commit, and never git-exclude it — a human commits the one-time
-//!     diff. The block is a fixed `@import` pointer at the top, so the volatile
-//!     details live in `.forge/orientation.md`, not in the project's CLAUDE.md.
+//!     file does not already reach orientation. We never rewrite the rest of the
+//!     file, never auto-commit, and never git-exclude it — a human commits the
+//!     one-time diff. The block is a fixed `@import` pointer at the top, so the
+//!     volatile details live in `.forge/orientation.md`, not in the project's
+//!     CLAUDE.md.
+//!
+//!     "Already reaches orientation" is the import and not only our marker. A
+//!     repo that wrote `@.forge/orientation.md` by hand and has no marker used to
+//!     be given the block anyway, and the import is what the harness acts on — so
+//!     the whole of orientation was then expanded into every prompt on that
+//!     project twice, once per import. forge-dev's own CLAUDE.md carried the pair
+//!     for as long as nobody counted them.
 
 use std::path::Path;
 
@@ -29,6 +42,10 @@ use crate::error::Result;
 /// Marks the Forge-managed block in a consumer `CLAUDE.md`. Presence ⇒ already
 /// oriented; we leave the file untouched.
 const FORGE_BLOCK_MARKER: &str = "<!-- forge:orientation -->";
+
+/// The line that actually reaches the harness. A `CLAUDE.md` holding this is
+/// already oriented, whether or not our marker is around it.
+const FORGE_IMPORT: &str = "@.forge/orientation.md";
 
 /// Full body of `.forge/orientation.md`. Deterministic for a given project so
 /// re-provisioning produces byte-identical output (no git churn).
@@ -110,6 +127,13 @@ pub fn write_orientation(repo_path: &Path, project_id: &str, slug: &str) -> Resu
     if existing.contains(FORGE_BLOCK_MARKER) {
         return Ok(());
     }
+    if existing.contains(FORGE_IMPORT) {
+        tracing::info!(
+            "[provision] {} already imports .forge/orientation.md without Forge's marker around it — leaving the file alone. Prepending the block would give it a second import, and every prompt on this project would then carry the whole of orientation twice.",
+            claude_path.display()
+        );
+        return Ok(());
+    }
     let block = claude_md_block();
     let next = if existing.trim().is_empty() {
         block
@@ -186,6 +210,30 @@ mod tests {
         let claude = std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap();
         assert!(claude.starts_with(FORGE_BLOCK_MARKER));
         assert!(claude.contains("@.forge/orientation.md"));
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn a_claude_md_that_already_imports_orientation_by_hand_is_not_given_a_second_one() {
+        let repo = tmp_repo("hand-import");
+        std::fs::write(
+            repo.join("CLAUDE.md"),
+            "# Their project\n\n@.forge/orientation.md\n\nTheir own rules.\n",
+        )
+        .unwrap();
+
+        write_orientation(&repo, "proj-123", "myslug").unwrap();
+
+        let claude = std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap();
+        assert_eq!(
+            claude.matches(FORGE_IMPORT).count(),
+            1,
+            "the import is what the harness expands, so a second one expands the whole of orientation into every prompt twice: {claude}"
+        );
+        assert!(
+            claude.contains("Their own rules."),
+            "and nothing of theirs is touched either way: {claude}"
+        );
         let _ = std::fs::remove_dir_all(&repo);
     }
 

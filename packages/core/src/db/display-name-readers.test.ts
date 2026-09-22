@@ -15,6 +15,10 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
   'orgs/agent-accounts.ts': 'an org admin reads and sets an agent’s label',
   'orgs/service.ts': 'the org member list returns it beside the address',
   'issues/actor-resolution.ts': 'the label an activity row is rendered by',
+  'issues/creator.ts':
+    'the label an issue’s creator is rendered by on every issue list and detail, which is the same job `actor-resolution.ts` does for an activity row. It decides nothing: `users.kind` decides whether the writer is an agent, and this is only what that writer is CALLED (ISS-1137)',
+  'projects/members-routes.ts':
+    'the project member list returns it beside the address, exactly as `orgs/service.ts` does for the org member list. The creator filter is built from this list and cannot name an agent it is only told the address of (ISS-1137)',
   'assistant/conversation-routes.ts':
     'the name a person’s own message is attributed by in a conversation transcript, which is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
   'assistant/conversation-people.ts':

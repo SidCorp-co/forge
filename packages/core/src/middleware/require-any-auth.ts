@@ -9,7 +9,7 @@ import { beginPatRequest } from './pat-rest-surface.js';
 
 export type AnyAuthVars = {
   userId: string;
-  agency?: ActorAgency | null;
+  agency?: ActorAgency;
   principal?: 'user' | 'device' | 'pat';
 };
 
@@ -36,6 +36,7 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
     }
     c.set('userId', claims.sub);
     c.set('principal', 'user');
+    c.set('agency', 'human');
     await next();
   };
 }

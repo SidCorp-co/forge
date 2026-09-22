@@ -71,9 +71,9 @@ async function sessionWithMessage(onDevice: string | null = deviceId): Promise<s
     VALUES (${runId}, ${projectId}, 'interactive', 'running')
   `);
   await harness.db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, status, metadata,
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, kind, status, metadata,
                                 last_inbox_seq)
-    VALUES (${id}, ${projectId}, ${runId}, ${onDevice}, 'running',
+    VALUES (${id}, ${projectId}, ${runId}, ${onDevice}, 'pipeline', 'running',
             ${JSON.stringify({ type: 'pipeline' })}::jsonb, 1)
   `);
   await harness.db.execute(sql`

@@ -6,7 +6,7 @@
   "scripts": {
     "gen:help": "node scripts/gen-help-content.mjs",
     "dev": "pnpm gen:help && next dev --port 3100",
-    "build": "pnpm gen:help && next build",
+    "build": "node scripts/no-dev-server-holding-next.mjs && pnpm gen:help && next build",
     "start": "next start --port 3100",
     "test": "vitest run",
     "lint": "node ../../scripts/check-lint-budget.mjs --all",

@@ -6,6 +6,7 @@ import {
   type IntegrationOwnerType,
   integrationBindings,
   integrationConnections,
+  type ObservedEndpoint,
   organizationMembers,
 } from '../db/schema.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
@@ -285,7 +286,10 @@ export interface UpdateConnectionPatch {
   displayName?: string | null;
   active?: boolean;
   lastHealthStatus?: string | null;
+  /** The sentence behind the status. Cleared with `null` so a stale reason never outlives it. */
+  lastHealthDetail?: string | null;
   lastHealthAt?: Date | null;
+  inboundEndpointObserved?: ObservedEndpoint | null;
   breakerOpenedAt?: Date | null;
 }
 
@@ -301,7 +305,10 @@ export async function updateConnection(
   if (patch.displayName !== undefined) set.displayName = patch.displayName;
   if (patch.active !== undefined) set.active = patch.active;
   if (patch.lastHealthStatus !== undefined) set.lastHealthStatus = patch.lastHealthStatus;
+  if (patch.lastHealthDetail !== undefined) set.lastHealthDetail = patch.lastHealthDetail;
   if (patch.lastHealthAt !== undefined) set.lastHealthAt = patch.lastHealthAt;
+  if (patch.inboundEndpointObserved !== undefined)
+    set.inboundEndpointObserved = patch.inboundEndpointObserved;
   if (patch.breakerOpenedAt !== undefined) set.breakerOpenedAt = patch.breakerOpenedAt;
   const [row] = await db
     .update(integrationConnections)
@@ -368,6 +375,8 @@ export interface UpdateBindingPatch {
   label?: string;
   instructions?: string | null;
   agentAccess?: AgentAccess;
+  /** `deploy` only, and never empty there — the DB check refuses the other shapes. */
+  stages?: DeployStage[];
 }
 
 export async function updateBinding(
@@ -381,6 +390,7 @@ export async function updateBinding(
   if (patch.label !== undefined) set.label = patch.label;
   if (patch.instructions !== undefined) set.instructions = patch.instructions;
   if (patch.agentAccess !== undefined) set.agentAccess = patch.agentAccess;
+  if (patch.stages !== undefined) set.stages = patch.stages;
   const [row] = await db
     .update(integrationBindings)
     .set(set)

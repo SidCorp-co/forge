@@ -57,9 +57,10 @@ describe('ISS-516 pipeline_run_step_durations non-negative', () => {
     if (opts.sessionStartOffsetMin !== null) {
       sessionId = randomUUID();
       await harness.db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
+        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, started_at,
+                                    metadata)
         VALUES (
-          ${sessionId}, ${projectId}, ${runId}, 'completed',
+          ${sessionId}, ${projectId}, ${runId}, 'pipeline', 'completed',
           now() - (${opts.sessionStartOffsetMin}::int * interval '1 minute'), '{}'::jsonb
         )
       `);

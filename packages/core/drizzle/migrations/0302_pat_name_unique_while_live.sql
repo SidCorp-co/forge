@@ -1,0 +1,31 @@
+-- ISS-1184 — a PAT name is unique among a user's LIVE tokens, not across their history.
+--
+-- `pat_user_name_uniq` covered every row, revoked ones included, while every caller that
+-- reads it means "one live token per (user, name)": `pat/routes.ts` checks the name conflict
+-- with `revoked_at is null` and then mints, and `devices/workspace-credential.ts` and
+-- `devices/credential.ts` each revoke live-only and then mint under the same name.
+--
+-- Where the two disagreed, the insert threw. `issueWorkspaceCredential` revokes
+-- `workspace:<deviceId>:<projectId>` by setting `revoked_at`, leaves the row, and mints again
+-- under that name; the second mint for a pair violated this index. That rejection took down a
+-- single `Promise.all` in `GET /api/devices/me/provisions`, so one unprovisionable project
+-- stopped EVERY project on the device from being provisioned — measured on `sid-xeon-1`,
+-- 2026-09-22, as `500 INTERNAL_ERROR` on every poll, roughly every 90 seconds, for ever.
+-- The reproduction names this constraint:
+--   duplicate key value violates unique constraint "pat_user_name_uniq"
+--
+-- LOOSENING, not tightening. The new predicate scopes the index to a subset of the rows the
+-- old one covered: every row that satisfied the full index satisfies the partial one, so
+-- creation cannot fail against existing data, no row is rewritten, no value is discarded, and
+-- code that does not know about the change runs unmodified against it. Running it backwards
+-- recreates the full index, which fails only once a user has actually accumulated two
+-- same-named rows — so the way back is the previous image, not this migration reversed.
+--
+-- Two siblings existed only to dodge this index and go with it: the `.superseded.<epoch>`
+-- rename in `devices/credential.ts` and the `.rotated.<ms>` rename in `auth/pat.ts`.
+--
+-- The DROP and CREATE take a brief ACCESS EXCLUSIVE lock on `personal_access_tokens`. Not
+-- CONCURRENTLY: drizzle applies a migration inside one transaction and
+-- `CREATE INDEX CONCURRENTLY` cannot run in one.
+DROP INDEX "pat_user_name_uniq";--> statement-breakpoint
+CREATE UNIQUE INDEX "pat_user_name_uniq" ON "personal_access_tokens" USING btree ("user_id","name") WHERE "personal_access_tokens"."revoked_at" is null;

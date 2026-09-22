@@ -3,8 +3,6 @@
 // The table is `db/schema-journal.ts`; this is the only place rows are made.
 // One rule lives here rather than in prose: a phase re-entered gets the next
 // attempt number instead of colliding.
-//
-// Design: docs/proposals/agent-driven-pipeline.md
 
 import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';

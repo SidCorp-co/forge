@@ -1,11 +1,16 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { argv } from 'node:process';
 import { pathToFileURL } from 'node:url';
 
+import { refreshMainRunnerHead } from './main-runner-head.js';
+
 const REPO = process.env.RUNNER_RELEASE_REPO ?? 'SidCorp-co/forge';
 const TAG_PREFIX = 'runner-v';
 const ASSET_PREFIX = 'forge-runner-';
+// Published beside VERSION by runner-release.yml: what tells two builds that share
+// a version number apart.
+const COMMIT_ASSET = 'COMMIT';
 
 interface ReleaseAsset {
   name: string;
@@ -57,6 +62,18 @@ export function pickLatestRunnerTag(releases: Release[]): Release | null {
   return runner.reduce((best, r) =>
     cmpVersion(tagToVersion(r.tag_name), tagToVersion(best.tag_name)) > 0 ? r : best,
   );
+}
+
+/** The release's `COMMIT` asset, trimmed, or null where it published none. */
+async function fetchCommitAsset(release: Release): Promise<string | null> {
+  const asset = release.assets.find((a) => a.name === COMMIT_ASSET);
+  if (!asset) return null;
+  const res = await fetch(asset.browser_download_url, {
+    headers: { 'user-agent': 'forge-core-release-fetch' },
+    redirect: 'follow',
+  });
+  if (!res.ok) throw new Error(`download ${COMMIT_ASSET}: ${res.status}`);
+  return (await res.text()).trim() || null;
 }
 
 async function latestRunnerRelease(): Promise<Release | null> {
@@ -111,14 +128,29 @@ export async function run(): Promise<void> {
     await rename(tmp, join(dir, asset.name));
     console.log(`[runner-release] fetched ${asset.name} (${buf.length} bytes)`);
   }
+
+  // A stale COMMIT beside a fresh VERSION is an identity belonging to neither, and
+  // every box would be compared against a commit nothing shipped.
+  const commit = await fetchCommitAsset(release);
+  if (commit) {
+    await writeFile(join(dir, COMMIT_ASSET), `${commit}\n`, 'utf8');
+  } else {
+    await rm(join(dir, COMMIT_ASSET), { force: true });
+    console.log(`[runner-release] ${release.tag_name} published no ${COMMIT_ASSET} asset`);
+  }
+
   // Write VERSION last — the install route keys "published?" off this file.
   await writeFile(join(dir, 'VERSION'), `${version}\n`, 'utf8');
-  console.log(`[runner-release] published runner ${version} to ${dir}`);
+  console.log(`[runner-release] published runner ${version} (${commit ?? 'no commit'}) to ${dir}`);
 }
 
 export function registerRunnerReleaseRefetch(intervalMs = 30 * 60_000): NodeJS.Timeout | null {
   if (!process.env.RUNNER_RELEASE_DIR) return null;
+  // `main`'s runner head rides this same tick: it is the other half of what a box
+  // is compared against, and it is read once per tick rather than per request.
+  void refreshMainRunnerHead();
   const timer = setInterval(() => {
+    void refreshMainRunnerHead();
     void run().catch((err) => {
       console.warn(
         `[runner-release] periodic refetch skipped: ${err instanceof Error ? err.message : String(err)}`,

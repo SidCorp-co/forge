@@ -20,6 +20,7 @@ import {
   readPullRequestsForIssues,
 } from '../integrations/repo-projection.js';
 import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
+import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -159,10 +160,6 @@ export async function readAdmissibleIssues(args: {
           i.status IN (${statusList})
           ${a.entryOnRelease ? sql`OR (i.status = ${AUTONOMOUS_ENTRY_STATUS} AND i.session_context ? 'runRelease')` : sql``}
         )
-        AND NOT EXISTS (
-          SELECT 1 FROM jobs j
-          WHERE j.issue_id = i.id AND j.status NOT IN ('done', 'failed', 'cancelled')
-        )
         -- a live blocks edge whose blocker has not reached one of BLOCKER_SETTLED_STATUSES holds
         -- this row out of the set. It is correlated on the ADMITTING project and not on
         -- d.to_issue_id alone, because issue_dependencies carries only the composite indexes
@@ -179,19 +176,14 @@ export async function readAdmissibleIssues(args: {
             AND (d.valid_until IS NULL OR d.valid_until > now())
             AND b.status NOT IN (${settledList})
         )
-        AND NOT EXISTS (
-          SELECT 1 FROM pipeline_runs pr
-          WHERE pr.issue_id = i.id AND pr.status IN ('running', 'paused')
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM pipeline_runs rs
-          WHERE rs.project_id = i.project_id
-            AND rs.kind = 'system'
-            AND rs.status IN ('running', 'paused')
-            -- canonicalised, never the project's own prefix, so this containment must not take
-            -- issue_prefix into account or a run's issues silently stop being seen (ISS-992)
-            AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq) -- ISS-992:canonical
-        )
+        -- one predicate for "is this issue being worked", shared with the orphan sweep that
+        -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
+        -- the project's own prefix, or a run's issues silently stop being seen (ISS-992).
+        AND NOT ${issueWorkInFlightSql({
+          issueId: sql`i.id`,
+          projectId: sql`i.project_id`,
+          issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+        })}
       ORDER BY i.created_at ASC
       LIMIT ${a.limit}
     `)) as unknown as Array<Record<string, unknown>>;

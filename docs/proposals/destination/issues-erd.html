@@ -1,0 +1,219 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Issues ERD — target</title>
+<style>
+  :root{--ink:#1f2328;--dim:#59636e;--line:#d1d9e0;--k:#0969da;--r:#1a7f37;--v:#bc4c00;--s:#8250df;--x:#cf222e}
+  body{margin:0;background:#fff;color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  main{max-width:1140px;margin:0 auto;padding:40px 20px 80px}
+  h1{font-size:22px;margin:0 0 4px} h2{font-size:15px;margin:44px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  p.lead{color:var(--dim);margin:0 0 8px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0}
+  th,td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+  th{background:#f6f8fa;font-weight:600}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:#f6f8fa;padding:1px 4px;border-radius:3px}
+  .x{color:var(--x);font-weight:600} .lg span{display:inline-block;margin-right:16px;font-size:12px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+</style>
+<main>
+<h1>Issues ERD — target</h1>
+<p class="lead">Seventeen tables become ten. Every removal below is a measured zero, a duplicate of a better answer, or a fact that moved to a column.</p>
+<p class="lg">
+<span><i class="sw" style="background:#ddf4ff;border:1px solid #0969da"></i>KERNEL — a gate reads it, and the database enforces it</span>
+<span><i class="sw" style="background:#dafbe1;border:1px solid #1a7f37"></i>RECORD — append-only</span>
+<span><i class="sw" style="background:#fff1e5;border:1px solid #bc4c00"></i>VOCABULARY — shape only</span>
+<span><i class="sw" style="background:#fbefff;border:1px solid #8250df"></i>SOFT</span>
+</p>
+
+<h2>1 · The target shape</h2>
+<svg viewBox="0 0 1120 720" width="100%" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,1 L7,4 L0,7" fill="none" stroke="#8c959f"/></marker></defs>
+
+  <text x="40" y="26" font-size="12" font-weight="700" fill="#cf222e">NOT NULL · CASCADE — dies with the issue</text>
+  <text x="790" y="26" font-size="12" font-weight="700" fill="#59636e">NULLABLE · SET NULL — outlives it</text>
+
+  <g stroke="#8c959f" stroke-width="1" fill="none" marker-end="url(#a)">
+    <path d="M255,64 L440,300"/><path d="M255,120 L440,312"/><path d="M255,176 L440,324"/>
+    <path d="M255,232 L440,336"/><path d="M255,288 L440,344"/><path d="M255,344 L440,352"/>
+    <path d="M255,400 L440,362"/><path d="M255,456 L440,372"/>
+    <path d="M865,64 L680,300"/><path d="M865,120 L680,312"/><path d="M865,176 L680,324"/>
+    <path d="M865,232 L680,336"/><path d="M865,288 L680,348"/>
+    <path d="M300,560 L500,392"/><path d="M560,556 L560,392"/><path d="M820,560 L620,392"/>
+  </g>
+
+  <rect x="440" y="290" width="240" height="102" rx="8" fill="#ddf4ff" stroke="#0969da" stroke-width="2"/>
+  <text x="460" y="316" font-size="15" font-weight="700">issues</text>
+  <text x="460" y="336" font-size="10.5" fill="#59636e">status · the CAS · plan</text>
+  <text x="460" y="353" font-size="10.5" fill="#1a7f37">merged_commit_sha — the close</text>
+  <text x="460" y="368" font-size="10.5" fill="#1a7f37">gate's only evidence read</text>
+  <text x="460" y="384" font-size="10.5" fill="#59636e">parent_issue_id — self, SET NULL</text>
+
+  <g font-size="11.5">
+    <rect x="40" y="40" width="215" height="48" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="50" y="57" font-weight="700">comments</text>
+    <text x="50" y="71" font-size="9.5" fill="#59636e">w 19 · r 28</text>
+    <text x="50" y="83" font-size="9.5" fill="#1a7f37">body + the status at write</text>
+
+    <rect x="40" y="96" width="215" height="48" rx="5" fill="#fff1e5" stroke="#bc4c00"/>
+    <text x="50" y="113" font-weight="700">issue_attributes</text>
+    <text x="50" y="127" font-size="9.5" fill="#59636e">w 2 · r 1 — MCP only</text>
+    <text x="50" y="139" font-size="9.5" fill="#cf222e">10 keys → 8 · + unique (issue,key)</text>
+
+    <rect x="40" y="152" width="215" height="48" rx="5" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="50" y="169" font-weight="700">issue_dependencies  (2 FKs)</text>
+    <text x="50" y="183" font-size="9.5" fill="#59636e">w 4 · r 10</text>
+    <text x="50" y="195" font-size="9.5" fill="#0969da">blocks gates · decomposes waives</text>
+
+    <rect x="40" y="208" width="215" height="48" rx="5" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="50" y="225" font-weight="700">issue_labels</text>
+    <text x="50" y="239" font-size="9.5" fill="#59636e">w 4 · r 11 — 14 call sites</text>
+    <text x="50" y="251" font-size="9.5" fill="#0969da">one primary, enforced · gates tools</text>
+
+    <rect x="40" y="264" width="215" height="48" rx="5" fill="#fbefff" stroke="#8250df"/>
+    <text x="50" y="281" font-weight="700">activity_log</text>
+    <text x="50" y="295" font-size="9.5" fill="#59636e">w 4 · r 10 · web-v2 26 files</text>
+    <text x="50" y="307" font-size="9.5" fill="#8250df">a feed — and memory's input</text>
+
+    <rect x="40" y="320" width="215" height="48" rx="5" fill="#fbefff" stroke="#8250df"/>
+    <text x="50" y="337" font-weight="700">pipeline_outbox</text>
+    <text x="50" y="351" font-size="9.5" fill="#59636e">trigger writes · worker drains</text>
+    <text x="50" y="363" font-size="9.5" fill="#bc4c00">the dispatch spine — wakes masters</text>
+
+    <rect x="40" y="376" width="215" height="48" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="50" y="393" font-weight="700">issue_attachments</text>
+    <text x="50" y="407" font-size="9.5" fill="#59636e">w 3 · r 8</text>
+    <text x="50" y="419" font-size="9.5" fill="#1a7f37">what a human drew</text>
+
+    <rect x="40" y="432" width="215" height="48" rx="5" fill="#fbefff" stroke="#8250df"/>
+    <text x="50" y="449" font-weight="700">rocketchat_threads</text>
+    <text x="50" y="463" font-size="9.5" fill="#bc4c00">3 tables → 1, on `kind`</text>
+    <text x="50" y="475" font-size="9.5" fill="#59636e">kind='issue' already exists</text>
+  </g>
+
+  <g font-size="11.5">
+    <rect x="865" y="40" width="215" height="48" rx="5" fill="#fff" stroke="#cf222e" stroke-dasharray="4 3"/>
+    <text x="875" y="57" font-weight="700" fill="#cf222e">jobs — REMOVED</text>
+    <text x="875" y="71" font-size="9.5" fill="#59636e">w 27 · r 50 · 37 files</text>
+    <text x="875" y="83" font-size="9.5" fill="#59636e">8 mint paths, none is issue work</text>
+
+    <rect x="865" y="96" width="215" height="48" rx="5" fill="#fbefff" stroke="#8250df"/>
+    <text x="875" y="113" font-weight="700">agent_questions</text>
+    <text x="875" y="127" font-size="9.5" fill="#59636e">w 7 · r 14</text>
+    <text x="875" y="139" font-size="9.5" fill="#8250df">rounds, a deadline, an owner</text>
+
+    <rect x="865" y="152" width="215" height="48" rx="5" fill="#fbefff" stroke="#8250df"/>
+    <text x="875" y="169" font-weight="700">notifications  (2 FKs)</text>
+    <text x="875" y="183" font-size="9.5" fill="#59636e">w 6 · r 13</text>
+    <text x="875" y="195" font-size="9.5" fill="#8250df">delivery, not truth</text>
+
+    <rect x="865" y="208" width="215" height="48" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="875" y="225" font-weight="700">repo_pull_requests</text>
+    <text x="875" y="239" font-size="9.5" fill="#59636e">where the work landed</text>
+    <text x="875" y="251" font-size="9.5" fill="#1a7f37">RECORD</text>
+
+    <rect x="865" y="264" width="215" height="48" rx="5" fill="#fbefff" stroke="#8250df"/>
+    <text x="875" y="281" font-weight="700">feedback_reports  (2 FKs)</text>
+    <text x="875" y="295" font-size="9.5" fill="#59636e">w 3 · r 6 · own MCP tool</text>
+    <text x="875" y="307" font-size="9.5" fill="#8250df">how a plugin defect leaves</text>
+  </g>
+
+  <g font-size="11.5">
+    <rect x="190" y="560" width="220" height="62" rx="5" fill="#fff" stroke="#cf222e" stroke-dasharray="4 3"/>
+    <text x="200" y="578" font-weight="700" fill="#cf222e">pipeline_runs — REMOVED</text>
+    <text x="200" y="592" font-size="9.5" fill="#59636e">w 14 · r 40. It exists to hold</text>
+    <text x="200" y="605" font-size="9.5" fill="#59636e">jobs and to be a run session —</text>
+    <text x="200" y="617" font-size="9.5" fill="#59636e">claims replace the second</text>
+
+    <rect x="450" y="556" width="220" height="62" rx="5" fill="#fff" stroke="#0969da" stroke-width="2" stroke-dasharray="5 3"/>
+    <text x="460" y="574" font-weight="700" fill="#0969da">issue_claims — NEW</text>
+    <text x="460" y="588" font-size="9.5" fill="#59636e">UNIQUE (issue_id) WHERE released_at</text>
+    <text x="460" y="601" font-size="9.5" fill="#59636e">IS NULL — the index IS the refusal</text>
+    <text x="460" y="613" font-size="9.5" fill="#59636e">an expired claim is reaped on claim</text>
+
+    <rect x="710" y="560" width="220" height="62" rx="5" fill="#dafbe1" stroke="#1a7f37" stroke-width="2" stroke-dasharray="5 3"/>
+    <text x="720" y="578" font-weight="700" fill="#1a7f37">run_journal — MERGED</text>
+    <text x="720" y="592" font-size="9.5" fill="#59636e">phase_journal + issue_step_contexts</text>
+    <text x="720" y="605" font-size="9.5" fill="#59636e">append-only, one row per attempt</text>
+    <text x="720" y="617" font-size="9.5" fill="#cf222e">only after the gate moves out</text>
+  </g>
+
+  <text x="40" y="662" font-size="11.5" fill="#cf222e" font-weight="700">Removed — 7 tables:</text>
+  <text x="180" y="662" font-size="11.5" fill="#59636e">tasks · issue_attribute_defs · ux_findings · rocketchat_question_threads · rocketchat_thread_openings</text>
+  <text x="180" y="681" font-size="11.5" fill="#59636e">phase_journal + issue_step_contexts → run_journal.   jobs and pipeline_runs, with the staged lane.   Two added — net −7.</text>
+  <text x="40" y="702" font-size="11.5" fill="#cf222e" font-weight="700">Also removed:</text>
+  <text x="140" y="702" font-size="11.5" fill="#59636e">issue_step_contexts.verdict · pass_rate / approve_rate · EAV keys `blocking` and `supersedes` · work-evidence's jobs.type arm</text>
+</svg>
+
+<h2>2 · Every removal, and what it rests on</h2>
+<table>
+<tr><th>Removed</th><th>Measured basis</th><th>What answers it instead</th></tr>
+<tr><td class="x"><code>tasks</code> (table, 2 files, REST, 4 MCP actions, a UI tab, 2 enums)</td><td>Born to mirror a Claude Code session's task list. Core already ingests that: <code>agent-stream-parser.ts:134</code> turns <code>TodoWrite</code> into a <code>{type:'todos'}</code> block on every turn, automatically. No prompt fact or SKILL.md tells an agent to write <code>tasks</code>, so no agent ever does</td><td>Live checklist → the todos block. Durable checklist → <code>issues.plan</code></td></tr>
+<tr><td class="x"><code>issue_attribute_defs</code></td><td>0 writes, 0 reads, by drizzle identifier and raw SQL alike</td><td>The TS registry, which is already the only authority</td></tr>
+<tr><td class="x"><code>ux_findings</code></td><td>0 occurrences outside its own <code>pgTable</code> declaration</td><td>—</td></tr>
+<tr><td class="x"><code>rocketchat_question_threads</code></td><td>0 occurrences outside its declaration</td><td rowspan="2"><code>rocketchat_threads</code>, which already carries <code>kind:'issue'</code></td></tr>
+<tr><td class="x"><code>rocketchat_thread_openings</code></td><td>3 writers, <strong>0 readers</strong> — written on every open, never read back</td></tr>
+<tr><td class="x"><code>issue_step_contexts.verdict</code> + <code>pass_rate</code> / <code>approve_rate</code></td><td><code>extractVerdict</code> is non-null only for <code>step='review'</code>/<code>'test'</code>, steps the driver does not run. Both metrics are live keys in <code>z.enum(METRICS)</code>, so column, enum and route go together</td><td>Nothing — the series was empty forward</td></tr>
+<tr><td class="x">EAV <code>blocking</code>, <code>supersedes</code></td><td>Zero call sites. They let an agent assert a blocking relation that gates nothing</td><td><code>issue_dependencies</code></td></tr>
+<tr><td class="x"><code>pipeline_runs_issue_open_uq</code></td><td>Scoped <code>WHERE kind='issue'</code>; issue flow opens <code>kind='system'</code> with <code>issue_id</code> NULL, so it guards nothing</td><td><code>issue_claims</code></td></tr>
+<tr><td class="x">the <code>jobs.type</code> arm of <code>work-evidence</code></td><td>Issue flow mints no job for the issue — always empty</td><td><code>issues.merged_commit_sha</code></td></tr>
+</table>
+
+<h2>2b · Two corrections to this proposal's own earlier draft</h2>
+<table>
+<tr><th>Was written</th><th>Why it is wrong</th><th>Now</th></tr>
+<tr><td><code>UNIQUE (issue_id) WHERE released_at IS NULL AND expires_at &gt; now()</code></td><td>Postgres refuses it — a partial index predicate must be IMMUTABLE and <code>now()</code> is only STABLE. The migration fails on the way in</td><td>The time test leaves the index and moves into the claim itself, below</td></tr>
+<tr><td>Nothing said about EAV cardinality</td><td><code>issue_attributes</code> has <strong>no unique constraint at all</strong> — migration 0245 creates two plain indexes. <code>cardinality:'one'</code> is enforced by delete-then-insert in <code>write.ts:136-141</code>, so two concurrent writers under READ COMMITTED both delete nothing, both insert, and the issue ends with two rows for a key that promised one</td><td>Add <code>UNIQUE (issue_id, key)</code> for the <code>one</code> keys. This is independent of everything else here — a promise the schema does not keep today</td></tr>
+<tr><td><code>issue_labels</code> placed in SOFT</td><td>A gate does read it: <code>prepare-claimed-job.ts:137-152</code> looks for <code>SKILL_MAINTENANCE_LABEL</code> and <code>applySkillMaintenanceCarveout</code> then unblocks the skill-write tools for that job. A label decides what an agent may hold. It also carries two invariants the database actually enforces — <code>UNIQUE (issue_id) WHERE is_primary</code>, and <code>CHECK (kind='module') = (slug IS NOT NULL)</code> on the label</td><td><strong>KERNEL.</strong> And it is the model the EAV should copy, not the other way round: <code>module-knowledge-refresh.ts</code> picks exactly one node to refresh because that partial unique makes "exactly one" true</td></tr>
+<tr><td><code>jobs</code> kept because seven mint paths still work</td><td>Reachable is not used. Every sampled row across three projects is <code>drive</code> or <code>reconcile</code>; newest <code>drive</code> 2026-09-08, newest <code>reconcile</code> 2026-08-10, <code>release_batch</code> never. <code>forge-plugin</code> has none, ever. Keeping a table because a door could theoretically open is how the other sixteen got here</td><td><strong>Removed, with <code>pipeline_runs</code>.</strong> What actually goes with them is named below — this is the largest change in the proposal and the only one that removes working features</td></tr>
+</table>
+
+<h2>3 · Order, because two of these have a trap</h2>
+<table>
+<tr><th>#</th><th>Step</th><th>Why it cannot come later</th></tr>
+<tr><td>1</td><td>The close gate reads <code>issues.merged_commit_sha</code> instead of scanning handoffs</td><td><code>run_journal</code> cannot be append-only while a gate reads a row that gets upserted. Merging first leaves two live paths</td></tr>
+<tr><td>2</td><td><code>phase_journal</code> + <code>issue_step_contexts</code> → <code>run_journal</code></td><td>Its REST route and 4 MCP verbs are the plugin's contract — a second half this repo cannot gate, so it ships behind the new store, not beside it</td></tr>
+<tr><td>3</td><td><code>issue_claims</code> lands and both lanes claim through it</td><td>Removing the old lease before the claim exists leaves nothing holding one-worker-per-issue</td></tr>
+<tr><td>4</td><td>The pure deletions — <code>tasks</code>, <code>issue_attribute_defs</code>, <code>ux_findings</code>, the two rocketchat tables, <code>verdict</code>, the two EAV keys</td><td>Independent of the above. Each migration counts what it drops and aborts naming any row the new schema cannot represent</td></tr>
+</table>
+
+<h2>3b · Removing jobs and pipeline_runs — what actually goes</h2>
+<p class="lead"><code>jobs</code> is the staged pipeline's unit of execution, and the staged pipeline is gone. What rides on it splits cleanly in two: the machinery that only existed to run staged jobs goes with them, and the lanes that merely used <code>jobs</code> as transport move onto <code>agent_sessions</code> + a claim. Nothing here is an open question.</p>
+<table>
+<tr><th>What rode on jobs</th><th>What it actually was</th><th>Where it goes</th></tr>
+<tr><td>Retry budget, <code>attempts</code>, <code>retryOf</code> chains</td><td>Staged machinery. Rows show 2, 3, 4 attempts — all on <code>drive</code> jobs no longer minted</td><td class="x">Nothing, and that is the state today: issue work already has no retry. Removing the table does not create the gap, it stops hiding it</td></tr>
+<tr><td>Failure classifier (<code>classifierVersion</code> 11, <code>failureKind</code>, <code>failureAction</code>)</td><td>Yes — <code>infra</code>/<code>transient-cc</code>, <code>retry</code>/<code>failover</code></td><td class="x">Nothing. <code>issue_claims.release_reason</code> records the outcome, not the diagnosis</td></tr>
+<tr><td>Cross-device failover on a usage limit</td><td>Yes — <code>usage/session limit → cross-device failover</code></td><td class="x">Nothing</td></tr>
+<tr><td>Loop monitor, budget breach, the runs↔jobs two-way invariant and its three defences</td><td>Yes, and ISS-923 is what they were built from</td><td>The claim lease — weaker, and deliberately so: one deadline instead of four hop thresholds</td></tr>
+<tr><td>PM (<code>pm/spawner.ts</code>), escalation (<code>escalation-sweeper.ts</code>), reconcile and <code>verify_skill</code> (<code>reconcile-service.ts</code>), enrich (<code>extras-routes.ts</code>), manual enqueue (<code>jobs/routes.ts</code>)</td><td>Live lanes that used <code>jobs</code> only as transport. None of them is staged logic</td><td>They open an <code>agent_session</code> directly, the way a run session already does. They never needed a queue row</td></tr>
+<tr><td><code>jobTypes</code> — 16 values, 15 of them staged stage names</td><td>The staged vocabulary itself</td><td class="x">Gone with the table. The 9 kept by ISS-895 D2 were kept to read historical rows; the rows go with them</td></tr>
+<tr><td><code>systemPromptHash</code>, <code>promptInputTokenEst</code>, <code>modelUsed</code>, <code>modelTier</code></td><td>Yes — the measurement substrate for every run</td><td>Move to <code>agent_sessions</code>, which already holds <code>usage</code></td></tr>
+<tr><td><code>agent_sessions.pipeline_run_id</code> NOT NULL</td><td>Structural</td><td>The column goes; a session belongs to a claim or to nothing</td></tr>
+</table>
+<p class="lead"><strong>Not removed, and not the same thing:</strong> <code>pipeline_outbox</code>. It is a trigger on <code>issues.status</code> that wakes the masters — propagation, not execution. It predates the staged lane in purpose and outlives it: under master → subagent it is the only thing that turns a status write into work starting.</p>
+<p class="lead"><strong>The one thing that must not be lost:</strong> ISS-923 measured 98 of 114 runs stuck <code>running</code> with every job terminal. That invariant lives in <code>runs-cascade.ts</code>, <code>runs-concluded.ts</code> and <code>loop-monitor.ts</code>. Removing both tables removes the bug and the defence together — which is correct only if nothing can enter that state again. The claim lease is what has to make that true, and it has to be shown doing it before these tables come out.</p>
+
+<h2>4 · issue_claims, in full</h2>
+<pre>issue_claims
+  id           uuid  PRIMARY KEY
+  issue_id     uuid  NOT NULL  REFERENCES issues(id)   ON DELETE CASCADE
+  project_id   uuid  NOT NULL  REFERENCES projects(id) ON DELETE CASCADE
+  claimed_by   uuid            -- the agent_session holding it; SET NULL, never the authority
+  device_id    uuid
+  claimed_at   timestamptz NOT NULL DEFAULT now()
+  expires_at   timestamptz NOT NULL
+  released_at  timestamptz
+  release_reason text          -- done | handed back | lease expired | cancelled
+
+  UNIQUE (issue_id) WHERE released_at IS NULL
+  INDEX  (issue_id, claimed_at DESC)</pre>
+<p class="lead">Claiming is one transaction, and the database writes the refusal:</p>
+<pre>UPDATE issue_claims SET released_at = now(), release_reason = 'lease expired'
+ WHERE issue_id = $issue AND released_at IS NULL AND expires_at &lt; now();
+
+INSERT INTO issue_claims (issue_id, project_id, claimed_by, expires_at) VALUES (…);
+-- a live claim survives the UPDATE, so this INSERT hits the partial unique and is refused</pre>
+<p class="lead">The time test cannot live in the index, so it lives here: an expired claim is reaped by the next claimant, in the same transaction that replaces it. A background sweeper becomes hygiene for rows nobody comes back for — not the thing correctness rests on. <code>release_reason</code> is what separates <em>finished</em> from <em>gave up</em> from <em>the box died</em>, which is the question the run-session reaper could never answer.</p>
+<p class="lead"><strong>What the table owes, being a table:</strong> a reader. Claim history with no consumer is <code>kernel_transitions</code> again — 1 writer, 0 readers, kept alive only by the sweep that deletes it. Name the surface that reads it (how long issues wait, which box abandons work, how often a lease expires) or the history is weight.</p>
+
+<h2>5 · The one thing being lost, said plainly</h2>
+<p class="lead"><code>tasks</code> carried <code>assignee_id</code>, <code>priority</code> and <code>sort_order</code> — a checklist that could be handed to a named person and ordered. <code>issues.plan</code> is free text and cannot do that; the todos block does not survive the session. If any rows use those three columns, this is a feature being withdrawn, not dead weight, and the migration says so by counting them.</p>
+</main>

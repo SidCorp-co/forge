@@ -325,6 +325,8 @@ agentSessionTurnsRoutes.post(
           deviceId: session.deviceId,
           pipelineRunId: forkRun.id,
           title: title ?? (session.title ? `${session.title} (fork)` : null),
+          kind: 'chat',
+          parentSessionId: session.id,
           status: 'idle',
           repoPath: session.repoPath,
           messages: slicedMessages as never,
@@ -390,6 +392,7 @@ agentSessionTurnsRoutes.post(
       projectId: session.projectId,
       userId: session.userId ?? userId,
       title: session.title ? `${session.title} (rerun)` : null,
+      parentSessionId: id,
       metadata: {
         ...((session.metadata ?? {}) as Record<string, unknown>),
         rerunOfSessionId: id,

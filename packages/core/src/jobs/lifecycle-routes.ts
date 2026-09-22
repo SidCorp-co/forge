@@ -29,6 +29,7 @@ import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from './session-transcript.js';
+import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
 
 const badRequest = (details: unknown) =>
@@ -74,8 +75,6 @@ const killAckBodySchema = z
     outcome: z.enum(['killed', 'not_found']),
   })
   .strict();
-
-const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 
 async function loadJob(jobId: string) {
   const row = await readJobGate(jobId);
@@ -157,7 +156,7 @@ jobLifecycleDeviceRoutes.post(
           and(
             eq(jobs.id, id),
             isNull(jobs.ackedAt),
-            inArray(jobs.status, ['dispatched', 'running']),
+            inArray(jobs.status, [...OCCUPYING_JOB_STATUSES]),
           ),
         )
         .returning({ id: jobs.id, status: jobs.status, ackedAt: jobs.ackedAt });
@@ -224,7 +223,7 @@ jobLifecycleDeviceRoutes.post(
     // it can't double-advance: if any retry descendant is queued/dispatched/
     // running/done, that attempt owns the outcome and we fall through to 409.
     if (
-      !RUNNABLE_STATUSES.has(job.status) &&
+      !OCCUPYING_JOB_STATUSES.includes(job.status) &&
       input.exitCode === 0 &&
       job.status === 'failed' &&
       typeof job.error === 'string' &&
@@ -287,7 +286,7 @@ jobLifecycleDeviceRoutes.post(
       }
     }
 
-    if (!RUNNABLE_STATUSES.has(job.status)) {
+    if (!OCCUPYING_JOB_STATUSES.includes(job.status)) {
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
@@ -402,7 +401,7 @@ jobLifecycleDeviceRoutes.post(
 
     const job = await loadJob(id);
     if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
-    if (!RUNNABLE_STATUSES.has(job.status)) {
+    if (!OCCUPYING_JOB_STATUSES.includes(job.status)) {
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 

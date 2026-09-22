@@ -6,9 +6,12 @@ mod cmd;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
+// `version` is the RELEASED identity, not Cargo's: the version the release tag
+// carried plus the commit it was built from. A person reading a box back, and core
+// comparing one against `main`, are looking at the same two values.
 #[command(
     name = "forge-runner",
-    version,
+    version = forge_runner_core::update::VERSION_LINE,
     about = "Lightweight broker between Forge core and local runners (Claude Code CLI)."
 )]
 struct Cli {
@@ -53,7 +56,7 @@ enum Command {
     Run(cmd::run::Args),
     /// List runners registered for this device.
     Runners(cmd::runners::Args),
-    /// Look at, talk to, and end this box's resident masters.
+    /// Look at, talk to, stand down and end this box's resident masters.
     Master(cmd::master::Args),
     /// Pull the latest skills for bound projects now (on-demand, one-shot).
     Sync(cmd::sync::Args),

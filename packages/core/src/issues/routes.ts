@@ -6,8 +6,6 @@ import { z } from 'zod';
 import { BodyInvalidError } from '../body/errors.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
-import type { BodyNode } from '../body/parse.js';
-import { bodyNodes } from '../body/prepare.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
@@ -19,7 +17,7 @@ import {
   projectMembers,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
+import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { logger } from '../logger.js';
@@ -28,8 +26,11 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
-import { createIssue, IssueCreateError } from './create-service.js';
+import { registerIssueAttributeRoutes } from './attributes/routes.js';
+import { CREATE_ENTRY_STATUSES, createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
+import { serializeIssue } from './detail-projection.js';
+import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
   LabelResolutionError,
@@ -39,6 +40,7 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
+import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
@@ -48,19 +50,10 @@ import { sessionContextExpectSchema, sessionContextSchema } from './session-cont
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 import {
   IssueUpdateNotFound,
+  SessionContextDropsUnreadKeys,
   SessionContextExpectMismatch,
   updateIssueFields,
 } from './update-service.js';
-
-const attachmentInputSchema = z
-  .object({
-    name: z.string().min(1).max(200),
-    mime: z.string().min(1).max(255),
-    dataBase64: z.string().min(1),
-  })
-  .strict();
-
-import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 
 export {
   branchConfigOverrideSchema,
@@ -71,16 +64,6 @@ export {
 
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { ReleaseNotesSchema } from './release-notes.js';
-
-const labelAttachItemSchema = z.union([
-  z.string().trim().min(1),
-  z
-    .object({
-      labelId: z.string().trim().min(1),
-      isPrimary: z.boolean().optional(),
-    })
-    .strict(),
-]);
 
 export const issueCreateSchema = z
   .object({
@@ -96,7 +79,7 @@ export const issueCreateSchema = z
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    status: z.enum(['open', 'on_hold', 'draft']).optional(),
+    status: z.enum(CREATE_ENTRY_STATUSES).optional(),
   })
   .strict();
 
@@ -162,6 +145,15 @@ const notFound = (message: string) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
+const sessionContextDrops = (err: SessionContextDropsUnreadKeys) =>
+  new HTTPException(409, {
+    message:
+      `this write replaces \`sessionContext\` whole and would remove ${err.dropped.join(', ')}, ` +
+      'which it never read. Read the field, add your key to what is there, and send it back complete — ' +
+      'or send `expect: { sessionContext: <what you read> }` to say the removal is deliberate.',
+    cause: { code: 'SESSION_CONTEXT_DROPS_UNREAD_KEYS', dropped: err.dropped },
+  });
+
 const sessionContextMoved = (err: SessionContextExpectMismatch) =>
   new HTTPException(409, {
     message:
@@ -169,22 +161,6 @@ const sessionContextMoved = (err: SessionContextExpectMismatch) =>
       'Re-read it from `details.current`, decide whether your claim still stands, and send the write again with the new `expect`.',
     cause: { code: 'SESSION_CONTEXT_MISMATCH', details: { current: err.current } },
   });
-
-interface IssueBodyColumns {
-  description?: string | null;
-  descriptionFormat?: string | null;
-}
-
-function serializeIssue<T extends { issSeq: number } & IssueBodyColumns>(
-  row: T,
-  prefix: string | null,
-): T & { displayId: string; descriptionNodes: BodyNode[] | null } {
-  return {
-    ...row,
-    displayId: formatIssueRef(prefix, row.issSeq),
-    descriptionNodes: bodyNodes(row.description ?? '', row.descriptionFormat),
-  };
-}
 
 async function assertAssigneeIsMember(projectId: string, assigneeId: string): Promise<void> {
   const [row] = await db
@@ -298,12 +274,7 @@ issueProjectRoutes.get(
     const serialized = serializeIssue(issue, await activeIssuePrefix(projectId));
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([
-      {
-        id: issue.id,
-        createdById: issue.createdById,
-        createdVia: issue.createdVia,
-        creatorAgency: issue.creatorAgency,
-      },
+      { id: issue.id, createdById: issue.createdById },
     ]);
     return c.json({
       ...serialized,
@@ -367,12 +338,7 @@ issueProjectRoutes.get(
     const ids = serialized.map((r) => r.id);
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, ids);
     const creatorMap = await hydrateCreatorsForIssues(
-      serialized.map((r) => ({
-        id: r.id,
-        createdById: r.createdById,
-        createdVia: r.createdVia,
-        creatorAgency: r.creatorAgency,
-      })),
+      serialized.map((r) => ({ id: r.id, createdById: r.createdById })),
     );
 
     if (!q.withAgentSessions) {
@@ -415,6 +381,7 @@ export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerIssueCommentRoutes(issueRoutes);
+registerIssueAttributeRoutes(issueRoutes);
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
   const row = await findIssueById(issueId);
@@ -442,12 +409,7 @@ issueRoutes.get(
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
     const creatorMap = await hydrateCreatorsForIssues([
-      {
-        id: issue.id,
-        createdById: issue.createdById,
-        createdVia: issue.createdVia,
-        creatorAgency: issue.creatorAgency,
-      },
+      { id: issue.id, createdById: issue.createdById },
     ]);
     return c.json({
       ...serialized,
@@ -562,6 +524,7 @@ issueRoutes.patch(
       });
     } catch (err) {
       if (err instanceof IssueUpdateNotFound) throw notFound('issue not found');
+      if (err instanceof SessionContextDropsUnreadKeys) throw sessionContextDrops(err);
       if (err instanceof SessionContextExpectMismatch) throw sessionContextMoved(err);
       throw err;
     }

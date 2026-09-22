@@ -4,9 +4,13 @@ import {
   TRANSCRIPT_ATTEMPTED_KEY,
   TRANSCRIPT_FINALIZED_KEY,
 } from '../../db/transcript-marker.js';
+import { TERMINAL_JOB_STATUSES } from '../../jobs/status-sets.js';
 
-/** Terminal `jobs.status`, as `lifecycle/transition-guard.test.ts` enumerates them. */
-const JOB_TERMINAL = sql`('done', 'failed', 'cancelled')`;
+/** Terminal `jobs.status`, from the one constant that answers it. */
+const JOB_TERMINAL = sql`(${sql.join(
+  TERMINAL_JOB_STATUSES.map((s) => sql`${s}`),
+  sql`, `,
+)})`;
 /** Terminal `agent_sessions.status`. */
 const SESSION_TERMINAL = sql`('completed', 'failed', 'completed_via_recovery', 'cancelled_stale')`;
 /** Terminal `pipeline_runs.status`. */

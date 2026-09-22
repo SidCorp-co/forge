@@ -1,6 +1,7 @@
 /**
  * ISS-1042 criteria 8 and 9 — a release job reaches the box that holds the
- * production credential, and no other.
+ * production credential, and ISS-1128 — where no eligible box holds it, the
+ * job reaches the pool the project has rather than nobody.
  *
  * The release pool existed on paper only. `createReleaseBatch` resolved the
  * label once, to ask whether anyone in that pool was alive, and then enqueued a
@@ -128,6 +129,34 @@ async function seed(opts: {
 const poolIds = async (w: World) =>
   (await mods.readPool({ deviceId: w.deviceId, limit: 20 })).map((e) => e.jobId);
 
+/**
+ * A second box on the same project. What separates "no eligible box carries
+ * the label" from "one does and this is not it" is whether the fleet holds one
+ * of these, so every case that means the second says so by calling it.
+ */
+async function addBox(
+  w: World,
+  labels: string[],
+  opts: { status?: 'online' | 'offline'; agentVersion?: string } = {},
+): Promise<string> {
+  const [row] = await harness.db.execute(sql`
+    SELECT created_by FROM projects WHERE id = ${w.projectId} LIMIT 1
+  `);
+  const device = await createTestDevice(harness.db, String(row?.created_by), {
+    status: 'online',
+    ...(opts.agentVersion === undefined ? {} : { agentVersion: opts.agentVersion }),
+  });
+  await harness.db.execute(sql`
+    INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at, labels)
+    VALUES (
+      ${randomUUID()}, ${w.projectId}, ${device.id}, 'claude-code',
+      ${`box-${device.id.slice(0, 8)}`}, ${opts.status ?? 'online'}, now(),
+      ${JSON.stringify(labels)}::jsonb
+    )
+  `);
+  return device.id;
+}
+
 describe('a release job is offered only to the release pool', () => {
   it('offers a release job to the box that carries the project label', async () => {
     const w = await seed({
@@ -139,24 +168,58 @@ describe('a release job is offered only to the release pool', () => {
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  it('does not offer a release job to a box that carries no label', async () => {
+  it('does not offer a release job to a box that carries no label, while one does', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    await addBox(w, [LABEL]);
+
+    expect(await poolIds(w)).toEqual([]);
+  });
+
+  it('does not offer a release job to a box carrying some other label, while one does', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: ['staging-box'],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    await addBox(w, [LABEL]);
+
+    expect(await poolIds(w)).toEqual([]);
+  });
+
+  it('offers a release job to an unlabelled box when no box on the fleet carries the label', async () => {
     const w = await seed({
       type: 'release_batch',
       labels: [],
       bindingConfig: { releaseRunnerLabel: LABEL },
     });
 
-    expect(await poolIds(w)).toEqual([]);
+    expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  it('does not offer a release job to a box carrying some other label', async () => {
+  it('offers a release job to an unlabelled box when the labelled one is offline', async () => {
     const w = await seed({
       type: 'release_batch',
-      labels: ['staging-box'],
+      labels: [],
       bindingConfig: { releaseRunnerLabel: LABEL },
     });
+    await addBox(w, [LABEL], { status: 'offline' });
 
-    expect(await poolIds(w)).toEqual([]);
+    expect(await poolIds(w)).toEqual([w.jobId]);
+  });
+
+  it('offers a release job to an unlabelled box when the labelled one cannot claim', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    await addBox(w, [LABEL], { agentVersion: '0.10.0' });
+
+    expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
   it('goes on offering every other job type to an unlabelled box', async () => {
@@ -185,7 +248,24 @@ describe('a release job is offered only to the release pool', () => {
 describe('the claim answers the same question by name', () => {
   const session = () => randomUUID();
 
-  it('refuses a release job on an unlabelled box, naming release_label_missing', async () => {
+  it('refuses a release job on an unlabelled box while one carries the label', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    await addBox(w, [LABEL]);
+
+    const res = await mods.prepareJobForMaster({
+      jobId: w.jobId,
+      deviceId: w.deviceId,
+      sessionId: session(),
+    });
+
+    expect(res).toEqual({ ok: false, reason: 'release_label_missing' });
+  });
+
+  it('admits a release job on an unlabelled box when no box carries the label', async () => {
     const w = await seed({
       type: 'release_batch',
       labels: [],
@@ -198,7 +278,24 @@ describe('the claim answers the same question by name', () => {
       sessionId: session(),
     });
 
-    expect(res).toEqual({ ok: false, reason: 'release_label_missing' });
+    expect(res.ok).toBe(true);
+  });
+
+  it('admits a release job on an unlabelled box when the labelled one cannot claim', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    await addBox(w, [LABEL], { agentVersion: '0.10.0' });
+
+    const res = await mods.prepareJobForMaster({
+      jobId: w.jobId,
+      deviceId: w.deviceId,
+      sessionId: session(),
+    });
+
+    expect(res.ok).toBe(true);
   });
 
   it('leaves the refused job unheld and claimable', async () => {
@@ -207,6 +304,7 @@ describe('the claim answers the same question by name', () => {
       labels: [],
       bindingConfig: { releaseRunnerLabel: LABEL },
     });
+    await addBox(w, [LABEL]);
 
     await mods.prepareJobForMaster({ jobId: w.jobId, deviceId: w.deviceId, sessionId: session() });
 
@@ -222,6 +320,7 @@ describe('the claim answers the same question by name', () => {
       labels: [],
       bindingConfig: { releaseRunnerLabel: LABEL },
     });
+    await addBox(w, [LABEL]);
 
     const res = await mods.prepareJobForMaster({
       jobId: randomUUID(),

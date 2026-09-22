@@ -51,17 +51,80 @@ export async function projectAutoProdDeploy(projectId: string): Promise<boolean>
 /**
  * Whether a run-less action against a `prod` binding must park for a human.
  *
- * There is exactly one rule and this is the only place it is written: a prod
- * binding with no run behind it never dispatches, because confirming a prod
- * deploy is run-keyed and a run-less action has no gate to release. The
+ * A prod binding with no run behind it never dispatches, because confirming a
+ * prod deploy is run-keyed and a run-less action has no gate to release. The
  * project can opt out wholesale with `pipelineConfig.autoProdDeploy`.
+ * `tryDispatchCoolifyRelease` applies the same rule through `reachesLiveOf`,
+ * which it needs anyway to answer for a whole binding set at once.
  */
 export async function liveActionNeedsHumanConfirm(
   projectId: string,
   stages: readonly string[],
+  targets: readonly string[] = [],
 ): Promise<boolean> {
-  if (!stages.includes('live')) return false;
+  const reachesLive =
+    stages.includes('live') || (await sharesAResourceWithLive(projectId, targets));
+  if (!reachesLive) return false;
   return !(await projectAutoProdDeploy(projectId));
+}
+
+/**
+ * Whether these resources are also served by a binding that carries `live`.
+ *
+ * A stage is a label on a binding; the production box is a fact about what the
+ * binding deploys to. Where one branch and one application serve both stages,
+ * asking only the label lets a `preview` deploy reach production with no human
+ * in front of it — measured on forge-dev, whose two deploy bindings both target
+ * `y8w4c4kss8ogo8gc44ow44kc`. A project whose stages are separate boxes shares
+ * no resource here, so this answers `false` and the gate is what it was.
+ */
+async function sharesAResourceWithLive(
+  projectId: string,
+  targets: readonly string[],
+): Promise<boolean> {
+  if (targets.length === 0) return false;
+  try {
+    const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+    const live = new Set(
+      pairs
+        .filter((p) => (p.binding.stages ?? []).includes('live'))
+        .flatMap((p) => resourceUuidsOf(p.binding.config)),
+    );
+    return targets.some((t) => live.has(t));
+  } catch (err) {
+    logger.warn({ err, projectId }, 'coolify: could not read sibling bindings — keeping prod gate');
+    return true;
+  }
+}
+
+/**
+ * Which of these bindings reach the production box — by carrying `live`, or by
+ * deploying to an application a `live` binding also deploys to.
+ *
+ * Built from the WHOLE binding set before any filter, because the shared
+ * resource is only visible while the `live` binding is still in the list: drop
+ * it first and the one beside it stops looking like production.
+ */
+function reachesLiveOf(
+  pairs: ReadonlyArray<{ binding: { stages: string[] | null; config: unknown } }>,
+): (binding: { stages: string[] | null; config: unknown }) => boolean {
+  const live = new Set(
+    pairs
+      .filter((p) => (p.binding.stages ?? []).includes('live'))
+      .flatMap((p) => resourceUuidsOf(p.binding.config)),
+  );
+  return (binding) =>
+    (binding.stages ?? []).includes('live') ||
+    resourceUuidsOf(binding.config).some((u) => live.has(u));
+}
+
+/** The Coolify applications a binding's config names, however sparse it is. */
+function resourceUuidsOf(config: unknown): string[] {
+  const targets = (config as { targets?: unknown } | null)?.targets;
+  if (!Array.isArray(targets)) return [];
+  return targets
+    .map((t) => (t as { resourceUuid?: unknown })?.resourceUuid)
+    .filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
 
 function reportUnwitnessedDeploy(runId: string, issueId: string | null, bindingId?: string): void {
@@ -87,7 +150,7 @@ async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): 
  * unless the project opted into `autoProdDeploy`; a project with no binding
  * at all returns `reason: 'no-integration'` and stamps the skipped substep.
  */
-// cm:flow release/deploy after:reap — job completion, not the close, is what dispatches the deploy; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
+// cm:flow release/deploy after:stamp — the landing is what dispatches the deploy: an issue arriving at `developed` calls this, which is why a change is judgeable before anything reaches the release gate; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;
@@ -98,9 +161,11 @@ export async function tryDispatchCoolifyRelease(args: {
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId, integrationId, allowLive = true } = args;
   await warnIfRunAlreadyTerminal(runId, issueId);
-  let pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const allPairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const reachesLive = reachesLiveOf(allPairs);
+  let pairs = allPairs;
   if (integrationId) pairs = pairs.filter((p) => p.binding.id === integrationId);
-  if (!allowLive) pairs = pairs.filter((p) => !(p.binding.stages ?? []).includes('live'));
+  if (!allowLive) pairs = pairs.filter((p) => !reachesLive(p.binding));
   if (pairs.length === 0) {
     await setCurrentStep(runId, RELEASE_DEPLOY_SKIPPED);
     return {
@@ -116,11 +181,11 @@ export async function tryDispatchCoolifyRelease(args: {
   const autoProd = await projectAutoProdDeploy(projectId);
 
   for (const { binding } of pairs) {
-    if ((binding.stages ?? []).includes('live') && !autoProd) {
+    if (reachesLive(binding) && !autoProd) {
       // Manual approval gate — never auto-dispatch prod. The UI sticky
       // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
       // Skipped entirely when the project opted into autoProdDeploy.
-      const gateState = await getProdGateState(binding.id);
+      const gateState = await getProdGateStateForRun(binding.id, runId);
       if (!gateState || gateState.confirmedAt === null) {
         await markPendingHumanConfirm({ runId, issueId, bindingId: binding.id });
         pendingHumanConfirm = true;
@@ -188,7 +253,13 @@ export async function dispatchCoolifyDeployDirect(args: {
   }
   const { binding } = pair;
 
-  if (await liveActionNeedsHumanConfirm(projectId, binding.stages ?? [])) {
+  if (
+    await liveActionNeedsHumanConfirm(
+      projectId,
+      binding.stages ?? [],
+      resourceUuidsOf(binding.config),
+    )
+  ) {
     return {
       dispatched: false,
       pendingHumanConfirm: true,
@@ -267,11 +338,26 @@ async function markPendingHumanConfirm(input: {
   );
 }
 
+/** One human confirmation authorises one deploy, so the gate is run-scoped. */
+async function getProdGateStateForRun(
+  bindingId: string,
+  runId: string,
+): Promise<ProdGateState | null> {
+  const [row] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  const md = (row?.metadata ?? {}) as Record<string, unknown>;
+  const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
+  const gate = gates[bindingId];
+  if (!gate) return null;
+  return gate.runId === runId ? gate : null;
+}
+
 async function getProdGateState(bindingId: string): Promise<ProdGateState | null> {
-  // Find the most recent run (regardless of status) that has a gate for this
-  // integration. The release flow closes the issue-run before the deploy hook
-  // fires, so we must look at completed runs too — otherwise the prod gate
-  // would never be observable post-merge.
+  // The confirm endpoint is handed a binding id and nothing else, and the run
+  // that opened the gate may already be closed, so completed runs are in scope.
   const rows = await db
     .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
     .from(pipelineRuns)
@@ -377,46 +463,4 @@ export async function isIssueAtReleaseStage(issueId: string): Promise<boolean> {
     .where(eq(issues.id, issueId))
     .limit(1);
   return row?.status === 'awaiting_release' || row?.status === 'closed';
-}
-
-/**
- * Subscribes to `jobCompleted` and forwards `release`-type completions into
- * the Coolify dispatch path. Must be called once at boot.
- */
-export function registerReleaseCompletedSubscriber(hooks: {
-  on: (
-    event: 'jobCompleted',
-    listener: (payload: {
-      jobId: string;
-      projectId: string;
-      issueId: string | null;
-      type: string;
-    }) => void | Promise<void>,
-  ) => void;
-}): void {
-  hooks.on('jobCompleted', async (payload) => {
-    if (payload.type !== 'release') return;
-
-    if (!payload.issueId) return;
-    const runId = await resolveLatestIssueRunId(payload.issueId);
-    if (!runId) {
-      logger.debug(
-        { jobId: payload.jobId, issueId: payload.issueId },
-        'release.deploy hook: no run found for issue — skipping coolify dispatch',
-      );
-      return;
-    }
-    try {
-      await tryDispatchCoolifyRelease({
-        projectId: payload.projectId,
-        issueId: payload.issueId,
-        runId,
-      });
-    } catch (err) {
-      logger.error(
-        { err, jobId: payload.jobId, projectId: payload.projectId },
-        'release.deploy hook: dispatch threw',
-      );
-    }
-  });
 }

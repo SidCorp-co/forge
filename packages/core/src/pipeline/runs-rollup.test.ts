@@ -189,6 +189,9 @@ const runRow = {
   startedAt: new Date('2026-05-12T00:00:00.000Z'),
   finishedAt: null,
   metadata: {},
+  // What a run that is not a release carries on the two ISS-1120 columns.
+  releaseVersion: null,
+  releaseReleasedAt: null,
   createdAt: new Date('2026-05-12T00:00:00.000Z'),
   updatedAt: new Date('2026-05-12T00:00:00.000Z'),
 };

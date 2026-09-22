@@ -12,6 +12,7 @@ use crate::daemon::run_exit::{self, Reported, Verdict};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::ledger::{Ledger, Liveness};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MasterPresence {
@@ -45,6 +46,29 @@ pub trait RunActivity: Send + Sync {
     async fn reported(&self, session_id: &str) -> Option<Reported>;
 }
 
+/// Where a project's repository is on this box.
+///
+/// The close loop's third mark is a question about git's registry — is this
+/// run's checkout registered anywhere? — and a registry lives in a
+/// repository. Without one the sweep can read the filesystem and nothing
+/// else, and a filesystem answers *the path is not there*, which is not the
+/// question and was never an answer to it (ISS-1193). A project this box
+/// cannot resolve therefore leaves its runs holding, which is the same
+/// standing an operator is already warned about by name.
+pub trait RepoRoots: Send + Sync {
+    fn root_for(&self, project_id: &str) -> Option<PathBuf>;
+}
+
+/// The three the close loop reaches the world through: the session row it
+/// reads back, the leases it returns and reads back, and the repository whose
+/// registry says what became of the run's checkout.
+#[derive(Clone, Copy)]
+pub struct Closing<'a> {
+    pub sessions: &'a dyn SessionReader,
+    pub leases: &'a dyn LeaseKeeper,
+    pub roots: &'a dyn RepoRoots,
+}
+
 pub struct RunWatch<'a> {
     pub beat: &'a dyn Heartbeat,
     pub idle: &'a dyn RunActivity,
@@ -69,8 +93,7 @@ pub async fn reconcile(
     boot_id: &str,
     masters: &dyn MasterLiveness,
     procs: &dyn ProcessLiveness,
-    sessions: &dyn SessionReader,
-    leases: &dyn LeaseKeeper,
+    closing: Closing<'_>,
     watch: RunWatch<'_>,
 ) -> Result<Vec<Recovered>> {
     let mut out = Vec::new();
@@ -117,9 +140,29 @@ pub async fn reconcile(
             let _ = watch.beat.beat(id).await;
             continue;
         }
-        let state = close_loop::close(ledger, &run.run_id, sessions, leases).await?;
-        let owed_release =
-            agent_gone && run.boot_id == boot_id && state.session_terminal && !state.worktree_gone;
+        let repo = run
+            .project_id
+            .as_deref()
+            .and_then(|p| closing.roots.root_for(p));
+        let state = close_loop::close(
+            ledger,
+            &run.run_id,
+            repo.as_deref(),
+            closing.sessions,
+            closing.leases,
+        )
+        .await?;
+        // A run whose release was decided terminal is NOT owed one. Its
+        // checkout is staying on disk by decision, so `checkout_returned` will
+        // never go true and the three marks alone would put it back on the
+        // release path every sweep for ever — which is the loop that held its
+        // leases in the first place (ISS-1188). The one act that puts it back
+        // is an operator's `run release`.
+        let owed_release = agent_gone
+            && run.boot_id == boot_id
+            && state.session_terminal
+            && !state.checkout_returned
+            && run.release_terminal_at.is_none();
         let owed_death_report = agent_gone
             && run.ended_by.is_none()
             && run.boot_id == boot_id
@@ -212,11 +255,11 @@ mod tests {
     struct Leases(Mutex<HashSet<String>>);
     #[async_trait::async_trait]
     impl LeaseKeeper for Leases {
-        async fn release(&self, issue_key: &str) -> Result<()> {
+        async fn release(&self, _project_id: Option<&str>, issue_key: &str) -> Result<()> {
             self.0.lock().unwrap().insert(issue_key.to_string());
             Ok(())
         }
-        async fn is_returned(&self, issue_key: &str) -> Result<bool> {
+        async fn is_returned(&self, _project_id: Option<&str>, issue_key: &str) -> Result<bool> {
             Ok(self.0.lock().unwrap().contains(issue_key))
         }
     }
@@ -264,6 +307,32 @@ mod tests {
             doing: crate::daemon::agent_activity::Doing::Idle,
             at: now_ms() - run_exit::RUN_IDLE_BEFORE_EXIT.as_millis() as i64 - 1,
         })
+    }
+
+    /// A repository whose registry answers. Every test here asks it the same
+    /// read-only question — *do you register a worktree at this path?* — so one
+    /// serves them all.
+    fn a_repository() -> PathBuf {
+        static ONCE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+        ONCE.get_or_init(|| {
+            let root =
+                std::env::temp_dir().join(format!("forge-recovery-repo-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            let _ = std::process::Command::new("git")
+                .args(["init", "-q", "-b", "main"])
+                .current_dir(&root)
+                .output();
+            root
+        })
+        .clone()
+    }
+
+    struct Roots;
+    impl RepoRoots for Roots {
+        fn root_for(&self, _project_id: &str) -> Option<PathBuf> {
+            Some(a_repository())
+        }
     }
 
     fn gone() -> PathBuf {
@@ -321,8 +390,11 @@ mod tests {
             this_boot,
             &Masters(HashSet::new()),
             &Gone(refuted.iter().copied().collect()),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -332,6 +404,55 @@ mod tests {
         .unwrap();
         let _ = std::fs::remove_dir_all(&wt);
         done
+    }
+
+    #[tokio::test]
+    async fn a_run_whose_release_was_given_up_on_is_never_handed_back_to_it() {
+        let (mut led, wt) = seeded_holding_a_tree(424_242, "boot-a");
+        led.note_release_refusal(
+            "run-1",
+            "the diff in the checkout was not preserved",
+            1_790_000_000,
+        )
+        .unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff in the checkout was not preserved",
+        )
+        .unwrap();
+
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &Gone([424_242].into_iter().collect()),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&wt);
+
+        assert_eq!(
+            done.len(),
+            1,
+            "the run is still read, so its leases keep being chased"
+        );
+        assert!(
+            !done[0].owed_release,
+            "its checkout is staying on disk by decision, so the three marks alone would put it \
+             back on the release path every sweep for ever — which is the loop that held its \
+             leases in the first place"
+        );
     }
 
     #[tokio::test]
@@ -380,8 +501,11 @@ mod tests {
             // `Alive` so that only the ledger half of `agent_gone` can carry this case
             &Masters(HashSet::from(["master-dead".to_string()])),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -407,8 +531,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &nothing_refuted(),
-            &SessionCoreStillHolds,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &SessionCoreStillHolds,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -431,8 +558,11 @@ mod tests {
             "boot-a",
             &NoRegistryEntry,
             &nothing_refuted(),
-            &SessionCoreStillHolds,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &SessionCoreStillHolds,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -463,8 +593,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::new()),
             &nothing_refuted(),
-            &SessionCoreStillHolds,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &SessionCoreStillHolds,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -499,8 +632,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::new()),
             &Gone(HashSet::from([424_245])),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -523,8 +659,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::new()),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -552,8 +691,11 @@ mod tests {
             "boot-new",
             &Masters(HashSet::from(["master-old".to_string()])),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -577,8 +719,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -602,8 +747,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::new()),
             &nothing_refuted(),
-            &Sessions,
-            &leases,
+            Closing {
+                sessions: &Sessions,
+                leases: &leases,
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -616,8 +764,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::new()),
             &nothing_refuted(),
-            &Sessions,
-            &leases,
+            Closing {
+                sessions: &Sessions,
+                leases: &leases,
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -640,8 +791,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &beats,
                 idle: &NeverReports,
@@ -665,8 +819,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &beats,
                 idle: &finished_long_ago(),
@@ -695,8 +852,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &beats,
                 idle: &NeverReports,
@@ -739,8 +899,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::new()),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -765,8 +928,11 @@ mod tests {
             "boot-after",
             &Masters(HashSet::new()),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -786,8 +952,11 @@ mod tests {
             "boot-a",
             &Respawned("master-new"),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -811,8 +980,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::new()),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &beats,
                 idle: &NeverReports,
@@ -842,8 +1014,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &Gone(HashSet::from([4242])),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &beats,
                 idle: &NeverReports,
@@ -872,8 +1047,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &beats,
                 idle: &NeverReports,
@@ -896,8 +1074,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &Gone(HashSet::from([0, 1])),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -921,8 +1102,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::from(["master-live".to_string()])),
             &Gone(HashSet::from([4242])),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &beats,
                 idle: &NeverReports,
@@ -946,8 +1130,11 @@ mod tests {
             "boot-a",
             &Masters(HashSet::new()),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,
@@ -963,8 +1150,11 @@ mod tests {
             "boot-new",
             &Masters(HashSet::from(["master-live".to_string()])),
             &nothing_refuted(),
-            &Sessions,
-            &Leases(Mutex::new(HashSet::new())),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
             RunWatch {
                 beat: &Beats::default(),
                 idle: &NeverReports,

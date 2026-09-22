@@ -486,3 +486,18 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
     expect(updateWhere).not.toHaveBeenCalled();
   });
 });
+
+// `noOpSentence` names the release gate's rewrite and the endpoints that reach
+// `closed`, so a NO_OP must answer with the thrower's own detail. Its own
+// describe: the suite above is at its function-length budget.
+describe('POST /api/issues/:id/transition — a NO_OP says why', () => {
+  it("409 answers with the error's own detail, not a fixed string", async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    const res = await req({ toStatus: 'open' }, token);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('NO_OP');
+    expect(body.message).toContain('already in status open');
+  });
+});

@@ -87,8 +87,9 @@ describe('project-scoped agent-session reads', () => {
     `);
     const sessionId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, messages, created_at, updated_at)
-      VALUES (${sessionId}, ${projectId}, ${runId}, 'completed',
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, messages,
+                                  created_at, updated_at)
+      VALUES (${sessionId}, ${projectId}, ${runId}, 'pm', 'completed',
         ${JSON.stringify(messages)}::jsonb, now(), now())
     `);
     return sessionId;

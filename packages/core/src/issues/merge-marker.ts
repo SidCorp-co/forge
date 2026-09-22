@@ -7,7 +7,10 @@ import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-e
 import type { ActorAgency } from './actor-agency.js';
 import {
   clearIssueMerge,
+  describeMergeMark,
+  type MergeMarkKind,
   type MergeRecord,
+  mergeMarkKindOf,
   observedMergeForIssue,
   recordIssueMerge,
 } from './merge-record.js';
@@ -87,7 +90,20 @@ export async function applyMergeMarker(args: {
   commit?: string | undefined;
   mergedAt?: Date | null;
   actor: MergeMarkerActor;
-}): Promise<{ issue: IssueRow; action: 'merged' | 'already_merged' | 'unmarked' }> {
+}): Promise<{
+  issue: IssueRow;
+  action: 'merged' | 'already_merged' | 'unmarked';
+  /**
+   * ISS-1126 — which kind of record this call left, and the sentence saying so.
+   *
+   * `action` answers "did this call move the row". It has never answered the other question a
+   * caller has to know: whether what it just wrote is a merge Forge observed or a claim Forge
+   * recorded. The sentence is the same one the audit comment carries, built once, so the trail
+   * and the answer cannot disagree.
+   */
+  mark: MergeMarkKind;
+  markDetail: string;
+}> {
   const before = args.issue;
 
   let stampResult: MergeRecord = { wrote: true, mergedAt: null, commitSha: null };
@@ -134,14 +150,21 @@ export async function applyMergeMarker(args: {
     args.op === 'mark' && !stampResult.wrote
       ? `\nNOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
       : '';
-  const asserted =
-    args.op === 'mark' && claimedCommit
-      ? `\ncommit ${claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\`: that column holds only a merge Forge observed${stampResult.commitSha ? `, which for this issue is ${stampResult.commitSha}` : ''}`
-      : '';
+  // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
+  const mark: MergeMarkKind =
+    args.op === 'mark'
+      ? mergeMarkKindOf({ mergedAt: stampResult.mergedAt, mergedCommitSha: stampResult.commitSha })
+      : 'unmarked';
+  const markDetail = describeMergeMark({
+    kind: mark,
+    commitSha: stampResult.commitSha,
+    claimedCommit,
+  });
+  const marked = args.op === 'mark' ? `\n${markDetail}` : '';
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
-    `${label}${args.note ? ` — ${args.note}` : ''}${unchanged}${asserted}`,
+    `${label}${args.note ? ` — ${args.note}` : ''}${unchanged}${marked}`,
   );
   if (auditComment) {
     await hooks.emit('commentCreated', {
@@ -171,6 +194,11 @@ export async function applyMergeMarker(args: {
     reason: args.op === 'mark' ? 'merged mark written' : 'merged mark cleared',
   });
 
-  if (args.op !== 'mark') return { issue, action: 'unmarked' };
-  return { issue, action: stampResult.wrote ? 'merged' : 'already_merged' };
+  if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail };
+  return {
+    issue,
+    action: stampResult.wrote ? 'merged' : 'already_merged',
+    mark,
+    markDetail,
+  };
 }

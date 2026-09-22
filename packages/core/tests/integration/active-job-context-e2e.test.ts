@@ -72,8 +72,9 @@ describe('resolvePipelineContext E2E (ISS-573, re-keyed ISS-932 wave 4)', () => 
 
     const sessionId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, device_id, status, pipeline_run_id)
-      VALUES (${sessionId}, ${project.id}, ${device.id}, ${opts.sessionStatus ?? 'queued'}, ${runId})
+      INSERT INTO agent_sessions (id, project_id, device_id, kind, status, pipeline_run_id)
+      VALUES (${sessionId}, ${project.id}, ${device.id}, 'pipeline',
+              ${opts.sessionStatus ?? 'queued'}, ${runId})
     `);
 
     const jobId = randomUUID();
@@ -131,8 +132,8 @@ describe('resolvePipelineContext E2E (ISS-573, re-keyed ISS-932 wave 4)', () => 
     const s = await seed({});
     const second = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, device_id, status, pipeline_run_id)
-      VALUES (${second}, ${s.projectId}, ${s.deviceId}, 'running', ${s.runId})
+      INSERT INTO agent_sessions (id, project_id, device_id, kind, status, pipeline_run_id)
+      VALUES (${second}, ${s.projectId}, ${s.deviceId}, 'pipeline', 'running', ${s.runId})
     `);
     const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
     expect(got.ok).toBe(false);

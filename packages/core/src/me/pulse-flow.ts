@@ -1,11 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { utcDateTrunc, utcDayText } from '../lib/time-buckets.js';
 import { walkFlow, weekStartsEnding } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
 import type { PulseFlowWeek } from './pulse-types.js';
-
-const TERMINAL = ['closed', 'dropped'] as const;
 
 const toMap = (rows: Array<{ week: string; n: number }>) =>
   new Map(rows.map((r) => [r.week, Number(r.n)]));
@@ -14,7 +13,7 @@ export async function readPulseFlow(projectIds: string[], now: Date): Promise<Pu
   const weekStarts = weekStartsEnding(now);
   const windowStart = weekStarts[0];
   const scope = idList(projectIds);
-  const terminal = idList(TERMINAL);
+  const terminal = idList(ISSUE_TERMINAL_STATUSES);
 
   const weekExpr = utcDayText(utcDateTrunc('week', sql`a.created_at`));
   const intoTerminal = sql`a.action = 'issue.statusChanged' AND a.payload ->> 'to' IN (${terminal})`;

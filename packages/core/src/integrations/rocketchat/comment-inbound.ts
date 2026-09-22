@@ -63,7 +63,6 @@ export async function writeMirroredComment(args: {
           issueId: args.issueId,
           authorId: args.authorId,
           authorDeviceId: null,
-          authorAgency: 'human',
           body: args.body,
           parentId: null,
         },

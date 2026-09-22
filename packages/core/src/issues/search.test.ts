@@ -400,7 +400,7 @@ describe('createdBy filter + creator hydration (ISS-756)', () => {
         ],
         [
           ISSUE_B,
-          { creatorEmail: 'owner@example.com', creatorIsAgent: true, creatorLabel: 'Forge Agent' },
+          { creatorEmail: 'master@agents.local', creatorIsAgent: true, creatorLabel: 'master' },
         ],
       ]),
     );
@@ -415,7 +415,7 @@ describe('createdBy filter + creator hydration (ISS-756)', () => {
     });
     expect(body[1]).toMatchObject({
       id: ISSUE_B,
-      creatorLabel: 'Forge Agent',
+      creatorLabel: 'master',
       creatorIsAgent: true,
     });
     expect(hydrateCreatorsForIssues).toHaveBeenCalledTimes(1);

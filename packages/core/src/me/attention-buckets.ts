@@ -27,11 +27,11 @@ import {
   reconcileRuns,
 } from '../db/schema.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
+import { ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 
 export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
 export const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info'] as const;
-const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'awaiting_release'] as const;
 const PER_BUCKET = 5;
 const PENDING_SKILL_UPDATES_CAP = 20;
 
@@ -307,7 +307,7 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
         eq(jobs.status, 'failed'),
         sql`${jobs.createdAt} >= now() - interval '7 days'`,
         notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),
-        or(isNull(issues.id), notInArray(issues.status, [...FAILED_JOB_RESOLVED_ISSUE_STATUSES])),
+        or(isNull(issues.id), notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES])),
       ),
     )
     .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))

@@ -7,6 +7,7 @@ import {
   skillRegistrations,
   skills,
 } from '../db/schema.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
@@ -366,7 +367,7 @@ export async function dispatchSmokeCanaries(args: {
       and(
         eq(jobs.projectId, projectId),
         eq(jobs.type, 'smoke'),
-        inArray(jobs.status, ['queued', 'dispatched', 'running']),
+        inArray(jobs.status, [...UNHELD_LIVE_JOB_STATUSES]),
       ),
     )) as Array<{ payload: unknown }>;
   const activeStages = new Set(

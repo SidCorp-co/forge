@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
 import { findMissingWorkEvidence, missingWorkEvidenceStrict } from '../pipeline/work-evidence.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
+import { mergedMarkShortfall } from './entry-criteria-merge-mark.js';
 
 type CriterionExecutor = Pick<Db, 'select'>;
 
@@ -17,6 +18,7 @@ type IssueRecord = {
   acceptanceCriteria: string | null;
   releaseNotes: unknown;
   mergedAt: Date | null;
+  mergedCommitSha: string | null;
 };
 
 type Criterion = (
@@ -44,10 +46,8 @@ const criteriaWith = (
         "`{ section: 'Skip', userFacing: '-' }` when the change has no user-facing half"
       : null,
   work_evidence: (id, _record, executor) => workEvidence(id, executor),
-  merged_mark: (_id, record) =>
-    record.mergedAt == null
-      ? 'this issue carries no merged mark — mark it merged, naming the commit it landed at, before this status'
-      : null,
+  // Which kinds count as landed, and the refusal: `entry-criteria-merge-mark.ts`.
+  merged_mark: (_id, record) => mergedMarkShortfall(record),
 });
 
 const CRITERIA = criteriaWith((id, executor) => findMissingWorkEvidence(id, executor));
@@ -91,6 +91,7 @@ export async function findUnmetEntryCriteria(args: {
       acceptanceCriteria: issues.acceptanceCriteria,
       releaseNotes: issues.releaseNotes,
       mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
     })
     .from(issues)
     .where(eq(issues.id, args.issueId))
@@ -145,6 +146,7 @@ export async function readEntryCriteriaStrict(args: {
       acceptanceCriteria: issues.acceptanceCriteria,
       releaseNotes: issues.releaseNotes,
       mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
     })
     .from(issues)
     .where(eq(issues.id, args.issueId))

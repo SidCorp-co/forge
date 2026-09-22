@@ -3,6 +3,10 @@ import {
 	REGISTRY_ISSUE_STATUSES,
 	type StatusExits,
 } from "@forge/contracts/pipeline-registry";
+import {
+	BLOCKER_SETTLED_STATUSES,
+	REASON_REQUIRED_ISSUE_STATUSES,
+} from "@forge/contracts/status-sets";
 import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
@@ -16,7 +20,6 @@ import {
 	deriveCommentKind,
 	deriveStepOutcomes,
 	runningStepOf,
-	FORGE_AGENT_LABEL,
 	filterToQueryParams,
 	groupRows,
 	groupedTransitions,
@@ -24,12 +27,13 @@ import {
 	heartbeatState,
 	initials,
 	memberLabel,
+	openBlockingRefs,
 	PRIORITY_LABELS,
 	parseChecklist,
 	priorityLabel,
 	STATUS_LABELS,
 	statusLabel,
-	statusLabelFor,
+	laneLabel,
 	statusToChip,
 	statusToTone,
 	statusesFromParam,
@@ -87,17 +91,15 @@ describe("statusToChip", () => {
 		expect(statusToChip("closed")).toBe("archived");
 	});
 	it("folds five distinct statuses onto queued, which is why the label is separate", () => {
-		for (const s of [
-			"draft",
-			"open",
-			"confirmed",
-			"clarified",
-			"approved",
-		] as const) {
+		const folded = ["draft", "open", "confirmed", "clarified", "approved"] as const;
+		for (const s of folded) {
 			expect(statusToChip(s)).toBe("queued");
 		}
-		expect(statusLabelFor("draft")).not.toBe(statusLabelFor("open"));
-		expect(statusLabelFor("draft")).toMatch(/draft/i);
+		const kernel = folded.map(statusLabel);
+		expect(new Set(kernel).size).toBe(folded.length);
+		expect(statusLabel("draft")).toMatch(/draft/i);
+		// The lane word does NOT separate them, which is why it may not label a status chip.
+		expect(new Set(folded.map(laneLabel)).size).toBeLessThan(folded.length);
 	});
 });
 
@@ -263,8 +265,16 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		];
 		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(
 			allowedTransitions(EXITS, "approved").filter(
-				(s) => s !== "reopen" && s !== "waiting" && s !== "needs_info",
+				(s) => !(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s),
 			),
+		);
+	});
+	it("omits exactly the targets the shared reason-required answer names, whatever it grows to", () => {
+		const rows = [row({ id: "a", status: "in_progress" })];
+		const all = allowedTransitions(EXITS, "in_progress");
+		const offered = bulkAllowedStatuses(EXITS, rows);
+		expect(all.filter((s) => !offered.includes(s))).toEqual(
+			all.filter((s) => (REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s)),
 		);
 	});
 	it("never offers a status that requires an authored reason", () => {
@@ -320,8 +330,8 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 describe("label helpers", () => {
 	it("humanizes status / priority / complexity (no raw enum leaks)", () => {
 		expect(statusLabel("in_progress")).toBe("In progress");
-		expect(statusLabelFor("in_progress")).toBe("Running");
-		expect(statusLabelFor("needs_info")).toBe("Needs a human");
+		expect(laneLabel("in_progress")).toBe("Running");
+		expect(laneLabel("needs_info")).toBe("Needs a human");
 
 		expect(statusLabel("needs_info")).toBe("Needs info");
 		expect(priorityLabel("critical")).toBe("Critical");
@@ -329,11 +339,24 @@ describe("label helpers", () => {
 		expect(complexityLabel("m")).toBe("Medium");
 	});
 	it("labels a deliberate pause as paused, never as needing a human", () => {
-		expect(statusLabelFor("on_hold")).toBe("Paused");
-		expect(statusLabelFor("on_hold")).not.toBe("Needs a human");
-		expect(statusLabelFor("waiting")).toBe("Needs a human");
-		expect(statusLabelFor("needs_info")).toBe("Needs a human");
+		expect(laneLabel("on_hold")).toBe("Paused");
+		expect(laneLabel("on_hold")).not.toBe("Needs a human");
+		expect(laneLabel("waiting")).toBe("Needs a human");
+		expect(laneLabel("needs_info")).toBe("Needs a human");
 	});
+	it("keeps the nine lane words for the surfaces that want nine buckets", () => {
+		expect(laneLabel("in_progress")).toBe("Running");
+		expect(laneLabel("developed")).toBe("Running");
+		expect(laneLabel("releasing")).toBe("Running");
+		expect(laneLabel("waiting")).toBe("Needs a human");
+		expect(laneLabel("needs_info")).toBe("Needs a human");
+		expect(new Set(ISSUE_STATUSES.map(laneLabel)).size).toBe(9);
+	});
+
+	it("keeps seventeen status words beside the nine lane words", () => {
+		expect(new Set(ISSUE_STATUSES.map(statusLabel)).size).toBe(ISSUE_STATUSES.length);
+	});
+
 	it("renders an em dash for an absent complexity", () => {
 		expect(complexityLabel(null)).toBe("—");
 		expect(complexityLabel(undefined)).toBe("—");
@@ -587,21 +610,33 @@ describe("groupRows", () => {
 		expect(g.map((x) => x.key)).toEqual(["open", "developed"]);
 		expect(g[0].rows.map((r) => r.id)).toEqual(["a", "b"]);
 	});
-	it("groups by creator, distinct group per creator, agent group last", () => {
+	// ISS-1137 — an agent is an account with a name, so two agents are two
+	// groups. The old shape collapsed every agent into one `__agent__` bucket,
+	// which is the case a single-agent fixture cannot tell apart from this one.
+	it("groups by creator, one group per account, agents after people", () => {
 		const mixed = [
 			...rows,
 			row({
 				id: "d",
-				createdById: "u3",
+				createdById: "a1",
 				creatorIsAgent: true,
-				creatorLabel: FORGE_AGENT_LABEL,
+				creatorLabel: "master",
+			}),
+			row({
+				id: "e",
+				createdById: "a2",
+				creatorIsAgent: true,
+				creatorLabel: "reviewer",
 			}),
 		];
 		const g = groupRows(mixed, "creator");
-		expect(g.map((x) => x.key)).toEqual(["u1", "u2", "__agent__"]);
-		expect(g[0].label).toBe("ann@x.co");
-		expect(g[1].label).toBe("bob@x.co");
-		expect(g[g.length - 1].label).toBe(FORGE_AGENT_LABEL);
+		expect(g.map((x) => x.key)).toEqual(["u1", "u2", "a1", "a2"]);
+		expect(g.map((x) => x.label)).toEqual([
+			"ann@x.co",
+			"bob@x.co",
+			"master",
+			"reviewer",
+		]);
 	});
 });
 
@@ -625,25 +660,22 @@ describe("creatorLabelOf", () => {
 			creatorLabelOf({
 				creatorLabel: "ann@x.co",
 				creatorEmail: "ann@x.co",
-				creatorIsAgent: false,
 			}),
 		).toBe("ann@x.co");
 	});
-	it("falls back to Forge Agent for an agent row with no label", () => {
+	it("falls back to the address when the server sent no label", () => {
 		expect(
 			creatorLabelOf({
 				creatorLabel: "",
-				creatorEmail: null,
-				creatorIsAgent: true,
+				creatorEmail: "master@agents.local",
 			}),
-		).toBe(FORGE_AGENT_LABEL);
+		).toBe("master@agents.local");
 	});
 	it("never falls back to a raw id — 'Unknown user' when nothing resolves", () => {
 		expect(
 			creatorLabelOf({
 				creatorLabel: "",
 				creatorEmail: null,
-				creatorIsAgent: false,
 			}),
 		).toBe("Unknown user");
 	});
@@ -743,6 +775,33 @@ describe("heartbeatState", () => {
 				now,
 			),
 		).toBe("stale");
+	});
+});
+
+describe("openBlockingRefs", () => {
+	it("reports a blocker core has not settled, so the row can flag it", () => {
+		const refs = openBlockingRefs(incomingBlocks({ fromStatus: "in_progress" }));
+		expect(refs.map((r) => r.displayId)).toEqual(["ISS-9"]);
+	});
+
+	it("reports nothing for a blocker core has already released for dispatch", () => {
+		for (const status of BLOCKER_SETTLED_STATUSES) {
+			expect(
+				openBlockingRefs(incomingBlocks({ fromStatus: status })),
+				status,
+			).toEqual([]);
+		}
+	});
+
+	it("flags exactly the statuses core does not count as settled", () => {
+		const flagged = REGISTRY_ISSUE_STATUSES.filter(
+			(s) => openBlockingRefs(incomingBlocks({ fromStatus: s })).length > 0,
+		);
+		expect(flagged).toEqual(
+			REGISTRY_ISSUE_STATUSES.filter(
+				(s) => !(BLOCKER_SETTLED_STATUSES as readonly string[]).includes(s),
+			),
+		);
 	});
 });
 

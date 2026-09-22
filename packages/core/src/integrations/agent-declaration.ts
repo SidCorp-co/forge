@@ -11,6 +11,7 @@ export const agentIntegration = declareIntegration({
   capabilities: {
     canDispatch: false,
     canReceiveWebhook: false,
+    inboundUnprompted: false,
     canDeploy: true,
     liveConfirmGate: false,
     hasDeliveryLog: false,

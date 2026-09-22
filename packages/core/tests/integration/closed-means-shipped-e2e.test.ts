@@ -4,7 +4,7 @@
  * `issues/apply-transition.ts` refuses such a close by name, and that refusal is
  * proved in unit tests against the transition writer. This file proves the half
  * that holds whatever wrote the row: a `BEFORE UPDATE`/`BEFORE INSERT` trigger
- * installed by migration 0290, which no application code can be routed around.
+ * installed by migration 0304, which no application code can be routed around.
  * A mocked `db.execute` can express none of it.
  *
  * The migration's own refusal is read from the migration file rather than
@@ -25,7 +25,7 @@ import {
 } from '../helpers/index.js';
 
 const MIGRATION = fileURLToPath(
-  new URL('../../drizzle/migrations/0290_closed_means_shipped.sql', import.meta.url),
+  new URL('../../drizzle/migrations/0304_closed_means_shipped.sql', import.meta.url),
 );
 
 let harness: TestDatabase;
@@ -160,7 +160,7 @@ describe('no route reaches `closed` without the shipped-work claim (ISS-1108)', 
   });
 });
 
-describe('migration 0290 is decided by the rows it finds (ISS-1108)', () => {
+describe('migration 0304 is decided by the rows it finds (ISS-1108)', () => {
   it('counts them, names one, and changes nothing', async () => {
     await dropTheRule();
     try {

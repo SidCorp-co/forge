@@ -10,12 +10,91 @@ export type RecordLens = 'product' | 'technical';
 import {
   FORGE_RECORD_FIELD_BUDGET,
   type ForgeRecord,
+  type ForgeRecordFault,
   type ForgeRecordField,
 } from './forge-record.js';
 import { screenMessage } from './screen.js';
 
 /** The rules this module owns, for the document that has to name them all. */
-export const RECORD_RULE_IDS: readonly string[] = ['field-budget'];
+export const RECORD_RULE_IDS: readonly string[] = [
+  'field-budget',
+  'record-in-comment',
+  'record-fence-shape',
+];
+
+/** The guide that holds the whole table, named by every record-in-comment message. */
+export const RECORD_GUIDE_SLUG = 'records-and-comments';
+
+/**
+ * Where a record goes when it is not a comment, by the kind that names it — and ONLY where a store
+ * holds the whole of that kind. `issue_step_contexts` types a verdict on `(issue, step, attempt)`;
+ * nothing holds a baseline or a decision, so those go to the guide rather than to a route that
+ * would refuse them UNREGISTERED_KEY. A `Map` because the kind is caller-supplied: `constructor`
+ * on an object literal answers off the prototype instead of taking the unsupported-kind path.
+ */
+export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map([
+  ['verdict', 'POST /api/issue-step-contexts'],
+  ['review', 'POST /api/issue-step-contexts'],
+]);
+
+export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
+
+export function destinationFor(kind: string | null): string | null {
+  return kind ? (RECORD_DESTINATIONS.get(kind) ?? null) : null;
+}
+
+/** One sentence, built once, served both as the refusal and as the warning, so the two cannot drift. */
+export function recordInCommentMessage(record: ForgeRecord): string {
+  const route = destinationFor(record.kind);
+  const named = record.kind ? `a \`${record.kind}\` record` : 'a record';
+  const where = route
+    ? `${named} goes to \`${route}\`, and the comment keeps your summary line`
+    : `no store here holds ${named} whole — put the assertions it makes about the issue at \`${ISSUE_ASSERTION_ROUTE}\` under a registered key, and keep the sentence in the comment`;
+  return `a \`forge-record\` fence is not comment content — ${where}. The store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``;
+}
+
+const RECORD_IN_COMMENT_SHAPE =
+  'a comment body carries prose for a person; a structured record is written to the store its kind names';
+
+export function recordInCommentRefusal(record: ForgeRecord | null): MessageRefusal | null {
+  if (!record) return null;
+  return {
+    rule: 'record-in-comment',
+    why: recordInCommentMessage(record),
+    quote: '```forge-record',
+    shape: RECORD_IN_COMMENT_SHAPE,
+    example: destinationFor(record.kind) ?? `guide \`${RECORD_GUIDE_SLUG}\``,
+  };
+}
+
+/** The same sentence as a warning, for a caller that declared nothing. */
+export function recordInCommentWarning(record: ForgeRecord | null): string | null {
+  return record ? recordInCommentMessage(record) : null;
+}
+
+const FENCE_SHAPE =
+  'a `forge-record` block opens ```forge-record and closes with backticks alone, and names its kind either on a `forge-record: <kind> · contract <n>` line after the close or on the opening fence itself as ```forge-record: <kind> · contract <n>';
+
+const FENCE_EXAMPLE = [
+  '```forge-record: verdict · contract 1',
+  'criterion: 13',
+  'verdict: skipped',
+  '```',
+].join('\n');
+
+/**
+ * A body that opened a record fence and carries no record, told to whoever wrote it.
+ */
+export function recordFenceRefusal(fault: ForgeRecordFault | null): MessageRefusal | null {
+  if (!fault) return null;
+  return {
+    rule: 'record-fence-shape',
+    why: `${fault.why} — so this comment would be stored carrying no record at all, which is the one outcome that is not allowed: a body meant to carry a record either carries one or is told it does not. The shapes that are read are below, and the store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``,
+    quote: fault.quote,
+    shape: FENCE_SHAPE,
+    example: FENCE_EXAMPLE,
+  };
+}
 
 const SHAPE = `every field of a \`forge-record\` block is at most ${FORGE_RECORD_FIELD_BUDGET} characters`;
 const EXAMPLE = 'finding: holds';

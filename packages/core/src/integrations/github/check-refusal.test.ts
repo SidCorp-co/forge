@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { describeRefusal, describeThrown } from './check-refusal.js';
+import { type CheckPublishOp, describeRefusal, describeThrown } from './check-refusal.js';
 import { GitHubPublishError, type GitHubPublishOp } from './client.js';
 
 const headers = (map: Record<string, string>) => ({
@@ -178,5 +178,72 @@ describe('the rest of the write-side set', () => {
     expect(refusal.op).toBe('lookup');
     expect(refusal.message).toContain('looking up the existing check run');
     expect(refusal.message).toContain('socket hang up');
+  });
+});
+
+/**
+ * The other half of ISS-1151. The merge sentence moved to `merge-refusal.ts`;
+ * these four operations must still read exactly as they did, character for
+ * character, because nothing about publishing a check run changed.
+ */
+describe('the four check-publishing operations keep the sentences they had', () => {
+  const WHERE: Record<CheckPublishOp, string> = {
+    mint: 'minting the installation token',
+    lookup: 'looking up the existing check run',
+    create: 'creating the check run',
+    update: 'updating the check run',
+  };
+  const OPS = Object.keys(WHERE) as CheckPublishOp[];
+
+  it.each(OPS)('renders the `checks: write` sentence for %s', (op) => {
+    const refusal = describeRefusal(
+      err({ op, status: 403, detail: '{"message":"Resource not accessible by integration"}' }),
+    );
+    expect(refusal.cause).toBe('permission-missing');
+    expect(refusal.message).toBe(
+      `GitHub refused Forge while ${WHERE[op]} because the App has no \`checks: write\` ` +
+        'permission. Set Checks to "Read and write" on the App, then approve the resulting ' +
+        'request on the installation — reconnecting will not change this, because the ' +
+        'credential is not what is wrong.',
+    );
+  });
+
+  it.each(OPS)('renders the two-reading sentence for an unexplained 403 on %s', (op) => {
+    const refusal = describeRefusal(
+      err({ op, status: 403, headers: headers({ 'x-ratelimit-remaining': '4999' }) }),
+    );
+    expect(refusal.cause).toBe('access-refused');
+    expect(refusal.message).toBe(
+      `GitHub answered 403 while ${WHERE[op]} and sent nothing saying which of the two it was: ` +
+        'the App may lack `checks: write`, or this may be a secondary rate limit. Forge is not ' +
+        "guessing between them. Check the App's Checks permission first; if it is already " +
+        '"Read and write", retry after a pause.',
+    );
+  });
+});
+
+describe('an operation this path wrote no sentence for is named, not borrowed for', () => {
+  it('refuses to describe a merge with the check path`s wording', () => {
+    const refusal = describeRefusal(
+      err({
+        op: 'merge',
+        status: 403,
+        detail: '{"message":"Resource not accessible by integration"}',
+      }),
+    );
+    expect(refusal.op).toBe('merge');
+    expect(refusal.message).toContain('`merge` call that this path describes no refusal for');
+    expect(refusal.message).toContain("needs its own entry on this path's refusal subject");
+    expect(refusal.message).not.toContain('checks: write');
+    expect(refusal.message).not.toContain('creating the check run');
+  });
+
+  it('does not let an operation be routed here without one', () => {
+    // @ts-expect-error `merge` is not a CheckPublishOp: the type is what stops the next
+    // operation inheriting whatever sentence the last one had.
+    const refusal = describeThrown(new Error('boom'), 'merge');
+    expect(refusal.message).toContain('`merge` call that this path describes no refusal for');
+    expect(refusal.message).toContain('boom');
+    expect(refusal.message).not.toContain('checks: write');
   });
 });

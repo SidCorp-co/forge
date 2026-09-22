@@ -32,11 +32,18 @@ import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   principalAuthorDeviceId,
-  principalEstablishedAgency,
   principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope } from './list-envelope.js';
+
+/**
+ * An MCP caller has no channel to declare a capability: `tool.handler(args)`
+ * in `mcp/server.ts` hands a tool its arguments and no request context. So a
+ * record fence written through this door is warned and never refused — stated
+ * here and in the `records-and-comments` guide rather than left to be found.
+ */
+const MCP_DECLARES_RECORD_ROUTE = false;
 
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_comments` tool.
@@ -197,10 +204,10 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
           issueId,
           authorId: principal.userId,
           authorDeviceId,
-          authorAgency: principalEstablishedAgency(principal),
           body,
           format: input.data?.format,
           parentId: input.data?.parentId ?? null,
+          declaresRecordRoute: MCP_DECLARES_RECORD_ROUTE,
         });
         inserted = written.row;
         bodyWarnings = written.warnings;
@@ -343,7 +350,11 @@ async function updateAction(principal: Principal, input: ToolInput): Promise<unk
   const comment = await loadCommentForAccess(input.documentId);
   await assertPrincipalIsWriter(principal, comment.projectId);
 
-  const written = await updateCommentBody(input.documentId, { body, format: input.data?.format });
+  const written = await updateCommentBody(input.documentId, {
+    body,
+    format: input.data?.format,
+    declaresRecordRoute: MCP_DECLARES_RECORD_ROUTE,
+  });
   if (!written) throw new Error('NOT_FOUND: comment not found');
 
   const result: Record<string, unknown> = serialize(written.row);

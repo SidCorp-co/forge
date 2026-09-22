@@ -4,14 +4,15 @@
 
 "use client";
 
+import { REASON_REQUIRED_ISSUE_STATUSES } from "@forge/contracts/status-sets";
 import { type ReactNode, useState } from "react";
 import { useToast } from "@/providers/toast-provider";
-import { useStatusLabeller } from "../vocabulary";
+import { statusLabel } from "../derive";
 import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
 import { type ReasonStatus, TransitionReasonDialog } from "./transition-reason-dialog";
 
-export const REASON_REQUIRED = new Set<string>(["reopen", "waiting", "needs_info"]);
+export const REASON_REQUIRED = new Set<string>(REASON_REQUIRED_ISSUE_STATUSES);
 
 const REASON_TOAST: Record<ReasonStatus, string> = {
   reopen: "Issue reopened",
@@ -38,7 +39,6 @@ export interface GuardedTransition {
 export function useGuardedTransition(): GuardedTransition {
   const transition = useTransitionIssue();
   const { toast } = useToast();
-  const statusLabel = useStatusLabeller();
   const [prompt, setPrompt] = useState<
     { id: string; status: ReasonStatus; successMessage: string; onSuccess?: () => void } | null
   >(null);

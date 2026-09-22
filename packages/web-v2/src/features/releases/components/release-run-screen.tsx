@@ -164,7 +164,7 @@ function Roster({ state }: { state: ReleaseRunState }) {
 				{roster.baseBranch ? <MonoTag>{roster.baseBranch}</MonoTag> : null}
 				{roster.channel ? <span>channel {roster.channel}</span> : null}
 				{roster.releaseRunnerLabel ? (
-					<span>label {roster.releaseRunnerLabel}</span>
+					<span>prefers {roster.releaseRunnerLabel}</span>
 				) : null}
 			</div>
 			<ul className="flex flex-col gap-1">

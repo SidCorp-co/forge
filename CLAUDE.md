@@ -17,7 +17,7 @@ number.
 | `packages/core` | Hono backend. Single app (`src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the job pool a master agent claims from. |
 | `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
 | `packages/runner` | Headless Rust `forge-runner` CLI daemon (crates `forge-runner` / `forge-runner-core`) for servers/CI; pairs as a device. |
-| `packages/contracts` | Shared cross-app TS types & registries (`issues.ts`, `pipeline-registry.ts`, `requests.ts`, `responses.ts`, `rows.ts`, `domain-templates.ts`). |
+| `packages/contracts` | Shared cross-app TS types & registries (`src/issues.ts`, `src/pipeline-registry.ts`, `src/requests.ts`, `src/responses.ts`, `src/rows.ts`, `src/domain-templates.ts`). |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
 
 **The driver skill lives in a second repo.** `github.com/SidCorp-co/forge-plugin` is Forge's own
@@ -61,24 +61,26 @@ DB (in `packages/core`): `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:stu
 
 
 
-## Fourteen gates, six axes
+## Every gate, seven axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop, so a violation blocks
-the merge. **That, not this file, is why they hold.** All fourteen run from `pnpm verify`, and
-`verify --ci-parity` is itself a CI step: a `- run:` in `.github/workflows/ci.yml` that `verify`
+the merge. **That, not this file, is why they hold.** Every one runs from `pnpm verify`, which
+prints its own count. This heading no longer carries one: it said `fourteen` over a `verify` that
+ran twenty-three checks across eleven gate jobs, matching neither. `verify --ci-parity` is itself
+a CI step: a `- run:` in `.github/workflows/ci.yml` that `verify`
 neither runs nor declares fails the build, so the local command and the workflow cannot drift
 apart.
 
-Six axes — form (gated 5×), knowledge (gated 3×), relations, behaviour (gated 3×), language, record.
-Five of them own a property of the code; `record` owns `CHANGELOG.md`, the external record of what
-shipped, which was nobody's until 1,034 lines of it left in silence. An axis measures
-at its weakest gate. `.forge/conformance.json` declares each axis's level and the repo's profile
-(today: hardened); `conformance-status.mjs` **runs** every checker and fails when what it does
+Seven axes — form (gated 5×), knowledge (gated 4×), relations, behaviour (gated 3×), language,
+record, comment. Five of them own a property of the code; `record` owns `CHANGELOG.md`, the
+external record of what shipped, which was nobody's until 1,034 lines of it left in silence, and
+`comment` owns what a comment SAYS. An axis measures at its weakest gate. `.forge/conformance.json` declares each axis's level and the repo's profile
+(today: hardened); `scripts/conformance-status.mjs` **runs** every checker and fails when what it does
 disagrees with what the manifest claims.
 
 Thresholds live in one place per axis: `.arch.json` for architecture contracts, and
 `packages/core/biome.json` for the file/function line limits. **Do not add a rule to an axis another
-already owns** — no comments inside `biome.json`, and nothing that re-measures file or function
+already owns** — no comments inside `packages/core/biome.json`, and nothing that re-measures file or function
 length, which biome owns at 500/150 with `check-size-budget` as its baseline.
 
 **Comment content is the one axis that was vacant, and now is not.** The codemap checker that used
@@ -86,9 +88,18 @@ to own it was removed and its annotations deleted, which left prose in this repo
 nothing. `eslint-plugin-code-quality` is vendored at `.forge/code-quality/` — the same shape as
 `.forge/archmap/`, so `pnpm install` needs no path outside the repo — and runs as
 `pnpm lint:code-quality` over `eslint.config.mjs`. It owns comment density, historical narration,
-duplicated comments and comment-run length, and nothing else here may. It is NOT in `ci-passed`
-yet: it still reports findings, and a gate added red blocks every merge for work nobody has
-scheduled.
+duplicated comments and comment-run length, and nothing else here may.
+
+Those four rules — and no other half of that command — are gated by `check-comment-budget`, a
+per-file per-rule freeze in the shape `check-lint-budget` already had, run from `verify` and from
+the `conformance` job. It landed green over an amnesty of 73 findings across 67 files, priced in
+`.forge/conformance.json`'s `comment` axis with the condition that ends it. What that command
+reports BESIDE the four — raw elements, pass-through wrappers, crowded directories, the
+design-token sweep — belongs to axes nobody has declared and is measured by nothing.
+
+A comment whose text OPENS with a directive is not prose and is skipped: `eslint-disable` and the
+`@ts-` family always, plus whatever `additionalDirectives` in `eslint.config.mjs` names — here
+`i18n-allow` and `biome-ignore`, whose wording belongs to the gate reading it.
 
 Which gate owns what, the conformance levels and their baseline directions, and what each rule was
 born from: **[`scripts/README.md`](scripts/README.md)**.
@@ -179,7 +190,7 @@ comment under `Extra fixes:` as **reported**, not fixed.
 
 This is the single exception to *fix-it-now*, and it is a boundary rather than an amnesty: the two
 repos ship on different clocks, and a change landing there from here is a change none of this
-repo's thirteen gates has seen and none of that repo's reviewers asked for. The defect still leaves
+repo's gates has seen and none of that repo's reviewers asked for. The defect still leaves
 your hands owned — it leaves owned by a row somebody can open, which is exactly what
 `file-instead-of-fix` refuses everywhere else and requires here.
 
@@ -255,14 +266,20 @@ line number — a line number is stale the moment anything above it moves, and s
 - **A migration's `when` in `drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
   already in the target DB** — drizzle reads the single highest `created_at` once and skips lower
   entries **silently, forever**, so the container starts and serves new code against an old schema
-  (ISS-807: a live 500 on `GET /me/attention` for every signed-in user). Take `max(when)` across the
-  journal and add whole days — `86400000` when yours is the only migration open, more when it is
-  not. **Read every unmerged sibling's journal immediately before the landing push and clear the
-  highest `when` you find there**: branches each deriving `+86400000` from one `main` all land on
-  the SAME number, and whichever merges first silently kills the rest — measured twice on
-  2026-09-17, four open migrations, three of them holding `1796083200000`. Never a real
-  timestamp. Gated by `db/migrations-journal.test.ts`, which reads only your own journal and so
-  cannot see a sibling; the looking is yours.
+  (ISS-807: a live 500 on `GET /me/attention` for every signed-in user). **`node
+  scripts/check-migration-order.mjs` prints the number to take**, derived across `origin/main` and
+  every open branch, and refuses a `when` that collides with, straddles or falls below one of
+  theirs. Never a real timestamp: the values here are synthetic whole days, and the checker's
+  `Next free:` line is the only place to read the next one from.
+
+  The set is the subject, not your branch. Branches each deriving `+86400000` from one `main` all
+  land on the SAME number and whichever merges first silently kills the rest — measured twice on
+  2026-09-17, four open migrations, three of them holding `1796083200000`. Two gates split the
+  work: `packages/core/src/db/migrations-journal.test.ts` owns one journal's own properties, and
+  `scripts/check-migration-order.mjs` owns the relation between branches, running from `pnpm verify` and
+  from the always-on `lang-check` CI job. What neither can catch is a merge taken out of the order
+  the checker derived, which costs the branch behind it a renumber rather than its migration —
+  `scripts/README.md` has the residual in full.
 
 
 ## Where the detail lives

@@ -319,7 +319,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
           An issue is <strong>work</strong> with a deliverable someone else can verify. A note,
           a question, or a record of something already done belongs in memory or docs —{" "}
           <a
-            href="/api/guides/what-is-an-issue.md"
+            href="/guides/what-is-an-issue"
             target="_blank"
             rel="noreferrer"
             className="underline"

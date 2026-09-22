@@ -8,6 +8,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { env } from '../../config/env.js';
 import { GITHUB_API_BASE } from './types.js';
 
 const STATE_TTL_MS = 10 * 60_000;
@@ -56,6 +57,26 @@ export function verifyConnectState(
 }
 
 /**
+ * ONE resolution, read by the route that builds the manifest and by the probe that checks what
+ * GitHub holds: a second copy of this chain would let the two disagree, and a binding would be
+ * reported broken against a URL nobody wrote. Null rather than a throw, because one caller is a
+ * health probe where a missing origin is a fact to report.
+ */
+export function resolveApiBaseUrl(): string | null {
+  const base = env.PUBLIC_API_BASE_URL ?? env.OAUTH_REDIRECT_BASE ?? process.env.APP_BASE_URL;
+  return base ? base.replace(/\/+$/, '') : null;
+}
+
+/**
+ * ONE expression for two callers that must never disagree: the manifest telling GitHub where to
+ * call, and the probe comparing GitHub's answer to it. Two spellings is a drift nobody would see
+ * until a binding reported a mismatch against itself (ISS-1140).
+ */
+export function inboundWebhookUrl(apiBaseUrl: string, projectSlug: string): string {
+  return `${apiBaseUrl.replace(/\/+$/, '')}/api/webhooks/in/${projectSlug}`;
+}
+
+/**
  * The manifest GitHub renders as the App it is about to create. `redirect_url`
  * receives the conversion code; `hook_attributes.url` is where deliveries land.
  */
@@ -70,7 +91,7 @@ export function buildAppManifest(args: {
   return {
     name: args.appName,
     url: web,
-    hook_attributes: { url: `${api}/api/webhooks/in/${args.projectSlug}`, active: true },
+    hook_attributes: { url: inboundWebhookUrl(api, args.projectSlug), active: true },
     redirect_url: `${api}/api/integrations/github/manifest-callback`,
     setup_url: `${api}/api/integrations/github/installed`,
     setup_on_update: true,

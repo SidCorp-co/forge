@@ -5,6 +5,7 @@ import {
   LEGACY_NEUTRAL_REASONS,
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
+import { LIVE_JOB_STATUSES } from "@forge/contracts/status-sets";
 import { failureReasonAction, failureReasonLabel } from "@/features/sessions/types";
 import type { PipelineRunAttempt } from "./types";
 
@@ -41,7 +42,7 @@ export interface ActivityEntry {
   open: boolean;
 }
 
-const OPEN_STATUSES: ReadonlySet<string> = new Set(["queued", "dispatched", "running", "held"]);
+const OPEN_STATUSES: ReadonlySet<string> = new Set(LIVE_JOB_STATUSES);
 
 /** Runner-friendly device name, never a bare empty cell. */
 function deviceLabel(a: PipelineRunAttempt): string {

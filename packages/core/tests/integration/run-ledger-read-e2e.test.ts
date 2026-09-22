@@ -96,8 +96,16 @@ async function bind(deviceId: string, projectId: string): Promise<void> {
   `);
 }
 
-/** A run session as core mints one, so the join has something to read. */
-async function seedSession(projectId: string, heartbeat: string): Promise<string> {
+/**
+ * A run session as core mints one, so the join has something to read. A master
+ * is asked for by kind and by the box it sits on, because the owner edge is
+ * only accepted from a `master` core issued on that same device.
+ */
+async function seedSession(
+  projectId: string,
+  heartbeat: string,
+  opts: { kind?: string; deviceId?: string | null } = {},
+): Promise<string> {
   const runId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
@@ -106,8 +114,10 @@ async function seedSession(projectId: string, heartbeat: string): Promise<string
   const sessionId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO agent_sessions
-      (id, project_id, pipeline_run_id, status, last_heartbeat_at, title, created_at, updated_at)
-    VALUES (${sessionId}, ${projectId}, ${runId}, 'running', ${heartbeat}, 'run: grp-1', now(), now())
+      (id, project_id, pipeline_run_id, device_id, kind, status, last_heartbeat_at, title,
+       created_at, updated_at)
+    VALUES (${sessionId}, ${projectId}, ${runId}, ${opts.deviceId ?? null},
+            ${opts.kind ?? 'run_session'}, 'running', ${heartbeat}, 'run: grp-1', now(), now())
   `);
   return sessionId;
 }
@@ -142,7 +152,10 @@ async function read(projectId: string, token: string): Promise<Response> {
 describe('a member reading the fleet', () => {
   it('answers a member with the parent, the pid and the worktree the box reported', async () => {
     const m = await member();
-    const masterSessionId = await seedSession(m.projectId, '2026-09-08T09:00:00Z');
+    const masterSessionId = await seedSession(m.projectId, '2026-09-08T09:00:00Z', {
+      kind: 'master',
+      deviceId: m.deviceId,
+    });
     const sessionId = await seedSession(m.projectId, '2026-09-08T09:30:00Z');
     await applySnapshot({
       deviceId: m.deviceId,

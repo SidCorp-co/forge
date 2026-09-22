@@ -116,7 +116,9 @@ const ROW = {
   assigneeId: null,
 };
 
-const { createIssue, IssueCreateError } = await import('./create-service.js');
+const { createIssue, CREATE_ENTRY_STATUSES, IssueCreateError } = await import(
+  './create-service.js'
+);
 
 const writer = {
   createdById: '33333333-3333-4333-8333-333333333333',
@@ -189,7 +191,7 @@ describe('createIssue — the ordering the dispatcher depends on', () => {
 });
 
 describe('createIssue — entry status allow-list (ISS-130 / ISS-236)', () => {
-  it.each(['open', 'on_hold', 'draft'])('accepts %s at create', async (status) => {
+  it.each(CREATE_ENTRY_STATUSES)('accepts %s at create', async (status) => {
     await createIssue({ projectId: PROJECT_ID, title: 'New', status }, writer);
     expect(txInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status }));
   });

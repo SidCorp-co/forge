@@ -1,4 +1,4 @@
-import { type InferSelectModel, relations, type SQL, sql } from 'drizzle-orm';
+import { type InferSelectModel, isNull, relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
@@ -21,6 +21,25 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
+import {
+  agentSessionFailureReasons,
+  agentSessionKinds,
+  agentSessionStatuses,
+  sessionRuntimeStates,
+} from './session-vocabulary.js';
+
+export {
+  type AgentSessionFailureReason,
+  type AgentSessionKind,
+  type AgentSessionStatus,
+  agentSessionFailureReasons,
+  agentSessionKinds,
+  agentSessionStatuses,
+  type SessionRuntimeState,
+  sessionRuntimeStates,
+  terminalAgentSessionStatuses,
+} from './session-vocabulary.js';
+
 import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
@@ -29,7 +48,6 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
-import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
 import { activityLog, actorAgencies } from './schema-activity.js';
 
 export {
@@ -451,6 +469,7 @@ export const devices = pgTable(
     name: text('name').notNull(),
     platform: text('platform', { enum: devicePlatforms }).notNull(),
     agentVersion: text('agent_version'),
+    agentCommit: text('agent_commit'),
     status: text('status', { enum: deviceStatuses }).notNull().default('offline'),
     disabledAt: timestamp('disabled_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
@@ -490,7 +509,7 @@ export const personalAccessTokens = pgTable(
     rateLimitMax: integer('rate_limit_max'),
   },
   (t) => ({
-    userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name),
+    userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name).where(isNull(t.revokedAt)),
     userActiveIdx: index('pat_user_active_idx').on(t.userId, t.revokedAt),
     tokenPrefixIdx: index('pat_token_prefix_idx').on(t.tokenPrefix),
     deviceIdIdx: index('pat_device_id_idx').on(t.deviceId),
@@ -604,6 +623,8 @@ export const pipelineRuns = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     metadata: jsonb('metadata').notNull().default({}),
+    /** A release's version and its ship (ISS-1120); both NULL on every other kind of run. */
+    ...axes.releaseRunVersionColumns,
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -615,6 +636,7 @@ export const pipelineRuns = pgTable(
     issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
       .on(t.issueId)
       .where(sql`kind = 'issue' AND status IN ('running','paused')`),
+    ...axes.releaseRunIdentity(t),
   }),
 );
 
@@ -995,7 +1017,6 @@ export const issues = pgTable(
     // Set by webhook/MCP imports; NULL when `createdById` covers the actor.
     reportedBy: text('reported_by'),
     createdVia: text('created_via', { enum: issueCreationChannels }),
-    creatorAgency: text('creator_agency', { enum: actorAgencies }),
     detectorKey: text('detector_key'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     createdById: uuid('created_by_id')
@@ -1108,7 +1129,6 @@ export const comments = pgTable(
     body: text('body').notNull(),
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
     stage: text('stage'),
-    authorAgency: text('author_agency', { enum: actorAgencies }),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1928,42 +1948,6 @@ export const agentsRelations = relations(agents, ({ one }) => ({
   project: one(projects, { fields: [agents.projectId], references: [projects.id] }),
 }));
 
-// ISS-197 — `completed_via_recovery` / `cancelled_stale` are non-failure
-// terminal markers written by the recovery-by-verification path in
-// `jobs/retry.ts`. UI filters / analytics that partition on
-// agent_sessions.status treat them as success states, not failures.
-export const agentSessionStatuses = [
-  'idle',
-  'queued',
-  'running',
-  'completed',
-  'failed',
-  'completed_via_recovery',
-  'cancelled_stale',
-  'cancelled',
-] as const;
-export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
-
-export const terminalAgentSessionStatuses = [
-  'completed',
-  'failed',
-  'completed_via_recovery',
-  'cancelled_stale',
-  'cancelled',
-] as const satisfies readonly AgentSessionStatus[];
-
-export const sessionRuntimeStates = [
-  'starting',
-  'working',
-  'awaiting_input',
-  'checkpointing',
-  'closed',
-] as const;
-export type SessionRuntimeState = (typeof sessionRuntimeStates)[number];
-
-export const agentSessionFailureReasons = FAILURE_CAUSES;
-export type AgentSessionFailureReason = FailureCause;
-
 export const agentSessions = pgTable(
   'agent_sessions',
   {
@@ -1986,6 +1970,9 @@ export const agentSessions = pgTable(
     repoPath: text('repo_path'),
     usage: jsonb('usage'),
     metadata: jsonb('metadata'),
+    kind: text('kind', { enum: agentSessionKinds }).notNull(),
+    /** Who owns this session, as CORE issued it — never as a box reported it. */
+    parentSessionId: uuid('parent_session_id'),
     diff: jsonb('diff'),
     pipelineControl: jsonb('pipeline_control').$type<
       import('../agent-sessions/pipeline-control-types.js').PipelineControl | null
@@ -2014,6 +2001,21 @@ export const agentSessions = pgTable(
     ),
     statusDispatchedIdx: index('agent_sessions_status_dispatched_idx').on(t.status, t.dispatchedAt),
     pipelineRunIdx: index('agent_sessions_pipeline_run_idx').on(t.pipelineRunId),
+    kindStatusIdx: index('agent_sessions_kind_status_idx').on(t.kind, t.status),
+    // One live master per (device, project) was an intention held by a select
+    // running before an insert. This makes it a fact; `ensureMasterSession`
+    // keeps an advisory lock so the loser waits rather than raising.
+    oneLiveMasterUq: uniqueIndex('agent_sessions_one_live_master_uq')
+      .on(t.deviceId, t.projectId)
+      .where(
+        sql`kind = 'master' AND status NOT IN ('completed', 'failed', 'completed_via_recovery', 'cancelled_stale', 'cancelled')`,
+      ),
+    parentIdx: index('agent_sessions_parent_idx').on(t.parentSessionId),
+    parentFk: foreignKey({
+      columns: [t.parentSessionId],
+      foreignColumns: [t.id],
+      name: 'agent_sessions_parent_session_id_fkey',
+    }).onDelete('set null'),
   }),
 );
 
@@ -2464,25 +2466,21 @@ export const projectGitCredentialsRelations = relations(projectGitCredentials, (
   }),
 }));
 
-export const integrationDeliveryDirections = ['outbound', 'inbound'] as const;
-export type IntegrationDeliveryDirection = (typeof integrationDeliveryDirections)[number];
+import * as ints from './schema-integration-types.js';
 
-export const integrationDeliveryStatuses = ['pending', 'ok', 'failed'] as const;
-export type IntegrationDeliveryStatus = (typeof integrationDeliveryStatuses)[number];
+export * from './schema-integration-types.js';
 
 export const integrationDeliveries = pgTable(
   'integration_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // Connection/Binding model: the dispatch/read key after the ISS-399 cutover.
-    // The legacy project-integration link column was dropped by ISS-410 (epic F5).
     bindingId: uuid('binding_id').references(() => integrationBindings.id, {
       onDelete: 'cascade',
     }),
-    direction: text('direction', { enum: integrationDeliveryDirections }).notNull(),
+    direction: text('direction', { enum: ints.integrationDeliveryDirections }).notNull(),
     eventName: text('event_name').notNull(),
     requestId: text('request_id'),
-    status: text('status', { enum: integrationDeliveryStatuses }).notNull().default('pending'),
+    status: text('status', { enum: ints.integrationDeliveryStatuses }).notNull().default('pending'),
     payload: jsonb('payload').notNull().default({}),
     response: jsonb('response'),
     errorMessage: text('error_message'),
@@ -2495,8 +2493,7 @@ export const integrationDeliveries = pgTable(
       t.bindingId,
       sql`${t.createdAt} DESC`,
     ),
-    // Post-cutover idempotency key (mirrors requestIdUq on the legacy column):
-    // a dispatch keyed by (binding, requestId) is deduped at the DB level.
+    // A dispatch keyed by (binding, requestId) is deduped at the database.
     bindingRequestIdUq: uniqueIndex('integration_deliveries_binding_request_id_uq')
       .on(t.bindingId, t.requestId)
       .where(sql`request_id IS NOT NULL`),
@@ -2516,16 +2513,13 @@ export const integrationDeliveriesRelations = relations(integrationDeliveries, (
 // using project_integrations until the REST cutover issue flips them. Owner is a
 // generic principal so org-level sharing arrives without a data migration.
 
-export const integrationOwnerTypes = ['user', 'org'] as const;
-export type IntegrationOwnerType = (typeof integrationOwnerTypes)[number];
-
 export const integrationConnections = pgTable(
   'integration_connections',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     // Generic principal. ownerType discriminates the namespace of ownerId so we
     // can add 'org' later without re-keying rows; no FK because it is polymorphic.
-    ownerType: text('owner_type', { enum: integrationOwnerTypes }).notNull().default('user'),
+    ownerType: text('owner_type', { enum: ints.integrationOwnerTypes }).notNull().default('user'),
     ownerId: uuid('owner_id').notNull(),
     provider: text('provider').notNull(),
     displayName: text('display_name'),
@@ -2541,7 +2535,9 @@ export const integrationConnections = pgTable(
     active: boolean('active').notNull().default(true),
     breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
     lastHealthStatus: text('last_health_status'),
+    lastHealthDetail: text('last_health_detail'),
     lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
+    inboundEndpointObserved: jsonb('inbound_endpoint_observed').$type<ints.ObservedEndpoint>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

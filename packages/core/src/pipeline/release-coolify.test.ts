@@ -371,7 +371,7 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
     selectQueue.push([{ status: 'running' }]);
     selectQueue.push([]); // projectAutoProdDeploy: no agentConfig → gate stays on
-    selectQueue.push([]); // getProdGateState: no run carries a gate
+    selectQueue.push([]); // getProdGateStateForRun: this run carries no gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read
 
     const outcome = await tryDispatchCoolifyRelease({
@@ -385,5 +385,105 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
     expect(outcome.dispatched).toBe(false);
     expect(outcome.pendingHumanConfirm).toBe(true);
     expect(outcome.integrationIds).toEqual([PROD_INT]);
+  });
+
+  // ISS-1152 — one human confirmation authorises one deploy, and a landing asks
+  // for a deploy far more often than a release does.
+  it('refuses a gate confirmed for a different run — one confirmation is one deploy', async () => {
+    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    selectQueue.push([{ status: 'running' }]);
+    selectQueue.push([]); // projectAutoProdDeploy: gate stays on
+    selectQueue.push([
+      {
+        metadata: {
+          __forge_prod_deploy_gate: {
+            [PROD_INT]: {
+              runId: 'a-run-somebody-else-confirmed',
+              issueId: ISSUE_ID,
+              bindingId: PROD_INT,
+              requestedAt: '2026-09-01T00:00:00.000Z',
+              confirmedAt: '2026-09-01T00:05:00.000Z',
+            },
+          },
+        },
+      },
+    ]);
+    selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(outcome.dispatched).toBe(false);
+    expect(outcome.pendingHumanConfirm).toBe(true);
+  });
+});
+
+// forge-dev, 2026-09-21: one branch, one box, and two deploy bindings both
+// naming application `y8w4c4kss8ogo8gc44ow44kc`. The gate asked the binding's
+// stage label, so the one labelled `preview` dispatched to the production box
+// with no human in front of it.
+describe('one application behind two stages is still the production box', () => {
+  const APP = 'y8w4c4kss8ogo8gc44ow44kc';
+  const oneBox = (id: string, stages: string[]) => ({
+    binding: {
+      id,
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      role: 'deploy',
+      stages,
+      config: { targets: [{ label: 'App', resourceUuid: APP }] },
+      active: true,
+    },
+    connection: { id, provider: 'coolify', config: {}, active: true },
+  });
+
+  it('parks the preview binding for a human when a live binding shares its application', async () => {
+    listBindingsSpy.mockResolvedValueOnce([
+      oneBox(STAGING_INT, ['preview']),
+      oneBox(PROD_INT, ['live']),
+    ]);
+    selectQueue.push([{ status: 'running' }]);
+    selectQueue.push([]); // projectAutoProdDeploy: gate stays on
+    selectQueue.push([]); // getProdGateState: unconfirmed, preview binding
+    selectQueue.push([{ metadata: {} }]);
+    selectQueue.push([]); // getProdGateState: unconfirmed, live binding
+    selectQueue.push([{ metadata: {} }]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(outcome.pendingHumanConfirm).toBe(true);
+    expect(outcome.dispatched).toBe(false);
+  });
+
+  it('leaves a preview binding on its own application dispatching as before', async () => {
+    const separate = {
+      ...oneBox(STAGING_INT, ['preview']),
+      binding: {
+        ...oneBox(STAGING_INT, ['preview']).binding,
+        config: { targets: [{ label: 'App', resourceUuid: 'some-other-app' }] },
+      },
+    };
+    listBindingsSpy.mockResolvedValueOnce([separate, oneBox(PROD_INT, ['live'])]);
+    selectQueue.push([{ status: 'running' }]);
+    selectQueue.push([]); // projectAutoProdDeploy
+    selectQueue.push([]); // getProdGateState for the live binding
+    selectQueue.push([{ metadata: {} }]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(outcome.integrationIds).toEqual([STAGING_INT]);
   });
 });

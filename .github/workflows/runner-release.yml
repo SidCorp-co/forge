@@ -1,27 +1,87 @@
 name: runner-release
 
-# Build + publish forge-runner binaries on a `runner-vX.Y.Z` tag.
+# Build + publish forge-runner binaries for one release.
+#
+# Two ways in, one body:
+#   * `workflow_call` — runner-autorelease.yml, after it has cut the tag for a
+#     change that landed on `main`. This is the route every ordinary release
+#     takes, and it exists because a tag pushed with the workflow's own
+#     GITHUB_TOKEN does NOT start a new workflow run: an auto-release that only
+#     pushed a tag would publish nothing and say nothing.
+#   * a `runner-vX.Y.Z` tag push — a release cut by hand.
+#
 # Assets are named `forge-runner-<target>` so core can serve them from
-# RUNNER_RELEASE_DIR (deploy copies the release assets into that dir).
+# RUNNER_RELEASE_DIR; core's `fetch-release.js` populates that dir from the
+# newest `runner-v*` release on boot and every 30 minutes.
+#
+# The version a release carries is the TAG's, not `packages/runner/Cargo.toml`'s.
+# Cargo.toml declares the major.minor line; the patch is the release counter that
+# `scripts/next-runner-version.mjs` reads off the tags, because `main` carries a
+# required status check and no CI push of a version-bump commit can reach it. The
+# build therefore stamps the version in through FORGE_RUNNER_VERSION, which
+# `crates/forge-runner-core/build.rs` reads.
 on:
   push:
     tags:
       - "runner-v*"
+  workflow_call:
+    inputs:
+      version:
+        description: "The version this release carries, without the runner-v prefix."
+        required: true
+        type: string
+      sha:
+        description: "The commit to build, which the caller has already tagged."
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  # One answer for "which version, which commit", so the check, the build and the
+  # release cannot disagree about what is being released. `inputs` is empty on a
+  # tag push, and `github.event_name` is the CALLER's event inside a called
+  # workflow, so the inputs themselves are the discriminator.
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.r.outputs.version }}
+      tag: ${{ steps.r.outputs.tag }}
+      sha: ${{ steps.r.outputs.sha }}
+    steps:
+      - id: r
+        env:
+          IN_VERSION: ${{ inputs.version }}
+          IN_SHA: ${{ inputs.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          version="${IN_VERSION:-${REF_NAME#runner-v}}"
+          sha="${IN_SHA:-$EVENT_SHA}"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::cannot resolve a release version from inputs.version='$IN_VERSION' / ref '$REF_NAME'" >&2; exit 1;;
+          esac
+          {
+            echo "version=$version"
+            echo "tag=runner-v$version"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
   # Release gate — a tag is immutable, so artifacts must never ship from a
   # commit that fails the same checks the merge gate runs. runner-v0.6.8 shipped
   # while that gate was red (fmt drift); this job makes that impossible:
-  # build/release only start after fmt + clippy + tests pass on the tagged
+  # build/release only start after fmt + clippy + tests pass on the released
   # commit. Single-OS on purpose — the 3-OS matrix already ran in ci.yml's
-  # `runner` job on merge; this is a fast recheck of the exact tagged commit.
+  # `runner` job on merge; this is a fast recheck of the exact commit.
   check:
+    needs: resolve
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -37,7 +97,7 @@ jobs:
           cargo test --workspace
 
   build:
-    needs: check
+    needs: [resolve, check]
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +112,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -59,6 +121,10 @@ jobs:
         with:
           workspaces: packages/runner
       - name: Build
+        env:
+          # What the binary answers with, and what core compares a box against.
+          FORGE_RUNNER_VERSION: ${{ needs.resolve.outputs.version }}
+          FORGE_RUNNER_COMMIT: ${{ needs.resolve.outputs.sha }}
         run: cargo build --release --locked --target ${{ matrix.target }} --manifest-path packages/runner/Cargo.toml
       - name: Stage asset
         run: |
@@ -70,26 +136,36 @@ jobs:
           path: forge-runner-${{ matrix.target }}
 
   release:
-    needs: build
+    needs: [resolve, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: dist
-      - name: Write VERSION
-        run: echo "${GITHUB_REF_NAME#runner-v}" > dist/VERSION
+      - name: Write VERSION and COMMIT
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          echo "$VERSION" > dist/VERSION
+          echo "$SHA" > dist/COMMIT
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.resolve.outputs.tag }}
           files: |
             dist/forge-runner-*
             dist/VERSION
+            dist/COMMIT
           body: |
-            forge-runner ${{ github.ref_name }}
+            forge-runner ${{ needs.resolve.outputs.tag }}
+
+            Built from ${{ needs.resolve.outputs.sha }}, which the binary answers
+            with — `forge-runner --version` prints the version and the commit, and
+            core compares a box against both.
 
             Deploy: no manual copy needed. On boot the core's `fetch-release.js`
             auto-populates `RUNNER_RELEASE_DIR` from the latest `runner-v*` release
-            (keeps the `forge-runner-<target>` names + `VERSION`). Core then serves
-            `/install.sh`, `/install/latest.json`, `/install/bin/<target>`.
+            (keeps the `forge-runner-<target>` names, `VERSION` and `COMMIT`). Core
+            then serves `/install.sh`, `/install/latest.json`, `/install/bin/<target>`.

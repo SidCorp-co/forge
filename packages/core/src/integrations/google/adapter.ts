@@ -202,6 +202,7 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
   capabilities: {
     canDispatch: false,
     canReceiveWebhook: false,
+    inboundUnprompted: false,
     canDeploy: false,
     liveConfirmGate: false,
     hasDeliveryLog: false,

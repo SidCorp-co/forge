@@ -23,6 +23,7 @@ import {
 } from '../projects/project-facts.js';
 import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
+import { RECORDS_GUIDE } from './records-guide.js';
 import type { ForgeGuide } from './types.js';
 
 export type { ForgeGuide };
@@ -711,6 +712,7 @@ section, which is why this migration is what turns the feature on.`,
   },
   CONFORMANCE_GUIDE,
   ASSISTANT_METHOD_GUIDE,
+  RECORDS_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

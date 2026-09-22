@@ -37,6 +37,10 @@ import {
   writePullRequestComment,
 } from '../../integrations/github/agent-ops.js';
 import { GitHubClientError } from '../../integrations/github/client.js';
+import {
+  OpenedPullRequestIncomplete,
+  projectOpenedPullRequest,
+} from '../../integrations/github/opened-pull-request.js';
 import { noteReviewOnIssue } from '../../integrations/github/review-note.js';
 import { logger } from '../../logger.js';
 import {
@@ -108,7 +112,27 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     'stamps the issue as landed with the commit it landed at; naming `merge`, `close` or ' +
     '`delete-branch` is refused with that sentence rather than silently doing something near it. ' +
     "list: the project's GitHub bindings — { bindingId, repository, installed, bindingActive, " +
-    'connectionActive, agentGranted, lastHealthStatus }. It contacts GitHub not at all and answers ' +
+    'connectionActive, agentGranted, lastHealthStatus, connectionProbeStatus, healthDetail, ' +
+    'inboundDoor, inboundReading, expectedWebhookUrl, observedWebhookUrl, inboundDeliveries, ' +
+    'lastInboundDeliveryAt, turnedAwayRecords, lastRecordedTurnAwayAt, lastTurnedAwayCode }. ' +
+    '`lastHealthStatus` is the binding BOTH ways; `connectionProbeStatus` is what the last probe ' +
+    'stored on the connection. `inboundDoor` says where the webhook door stands: `open` (something ' +
+    'has come through), `silent` (addressed here and nothing ever has), `elsewhere` (GitHub holds a ' +
+    'different address — compare `observedWebhookUrl` with `expectedWebhookUrl`), `unaddressed` ' +
+    '(no address, or the hook is switched off on GitHub), `unreadable` (GitHub could not be asked), ' +
+    '`unjudged` (a prerequisite of the address check is missing — no public API origin here, or ' +
+    'nothing has asked GitHub where it calls in since this binding was last probed — so the ' +
+    'address half is unjudged and earlier deliveries say only that the door opened once), ' +
+    '`not_expected`. Anything but `open` or ' +
+    '`not_expected` demotes `lastHealthStatus`, because a binding that receives nothing, or whose ' +
+    'address nothing has checked, is not healthy whatever its outbound calls do. ' +
+    '`inboundReading` is the sentence saying what that is and what it is NOT: `turnedAwayRecords` ' +
+    'counts RECORDS of calls refused at the door, at most one per code per ten minutes, so it is a ' +
+    'FLOOR on the calls rather than the calls; those calls are unauthenticated, so ' +
+    'nothing here says GitHub sent them; a `silent` door cannot tell "GitHub called somewhere ' +
+    'else" from "GitHub did not call", and the reading names the App\'s Recent Deliveries tab ' +
+    'as the read that can. It contacts GitHub not ' +
+    'at all and answers ' +
     'the same whether or not agents are granted, so it is where you find out WHY another action was ' +
     'refused. An empty array means this project has bound no repository; that is the answer, not an ' +
     'error. ' +
@@ -127,8 +151,14 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     "comment: write on the pull request's conversation — needs `pullRequest` and `body`, returns " +
     '{ commentId, url }. This is the thread, not a line note on the diff. ' +
     'open-pull-request: needs `head`, `base` and `title`, optionally `body` and `draft`; returns ' +
-    '{ number, url, state, draft, headRef, baseRef }. Push the branch with git first — this opens ' +
-    'the pull request, it does not create the branch. ' +
+    '{ number, url, title, state, draft, headRef, headSha, baseRef, baseSha, updatedAt } AND ' +
+    '`projection`, because what Forge opens Forge records: the same writer a `pull_request` webhook ' +
+    'delivery goes through stores the row the merge path resolves on, so the request you just opened ' +
+    'is one Forge can be asked to merge. `projection.outcome` is recorded | superseded | ' +
+    'not-recorded, with `issueId` naming the Forge issue the head branch resolved to and `reason` ' +
+    'saying why there is no row. A `not-recorded` is NOT a failed open — the pull request exists on ' +
+    'GitHub either way and opening it again would put a second one there. Push the branch with git ' +
+    'first: this opens the pull request, it does not create the branch. ' +
     'request-review: needs `pullRequest` and at least one of `reviewers` (GitHub logins) or ' +
     '`teamReviewers` (team slugs); returns what GitHub now has requested. ' +
     'review: submit a verdict — needs `pullRequest`, `verdict` (APPROVE | REQUEST_CHANGES | ' +
@@ -198,13 +228,7 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
       });
 
     case 'open-pull-request':
-      return openPullRequest(client, {
-        head: require$(input, 'head', 'open-pull-request'),
-        base: require$(input, 'base', 'open-pull-request'),
-        title: require$(input, 'title', 'open-pull-request'),
-        ...(input.body === undefined ? {} : { body: input.body }),
-        ...(input.draft === undefined ? {} : { draft: input.draft }),
-      });
+      return openAndProject(client, input, projectId);
 
     case 'request-review': {
       const number = require$(input, 'pullRequest', 'request-review');
@@ -222,6 +246,53 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
 
     case 'review':
       return submitAndNote(client, input, projectId);
+  }
+}
+
+/**
+ * Open the pull request, then record it on Forge's projection of the repository.
+ *
+ * The second half is the one ISS-1123 was about: `repo_pull_requests` was fed only by webhooks, so
+ * a pull request Forge itself opened left no row and the merge route refused it by number. The
+ * write runs AFTER GitHub has created the request, and its failure is REPORTED rather than thrown,
+ * for the same reason `submitAndNote` reports its own: the pull request exists by then, and raising
+ * would tell the caller the one thing that is certainly false. A caller that reads `not-recorded`
+ * and opens the request again gets a second pull request, which is why the sentence says so.
+ */
+async function openAndProject(
+  client: Awaited<ReturnType<typeof githubAgentClient>>,
+  input: Input,
+  projectId: string,
+): Promise<unknown> {
+  const opened = await openPullRequest(client, {
+    head: require$(input, 'head', 'open-pull-request'),
+    base: require$(input, 'base', 'open-pull-request'),
+    title: require$(input, 'title', 'open-pull-request'),
+    ...(input.body === undefined ? {} : { body: input.body }),
+    ...(input.draft === undefined ? {} : { draft: input.draft }),
+  });
+  try {
+    const projection = await projectOpenedPullRequest({
+      projectId,
+      bindingId: client.bindingId,
+      repository: client.fullName,
+      opened,
+    });
+    return { ...opened, projection };
+  } catch (err) {
+    const why = err instanceof OpenedPullRequestIncomplete ? err.message : String(err);
+    logger.error(
+      { projectId, number: opened.number, bindingId: client.bindingId, err },
+      'forge_github open-pull-request: the pull request reached GitHub and the projection row did not',
+    );
+    return {
+      ...opened,
+      projection: {
+        outcome: 'not-recorded',
+        issueId: null,
+        reason: `${why} Do NOT open it again — that would put a second pull request on the repository.`,
+      },
+    };
   }
 }
 

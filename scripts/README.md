@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Fourteen gates, six axes
+## Every gate, seven axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -19,8 +19,9 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (honest
-costs · the mode-qualification of injected docs · the PAT permission surface).
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` four (honest
+costs · the mode-qualification of injected docs · the PAT permission surface · whether one question
+in the source has more than one answer). `comment` is gated once, by `check-comment-budget`.
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -38,13 +39,15 @@ passed, because the external record of what shipped belonged to none of them.
 | declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
 | PAT surface | `check-pat-surface` — `injected-docs` | whether every route a project-scoped token can reach is covered by the permission menu that claims to fence it | whether a given fence is correct — that is review's |
+| status tuples | `check-status-tuples` — `lang-check` | whether one question has more than one answer: two declarations holding the same status tuple, or a status-literal array written inline where a named constant for that tuple already exists. Compares by VALUE, not by name, in either quote style, and reads the three vocabularies out of `db/schema.ts` rather than carrying a copy. It scans `packages/core/src`, `packages/core/tests`, `packages/contracts/src` and `packages/web-v2/src`: a browser file answering a question core already answers is the same defect as a core file doing it. A declaration reaches it by three routes — an array literal, a `new Set(...)` of one, and a `Record<…Status, boolean>`, whose `true` keys are a tuple written as a classification. A `status-tuple: differs` marker excuses a declaration only against a peer it NAMES, because a reason written about one neighbour is no excuse against a different one. And one NAME answers one question: a name holding two different tuples is refused whatever the markers say, because two answers under one name never collide by value — which is exactly how `pipeline/runs-rollup.ts` held a three-member `LIVE_JOB_STATUSES` beside the four-member one with this gate green | whether a tuple's MEMBERSHIP is right; SQL string literals including `ARRAY[…]`, type unions, a tuple written as an object-literal value, which is a table row rather than a named question, and a `Record<…Status, T>` for any `T` but boolean, which is a lookup table rather than a yes/no question. In a test file it reads `.each` case lists ONLY: that list is the domain the test claims to cover, while every other tuple there is the assertion itself, which importing the constant would make vacuous. **Nor a copy that has already drifted**: two answers to one question whose members no longer match do not collide, so this catches a second declaration before it rots and never after — `packages/core/src/db/status-sets-parity.test.ts` is what holds an existing pair together |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
 | flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
-| record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
+| record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
+| comment | `check-comment-budget` — `conformance` | what a comment SAYS: density against the code around it, the length of one run, historical narration, and one comment restating another — the four rules `eslint.config.mjs` enables out of `.forge/code-quality`, frozen per (file, rule) | file or function LENGTH, which biome owns at 500/150; and the other halves of `pnpm lint:code-quality` — raw elements, pass-through wrappers, crowded directories, the design-token sweep — which belong to axes nobody has declared |
 
 ### Why `core` lint prints every diagnostic
 
@@ -62,8 +65,9 @@ had no such guard. The two now agree.
 ### Conformance levels
 
 `.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
-block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 2 ·
-relations 2 · behaviour 2 · language 3 · record 3.
+block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 3 ·
+relations 2 · behaviour 2 · language 3 · record 3 · comment 2. `conformance-status.mjs` prints
+them beside what it measured, so this line is a convenience and that command is the answer.
 
 Level 2 is the claim *"old debt frozen, new debt blocked"*, so each such axis must also name where
 its debt is frozen and which direction improves it — `baseline: {path, keyBy, improves}`, where
@@ -130,14 +134,17 @@ meaning what its row says. Measured 2026-08-25.
 
 ### Do not add a rule to an axis another already owns
 
-- **No ESLint.** biome >= 2 covers `noExcessiveLinesPerFunction` and `noExcessiveLinesPerFile`,
-  which is the whole reason ESLint would have been added. A second linter on the same axis means two
-  configs drifting apart.
-- **No comment rules at all.** A density or run-length rule cannot tell documentation from noise:
-  the 19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation, and 19
-  comment lines to a counter are not. The comment-grammar gate that used to own this axis was
-  removed in ISS-1029 for that reason — it flagged prose that was right far more often than prose
-  that was wrong, and a checker at that noise level teaches the reader to skip it.
+- **No ESLint on the LENGTH axis.** biome >= 2 covers `noExcessiveLinesPerFunction` and
+  `noExcessiveLinesPerFile`, so `eslint.config.mjs` switches `max-lines` and
+  `max-lines-per-function` off. ESLint is here for comment content and nothing else; two linters
+  holding one axis means two configs drifting apart.
+- **No comment rules in biome.** A density or run-length rule cannot tell documentation from noise
+  on its own: the 19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation,
+  and 19 comment lines to a counter are not. The comment-grammar gate removed in ISS-1029 flagged
+  prose that was right more often than prose that was wrong, and a checker at that noise level
+  teaches the reader to skip it. What replaced it is baselined rather than absolute — a file may
+  keep what it has and may not gain — and it skips a comment that opens with a directive, because
+  `i18n-allow:` and `biome-ignore` are arguments other gates read and not writing (ISS-1105).
 - **No `biome.json` comments.** A comment inside it makes biome **silently ignore the whole
   enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
   commit message.
@@ -300,6 +307,14 @@ claim; this is the check that tests the claim.
 
 Also fails when an axis is declared with no probe, or probed with no declaration, so neither half can
 drift out of the other's sight.
+
+**Both sides of a direction check are read out of git, never off disk.** `ratchetFault` in
+`lib/baseline-ratchet.mjs` reads the declared baseline at `baseRev()` and again at `HEAD` — so a
+baseline file corrected in the working tree is invisible to it, and `pnpm verify` goes on reporting
+the committed number until the fix is committed. The other checkers read the tree, which is why the
+two can disagree inside one run: `check-size-budget` can pass on a file the working tree has already
+brought back under budget while this one still faults on the number `HEAD` holds. Commit the
+baseline, then re-measure.
 
 An axis whose probe is not on disk has **no measured level** — reported as `n/a`, compared against
 nothing, and taking the script to exit `2`. Level `0` is not the answer there: `0` means "no checker
@@ -503,6 +518,93 @@ offending lines on the Dependabot pull request that caused this named by package
 
 ## check-branch-name.sh
 
+## check-migration-order.mjs — a migration is ordered against the set, not against `main`
+
+`packages/core/src/db/migrations-journal.test.ts` reads one journal: its own. Its head-entry
+assertion is that the head `when` clears the maximum in that same file. Every branch therefore
+passes alone, while the SET of open branches — the thing that actually has to be applicable — is
+measured by nothing.
+
+Drizzle's migrator reads the single highest `created_at` in `drizzle.__drizzle_migrations` once and
+then applies only entries whose `when` exceeds it
+(`drizzle-orm/pg-core/dialect.js`, the `Number(lastDbMigration.created_at) < migration.folderMillis`
+arm). An entry below that mark is not reordered — it is skipped, silently, for ever. ISS-807 is what
+that looks like afterwards: the container served new code against an old schema and the symptom was
+a live 500 on `GET /me/attention` for every signed-in user.
+
+**What it asserts, exactly one proposition:** the migrations THIS tree adds to `origin/main` can be
+applied in some order of whole-branch merges alongside every open branch's live ones. Five refusals,
+each naming the branches, the tags and the numbers:
+
+| rule | what it catches |
+|---|---|
+| `below-floor` | a `when` of ours at or under `origin/main`'s highest — the entry drizzle will skip |
+| `duplicate-when` | two branches on one number; whichever merges second is skipped |
+| `duplicate-idx` | two branches claiming one migration index |
+| `inverted` | an index above a sibling's whose `when` is below it, so the merged journal is not monotonic |
+| `interleaved` | `when` ranges that straddle — a branch merges whole, so no order applies both |
+
+`interleaved` is the one no per-entry rule finds. Branch A holding 289 and 291 while B holds 290 has
+every entry distinct and every index ascending with its `when`, and is still unorderable: whichever
+lands first raises the high-water past the other's remainder.
+
+**The unit is the branch.** A sibling already at or below the floor is STRANDED — it cannot land in
+any order until it renumbers — so it is reported on its own and counted against nobody. Refusing
+this tree for it would be refusing a branch for damage it cannot repair. Our own below-floor entries
+are never filtered that way: that entry is the subject.
+
+**Two OTHER branches that clash cost the claim, not the exit.** The five rules also run over every
+pair of live siblings. Pairwise compatibility with this tree is not the whole-set proposition — a
+tree at 292 conflicts with neither A={289,291} nor B={290} while A and B cannot both land — so a
+run that printed a merge order there would be naming an order nobody can execute. Such a pair is
+named, no order is printed, and this tree's own exit is unchanged, because it is not the tree that
+can repair them.
+
+**On CI the checkout is detached** on `refs/pull/N/merge`, where `git rev-parse --abbrev-ref HEAD`
+answers `HEAD`. Three readings say "this is us" and a ref matching any is not a sibling: the name
+HEAD is on, `GITHUB_HEAD_REF`, and any ref this tree already contains. Without them the PR's own
+branch is read as a sibling holding every one of its migrations, and every migration-bearing PR is
+refused against itself. The floor is re-read after the check's own fetch for the same reason in
+reverse: a cached `origin/main` is a floor the remote has already left behind.
+
+**Exit codes.** 0 applicable · 1 a refusal · 2 could not run. A tree that adds no migration exits 0
+without touching the remote and says so, which is a proposition proved from local data rather than a
+failure to reach anything. A tree that IS `origin/main` reads the set for the stranded report alone
+and exits 0 whatever it finds, because `main` is not the tree that can repair it. **A tree landing a
+migration that cannot enumerate the open branches is exit 2**, naming the migrations — a check that
+cannot see the set has proved nothing, and a pass there would be the silent substitution the whole
+gate is about.
+
+**A branch git cannot read is an unknown, and an unknown is not an absence.** A branch carrying no
+journal carries no migration and is nothing to order against, so it is passed over — but that
+absence is established POSITIVELY, by listing the ref's tree. Probing the path with `git cat-file
+-e` instead answers non-zero for "not in this tree" and for "git could not inspect the object"
+alike, and reading that one number as absence drops the branch from the measured set and exits 0 on
+a merge order derived from what was left. A tree that will not list, and a journal that lists and
+will not read, are each exit 2 naming the ref. The reds for it are planted against the object store
+rather than the parser, because the parser is a different failure with the same exit code.
+
+### What it cannot catch
+
+Two, and they are the same shape: the check runs before the merge, and the merge decides.
+
+- **A merge taken out of the derived order.** Landing a higher branch first is permitted — refusing
+  it would let one abandoned branch block every other. The cost is a renumber, not a loss: the
+  branch behind it goes `below-floor` on its next run rather than losing its migration on deploy,
+  and both sides are told — the lander is shown who it will strand, `main`'s own run after the merge
+  names who was stranded.
+- **A stale green carried through by a branch that never re-ran.** The refusal above only reaches
+  the stranded branch when that branch runs the check again before merging.
+  `.github/workflows/ci.yml` states that branch protection here has `strict: true`, which forces
+  exactly that run; the live ruleset is not readable from a checkout or from the Forge GitHub App's
+  verbs, so that is this repo's own claim and not a verified one. If `strict` is off, that one path
+  reaches the loss again, and `main`'s advisory is what still speaks.
+
+Neither is reachable by a branch-time check, which is why they are written here rather than left to
+be discovered. The rule it replaces was a CLAUDE.md instruction to a person — *read every unmerged
+sibling's journal immediately before the landing push* — which could not hold: it was checked at a
+moment a sibling could invalidate a minute later, and it scaled as N².
+
 ## check-release-record.mjs — the record of what shipped may not lose entries
 
 `CHANGELOG.md` is the external record of what shipped, and until 2026-08-28 nothing owned it.
@@ -512,19 +614,104 @@ message never named the file. Twelve gates ran on it and every one passed. The i
 feed parses this file (`packages/web-v2/src/lib/changelog.ts`) and renders an empty list when it
 finds no `## [` heading, so it went blank for every signed-in user without throwing.
 
-Two rules:
+Three rules:
 
 | | Fails when |
 |---|---|
-| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it |
-| `no-silent-loss` | an entry present at the base revision is absent at HEAD and nothing declares the removal |
+| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
+| `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
+| `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held. The refusal names each entry with the ceiling actually applied to it and whether it paired as a correction, because an inherited ceiling advertised to an entry that did not inherit one reads as a rule the checker is not following |
 
 Entries are compared as a **set of whitespace-normalised bullet texts, position-independent**. That
 is what lets `forge-cut-release` promote `## [Unreleased]` to `## [X.Y.Z]` and open a fresh one — a
 release cut moves every entry under a new heading without losing one, and a positional comparison
 would turn the next release red. Normalising whitespace is what stops a hard-wrap reflow reading as
-30 deletions. Nothing further is normalised: case and punctuation are how you tell a reword from the
-same entry.
+30 deletions.
+
+### A correction is an edit, not a deletion and a new entry
+
+Until ISS-1145 an entry was kept by the byte identity of its whole normalised text, so changing one
+word inside a 172-word entry was one removal plus one 172-word addition — `no-silent-loss` and
+`entry-budget` refusing the same bytes in opposite directions, with an amnesty for one and none for
+the other. No published entry could be corrected at all, which is what held `main` red on the `docs`
+job: `CHANGELOG.md` linked `docs/flows/issue-work.html`, a directory `c74d9b3f7` deleted, and the
+only edit that would fix it was the one edit the gate refused.
+
+`pairEdits` in `lib/release-record.mjs` matches each removed entry to at most one added entry.
+**Two entries are the same entry when more than half the words of the longer one survive into the
+other in order, AND the change moved at most `CORRECTION_SPAN` words each way** — at most that many
+of the published entry's words gone, at most that many new ones standing where they were. A paired
+entry is neither a loss nor an addition, and it answers to the larger of the budget and what the
+entry it replaces held, so a correction never buys words. A wider change is a withdrawal and a new
+entry however much of the wording it carries over: it pays the budget as a new entry and its removal
+still needs the amnesty row.
+
+**The share alone was not enough, and no share is.** ISS-1145's first round shipped the share by
+itself, and a review of the merged head found the hole from the other side: the share of a long
+entry that survives is buyable with background prose. A 120-word entry holding 61 words of
+background beside a 59-word claim scores 61/120 with that whole claim replaced by an unrelated one
+— the removal reads as a correction, the replacement inherits the 120-word ceiling, and the record
+is rewritten under a green gate. Raising the share moves the ratio and nothing else, because an
+entry padded to any ratio has the remainder free. An absolute span cannot be padded into.
+
+Both bounds are measured on this record rather than picked. The share: 14,270 sampled pairs of
+DIFFERENT entries peak at 0.250, while the corrections `.forge/changelog-amnesty.json` already
+declares run 0.469 to 0.996. The span: over every commit that has touched `CHANGELOG.md`, the widest
+change that is plainly still the same entry moved 9 words in and 16 out (`226ddf039`), and the
+narrowest that is plainly a different claim moved 52 in and 54 out (`021b26c2a`) — which clears the
+share at 0.578, so the adversarial shape is already in this repo's own record and the span is what
+refuses it. `CORRECTION_SPAN` is 16.
+
+**The allocation takes the most pairs, not the likeliest one.** Sorting candidates by similarity and
+taking each irrevocably lets two genuine corrections in one change refuse each other: where a removed
+entry's best match is also the only match another removed entry has, the greedy answer reports one
+entry lost and the other over budget while a pairing satisfying both exists. `bestMatching` grows the
+matching along augmenting paths, so a pair already held is given up to buy two, and similarity only
+breaks ties between pairings of the same size.
+
+### Prose a blank line orphaned is named, not dropped
+
+A blank line ends an entry, so a bullet's second paragraph belongs to no bullet: `parseRecord` drops
+it, the What's New feed never renders it, and neither the loss rule nor the budget can see it. That
+was tolerable while every entry was compared by byte identity, and it stopped being tolerable the
+moment corrections paired: a published 50-word bullet split after word 40 by a blank line leaves a
+40-word bullet that pairs with what it truncated, inherits its ceiling, and passes green — where the
+same edit before ISS-1145 raised `no-silent-loss`. Ten published words leave the record and the gate
+reports nothing, which is the silent substitution CLAUDE.md refuses, made by the gate that exists to
+catch it.
+
+So an entry the change ADDS that carries orphaned prose is refused under `structure`, before the
+pairing runs, and it is excluded from the pairing: the truncation is named as a truncation rather
+than forgiven as a trim. The refusal says how to join the prose back — an indented continuation with
+no blank line — or to give it a bullet of its own.
+
+**Only prose this change added.** The published record carries 1,718 such lines under 2-space
+indents, inherited from before anything bounded the file, and refusing those would turn every change
+red on bytes nobody in it wrote — the opposite of the rule's own promise that nothing already
+published turns it red. Prose already orphaned at the base revision is therefore grandfathered, so
+an entry may still be corrected with its paragraphs left as they are, which is what ISS-1112's
+citation sweep needs.
+
+**The exemption is an edge the pairing runs over, and the pairing stays one-to-one.** Three readings
+of "already published" were tried and two of them were holes, so the shape is worth stating in full:
+
+| Read as | Hole |
+|---|---|
+| a set of every orphaned text in the record | transferable — an unrelated published bullet whose paragraph holds the same words exempts a fresh truncation elsewhere, and a change can arrange that |
+| a test applied to the pairing once it is chosen | the matching maximises pairs and then similarity and knows nothing of paragraphs, so two corrections whose CROSS pairing scores higher are each handed the other's predecessor, both refused, and the valid pairing is unreachable once they are excluded |
+| any predecessor the rule admits, asked of the edges | pairwise feasibility is not a joint assignment: two added entries both borrow the one predecessor's paragraph, the matching pairs one, and the other is a brand-new unpaired entry whose prose is dropped in silence |
+
+What holds is the third question asked of the *assignment* rather than of edge existence.
+`correctionEdges` is split out of `pairEdits`, an edge from an orphan-carrying added entry survives
+only where that removed entry already carried exactly that prose, and the matching is run over what
+is left. An orphan-carrying entry the matching does not pair is refused — so one predecessor exempts
+one correction, which is the same one-to-one rule corrections already answer to. What is NOT covered: prose orphaned under a `###` heading with no
+bullet above it at all — the record holds none, and there is no entry to attach it to.
+
+**What the pairing does not claim.** A change inside the span can still reverse what an entry says —
+one word can — and no rule that counts words can tell that from a typo fix. The gate bounds how much
+of the published record one change may replace without declaring it; the meaning of a narrow edit is
+the diff review's, which sees it as two lines.
 
 Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against `origin/main`
 with the `HEAD~1` fallback, because a commit pushed straight to `main` has `origin/main == HEAD` and
@@ -534,9 +721,11 @@ why `lang-check` carries `fetch-depth: 0`.
 ### Removing an entry is legal, and it is declared
 
 `.forge/changelog-amnesty.json` holds one `{entry, reason}` per removal, the entry verbatim and the
-reason non-empty. That file is the ledger of every edit made to an already-published record: a
-correction is fine, a correction nobody can see is not. It is not a bulk baseline and there is no
-`--update-baseline` — a public record is edited one line at a time or not at all.
+reason non-empty. It is the ledger of every entry that LEFT the record — a removal is fine, a
+removal nobody can see is not. Its rows written before ISS-1145 are mostly corrections rather than
+removals, because a correction was the only shape the gate could not tell from one. It is not a bulk
+baseline and there is no `--update-baseline` — a public record is edited one line at a time or not
+at all, and `entry-budget` has no amnesty at all.
 
 ```bash
 node scripts/check-release-record.mjs      # 0 the record holds · 1 it was broken · 2 could not run

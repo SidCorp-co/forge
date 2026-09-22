@@ -12,6 +12,8 @@ export interface ReleaseRunState {
   runId: string;
   projectId: string;
   runStatus: string;
+  /** The version this release cut. `null` only on a release row nothing versioned. */
+  version: string | null;
   roster: ReleaseRoster;
   attempts: ReleaseAttemptRow[];
   /** Read at request time. `null` only when the project declares no probes. */
@@ -33,6 +35,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
       projectId: pipelineRuns.projectId,
       status: pipelineRuns.status,
       metadata: pipelineRuns.metadata,
+      releaseVersion: pipelineRuns.releaseVersion,
     })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
@@ -54,6 +57,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     runId,
     projectId: run.projectId,
     runStatus: run.status,
+    version: run.releaseVersion,
     roster,
     attempts,
     live,

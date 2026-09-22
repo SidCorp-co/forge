@@ -134,8 +134,9 @@ describe('ISS-164 pipelineHealth E2E', () => {
     if (args.skill) metaObj.skill = args.skill;
     const runId = await getOrCreateRun(projectId, args.issueId ?? null);
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata)
-      VALUES (${id}, ${projectId}, ${runId}, ${status}, ${JSON.stringify(metaObj)}::jsonb)
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata)
+      VALUES (${id}, ${projectId}, ${runId}, 'pipeline', ${status},
+              ${JSON.stringify(metaObj)}::jsonb)
     `);
     return id;
   }

@@ -88,6 +88,10 @@ export interface IssueRow {
   creatorLabel: string;
   reopenCount: number;
   mergedAt: string | null;
+  /** ISS-959 — the commit, present only on a merge Forge observed. */
+  mergedCommitSha?: string | null;
+  /** ISS-1126 — which kind of record `mergedAt` is. Derived by core, never here. */
+  mergeMark?: "unmarked" | "asserted" | "observed";
   createdAt: string;
   updatedAt: string;
   agentSessions?: IssueAgentSession[];
@@ -106,6 +110,10 @@ export interface IssueRow {
 export interface ProjectMember {
   userId: string;
   email: string;
+  /** The name an admin or the member typed; null until somebody has. */
+  displayName: string | null;
+  /** ISS-1137 — an agent account is a project member like any other. */
+  kind: "human" | "agent";
   role: string;
   createdAt: string;
 }
@@ -323,10 +331,6 @@ export interface CommentNode {
   record: (ForgeRecordView & { lens: RecordLens }) | null;
   /** ISS-932 wave 4 — the BOX a credential was issued to. Answers *where*, never *who*. */
   authorDeviceId?: string | null;
-  /** ISS-969 — who was at the keyboard, from the credential. NULL is "no evidence", not 'human'.
-   *  The rendered marker is `author.isAgent`, which the server has already OR'd this into
-   *  (ISS-1093); this field is here so a reader can tell an un-evidenced row from a human one. */
-  authorAgency?: "human" | "agent" | null;
   body: string;
   /** `markdown` (the default and every pre-existing row) or `html` (ISS-898). */
   format: string;

@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../config/env.js', () => ({
+  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
+}));
+
 import {
   buildAppManifest,
   convertManifestCode,
+  inboundWebhookUrl,
   manifestPostUrl,
   signConnectState,
   verifyConnectState,
@@ -59,6 +65,23 @@ describe('buildAppManifest', () => {
     for (const u of [m.redirect_url, m.setup_url, (m.hook_attributes as { url: string }).url]) {
       expect(u).toMatch(/^https:\/\/api\.forge\.example\//);
     }
+  });
+
+  // ISS-1140 criterion 14. The probe asks GitHub where it is calling and compares the answer to
+  // this URL, so a second spelling of it here would report a binding broken against itself.
+  it('builds `hook_attributes.url` from the same function the health probe compares against', () => {
+    expect((split().hook_attributes as { url: string }).url).toBe(
+      inboundWebhookUrl('https://api.forge.example/', 'demo'),
+    );
+  });
+
+  it('strips a trailing slash from the api origin exactly once, wherever it is called from', () => {
+    expect(inboundWebhookUrl('https://api.forge.example///', 'demo')).toBe(
+      'https://api.forge.example/api/webhooks/in/demo',
+    );
+    expect(inboundWebhookUrl('https://api.forge.example', 'demo')).toBe(
+      'https://api.forge.example/api/webhooks/in/demo',
+    );
   });
 
   it('requests `checks: write`, which is what publishing a check run needs', () => {

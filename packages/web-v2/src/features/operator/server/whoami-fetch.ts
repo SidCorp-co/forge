@@ -2,17 +2,10 @@
    route middleware can reuse the exact same mapping: middleware runs in the
    edge runtime, where importing next/headers is a build error. */
 
+import { resolveServerApiBase } from "@/lib/utils/server-api-base";
 import type { OperatorWhoamiResult } from "../types";
 
 export const AUTH_COOKIE_NAME = "forge_auth";
-
-function resolveApiBase(): string {
-  const base =
-    process.env.NEXT_PUBLIC_API_URL ||
-    (process.env.E2E_CORE_PROXY_URL ? `${process.env.E2E_CORE_PROXY_URL}/api` : null) ||
-    "http://localhost:8080/api";
-  return base.replace(/\/+$/, "");
-}
 
 export async function fetchOperatorWhoami(
   token: string | undefined,
@@ -20,7 +13,7 @@ export async function fetchOperatorWhoami(
   if (!token) return { kind: "unauthenticated" };
 
   try {
-    const res = await fetch(`${resolveApiBase()}/admin/whoami`, {
+    const res = await fetch(`${resolveServerApiBase()}/admin/whoami`, {
       headers: { Cookie: `${AUTH_COOKIE_NAME}=${token}` },
       cache: "no-store",
     });

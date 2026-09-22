@@ -1,4 +1,6 @@
 import type { HealthKey } from "@/design";
+
+export type RunnerBuildState = "current" | "behind" | "unknown";
 export type { ProjectGitAccessView, SshConnTestResult } from "@forge/contracts";
 
 /** A row of `GET /api/me/devices` (owner-scoped). */
@@ -7,9 +9,23 @@ export interface DeviceRow {
 	name: string;
 	platform: "macos" | "linux" | "windows";
 	agentVersion: string | null;
+	/** The commit this device's last heartbeat said it was built from (ISS-1165). */
+	agentCommit: string | null;
 	/** Latest published runner version (server-read VERSION), null if none. */
 	latestAgentVersion: string | null;
-	/** True when this device's agentVersion lags `latestAgentVersion` (ISS-392). */
+	/** The commit that published release was built from, null if it recorded none. */
+	latestAgentCommit: string | null;
+	/** The newest commit under `packages/runner` on the default branch, null if unread. */
+	mainRunnerHead: string | null;
+	/**
+	 * This box against the published release, and the published release against the
+	 * runner on the default branch. `unknown` is not `current` (ISS-1165).
+	 */
+	agentBuildState: RunnerBuildState;
+	runnerReleaseState: RunnerBuildState;
+	/** One sentence naming what was compared and what it found. */
+	agentBuildDetail: string;
+	/** True when either comparison answered `behind`. */
 	agentOutdated: boolean;
 	status: "online" | "offline" | "revoked";
 	disabledAt: string | null;
@@ -56,12 +72,29 @@ export type ProvisionStatus =
 	| "failed";
 
 /** One row of `GET /api/projects/:id/runners` (project-centric, member-scoped). */
+/**
+ * The resident master session core holds for one (device, project), or `null`.
+ *
+ * A registration and not a pane, so `lastHeartbeatAt` is the only thing that
+ * separates a master working now from a box that went quiet (ISS-1118).
+ */
+export interface ResidentMaster {
+	sessionId: string;
+	/** The terminal session name, so a reader can match it on the box. */
+	name: string;
+	lastHeartbeatAt: string | null;
+}
+
 export interface ProjectRunner {
 	runnerId: string;
 	deviceId: string | null;
 	deviceName: string | null;
 	platform: "macos" | "linux" | "windows" | null;
 	deviceStatus: "online" | "offline" | "revoked" | null;
+	/** The version this runner's device last reported, or null where it has
+	 *  reported none. Read from the joined device — a runner is one binding of
+	 *  the agent binary that device runs (ISS-1119). */
+	agentVersion: string | null;
 	deviceDisabledAt: string | null;
 	runnerStatus: string;
 	lastError: string | null;
@@ -73,12 +106,59 @@ export interface ProjectRunner {
 	limitDetail: string | null;
 	repoPath: string | null;
 	branch: string | null;
-	/** Pool tags; a production binding's `releaseRunnerLabel` must match one exactly. */
+	/** Pool tags; a production binding's `releaseRunnerLabel` names one to prefer. */
 	labels: string[];
 	lastSeenAt: string | null;
 	provisionStatus: ProvisionStatus | null;
 	provisionDetail: string | null;
 	provisionedAt: string | null;
+	/** `undefined` on a core that does not serve the field; `null` is "none". */
+	residentMaster?: ResidentMaster | null;
+}
+
+/** What every surface says for a version nobody reported. Blank would read as a
+ *  device with nothing to say, and the newest published version would be a guess
+ *  presented as a fact. */
+export const VERSION_NOT_REPORTED = "version not reported";
+
+/** The version chip on a project runner row, labelled as the runner's so it is
+ *  never taken for Forge's own. */
+export function runnerVersionLabel(agentVersion: string | null | undefined): string {
+	const reported = agentVersion?.trim();
+	return reported ? `Runner v${reported}` : VERSION_NOT_REPORTED;
+}
+
+/** The version line under a device's name in the fleet list. */
+export function deviceVersionLabel(agentVersion: string | null | undefined): string {
+	const reported = agentVersion?.trim();
+	return reported ? `v${reported}` : VERSION_NOT_REPORTED;
+}
+
+/** The chip beside a device's version, or null where there is nothing to say. */
+export interface DeviceBuildChip {
+	label: string;
+	title: string;
+	tone: "warning" | "muted";
+}
+
+/**
+ * A box that could not be compared gets a chip of its own rather than none: the
+ * health endpoint refuses such a box, and a row that says nothing about it reads
+ * as a box with nothing wrong (ISS-1165).
+ */
+export function deviceBuildChip(device: {
+	agentOutdated: boolean;
+	agentBuildState: RunnerBuildState;
+	agentBuildDetail: string;
+}): DeviceBuildChip | null {
+	const title = device.agentBuildDetail || "";
+	if (device.agentOutdated) {
+		return { label: "update pending", title: title || "Update pending", tone: "warning" };
+	}
+	if (device.agentBuildState === "unknown") {
+		return { label: "build unknown", title: title || "This build could not be compared", tone: "muted" };
+	}
+	return null;
 }
 
 /** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */
