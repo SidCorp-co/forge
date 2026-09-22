@@ -317,10 +317,7 @@ export function refuseUnknownMcpServerNames(raw: unknown, ctx: z.RefinementCtx):
 
 export const PIPELINE_CONFIG_KEYS = Object.keys(pipelineConfigObject.shape).sort();
 
-/**
- * Keys this config once declared, each with its refusal — `RETIRED_AGENT_CONFIG_KEYS`'s shape and
- * its reason: dropped from the shape alone, one answers `is not a key`, which reads as a typo.
- */
+/** Keys once declared, each with its refusal — dropped from the shape alone, one reads as a typo. */
 export const RETIRED_PIPELINE_CONFIG_KEYS: Record<string, string> = {
   deployOnLanding:
     'pipelineConfig.deployOnLanding no longer exists. It armed a `transition` subscriber that dispatched a Coolify deployment the moment an issue reached `developed`, and ISS-1186 removed that subscriber outright rather than defaulting it off: a deploy is never a side effect of code, it is a tool call an agent makes, and `developed` is before any verdict exists in any case. Nothing replaces it here — reach a landed change on a local preview, and release through the deploy tool at the release rung. Remove deployOnLanding and resend.',
@@ -343,8 +340,7 @@ export const pipelineConfigPatchSchema = z
     }
     for (const key of Object.keys(raw as Record<string, unknown>)) {
       if (PIPELINE_CONFIG_KEYS.includes(key)) continue;
-      // `Object.hasOwn`, never a bare lookup: a patch naming `toString` would otherwise be
-      // refused with a function body where its message should be.
+      // `hasOwn`, never a bare lookup: `toString` would come back refused with a function body.
       const retired = Object.hasOwn(RETIRED_PIPELINE_CONFIG_KEYS, key)
         ? RETIRED_PIPELINE_CONFIG_KEYS[key]
         : undefined;
