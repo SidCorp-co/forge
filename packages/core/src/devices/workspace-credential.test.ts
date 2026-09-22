@@ -5,7 +5,15 @@ vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 const mintPat = vi.fn(async (_input: unknown, _tx?: unknown) => ({
   plaintext: 'forge_pat_dev_minted',
 }));
-vi.mock('../auth/pat.js', () => ({ mintPat: (i: unknown, tx?: unknown) => mintPat(i, tx) }));
+// `lockPatName` is the real one: what this file asserts about the lock is the
+// statement it puts on the handle, which a stub would have to restate.
+vi.mock('../auth/pat.js', async () => {
+  const actual = await vi.importActual<typeof import('../auth/pat.js')>('../auth/pat.js');
+  return {
+    lockPatName: actual.lockPatName,
+    mintPat: (i: unknown, tx?: unknown) => mintPat(i, tx),
+  };
+});
 
 const execute = vi.fn(async () => undefined);
 const updateWhere = vi.fn(async () => undefined);
