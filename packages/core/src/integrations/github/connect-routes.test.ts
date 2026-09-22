@@ -101,9 +101,12 @@ vi.mock('../route-helpers.js', () => ({
 const store = vi.hoisted(() => ({
   createBinding: vi.fn(async () => ({ id: 'binding-new' })),
   createConnection: vi.fn(async () => ({ id: CONNECTION_ID })),
-  decryptConnectionSecrets: vi.fn(() => ({ appId: '42', privateKey: 'pk' })),
+  decryptConnectionSecrets: vi.fn((): { appId?: string; privateKey?: string } => ({
+    appId: '42',
+    privateKey: 'pk',
+  })),
   listActiveBindingsForProjectProvider: vi.fn(async () => [] as unknown[]),
-  listBindingsForProject: vi.fn(async () => [] as unknown[]),
+  listBindingsForProject: vi.fn(async (_projectId: string) => [] as unknown[]),
   listConnectionsForPrincipalUser: vi.fn(async () => [] as unknown[]),
   updateBinding: vi.fn(async () => ({})),
 }));
@@ -111,7 +114,13 @@ vi.mock('../store.js', () => store);
 
 vi.mock('./repositories.js', () => ({
   listInstallationRepositories: vi.fn(async () => [
-    { installationId: 159473037, account: 'SidCorp-co', owner: 'SidCorp-co', repo: 'forge', fullName: 'SidCorp-co/forge' },
+    {
+      installationId: 159473037,
+      account: 'SidCorp-co',
+      owner: 'SidCorp-co',
+      repo: 'forge',
+      fullName: 'SidCorp-co/forge',
+    },
   ]),
 }));
 
@@ -173,6 +182,10 @@ function bindings(...rows: ReturnType<typeof bindingOnProject>[]) {
   );
 }
 
+/** Every refusal on these routes answers in this shape. */
+type Body = { code: string; message: string; details?: unknown; state?: string };
+const bodyOf = async (res: Response) => (await res.json()) as Body;
+
 const repositories = (connectionId = CONNECTION_ID, projectId = PROJECT_ID) =>
   app().request(
     `/api/projects/${projectId}/integrations/github/repositories?connectionId=${connectionId}`,
@@ -218,14 +231,14 @@ describe('GET /:projectId/integrations/github/repositories — who may reach the
     expect((await repositories()).status).toBe(200);
   });
 
-  it('refuses a connection that is neither bound to this project nor the caller\'s', async () => {
+  it("refuses a connection that is neither bound to this project nor the caller's", async () => {
     bindings();
     store.listConnectionsForPrincipalUser.mockResolvedValue([]);
 
     const res = await repositories();
 
     expect(res.status).toBe(404);
-    expect((await res.json()).code).toBe('NOT_FOUND');
+    expect((await bodyOf(res)).code).toBe('NOT_FOUND');
   });
 
   it('does not lend a connection bound to some other project', async () => {
@@ -243,12 +256,10 @@ describe('GET /:projectId/integrations/github/repositories — who may reach the
   });
 
   it('refuses a request with no connectionId by naming the field', async () => {
-    const res = await app().request(
-      `/api/projects/${PROJECT_ID}/integrations/github/repositories`,
-    );
+    const res = await app().request(`/api/projects/${PROJECT_ID}/integrations/github/repositories`);
 
     expect(res.status).toBe(400);
-    expect((await res.json()).details).toEqual({ connectionId: 'required' });
+    expect((await bodyOf(res)).details).toEqual({ connectionId: 'required' });
   });
 
   it('refuses a bound App that was never converted, rather than calling GitHub with no key', async () => {
@@ -258,7 +269,9 @@ describe('GET /:projectId/integrations/github/repositories — who may reach the
     const res = await repositories();
 
     expect(res.status).toBe(400);
-    expect((await res.json()).details).toEqual({ connectionId: 'the App was never converted' });
+    expect((await bodyOf(res)).details).toEqual({
+      connectionId: 'the App was never converted',
+    });
   });
 });
 
@@ -268,8 +281,8 @@ describe('POST /:projectId/integrations/github/connect — who the App will belo
       method: 'POST',
     });
 
-  function ownerOfSignedState(body: { state: string }) {
-    const [payload] = body.state.split('.');
+  function ownerOfSignedState(body: Body) {
+    const payload = (body.state ?? '').split('.')[0] ?? '';
     return JSON.parse(Buffer.from(payload, 'base64url').toString()) as {
       projectId: string;
       userId: string;
@@ -281,14 +294,14 @@ describe('POST /:projectId/integrations/github/connect — who the App will belo
     const res = await connect();
 
     expect(res.status).toBe(200);
-    expect(ownerOfSignedState(await res.json()).orgId).toBe(ORG_ID);
+    expect(ownerOfSignedState(await bodyOf(res)).orgId).toBe(ORG_ID);
   });
 
   it('refuses a project admin who is not an org admin, naming the org and the way round', async () => {
     authz.loadOrgRole.mockResolvedValue('member');
 
     const res = await connect();
-    const body = await res.json();
+    const body = await bodyOf(res);
 
     expect(res.status).toBe(403);
     // Its own code keeps the sentence: the web prints one generic line for
@@ -306,7 +319,7 @@ describe('POST /:projectId/integrations/github/connect — who the App will belo
     const res = await connect();
 
     expect(res.status).toBe(200);
-    expect(ownerOfSignedState(await res.json()).orgId).toBeUndefined();
+    expect(ownerOfSignedState(await bodyOf(res)).orgId).toBeUndefined();
   });
 
   it('does not ask a solo operator for org admin they could not have', async () => {
@@ -316,27 +329,27 @@ describe('POST /:projectId/integrations/github/connect — who the App will belo
     expect((await connect()).status).toBe(200);
   });
 
-  it("refuses an orgId naming a personal org, which owns nothing shared", async () => {
+  it('refuses an orgId naming a personal org, which owns nothing shared', async () => {
     projectRow.value = { slug: 'solo', name: 'Solo', orgId: ORG_ID, orgIsPersonal: true };
 
     const res = await connect(`?orgId=${ORG_ID}`);
 
     expect(res.status).toBe(409);
-    expect((await res.json()).message).toContain('no shared org');
+    expect((await bodyOf(res)).message).toContain('no shared org');
   });
 
   it("refuses an orgId query that is not the project's own org", async () => {
     const res = await connect(`?orgId=${OTHER_ORG_ID}`);
 
     expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe('ORG_MISMATCH');
+    expect((await bodyOf(res)).code).toBe('ORG_MISMATCH');
   });
 
   it('accepts an orgId query that agrees with the project', async () => {
     const res = await connect(`?orgId=${ORG_ID}`);
 
     expect(res.status).toBe(200);
-    expect(ownerOfSignedState(await res.json()).orgId).toBe(ORG_ID);
+    expect(ownerOfSignedState(await bodyOf(res)).orgId).toBe(ORG_ID);
   });
 
   it('answers 404 for a project that does not exist', async () => {

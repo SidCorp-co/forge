@@ -1,16 +1,11 @@
 /**
- * Which GitHub Apps a caller could be completing an installation for.
+ * Which GitHub Apps a caller could be completing an installation for: the same
+ * pair of grants the repository picker reads, for the same reason (ISS-1115).
+ * The rows minted before this are owned by an individual, and the admin
+ * finishing an install is not necessarily them.
  *
- * The same pair of grants the repository picker reads, and for the same
- * reason (ISS-1115): an App created for a project is a project asset, and
- * asking only the caller's personal principal answers every admin but the one
- * who pressed Connect with nothing at all. A project's App now belongs to the
- * project's org, but the rows minted before that are owned by an individual,
- * and the admin finishing the install is not necessarily them.
- *
- * Reading them is not authorizing them: the caller is still asserted admin of
- * the project the resolved binding belongs to, and the App still has to answer
- * to its own JWT for the installation.
+ * Reading them is not authorizing them — the caller is still asserted admin of
+ * the resolved binding's project, and the App still answers to its own JWT.
  */
 
 import { and, eq, inArray, or } from 'drizzle-orm';
@@ -57,10 +52,7 @@ async function githubConnectionsOnAdministeredProjects(
     .select()
     .from(integrationConnections)
     .where(
-      and(
-        inArray(integrationConnections.id, ids),
-        eq(integrationConnections.provider, 'github'),
-      ),
+      and(inArray(integrationConnections.id, ids), eq(integrationConnections.provider, 'github')),
     );
 }
 

@@ -87,14 +87,9 @@ function assertApiOriginReachable(c: Context, api: string): void {
  * Which principal the App this flow is about to create will belong to.
  *
  * The App is named after the project, bound to it and used by its runners, so
- * an org project's App belongs to that org. Keyed instead to the individual
- * who pressed Connect it is resolvable by nobody else, and every other admin
- * of the same project — the org's own owner included — is answered
- * `connection not found` (ISS-1115). A project whose only org is a personal
- * one has no second principal to name and stays the operator's.
- *
- * The refusal is taken HERE rather than in the callback because by callback
- * time a real App exists on github.com: refusing then would strand it.
+ * an org project's App belongs to that org rather than to whoever pressed
+ * Connect (ISS-1115). The refusal is taken HERE and not in the callback,
+ * where a real App already exists on github.com and refusing would strand it.
  */
 async function ownerOrgForProjectApp(args: {
   projectOrgId: string | null;
@@ -112,10 +107,8 @@ async function ownerOrgForProjectApp(args: {
   if (!args.projectOrgId) return undefined;
   const orgRole = await loadOrgRole(args.projectOrgId, args.userId);
   if (!orgRoleAtLeast(orgRole, 'admin')) {
-    // Its own code rather than a bare FORBIDDEN: the web maps FORBIDDEN to one
-    // generic sentence and drops the server's, and a refusal that cannot say
-    // org admin, which org, or that binding an existing App is the way round
-    // sends the operator back round the loop this issue exists to end.
+    // Its own code, not a bare FORBIDDEN: the web prints one generic sentence
+    // for that and drops the server's, which carries the way round.
     throw new HTTPException(403, {
       message:
         `this project belongs to org ${args.projectOrgId}, so a GitHub App created here is ` +
@@ -150,10 +143,9 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   const url = new URL(c.req.url);
   const org = url.searchParams.get('org');
   const orgId = await ownerOrgForProjectApp({
-    // Every project has an org row, and a solo operator's is their PERSONAL
-    // one. That is not a second principal: the connections directory scopes a
-    // personal org to `ownerType:'user'`, so an App owned by it would be
-    // invisible to the only person who has one. Personal org ⇒ no shared owner.
+    // A solo operator's org row is their PERSONAL one, and the connections
+    // directory scopes such an org to `ownerType:'user'` — an App owned by it
+    // would be invisible to its only admin. So: no shared owner.
     projectOrgId: project.orgIsPersonal ? null : project.orgId,
     asked: url.searchParams.get('orgId'),
     userId,
@@ -179,24 +171,18 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
 });
 
 /**
- * The App whose repositories this project's picker may list.
+ * The App whose repositories this project's picker may list. Two grants, read
+ * after the route has proved the caller an admin of the project, and neither a
+ * fallback for the other — a connection under neither is refused.
  *
- * Two grants, and the route has already proved the caller is an admin of the
- * project before either is read:
- *
- *  - the project's own binding points at it. Ownership of the connection is
- *    not asked, because binding it here was itself an act of somebody who
- *    could manage it plus an admin of this project, and listing the App's
- *    repositories is exactly what the binding is for. Asking the caller's
- *    personal principal INSTEAD is what answered every admin but the one who
- *    pressed Connect with `connection not found` (ISS-1115 criterion 7). The
- *    binding is read whether or not it is switched off: a repick starts from
- *    a disconnected row.
- *  - the caller can see it as a principal. This is the create path, which
- *    lists an App's repositories BEFORE any binding to this project exists.
- *
- * Neither is a fallback for the other: they are two different grants, and a
- * connection under neither is refused rather than reached by a third route.
+ *  - the project's own binding points at it, whatever principal owns it, and
+ *    switched off or not, since a repick starts from a disconnected row.
+ *    Binding it here already took somebody who could manage the connection
+ *    plus an admin of this project, and listing the App's repositories is what
+ *    the binding is for. Asking the caller's own principal INSTEAD is what
+ *    answered every admin but one with `connection not found`.
+ *  - the caller sees it as a principal: the create path, which lists before
+ *    any binding to this project exists.
  */
 async function githubConnectionForPicker(args: {
   projectId: string;

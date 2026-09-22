@@ -135,6 +135,10 @@ async function appOwnedBy(userId: string, boundTo: string | null = projectId) {
   return connection;
 }
 
+/** Every refusal on these routes answers in this shape. */
+type Body = { code: string; message: string; details?: unknown; state?: string };
+const bodyOf = async (res: Response) => (await res.json()) as Body;
+
 async function repositoriesAs(userId: string, connectionId: string, project = projectId) {
   return app.request(
     `/api/projects/${project}/integrations/github/repositories?connectionId=${connectionId}`,
@@ -147,7 +151,7 @@ describe("the repository picker's reach", () => {
     const connection = await appOwnedBy(clicker.id);
 
     const res = await repositoriesAs(orgOwner.id, connection.id);
-    const body = (await res.json()) as { code: string; details?: unknown };
+    const body = await bodyOf(res);
 
     expect(body.code).not.toBe('NOT_FOUND');
     expect(res.status).toBe(400);
@@ -176,7 +180,7 @@ describe("the repository picker's reach", () => {
     const res = await repositoriesAs(orgOwner.id, connection.id, projectId);
 
     expect(res.status).toBe(404);
-    expect((await res.json()).message).toBe('connection not found');
+    expect((await bodyOf(res)).message).toBe('connection not found');
   });
 
   it('refuses an App id that does not exist', async () => {
@@ -206,8 +210,8 @@ describe('who the App a Connect creates will belong to', () => {
       headers: { authorization: `Bearer ${await mods.signUserToken(userId)}` },
     });
 
-  function ownerInState(state: string) {
-    const [payload] = state.split('.');
+  function ownerInState(state: string | undefined) {
+    const payload = (state ?? '').split('.')[0] ?? '';
     return JSON.parse(Buffer.from(payload, 'base64url').toString()) as { orgId?: string };
   }
 
@@ -215,12 +219,12 @@ describe('who the App a Connect creates will belong to', () => {
     const res = await connect(orgOwner.id);
 
     expect(res.status).toBe(200);
-    expect(ownerInState(((await res.json()) as { state: string }).state).orgId).toBe(orgId);
+    expect(ownerInState((await bodyOf(res)).state).orgId).toBe(orgId);
   });
 
   it('refuses a project admin who is not an org admin, rather than minting a personal App', async () => {
     const res = await connect(clicker.id);
-    const body = (await res.json()) as { code: string; message: string };
+    const body = await bodyOf(res);
 
     expect(res.status).toBe(403);
     expect(body.code).toBe('ORG_ADMIN_REQUIRED');
@@ -233,13 +237,13 @@ describe('who the App a Connect creates will belong to', () => {
     const personal = await seedOrg(harness.db, solo.id, { isPersonal: true });
     const soloProject = await createTestProject(harness.db, solo.id, { orgId: personal.id });
 
-    const res = await app.request(
-      `/api/projects/${soloProject.id}/integrations/github/connect`,
-      { method: 'POST', headers: { authorization: `Bearer ${await mods.signUserToken(solo.id)}` } },
-    );
+    const res = await app.request(`/api/projects/${soloProject.id}/integrations/github/connect`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await mods.signUserToken(solo.id)}` },
+    });
 
     expect(res.status).toBe(200);
-    expect(ownerInState(((await res.json()) as { state: string }).state).orgId).toBeUndefined();
+    expect(ownerInState((await bodyOf(res)).state).orgId).toBeUndefined();
   });
 
   it("refuses an orgId that is not the project's own", async () => {
@@ -248,7 +252,7 @@ describe('who the App a Connect creates will belong to', () => {
     const res = await connect(orgOwner.id, `?orgId=${elsewhere.id}`);
 
     expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe('ORG_MISMATCH');
+    expect((await bodyOf(res)).code).toBe('ORG_MISMATCH');
   });
 });
 
@@ -262,13 +266,13 @@ describe('the Apps an install-completion may probe', () => {
   const idsOf = async (userId: string) =>
     (await mods.listGithubAppsReachableBy(userId)).map((c) => c.id).sort();
 
-  it("includes an App another admin minted on a project the caller administers", async () => {
+  it('includes an App another admin minted on a project the caller administers', async () => {
     const connection = await appOwnedBy(clicker.id);
 
     expect(await idsOf(orgOwner.id)).toEqual([connection.id]);
   });
 
-  it('includes the caller\'s own App that no binding points at', async () => {
+  it("includes the caller's own App that no binding points at", async () => {
     const connection = await appOwnedBy(orgOwner.id, null);
 
     expect(await idsOf(orgOwner.id)).toEqual([connection.id]);
