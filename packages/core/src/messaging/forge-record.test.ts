@@ -92,9 +92,13 @@ describe('the fence a body means as a record', () => {
   });
 
   it('reads a fence at the left margin that the body opens with blank lines before', () => {
-    const body = ['', '', `${FENCE}forge-record: verdict · contract 1`, 'criterion: 13', FENCE].join(
-      '\n',
-    );
+    const body = [
+      '',
+      '',
+      `${FENCE}forge-record: verdict · contract 1`,
+      'criterion: 13',
+      FENCE,
+    ].join('\n');
     expect(parseForgeRecord(body)?.kind).toBe('verdict');
   });
 
