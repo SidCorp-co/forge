@@ -31,6 +31,7 @@ import {
   type IssueRunInvariantResult,
 } from './issue-run-invariant.js';
 import { type ReevaluateResult, reevaluateConditions } from './reevaluate-conditions.js';
+import { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import {
@@ -111,6 +112,8 @@ export interface SweepResult {
   rejectionStreaks: Inv7AlarmResult;
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
+  /** ISS-1117 — an earned `awaiting_release` issue on a no-human-owed project is cut on its own. */
+  releaseSweep: AutomaticReleaseSweepResult;
   /** ISS-1050 — issues asserting work in progress with no live run behind them (report only). */
   orphanedRunAssertions: IssueRunInvariantResult;
   /** ISS-1122 — non-terminal issues with nothing working them, named on the row itself. */
@@ -177,6 +180,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const staleReleaseBatchClaims = await runPass('reapStaleReleaseBatchClaims', () =>
     reapStaleReleaseBatchClaims(),
   );
+  const releaseSweep = await runPass('releaseSweep', () => sweepAutomaticReleases(now));
   const orphanedRunAssertions = await runPass('detectOrphanedRunAssertions', () =>
     detectOrphanedRunAssertions(now),
   );
@@ -221,6 +225,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     pausedRunsWithQueuedWork: pausedRunsWithQueuedWork as Inv7AlarmResult,
     rejectionStreaks: rejectionStreaks as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
+    releaseSweep: releaseSweep as AutomaticReleaseSweepResult,
     orphanedRunAssertions: orphanedRunAssertions as IssueRunInvariantResult,
     idleIssues: idleIssues as IdleIssuesResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,

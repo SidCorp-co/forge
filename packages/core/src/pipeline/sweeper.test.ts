@@ -66,6 +66,15 @@ vi.mock('./retry-rescue-alert.js', () => ({
 const alertsMock = vi.fn(async (_now?: Date) => ({ evaluated: 0, notified: 0, resolved: 0 }));
 vi.mock('../admin/alert-sweeper.js', () => ({ runAlertSweep: (now?: Date) => alertsMock(now) }));
 
+const sweepAutomaticReleasesMock = vi.fn(async (_now?: Date) => ({
+  projectsCut: 0,
+  issuesCut: 0,
+  issuesExcluded: 0,
+}));
+vi.mock('./release-sweep.js', () => ({
+  sweepAutomaticReleases: (now?: Date) => sweepAutomaticReleasesMock(now),
+}));
+
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
 const selectWhere = vi.fn(async () => [] as Array<{ status: string }>);
@@ -183,6 +192,7 @@ beforeEach(() => {
   applyStatusTransitionMock.mockResolvedValue(undefined);
   detectRetryRescueThresholdsMock.mockResolvedValue({ detected: 0, notified: 0 });
   runLoopMonitorMock.mockResolvedValue(zeroLoopResult);
+  sweepAutomaticReleasesMock.mockResolvedValue({ projectsCut: 0, issuesCut: 0, issuesExcluded: 0 });
 });
 
 describe('runPipelineSweep — retry rescue thresholds', () => {
@@ -667,6 +677,31 @@ describe('reapJoblessRuns wiring (ISS-654 — the job-less issue-run phantom)', 
   it('a throw leaves the later passes running and still fails the tick', async () => {
     reapJoblessRunsMock.mockRejectedValueOnce(new Error('boom'));
 
+    await expect(runPipelineSweep()).rejects.toThrow();
+    expect(alertsMock).toHaveBeenCalled();
+  });
+});
+
+describe('releaseSweep wiring (ISS-1117 — an issue at awaiting_release releases on its own)', () => {
+  it('runs after reapStaleReleaseBatchClaims and reports its count', async () => {
+    const order: string[] = [];
+    dbExecute.mockImplementation(async (...args: unknown[]) => {
+      if (sqlText(args[0]).includes('SET release_batch_run_id = NULL')) order.push('claims');
+      return [];
+    });
+    sweepAutomaticReleasesMock.mockImplementationOnce(async () => {
+      order.push('releaseSweep');
+      return { projectsCut: 2, issuesCut: 3, issuesExcluded: 1 };
+    });
+
+    const result = await runPipelineSweep();
+
+    expect(order).toEqual(['claims', 'releaseSweep']);
+    expect(result.releaseSweep).toEqual({ projectsCut: 2, issuesCut: 3, issuesExcluded: 1 });
+  });
+
+  it('a throw leaves the later passes running and still fails the tick', async () => {
+    sweepAutomaticReleasesMock.mockRejectedValueOnce(new Error('boom'));
     await expect(runPipelineSweep()).rejects.toThrow();
     expect(alertsMock).toHaveBeenCalled();
   });
