@@ -98,6 +98,7 @@ async function neighboursOf(
  * during a page's first search does not buy the rest of that page.
  */
 export async function* alikeSource(input: AlikeInput): BacklogSource<unknown> {
+  if (input.cancellation.cancelled) return { exhausted: false } satisfies SourceDone;
   const displayIdOf = await issueRefFormatter(input.projectId);
   let cursor: Cursor = null;
 

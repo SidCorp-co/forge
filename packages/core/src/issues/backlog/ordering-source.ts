@@ -89,6 +89,7 @@ async function readPage(input: OrderingInput, after: Cursor) {
  * caller that has gone stops costing database work rather than being served to the end.
  */
 export async function* orderingSource(input: OrderingInput): BacklogSource<unknown> {
+  if (input.cancellation.cancelled) return { exhausted: false } satisfies SourceDone;
   const displayIdOf = await issueRefFormatter(input.projectId);
   let cursor: Cursor = null;
 
@@ -96,6 +97,7 @@ export async function* orderingSource(input: OrderingInput): BacklogSource<unkno
     if (input.cancellation.cancelled) return { exhausted: false } satisfies SourceDone;
     const page = await readPage(input, cursor);
     if (page.length === 0) return { exhausted: true } satisfies SourceDone;
+    if (input.cancellation.cancelled) return { exhausted: false } satisfies SourceDone;
 
     const relations = await loadIssueRelationsForIssues(
       page.map((row) => row.id),

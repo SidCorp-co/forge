@@ -71,6 +71,7 @@ async function run(opts: {
 }
 
 const kinds = (s: { written: Written[] }) => s.written.map((w) => w.data.type);
+const itemsIn = (s: { written: Written[] }) => s.written.filter((w) => w.data.type === 'item');
 const terminal = (s: { written: Written[] }) => s.written[s.written.length - 1]?.data;
 
 describe('emitBacklogStream', () => {
@@ -233,6 +234,52 @@ describe('emitBacklogStream', () => {
     expect(cancellation.reason).toBe('shutdown');
     expect(terminal(stream)).toMatchObject({ type: 'error', code: 'SERVER_SHUTTING_DOWN' });
     expect(openBacklogStreamCount()).toBe(0);
+  });
+
+  it('starts the budget clock after meta is on the wire, not before it', async () => {
+    // A slow or backpressured meta write must not eat the answer's time: the contract starts the
+    // clock when the producer starts. Under a clock started at entry, budgetMs is already gone.
+    const stream = fakeStream();
+    const slow = stream.writeSSE;
+    stream.writeSSE = async (m: { event?: string; data: string }) => {
+      await slow(m);
+      if (JSON.parse(m.data).type === 'meta') await new Promise((r) => setTimeout(r, 60));
+    };
+
+    const s = await run({ items: 2, limit: 10, budgetMs: 30, stream });
+
+    expect(itemsIn(s)).toHaveLength(2);
+    expect(terminal(s)).toMatchObject({ type: 'end', complete: true });
+  });
+
+  it('does not probe past the bound once a stop has been observed', async () => {
+    let pulls = 0;
+    const cancellation = new Cancellation();
+    const source: BacklogSource<unknown> = (async function* () {
+      for (let i = 0; ; i++) {
+        pulls += 1;
+        if (cancellation.cancelled) return { exhausted: false };
+        yield { i };
+      }
+    })();
+
+    const stream = fakeStream();
+    const slow = stream.writeSSE;
+    stream.writeSSE = async (m: { event?: string; data: string }) => {
+      await slow(m);
+      if (JSON.parse(m.data).seq === 2) cancellation.cancel('budget');
+    };
+
+    await run({ items: 9, limit: 2, cancellation, source: () => source, stream });
+
+    // Two pulls produced the two items; a third would be the probe, which is itself work.
+    expect(pulls).toBe(2);
+    expect(terminal(stream)).toMatchObject({
+      type: 'end',
+      complete: false,
+      truncated: true,
+      truncatedBy: 'budget',
+    });
   });
 
   it('leaves the shutdown registry empty once it is done', async () => {

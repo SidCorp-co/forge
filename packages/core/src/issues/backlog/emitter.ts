@@ -80,6 +80,11 @@ async function drain<T>(
 ): Promise<{ emitted: number; done: SourceDone; hitItemBound: boolean }> {
   let emitted = 0;
   for (;;) {
+    // A stop observed at exactly the bound is that stop, not an item-bound truncation, and the
+    // probe is itself work — at a page boundary it would schedule a read for a caller that has gone.
+    if (opts.cancellation.cancelled) {
+      return { emitted, done: { exhausted: false }, hitItemBound: false };
+    }
     if (emitted >= opts.limit) {
       return { emitted, done: await pastTheBound(opts.source), hitItemBound: true };
     }
@@ -133,7 +138,7 @@ export async function emitBacklogStream<T>(
       await stream.close();
     },
   });
-  const stopBudget = startBudget(cancellation, opts.budgetMs);
+  let stopBudget: () => void = () => undefined;
 
   let emitted = 0;
   const ticker = setInterval(() => {
@@ -156,6 +161,7 @@ export async function emitBacklogStream<T>(
       bound: { items: opts.limit, budgetMs: opts.budgetMs },
       at: new Date(startedAt).toISOString(),
     });
+    stopBudget = startBudget(cancellation, opts.budgetMs);
     const run = await drain(opts, writer, () => {
       emitted += 1;
     });
