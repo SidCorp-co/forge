@@ -230,7 +230,7 @@ const abortBodySchema = z.object({ reason: z.string().trim().max(2000).optional(
 const releaseRecordBodySchema = z
   .object({
     issueIds: z.array(z.uuid()).min(1).max(50),
-    commit: z.string().trim().min(7).max(200),
+    commit: z.string().trim().min(1).max(200),
     account: z.string().trim().min(20).max(20_000),
     providerRef: z.string().trim().max(500).optional(),
   })

@@ -188,7 +188,7 @@ export interface VerifyArgs {
   cfg: VerifyConfig;
   /** What was serving before the release started. */
   commitBefore: string | null;
-  /** What the release says it pushed. */
+  /** The whole sha the release says it pushed, or `null` to ask only that the deploy arrived. */
   expected: string | null;
   /** Injected so the poll loop is testable without real time. */
   now?: () => number;
@@ -202,6 +202,7 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
   const deadline = now() + (cfg.timeoutSeconds ?? 300) * 1000;
   const needed = cfg.stableReads ?? 2;
 
+  const claim = expected == null ? null : claimedCommit(expected);
   let stable = 0;
   let last: string | null = null;
   let state: LiveState = {
@@ -215,9 +216,12 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
 
   while (now() < deadline) {
     state = await readLiveState(cfg);
+    if (expected != null && claim === null) {
+      return { ...failureFor(state, commitBefore, null, expected), readings: state.readings };
+    }
     const live = state.identity;
     const acceptable =
-      live != null && live !== commitBefore && (expected == null || live === expected);
+      live != null && live !== commitBefore && (claim === null || deploymentConfirms(claim, live));
     stable = acceptable && live === last ? stable + 1 : acceptable ? 1 : 0;
     last = live;
     if (stable >= needed && live != null) {
@@ -227,14 +231,18 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
     await sleep(5000);
   }
 
-  return { ...failureFor(state, commitBefore, expected), readings: state.readings };
+  return { ...failureFor(state, commitBefore, claim), readings: state.readings };
 }
 
-/** Why the window closed red, health first and identity second. */
+/**
+ * Why the window closed red: health, then identity, then the claim — which is
+ * only judgeable once there is a reading to judge it against.
+ */
 function failureFor(
   state: LiveState,
   commitBefore: string | null,
-  expected: string | null,
+  claim: string | null,
+  unusableClaim: string | null = null,
 ): Omit<Extract<VerifyOutcome, { ok: false }>, 'readings'> {
   const base = { ok: false as const, live: state.identity, identity: state.identity };
   if (state.health === 'down') {
@@ -265,45 +273,69 @@ function failureFor(
       reason: `the live build is unchanged (${state.identity}) — the site is healthy and still serving the pre-release commit`,
     };
   }
-  if (expected != null && state.identity !== expected) {
+  if (unusableClaim !== null) {
+    return { ...base, health: 'up', reason: notAWholeCommit(unusableClaim, state.identity) };
+  }
+  if (claim != null && !deploymentConfirms(claim, state.identity)) {
     return {
       ...base,
       health: 'up',
-      reason: `live is ${state.identity}, the release pushed ${expected}`,
+      reason: `live is ${state.identity}, the release pushed ${claim}`,
     };
   }
   return { ...base, health: 'up', reason: 'the live commit never held still' };
 }
 
-/** What a commit identity may look like: a git object name, whole or abbreviated. */
-const COMMIT_SHAPE = /^[0-9a-f]{7,40}$/;
+/** A whole git object name. The only shape a claim under test may take. */
+const WHOLE_COMMIT = /^[0-9a-f]{40}$/;
+
+/** What a deployment may report: a whole object name, or git's own abbreviation of one. */
+const REPORTED_COMMIT = /^[0-9a-f]{7,40}$/;
 
 /**
- * One commit identity, or `null` where the value is not one. Seven is git's own
- * floor on an abbreviation and the floor here, so no four-character value can
- * agree with a fleet by accident.
+ * The commit a caller claims, or `null` where it is not a whole object name. An
+ * abbreviation is refused rather than compared: it is confirmed by every commit
+ * it prefixes, so the caller would be choosing how much has to match (ISS-1161).
  */
-function normalizeCommit(raw: string): string | null {
+export function claimedCommit(raw: string): string | null {
   const text = raw.trim().toLowerCase();
-  return COMMIT_SHAPE.test(text) ? text : null;
+  return WHOLE_COMMIT.test(text) ? text : null;
 }
 
 /**
- * Whether two commit identities name the same commit: one is a prefix of the
- * other, because production reports an abbreviation and a caller holds the
- * whole sha. A value that is not a commit agrees with nothing, so `HEAD`, a tag
- * and an empty string are refused rather than compared.
+ * The commit a deployment reports, whole or abbreviated, or `null` where it is
+ * neither. Seven is git's own floor on an abbreviation and the floor here.
  */
-export function commitsAgree(a: string, b: string): boolean {
-  const left = normalizeCommit(a);
-  const right = normalizeCommit(b);
-  if (left === null || right === null) return false;
-  return left.startsWith(right) || right.startsWith(left);
+export function reportedCommit(raw: string): string | null {
+  const text = raw.trim().toLowerCase();
+  return REPORTED_COMMIT.test(text) ? text : null;
+}
+
+/**
+ * Whether what the deployment reports confirms the commit a caller claimed.
+ * One direction only: the reading may abbreviate the claim, never the reverse.
+ */
+export function deploymentConfirms(claimed: string, reported: string): boolean {
+  const claim = claimedCommit(claimed);
+  const reading = reportedCommit(reported);
+  if (claim === null || reading === null) return false;
+  return claim.startsWith(reading);
+}
+
+/** The one sentence a claim that is not a whole object name is refused with. */
+function notAWholeCommit(raw: string, identity: string | null): string {
+  const reported = identity === null ? '' : ` The deployment reports \`${identity}\`.`;
+  return (
+    `\`${raw.trim()}\` is not a whole commit — a release names all 40 hexadecimal characters ` +
+    `of the sha, because a shorter value is confirmed by every commit it is a prefix of and so ` +
+    `says how much of an identity the caller wanted checked rather than which commit is ` +
+    `serving.${reported}`
+  );
 }
 
 export interface ServingNowArgs {
   cfg: VerifyConfig;
-  /** The commit the caller says production is serving. */
+  /** The whole sha the caller says production is serving. */
   expected: string;
 }
 
@@ -337,19 +369,12 @@ export type ServingNowOutcome =
  */
 export async function verifyServingNow(args: ServingNowArgs): Promise<ServingNowOutcome> {
   const state = await readLiveState(args.cfg);
-  const claimed = normalizeCommit(args.expected);
+  const claimed = claimedCommit(args.expected);
   if (claimed === null) {
-    return {
-      ok: false,
-      reason: `\`${args.expected}\` is not a commit — a release record names the commit production is serving, as 7 to 40 hexadecimal characters`,
-      live: state.identity,
-      health: state.health,
-      identity: state.identity,
-      readings: state.readings,
-    };
+    return { ...failureFor(state, null, null, args.expected), readings: state.readings };
   }
   if (state.health === 'up' && state.identity !== null) {
-    if (commitsAgree(claimed, state.identity)) {
+    if (deploymentConfirms(claimed, state.identity)) {
       return { ok: true, health: 'up', identity: state.identity, readings: state.readings };
     }
     return {

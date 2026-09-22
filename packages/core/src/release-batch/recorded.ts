@@ -36,7 +36,7 @@ const RECORD_ATTEMPT_KEY = 'release-record';
 export interface RecordPerformedReleaseArgs {
   projectId: string;
   issueIds: string[];
-  /** The commit the caller says production is serving. */
+  /** The whole sha the caller says production is serving. */
   commit: string;
   /** How the release was performed, and why it was not a batch. */
   account: string;

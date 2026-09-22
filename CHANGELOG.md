@@ -3072,6 +3072,10 @@
 
 ### Fixed
 
+- **A release record no longer verifies on an abbreviation the caller chose.** A short prefix of
+  the serving commit used to pass, closing issues nobody released. A claim must be the whole sha;
+  production may report a short one.
+
 - **A run counts as having given its checkout back only once git says so.** Moving a checkout left
   the ledger claiming the work was released while it sat on disk. The box asks git now, and says
   when it cannot.

@@ -159,10 +159,15 @@ describe('release batch finish takes its run terminal', () => {
   });
 });
 
+/** Whole object names: a claim `finish` verifies may be nothing else (ISS-1161). */
+const BEFORE = '1111111111111111111111111111111111111111';
+const PUSHED = '2222222222222222222222222222222222222222';
+const NEVER_SHIPPED = '3333333333333333333333333333333333333333';
+
 describe('a finish already run answers from the record', () => {
   it('raises nothing on a re-finish whose probes have stopped confirming', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
-    let serving = 'commit-before-the-release';
+    let serving = BEFORE;
     const probe: Server = createServer((_req, res) => res.end(serving));
     await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
     const { port } = probe.address() as AddressInfo;
@@ -179,7 +184,7 @@ describe('a finish already run answers from the record', () => {
     `);
     const a = await insertIssue();
     const { runId, jobId } = await claim([a]);
-    serving = 'commit-the-release-pushed';
+    serving = PUSHED;
 
     const first = await finishReleaseBatch(runId, actor(), { commit: serving });
     expect(first.closed).toEqual([a]);
@@ -265,11 +270,11 @@ describe('a finish racing an abort', () => {
     let holding = false;
     const probe: Server = createServer((_req, res) => {
       if (!holding) {
-        res.end('commit-before-the-release');
+        res.end(BEFORE);
         return;
       }
       probeArrived();
-      void held.then(() => res.end('commit-the-release-pushed'));
+      void held.then(() => res.end(PUSHED));
     });
     await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
     const { port } = probe.address() as AddressInfo;
@@ -288,7 +293,7 @@ describe('a finish racing an abort', () => {
     const { runId } = await claim([a]);
 
     holding = true;
-    const finishing = finishReleaseBatch(runId, actor(), { commit: 'commit-the-release-pushed' });
+    const finishing = finishReleaseBatch(runId, actor(), { commit: PUSHED });
     await arrived;
     await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
     releaseProbe();
@@ -310,7 +315,7 @@ describe('a finish after an abort of a reaped run', () => {
     const { abortReleaseBatch, finishReleaseBatch } = await import(
       '../../src/release-batch/service.js'
     );
-    const probe: Server = createServer((_req, res) => res.end('a-commit-that-never-shipped'));
+    const probe: Server = createServer((_req, res) => res.end(NEVER_SHIPPED));
     await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
     const { port } = probe.address() as AddressInfo;
     await harness.db.execute(sql`
@@ -331,7 +336,7 @@ describe('a finish after an abort of a reaped run', () => {
     `);
     await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
 
-    const result = await finishReleaseBatch(runId, actor(), { commit: 'the-release-commit' }).catch(
+    const result = await finishReleaseBatch(runId, actor(), { commit: PUSHED }).catch(
       (e: unknown) => e,
     );
     await new Promise<void>((done) => probe.close(() => done()));
