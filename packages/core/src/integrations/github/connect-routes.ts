@@ -14,7 +14,7 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
+import { organizations, projects } from '../../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
@@ -90,8 +90,8 @@ function assertApiOriginReachable(c: Context, api: string): void {
  * an org project's App belongs to that org. Keyed instead to the individual
  * who pressed Connect it is resolvable by nobody else, and every other admin
  * of the same project — the org's own owner included — is answered
- * `connection not found` (ISS-1115). A project that belongs to no org has no
- * second principal to name and stays the operator's.
+ * `connection not found` (ISS-1115). A project whose only org is a personal
+ * one has no second principal to name and stays the operator's.
  *
  * The refusal is taken HERE rather than in the callback because by callback
  * time a real App exists on github.com: refusing then would strand it.
@@ -105,7 +105,7 @@ async function ownerOrgForProjectApp(args: {
     throw new HTTPException(409, {
       message:
         "org connection must belong to the project's own org — this project belongs to " +
-        `${args.projectOrgId ?? 'no org'}, and the request named ${args.asked}.`,
+        `${args.projectOrgId ?? 'no shared org'}, and the request named ${args.asked}.`,
       cause: { code: 'ORG_MISMATCH' },
     });
   }
@@ -135,8 +135,14 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   assertVaultConfigured();
 
   const [project] = await db
-    .select({ slug: projects.slug, name: projects.name, orgId: projects.orgId })
+    .select({
+      slug: projects.slug,
+      name: projects.name,
+      orgId: projects.orgId,
+      orgIsPersonal: organizations.isPersonal,
+    })
     .from(projects)
+    .innerJoin(organizations, eq(organizations.id, projects.orgId))
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!project) throw notFound('project');
@@ -144,7 +150,11 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   const url = new URL(c.req.url);
   const org = url.searchParams.get('org');
   const orgId = await ownerOrgForProjectApp({
-    projectOrgId: project.orgId,
+    // Every project has an org row, and a solo operator's is their PERSONAL
+    // one. That is not a second principal: the connections directory scopes a
+    // personal org to `ownerType:'user'`, so an App owned by it would be
+    // invisible to the only person who has one. Personal org ⇒ no shared owner.
+    projectOrgId: project.orgIsPersonal ? null : project.orgId,
     asked: url.searchParams.get('orgId'),
     userId,
   });

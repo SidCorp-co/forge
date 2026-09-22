@@ -45,6 +45,18 @@ let repos: {
   error: unknown;
 };
 
+/** The project's own org is what the App will belong to, so the screen reads it. */
+let project = {
+  id: PROJECT,
+  orgId: "63b1b3a0-1f0e-4a77-9f2d-2c5e6a7b8c90",
+  orgName: "SidCorp",
+  orgIsPersonal: false,
+  orgRole: "owner",
+};
+vi.mock("@/features/projects/hooks", () => ({
+  useProjects: () => ({ data: [project] }),
+}));
+
 vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({ data: { items } }),
   useConnections: () => ({ data: { items: connections } }),
@@ -323,5 +335,36 @@ describe("a project with no github binding row at all", () => {
         agentAccess: "none",
       },
     });
+  });
+});
+
+/**
+ * The App's owner follows the project, so the create screen says who that is
+ * instead of offering a choice the server does not honour. Offering
+ * "Personal (only me)" there is how a project's App ended up reachable by one
+ * person (ISS-1115).
+ */
+describe("the screen that creates a new App", () => {
+  beforeEach(() => {
+    items = [];
+    connections = [];
+    project = { ...project, orgIsPersonal: false, orgName: "SidCorp" };
+  });
+
+  it("names the org the App will belong to rather than asking who should own it", () => {
+    mount();
+
+    expect(screen.queryByLabelText("Credential owner")).toBeNull();
+    expect(screen.queryByText("Personal (only me)")).toBeNull();
+    expect(screen.getByText(/will belong to SidCorp/i)).toBeInTheDocument();
+  });
+
+  it("tells a solo operator the App is theirs, since a personal org owns nothing shared", () => {
+    project = { ...project, orgIsPersonal: true, orgName: "Chuong" };
+
+    mount();
+
+    expect(screen.getByText(/will belong to you/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Credential owner")).toBeNull();
   });
 });

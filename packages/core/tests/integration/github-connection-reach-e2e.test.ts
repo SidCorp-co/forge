@@ -228,6 +228,20 @@ describe('who the App a Connect creates will belong to', () => {
     expect(body.message).toMatch(/org admin/i);
   });
 
+  it("leaves a solo operator's App theirs, because a personal org owns nothing shared", async () => {
+    const solo = await verifiedUser();
+    const personal = await seedOrg(harness.db, solo.id, { isPersonal: true });
+    const soloProject = await createTestProject(harness.db, solo.id, { orgId: personal.id });
+
+    const res = await app.request(
+      `/api/projects/${soloProject.id}/integrations/github/connect`,
+      { method: 'POST', headers: { authorization: `Bearer ${await mods.signUserToken(solo.id)}` } },
+    );
+
+    expect(res.status).toBe(200);
+    expect(ownerInState(((await res.json()) as { state: string }).state).orgId).toBeUndefined();
+  });
+
   it("refuses an orgId that is not the project's own", async () => {
     const elsewhere = await seedOrg(harness.db, orgOwner.id);
 

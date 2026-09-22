@@ -46,15 +46,20 @@ vi.mock('../../middleware/auth.js', () => ({
 
 /** The project row the connect route reads. `orgId` is the whole subject. */
 const projectRow = vi.hoisted(() => ({
-  value: null as { slug: string; name: string; orgId: string | null } | null,
+  value: null as {
+    slug: string;
+    name: string;
+    orgId: string;
+    orgIsPersonal: boolean;
+  } | null,
 }));
-vi.mock('../../db/client.js', () => ({
-  db: {
-    select: () => ({
-      from: () => ({ where: () => ({ limit: async () => (projectRow.value ? [projectRow.value] : []) }) }),
-    }),
-  },
-}));
+vi.mock('../../db/client.js', () => {
+  const rows = async () => (projectRow.value ? [projectRow.value] : []);
+  const where = () => ({ limit: rows });
+  return {
+    db: { select: () => ({ from: () => ({ innerJoin: () => ({ where }), where }) }) },
+  };
+});
 
 const authz = vi.hoisted(() => ({
   loadOrgRole: vi.fn(async () => null as string | null),
@@ -177,7 +182,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   caller.userId = ADMIN_B;
   helpers.projectRole = 'admin';
-  projectRow.value = { slug: 'forge-dev', name: 'Forge', orgId: ORG_ID };
+  projectRow.value = { slug: 'forge-dev', name: 'Forge', orgId: ORG_ID, orgIsPersonal: false };
   authz.loadOrgRole.mockResolvedValue('admin');
   bindings();
   store.listConnectionsForPrincipalUser.mockResolvedValue([]);
@@ -293,12 +298,31 @@ describe('POST /:projectId/integrations/github/connect — who the App will belo
     expect(body.message).toMatch(/org admin/i);
   });
 
-  it('leaves a project that belongs to no org owned by the operator, which is the only principal there is', async () => {
-    projectRow.value = { slug: 'solo', name: 'Solo', orgId: null };
+  it("leaves a solo operator's App theirs, because a personal org is not a second principal", async () => {
+    // The connections directory scopes a personal org to ownerType 'user', so
+    // an App owned by that org would be invisible to its only admin.
+    projectRow.value = { slug: 'solo', name: 'Solo', orgId: ORG_ID, orgIsPersonal: true };
 
     const res = await connect();
 
+    expect(res.status).toBe(200);
     expect(ownerOfSignedState(await res.json()).orgId).toBeUndefined();
+  });
+
+  it('does not ask a solo operator for org admin they could not have', async () => {
+    projectRow.value = { slug: 'solo', name: 'Solo', orgId: ORG_ID, orgIsPersonal: true };
+    authz.loadOrgRole.mockResolvedValue('member');
+
+    expect((await connect()).status).toBe(200);
+  });
+
+  it("refuses an orgId naming a personal org, which owns nothing shared", async () => {
+    projectRow.value = { slug: 'solo', name: 'Solo', orgId: ORG_ID, orgIsPersonal: true };
+
+    const res = await connect(`?orgId=${ORG_ID}`);
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).message).toContain('no shared org');
   });
 
   it("refuses an orgId query that is not the project's own org", async () => {
