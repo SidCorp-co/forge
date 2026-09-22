@@ -118,9 +118,13 @@ const STATES: Record<string, () => void> = {
     ready();
     roster(null);
   },
-  'a declaration read that throws': () => {
+  'a binding store the declaration cannot read': () => {
     ready();
     listBindings.mockRejectedValue(new Error('binding store unreachable'));
+  },
+  'a project row the declaration cannot read': () => {
+    ready();
+    selectLimit.mockRejectedValue(new Error('projects table unreadable'));
   },
   'a pool read that throws': () => {
     ready();

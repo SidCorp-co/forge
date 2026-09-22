@@ -166,7 +166,15 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.declarationRead).toBe(false);
-    expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+    // The other way the declaration read fails, and it may drop no more than the one above.
+    expect(out?.blockers.map((b) => [b.code, b.details?.check])).toEqual([
+      ['RELEASE_CHECK_UNEVALUATED', 'declaration'],
+      ['RELEASE_ROSTER_EMPTY', undefined],
+      ['RELEASE_RUNNER_UNDECLARED', undefined],
+      ['RELEASE_POOL_EMPTY', undefined],
+      ['RELEASE_CHECK_UNEVALUATED', 'branches'],
+      ['RELEASE_CHECK_UNEVALUATED', 'project'],
+    ]);
   });
 
   it('says it WAS read for every project whose declaration answered', async () => {
