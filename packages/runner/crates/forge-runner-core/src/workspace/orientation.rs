@@ -13,11 +13,13 @@
 //!
 //!     It is NOT deterministic across versions of this crate, and the tree is
 //!     only left clean when the committed copy already matches what
-//!     `orientation_body` emits now. Change the body, or hand-edit the committed
-//!     file, and the next provision rewrites it and dirties the checkout — which
-//!     is what happened on forge-dev, where the committed copy carried two table
-//!     rows the generator does not. A hand edit to this file is lost at the next
+//!     `orientation_body` emits now. A hand edit to this file is lost at the next
 //!     provision; the generator is the only place its content can be changed.
+//!     On forge-dev the two had drifted apart on two table rows, so every
+//!     provision dirtied `main` and silently reverted whichever row the generator
+//!     lacked. Both rows are folded back here, and the test
+//!     `this_repo_committed_orientation_matches_the_generator` is what keeps the
+//!     paragraph above true rather than merely intended (ISS-1108).
 //!
 //!   - `CLAUDE.md` — gets ONE fixed, marker-delimited block prepended IFF the
 //!     file does not already reach orientation. We never rewrite the rest of the
@@ -80,16 +82,16 @@ instead: guide `what-is-an-issue`.\n\
 | To record a note, learning, or decision | `forge_memory_write` (durable business logic → repo `docs/`) | Filing it as an issue — `draft` or not, nobody browses the issue list for notes |\n\
 | To queue work that must actually happen LATER | create an issue at `draft` | Creating it at `open` — that auto-triages and spawns a pipeline run |\n\
 | To report an issue | fill `title`, `description`, `priority`, `category` | Pre-filling `plan`/`acceptanceCriteria` — on a staged project those are written by the clarify/plan steps, on an autonomous one by the driver's own phases |\n\
-| To change project config (`pipelineConfig.states`, …) | GET the current config first, then send a complete entry | Blind-patching a nested map you never read — you can clobber sibling keys |\n\
+| To change project config (`pipelineConfig.states`, …) | GET it first, then send `{{ base, patch }}` — `patch` naming ONLY the keys you changed (`null` deletes one), `base` the values you read them against | Sending a complete entry — the document is no longer replaced wholesale, and a resent key whose value moved is refused by name rather than silently winning (ISS-1170) |\n\
 | To write or change the project's own prose (build commands, a rule, a guide) | `forge_knowledge` write, one entry per slug, `injection` deciding whether it reaches every prompt or is fetched on demand | Sending it to `forge_config` as `projectFacts` — retired in ISS-1048, and the call is refused by name |\n\
 | Before you design / fix | `forge_memory_search` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |\n\
 | To park work that never started | leave it at `draft` | `on_hold` from `draft` — `on_hold` is a deliberate pause for ACTIVE work only |\n\
-| To finish a fix made by hand, outside the pipeline | drive it through `status` and/or capture a `forge_memory` learning | Fixing it and forgetting — no status move, no learning recorded |\n\
-| An issue you are working turns out NOT to be work (a note, a question, a duplicate, already done) | Act on it yourself — comment saying which gate it fails and where the content went, THEN `needs_info` if a human owes you requirements, or `closed` + `forge_issues action=unmark` if it is not work at all | Leaving it filed for someone else to find · `closed` WITHOUT `unmark` — closing auto-stamps `merged_at`, which unblocks every `blocks` dependent as if the work had shipped · moving status with no comment, so the next reader cannot tell why |\n\
+| To finish a fix made by hand, outside the pipeline | claim it shipped FIRST — `forge_issues action=mark` (or Mark merged on the issue's Properties rail), naming where it landed — then drive it through `status` and capture a `forge_memory` learning | Fixing it and forgetting — no status move, no learning recorded · reaching for `closed` without the mark: `closed` means the work shipped, and a close with no `merged_at` is refused by name |\n\
+| An issue you are working turns out NOT to be work (a note, a question, a duplicate, already done) | Act on it yourself — comment saying which gate it fails and where the content went, THEN `needs_info` if a human owes you requirements, or `dropped` if it is not work at all | Leaving it filed for someone else to find · reaching for `closed` — that says the work shipped, and a close with no `merged_at` is refused by name (`CLOSE_REQUIRES_SHIPPED`) · moving status with no comment, so the next reader cannot tell why |\n\
 | A bug, gap or defect you find WHILE working an issue | **Fix it now, in this issue**, and DECLARE it in your comment under `Extra fixes:` — extra work is REPORTED, never filed | Filing it instead of fixing it. A new `draft` is not a hand-off: nobody owns it, nothing ages it, and a two-minute fix becomes backlog nobody reads |\n\
 | A residual genuinely out of reach (needs a human decision, or work no diff here can carry) | ONE of: a `blocks` edge onto the issue that would ship without it · a line in `docs/proposals/` · `waiting` + `reason` when it blocks THIS issue | Filing a new issue to carry it — that is not one of the options. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |\n\
 \n\
-**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork · file-instead-of-fix.\n",
+**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-as-drop · silent-nonwork · file-instead-of-fix.\n",
     )
 }
 
@@ -146,6 +148,234 @@ pub fn write_orientation(repo_path: &Path, project_id: &str, slug: &str) -> Resu
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// This repository IS the `forge-dev` project, and `.forge/orientation.md`
+    /// at its root is a committed artifact of the generator below. Nothing else
+    /// compares the two: a provision overwrites the file in silence, so an edit
+    /// made to one side alone is reverted on the next daemon run and reads in
+    /// git as noise somebody else introduced.
+    const FORGE_DEV_PROJECT_ID: &str = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
+    const FORGE_DEV_SLUG: &str = "forge-dev";
+
+    fn repo_root() -> PathBuf {
+        // crates/forge-runner-core -> crates -> packages/runner -> packages -> root
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../..")
+    }
+
+    /// Why the committed file and the generator disagree, or `None` where they do not.
+    ///
+    /// The line-wise scan alone is blind to the difference that actually happens. `str::lines`
+    /// strips a trailing `\r`, so a checkout that landed the file as CRLF agrees on every line
+    /// and disagrees on every byte — and the old message called that "a length difference",
+    /// which sends the reader hunting for content that is not there. It cost a Windows-only CI
+    /// red whose cause was invisible in its own panic.
+    ///
+    /// The arms are ordered by what explains the most: line endings first, because they are a
+    /// whole-file property that accounts for every later scan's answer; then a differing line;
+    /// then the two that a line-wise reading cannot see at all.
+    fn describe_orientation_drift(committed: &str, generated: &str) -> Option<String> {
+        if committed == generated {
+            return None;
+        }
+
+        // Line endings are a whole-file property, so they are settled BEFORE anything that reads
+        // the file line by line. A CRLF checkout explains every other difference the scans below
+        // would report, and naming one of those instead is how the Windows red went unread — so
+        // this arm is taken on the ASYMMETRY rather than on normalisation making the two equal,
+        // and it recurses to describe whatever survives the normalising.
+        if committed.contains("\r\n") != generated.contains("\r\n") {
+            let (crlf_side, lf_side) = if committed.contains("\r\n") {
+                ("the committed file", "`orientation_body`")
+            } else {
+                ("`orientation_body`", "the committed file")
+            };
+            let cause = format!(
+                "{crlf_side} holds CRLF line endings and {lf_side} holds LF, so every byte \
+                 differs and no line does. That is a checkout, not an edit — git converts on \
+                 checkout where `core.autocrlf` is set, which the GitHub Windows runner sets. \
+                 `.gitattributes` pins this file to `eol=lf`; if you are seeing this, that pin is \
+                 missing or the file was written by hand with CRLF."
+            );
+            let both_lf = (
+                committed.replace("\r\n", "\n"),
+                generated.replace("\r\n", "\n"),
+            );
+            return Some(match describe_orientation_drift(&both_lf.0, &both_lf.1) {
+                None => cause,
+                Some(rest) => format!(
+                    "{cause}\nAfter normalising those line endings a second difference \
+                         remains:\n{rest}"
+                ),
+            });
+        }
+
+        if let Some((n, (a, b))) = committed
+            .lines()
+            .zip(generated.lines())
+            .enumerate()
+            .find(|(_, (a, b))| a != b)
+        {
+            return Some(format!(
+                "line {}:\n  committed: {a}\n  generated: {b}",
+                n + 1
+            ));
+        }
+
+        // Trailing bytes come before the line count, because they ALSO move the count — a final
+        // `\n` adds an empty line — and a report naming a blank line is the unhelpful answer
+        // this function exists to stop giving.
+        // Shown rather than guessed at: `{:?}` renders a lone `\n` visibly, which is the whole
+        // point — the cause here is bytes a reader cannot see in their editor.
+        if let Some(tail) = committed.strip_prefix(generated) {
+            return Some(format!(
+                "one is a prefix of the other, so the difference is trailing bytes: the committed \
+                 file is {} byte(s) against the generator's {}. What only the committed file has, \
+                 at the end, is {tail:?}",
+                committed.len(),
+                generated.len(),
+            ));
+        }
+        if let Some(tail) = generated.strip_prefix(committed) {
+            return Some(format!(
+                "one is a prefix of the other, so the difference is trailing bytes: the committed \
+                 file is {} byte(s) against the generator's {}. What only the generator has, at \
+                 the end, is {tail:?}",
+                committed.len(),
+                generated.len(),
+            ));
+        }
+
+        let (committed_lines, generated_lines) =
+            (committed.lines().count(), generated.lines().count());
+        if committed_lines != generated_lines {
+            let (longer, shorter, extra) = if committed_lines > generated_lines {
+                (
+                    "the committed file",
+                    "the generator",
+                    committed.lines().nth(generated_lines).unwrap_or(""),
+                )
+            } else {
+                (
+                    "the generator",
+                    "the committed file",
+                    generated.lines().nth(committed_lines).unwrap_or(""),
+                )
+            };
+            return Some(format!(
+                "every shared line agrees, but {longer} has {} line(s) and {shorter} has {}. \
+                 The first line only {longer} has:\n  {extra}",
+                committed_lines.max(generated_lines),
+                committed_lines.min(generated_lines),
+            ));
+        }
+
+        let at = committed
+            .as_bytes()
+            .iter()
+            .zip(generated.as_bytes())
+            .position(|(a, b)| a != b)
+            .unwrap_or(0);
+        Some(format!(
+            "every line agrees and the bytes do not. First difference at byte {at}: the committed \
+             file has {:?} and the generator has {:?}. A difference no line can show is a \
+             line-ending or whitespace difference.",
+            committed.as_bytes()[at] as char,
+            generated.as_bytes()[at] as char,
+        ))
+    }
+
+    #[test]
+    fn this_repo_committed_orientation_matches_the_generator() {
+        let path = repo_root().join(".forge/orientation.md");
+        let committed = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!("cannot read {}: {err}", path.display());
+        });
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+
+        if let Some(cause) = describe_orientation_drift(&committed, &generated) {
+            panic!(
+                "`.forge/orientation.md` has drifted from `orientation_body`, so the next \
+                 provision of this repo will overwrite the committed file and dirty the tree. \
+                 Edit the generator, then regenerate the file — never the file alone.\n{cause}"
+            );
+        }
+    }
+
+    #[test]
+    fn drift_reports_nothing_when_the_two_agree() {
+        let body = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        assert_eq!(describe_orientation_drift(&body, &body), None);
+    }
+
+    #[test]
+    fn drift_names_line_endings_rather_than_a_length_difference() {
+        // Exactly what a Windows checkout with `core.autocrlf=true` hands the test, and what CI
+        // reported as "the two differ in length only" before this arm existed.
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let as_checked_out_on_windows = generated.replace('\n', "\r\n");
+
+        let cause = describe_orientation_drift(&as_checked_out_on_windows, &generated)
+            .expect("CRLF against LF is a drift");
+
+        assert!(cause.contains("CRLF"), "{cause}");
+        assert!(cause.contains("eol=lf"), "{cause}");
+        assert!(!cause.contains("length only"), "{cause}");
+    }
+
+    #[test]
+    fn drift_names_line_endings_and_what_survives_normalising_them() {
+        // The finding codex raised on this change: a Windows checkout that ALSO carries a second
+        // drift used to fall through to the line count and lose the line-ending cause entirely.
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let crlf_and_a_stray_newline = format!("{}\r\n", generated.replace('\n', "\r\n"));
+
+        let cause = describe_orientation_drift(&crlf_and_a_stray_newline, &generated)
+            .expect("CRLF plus a trailing newline is a drift");
+
+        assert!(cause.contains("CRLF"), "{cause}");
+        assert!(cause.contains("trailing bytes"), "{cause}");
+        assert!(cause.contains("second difference"), "{cause}");
+    }
+
+    #[test]
+    fn drift_names_a_trailing_newline_rather_than_a_length_difference() {
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let with_an_extra_newline = format!("{generated}\n");
+
+        let cause = describe_orientation_drift(&with_an_extra_newline, &generated)
+            .expect("a trailing newline is a drift");
+
+        assert!(cause.contains("trailing bytes"), "{cause}");
+        // Rendered, not described: the reader sees the byte rather than a word for it.
+        assert!(cause.contains("\\n"), "{cause}");
+        assert!(!cause.contains("length only"), "{cause}");
+    }
+
+    #[test]
+    fn drift_still_names_the_line_where_one_really_differs() {
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let edited = generated.replace("## Operating affordances", "## Operating affordanceS");
+
+        let cause =
+            describe_orientation_drift(&edited, &generated).expect("an edited line is a drift");
+
+        assert!(cause.starts_with("line "), "{cause}");
+        assert!(cause.contains("affordanceS"), "{cause}");
+    }
+
+    #[test]
+    fn drift_names_the_line_only_one_side_has() {
+        let generated = orientation_body(FORGE_DEV_PROJECT_ID, FORGE_DEV_SLUG);
+        let with_a_row = format!("{generated}| a row the generator does not emit |\n");
+
+        let cause =
+            describe_orientation_drift(&with_a_row, &generated).expect("an extra line is a drift");
+
+        assert!(
+            cause.contains("a row the generator does not emit"),
+            "{cause}"
+        );
+    }
 
     fn tmp_repo(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("forge-orient-{tag}-{}", std::process::id()));

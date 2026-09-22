@@ -1,40 +1,32 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BASE_MERGE_STATE, markMergedOnClose } from './merged-at.js';
+import { BASE_MERGE_STATE, refuseUnshippedClose } from './merged-at.js';
 
-interface ChainSpec {
-  /** Rows the final `.returning()` call resolves with. Empty means the WHERE matched nothing. */
-  returningRows?: Array<Record<string, unknown>>;
-  /** What the read-back finds when the write matched nothing. */
-  heldRow?: Record<string, unknown> | undefined;
-}
-
-function buildMockTx(spec: ChainSpec = {}): {
-  tx: Parameters<typeof markMergedOnClose>[0];
+function buildMockExecutor(row: Record<string, unknown> | undefined): {
+  executor: Parameters<typeof refuseUnshippedClose>[0];
+  readCall: ReturnType<typeof vi.fn>;
   updateCall: ReturnType<typeof vi.fn>;
 } {
+  const readCall = vi.fn();
   const updateCall = vi.fn();
-  const update = vi.fn().mockReturnValue({
-    set: (...setArgs: unknown[]) => {
-      updateCall(...setArgs);
-      return {
-        where: () => ({
-          returning: async () =>
-            spec.returningRows ?? [
-              { mergedAt: new Date('2026-09-18T00:00:00Z'), mergedCommitSha: null },
-            ],
-        }),
-      };
-    },
+  const select = vi.fn().mockImplementation((...args: unknown[]) => {
+    readCall(...args);
+    return {
+      from: () => ({ where: () => ({ limit: async () => (row ? [row] : []) }) }),
+    };
   });
-  const select = vi.fn().mockReturnValue({
-    from: () => ({ where: () => ({ limit: async () => (spec.heldRow ? [spec.heldRow] : []) }) }),
+  const update = vi.fn().mockImplementation(() => {
+    updateCall();
+    return { set: () => ({ where: () => ({ returning: async () => [] }) }) };
   });
-  // biome-ignore lint/suspicious/noExplicitAny: ad-hoc tx shape
-  const tx = { update, select } as any;
-  return { tx, updateCall };
+  // biome-ignore lint/suspicious/noExplicitAny: ad-hoc executor shape
+  const executor = { select, update } as any;
+  return { executor, readCall, updateCall };
 }
 
-describe('leaving the base merge state', () => {
+const SHIPPED = { mergedAt: new Date('2026-09-18T00:00:00Z') };
+const UNSHIPPED = { mergedAt: null };
+
+describe('refuseUnshippedClose — the statuses it does not judge', () => {
   it.each([
     'waiting',
     'reopen',
@@ -43,52 +35,44 @@ describe('leaving the base merge state', () => {
     'in_progress',
     'releasing',
     'dropped',
-  ] as const)('awaiting_release -> %s reaches no stamp at all', async (toStatus) => {
-    const { tx, updateCall } = buildMockTx();
-    const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus });
-    expect(result.stamped).toBe(false);
-    expect(updateCall).not.toHaveBeenCalled();
-  });
-
-  it('entering the base merge state reaches no stamp', async () => {
-    const { tx, updateCall } = buildMockTx();
-    const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: BASE_MERGE_STATE });
-    expect(result.stamped).toBe(false);
-    expect(updateCall).not.toHaveBeenCalled();
+    BASE_MERGE_STATE,
+  ] as const)('%s is not a close, so nothing is read and nothing is refused', async (toStatus) => {
+    const { executor, readCall } = buildMockExecutor(UNSHIPPED);
+    expect(await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus })).toBeNull();
+    expect(readCall).not.toHaveBeenCalled();
   });
 });
 
-describe('markMergedOnClose', () => {
-  it('no-ops for every non-closed target status', async () => {
-    for (const toStatus of ['awaiting_release', 'waiting', 'reopen', 'on_hold'] as const) {
-      const { tx, updateCall } = buildMockTx();
-      const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus });
-      expect(result.stamped).toBe(false);
-      expect(updateCall).not.toHaveBeenCalled();
-    }
+describe('refuseUnshippedClose — a close', () => {
+  it('permits a close on an issue that carries merged_at', async () => {
+    const { executor } = buildMockExecutor(SHIPPED);
+    expect(
+      await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
+    ).toBeNull();
   });
 
-  it('stamps merged_at on close when the column is still NULL', async () => {
-    const { tx, updateCall } = buildMockTx();
-    const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: 'closed' });
-    expect(result.stamped).toBe(true);
-    expect(updateCall).toHaveBeenCalledOnce();
+  it('refuses a close on an issue with no merged_at, and names dropped as the exit', async () => {
+    const { executor } = buildMockExecutor(UNSHIPPED);
+    const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
+    expect(refusal).not.toBeNull();
+    expect(refusal?.detail).toContain('nothing on it shows the work shipped');
+    expect(refusal?.detail).toContain('`dropped`');
+    expect(refusal?.details).toMatchObject({ requires: 'mergedAt', useInstead: 'dropped' });
   });
 
-  it('writes no commit sha, because a close observes no merge', async () => {
-    const { tx, updateCall } = buildMockTx();
-    await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: 'closed' });
-    const written = updateCall.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(written).not.toHaveProperty('mergedCommitSha');
+  it('refuses a close on an issue the read cannot find, rather than letting it through', async () => {
+    const { executor } = buildMockExecutor(undefined);
+    expect(
+      await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
+    ).not.toBeNull();
   });
 
-  it('reports stamped=false when merged_at is already set (an earlier writer got there)', async () => {
-    const { tx, updateCall } = buildMockTx({
-      returningRows: [],
-      heldRow: { mergedAt: new Date('2026-09-01T00:00:00Z'), mergedCommitSha: 'abc1234' },
-    });
-    const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: 'closed' });
-    expect(result.stamped).toBe(false);
-    expect(updateCall).toHaveBeenCalledOnce();
+  it('writes nothing — the close no longer stamps merged_at on its way past', async () => {
+    const { executor, updateCall } = buildMockExecutor(UNSHIPPED);
+    await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
+    const { executor: second, updateCall: secondUpdate } = buildMockExecutor(SHIPPED);
+    await refuseUnshippedClose(second, { issueId: 'iss-1', toStatus: 'closed' });
+    expect(updateCall).not.toHaveBeenCalled();
+    expect(secondUpdate).not.toHaveBeenCalled();
   });
 });

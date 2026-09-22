@@ -14,6 +14,7 @@ import {
   observedMergeForIssue,
   recordIssueMerge,
 } from './merge-record.js';
+import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 
 export type AuditComment = { id: string; body: string; parentId: string | null };
@@ -64,7 +65,7 @@ export async function writeAuditComment(
 
 export class MergeMarkerError extends Error {
   constructor(
-    readonly code: 'NO_WORK_EVIDENCE' | 'ISSUE_NOT_FOUND',
+    readonly code: 'NO_WORK_EVIDENCE' | 'ISSUE_NOT_FOUND' | 'UNMARK_REQUIRES_NOT_CLOSED',
     message: string,
   ) {
     super(message);
@@ -136,7 +137,22 @@ export async function applyMergeMarker(args: {
       claimedCommit = args.commit ?? (await resolveRecordedCommit(before.id));
     }
   } else {
-    await clearIssueMerge(db, before.id);
+    // The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between the
+    // decision and the write. A zero-row answer is read back rather than guessed at: the row is
+    // gone, or it is closed, and anything else is a state those two conditions cannot produce.
+    if (!(await clearIssueMerge(db, before.id))) {
+      const still = await findIssueById(before.id);
+      if (!still) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
+      const refusal = refuseUnmarkOnClosed(still.status);
+      if (!refusal) {
+        throw new Error(
+          `unmark cleared no row on issue ${before.id}, which is neither missing nor \`closed\` but ` +
+            `\`${still.status}\`. The UPDATE's only other condition is the id, so this is a state ` +
+            `clearIssueMerge cannot produce and must not be reported as either of them.`,
+        );
+      }
+      throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
+    }
   }
 
   const commitLabel = stampResult.commitSha

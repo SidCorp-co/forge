@@ -271,7 +271,11 @@ describe('The inverses: a detector that flags everything is the same defect', ()
   it.each(['draft', 'waiting', 'on_hold', 'needs_info', 'closed', 'dropped'])(
     'leaves a `%s` row alone, which the rule table declares at rest',
     async (status) => {
-      const issueId = await seedIssue({ status });
+      // A `closed` row carries a merge mark or it cannot exist (ISS-1108).
+      const issueId = await seedIssue({
+        status,
+        ...(status === 'closed' ? { mergedAt: LONG_AGO_TS } : {}),
+      });
 
       expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(0);
       expect(await strandOf(issueId)).toBeNull();
@@ -435,7 +439,9 @@ describe('The finding does not outlive what it claims', () => {
     [
       'the row goes terminal',
       async (id: string) =>
-        void (await fx.db.execute(sql`UPDATE issues SET status='closed' WHERE id=${id}`)),
+        void (await fx.db.execute(
+          sql`UPDATE issues SET status='closed', merged_at=${LONG_AGO_TS}::timestamptz WHERE id=${id}`,
+        )),
     ],
   ])('clears a finding once %s', async (_name, recover) => {
     const issueId = await seedIssue({ status: 'in_progress' });
@@ -509,7 +515,11 @@ describe('The finding does not outlive what it claims', () => {
              ${LONG_AGO_TS}::timestamptz, ${LONG_AGO_TS}::timestamptz
         FROM generate_series(1, 200) g
     `);
-    const recovered = await seedIssue({ status: 'closed', updatedAt: '2026-09-19T00:00:00.000Z' });
+    const recovered = await seedIssue({
+      status: 'closed',
+      mergedAt: LONG_AGO_TS,
+      updatedAt: '2026-09-19T00:00:00.000Z',
+    });
     await fx.db.execute(sql`
       UPDATE issues
          SET session_context = jsonb_build_object('strand', jsonb_build_object('status','closed'))

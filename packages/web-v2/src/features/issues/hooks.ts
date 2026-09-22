@@ -18,10 +18,9 @@ import type {
 } from "./types";
 
 /**
- * Create an issue in `projectId`. On success invalidates `['issues']` so the
- * new row appears live in the list, then hands the created row back to the
- * caller (the dialog navigates to its detail page). No toast here — the dialog
- * owns the success/failure path (mirrors `useCreateProject`).
+ * Create an issue in `projectId`. On success invalidates `['issues']` so the new
+ * row appears live, then hands it back — the dialog navigates to its detail page
+ * and owns the success/failure path, so no toast here (mirrors `useCreateProject`).
  */
 export function useCreateIssue(projectId: string) {
   const qc = useQueryClient();
@@ -237,9 +236,10 @@ export function useTransitionIssue() {
 /**
  * ISS-791 — the shipped-work claim for an issue finished by hand, outside the pipeline.
  *
- * `merged_at` is what `issues/progress.ts` reads to count an issue as shipped rather than "closed
- * with no evidence it shipped", and what releases every `blocks` dependent, so both directions
- * refresh the single-issue and activity caches: the server writes an audit comment on each call.
+ * `merged_at` is what lets an issue close at all: `closed` means the work shipped (ISS-1108) and a
+ * close on an issue without it is refused by name. It releases no `blocks` dependent — those are
+ * held by the issue's STATUS (ISS-1100). Both directions refresh the single-issue and activity
+ * caches, because the server writes an audit comment on each call.
  */
 export function useMergeMarker(issueId: string) {
   const qc = useQueryClient();

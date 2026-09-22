@@ -797,7 +797,7 @@ export const jobEvents = pgTable(
 // scraping logs. `from_status` is the declared prior status (the CAS guard's
 // expected value); `actor_id` is a bare uuid (no FK) so a system/sweeper actor
 // with no principal records NULL without a join target.
-export const kernelTransitionEntities = ['job', 'session', 'run'] as const;
+export const kernelTransitionEntities = ['job', 'session', 'run', 'issue'] as const;
 export type KernelTransitionEntity = (typeof kernelTransitionEntities)[number];
 
 export const kernelTransitionActorTypes = ['user', 'system', 'runner', 'sweeper'] as const;

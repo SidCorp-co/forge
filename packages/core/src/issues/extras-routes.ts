@@ -27,11 +27,8 @@ import {
   usageSessionMatch,
   usageTotalsSelection,
 } from '../usage-records/rollup.js';
-import {
-  TransitionError,
-  type TransitionErrorCode,
-  transitionIssueStatus,
-} from './apply-transition.js';
+import { TransitionError, transitionIssueStatus } from './apply-transition.js';
+import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { triggerTerminalDispatch } from './transition.js';
 
@@ -73,20 +70,6 @@ const forbidden = (message: string) =>
 
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
-
-const BATCH_SKIP_BY_CODE = {
-  NO_OP: 'no_op',
-  ILLEGAL_TRANSITION: 'illegal_transition',
-  TRANSITION_REASON_REQUIRED: 'transition_reason_required',
-  WAITING_KIND_REQUIRED: 'waiting_kind_required',
-  WAITING_KIND_NOT_APPLICABLE: 'waiting_kind_not_applicable',
-  STALE_TRANSITION: 'stale',
-  NO_WORK_EVIDENCE: 'no_work_evidence',
-  RELEASE_RECORD_REQUIRED: 'release_record_required',
-  ENTRY_CRITERIA_UNMET: 'entry_criteria_unmet',
-} as const satisfies Record<TransitionErrorCode, string>;
-
-type BatchSkipReason = 'forbidden' | 'not_found' | (typeof BATCH_SKIP_BY_CODE)[TransitionErrorCode];
 
 type BatchResult = {
   updated: Array<{
