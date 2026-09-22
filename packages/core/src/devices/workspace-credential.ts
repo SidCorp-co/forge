@@ -60,7 +60,13 @@ export async function issueWorkspaceCredential(args: {
     await tx
       .update(personalAccessTokens)
       .set({ revokedAt: sql`now()` })
-      .where(and(eq(personalAccessTokens.name, name), isNull(personalAccessTokens.revokedAt)));
+      .where(
+        and(
+          eq(personalAccessTokens.deviceId, args.deviceId),
+          eq(personalAccessTokens.name, name),
+          isNull(personalAccessTokens.revokedAt),
+        ),
+      );
 
     const { plaintext } = await mintPat(
       {

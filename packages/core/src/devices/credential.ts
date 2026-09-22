@@ -15,10 +15,11 @@ export function hashMachineId(raw: string): string {
 
 /**
  * Issue the token a box authenticates with — the plaintext exists only here.
- * Revoke and mint are ONE transaction under {@link lockPatName}, or a re-pair
- * meeting a login both revoke before either inserts and `pat_user_name_uniq`
- * refuses the second. The revoke reaches that name WHOEVER holds it: a box has
- * one identity, and two live rows make `deviceHolderUserId` arbitrary (ISS-1184).
+ * Revoke and mint are ONE transaction under {@link lockPatName}. The revoke is
+ * keyed on the DEVICE and the name: a box has one identity, so one that changed
+ * hands must not leave the previous holder a working credential — and not on the
+ * name alone, which an ordinary token may borrow, `POST /api/pat` reserving no
+ * prefix and setting no `device_id` (ISS-1184).
  */
 export async function issueDeviceCredential(args: {
   deviceId: string;
@@ -41,7 +42,13 @@ export async function issueDeviceCredential(args: {
     await tx
       .update(personalAccessTokens)
       .set({ revokedAt: sql`now()` })
-      .where(and(eq(personalAccessTokens.name, name), isNull(personalAccessTokens.revokedAt)));
+      .where(
+        and(
+          eq(personalAccessTokens.deviceId, args.deviceId),
+          eq(personalAccessTokens.name, name),
+          isNull(personalAccessTokens.revokedAt),
+        ),
+      );
   };
 
   if (!args.holderIsAgent) {

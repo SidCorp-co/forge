@@ -210,6 +210,38 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     expect(await deviceHolderUserId(device.id)).toBe(b.id);
   });
 
+  it('leaves alone an ordinary token that merely borrowed the box credential name', async () => {
+    const owner = await createTestUser(harness.db);
+    const squatter = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: owner.id, name: 'box', platform: 'linux' });
+    const name = deviceTokenNameFor(device.id);
+
+    // `POST /api/pat` takes any name under 80 characters and sets no deviceId,
+    // so anyone may mint an ordinary token called `device:<uuid>`. Superseding
+    // the box's own credential must not reach it.
+    await mintPat({ userId: squatter.id, name });
+
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: owner.id });
+
+    expect(await liveCount(squatter.id, name)).toBe(1);
+    expect(await liveCount(owner.id, name)).toBe(1);
+  });
+
+  it('leaves alone an ordinary token that merely borrowed a workspace name', async () => {
+    const owner = await createTestUser(harness.db);
+    const squatter = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: owner.id, name: 'box', platform: 'linux' });
+    const projectId = '651c720d-8243-49ff-bf4c-f295ef98818f';
+    const name = workspaceTokenNameFor(device.id, projectId);
+
+    await mintPat({ userId: squatter.id, name });
+
+    await issueWorkspaceCredential({ deviceId: device.id, projectId, holderUserId: owner.id });
+
+    expect(await liveCount(squatter.id, name)).toBe(1);
+    expect(await liveCount(owner.id, name)).toBe(1);
+  });
+
   it('lets a person create a token under a name they once revoked', async () => {
     const user = await createTestUser(harness.db);
     await harness.db.execute(
