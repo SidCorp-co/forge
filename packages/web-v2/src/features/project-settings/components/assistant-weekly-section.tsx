@@ -8,9 +8,9 @@ import {
   Toggle,
 	Input,
 } from "@/design";
-import { formatPipelineConfigError } from "@/lib/api/error";
 import { useRunAssistantWeekly, useUpdatePipelineConfig } from "../hooks";
-import type { PipelineConfig } from "../types";
+import { type PipelineConfig, sectionWrite } from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 
 type Slice = NonNullable<PipelineConfig["assistantWeekly"]>;
 
@@ -45,17 +45,20 @@ export function AssistantWeeklySection({
 
 	function save() {
 		const source = slice.source?.trim();
-		const next: PipelineConfig = {
-			...config,
-			assistantWeekly: {
-				enabled: slice.enabled,
-				pinnedIssue: slice.pinnedIssue.trim(),
-				judgeProviderId: slice.judgeProviderId.trim(),
-				judgeModel: slice.judgeModel.trim(),
-				...(source ? { source } : {}),
-			},
-		};
-		update.mutate(next);
+		update.mutate(
+			sectionWrite(
+				{ assistantWeekly: config.assistantWeekly },
+				{
+					assistantWeekly: {
+						enabled: slice.enabled,
+						pinnedIssue: slice.pinnedIssue.trim(),
+						judgeProviderId: slice.judgeProviderId.trim(),
+						judgeModel: slice.judgeModel.trim(),
+						...(source ? { source } : {}),
+					},
+				},
+			),
+		);
 	}
 
 	const field = (
@@ -114,9 +117,11 @@ export function AssistantWeeklySection({
 			{canEdit && (
 				<div className="mt-3 space-y-3">
 					{update.isError && (
-						<Banner tone="danger" onDismiss={() => update.reset()}>
-							{formatPipelineConfigError(update.error)}
-						</Banner>
+						<SaveRefusedBanner
+							projectId={projectId}
+							error={update.error}
+							onDismiss={() => update.reset()}
+						/>
 					)}
 					{update.isSuccess && !dirty && (
 						<Banner tone="success" onDismiss={() => update.reset()}>

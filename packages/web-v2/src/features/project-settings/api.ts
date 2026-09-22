@@ -2,6 +2,8 @@
 import type { ProjectDetail } from "@/features/projects/types";
 import { apiClient } from "@/lib/api/client";
 import type {
+	DocumentWrite,
+	EnvironmentsConfig,
 	PipelineConfig,
 	ProjectInvitationRow,
 	LabelCreateInput,
@@ -43,14 +45,30 @@ export const projectSettingsApi = {
 			| { outcome: "failed"; windowId: string; error: string }
 		>(`/projects/${id}/assistant-weekly/run`, { method: "POST" }),
 
-	updatePipelineConfig: (id: string, pipelineConfig: PipelineConfig) =>
+	/** `PATCH /api/projects/:id/pipeline-config` — the keys one section changed, and the
+	 *  values it read them against. A bare document is refused by name: sent whole, it
+	 *  replaced every key the sender did not resend (ISS-1170). */
+	updatePipelineConfig: (id: string, write: DocumentWrite) =>
 		apiClient<{ pipelineConfig: PipelineConfig; warnings?: string[] }>(
 			`/projects/${id}/pipeline-config`,
 			{
 				method: "PATCH",
-				body: JSON.stringify(pipelineConfig),
+				body: JSON.stringify(write),
 			},
 		),
+
+	/** `GET /api/projects/:id/environments` — the document a write's `base` comes from. */
+	getEnvironments: (id: string) =>
+		apiClient<{ environments: EnvironmentsConfig }>(`/projects/${id}/environments`),
+
+	/** `PATCH /api/projects/:id/environments` — same contract over the environments
+	 *  document, which left `PATCH /api/projects/:id` because a column assignment there
+	 *  replaced the whole blob. */
+	updateEnvironments: (id: string, write: DocumentWrite) =>
+		apiClient<{ environments: EnvironmentsConfig }>(`/projects/${id}/environments`, {
+			method: "PATCH",
+			body: JSON.stringify(write),
+		}),
 
 	/** `PATCH /api/projects/:id/plugins` — replaces `agentConfig.plugins` whole. */
 	updatePlugins: (id: string, plugins: PluginDesignation[]) =>
