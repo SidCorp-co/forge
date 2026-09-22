@@ -7,6 +7,7 @@ import { FORGE_GUIDES } from '../guides/registry.js';
 import { FORGE_FACTS } from '../prompt/facts/registry.js';
 import {
   describeDependencyKind,
+  GATES_DISPATCH_NOTE,
   WORK_EVIDENCE_WAIVER_KIND,
   WORK_EVIDENCE_WAIVER_NOTE,
 } from './dependency-effects.js';
@@ -76,6 +77,12 @@ describe('the three surfaces that render the note', () => {
 
   it('the `forge_project_pm` action description', () => {
     expect(forgeProjectPmTool(fakeCtx).description).toContain(WORK_EVIDENCE_WAIVER_NOTE);
+  });
+
+  it('spells the gating rule once, so `merged_at` cannot creep back in as what holds B', () => {
+    const description = forgePmSetDependencyTool(fakeCtx).description;
+    expect(description).toContain(GATES_DISPATCH_NOTE);
+    expect(description).not.toMatch(/waits for A's `merged_at`/);
   });
 });
 
