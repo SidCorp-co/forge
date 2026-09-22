@@ -6,6 +6,7 @@ import { projectGitCredentials, projects, runners, workspaceSshKeys } from '../d
 import { isHttpsGitUrl, projectsWithGitHubAppCredential } from '../git/github-app-credential.js';
 import { deviceGitCredentialRoutes } from '../git/github-credential-routes.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { recordProvisionReports } from './provision-reports.js';
 import {
   buildProvisionRow,
   PROVISION_FAILURES_HEADER,
@@ -21,9 +22,6 @@ deviceProvisionRoutes.route('/', deviceGitCredentialRoutes);
 
 const unauth = () =>
   new HTTPException(401, { message: 'device revoked', cause: { code: 'UNAUTHENTICATED' } });
-
-/** What `runners.provision_detail` holds, which the web stepper renders. */
-const DETAIL_MAX = 2000;
 
 function queuedRows(deviceId: string) {
   return db
@@ -50,26 +48,6 @@ function queuedRows(deviceId: string) {
         eq(runners.provisionStatus, 'queued'),
       ),
     );
-}
-
-/**
- * Leave each report where the operator will find it without this response in
- * hand: on the row itself, which is what the project's runner page renders. A
- * report whose cause was demonstrated to reproduce also takes its row out of
- * the queue, so it stops being re-read every ninety seconds forever; re-binding
- * the runner puts it back at `queued` with a clean detail.
- */
-async function recordReports(reports: readonly ProvisionReport[]): Promise<void> {
-  for (const report of reports) {
-    await db
-      .update(runners)
-      .set({
-        provisionDetail: report.reason.slice(0, DETAIL_MAX),
-        updatedAt: new Date(),
-        ...(report.terminal ? { provisionStatus: 'failed' as const } : {}),
-      })
-      .where(eq(runners.id, report.runnerId));
-  }
 }
 
 deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
@@ -118,9 +96,11 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
     reports.push(...outcome.value.reports);
   }
 
-  await recordReports(reports);
-
-  const header = provisionFailuresHeader(reports);
+  // Guarded although `recordProvisionReports` contracts not to throw: the one
+  // thing this endpoint may never do again is lose every project's provision to
+  // one row's fault, and a diagnostic write is not worth that risk twice.
+  const recorded = await recordProvisionReports(reports).catch(() => reports);
+  const header = provisionFailuresHeader(recorded);
   if (header) c.header(PROVISION_FAILURES_HEADER, header);
 
   // A bare array: a deployed runner decodes `Vec<Provision>` and nothing else,

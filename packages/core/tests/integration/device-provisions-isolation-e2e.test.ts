@@ -38,9 +38,27 @@ process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwd
  * real thing: every test here runs the real credential path unless it says
  * otherwise, so the reproduction above is a reproduction and not a mock of one.
  */
-const { failures } = vi.hoisted(() => ({
+const { failures, recordingFailure } = vi.hoisted(() => ({
   failures: new Map<string, () => Promise<string>>(),
+  recordingFailure: { next: null as Error | null },
 }));
+
+vi.mock('../../src/devices/provision-reports.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/devices/provision-reports.js')>();
+  return {
+    ...real,
+    recordProvisionReports: async (
+      reports: Parameters<typeof real.recordProvisionReports>[0],
+    ) => {
+      const err = recordingFailure.next;
+      if (err) {
+        recordingFailure.next = null;
+        throw err;
+      }
+      return real.recordProvisionReports(reports);
+    },
+  };
+});
 
 vi.mock('../../src/devices/workspace-credential.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/devices/workspace-credential.js')>();
@@ -96,6 +114,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   failures.clear();
+  recordingFailure.next = null;
   await truncateAll(harness.db);
 });
 
@@ -304,5 +323,30 @@ describe('a device with one unprovisionable project still provisions the rest (I
     expect(parsed.failures).toHaveLength(1);
     expect(parsed.failures[0]).toMatchObject({ projectId: only.id, kind: 'degraded' });
     expect(parsed.failures[0]?.reason).toContain('could not be decrypted');
+  });
+
+  it('still serves the healthy provisions when the diagnostic write itself fails', async () => {
+    const { deviceToken, projects } = await seed(['healthy', 'poisoned']);
+    const healthy = projects[0] as SeededProject;
+    const poisoned = projects[1] as SeededProject;
+    failures.set(poisoned.id, async () => {
+      throw new Error('the credential vault is not reachable');
+    });
+    // `recordProvisionReports` contracts not to throw, and is proved not to in
+    // its own file. This is the endpoint's own guard: even where that contract
+    // breaks, the one thing this endpoint may never do again is lose every
+    // project's provision to one row's fault.
+    recordingFailure.next = new Error('canceling statement due to lock timeout');
+
+    const res = await get(deviceToken);
+    expect(res.status).toBe(200);
+    const served = (await res.json()) as Array<{ projectId: string }>;
+    expect(served.map((p) => p.projectId)).toEqual([healthy.id]);
+
+    const parsed = JSON.parse(res.headers.get('x-forge-provision-failures') as string) as {
+      failures: Array<{ projectId: string; reason: string }>;
+    };
+    expect(parsed.failures[0]?.projectId).toBe(poisoned.id);
+    expect(parsed.failures[0]?.reason).toContain('the credential vault is not reachable');
   });
 });

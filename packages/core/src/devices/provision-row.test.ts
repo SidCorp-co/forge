@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildProvisionRow,
-  isIntegrityViolation,
+  integrityViolation,
   PROVISION_FAILURES_BUDGET,
   type ProvisionReport,
   type ProvisionRow,
@@ -25,24 +25,22 @@ const row = (over: Partial<ProvisionRow> = {}): ProvisionRow => ({
 const ctx = { deviceId: 'dev-1', holderUserId: 'agent-7', githubAppCredential: false };
 const violation = () => Object.assign(new Error('duplicate key value'), { code: '23505' });
 
-describe('isIntegrityViolation', () => {
+describe('integrityViolation', () => {
   it('reads a SQLSTATE class 23 off the error itself', () => {
-    expect(isIntegrityViolation(violation())).toBe(true);
+    expect(integrityViolation(violation())).toBe('23505');
   });
 
   it('reads one off a cause drizzle wrapped, which is the shape the endpoint actually meets', () => {
     const wrapped = new Error('Failed query: insert into "personal_access_tokens" …', {
       cause: violation(),
     });
-    expect(isIntegrityViolation(wrapped)).toBe(true);
+    expect(integrityViolation(wrapped)).toBe('23505');
   });
 
-  it('is false for a connection error, which says nothing about the next attempt', () => {
-    expect(isIntegrityViolation(Object.assign(new Error('timeout'), { code: '57014' }))).toBe(
-      false,
-    );
-    expect(isIntegrityViolation(new Error('socket hang up'))).toBe(false);
-    expect(isIntegrityViolation(null)).toBe(false);
+  it('is null for a connection error, which says nothing about the next attempt', () => {
+    expect(integrityViolation(Object.assign(new Error('timeout'), { code: '57014' }))).toBeNull();
+    expect(integrityViolation(new Error('socket hang up'))).toBeNull();
+    expect(integrityViolation(null)).toBeNull();
   });
 });
 
@@ -94,6 +92,22 @@ describe('buildProvisionRow', () => {
     expect(issueCredential).toHaveBeenCalledTimes(2);
     expect(built.provision).toBeNull();
     expect(built.reports[0]).toMatchObject({ kind: 'omitted', terminal: true });
+  });
+
+  it('leaves the row queued when the second build fails a DIFFERENT integrity check', async () => {
+    // Two different faults, not one reproduced: a 23505 that clears into a
+    // 23503 is a race, and calling it permanent would burn a healthy row.
+    const issueCredential = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(violation())
+      .mockRejectedValueOnce(
+        Object.assign(new Error('violates foreign key constraint'), { code: '23503' }),
+      );
+    const built = await buildProvisionRow(row(), ctx, { issueCredential });
+    expect(issueCredential).toHaveBeenCalledTimes(2);
+    expect(built.provision).toBeNull();
+    expect(built.reports[0]).toMatchObject({ kind: 'omitted', terminal: false });
+    expect(built.reports[0]?.reason).toContain('foreign key');
   });
 
   it('does not build a second time for an error that says nothing about the next attempt', async () => {

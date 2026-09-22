@@ -84,13 +84,13 @@ export interface ProvisionRowContext {
  * can tell from a blip — a timeout says nothing about the next poll, and burning
  * a row on one costs a re-bind. Walked, because drizzle wraps what pg threw.
  */
-export function isIntegrityViolation(err: unknown): boolean {
+export function integrityViolation(err: unknown): string | null {
   for (let cur: unknown = err, depth = 0; cur && depth < 5; depth++) {
     const code = (cur as { code?: unknown }).code;
-    if (typeof code === 'string' && code.startsWith('23')) return true;
+    if (typeof code === 'string' && code.startsWith('23')) return code;
     cur = (cur as { cause?: unknown }).cause;
   }
-  return false;
+  return null;
 }
 
 /** The innermost message: drizzle's outer one is the whole failed statement. */
@@ -108,22 +108,33 @@ function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
+interface MintFailure {
+  err: unknown;
+  /** The first attempt failed with this SQLSTATE and so did the second. */
+  reproduced: boolean;
+}
+
 /**
  * Mint, and on an integrity violation mint once more.
  * `issueWorkspaceCredential` serialises callers for one token name, so the
- * second attempt runs after whatever held it has finished — a violation
- * surviving that is one the next poll meets identically, which is what makes
- * `terminal` a demonstration rather than a SQLSTATE read as a verdict.
+ * second attempt runs after whatever held it has finished. Only the SAME
+ * SQLSTATE twice is a reproduction: a 23505 followed by a 23503 is two
+ * different faults, and calling that permanent would burn a row on a race.
  */
 async function mintWithOneRetry(
   deps: ProvisionRowDeps,
   args: { deviceId: string; projectId: string; holderUserId: string },
-): Promise<string> {
+): Promise<{ token: string } | MintFailure> {
   try {
-    return await deps.issueCredential(args);
-  } catch (err) {
-    if (!isIntegrityViolation(err)) throw err;
-    return await deps.issueCredential(args);
+    return { token: await deps.issueCredential(args) };
+  } catch (first) {
+    const code = integrityViolation(first);
+    if (code === null) return { err: first, reproduced: false };
+    try {
+      return { token: await deps.issueCredential(args) };
+    } catch (second) {
+      return { err: second, reproduced: integrityViolation(second) === code };
+    }
   }
 }
 
@@ -165,25 +176,25 @@ export async function buildProvisionRow(
 
   let mcpCredential: string | null = null;
   if (ctx.holderUserId) {
-    try {
-      mcpCredential = await mintWithOneRetry(deps, {
-        deviceId: ctx.deviceId,
-        projectId: row.projectId,
-        holderUserId: ctx.holderUserId,
-      });
-    } catch (err) {
+    const minted = await mintWithOneRetry(deps, {
+      deviceId: ctx.deviceId,
+      projectId: row.projectId,
+      holderUserId: ctx.holderUserId,
+    });
+    if (!('token' in minted)) {
       return {
         provision: null,
         reports: [
           ...reports,
           against(
             'omitted',
-            `the workspace credential for this checkout could not be minted: ${messageOf(err)}`,
-            isIntegrityViolation(err),
+            `the workspace credential for this checkout could not be minted: ${messageOf(minted.err)}`,
+            minted.reproduced,
           ),
         ],
       };
     }
+    mcpCredential = minted.token;
   }
 
   return {
