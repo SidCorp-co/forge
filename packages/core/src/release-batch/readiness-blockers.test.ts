@@ -139,13 +139,21 @@ describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
     expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_POOL_EMPTY');
   });
 
-  it('answers with the reason it could not evaluate rather than throwing the whole report away', async () => {
+  it('answers with the reason it could not evaluate BESIDE every reason it could', async () => {
     project({ ...RELEASING, environments: LIVE_DECLARED });
     listBindings.mockRejectedValue(new Error('binding store unreachable'));
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
-    expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+    // Each check below takes a project id alone, so a failed declaration may not drop it.
+    expect(out?.blockers.map((b) => b.code)).toEqual([
+      'RELEASE_CHECK_UNEVALUATED',
+      'RELEASE_ROSTER_EMPTY',
+      'RELEASE_CHECK_UNEVALUATED',
+      'RELEASE_POOL_EMPTY',
+    ]);
+    expect(out?.blockers[0]?.details).toMatchObject({ check: 'declaration' });
+    expect(out?.blockers[2]?.details).toMatchObject({ check: 'channels' });
   });
 });
 
@@ -158,7 +166,15 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.declarationRead).toBe(false);
-    expect(out?.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+    // The other way the declaration read fails, and it may drop no more than the one above.
+    expect(out?.blockers.map((b) => [b.code, b.details?.check])).toEqual([
+      ['RELEASE_CHECK_UNEVALUATED', 'declaration'],
+      ['RELEASE_ROSTER_EMPTY', undefined],
+      ['RELEASE_RUNNER_UNDECLARED', undefined],
+      ['RELEASE_POOL_EMPTY', undefined],
+      ['RELEASE_CHECK_UNEVALUATED', 'branches'],
+      ['RELEASE_CHECK_UNEVALUATED', 'project'],
+    ]);
   });
 
   it('says it WAS read for every project whose declaration answered', async () => {
