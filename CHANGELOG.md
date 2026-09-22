@@ -3072,10 +3072,9 @@
 - **One project that cannot be set up on a machine no longer stops the rest.** The others go
   through as normal, and the failing one is named with its reason instead of an error code with no
   cause.
-- **Two requests that replace the same token at once no longer fail one of them.** Pairing a
-  machine again while it is signing in, and rotating the same token twice at once, could hand one
-  of the two an error instead of a token. Both get one now, and the name is left with exactly one
-  token that works.
+- **Two requests replacing the same token at once no longer fail one of them.** Re-pairing a
+  machine while it signs in, or rotating one token twice, could hand one caller an error instead
+  of a token.
 - **A machine now says when it can no longer be heard by a session it is running.**
   `forge-runner master status` gives that answer, how long it has stood, and a command that ends
   the session it names.

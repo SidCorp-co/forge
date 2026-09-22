@@ -180,10 +180,7 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
 
     // A re-pair meeting a login for the same box. Revoke and mint apart, both
     // revoke the one live row before either inserts under its name.
-    const [a, b] = await Promise.all([
-      issueDeviceCredential(args),
-      issueDeviceCredential(args),
-    ]);
+    const [a, b] = await Promise.all([issueDeviceCredential(args), issueDeviceCredential(args)]);
     expect(a).toMatch(/^forge_pat_/);
     expect(b).toMatch(/^forge_pat_/);
     expect(a).not.toBe(b);

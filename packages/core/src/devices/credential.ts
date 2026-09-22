@@ -14,25 +14,17 @@ export function hashMachineId(raw: string): string {
 }
 
 /**
- * Issue the token a box authenticates with. Returns the plaintext, which is
- * the only time it exists.
- *
- * Revoke and mint are ONE transaction under {@link lockPatName}, the shape
- * `workspace-credential.ts:issueWorkspaceCredential` has. Without it two calls
- * for one box — a re-pair meeting a login — both revoke the live row before
- * either inserts, and the second insert is refused by `pat_user_name_uniq`
- * (ISS-1184). For an agent holder the name lock is taken inside the fence lock,
- * which is the only place both are held and so the only order either is taken
- * in.
+ * Issue the token a box authenticates with — the plaintext exists only here.
+ * Revoke and mint are ONE transaction under {@link lockPatName} (ISS-1184), or a
+ * re-pair meeting a login both revoke the live row before either inserts and
+ * `pat_user_name_uniq` refuses the second. An agent holder takes the name lock
+ * inside the fence lock, the only place both are held.
  */
 export async function issueDeviceCredential(args: {
   deviceId: string;
   /** The principal the box acts as — a person, or an agent (ISS-932). */
   holderUserId: string;
-  /**
-   * True when the holder is an agent account, so the box's credential is fenced to
-   * that agent's projects instead of to none (ISS-1093).
-   */
+  /** An agent holder fences the box to that agent's projects, not to none (ISS-1093). */
   holderIsAgent?: boolean;
 }): Promise<string> {
   const name = deviceTokenNameFor(args.deviceId);
