@@ -262,11 +262,16 @@ fn could_be_filed_as(have: &std::ffi::OsStr, want: &std::ffi::OsStr) -> bool {
 /// whole subject here is a path that is not. So the longest ANCESTOR that does
 /// exist is canonicalised and the rest re-attached: a checkout that has gone
 /// still sits under a repository that has not, and that is enough to settle
-/// the spelling of everything above it. Only a RELATIVE path can run out of
-/// ancestors — every absolute one bottoms out at a root that exists, and on
-/// Windows that root is the current drive's, so `/x` there resolves against it
-/// exactly as the platform means it to. A relative path is returned as it
-/// came, because nothing was found to settle it with.
+/// the spelling of everything above it.
+///
+/// Where NO ancestor canonicalises, the input comes back as it came, because
+/// nothing was found to settle it with. That is the condition, and it is not a
+/// category of path: a relative name nothing exists under reaches it, and so
+/// does an absolute one on a drive or a share this box cannot reach, while a
+/// relative name under a directory that IS there resolves like any other.
+/// Reading it as *relative* would also mislead about `/x` on Windows, which
+/// means the current drive's `x` and canonicalises against it exactly as the
+/// platform intends.
 ///
 /// The spelling this returns is the one that COMPARES, so it is also the one
 /// the refusals carry. On Windows that is the verbatim `\\?\` form, which is
@@ -985,19 +990,28 @@ mod tests {
             "the tail below the last existing ancestor is re-attached whole, not dropped"
         );
 
-        // Only a RELATIVE path can run out of ancestors. An absolute one always
-        // bottoms out at a root that exists — including on Windows, where `/x`
-        // is the CURRENT DRIVE's `x` and canonicalises against it, which is the
-        // platform's own meaning and not a failure to resolve. Asserting the
-        // fallback over `/no-such-root/x` passed on Linux for the wrong reason
-        // (re-attaching under `/` reproduces the input) and went red on Windows
-        // for the right one.
-        let relative = Path::new("forge-no-such-dir-1193/x/y");
+        // The fallback's condition is that NO ancestor canonicalises, which is
+        // not the same as the path being relative — the pair below is here so
+        // the two cannot be confused again. Asserting it over
+        // `/no-such-root/x` passed on Linux for the wrong reason (`/` exists,
+        // and re-attaching the tail under it reproduces the input) and went red
+        // on Windows for the right one, where `/x` is the CURRENT DRIVE's `x`.
+        let nothing_under = Path::new("forge-no-such-dir-1193/x/y");
         assert_eq!(
-            resolved_for_compare(relative),
-            relative.to_path_buf(),
+            resolved_for_compare(nothing_under),
+            nothing_under.to_path_buf(),
             "a path with no ancestor to settle it against comes back as it came, rather than \
              being reported as something it was not"
+        );
+
+        // The same shape of name, under something that IS there: relative was
+        // never the criterion.
+        let settled = real.join("no-such-leaf/x");
+        assert_eq!(
+            resolved_for_compare(&settled),
+            real.canonicalize().unwrap().join("no-such-leaf").join("x"),
+            "an ancestor that resolves settles the spelling whatever the path's shape, so the \
+             case above is the condition and not the category"
         );
 
         // Whatever it returns, it returns again: a spelling that two callers
@@ -1009,7 +1023,8 @@ mod tests {
             &link,
             &real.join(".worktrees/ISS-3"),
             &link.join("a/b/c"),
-            relative,
+            nothing_under,
+            &settled,
         ] {
             let once = resolved_for_compare(p);
             assert_eq!(
