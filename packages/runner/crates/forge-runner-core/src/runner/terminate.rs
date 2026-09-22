@@ -19,6 +19,7 @@ use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::inflight::Reaped;
 use crate::runner::ledger::{Incarnation, Ledger, Run};
 use crate::workspace::salvage::{self, Outcome, Salvage};
+use crate::workspace::worktree::Kind as WorktreeKind;
 
 /// How a run's process group is stopped. A port so the verb is testable
 /// without a real agent on the box.
@@ -50,6 +51,18 @@ pub struct Forced {
     /// `None` when the worktree was already off the disk.
     pub salvage: Option<Salvage>,
     pub close: CloseState,
+    /// What became of the checkout the run named.
+    pub worktree: WorktreeOutcome,
+}
+
+/// What the release did with the path the run was declared against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorktreeOutcome {
+    /// The run's own checkout was released, or there was none at the path.
+    Released,
+    /// The run named the repository's MAIN working tree, which it never held
+    /// and which has to outlive it. Nothing was preserved and nothing removed.
+    MainWorkingTreeKept,
 }
 
 pub fn verb_for(run: &Run, this_boot: &str) -> Result<Verb> {
@@ -110,6 +123,29 @@ async fn publish_before_release(
     }
 }
 
+/// Whether the path the run names is a checkout this run has to give back.
+///
+/// `true` means it is the repository's own MAIN working tree: the run never
+/// took it from the pool, so there is nothing to preserve and nothing to
+/// remove, and it has to outlive the run. `false` means an ordinary checkout,
+/// released the way it always was.
+///
+/// An unidentifiable path is neither, and is refused rather than guessed at.
+/// Falling through to the release on `Unknown` would publish and remove a path
+/// this box could not name — not knowing what something is is not a licence to
+/// delete it, and a run whose kind could not be read has not been released.
+fn holds_no_checkout(kind: WorktreeKind, verb: Verb, run_id: &str, path: &Path) -> Result<bool> {
+    match kind {
+        WorktreeKind::MainWorkingTree => Ok(true),
+        WorktreeKind::Linked | WorktreeKind::NotAWorktree => Ok(false),
+        WorktreeKind::Unknown => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: this box could not ask git what {} is — the \
+             checkout stays, because not knowing is not the same as knowing it is safe",
+            path.display()
+        ))),
+    }
+}
+
 pub async fn force_terminal(
     ledger: &mut Ledger,
     run_id: &str,
@@ -128,9 +164,28 @@ pub async fn force_terminal(
     }
 
     let worktree = Path::new(&run.worktree_path);
-    let salvage = if worktree.exists()
-        && crate::workspace::worktree_reap::holds_work(worktree).await
-    {
+
+    // A run declared against the repository's OWN checkout never took a
+    // worktree from the pool, so it has none to preserve and none to give
+    // back, and the checkout has to outlive it. Both branches below ask after
+    // a tree this run never held: `git worktree remove` refuses a main working
+    // tree by design, and `salvage::pick_target` already excludes the repo
+    // root, so the preserve step could not have saved anything there either —
+    // a dirty checkout would just fail the guard instead. Reading that out of
+    // a failed removal, as this used to, cannot tell a refusal that will never
+    // succeed from one that might, so the run was retried every sweep forever
+    // and its leases never came back (ISS-1183). Git is asked instead, before
+    // anything here is touched.
+    let main_working_tree = holds_no_checkout(
+        crate::workspace::worktree::kind_at(worktree).await,
+        verb,
+        run_id,
+        worktree,
+    )?;
+
+    let salvage = if main_working_tree {
+        None
+    } else if worktree.exists() && crate::workspace::worktree_reap::holds_work(worktree).await {
         let branch = branch_of(worktree).await.ok_or_else(|| {
             Error::Other(format!(
                 "cannot read the branch of {} — refusing to release a worktree whose diff \
@@ -184,6 +239,11 @@ pub async fn force_terminal(
         verb,
         salvage,
         close,
+        worktree: if main_working_tree {
+            WorktreeOutcome::MainWorkingTreeKept
+        } else {
+            WorktreeOutcome::Released
+        },
     })
 }
 
@@ -847,6 +907,348 @@ mod tests {
         assert!(wt.exists(), "the worktree must be left where it was");
         assert!(led.run("run-1").unwrap().unwrap().ended_by.is_none());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The fixture's repo root and its bare remote, both removed when this
+    /// goes out of scope — including on the unwind a failing assertion causes.
+    struct Fixture(PathBuf);
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+            let _ = std::fs::remove_dir_all(self.0.with_extension("remote.git"));
+        }
+    }
+
+    /// Everything about a checkout that releasing a run must not disturb.
+    #[derive(Debug, PartialEq, Eq)]
+    struct Snapshot {
+        tracked: String,
+        staged: String,
+        untracked: String,
+        branch: String,
+        tip: String,
+    }
+
+    async fn snapshot(wt: &Path) -> Snapshot {
+        async fn ask(wt: &Path, args: &[&str]) -> String {
+            let out = tokio::process::Command::new("git")
+                .args(args)
+                .current_dir(wt)
+                .stdin(std::process::Stdio::null())
+                .output()
+                .await
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).to_string()
+        }
+        Snapshot {
+            tracked: std::fs::read_to_string(wt.join("f.txt")).unwrap_or_default(),
+            staged: ask(wt, &["diff", "--cached", "--name-status"]).await,
+            untracked: ask(wt, &["ls-files", "--others", "--exclude-standard"]).await,
+            branch: ask(wt, &["rev-parse", "--abbrev-ref", "HEAD"]).await,
+            tip: ask(wt, &["rev-parse", "HEAD"]).await,
+        }
+    }
+
+    /// A run declared against the repo root itself, which is what the box on
+    /// sid-xeon-1 had in its ledger: `work=done`, `incarnation=exited`, and a
+    /// `worktree_path` naming the main checkout rather than a per-run tree.
+    ///
+    /// `repo` leaves an agent worktree under the root, and the root is not
+    /// ignoring `.worktrees/`, so this shape reaches the release by the
+    /// PRESERVE branch: the root reads as holding work, and the salvage guard
+    /// is what refuses it.
+    async fn main_tree_run(tag: &str) -> (Fixture, PathBuf, Ledger) {
+        let (root, _wt) = repo(tag).await;
+        let led = ledger_for(&root, Incarnation::Exited, "boot-a");
+        (Fixture(root.clone()), root, led)
+    }
+
+    /// The incident's own shape: a main checkout with nothing uncommitted and
+    /// no agent worktree under it, so the release reads it as clean and walks
+    /// straight into `git worktree remove` — the call git refuses by design.
+    async fn clean_main_tree_run(tag: &str) -> (Fixture, PathBuf, Ledger) {
+        let root = std::env::temp_dir().join(format!(
+            "forge-terminate-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]).await;
+        git(&root, &["config", "user.email", "t@t"]).await;
+        git(&root, &["config", "user.name", "t"]).await;
+        std::fs::write(root.join("f.txt"), "base").unwrap();
+        git(&root, &["add", "."]).await;
+        git(&root, &["commit", "-m", "base"]).await;
+
+        let remote = root.with_extension("remote.git");
+        let _ = std::fs::remove_dir_all(&remote);
+        std::fs::create_dir_all(&remote).unwrap();
+        git(&remote, &["init", "--bare", "-b", "main"]).await;
+        git(
+            &root,
+            &["remote", "add", "origin", &remote.to_string_lossy()],
+        )
+        .await;
+        git(&root, &["push", "-u", "origin", "main"]).await;
+
+        let led = ledger_for(&root, Incarnation::Exited, "boot-a");
+        (Fixture(root.clone()), root, led)
+    }
+
+    #[tokio::test]
+    async fn a_clean_main_working_tree_is_never_handed_to_git_worktree_remove() {
+        let (_fx, root, mut led) = clean_main_tree_run("cleanmain").await;
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect(
+            "this is the shape sid-xeon-1 wedged on: a clean main checkout reads as having \
+             nothing to preserve, so the release used to walk into `git worktree remove`, \
+             which answers `fatal: ... is a main working tree` on every sweep forever",
+        );
+
+        assert_eq!(out.worktree, WorktreeOutcome::MainWorkingTreeKept);
+        assert!(out.close.is_closed(), "{:?}", out.close);
+        assert!(
+            l.0.lock().unwrap().contains("ISS-964"),
+            "the lease the loop was holding must come back"
+        );
+        assert!(root.join("f.txt").is_file(), "the checkout survives");
+    }
+
+    #[tokio::test]
+    async fn a_run_declared_against_the_main_working_tree_is_released_and_the_checkout_stays() {
+        let (_fx, root, mut led) = main_tree_run("maintree").await;
+        let before = snapshot(&root).await;
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect(
+            "a run whose worktree path is the main working tree must reach terminal: \
+             `git worktree remove` refuses that path by design, so a release that learns \
+             it from the failure retries it every sweep forever",
+        );
+
+        assert!(
+            out.close.is_closed(),
+            "the run must close on the FIRST pass, not stay partially closed: {:?}",
+            out.close
+        );
+        assert_eq!(
+            out.worktree,
+            WorktreeOutcome::MainWorkingTreeKept,
+            "the release must say the checkout was kept, not that it was removed"
+        );
+        assert!(out.salvage.is_none(), "{:?}", out.salvage);
+        assert!(
+            l.0.lock().unwrap().contains("ISS-964"),
+            "the lease must come back — it was held only because the removal failed"
+        );
+        assert!(root.is_dir(), "the main checkout must survive the release");
+        assert_eq!(
+            snapshot(&root).await,
+            before,
+            "the release must leave the main checkout exactly as it found it"
+        );
+        assert!(led.run("run-1").unwrap().unwrap().ended_by.is_some());
+    }
+
+    #[tokio::test]
+    async fn the_released_main_working_tree_run_is_gone_from_the_sweep_that_kept_retrying_it() {
+        let (_fx, root, mut led) = main_tree_run("sweep").await;
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+        assert!(
+            led.unclosed_runs()
+                .unwrap()
+                .iter()
+                .any(|r| r.run_id == "run-1"),
+            "before the release the sweep is right to pick it up"
+        );
+
+        force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            !led.unclosed_runs()
+                .unwrap()
+                .iter()
+                .any(|r| r.run_id == "run-1"),
+            "the next sweep must not select it again — the loop has to END, not get quieter"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_operators_uncommitted_work_in_the_main_checkout_is_not_committed_by_the_release() {
+        let (_fx, root, mut led) = main_tree_run("dirtymain").await;
+        // The shared checkout as a person leaves it: a modified tracked file, a
+        // staged one, and a file git has never been told about.
+        std::fs::write(root.join("f.txt"), "the operator was editing this").unwrap();
+        std::fs::write(root.join("staged.txt"), "staged by hand").unwrap();
+        git(&root, &["add", "staged.txt"]).await;
+        std::fs::write(root.join("scratch.txt"), "untracked notes").unwrap();
+        let before = snapshot(&root).await;
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("a dirty main checkout must not hold the release open either");
+
+        assert!(out.close.is_closed(), "{:?}", out.close);
+        assert_eq!(
+            snapshot(&root).await,
+            before,
+            "a person's work-in-progress in the shared checkout is not this run's to commit — \
+             `salvage::pick_target` excludes the repo root, so nothing here could be preserved \
+             anyway, and the daemon must leave every byte of it alone"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_worktree_nested_under_claude_worktrees_is_released_like_any_other() {
+        let (root, _other) = repo("nested").await;
+        let _fx = Fixture(root.clone());
+        let wt = root.join(".claude/worktrees/ISS-970");
+        std::fs::create_dir_all(wt.parent().unwrap()).unwrap();
+        git(
+            &root,
+            &["worktree", "add", &wt.to_string_lossy(), "-b", "ISS-970"],
+        )
+        .await;
+        git(&wt, &["push", "-q", "-u", "origin", "ISS-970"]).await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("where a worktree sits decides nothing — git is asked what it IS");
+
+        assert_eq!(
+            out.worktree,
+            WorktreeOutcome::Released,
+            "a linked worktree inside the repo is still a linked worktree"
+        );
+        assert!(!wt.exists(), "and it is still removed");
+        assert!(out.close.is_closed(), "{:?}", out.close);
+        assert!(root.is_dir(), "the repository it lives in survives it");
+    }
+
+    #[tokio::test]
+    async fn a_linked_worktree_still_standing_is_not_declared_released() {
+        let (root, wt) = repo("stillthere").await;
+        let _fx = Fixture(root.clone());
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (_p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let state = close_loop::close(&mut led, "run-1", &s, &l).await.unwrap();
+
+        assert!(
+            !state.worktree_gone,
+            "a checkout that is still on the disk has not been given back, \
+             and only a main working tree is released without being removed"
+        );
+    }
+
+    #[test]
+    fn a_path_git_could_not_identify_is_refused_rather_than_released() {
+        let p = Path::new("/some/checkout");
+        let err = holds_no_checkout(WorktreeKind::Unknown, Verb::Abandon, "run-1", p)
+            .expect_err(
+                "an unidentifiable path must not fall through to the release: publishing and \
+                 removing a path this box could not name is exactly the silent substitution \
+                 the refusal exists to prevent",
+            )
+            .to_string();
+        assert!(err.contains("could not ask git"), "{err}");
+        assert!(
+            err.contains("/some/checkout"),
+            "the refusal must name the path, or an operator cannot act on it: {err}"
+        );
+    }
+
+    #[test]
+    fn only_the_main_working_tree_is_a_checkout_the_run_never_held() {
+        let p = Path::new("/some/checkout");
+        assert!(
+            holds_no_checkout(WorktreeKind::MainWorkingTree, Verb::Abandon, "run-1", p).unwrap(),
+            "the repo's own checkout is not the run's to give back"
+        );
+        for kind in [WorktreeKind::Linked, WorktreeKind::NotAWorktree] {
+            assert!(
+                !holds_no_checkout(kind, Verb::Abandon, "run-1", p).unwrap(),
+                "{kind:?} still takes the release path it always took"
+            );
+        }
+    }
+
+    #[test]
+    fn what_the_path_is_is_asked_before_anything_is_removed() {
+        let body = SOURCE
+            .split("pub async fn force_terminal(")
+            .nth(1)
+            .expect("force_terminal must be findable");
+        let asked = body.find("kind_at").expect("the question put to git");
+        let salvage = body.find("salvage_wip").expect("the preserve step");
+        let release = body.find("worktree::remove").expect("the release");
+        assert!(
+            asked < salvage && asked < release,
+            "a main working tree must be recognised BEFORE the preserve step and before \
+             `git worktree remove` — reading it out of the removal's failure is the defect"
+        );
     }
 
     #[tokio::test]

@@ -3069,6 +3069,10 @@
 
 ### Fixed
 
+- **A finished run that was working in the project's own copy now ends instead of holding its
+  issues forever.** Those issues come back within seconds, and the copy is left untouched,
+  including unsaved work.
+
 - **One project that cannot be set up on a machine no longer stops the rest.** The others go
   through as normal, and the failing one is named with its reason instead of an error code with no
   cause.
