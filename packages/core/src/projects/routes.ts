@@ -46,8 +46,9 @@ import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
-import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
+import { PATCHABLE_COLUMNS, PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
 import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
+import { releaseShapeGap, releaseShapePatchFields } from './release-shape.js';
 import { refuseRetiredProjectKeys } from './retired-project-keys.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
@@ -77,6 +78,7 @@ export const updateProjectSchema = z
     workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
     ...releaseModelPatchFields,
+    ...releaseShapePatchFields,
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
     personaStyle: z.string().trim().max(PERSONA_STYLE_MAX).nullable().optional(),
@@ -397,19 +399,12 @@ projectRoutes.patch(
       await assertOrgAccess(patch.orgId, userId, 'admin');
       updates.orgId = patch.orgId;
     }
-    if (patch.name !== undefined) updates.name = patch.name;
-    if (patch.description !== undefined) updates.description = patch.description;
-    if (patch.kind !== undefined) updates.kind = patch.kind;
-    if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
-    if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
-    if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
-    if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
-    if (patch.liveBranch !== undefined) updates.liveBranch = patch.liveBranch;
-    if (patch.releaseModel !== undefined) updates.releaseModel = patch.releaseModel;
-    if (patch.releaseStrategy !== undefined) updates.releaseStrategy = patch.releaseStrategy;
-    const gap = await releaseModelGap(id, updates);
+    for (const key of PATCHABLE_COLUMNS) {
+      const value = (patch as Record<string, unknown>)[key];
+      if (value !== undefined) updates[key] = value;
+    }
+    const gap = (await releaseModelGap(id, updates)) ?? (await releaseShapeGap(id, updates));
     if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
-    if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.personaStyle !== undefined) {
@@ -424,8 +419,6 @@ projectRoutes.patch(
         patch.systemPrompt === null || patch.systemPrompt.length === 0 ? null : patch.systemPrompt;
     }
     if (patch.categories !== undefined) agentConfigPatch.categories = patch.categories;
-    if (patch.environments !== undefined) updates.environments = patch.environments;
-    if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
     const [updated] = await db.transaction(async (tx) => {
       await patchAgentConfigKeys(id, agentConfigPatch, tx);

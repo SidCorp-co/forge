@@ -5,6 +5,9 @@ import type { PipelineConfig } from './pipeline-config-schema.js';
 /** The status at which the driver is handed the issue. */
 export const AUTONOMOUS_ENTRY_STATUS: IssueStatus = 'open';
 
+/** The status an issue rests at when its code has landed and the release has not been taken. */
+export const AUTONOMOUS_RELEASE_STATUS: IssueStatus = 'awaiting_release';
+
 /** The one park the driver may enter, and the only one a human answer restarts. */
 export const AUTONOMOUS_QUESTION_STATUS: IssueStatus = 'needs_info';
 
@@ -49,4 +52,16 @@ export const AUTONOMOUS_INFLIGHT_STATUSES: readonly IssueStatus[] =
 export function isEntryGateClosed(cfg: PipelineConfig | null): boolean {
   const entry = cfg?.states?.open;
   return entry?.enabled === false || entry?.mode === 'manual';
+}
+
+/**
+ * Whether this project's release is taken without a person acting — ISS-1189.
+ *
+ * Absent is `manual`, which is an issue STOPPING at `awaiting_release` and waiting for somebody:
+ * the rung doing its job rather than a stall. This is a different question from
+ * `pipelineConfig.autoProdDeploy`, which decides whether a live-reaching deploy skips its
+ * human-confirm gate; the sweep read that one for this answer until this declaration existed.
+ */
+export function releasesAutomatically(cfg: PipelineConfig | null): boolean {
+  return cfg?.states?.awaiting_release?.mode === 'auto';
 }

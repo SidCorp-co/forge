@@ -7,7 +7,7 @@ export const PATCHED_PROJECT = {
   orgId: projects.orgId,
   createdBy: projects.createdBy,
   description: projects.description,
-  kind: projects.kind,
+  previewShape: projects.previewShape,
   repoPath: projects.repoPath,
   repoUrl: projects.repoUrl,
   workspaceSetup: projects.workspaceSetup,
@@ -31,6 +31,7 @@ export const PROJECT_DETAIL = {
   orgId: projects.orgId,
   createdBy: projects.createdBy,
   description: projects.description,
+  previewShape: projects.previewShape,
   repoPath: projects.repoPath,
   repoUrl: projects.repoUrl,
   workspaceSetup: projects.workspaceSetup,
@@ -47,3 +48,27 @@ export const PROJECT_DETAIL = {
   archivedAt: projects.archivedAt,
   createdAt: projects.createdAt,
 } as const;
+
+/**
+ * The PATCH keys that are columns of `projects` and are written straight through.
+ *
+ * `environments` and `previewShape` are on this list rather than assigned later because
+ * `releaseShapeGap` judges the row AS IT WILL BE, so both have to be in `updates` before it is
+ * asked. ISS-1189.
+ */
+export const PATCHABLE_COLUMNS = [
+  'name',
+  'description',
+  'kind',
+  'repoPath',
+  'repoUrl',
+  'baseBranch',
+  'workspaceSetup',
+  'liveBranch',
+  'releaseModel',
+  'releaseStrategy',
+  'previewShape',
+  'environments',
+  'webhookSecret',
+  'defaultDeviceId',
+] as const;

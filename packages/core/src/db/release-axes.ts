@@ -16,11 +16,25 @@ export type BindingRole = (typeof bindingRoles)[number];
 export const deployStages = ['preview', 'live'] as const;
 export type DeployStage = (typeof deployStages)[number];
 
+/**
+ * Where a `standard` project's work is exercised before it reaches live.
+ *
+ * `deployed` is a preview deployment somebody opens; `local` is the run's own box, which is the
+ * normal shape for a one-box project rather than a degraded one. It is DECLARED: a reader asks
+ * this column and never asks whether `environments.preview` happens to be null. What keeps the
+ * two agreeing is `projects/release-shape.ts`, which refuses a write that would make them
+ * disagree. Meaningless for `website`, whose store is its own source of truth.
+ */
+export const previewShapes = ['deployed', 'local'] as const;
+export type PreviewShape = (typeof previewShapes)[number];
+
 const RELEASE_MODEL_CHK = sql`release_model IN ('none', 'promote', 'publish')`;
 
 const LIVE_BRANCH_CHK = sql`release_model <> 'promote' OR live_branch IS NOT NULL`;
 
 const RELEASE_STRATEGY_CHK = sql`(release_model = 'promote') = (release_strategy IS NOT NULL) AND (release_strategy IS NULL OR release_strategy IN ('merge-branch', 'cherry-pick', 'tag-mr'))`;
+
+const PREVIEW_SHAPE_CHK = sql`preview_shape IN ('deployed', 'local')`;
 
 const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service')`;
 
@@ -33,6 +47,7 @@ export const releaseProjectChecks = {
   releaseModelChk: check('projects_release_model_chk', RELEASE_MODEL_CHK),
   liveBranchChk: check('projects_live_branch_chk', LIVE_BRANCH_CHK),
   releaseStrategyChk: check('projects_release_strategy_chk', RELEASE_STRATEGY_CHK),
+  previewShapeChk: check('projects_preview_shape_chk', PREVIEW_SHAPE_CHK),
 } as const;
 
 export const agentAccessValues = ['none', 'all'] as const;

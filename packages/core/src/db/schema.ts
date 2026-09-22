@@ -342,6 +342,7 @@ export const projects = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     description: text('description'),
     kind: text('kind').notNull().default('standard'),
+    previewShape: text('preview_shape', { enum: axes.previewShapes }).notNull().default('local'),
     repoPath: text('repo_path'),
     baseBranch: text('base_branch'),
     liveBranch: text('live_branch'),

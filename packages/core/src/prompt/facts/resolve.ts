@@ -7,6 +7,7 @@ import {
   type IssueStatus,
   type JobType,
   labels,
+  type PreviewShape,
   projects,
   type ReleaseModel,
 } from '../../db/schema.js';
@@ -177,6 +178,7 @@ export function makeProjectResolver(src: {
   releaseModel: ReleaseModel;
   repoPath: string | null;
   environments: NormalizedEnvironments;
+  previewShape: PreviewShape;
   integrations: IntegrationRow[];
 }): ProjectVarResolver {
   const reserved: Record<(typeof RESERVED_PROJECT_FACT_KEYS)[number], () => string | undefined> = {
@@ -186,7 +188,7 @@ export function makeProjectResolver(src: {
     'production-branch': () =>
       '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the project declares `releaseModel: promote`. Update this skill body.',
     'repo-path': () => src.repoPath ?? undefined,
-    'test-urls': () => renderTestUrls(src.environments),
+    'test-urls': () => renderTestUrls(src.environments, src.previewShape),
     'test-creds': () => TEST_CREDS_POINTER,
     'test-notes': () => src.environments.limits ?? undefined,
     integrations: () => renderIntegrations(src.integrations),
@@ -222,6 +224,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let releaseModel: ReleaseModel = 'none';
   let repoPath: string | null = null;
   let environments: NormalizedEnvironments = normalizeEnvironments(null);
+  let previewShape: PreviewShape = 'local';
   let integrations: IntegrationRow[] = [];
   let noProgressRounds = DEFAULT_NO_PROGRESS_ROUNDS;
   let modules: ProjectModuleFact[] = [];
@@ -240,6 +243,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
         baseBranch: projects.baseBranch,
         liveBranch: projects.liveBranch,
         releaseModel: projects.releaseModel,
+        previewShape: projects.previewShape,
         orgId: projects.orgId,
       })
       .from(projects)
@@ -252,6 +256,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     states = ac?.pipelineConfig?.states ?? {};
     noProgressRounds = resolveNoProgressRounds(row?.agentConfig);
     environments = normalizeEnvironments(row?.environments);
+    previewShape = row?.previewShape ?? 'local';
     baseBranch = row?.baseBranch ?? null;
     liveBranch = row?.liveBranch ?? null;
     releaseModel = row?.releaseModel ?? 'none';
@@ -293,6 +298,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       releaseModel,
       repoPath,
       environments,
+      previewShape,
       integrations,
     }),
     projectFactKeys,

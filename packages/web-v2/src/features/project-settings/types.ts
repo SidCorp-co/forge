@@ -14,6 +14,11 @@ export interface ProjectUpdateInput {
 	baseBranch?: string | null;
 	liveBranch?: string | null;
 	releaseModel?: "none" | "promote" | "publish";
+	/** ISS-1189 — where work on this project is exercised before it reaches live. `deployed` is a
+	 *  preview deployment somebody opens; `local` is the run's own box, which is the normal shape
+	 *  for a one-box project. The server refuses a value that contradicts `environments.preview`,
+	 *  so the two are sent together. */
+	previewShape?: "deployed" | "local";
 	releaseStrategy?: "merge-branch" | "cherry-pick" | "tag-mr" | null;
 	environments?: EnvironmentsConfig | null;
 	orgId?: string;

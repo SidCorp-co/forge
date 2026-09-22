@@ -3,6 +3,7 @@ import { issueStatuses } from '../db/schema.js';
 import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
+  AUTONOMOUS_RELEASE_STATUS,
   AUTONOMOUS_SKILL_NAME,
   BACKLOG_ADMISSIBLE_STATUSES,
 } from './autonomous-mode.js';
@@ -142,6 +143,25 @@ export const entryStageConfigSchema = stageConfigSchema.extend({
 export type EntryStageConfig = z.infer<typeof entryStageConfigSchema>;
 
 /**
+ * ISS-1189 — the release stage carries `mode` too, and it is the auto-release axis.
+ *
+ * `auto`: the issue does not stop at `awaiting_release`; it releases and closes. `manual`, which
+ * is what absent means: it stops and waits for a person. The two stages that read `mode` are the
+ * two a person may stand in front of, and `MODE_READING_STAGES` is the one list saying so.
+ */
+export const releaseStageConfigSchema = stageConfigSchema.extend({
+  mode: z.enum(['auto', 'manual']).optional(),
+});
+
+export type ReleaseStageConfig = z.infer<typeof releaseStageConfigSchema>;
+
+/** The stages at which `mode` decides something. Every other stage's `mode` is refused. */
+export const MODE_READING_STAGES: readonly string[] = [
+  AUTONOMOUS_ENTRY_STATUS,
+  AUTONOMOUS_RELEASE_STATUS,
+];
+
+/**
  * ISS-917 — per-project pool admission. Declares which issue statuses a master
  * agent may SEE as a backlog beside the claimable pool, and how many rows it
  * may read at once.
@@ -163,7 +183,7 @@ export const statesConfigSchema = z
     open: entryStageConfigSchema.optional(),
     in_progress: stageConfigSchema.optional(),
     needs_info: stageConfigSchema.optional(),
-    awaiting_release: stageConfigSchema.optional(),
+    awaiting_release: releaseStageConfigSchema.optional(),
   })
   .optional();
 
@@ -276,11 +296,11 @@ export function refuseRetiredStageKeys(
   if (!states || typeof states !== 'object') return;
   for (const [stage, stageCfg] of Object.entries(states as Record<string, unknown>)) {
     if (!stageCfg || typeof stageCfg !== 'object') continue;
-    if ('mode' in stageCfg && stage !== AUTONOMOUS_ENTRY_STATUS) {
+    if ('mode' in stageCfg && !MODE_READING_STAGES.includes(stage)) {
       ctx.addIssue({
         code: 'custom',
         path: [...at, stage, 'mode'],
-        message: `states.${stage}.mode does not gate anything — \`mode\` is read only at the entry status \`${AUTONOMOUS_ENTRY_STATUS}\`, where it decides whether a human releases work. To hold work at ${stage}, there is no such gate; to hold it before it starts, set states.${AUTONOMOUS_ENTRY_STATUS}.mode = "manual". Remove states.${stage}.mode and resend.`,
+        message: `states.${stage}.mode does not gate anything — \`mode\` is read at \`${AUTONOMOUS_ENTRY_STATUS}\`, where it decides whether a person starts work, and at \`${AUTONOMOUS_RELEASE_STATUS}\`, where it decides whether a person releases it. Those are the two rungs a person may stand in front of, and ${stage} is not one of them. To hold work before it starts, set states.${AUTONOMOUS_ENTRY_STATUS}.mode = "manual"; to hold it before the release, set states.${AUTONOMOUS_RELEASE_STATUS}.mode = "manual". Remove states.${stage}.mode and resend.`,
       });
     }
     if ('skillName' in stageCfg) {

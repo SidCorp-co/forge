@@ -112,6 +112,11 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A project now declares where its work is tested and whether it releases itself.** Settings ->
+  Testing carries the first: Local or Deployed. A configuration claiming both at once is refused,
+  naming the address the two sides share.
+- **A session may no longer park a test for want of a deployment** where work is tested locally;
+  it is told to stand the product up instead. A test parked for any other reason stands.
 - **An issue at `awaiting_release` on a project that already leaves nobody an act now releases
   itself** once every acceptance criterion is judged `pass` or `short`; one left `skipped`,
   failed, or unjudged holds the issue in place.

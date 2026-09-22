@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import type { Tx } from '../db/client.js';
+import { verdictShapeRefusals } from '../issues/skip-reason.js';
 import { ROLE_HOLDER } from '../messaging/audiences.js';
 import { MessageRefusedError } from '../messaging/contract.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
@@ -37,8 +38,10 @@ export async function screenAgentComment(projectId: string, body: string, tx: Tx
   });
   const verdict = screenMessage({ audience: ROLE_HOLDER, intent: 'report', segments, facts });
   const onBody = verdict.ok ? [] : verdict.refusals;
-  const onRecord = await recordRefusals(projectId, parseForgeRecord(body), tx);
-  const refusals = [...onBody, ...onRecord];
+  const record = parseForgeRecord(body);
+  const onRecord = await recordRefusals(projectId, record, tx);
+  const onShape = await verdictShapeRefusals(projectId, record, tx);
+  const refusals = [...onBody, ...onRecord, ...onShape];
   if (refusals.length > 0) throw new MessageRefusedError('comment-write', refusals);
 }
 

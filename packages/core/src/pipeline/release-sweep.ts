@@ -1,9 +1,14 @@
 // ISS-1117 — an issue at `awaiting_release` releases without a person acting, on a project
-// whose release policy already leaves nobody an act (`autoProdDeploy` + a resolvable release
-// gate) and whose waiting issue has every numbered acceptance criterion earned
+// whose release policy already leaves nobody an act (a declared auto-release + a resolvable
+// release gate) and whose waiting issue has every numbered acceptance criterion earned
 // (`criteria-verdicts.ts`). Precedent: `runs-concluded.ts`'s own-tick noticing. The manual
 // doors (`collectReleaseBlockers`, `forge advance`) are untouched; this only filters the
 // unattended path.
+//
+// ISS-1189 — WHICH declaration that is moved. This read was `projectAutoProdDeploy`, which
+// answers whether a live-reaching deploy skips its human-confirm gate; that is a different
+// question and one boolean was answering both. `states.awaiting_release.mode` is the one that
+// says whether releasing is automatic, and migration 0301 carried every project's answer across.
 
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -14,7 +19,7 @@ import { resolveReleaseGate } from '../release-batch/gate.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
-import { projectAutoProdDeploy } from './release-coolify.js';
+import { projectReleasesAutomatically } from './auto-release.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
@@ -121,7 +126,7 @@ async function reportSweepFailure(
 }
 
 async function sweepProject(projectId: string, result: AutomaticReleaseSweepResult): Promise<void> {
-  if (!(await projectAutoProdDeploy(projectId))) return;
+  if (!(await projectReleasesAutomatically(projectId))) return;
 
   const gate = await resolveReleaseGate(projectId).catch(() => null);
   if (!gate) return;

@@ -49,9 +49,9 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../db/schema.js', () => ({ comments: {}, issues: {} }));
 
-const projectAutoProdDeployMock = vi.fn(async (_projectId: string) => true);
-vi.mock('./release-coolify.js', () => ({
-  projectAutoProdDeploy: (projectId: string) => projectAutoProdDeployMock(projectId),
+const releasesAutomaticallyMock = vi.fn(async (_projectId: string) => true);
+vi.mock('./auto-release.js', () => ({
+  projectReleasesAutomatically: (projectId: string) => releasesAutomaticallyMock(projectId),
 }));
 
 const resolveReleaseGateMock = vi.fn(
@@ -122,8 +122,8 @@ beforeEach(() => {
   issueStateByIssue = { 'iss-1': { status: 'awaiting_release', releaseBatchRunId: null } };
   selectFrom.mockClear();
   insertValues.mockClear();
-  projectAutoProdDeployMock.mockReset();
-  projectAutoProdDeployMock.mockResolvedValue(true);
+  releasesAutomaticallyMock.mockReset();
+  releasesAutomaticallyMock.mockResolvedValue(true);
   resolveReleaseGateMock.mockReset();
   resolveReleaseGateMock.mockResolvedValue('awaiting_release');
   loadReleaseRosterMock.mockReset();
@@ -142,7 +142,7 @@ beforeEach(() => {
 describe('sweepAutomaticReleases — policy gate', () => {
   it('touches nothing on a project whose autoProdDeploy is not true', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    projectAutoProdDeployMock.mockResolvedValueOnce(false);
+    releasesAutomaticallyMock.mockResolvedValueOnce(false);
 
     const result = await sweepAutomaticReleases();
 
