@@ -43,14 +43,19 @@ export function parseRecord(text) {
   const sections = [];
   const entries = new Set();
   const repeatedSubsections = [];
+  const orphans = new Map();
   let inSection = false;
   let open = null;
   let seenSubsections = null;
+  let last = null;
 
   const flush = () => {
     if (open === null) return;
     const normalised = normaliseEntry(open);
-    if (normalised) entries.add(normalised);
+    if (normalised) {
+      entries.add(normalised);
+      last = normalised;
+    }
     open = null;
   };
 
@@ -58,6 +63,7 @@ export function parseRecord(text) {
     const heading = RELEASE_HEADING.exec(line);
     if (heading) {
       flush();
+      last = null;
       sections.push(heading[1].trim());
       inSection = true;
       seenSubsections = new Set();
@@ -65,6 +71,7 @@ export function parseRecord(text) {
     }
     if (HEADING.test(line)) {
       flush();
+      last = null;
       const subsection = inSection ? SUBSECTION_HEADING.exec(line) : null;
       if (subsection) {
         const title = subsection[1];
@@ -86,11 +93,15 @@ export function parseRecord(text) {
       flush();
       continue;
     }
-    if (open !== null) open += ` ${line}`;
+    if (open !== null) {
+      open += ` ${line}`;
+      continue;
+    }
+    if (last !== null) orphans.set(last, normaliseEntry(`${orphans.get(last) ?? ''} ${line}`));
   }
   flush();
 
-  return { sections, entries, repeatedSubsections };
+  return { sections, entries, repeatedSubsections, orphans };
 }
 
 /** Amnesty entries are matched after the same normalisation the record gets, or they never match. */
@@ -237,6 +248,20 @@ function augmentOnce({ adjacency, weightOf, matchedTo, matchedFrom, leftCount, r
  * paired entry answers to, which is the larger of the budget and what it replaced.
  */
 export function pairEdits(removed, added) {
+  return matchEdges(correctionEdges(removed, added), removed, added);
+}
+
+function matchEdges(edges, removed, added) {
+  const matchedFrom = bestMatching(edges, removed.length, added.length);
+  const paired = new Map();
+  for (const [right, after] of added.entries()) {
+    if (matchedFrom[right] !== -1) paired.set(after, removed[matchedFrom[right]]);
+  }
+  return paired;
+}
+
+/** Every removed/added pair the rule above admits, before the matching picks among them. */
+function correctionEdges(removed, added) {
   const edges = [];
   for (const [left, before] of removed.entries()) {
     const was = before.split(' ');
@@ -256,14 +281,27 @@ export function pairEdits(removed, added) {
       edges.push({ left, right, share: survived / longest });
     }
   }
-
-  const matchedFrom = bestMatching(edges, removed.length, added.length);
-  const paired = new Map();
-  for (const [right, after] of added.entries()) {
-    if (matchedFrom[right] !== -1) paired.set(after, removed[matchedFrom[right]]);
-  }
-  return paired;
+  return edges;
 }
+
+/**
+ * cm:guard prose a blank line cut off from its bullet is NOT part of the entry — `parseRecord`
+ * drops it — so an added entry carrying such prose is refused unless the published entry it PAIRS
+ * WITH already carried exactly it. Compatibility is an edge the one-to-one matching runs over,
+ * never a test on edge existence or on a matching already chosen; scripts/README.md holds the two
+ * holes each looser reading opened.
+ */
+function orphanCompatible(now, was, removed, added) {
+  return ({ left, right }) => {
+    const prose = now.orphans.get(added[right]);
+    return prose === undefined || was.orphans.get(removed[left]) === prose;
+  };
+}
+
+const opening = (text, words) => {
+  const taken = normaliseEntry(text).split(' ').slice(0, words).join(' ');
+  return taken === normaliseEntry(text) ? taken : `${taken}…`;
+};
 
 function lostEntries(removed, edited, pardons) {
   const kept = new Set(edited.values());
@@ -278,10 +316,10 @@ function overBudgetEntries(added, edited) {
   const over = [];
   for (const entry of added) {
     const before = edited.get(entry);
-    const ceiling =
-      before === undefined ? ENTRY_WORD_BUDGET : Math.max(ENTRY_WORD_BUDGET, wordCount(before));
+    const corrects = before === undefined ? 0 : wordCount(before);
+    const ceiling = Math.max(ENTRY_WORD_BUDGET, corrects);
     const words = wordCount(entry);
-    if (words > ceiling) over.push({ entry, words, ceiling });
+    if (words > ceiling) over.push({ entry, words, ceiling, corrects });
   }
   over.sort((a, b) => b.words - a.words);
   return over;
@@ -332,7 +370,24 @@ export function judge({ head, base, amnesty }) {
   const was = parseRecord(base);
   const removed = [...was.entries].filter((entry) => !now.entries.has(entry));
   const added = [...now.entries].filter((entry) => !was.entries.has(entry));
-  const edited = pairEdits(removed, added);
+
+  const edges = correctionEdges(removed, added).filter(orphanCompatible(now, was, removed, added));
+  const edited = matchEdges(edges, removed, added);
+  const orphaned = added
+    .filter((entry) => now.orphans.has(entry) && !edited.has(entry))
+    .map((entry) => ({ entry, prose: now.orphans.get(entry) }));
+  for (const { entry, prose } of orphaned) {
+    violations.push({
+      rule: 'structure',
+      detail:
+        `\`${opening(entry, 8)}\` is followed by ${wordCount(prose)} words that reach no entry: ` +
+        `\`${opening(prose, 8)}\`. A blank line ends a release entry, so prose after one belongs ` +
+        `to no bullet — the What's New feed never renders it and this gate cannot see it, which is ` +
+        `why the truncated bullet above would otherwise read as a deliberate trim. Join it to that ` +
+        `bullet as an indented continuation with no blank line between, or give it a bullet of its ` +
+        `own. Only prose this change added is refused here; what the record already carried stands.`,
+    });
+  }
 
   const unpardoned = lostEntries(removed, edited, forgiven(amnesty));
   if (unpardoned.length > 0) {
@@ -352,15 +407,21 @@ export function judge({ head, base, amnesty }) {
       detail:
         `${overBudget.length} release entr${overBudget.length === 1 ? 'y' : 'ies'} over budget ` +
         `(longest ${overBudget[0].words} words). An entry this change adds may spend ` +
-        `${ENTRY_WORD_BUDGET} words; one it edits may spend the larger of the ${ENTRY_WORD_BUDGET} and what that ` +
-        `entry already held. An entry ` +
+        `${ENTRY_WORD_BUDGET} words` +
+        (overBudget.some((o) => o.corrects > 0)
+          ? `; one that pairs with a published entry as a correction of it may spend the larger of ` +
+            `the ${ENTRY_WORD_BUDGET} and what that entry held. `
+          : `, and none of these pairs with a published entry as a correction of it, so none ` +
+            `inherits a wider ceiling: an entry replacing more of a published one than a correction ` +
+            `may is a new entry however much of the wording it carries over. `) +
+        `An entry ` +
         `says what changed and what it means for the reader; the reasoning belongs in the issue and ` +
         `the commit, which is where a reader who wants it will look. Cut it down rather than ` +
         `splitting one change across several bullets — that moves the words, it does not spend fewer.`,
       removed: overBudget.map((o) =>
-        o.ceiling > ENTRY_WORD_BUDGET
-          ? `[${o.words} words, was ${o.ceiling}] ${o.entry}`
-          : `[${o.words} words] ${o.entry}`,
+        o.corrects > 0
+          ? `[${o.words} words, correcting an entry of ${o.corrects}; ceiling ${o.ceiling}] ${o.entry}`
+          : `[${o.words} words, new entry; ceiling ${o.ceiling}] ${o.entry}`,
       ),
     });
   }
