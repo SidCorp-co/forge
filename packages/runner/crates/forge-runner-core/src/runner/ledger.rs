@@ -124,6 +124,9 @@ impl Work {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Refusal {
     pub since: i64,
+    /// How many times this streak's refusal has now been taken. A count is the
+    /// half of the window no clock can move.
+    pub attempts: i64,
     pub opened_the_streak: bool,
 }
 
@@ -167,6 +170,9 @@ pub struct Run {
     /// When that refusal was decided to be one no retry can get past. From here
     /// the leases are back, the run is over, and the checkout is still on disk.
     pub release_terminal_at: Option<i64>,
+    /// How many times the release has been attempted since that refusal was
+    /// first seen.
+    pub release_attempts: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -310,6 +316,7 @@ const RUN_COLUMNS: &[&str] = &[
     "release_refused_at",
     "release_refusal",
     "release_terminal_at",
+    "release_attempts",
 ];
 
 #[cfg(test)]
@@ -373,7 +380,8 @@ CREATE TABLE IF NOT EXISTS runs (
   resume_owed_at      INTEGER,
   release_refused_at  INTEGER,
   release_refusal     TEXT,
-  release_terminal_at INTEGER
+  release_terminal_at INTEGER,
+  release_attempts    INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -441,6 +449,7 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "release_refused_at", "INTEGER"),
     ("runs", "release_refusal", "TEXT"),
     ("runs", "release_terminal_at", "INTEGER"),
+    ("runs", "release_attempts", "INTEGER NOT NULL DEFAULT 0"),
     ("masters", "session_id", "TEXT"),
 ];
 
@@ -464,7 +473,7 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
         claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
         ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
-        release_refused_at, release_refusal, release_terminal_at
+        release_refused_at, release_refusal, release_terminal_at, release_attempts
  FROM runs";
 
 fn map_standing(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterStanding> {
@@ -549,6 +558,7 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         release_refused_at: row.get(25)?,
         release_refusal: row.get(26)?,
         release_terminal_at: row.get(27)?,
+        release_attempts: row.get(28)?,
     })
 }
 
@@ -1530,47 +1540,67 @@ impl Ledger {
     /// backwards — ntp correcting a box that booted with a bad RTC is the
     /// ordinary way — and it is pulled back to now rather than kept. Kept, it
     /// would put the end of the window that many seconds further away every
-    /// sweep until the clock caught up, which is this issue's own defect in
-    /// miniature: a decision deferred for as long as an input stays where it
-    /// is. Pulled back, the window ends within the grace of the correction
-    /// whatever the jump was. The other direction is left alone: a clock
-    /// jumping FORWARD past the window decides the refusal early, and deciding
+    /// sweep until the clock caught up. The other direction is left alone: a
+    /// clock jumping FORWARD past the window decides the refusal early, and
     /// early is the safe end of that trade — the leases come back and the
     /// checkout is untouched.
+    ///
+    /// Neither of those is what makes the window END, though, because a clock
+    /// corrected backwards again and again is a clock that can hold any
+    /// deadline off for ever. The attempt count is: it only ever goes up, no
+    /// correction reaches it, and it is what decides a refusal on a box whose
+    /// clock cannot be trusted at all.
     pub fn note_release_refusal(&mut self, run_id: &str, why: &str, at: i64) -> Result<Refusal> {
         self.conn
             .execute(
                 "UPDATE runs SET release_refusal = ?2,
-                        release_refused_at = MIN(COALESCE(release_refused_at, ?3), ?3)
+                        release_refused_at = MIN(COALESCE(release_refused_at, ?3), ?3),
+                        release_attempts = release_attempts + 1
                   WHERE run_id = ?1",
                 params![run_id, why, at],
             )
             .map_err(sql_err)?;
-        let since: Option<i64> = self
+        let row: Option<(Option<i64>, i64)> = self
             .conn
             .query_row(
-                "SELECT release_refused_at FROM runs WHERE run_id = ?1",
+                "SELECT release_refused_at, release_attempts FROM runs WHERE run_id = ?1",
                 params![run_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
-            .map_err(sql_err)?
-            .flatten();
+            .map_err(sql_err)?;
+        let (since, attempts) = row.unwrap_or((Some(at), 1));
         let since = since.unwrap_or(at);
         Ok(Refusal {
             since,
-            opened_the_streak: since == at,
+            attempts,
+            opened_the_streak: attempts <= 1,
         })
     }
 
-    /// Say this refusal is one no retry gets past.
-    pub fn mark_release_terminal(&mut self, run_id: &str, at: i64) -> Result<()> {
-        self.conn
-            .execute(
-                "UPDATE runs SET release_terminal_at = ?2 WHERE run_id = ?1",
-                params![run_id, at],
-            )
-            .map_err(sql_err)?;
+    /// Say this refusal is one no retry gets past, and end the run over it.
+    ///
+    /// One transaction, because the two halves are one decision: a box that
+    /// stopped between them would come back holding a run that no sweep picks
+    /// up — `release_terminal_at` takes it off the release path — and that no
+    /// sweep finishes either, because `ended_by` is still unset. That is a
+    /// wedged run again, wearing the mark that was meant to end one.
+    pub fn conclude_release_refusal(
+        &mut self,
+        run_id: &str,
+        at: i64,
+        ended_by: &str,
+        reason: &str,
+    ) -> Result<()> {
+        let tx = self.conn.transaction().map_err(sql_err)?;
+        tx.execute(
+            "UPDATE runs SET release_terminal_at = ?2, work = 'done', incarnation = 'exited',
+                    ended_by = ?3, ended_reason = ?4
+              WHERE run_id = ?1",
+            params![run_id, at, ended_by, reason],
+        )
+        .map_err(sql_err)?;
+        tx.commit().map_err(sql_err)?;
         Ok(())
     }
 
@@ -1581,7 +1611,7 @@ impl Ledger {
             .conn
             .execute(
                 "UPDATE runs SET release_refused_at = NULL, release_refusal = NULL,
-                        release_terminal_at = NULL
+                        release_terminal_at = NULL, release_attempts = 0
                   WHERE run_id = ?1
                     AND (release_refused_at IS NOT NULL OR release_terminal_at IS NOT NULL)",
                 params![run_id],
@@ -3045,7 +3075,13 @@ mod tests {
         })
         .unwrap();
         led.mark_session_terminal_observed("run-1").unwrap();
-        led.mark_release_terminal("run-1", 1_790_000_300).unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "a refusal no retry gets past",
+        )
+        .unwrap();
 
         assert_eq!(
             led.unclosed_runs().unwrap().len(),
@@ -3087,6 +3123,7 @@ mod tests {
             first,
             Refusal {
                 since: 1_790_000_000,
+                attempts: 1,
                 opened_the_streak: true
             }
         );
@@ -3097,6 +3134,7 @@ mod tests {
             later,
             Refusal {
                 since: 1_790_000_000,
+                attempts: 2,
                 opened_the_streak: false
             },
             "the streak keeps the age of its first refusal, or a window measured from the last \

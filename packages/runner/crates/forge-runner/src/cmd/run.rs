@@ -258,7 +258,13 @@ mod tests {
         let mut led = led_with_a_run();
         led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
             .unwrap();
-        led.mark_release_terminal("run-1", 1_790_000_300).unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff was not preserved",
+        )
+        .unwrap();
 
         let said = retract(&mut led, "run-1").expect("a decided refusal is retractable");
         assert!(said.contains("the next sweep"), "{said}");

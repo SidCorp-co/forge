@@ -319,6 +319,19 @@ pub async fn force_terminal(
 /// the run holds for as long as the box lives.
 pub const RELEASE_GRACE_SECS: i64 = 5 * 60;
 
+/// How many attempts one refusal may take before it is decided, whatever the
+/// clock says.
+///
+/// The window above is wall-clock, and a wall clock moves both ways. One
+/// correction is handled where the stamp is written; a box correcting itself
+/// backwards over and over — a bad RTC, a hypervisor resuming a snapshot — can
+/// hold any deadline off for as long as it keeps doing it, which is this
+/// issue's own defect with a different input. A count cannot be corrected. The
+/// two bounds are `or`: whichever is reached first decides, so a normal box is
+/// decided by the window and a box whose clock cannot be trusted is still
+/// decided.
+pub const RELEASE_ATTEMPT_BOUND: i64 = 15;
+
 /// What one attempt at releasing a finished run came to.
 #[derive(Debug)]
 pub enum Release {
@@ -334,7 +347,22 @@ pub enum Release {
     /// Refused for longer than any retry can help. The leases are back, the run
     /// is over, and the checkout is still on disk with nobody's permission to
     /// remove it.
-    Terminal { why: String, close: CloseState },
+    Terminal {
+        why: String,
+        /// What ended it: the window, or the attempt bound on a box whose clock
+        /// could not be trusted to reach the window.
+        after: Decided,
+        close: CloseState,
+    },
+}
+
+/// Which bound decided a refusal, in the words a journal line needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decided {
+    /// It stood for the whole window.
+    ByTheWindow { standing_secs: i64 },
+    /// It was taken this many times, which no clock correction can undo.
+    ByTheAttempts { attempts: i64 },
 }
 
 /// One attempt at releasing a finished run, and the decision about the refusal
@@ -372,20 +400,26 @@ pub async fn release(
         Err(e) => {
             let why = e.to_string();
             let refusal = ledger.note_release_refusal(run_id, &why, now_secs)?;
-            if now_secs < refusal.since + RELEASE_GRACE_SECS {
+            let standing_secs = now_secs - refusal.since;
+            let after = if standing_secs >= RELEASE_GRACE_SECS {
+                Decided::ByTheWindow { standing_secs }
+            } else if refusal.attempts >= RELEASE_ATTEMPT_BOUND {
+                Decided::ByTheAttempts {
+                    attempts: refusal.attempts,
+                }
+            } else {
                 return Ok(Release::Refusing {
                     why,
                     first: refusal.opened_the_streak,
-                    standing_secs: now_secs - refusal.since,
+                    standing_secs,
                 });
-            }
-            // The leases first and the ending second: a run ended over a
+            };
+            // The leases first and the decision second: a run ended over a
             // refusal whose leases were never asked for is the defect wearing
             // a terminal state.
             let close = close_loop::close(ledger, run_id, ports.sessions, ports.leases).await?;
-            ledger.mark_release_terminal(run_id, now_secs)?;
-            ledger.end_run(run_id, what.by, &why)?;
-            Ok(Release::Terminal { why, close })
+            ledger.conclude_release_refusal(run_id, now_secs, what.by, &why)?;
+            Ok(Release::Terminal { why, after, close })
         }
     }
 }
@@ -859,9 +893,16 @@ mod tests {
         .await
         .unwrap();
 
-        let Release::Terminal { why, close } = decided else {
+        let Release::Terminal { why, after, close } = decided else {
             panic!("the boundary itself is terminal, or the window never ends: {decided:?}");
         };
+        assert_eq!(
+            after,
+            Decided::ByTheWindow {
+                standing_secs: RELEASE_GRACE_SECS
+            },
+            "a box whose clock is fine is decided by the window, not by the count behind it"
+        );
         assert!(
             why.contains("not preserved"),
             "the decision carries the question the box could not answer, not a code: {why}"
@@ -962,6 +1003,102 @@ mod tests {
             matches!(decided, Release::Terminal { .. }),
             "and the window ends one grace after the correction, not one hour and one grace \
              after it: {decided:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&not_a_repo);
+    }
+
+    #[tokio::test]
+    async fn a_clock_corrected_backwards_over_and_over_is_decided_by_the_count_instead() {
+        let (root, wt, not_a_repo) = a_release_that_will_never_succeed("neverarrives").await;
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        // A box that corrects itself backwards before every window can end —
+        // a bad RTC, a hypervisor resuming a snapshot. The window never
+        // arrives, however honestly it is computed.
+        let mut last = None;
+        for attempt in 0..RELEASE_ATTEMPT_BOUND {
+            last = Some(
+                release(
+                    &mut led,
+                    "run-1",
+                    forcing(&not_a_repo, "boot-a"),
+                    ports(&p, &s, &l),
+                    T0 - attempt * RELEASE_GRACE_SECS,
+                )
+                .await
+                .unwrap(),
+            );
+        }
+
+        let last = last.expect("the loop ran");
+        let Release::Terminal { after, close, .. } = last else {
+            panic!("a bound no clock can move is the only thing that ends this: {last:?}");
+        };
+        assert_eq!(
+            after,
+            Decided::ByTheAttempts {
+                attempts: RELEASE_ATTEMPT_BOUND
+            }
+        );
+        assert_eq!((close.leases_returned, close.leases_total), (1, 1));
+        assert!(wt.exists(), "and the checkout is still not touched");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&not_a_repo);
+    }
+
+    #[tokio::test]
+    async fn a_run_given_up_on_is_marked_and_ended_in_one_write() {
+        let (root, wt, not_a_repo) = a_release_that_will_never_succeed("atomic").await;
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        release(
+            &mut led,
+            "run-1",
+            forcing(&not_a_repo, "boot-a"),
+            ports(&p, &s, &l),
+            T0,
+        )
+        .await
+        .unwrap();
+        release(
+            &mut led,
+            "run-1",
+            forcing(&not_a_repo, "boot-a"),
+            ports(&p, &s, &l),
+            T0 + RELEASE_GRACE_SECS,
+        )
+        .await
+        .unwrap();
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.release_terminal_at.is_some() && run.ended_by.is_some(),
+            "a box that stopped between the two would come back holding a run no sweep picks up \
+             — the stamp takes it off the release path — and that no sweep finishes either, \
+             because it is not ended: the wedge again, wearing the mark meant to end one"
+        );
+        assert!(
+            SOURCE
+                .split("pub async fn release(")
+                .nth(1)
+                .expect("release must be findable")
+                .split("pub struct Forcing")
+                .next()
+                .expect("the body")
+                .contains("conclude_release_refusal"),
+            "the two halves are one decision and go through the one verb that writes them \
+             together, never two calls a crash can land between"
         );
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&not_a_repo);

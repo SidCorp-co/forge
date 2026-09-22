@@ -352,7 +352,13 @@ mod tests {
             1_790_000_000,
         )
         .unwrap();
-        led.mark_release_terminal("run-1", 1_790_000_300).unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff in the checkout was not preserved",
+        )
+        .unwrap();
 
         let done = reconcile(
             &mut led,

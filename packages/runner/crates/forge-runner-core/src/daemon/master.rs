@@ -1316,15 +1316,21 @@ async fn release_held_tree(
             }
             false
         }
-        Ok(terminate::Release::Terminal { why, close }) => {
+        Ok(terminate::Release::Terminal { why, after, close }) => {
             tracing::error!(
-                "[master] run {} will not be released and is over: {why}. It stood for {}s of \
-                 retrying, so it is not one a retry gets past. Its leases are back ({}/{}) and \
-                 its checkout is still on disk — nothing on this box will remove it. Fix what the \
-                 refusal names and run `forge-runner run release {}` to have the next sweep try \
-                 again.",
+                "[master] run {} will not be released and is over: {why}. {} — so it is not one a \
+                 retry gets past. Its leases are back ({}/{}) and its checkout is still on disk, \
+                 which nothing on this box will remove. Fix what the refusal names and run \
+                 `forge-runner run release {}` to have the next sweep try again.",
                 r.run_id,
-                terminate::RELEASE_GRACE_SECS,
+                match after {
+                    terminate::Decided::ByTheWindow { standing_secs } =>
+                        format!("It stood for {standing_secs}s of retrying"),
+                    terminate::Decided::ByTheAttempts { attempts } => format!(
+                        "It was taken {attempts} times, and this box's clock never let the \
+                         window it should have ended in arrive"
+                    ),
+                },
                 close.leases_returned,
                 close.leases_total,
                 r.run_id

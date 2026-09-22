@@ -317,6 +317,7 @@ mod tests {
             release_refused_at: None,
             release_refusal: None,
             release_terminal_at: None,
+            release_attempts: 0,
         }
     }
 
