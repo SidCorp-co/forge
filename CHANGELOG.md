@@ -3109,6 +3109,9 @@
 - **A record written into a comment now lands or is refused, never silently neither.**
   The tag may sit on the opening fence as well as after the block; one that cannot be read is
   refused as you write it.
+- **A comment is stored as you wrote it, indentation and all.** An indented record example at the
+  top of a comment used to lose its indent, and was then refused as a fence you never closed, or
+  warned about.
 - **A machine now says when it can no longer be heard by a session it is running.**
   `forge-runner master status` gives that answer, how long it has stood, and a command that ends
   the session it names.
