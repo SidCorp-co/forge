@@ -174,6 +174,16 @@ describe('forge_issues action=get, the answer an agent reads one issue through',
     expect((await call({ action: 'get', documentId: ISSUE_ID })).mergeMark).toBe('unmarked');
   });
 
+  it('keeps the mark when the caller narrows the answer to a heavy field', async () => {
+    asAsserted();
+    const claimed = await call({ action: 'get', documentId: ISSUE_ID, fields: ['plan'] });
+    asObserved();
+    const witnessed = await call({ action: 'get', documentId: ISSUE_ID, fields: ['plan'] });
+
+    expect(claimed.mergeMark).toBe('asserted');
+    expect(witnessed.mergeMark).toBe('observed');
+  });
+
   it('reads a sha with no timestamp as unmarked, because the timestamp decides first', async () => {
     stored = issueRow(ISSUE_ID, OBSERVED_SHA, null);
     expect((await call({ action: 'get', documentId: ISSUE_ID })).mergeMark).toBe('unmarked');

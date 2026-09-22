@@ -532,9 +532,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsMember(principal, issue.projectId);
         if (input.fields && input.fields.length > 0) {
           const full = serialize(issue, await activeIssuePrefix(issue.projectId));
+          // ISS-1126 — `fields` narrows the heavy BODIES; the mark rides with the identity, so a
+          // narrowed answer never reads as an issue with no mark.
           const projected: Record<string, unknown> = {
             documentId: full.documentId,
             issueId: full.issueId,
+            ...mergeMarkFields(issue),
           };
           for (const field of input.fields) {
             projected[field] = full[field] ?? null;
