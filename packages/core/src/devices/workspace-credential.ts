@@ -11,7 +11,7 @@
  * (`revokeDeviceCredentials`).
  */
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { lockPatName, mintPat } from '../auth/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
@@ -62,9 +62,12 @@ export async function issueWorkspaceCredential(args: {
       .set({ revokedAt: sql`now()` })
       .where(
         and(
-          eq(personalAccessTokens.deviceId, args.deviceId),
           eq(personalAccessTokens.name, name),
           isNull(personalAccessTokens.revokedAt),
+          or(
+            eq(personalAccessTokens.deviceId, args.deviceId),
+            eq(personalAccessTokens.userId, args.holderUserId),
+          ),
         ),
       );
 

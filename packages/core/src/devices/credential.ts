@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { lockPatName, mintPat } from '../auth/pat.js';
 import { deviceTokenNameFor } from '../auth/pat-format.js';
 import { env } from '../config/env.js';
@@ -15,11 +15,11 @@ export function hashMachineId(raw: string): string {
 
 /**
  * Issue the token a box authenticates with — the plaintext exists only here.
- * Revoke and mint are ONE transaction under {@link lockPatName}. The revoke is
- * keyed on the DEVICE and the name: a box has one identity, so one that changed
- * hands must not leave the previous holder a working credential — and not on the
- * name alone, which an ordinary token may borrow, `POST /api/pat` reserving no
- * prefix and setting no `device_id` (ISS-1184).
+ * Revoke and mint are ONE transaction under {@link lockPatName}. The revoke
+ * takes that name from THIS DEVICE or THIS HOLDER (ISS-1184): a box that changed
+ * hands must leave the previous holder none, and the holder's own token of that
+ * name must go or the mint collides — `POST /api/pat` reserves no prefix and
+ * sets no `device_id`. A third party's borrowed name is neither, and stands.
  */
 export async function issueDeviceCredential(args: {
   deviceId: string;
@@ -44,9 +44,12 @@ export async function issueDeviceCredential(args: {
       .set({ revokedAt: sql`now()` })
       .where(
         and(
-          eq(personalAccessTokens.deviceId, args.deviceId),
           eq(personalAccessTokens.name, name),
           isNull(personalAccessTokens.revokedAt),
+          or(
+            eq(personalAccessTokens.deviceId, args.deviceId),
+            eq(personalAccessTokens.userId, args.holderUserId),
+          ),
         ),
       );
   };

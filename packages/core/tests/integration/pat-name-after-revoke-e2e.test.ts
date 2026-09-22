@@ -10,6 +10,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  createTestDevice,
   createTestUser,
   setupTestDatabase,
   type TestDatabase,
@@ -239,6 +240,39 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     await issueWorkspaceCredential({ deviceId: device.id, projectId, holderUserId: owner.id });
 
     expect(await liveCount(squatter.id, name)).toBe(1);
+    expect(await liveCount(owner.id, name)).toBe(1);
+  });
+
+  it('supersedes the holder’s own token that borrowed the box credential name', async () => {
+    const owner = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, owner.id);
+    const name = deviceTokenNameFor(device.id);
+
+    // Their own ordinary token, minted before the box was ever issued one: no
+    // device_id, and the same (user, name) the credential is about to want.
+    await mintPat({ userId: owner.id, name });
+
+    const token = await issueDeviceCredential({ deviceId: device.id, holderUserId: owner.id });
+
+    expect(token).toMatch(/^forge_pat_/);
+    expect(await liveCount(owner.id, name)).toBe(1);
+  });
+
+  it('supersedes the holder’s own token that borrowed a workspace name', async () => {
+    const owner = await createTestUser(harness.db);
+    const device = await createTestDevice(harness.db, owner.id);
+    const projectId = '651c720d-8243-49ff-bf4c-f295ef98818f';
+    const name = workspaceTokenNameFor(device.id, projectId);
+
+    await mintPat({ userId: owner.id, name });
+
+    const token = await issueWorkspaceCredential({
+      deviceId: device.id,
+      projectId,
+      holderUserId: owner.id,
+    });
+
+    expect(token).toMatch(/^forge_pat_/);
     expect(await liveCount(owner.id, name)).toBe(1);
   });
 

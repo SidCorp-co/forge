@@ -92,8 +92,8 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
 /**
  * Order the writers that both mean to own the one live token called `name`.
  * The key is the name ALONE, wider than `pat_user_name_uniq`'s `(user_id,
- * name)`: `devices/workspace-credential.ts` revokes by name ACROSS holders, and
- * a user-scoped key would leave that writer ordered against nothing (ISS-1184).
+ * name)`: the device credential writers take that name from another HOLDER as
+ * well as their own, so a user-scoped key would order them against nothing.
  */
 export async function lockPatName(tx: Tx, name: string): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
