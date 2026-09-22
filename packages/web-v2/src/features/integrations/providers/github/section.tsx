@@ -19,6 +19,7 @@ import {
   Spinner,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useProjects } from "@/features/projects/hooks";
 import { useMemo, useState } from "react";
 import {
   useBindExistingConnection,
@@ -35,7 +36,6 @@ import {
   AgentAccessChoice,
   AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
-import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { text } from "../config-read";
 import { github } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
@@ -202,8 +202,8 @@ function RepositoryField({
  * (project, provider, label) with no `active` predicate, so a row left behind by
  * a Disconnect still holds the slot and a create against it is refused 409. The
  * PATCH merges binding-tier config onto the surviving row instead, and sends
- * `active` only when the row is switched off — a project admin changing
- * repositories must not be made to clear the org-admin bar that field carries.
+ * `active` only when the row is switched off, so a write that changes nothing
+ * about whether the binding resolves does not say it does.
  */
 function SetRepository({
   projectId,
@@ -357,13 +357,33 @@ function UseExistingApp({
   );
 }
 
+/**
+ * Who the App will belong to, stated rather than asked. This App is bound to
+ * one project and used by its runners, so its owner follows that project's
+ * org; a picker offering "Personal (only me)" would be a choice the server
+ * does not honour, and personal ownership is what left a project's App
+ * reachable by one person (ISS-1115). A project whose only org is a personal
+ * one has no second principal, so it stays the operator's.
+ */
+function AppOwner({ projectId }: { projectId: string }) {
+  const projectsQ = useProjects();
+  const project = projectsQ.data?.find((p) => p.id === projectId);
+  if (!project) return null;
+  return (
+    <p className="fg-body-sm text-muted">
+      {project.orgIsPersonal
+        ? "The App will belong to you, and this project is the only one that uses it."
+        : `The App will belong to ${project.orgName}, so every admin of this project can use and change it. Creating it needs org admin there.`}
+    </p>
+  );
+}
+
 function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => void) | null }) {
   const connect = useGitHubConnect(projectId);
   const [org, setOrg] = useState("");
-  const [orgId, setOrgId] = useState<string | undefined>(undefined);
 
   const start = async () => {
-    const res = await connect.mutateAsync({ org: org.trim() || undefined, orgId });
+    const res = await connect.mutateAsync({ org: org.trim() || undefined });
     submitManifest(res);
   };
 
@@ -378,7 +398,7 @@ function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => vo
           GitHub and choose which repositories it may see — no token is typed here.
         </p>
 
-        <ConnectionOwnerField projectId={projectId} value={orgId} onChange={setOrgId} />
+        <AppOwner projectId={projectId} />
 
         <Field label="GitHub organization" hint="Leave blank to create the App on your personal account.">
           <Input

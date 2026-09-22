@@ -8,9 +8,15 @@ const listConnections = vi.fn();
 const listBindings = vi.fn();
 
 vi.mock('../store.js', () => ({
-  listConnectionsForPrincipalUser: (...a: unknown[]) => listConnections(...a),
   listBindingsForConnection: (...a: unknown[]) => listBindings(...a),
   decryptConnectionSecrets: (c: { secrets?: Record<string, string> }) => c.secrets ?? {},
+}));
+
+// Which Apps the caller may be completing an install for is its own subject
+// (install-candidates.ts, proved against real Postgres in the e2e); what is
+// asserted here is what this resolver does with the set it is handed.
+vi.mock('./install-candidates.js', () => ({
+  listGithubAppsReachableBy: (...a: unknown[]) => listConnections(...a),
 }));
 
 vi.mock('./app-auth.js', () => ({ buildAppJwt: (appId: string) => `jwt-for-${appId}` }));
