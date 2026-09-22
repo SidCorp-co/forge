@@ -193,7 +193,16 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     const rows = await rowsNamed(user.id);
     expect(rows.every((r) => r.name === name)).toBe(true);
   });
+});
 
+/**
+ * Who the box's credential belongs to — ISS-1184.
+ *
+ * The generated names are not a reserved namespace: `POST /api/pat` takes any
+ * name under 80 characters and sets no `device_id`, so an ordinary token may
+ * carry one. Each case below fixes which rows a credential write may take.
+ */
+describe('a box credential belongs to the device’s current holder (ISS-1184)', () => {
   it('supersedes the box credential of a device whose holder changed', async () => {
     const a = await createTestUser(harness.db);
     const b = await createTestUser(harness.db);
@@ -217,9 +226,7 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     const { device } = await pairDevice({ ownerId: owner.id, name: 'box', platform: 'linux' });
     const name = deviceTokenNameFor(device.id);
 
-    // `POST /api/pat` takes any name under 80 characters and sets no deviceId,
-    // so anyone may mint an ordinary token called `device:<uuid>`. Superseding
-    // the box's own credential must not reach it.
+    // A third party's, so superseding the box's own credential must not reach it.
     await mintPat({ userId: squatter.id, name });
 
     await issueDeviceCredential({ deviceId: device.id, holderUserId: owner.id });
