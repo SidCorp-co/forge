@@ -469,6 +469,11 @@ fn sql_err(e: rusqlite::Error) -> Error {
     Error::Other(format!("ledger: {e}"))
 }
 
+/// The refusal's four fields, set back to the state of a run nothing has
+/// refused. Written once so the two verbs that clear them cannot drift.
+const CLEAR_REFUSAL: &str = "release_refused_at = NULL, release_refusal = NULL,
+        release_terminal_at = NULL, release_attempts = 0";
+
 const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_id, worktree_path, pid, boot_id,
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
         claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
@@ -1604,19 +1609,40 @@ impl Ledger {
         Ok(())
     }
 
-    /// Forget a refusal: a release got past it, or an operator is asking for
-    /// the next sweep to try again. Answers whether the row carried one.
-    pub fn clear_release_refusal(&mut self, run_id: &str) -> Result<bool> {
-        let n = self
-            .conn
+    /// Forget a refusal a release got past. The run's own ending, if it has
+    /// one, is not this verb's business: a release that succeeded ended the run
+    /// on purpose.
+    pub fn forget_release_refusal(&mut self, run_id: &str) -> Result<()> {
+        self.conn
             .execute(
-                "UPDATE runs SET release_refused_at = NULL, release_refusal = NULL,
-                        release_terminal_at = NULL, release_attempts = 0
-                  WHERE run_id = ?1
-                    AND (release_refused_at IS NOT NULL OR release_terminal_at IS NOT NULL)",
+                &format!("UPDATE runs SET {CLEAR_REFUSAL} WHERE run_id = ?1"),
                 params![run_id],
             )
             .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Take back the decision that a run's release could not be made, so the
+    /// next sweep attempts it again. Answers whether there was one to take back.
+    ///
+    /// The ending goes with it, in the same transaction, because the ending was
+    /// PART of that decision. Left in place it would say the run is over while
+    /// its release is owed again — and `held_worktrees` reads exactly that to
+    /// decide what the reaper may not touch, so the checkout being kept for the
+    /// retry would stop being kept the moment an operator asked for one.
+    pub fn retract_release_refusal(&mut self, run_id: &str) -> Result<bool> {
+        let tx = self.conn.transaction().map_err(sql_err)?;
+        let n = tx
+            .execute(
+                &format!(
+                    "UPDATE runs SET {CLEAR_REFUSAL}, ended_by = NULL, ended_reason = NULL
+                      WHERE run_id = ?1
+                        AND (release_refused_at IS NOT NULL OR release_terminal_at IS NOT NULL)"
+                ),
+                params![run_id],
+            )
+            .map_err(sql_err)?;
+        tx.commit().map_err(sql_err)?;
         Ok(n == 1)
     }
 
@@ -3111,7 +3137,7 @@ mod tests {
         })
         .unwrap();
         assert!(
-            !led.clear_release_refusal("run-1").unwrap(),
+            !led.retract_release_refusal("run-1").unwrap(),
             "a row carrying no refusal has nothing to retract, and saying otherwise would tell \
              an operator their act landed when it did nothing"
         );
@@ -3141,11 +3167,85 @@ mod tests {
              sweep never ends"
         );
 
-        assert!(led.clear_release_refusal("run-1").unwrap());
+        assert!(led.retract_release_refusal("run-1").unwrap());
         let run = led.run("run-1").unwrap().unwrap();
         assert_eq!(run.release_refused_at, None);
         assert_eq!(run.release_refusal, None);
         assert_eq!(run.release_terminal_at, None);
+    }
+
+    #[test]
+    fn a_retracted_decision_puts_the_checkout_back_out_of_the_reapers_reach() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let wt = PathBuf::from("/tmp/a-checkout-the-release-could-not-make");
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: wt.clone(),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff was not preserved",
+        )
+        .unwrap();
+        assert!(
+            led.held_worktrees().unwrap().iter().any(|(p, _)| p == &wt),
+            "a checkout the release refused to remove is held while the refusal stands"
+        );
+
+        assert!(led.retract_release_refusal("run-1").unwrap());
+        assert!(
+            led.held_worktrees().unwrap().iter().any(|(p, _)| p == &wt),
+            "and it must still be held once an operator asks for the release to be tried again \
+             — a checkout the reaper takes between the asking and the next sweep is the work \
+             this whole mechanism exists to keep"
+        );
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.ended_by, run.ended_reason),
+            (None, None),
+            "the ending was part of the decision being taken back, and a run over with its \
+             release owed again is two answers to one question"
+        );
+    }
+
+    #[test]
+    fn a_release_that_succeeded_keeps_its_ending_when_its_refusal_is_forgotten() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: PathBuf::from("/tmp/w"),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.note_release_refusal(
+            "run-1",
+            "an earlier sweep could not reach git",
+            1_790_000_000,
+        )
+        .unwrap();
+        led.end_run("run-1", "recovery", "released").unwrap();
+        led.forget_release_refusal("run-1").unwrap();
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.release_refused_at, None);
+        assert_eq!(
+            run.ended_by.as_deref(),
+            Some("recovery"),
+            "a release that got through ended the run on purpose, and forgetting the refusal it \
+             got past is not a reason to un-end it"
+        );
     }
 
     #[test]

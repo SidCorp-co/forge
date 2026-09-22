@@ -394,7 +394,7 @@ pub async fn release(
 ) -> Result<Release> {
     match force_terminal(ledger, run_id, what, ports).await {
         Ok(forced) => {
-            ledger.clear_release_refusal(run_id)?;
+            ledger.forget_release_refusal(run_id)?;
             Ok(Release::Done(Box::new(forced)))
         }
         Err(e) => {

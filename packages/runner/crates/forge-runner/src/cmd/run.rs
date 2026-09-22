@@ -117,7 +117,7 @@ fn retract(led: &mut Ledger, run_id: &str) -> anyhow::Result<String> {
              every sweep, and the refusal it is standing on is: {why}"
         );
     }
-    if !led.clear_release_refusal(run_id)? {
+    if !led.retract_release_refusal(run_id)? {
         anyhow::bail!("run {run_id}'s refusal could not be retracted — nothing was written");
     }
     Ok(format!(
