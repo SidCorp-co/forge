@@ -1,13 +1,7 @@
 /**
- * ISS-1126 — the surfaces that report a merge mark report the two kinds differently.
- *
- * Each case builds an asserted mark and an observed one through the same call and asserts the
- * answers DIFFER. Asserting a key is present would stay green through the defect this issue is
- * about, which is a system where both states exist and every surface renders them alike.
- *
- * The observed branch is driven by making `observedMergeForIssue`'s SELECT return a merged pull
- * request row. On a real database it returns nothing, because `repo_pull_requests` is empty
- * wherever no webhook delivery has landed — which is why the branch is exercised here or nowhere.
+ * ISS-1126 — `applyMergeMarker` and the projections it feeds, each reporting the two kinds
+ * differently. This is the helpers' own property; criterion 14's runtimes are held at
+ * `merge-mark-route.test.ts` and `mcp/tools/forge-issues-merge-mark.test.ts`.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';

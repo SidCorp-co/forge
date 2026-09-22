@@ -150,9 +150,7 @@ export async function applyMergeMarker(args: {
     args.op === 'mark' && !stampResult.wrote
       ? `\nNOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
       : '';
-  // ISS-1126 — the mark is read back off the row rather than inferred from which branch ran, so
-  // the sentence describes what the issue now HOLDS. Under `already_merged` those differ: this
-  // call took the asserted branch and the row may carry a stamp somebody else observed.
+  // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind =
     args.op === 'mark'
       ? mergeMarkKindOf({ mergedAt: stampResult.mergedAt, mergedCommitSha: stampResult.commitSha })

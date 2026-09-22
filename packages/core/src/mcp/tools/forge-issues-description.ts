@@ -53,11 +53,13 @@ export function forgeIssuesDescription(refClause: string): string {
     'closed auto-stamps merged_at when still NULL as an asserted mark (closed = done), so a ' +
     'close meaning "abandoned, code never landed" needs unmark after it.\n' +
     'MERGE MARK. mark_merged (data.issueId, data.target, optional data.commit / data.mergedAt ' +
-    'ISO / data.note) stamps merged_at ONLY. It does not write merged_commit_sha, which holds ' +
-    'only a merge Forge has its own record of; data.commit reaches the audit trail as YOUR ' +
-    'CLAIM. The answer, and every row this tool returns, carries mark/mergeMark (observed | ' +
-    'asserted | unmarked) plus detail - asserted means Forge witnessed no merge and took your ' +
-    "word for it. Marking unblocks nothing: a blocks edge is released by the blocker's STATUS " +
+    'ISO / data.note) stamps merged_at. It writes merged_commit_sha ONLY where Forge already ' +
+    'holds its own record of the merge - a pull request it saw merged - and the sha it writes ' +
+    "there is that record's, never data.commit. Your commit never reaches the column: it " +
+    'reaches the audit trail as YOUR CLAIM. The answer, and every row this tool returns, ' +
+    'carries mark/mergeMark (observed | asserted | unmarked) plus detail - observed means ' +
+    'Forge witnessed the merge itself, asserted means it witnessed none and took your word ' +
+    "for it. Marking unblocks nothing: a blocks edge is released by the blocker's STATUS " +
     '(ISS-1100) and no dispatch decision reads merged_at. target is an audit label. unmark ' +
     'clears both columns when a merge is rolled back.\n' +
     'TASKS. createTask needs data.issueId + data.taskTitle; listTasks needs filters.issue and ' +

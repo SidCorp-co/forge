@@ -46,8 +46,7 @@ const criteriaWith = (
         "`{ section: 'Skip', userFacing: '-' }` when the change has no user-facing half"
       : null,
   work_evidence: (id, _record, executor) => workEvidence(id, executor),
-  // ISS-1126 — the accepted set and the refusal both live in `entry-criteria-merge-mark.ts`,
-  // which says which kinds of mark count as landed and what ends that answer.
+  // Which kinds count as landed, and the refusal: `entry-criteria-merge-mark.ts`.
   merged_mark: (_id, record) => mergedMarkShortfall(record),
 });
 

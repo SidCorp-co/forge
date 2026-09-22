@@ -3181,9 +3181,9 @@
   claim that it did.** The merge row carries **observed** or **claimed**, and marking an issue
   merged tells you which of the two you just wrote.
 
-- **The instructions agents read about marking an issue merged stated two untrue things.** Marking
-  does not record the merge commit, and it does not release the issues waiting on this one — those
-  are released when its status moves.
+- **The instructions agents read about marking an issue merged stated two untrue things.** A commit
+  you name is kept as your claim, never as Forge's own record, and marking releases no issue
+  waiting on this one.
 
 - **A pull request Forge opened is now one Forge can merge.** Forge knew only the pull requests
   GitHub announced by webhook, so one Forge opened itself left no record and could not be merged.

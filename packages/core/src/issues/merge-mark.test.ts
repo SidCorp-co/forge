@@ -1,16 +1,7 @@
 /**
- * ISS-1126 — an asserted mark and an observed mark are told apart by every surface that reports one.
- *
- * The property under test is not "the field is present": it is that the two states produce
- * DIFFERENT answers. A test that only asserted a key exists stays green through the defect this
- * issue is about, which is a system where both states are reachable and every reader reports them
- * alike. So each case here builds one of each and asserts the pair differs, and the assertion names
- * the surface it holds.
- *
- * The observed row is built by hand rather than by merging something, because `observedMergeForIssue`
- * cannot return a row on a database whose projection nothing has written to. That is the whole
- * reason this file exists: the branch is unreachable in the field and so is only ever exercised
- * here.
+ * ISS-1126 — the classifier, the sentence and the accepted set, as pure functions. The runtimes
+ * criterion 14 names are held at `merge-mark-route.test.ts` and
+ * `mcp/tools/forge-issues-merge-mark.test.ts`; docs/modules/issues/merge-mark.md says why.
  */
 
 import { describe, expect, it } from 'vitest';
