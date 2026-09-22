@@ -3083,6 +3083,10 @@
 - **Two requests replacing the same token at once no longer fail one of them.** Re-pairing a
   machine while it signs in, or rotating one token twice, could hand one caller an error instead
   of a token.
+- **Giving a machine to someone else now takes the previous owner's access.** Their credential
+  stayed valid beside the new one, and which of the two the machine spoke as was arbitrary.
+- **A revoked machine credential can no longer be renewed into a working one.** Whoever held it
+  before could list it and rotate it back into live access to a machine already handed on.
 - **A machine now says when it can no longer be heard by a session it is running.**
   `forge-runner master status` gives that answer, how long it has stood, and a command that ends
   the session it names.
