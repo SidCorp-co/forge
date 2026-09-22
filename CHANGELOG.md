@@ -3069,6 +3069,10 @@
 
 ### Fixed
 
+- **A release record no longer verifies on an abbreviation the caller chose.** A short prefix of
+  the serving commit used to pass, closing issues nobody released. A claim must be the whole sha;
+  production may report a short one.
+
 - **A finished run whose work this machine cannot ask a remote about now ends, instead of holding
   its issues forever.** The work is kept where you can find it, and a release that cannot be made
   is reported once.
