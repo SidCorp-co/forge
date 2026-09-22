@@ -2,9 +2,10 @@ import { HTTPException } from 'hono/http-exception';
 import type { Tx } from '../db/client.js';
 import { ROLE_HOLDER } from '../messaging/audiences.js';
 import { MessageRefusedError } from '../messaging/contract.js';
-import { parseForgeRecord } from '../messaging/forge-record.js';
+import { parseForgeRecord, readForgeRecord } from '../messaging/forge-record.js';
 import { gatherFacts } from '../messaging/gather.js';
 import {
+  recordFenceRefusal,
   recordInCommentRefusal,
   recordInCommentWarning,
   recordRefusals,
@@ -12,11 +13,15 @@ import {
 import { screenMessage } from '../messaging/screen.js';
 
 /**
- * The fence rule at the comment door: refused where the caller declared it can write a record
- * elsewhere, warned where it did not — both off one message, so the two cannot drift.
+ * The fence rules at the comment door. A fence carrying no record is refused whatever the caller
+ * declared, because no caller writes one on purpose. A fence carrying one is refused where the
+ * caller declared it can write a record elsewhere and warned where it did not — both off one
+ * message, so the two cannot drift.
  */
 export function screenRecordFence(body: string, declaresRecordRoute: boolean): string[] {
-  const record = parseForgeRecord(body);
+  const { record, fault } = readForgeRecord(body);
+  const shape = recordFenceRefusal(fault);
+  if (shape) throw new MessageRefusedError('comment-write', [shape]);
   if (!record) return [];
   if (declaresRecordRoute) {
     const refusal = recordInCommentRefusal(record);

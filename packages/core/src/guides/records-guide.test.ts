@@ -57,6 +57,24 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('not the lever');
   });
 
+  it('states both shapes a fence is read in, so a writer reads them rather than infers them', () => {
+    expect(prose).toContain('Two, and the parser takes either');
+    expect(body).toContain('```forge-record: verdict · contract 1');
+    expect(body).toContain('`forge-record: verdict · contract 1`');
+  });
+
+  it('names the refusal a fence carrying no record earns, and the three that earn it', () => {
+    expect(body).toContain('record-fence-shape');
+    expect(prose).toContain('An info string that is not that tag, a fence that is never closed');
+    expect(prose).toContain('either carries one or is told it does not');
+  });
+
+  it('says a fence quoted inside another fence opens nothing', () => {
+    expect(prose).toContain(
+      'inside an enclosing fence is that fence\u2019s content'.replace('\u2019', "'"),
+    );
+  });
+
   it('states that the MCP comment door is warned and never refused, and why', () => {
     expect(prose).toContain('warned and never refused');
     expect(prose).toContain('no request context');
