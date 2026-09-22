@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { comments } from '../db/schema.js';
+import { comments, type IssueStatus } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
@@ -14,6 +14,7 @@ import {
   observedMergeForIssue,
   recordIssueMerge,
 } from './merge-record.js';
+import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 
 export type AuditComment = { id: string; body: string; parentId: string | null };
@@ -64,7 +65,7 @@ export async function writeAuditComment(
 
 export class MergeMarkerError extends Error {
   constructor(
-    readonly code: 'NO_WORK_EVIDENCE' | 'ISSUE_NOT_FOUND',
+    readonly code: 'NO_WORK_EVIDENCE' | 'ISSUE_NOT_FOUND' | 'UNMARK_REQUIRES_NOT_CLOSED',
     message: string,
   ) {
     super(message);
@@ -80,8 +81,9 @@ export type MergeMarkerActor = {
 };
 
 export async function applyMergeMarker(args: {
-  /** Already loaded AND authorised by the caller — this function does neither. */
-  issue: { id: string; projectId: string; mergedAt: Date | null };
+  /** Already loaded AND authorised by the caller — this function does neither. `status` is
+   *  read, not written: it is what decides whether the claim may be withdrawn (ISS-1108). */
+  issue: { id: string; projectId: string; mergedAt: Date | null; status: IssueStatus };
   op: 'mark' | 'unmark';
   target?: string;
   note?: string | undefined;
@@ -136,6 +138,8 @@ export async function applyMergeMarker(args: {
       claimedCommit = args.commit ?? (await resolveRecordedCommit(before.id));
     }
   } else {
+    const refusal = refuseUnmarkOnClosed(before.status);
+    if (refusal) throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
     await clearIssueMerge(db, before.id);
   }
 

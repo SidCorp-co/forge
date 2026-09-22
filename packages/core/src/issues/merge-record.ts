@@ -42,11 +42,8 @@ export function mergeMarkFields(row: MergeMarkColumns): {
   return { mergedCommitSha: row.mergedCommitSha, mergeMark: mergeMarkKindOf(row) };
 }
 
-/**
- * The sentence saying which kind this is. One author, because the audit comment and the
- * caller's answer are both built from it and two builders are two records that can disagree.
- * `claimedCommit` is the caller's word and deliberately not the column.
- */
+/** The sentence saying which kind this is, written once: the audit comment and the caller's
+ *  answer are both built from it. `claimedCommit` is the caller's word, not the column. */
 export function describeMergeMark(args: {
   kind: MergeMarkKind;
   commitSha?: string | null;
@@ -122,7 +119,8 @@ export async function recordIssueMerge(
   return { wrote: false, mergedAt: held.mergedAt, commitSha: held.commitSha };
 }
 
-/** Clearing the stamp re-blocks every downstream child (ISS-286 AC4). */
+/** Clear the claim. It re-blocks nothing — a `blocks` edge is released by STATUS (ISS-1100) — and
+ *  whether the row may lose the claim at all is `refuseUnmarkOnClosed`'s, not this function's. */
 export async function clearIssueMerge(
   executor: MergeRecordExecutor,
   issueId: string,

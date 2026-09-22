@@ -5,8 +5,8 @@ import type { MergeRecordExecutor } from './merge-record.js';
 /** The status an issue stands at while its release is waiting to be pressed. */
 export const BASE_MERGE_STATE: IssueStatus = 'awaiting_release';
 
-/** What a refused close says, or `null` where the close may proceed. */
-export interface UnshippedCloseRefusal {
+/** What a refusal under the shipped-work rule says, or `null` where the call may proceed. */
+export interface ShippedRuleRefusal {
   detail: string;
   details: Record<string, unknown>;
 }
@@ -21,7 +21,7 @@ export const CLOSED_MEANS_SHIPPED =
 export async function refuseUnshippedClose(
   executor: MergeRecordExecutor,
   args: { issueId: string; toStatus: IssueStatus },
-): Promise<UnshippedCloseRefusal | null> {
+): Promise<ShippedRuleRefusal | null> {
   if (args.toStatus !== 'closed') return null;
   const [row] = await executor
     .select({ mergedAt: issues.mergedAt })
@@ -32,5 +32,21 @@ export async function refuseUnshippedClose(
   return {
     detail: `this issue carries no \`merged_at\`, so nothing on it shows the work shipped. ${CLOSED_MEANS_SHIPPED}`,
     details: { requires: 'mergedAt', useInstead: 'dropped' },
+  };
+}
+
+/** Why `unmark` is refused on a `closed` issue, or `null` where it may proceed. `clearIssueMerge`
+ *  nulls `merged_at` and leaves `status` alone, so on a `closed` row it makes the one state this
+ *  rule forbids. The trigger refuses it too, but names an entry into `closed` nobody attempted. */
+export function refuseUnmarkOnClosed(status: IssueStatus): ShippedRuleRefusal | null {
+  if (status !== 'closed') return null;
+  return {
+    detail:
+      'this issue is `closed`, and `closed` means the work shipped, so the claim cannot be ' +
+      'withdrawn while it stands there: clearing `merged_at` would leave a closed issue with ' +
+      'nothing on it saying anything shipped. Move it off `closed` first — `reopen` is the only ' +
+      'exit `closed` has — and then `unmark`, or take `dropped` from `reopen` where the work ' +
+      'never landed at all.',
+    details: { status: 'closed', moveTo: 'reopen', useInstead: 'dropped' },
   };
 }

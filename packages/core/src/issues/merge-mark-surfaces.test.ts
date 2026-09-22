@@ -71,7 +71,12 @@ const ACTOR = {
     agency: 'human' as const,
   },
 };
-const ISSUE = { id: ISSUE_ID, projectId: PROJECT_ID, mergedAt: null };
+const ISSUE = {
+  id: ISSUE_ID,
+  projectId: PROJECT_ID,
+  mergedAt: null,
+  status: 'in_progress' as const,
+};
 
 function asAsserted() {
   projectionRows = [];
