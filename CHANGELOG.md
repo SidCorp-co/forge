@@ -5850,6 +5850,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **Closing an issue now means the work shipped.** A close is refused unless the issue says the code landed. Work that turned out not to be work leaves by Dropped, which frees whatever was waiting on it just the same.
+
+- **Every change of an issue's status is now recorded in the same ledger as the rest of the work.** Who moved it, when, and under whose authority is answered from that record instead of from a comment somebody wrote.
+
 - **Two project settings saved at once no longer overwrite each other.** Each setting is written on
   its own now, instead of rewriting the whole configuration; and a save that fails part-way leaves
   every setting in it untouched.
