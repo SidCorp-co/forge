@@ -9,15 +9,9 @@ import {
 } from '../helpers/index.js';
 
 /**
- * The composition root registers `/mcp` for three methods behind one middleware pair. Only POST
- * was measured, by one integration file; GET and DELETE were reachable only by reading
- * `src/index.ts`. ISS-1173 rewrote those registrations into Hono's method-set form to pay that
- * file's line budget, which is a change to live routing standing on a reading of the framework.
- *
- * The request carries a real PAT because the gate is mounted with `use`, which matches every
- * method: without a token even a method the router never heard of is refused 401, so an
- * unauthenticated probe is green whether or not the method is registered at all. Past the gate the
- * router answers, and a method it does not know is 404 — which is what PUT holds here.
+ * The gate on `/mcp` is mounted with `use`, which matches every method: without a token even a
+ * method the router never heard of is refused 401, so an unauthenticated probe is green whether
+ * or not the method is registered. Past the gate the router answers, and PUT holds the 404.
  */
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
