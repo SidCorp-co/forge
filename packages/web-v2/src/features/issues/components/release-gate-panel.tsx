@@ -114,7 +114,12 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
       <CardContent>
         <div className="fg-body-xs text-fg-muted flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>
-            Deploys via <MonoTag>{data.channel ?? "nothing — a person deploys"}</MonoTag>
+            Deploys via{" "}
+            {data.channels.length > 0 ? (
+              data.channels.map((channel) => <MonoTag key={channel}>{channel}</MonoTag>)
+            ) : (
+              <MonoTag>nothing — a person deploys</MonoTag>
+            )}
           </span>
           {data.releaseRunnerLabel ? (
             <span>

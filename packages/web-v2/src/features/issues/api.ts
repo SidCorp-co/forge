@@ -1,4 +1,5 @@
 
+import { parseReleaseRoster } from "@/features/releases/roster";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import { filterToQueryParams } from "./derive";
 import type {
@@ -170,30 +171,14 @@ export interface CreateReleaseBatchResult {
   gateStatus: string;
 }
 
-/** One issue waiting at the release gate. Mirrors core `ReleaseRosterEntry`. */
-export interface ReleaseRosterEntry {
-  id: string;
-  displayId: string;
-  title: string;
-  mergedAt: string | null;
-  waitingDays: number | null;
-  claimedByRunId: string | null;
-}
-
-/** What the project's release surface reads. `gateStatus: null` = no gate. */
-export interface ReleaseRoster {
-  gateStatus: string | null;
-  channel: string | null;
-  releaseRunnerLabel: string | null;
-  baseBranch: string | null;
-  nextCutAt: string | null;
-  issues: ReleaseRosterEntry[];
-}
+export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";
 
 export const releaseBatchApi = {
-  /** `GET /api/projects/:projectId/release-batches/roster` — waiting, oldest first. */
-  roster: (projectId: string) =>
-    apiClient<ReleaseRoster>(`/projects/${projectId}/release-batches/roster`),
+  /** `GET …/release-batches/roster` — waiting, oldest first. Parsed, not cast. */
+  roster: async (projectId: string) => {
+    const endpoint = `/projects/${projectId}/release-batches/roster`;
+    return parseReleaseRoster(await apiClient<unknown>(endpoint), endpoint);
+  },
 
   /** `POST /api/projects/:projectId/release-batches` — create + claim a batch. */
   create: (projectId: string, issueIds: string[]) =>

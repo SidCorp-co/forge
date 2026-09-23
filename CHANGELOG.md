@@ -3078,6 +3078,10 @@
   set is now 59.
 
 ### Fixed
+- **The release panel names who deploys the project, instead of saying nobody does.** It read a
+  field the server had renamed, and answered its own fallback. A roster key that goes missing now
+  fails loudly rather than reading as absent.
+
 - **A refused settings save no longer throws away the edits it offered to rescue.** The banner
   names what moved and offers two ways on: take the stored values, or keep yours. Edits elsewhere
   on the page stand either way.
