@@ -76,11 +76,14 @@ in your hands, not an agent's. Move it on when you want the work to resume.
 
 ## Dropped is final
 
-Closing an issue as *dropped* records that the work is not going to happen. There
-is no path back out of it — if the work turns out to be wanted after all, file a
-new issue. Dropped issues are kept, and appear alongside closed ones under
-**Finished** on the Issues list, marked differently: finishing work and deciding
-against it are different outcomes and should not read the same.
+Dropping an issue records that the work is not going to happen. *Dropped* is its
+own ending rather than a kind of close: closing is refused unless the work
+shipped, so *Closed* is no way to record something you decided against. There is
+no path back out of *Dropped* — if the work turns out to be wanted after all,
+file a new issue.
+Dropped issues are kept, and appear alongside closed ones under **Finished** on
+the Issues list, marked differently: finishing work and deciding against it are
+different outcomes and should not read the same.
 
 ## While an agent is working
 

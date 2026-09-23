@@ -3095,6 +3095,10 @@
   The rule that `closed` means shipped was written about the row, not the move into it, so it
   locked older closes.
 
+- **The guides now describe the two endings correctly.** One promised no closed issue could exist
+  unshipped, untrue of issues closed before the rule. The help page called dropping an issue a
+  kind of close.
+
 - **A criterion's verdict now says what it was judged against, and stops counting once that is
   gone.** A pass taken at a runtime a repair replaced read as earned forever. Release holds the
   issue and names the criterion.
