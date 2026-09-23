@@ -253,7 +253,15 @@ async fn ask(ctx: Ctx, a: AskArgs) -> anyhow::Result<()> {
     let run_id = run_identity(a.run.as_deref())?;
     match send_ask(&client, &a, &project_id, &id, &run_id).await {
         Ok(question_id) => {
-            print!("{}", asked(&question_id, &run_id, a.issue.as_deref()));
+            print!(
+                "{}",
+                asked(
+                    &question_id,
+                    &run_id,
+                    a.issue.as_deref(),
+                    ctx.core_url_override.as_deref(),
+                )
+            );
             Ok(())
         }
         Err(e) => Err(refused_ask(e)),
@@ -295,15 +303,26 @@ fn shell_quoted(value: &str) -> String {
 /// read-back is served under, and the command that reads it. An ask made with
 /// no `--run` mints one, so a caller that ran only this command can still come
 /// back for the answer.
-fn asked(question_id: &str, run_id: &str, issue_id: Option<&str>) -> String {
+fn asked(
+    question_id: &str,
+    run_id: &str,
+    issue_id: Option<&str>,
+    core_url_override: Option<&str>,
+) -> String {
     let where_answered = match issue_id {
         Some(issue) => format!("It is on issue {issue}, under Decisions.\n"),
         None => "It carries no issue, so it is on the Agents screen's Questions tab.\n".to_string(),
     };
+    // The override travels with the invocation or the paste asks a different
+    // core, which has neither the question nor the waiter and refuses.
+    let endpoint = match core_url_override {
+        Some(url) => format!(" --core-url {}", shell_quoted(url)),
+        None => String::new(),
+    };
     let (q, r) = (shell_quoted(question_id), shell_quoted(run_id));
     format!(
         "question {question_id}\nrun      {run_id}\n{where_answered}\
-         Read the answer back with:\n  forge-runner question answer {q} --run {r}\n"
+         Read the answer back with:\n  forge-runner{endpoint} question answer {q} --run {r}\n"
     )
 }
 
@@ -505,7 +524,7 @@ mod tests {
 
     #[test]
     fn what_the_ask_prints_carries_the_command_that_reads_the_answer() {
-        let out = asked("q-1", "run-7", None);
+        let out = asked("q-1", "run-7", None, None);
         assert!(out.contains("q-1") && out.contains("run-7"), "{out}");
         assert!(
             out.contains("forge-runner question answer q-1 --run run-7"),
@@ -572,7 +591,7 @@ mod tests {
         for run in [
             "run&7", "run 7", "run;7", "run$(id)", "run'\''7", "run|7", "",
         ] {
-            let out = asked("q-1", run, None);
+            let out = asked("q-1", run, None, None);
             let line = out
                 .lines()
                 .find(|l| l.contains("question answer"))
@@ -597,10 +616,52 @@ mod tests {
 
     #[test]
     fn an_ask_about_an_issue_says_the_answer_is_on_that_issue() {
-        let out = asked("q-1", "run-7", Some("iss-uuid"));
+        let out = asked("q-1", "run-7", Some("iss-uuid"), None);
         assert!(
             out.contains("iss-uuid") && out.contains("Decisions"),
             "{out}"
+        );
+    }
+
+    /// A paste that asks a different core finds neither the question nor the
+    /// waiter, so the endpoint this ask was made against travels with the line.
+    #[test]
+    fn an_ask_made_against_another_core_prints_that_core_in_the_read_back() {
+        let out = asked("q-1", "run-7", None, Some("http://127.0.0.1:8080"));
+        let line = out
+            .lines()
+            .find(|l| l.contains("question answer"))
+            .expect("the read-back invocation is printed");
+        let words = shell_words(line.trim());
+        let at = words
+            .iter()
+            .position(|w| w == "--core-url")
+            .expect("the override must travel with the invocation");
+        assert_eq!(
+            words.get(at + 1).map(String::as_str),
+            Some("http://127.0.0.1:8080")
+        );
+        assert!(
+            words.iter().any(|w| w == "run-7"),
+            "the identities are still there: {line}"
+        );
+    }
+
+    #[test]
+    fn an_ask_against_this_boxs_own_core_prints_no_endpoint_to_repeat() {
+        let out = asked("q-1", "run-7", None, None);
+        assert!(!out.contains("--core-url"), "{out}");
+    }
+
+    #[test]
+    fn an_endpoint_the_shell_would_read_as_syntax_is_quoted_too() {
+        let out = asked("q-1", "run-7", None, Some("http://x/?a=1&b=2"));
+        let line = out.lines().find(|l| l.contains("question answer")).unwrap();
+        let words = shell_words(line.trim());
+        let at = words.iter().position(|w| w == "--core-url").unwrap();
+        assert_eq!(
+            words.get(at + 1).map(String::as_str),
+            Some("http://x/?a=1&b=2")
         );
     }
 
