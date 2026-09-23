@@ -3080,6 +3080,10 @@
   never granted permission to read branch protection. A connection short of any permission now
   says which, and where to grant it.
 
+- **A criterion's verdict now says what it was judged against, and stops counting once that is
+  gone.** A pass taken at a runtime a repair replaced read as earned forever. Release holds the
+  issue and names the criterion.
+
 - **Editing one part of project settings no longer wipes another part you just saved.** Each save
   sends only what it changed. A setting somebody else moved is refused by name, not overwritten,
   and the screen offers the re-read.

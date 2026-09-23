@@ -26,12 +26,22 @@ import {
 } from '../helpers/index.js';
 import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
+/** The identity the issues seeded here record as serving them. */
+const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
+/** A runtime that is not that one: the head a repair replaced, as ISS-1185 carried it. */
+const REPLACED = '34450f4420ae4a3b6de40b6d3cfb2b0e66aa2f51';
+
 /** One criterion's verdict block, in the exact shape `forge record verdict` writes. */
-function verdictBlock(criterion: number, text: string, verdict: string): string {
+function verdictBlock(
+  criterion: number,
+  text: string,
+  verdict: string,
+  runtime: string | null = SERVING,
+): string {
   return [
     `criterion: ${criterion} — ${text}`,
     `verdict: ${verdict}`,
-    'commit: dce6f354c',
+    ...(runtime === null ? ['commit: dce6f354c'] : [`runtime: ${runtime}`]),
     'evidence: judge-evidence.txt',
     'why: exercised directly',
     'judge: judge-1',
@@ -81,6 +91,14 @@ describe('release sweep E2E (ISS-1117)', () => {
     `);
   }
 
+  /** The landing an issue records, which is what a verdict's identity is resolved against. */
+  async function setServing(issueId: string, deployment: string): Promise<void> {
+    const landing = JSON.stringify({ landing: { head: 'dce6f354c', deployment } });
+    await harness.db.execute(sql`
+      UPDATE issues SET session_context = ${landing}::jsonb WHERE id = ${issueId}
+    `);
+  }
+
   async function postVerdict(issueId: string, body: string): Promise<void> {
     await harness.db.execute(sql`
       INSERT INTO comments (id, issue_id, author_id, body)
@@ -104,6 +122,7 @@ describe('release sweep E2E (ISS-1117)', () => {
   it('cuts the earned issue and leaves the ISS-1139-shaped skipped one untouched', async () => {
     const earnedId = await insertIssue();
     await setCriteria(earnedId, '1. ok\n2. ok');
+    await setServing(earnedId, SERVING);
     await postVerdict(
       earnedId,
       verdictComment([verdictBlock(1, 'a', 'pass'), verdictBlock(2, 'b', 'pass')]),
@@ -111,6 +130,7 @@ describe('release sweep E2E (ISS-1117)', () => {
 
     const unearnedId = await insertIssue();
     await setCriteria(unearnedId, '1. ok\n2. ok');
+    await setServing(unearnedId, SERVING);
     await postVerdict(
       unearnedId,
       verdictComment([
@@ -141,6 +161,7 @@ describe('release sweep E2E (ISS-1117)', () => {
   it('touches nothing when every waiting issue is unearned', async () => {
     const id = await insertIssue();
     await setCriteria(id, '1. ok');
+    await setServing(id, SERVING);
     await postVerdict(id, verdictComment([verdictBlock(1, 'never reached', 'skipped')]));
 
     const before = await stored(id);
@@ -152,6 +173,44 @@ describe('release sweep E2E (ISS-1117)', () => {
     expect(result.issuesExcluded).toBe(1);
     const after = await stored(id);
     expect(after).toEqual(before);
+  }, 30_000);
+
+  it('leaves an issue whose every criterion passed at a runtime a repair replaced', async () => {
+    const id = await insertIssue();
+    await setCriteria(id, '1. ok\n2. ok');
+    await setServing(id, SERVING);
+    await postVerdict(
+      id,
+      verdictComment([
+        verdictBlock(1, 'a', 'pass', REPLACED),
+        verdictBlock(2, 'b', 'pass', REPLACED),
+      ]),
+    );
+
+    const before = await stored(id);
+
+    const { sweepAutomaticReleases } = await import('../../src/pipeline/release-sweep.js');
+    const result = await sweepAutomaticReleases();
+
+    expect(result.issuesCut).toBe(0);
+    expect(result.issuesExcluded).toBe(1);
+    expect(await stored(id)).toEqual(before);
+  }, 30_000);
+
+  it('leaves an issue whose passes name only a source, with no runtime to witness them', async () => {
+    const id = await insertIssue();
+    await setCriteria(id, '1. ok');
+    await setServing(id, SERVING);
+    await postVerdict(id, verdictComment([verdictBlock(1, 'a', 'pass', null)]));
+
+    const before = await stored(id);
+
+    const { sweepAutomaticReleases } = await import('../../src/pipeline/release-sweep.js');
+    const result = await sweepAutomaticReleases();
+
+    expect(result.issuesCut).toBe(0);
+    expect(result.issuesExcluded).toBe(1);
+    expect(await stored(id)).toEqual(before);
   }, 30_000);
 
   it('does nothing for a project that has not opted into autoProdDeploy', async () => {

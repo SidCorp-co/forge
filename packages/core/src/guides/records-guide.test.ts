@@ -26,6 +26,13 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('A comment is prose a person reads');
   });
 
+  it('says a verdict block names the runtime it held in, and what naming none is read as', () => {
+    expect(prose).toContain('an identity something was observed serving');
+    expect(prose).toContain('never that the code was running');
+    expect(prose).toContain('refused at the write door under `verdict-identity`');
+    expect(prose).toContain('reads as unanchored');
+  });
+
   it('names a store for every destination the rule routes to', () => {
     for (const route of new Set(RECORD_DESTINATIONS.values())) {
       expect(body).toContain(route);

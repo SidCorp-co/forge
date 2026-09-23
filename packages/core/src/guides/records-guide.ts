@@ -97,6 +97,23 @@ carry a record either carries one or is told it does not.
 A fence written inside an enclosing fence is that fence's content and opens nothing, so a comment
 quoting either shape as an example stays ordinary prose.
 
+### What a verdict block names it was judged against
+
+A verdict is a claim about a runtime at a moment. Each \`criterion\` line opens a block, and the
+block names what that criterion was judged against before the next \`criterion\` line closes it:
+
+- \`runtime: <a whole object id>\` — an identity something was observed serving. A verdict carrying
+  one reads as standing only while it is the identity the issue records as serving it; once the
+  issue stands at another, the verdict is superseded and stops reading as earned.
+- \`commit: <at least seven hexadecimal characters>\` — a source that was read. It says which code
+  was judged and never that the code was running, so a verdict carrying one and no runtime reads as
+  unwitnessed, which is not earned either.
+
+A block carrying a verdict and naming neither is refused at the write door under
+\`verdict-identity\`, as is an identity not written as one and a \`runtime\` written as an
+abbreviation. A verdict already stored naming neither reads as unanchored: nothing says where it
+held, so nothing can say it still holds.
+
 A fence is read only where it opens at the left margin, and the body is stored exactly as it was
 written, so where you put the block is where it is read. Indent it at all — the four spaces of an
 indented code block, or the one to three markdown would still call a fence — and it is prose, as a
