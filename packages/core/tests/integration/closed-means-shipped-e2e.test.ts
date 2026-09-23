@@ -7,14 +7,20 @@
  * installed by migration 0304, which no application code can be routed around.
  * A mocked `db.execute` can express none of it.
  *
- * The migration's own refusal is read from the migration file rather than
- * restated, so what is proved is what will run at the deploy.
+ * The migration's own text is read from the migration file rather than restated,
+ * so what is proved is what will run at the deploy. Its rule is about the
+ * TRANSITION into `closed`: a row that already stands there without a claim
+ * predates the rule, is counted and named rather than changed, and stays
+ * writable — the state-shaped version of this trigger made 597 issues on
+ * forge-beta permanently un-updatable and aborted the deploy that would have
+ * installed it.
  */
 
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 // The unmark cases below import the marker, which reads the environment at module load.
@@ -82,6 +88,25 @@ async function dropTheRule() {
   await harness.db.execute(
     sql`DROP TRIGGER IF EXISTS trg_issues_closed_means_shipped_ins ON issues`,
   );
+}
+
+/** The migration's own NOTICEs, which the harness client is built to swallow. */
+async function noticesFromMigration(): Promise<string[]> {
+  const captured: string[] = [];
+  const client = postgres(harness.url, {
+    max: 1,
+    onnotice: (n) => {
+      if (n.message) captured.push(n.message);
+    },
+  });
+  try {
+    for (const statement of readFileSync(MIGRATION, 'utf8').split('--> statement-breakpoint')) {
+      if (statement.trim()) await client.unsafe(statement);
+    }
+  } finally {
+    await client.end({ timeout: 5 });
+  }
+  return captured;
 }
 
 async function runMigration() {
@@ -167,29 +192,48 @@ describe('no route reaches `closed` without the shipped-work claim (ISS-1108)', 
   });
 });
 
-describe('migration 0304 is decided by the rows it finds (ISS-1108)', () => {
-  it('counts them, names one, and changes nothing', async () => {
+describe('migration 0304 carries on over the rows it cannot represent (ISS-1108)', () => {
+  it('counts them, names one, changes none of them, and leaves them updatable', async () => {
     await dropTheRule();
     try {
       const { id, issSeq } = await seedIssue({ status: 'closed' });
+      const other = await seedIssue({ status: 'closed' });
+      // The notice names the OLDEST, so which of the two that is is decided here rather
+      // than by whichever insert the clock happened to separate.
+      await harness.db.execute(
+        sql`UPDATE issues SET updated_at = now() - interval '1 day' WHERE id = ${id}`,
+      );
 
-      const message = await refusalFrom(runMigration);
+      const notice = (await noticesFromMigration()).find((m) => m.includes('ISS-1108'));
 
-      expect(message).toContain('ISS-1108');
-      expect(message).toContain('1 issue row(s)');
-      expect(message).toContain(id);
-      expect(message).toContain(`ISS-${issSeq}`);
-      expect(message).toContain('dropped');
+      expect(notice).toContain('2 issue row(s)');
+      expect(notice).toContain(id);
+      expect(notice).toContain(`ISS-${issSeq}`);
+      expect(notice).toContain('dropped');
+
       // Named and left standing: not stamped, not dropped, not cleaned away.
       const rows = await harness.db.execute<{ status: string; merged_at: Date | null }>(
-        sql`SELECT status, merged_at FROM issues WHERE id = ${id}`,
+        sql`SELECT status, merged_at FROM issues WHERE id IN (${id}, ${other.id})`,
       );
-      expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({ status: 'closed', merged_at: null });
-    } finally {
+      expect(rows).toHaveLength(2);
+      for (const row of rows) expect(row).toMatchObject({ status: 'closed', merged_at: null });
+
+      // The rule reaches the transition and not the state, so a row already standing there
+      // is still writable. That is what the abort was standing in front of: with the wide
+      // trigger installed, every one of these rows is refused for the rest of its life.
       await harness.db.execute(
-        sql`DELETE FROM issues WHERE status = 'closed' AND merged_at IS NULL`,
+        sql`UPDATE issues SET title = 'renamed while standing closed' WHERE id = ${id}`,
       );
+      await harness.db.execute(sql`UPDATE issues SET updated_at = now() WHERE id = ${id}`);
+
+      // And nothing may newly reach the state they stand in.
+      const live = await seedIssue();
+      expect(
+        await refusalFrom(() =>
+          harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${live.id}`),
+        ),
+      ).toContain('ISS-1108');
+    } finally {
       await runMigration();
     }
   });
