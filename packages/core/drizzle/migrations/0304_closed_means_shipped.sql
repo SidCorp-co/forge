@@ -15,45 +15,54 @@
 -- `issues/apply-transition.ts` refuses such a close by name and in the
 -- application. This is the half that holds whatever wrote the row.
 
--- ── The existing rows decide this migration, not the other way round ─────────
--- A `closed` row with no `merged_at` cannot be represented under the new
--- meaning. It is named and the migration aborts; it is NOT stamped, NOT dropped
--- and NOT cleaned away so the DDL below can succeed. Whoever owns that row
--- decides whether it shipped (mark it) or never did (move it to `dropped`), and
--- this deploy waits for them.
+-- ── The rule governs the TRANSITION, so the existing rows do not decide it ───
+-- Nothing below adds a column, validates a constraint or backfills a value, so
+-- every row already in the table is representable under the new meaning whatever
+-- it holds. A row that reads `closed` with no `merged_at` is therefore counted
+-- and named, and the migration carries on: it is NOT stamped, NOT dropped and
+-- NOT cleaned away, because each of those invents a decision about work nobody
+-- here made.
 --
--- The count should be small: the close has been stamping since 0185, so the
--- only way to reach this state is an `unmark` after a close. It is counted
--- rather than assumed, because "should be" is not a reading.
+-- This block used to RAISE EXCEPTION on that count. The premise stated beside it
+-- was that the close has been stamping since 0185, so only an `unmark` after a
+-- close could reach the state and the count would be small. The premise was
+-- wrong: the count on forge-beta is 597, the oldest being ISS-1 of another
+-- project, and there is a whole population of closes predating the stamping that
+-- was never one-by-one decidable. Because `dist/db/migrate.js` runs before the
+-- server in the same container command, the abort stopped the API booting rather
+-- than stopping a bad write.
+--
+-- The count stays a NOTICE rather than being dropped, so the size of that
+-- population is on the record at every deploy instead of vanishing.
 DO $$
 DECLARE
   offending record;
   total int;
 BEGIN
   SELECT count(*) INTO total FROM issues WHERE status = 'closed' AND merged_at IS NULL;
-  IF total > 0 THEN
+  IF total = 0 THEN
+    RAISE NOTICE 'ISS-1108: 0 closed row(s) without merged_at; every closed issue can show it shipped.';
+  ELSE
     SELECT id, iss_seq, project_id, title
       INTO offending
       FROM issues
      WHERE status = 'closed' AND merged_at IS NULL
      ORDER BY updated_at
      LIMIT 1;
-    RAISE EXCEPTION
-      'ISS-1108: % issue row(s) read `closed` with no merged_at, and `closed` now means the work shipped. The oldest is % (ISS-%, project %): "%". Decide what each one is before this migration runs — mark it merged if it shipped, or move it to `dropped` if it did not. Nothing was changed.',
+    RAISE NOTICE
+      'ISS-1108: % issue row(s) read `closed` with no merged_at and predate this rule. The oldest is % (ISS-%, project %): "%". They keep the state the forward rule forbids and nothing here changes them — whoever owns each row decides whether it shipped (mark it merged) or never did (move it to `dropped`). The rule below governs the transition, so none of them can be reached again from outside this state.',
       total, offending.id, offending.iss_seq, offending.project_id, offending.title;
   END IF;
-  RAISE NOTICE 'ISS-1108: 0 closed row(s) without merged_at; every closed issue can show it shipped.';
 END $$;--> statement-breakpoint
-
--- Everything below this line changes the schema. The check that could refuse
--- has already run.
 
 -- ── The rule, held by the database ──────────────────────────────────────────
 -- A trigger and not a CHECK constraint, because the refusal IS the deliverable:
 -- a constraint violation names the constraint and leaves the reader to find out
--- what it meant, while this names the issue, the rule and the exit. It also
--- keeps the migration free of schema DDL, so the journal's snapshot chain is
--- unchanged.
+-- what it meant, while this names the issue, the rule and the exit. A CHECK
+-- would also be the wrong shape twice over — it measures the row's state rather
+-- than the transition into it, so it would refuse every later write to a legacy
+-- row. It keeps the migration free of schema DDL either way, so the journal's
+-- snapshot chain is unchanged.
 --
 -- BEFORE UPDATE rather than AFTER, so the write never lands.
 CREATE OR REPLACE FUNCTION forge_closed_means_shipped() RETURNS trigger AS $$
@@ -69,15 +78,25 @@ END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
 DROP TRIGGER IF EXISTS trg_issues_closed_means_shipped ON issues;--> statement-breakpoint
+-- The third conjunct is what makes this a rule about the transition. Without it
+-- the trigger fires on ANY update to a row already standing in the forbidden
+-- state — a title, a touched `updated_at`, a relation — and the 597 legacy rows
+-- become permanently un-updatable, refused by a message naming a close nobody
+-- attempted. With it, a row only meets the rule on the way IN: entering `closed`
+-- from anywhere else, or having its claim cleared while it stands there.
 CREATE TRIGGER trg_issues_closed_means_shipped
   BEFORE UPDATE ON issues
   FOR EACH ROW
-  WHEN (NEW.status = 'closed' AND NEW.merged_at IS NULL)
+  WHEN (
+    NEW.status = 'closed' AND NEW.merged_at IS NULL
+    AND (OLD.status IS DISTINCT FROM 'closed' OR OLD.merged_at IS NOT NULL)
+  )
   EXECUTE FUNCTION forge_closed_means_shipped();--> statement-breakpoint
 
 -- The same rule on the way in. A row created `closed` would otherwise reach the
 -- state the UPDATE trigger exists to refuse, and "no way to reach it" has to
--- mean every way.
+-- mean every way. No narrowing here: an INSERT has no prior state to be already
+-- standing in.
 DROP TRIGGER IF EXISTS trg_issues_closed_means_shipped_ins ON issues;--> statement-breakpoint
 CREATE TRIGGER trg_issues_closed_means_shipped_ins
   BEFORE INSERT ON issues

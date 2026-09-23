@@ -3080,6 +3080,10 @@
   is named, criterion by criterion, and the criterion stops reading as earned. Citing a path on the
   judging machine is refused outright.
 
+- **Issues closed before Forge recorded what shipped can be edited again, and the API starts.**
+  The rule that `closed` means shipped was written about the row, not the move into it, so it
+  locked older closes.
+
 - **A criterion's verdict now says what it was judged against, and stops counting once that is
   gone.** A pass taken at a runtime a repair replaced read as earned forever. Release holds the
   issue and names the criterion.
