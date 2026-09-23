@@ -197,8 +197,10 @@ function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): strin
   if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) {
     const decl = declarationOf(node, checker);
     if (!decl) return null;
-    if (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl))
+    if (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl)) {
+      if (ts.isVariableDeclaration(decl) && !isConstBinding(decl)) return null;
       return decl.initializer ? evaluate(decl.initializer, checker, depth + 1) : null;
+    }
     if (ts.isShorthandPropertyAssignment(decl)) {
       const value = checker.getShorthandAssignmentValueSymbol(decl);
       const from = value?.valueDeclaration ?? value?.declarations?.[0];
@@ -219,6 +221,14 @@ function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): strin
  * `:p` where this expression cannot carry a `/`, else null: a number has no separator to carry and
  * `encodeURIComponent` escapes the one that would make a value two segments.
  */
+/**
+ * A binding nothing can write to after it is read: a `let p = repoPath(client)` followed by
+ * `p += '/branches/…/protection'` sends a path its initializer does not name.
+ */
+export function isConstBinding(decl: ts.VariableDeclaration): boolean {
+  return (decl.parent.flags & ts.NodeFlags.Const) !== 0;
+}
+
 function oneSegment(node: ts.Expression, checker: ts.TypeChecker, depth = 0): string | null {
   if (depth > MAX_DEPTH) return null;
   const type = checker.getTypeAtLocation(node);
@@ -228,18 +238,13 @@ function oneSegment(node: ts.Expression, checker: ts.TypeChecker, depth = 0): st
   if (ts.isIdentifier(node)) {
     const decl = declarationOf(node, checker);
     const held =
-      decl && ts.isVariableDeclaration(decl) && (decl.parent.flags & ts.NodeFlags.Const) !== 0
-        ? decl.initializer
-        : undefined;
+      decl && ts.isVariableDeclaration(decl) && isConstBinding(decl) ? decl.initializer : undefined;
     if (held) return oneSegment(held, checker, depth + 1);
   }
   return null;
 }
 
-/**
- * The global `encodeURIComponent` and nothing else: `encodeURI` leaves `/` alone, and a local
- * function of either name escapes whatever its own body escapes.
- */
+/** The global `encodeURIComponent` alone: `encodeURI` leaves `/`, and a local one escapes its own. */
 function isComponentEncoder(node: ts.Expression, checker: ts.TypeChecker): boolean {
   if (!ts.isCallExpression(node)) return false;
   const symbol = symbolOf(node.expression, checker);

@@ -15,6 +15,7 @@ import {
   declarationOf,
   evaluate,
   GITHUB_DIR,
+  isConstBinding,
   isNetworkCall,
   isStringLike,
   lineOf,
@@ -143,7 +144,7 @@ function objectOf(
     return objectOf(node.expression, checker, depth + 1);
   if (ts.isIdentifier(node)) {
     const decl = declarationOf(node, checker);
-    return decl && ts.isVariableDeclaration(decl)
+    return decl && ts.isVariableDeclaration(decl) && isConstBinding(decl)
       ? objectOf(decl.initializer, checker, depth + 1)
       : null;
   }
@@ -162,6 +163,17 @@ function objectOf(
  * back: the runtime would overwrite whatever an earlier property established, and keeping the
  * earlier one prices a path the call does not send.
  */
+/** What this property NAMES, or null where the key is computed out of something unreadable. */
+function keyOf(property: ts.ObjectLiteralElementLike): string | null {
+  const name = property.name;
+  if (!name) return null;
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name))
+    return name.text;
+  if (ts.isComputedPropertyName(name) && ts.isStringLiteralLike(name.expression))
+    return name.expression.text;
+  return null;
+}
+
 function propertyOf(
   object: ts.ObjectLiteralExpression,
   name: string,
@@ -171,12 +183,17 @@ function propertyOf(
   let held: ts.Node | null = null;
   let blockedBy: ts.Node | null = null;
   for (const property of object.properties) {
-    if (ts.isPropertyAssignment(property) && property.name.getText() === name) {
+    if (ts.isPropertyAssignment(property) && keyOf(property) === name) {
       held = property.initializer;
       blockedBy = null;
-    } else if (ts.isShorthandPropertyAssignment(property) && property.name.getText() === name) {
+    } else if (ts.isShorthandPropertyAssignment(property) && keyOf(property) === name) {
       held = property.name;
       blockedBy = null;
+    } else if (
+      (ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property)) &&
+      keyOf(property) === null
+    ) {
+      blockedBy = property.name;
     } else if (ts.isSpreadAssignment(property)) {
       const spread = depth < MAX_DEPTH ? objectOf(property.expression, checker) : null;
       const inner = spread ? propertyOf(spread, name, checker, depth + 1) : null;
@@ -384,7 +401,7 @@ function transportFor(
   const direct = known.get(symbol);
   if (direct) return direct;
   const decl = symbol.valueDeclaration;
-  if (decl && ts.isVariableDeclaration(decl) && decl.initializer)
+  if (decl && (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl)) && decl.initializer)
     return transportFor(symbolOf(decl.initializer, checker), known, checker, seen);
   if (decl && ts.isBindingElement(decl) && ts.isIdentifier(decl.name)) {
     const owner = decl.parent.parent;

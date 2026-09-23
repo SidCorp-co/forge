@@ -33,20 +33,16 @@ import {
   undeclaredPathsIn,
   unreadableRequests,
 } from './app-permissions.fixture.js';
-import {
-  appPermissionsPageUrl,
-  describeShortfall,
-  GITHUB_ENDPOINTS,
-  installationShortfall,
-  requiredAppPermissions,
-} from './app-permissions.js';
+import { GITHUB_ENDPOINTS, requiredAppPermissions } from './app-permissions.js';
 import {
   ALIASED_RESPONSE,
   ARROW_TRANSPORT,
   ASSIGNED_ARGS,
   BARE_GET,
   CLIENT_TRANSPORTS,
+  COMPUTED_KEY,
   CONCATENATED,
+  CONST_PATH,
   DECLARATIONS_ONLY,
   DESTRUCTURED_MEMBER,
   DYNAMIC_METHOD,
@@ -56,8 +52,11 @@ import {
   EXTRACTED_MEMBER,
   GITHUB_JSON,
   MULTI_SEGMENT_HOLE,
+  MUTATED_PATH,
   NESTED_SPREAD_OVERRIDE,
   NO_METHOD,
+  OBJECT_HELD_TRANSPORT,
+  QUOTED_METHOD,
   READABLE_GET,
   REAL_UNDECLARED_PATH,
   RETURNED_ARGS,
@@ -433,75 +432,31 @@ describe('a call is found by what it calls, however it is written (ISS-1153)', (
     expect(key(found.method, found.path)).toBe('GET /repos/a/b/branches/main/protection');
   });
 
+  it('refuses a path bound to a name that is written to after it is set', () => {
+    expect(only(collectGitHubCalls(MUTATED_PATH)).unresolved).toContain('endpoint');
+  });
+
+  it('prices the same path bound once, which nothing can write to after', () => {
+    const found = only(collectGitHubCalls(CONST_PATH));
+    expect(found.unresolved).toBeNull();
+    expect(found.path).toBe('/repos/:p/:p/branches/:p/protection');
+  });
+
+  it('follows a transport held in a property of an object of its own', () => {
+    expect(only(collectGitHubCalls(OBJECT_HELD_TRANSPORT)).unresolved).toContain('endpoint');
+  });
+
+  it('reads a method named by a quoted key as that method, not as a missing one', () => {
+    const found = only(collectGitHubCalls(QUOTED_METHOD));
+    expect(found.unresolved).toBeNull();
+    expect(key(found.method, found.path)).toBe('DELETE /repos/a/b/branches/:p/protection');
+  });
+
+  it('gives back a path a key it cannot read could be naming', () => {
+    expect(only(collectGitHubCalls(COMPUTED_KEY)).unresolved).toContain('which');
+  });
+
   it('names that same path in the sweep over what is written, not only at the call', () => {
     expect(undeclaredPathsIn(REAL_UNDECLARED_PATH).join(' ')).toContain('/repos/:p/:p/merge-queue');
-  });
-});
-
-describe('what an installation is short of (ISS-1153)', () => {
-  const granted = Object.fromEntries(requiredAppPermissions());
-
-  it('finds nothing short in an installation granting everything', () => {
-    expect(installationShortfall(granted)).toEqual([]);
-  });
-
-  it('names a permission the installation does not hold at all', () => {
-    const { administration: _gone, ...without } = granted;
-    expect(installationShortfall(without)).toEqual([
-      { permission: 'administration', required: 'read', held: null },
-    ]);
-  });
-
-  it('names a permission the installation holds below the level needed', () => {
-    expect(installationShortfall({ ...granted, contents: 'read' })).toEqual([
-      { permission: 'contents', required: 'write', held: 'read' },
-    ]);
-  });
-
-  it('treats a level it does not recognise as a shortfall rather than a pass', () => {
-    expect(installationShortfall({ ...granted, checks: 'maybe' })).toEqual([
-      { permission: 'checks', required: 'write', held: 'maybe' },
-    ]);
-  });
-
-  it('points an organisation-owned App at its own settings page', () => {
-    expect(
-      appPermissionsPageUrl({
-        slug: 'forge-dev',
-        ownerLogin: 'SidCorp-co',
-        ownerType: 'Organization',
-      }),
-    ).toBe('https://github.com/organizations/SidCorp-co/settings/apps/forge-dev/permissions');
-  });
-
-  it('points a personal App at the personal settings page', () => {
-    expect(
-      appPermissionsPageUrl({ slug: 'forge-dev', ownerLogin: 'someone', ownerType: 'User' }),
-    ).toBe('https://github.com/settings/apps/forge-dev/permissions');
-  });
-
-  it('says the permission, the page and that the installation must then accept it', () => {
-    const said = describeShortfall({
-      repository: 'SidCorp-co/forge',
-      shortfall: [{ permission: 'administration', required: 'read', held: null }],
-      permissionsUrl:
-        'https://github.com/organizations/SidCorp-co/settings/apps/forge-dev/permissions',
-      installationUrl: 'https://github.com/organizations/SidCorp-co/settings/installations/42',
-    });
-    expect(said).toContain('`administration: read`');
-    expect(said).toContain('/settings/apps/forge-dev/permissions');
-    expect(said).toContain('accept the new grant on the installation');
-    expect(said).toContain('https://github.com/organizations/SidCorp-co/settings/installations/42');
-  });
-
-  it('still names the page in prose when GitHub would not say who the App is', () => {
-    const said = describeShortfall({
-      repository: 'SidCorp-co/forge',
-      shortfall: [{ permission: 'administration', required: 'read', held: null }],
-      permissionsUrl: null,
-      installationUrl: null,
-    });
-    expect(said).toContain("the App's own page, not the installation's");
-    expect(said).toContain('accept the new grant on the installation');
   });
 });

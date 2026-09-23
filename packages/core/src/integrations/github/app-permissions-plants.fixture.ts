@@ -421,3 +421,64 @@ export const SPREAD_THEN_METHOD = plant(
     '}',
   ].join('\n'),
 );
+
+/** A binding written to after it is set, which its initializer no longer names: consult e3e9f1 F1. */
+export const MUTATED_PATH = plant(
+  'planted-mutated-path.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, branch: string) {',
+    `  let endpoint = \`${REPO}\`;`,
+    `  endpoint += \`/branches/${interp('encodeURIComponent(branch)')}/protection\`;`,
+    '  return client.get(endpoint);',
+    '}',
+  ]),
+);
+
+/** The same path bound once, which nothing can write to after: consult e3e9f1 F1. */
+export const CONST_PATH = plant(
+  'planted-const-path.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, branch: string) {',
+    `  const endpoint = \`${REPO}/branches/${interp('encodeURIComponent(branch)')}/protection\`;`,
+    '  return client.get(endpoint);',
+    '}',
+  ]),
+);
+
+/** A transport held in a property of an object of its own: consult e3e9f1 F2. */
+export const OBJECT_HELD_TRANSPORT = plant(
+  'planted-object-held-transport.ts',
+  AS_FILE([
+    'declare const endpoint: string;',
+    'export async function f(client: GitHubRepoClient) {',
+    '  const api = { send: client.publish };',
+    "  await api.send({ op: 'lookup', method: 'POST', path: endpoint });",
+    '}',
+  ]),
+);
+
+/** A method named by a quoted key, which is the same key: consult e3e9f1 F3. */
+export const QUOTED_METHOD = plant(
+  'planted-quoted-method.ts',
+  [
+    'declare const doFetch: typeof fetch;',
+    'declare const headers: Record<string, string>;',
+    'export async function f(branch: string) {',
+    `  return doFetch(\`/repos/a/b/branches/${interp('encodeURIComponent(branch)')}/protection\`, {`,
+    "    'method': 'DELETE',",
+    '    headers,',
+    '  });',
+    '}',
+  ].join('\n'),
+);
+
+/** A key computed out of something the checker cannot read: consult e3e9f1 F3. */
+export const COMPUTED_KEY = plant(
+  'planted-computed-key.ts',
+  AS_FILE([
+    'declare const which: string;',
+    'export async function f(client: GitHubRepoClient) {',
+    `  await client.publish({ op: 'lookup', method: 'GET', path: \`${REPO}\`, [which]: '/repos/a/b' });`,
+    '}',
+  ]),
+);
