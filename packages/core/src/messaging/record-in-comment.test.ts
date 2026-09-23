@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseForgeRecord } from './forge-record.js';
 import { verdictEvidenceRefusals } from './evidence-citation.js';
+import { parseForgeRecord } from './forge-record.js';
 import {
   destinationFor,
   ISSUE_ASSERTION_ROUTE,
