@@ -5,10 +5,10 @@
  * a 403 while every health signal said `ok`. The gap was not the permission; it was that nothing
  * compared the two lists. This is the comparison.
  *
- * The required side is derived, not listed: the paths come out of the source, so a call site added
- * later is measured rather than assumed. A path expression the checker cannot resolve is a named
- * failure and not a skip — that is the only thing standing between a helper-built path and a silent
- * green, and it is planted here rather than trusted. The checker itself is `app-permissions.fixture.ts`.
+ * The required side is derived from the AST, not from the text: a call is found by what it CALLS,
+ * so the spelling of its arguments can make it unreadable but never invisible. Three rounds of
+ * regex enumeration each closed the shapes the round before had named and left the class open —
+ * the shapes under "however the call is written" are the ones that class was last demonstrated by.
  */
 
 import { readFileSync } from 'node:fs';
@@ -21,15 +21,17 @@ import {
   callsToPrice,
   collectGitHubCalls,
   DECLARATION_FILE,
+  type FoundCall,
   GITHUB_DIR,
   handledEvents,
-  hasRequestHelper,
   key,
   manifest,
   REQUEST_HELPERS,
   sourceFiles,
+  undeclaredHelperFiles,
+  undeclaredPathLiterals,
+  undeclaredPathsIn,
   unreadableRequests,
-  withoutComments,
 } from './app-permissions.fixture.js';
 import {
   appPermissionsPageUrl,
@@ -38,56 +40,63 @@ import {
   installationShortfall,
   requiredAppPermissions,
 } from './app-permissions.js';
+import {
+  ASSIGNED_ARGS,
+  BARE_GET,
+  CLIENT_TRANSPORTS,
+  CONCATENATED,
+  DECLARATIONS_ONLY,
+  GITHUB_JSON,
+  NO_METHOD,
+  READABLE_GET,
+  REAL_UNDECLARED_PATH,
+  RETURNED_ARGS,
+  SHORTHAND,
+  TRAILING_COMMA,
+  TRANSPORT_ADDED,
+  TRANSPORT_PROPERTY,
+  TRANSPORT_SWAPPED,
+  UNRESOLVED,
+  UNTYPED_RECEIVER,
+  VARIABLE_PATH,
+} from './app-permissions-plants.fixture.js';
 
-/** `client.ts`'s declared transports, and a file that makes exactly the requests it is given. */
-const CLIENT_TRANSPORTS = REQUEST_HELPERS['client.ts']?.transports ?? [];
+const orphansIn = (file: string) => {
+  const declared = new Set(GITHUB_ENDPOINTS.map((e) => key(e.method, e.path)));
+  return callsToPrice(collectGitHubCalls(file))
+    .filter((c) => !c.unresolved && !declared.has(key(c.method, c.path)))
+    .map((c) => `${c.file}:${c.line} — ${key(c.method, c.path)}`);
+};
 
-function plantedTransports(urls: readonly string[]) {
-  const source = urls.map((u) => `const r = await fetch(${u}, { headers });`).join('\n');
-  return unreadableRequests('client.ts', source);
-}
+const only = (calls: FoundCall[]): FoundCall => {
+  expect(calls).toHaveLength(1);
+  return calls[0] as FoundCall;
+};
 
 describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
-  const calls = callsInTree();
-
   it('resolves every GitHub path expression in the integration', () => {
+    const calls = callsInTree();
     const stuck = callsToPrice(calls).filter((c) => c.unresolved);
     expect(
       stuck.map((c) => `${c.file}:${c.line} — ${c.unresolved}`),
-      'a call this checker cannot read is a call it cannot price; declare the path plainly or teach resolvePath the shape',
+      'a call this checker cannot read is a call it cannot price; declare the path plainly or teach the resolver the shape',
     ).toEqual([]);
     expect(calls.length).toBeGreaterThan(20);
   });
 
   it('names the file, the line and the expression of a path it cannot resolve', () => {
-    const planted = [
-      'async function f(client) {',
-      '  await client.publish({',
-      "    op: 'lookup',",
-      "    method: 'GET',",
-      '    path: somewhereElse(client),',
-      '  });',
-      '}',
-    ].join('\n');
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found).toHaveLength(1);
-    expect(found[0]?.unresolved).toContain('somewhereElse(client)');
-    expect(found[0]?.file).toBe('planted.ts');
-    expect(found[0]?.line).toBe(5);
+    const found = only(collectGitHubCalls(UNRESOLVED));
+    expect(found.unresolved).toContain('somewhereElse(client)');
+    expect(found.file).toBe(UNRESOLVED);
+    expect(found.line).toBe(7);
   });
 
   it('names the call whose HTTP method it cannot read', () => {
-    const seg = ['$', '{a}'].join('');
-    const planted = ['await client.json({', `  path: \`/repos/${seg}/pulls\`,`, '});'].join('\n');
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found[0]?.unresolved).toContain('names no HTTP method');
+    expect(only(collectGitHubCalls(NO_METHOD)).unresolved).toContain('names no HTTP method');
   });
 
   it('holds an endpoint record for every call the source makes', () => {
-    const declared = new Set(GITHUB_ENDPOINTS.map((e) => key(e.method, e.path)));
-    const orphans = callsToPrice(calls)
-      .filter((c) => !c.unresolved && !declared.has(key(c.method, c.path)))
-      .map((c) => `${c.file}:${c.line} — ${key(c.method, c.path)}`);
+    const orphans = sourceFiles().flatMap((f) => orphansIn(f));
     expect(
       orphans,
       'declare it in app-permissions.ts with the permission GitHub documents for it',
@@ -96,7 +105,7 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
 
   it('holds no endpoint record the source no longer calls', () => {
     const made = new Set(
-      callsToPrice(calls)
+      callsToPrice(callsInTree())
         .filter((c) => !c.unresolved)
         .map((c) => key(c.method, c.path)),
     );
@@ -107,12 +116,16 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
     ).toEqual([]);
   });
 
-  it('declares every file that makes a request the checker cannot read a path out of', () => {
-    const undeclared = sourceFiles().filter(
-      (f) => hasRequestHelper(f, readFileSync(join(GITHUB_DIR, f), 'utf8')) && !REQUEST_HELPERS[f],
-    );
+  it('prices every GitHub path written in these sources, whatever carries it', () => {
     expect(
-      undeclared,
+      undeclaredPathLiterals(),
+      'a GitHub path is written here that no endpoint record accounts for',
+    ).toEqual([]);
+  });
+
+  it('declares every file that makes a request the checker cannot read a path out of', () => {
+    expect(
+      undeclaredHelperFiles(),
       'this file calls fetch with a URL the checker cannot read; name the path at the call site, or declare the helper in REQUEST_HELPERS',
     ).toEqual([]);
   });
@@ -121,7 +134,7 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
     const wrong = Object.entries(REQUEST_HELPERS)
       .map(([file, declared]) => {
         if (!sourceFiles().includes(file)) return `${file} — declared, and no longer a source file`;
-        const found = unreadableRequests(file, readFileSync(join(GITHUB_DIR, file), 'utf8'));
+        const found = unreadableRequests(file);
         const held = found.map((r) => r.raw).sort();
         const want = [...declared.transports].sort();
         if (held.join('\u0000') === want.join('\u0000')) return null;
@@ -135,23 +148,26 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
   });
 
   it('names a transport ADDED to a file that already declares its own', () => {
-    const found = plantedTransports([...CLIENT_TRANSPORTS, 'computedGitHubUrl']);
+    const found = unreadableRequests(TRANSPORT_ADDED);
     expect(found.map((r) => r.raw).sort()).not.toEqual([...CLIENT_TRANSPORTS].sort());
     expect(found.map((r) => r.raw)).toContain('computedGitHubUrl');
   });
 
   it('names a transport SUBSTITUTED for one a file declares, with the count unchanged', () => {
-    const swapped = [CLIENT_TRANSPORTS[0] as string, 'computedGitHubUrl'];
-    const found = plantedTransports(swapped);
+    const found = unreadableRequests(TRANSPORT_SWAPPED);
     expect(found).toHaveLength(CLIENT_TRANSPORTS.length);
     expect(found.map((r) => r.raw).sort()).not.toEqual([...CLIENT_TRANSPORTS].sort());
   });
 
+  it('names a transport reached through a property or an operator', () => {
+    expect(unreadableRequests(TRANSPORT_PROPERTY).map((r) => r.raw)).toEqual([
+      'computedGitHubUrl',
+      'base + path',
+    ]);
+  });
+
   it('the declaration file makes no GitHub call of its own', () => {
-    const text = readFileSync(join(GITHUB_DIR, DECLARATION_FILE), 'utf8');
-    expect(
-      /\b(?:fetch|doFetch|client\.(?:get|json|text|publish))\s*[(<]/.test(withoutComments(text)),
-    ).toBe(false);
+    expect(collectGitHubCalls(DECLARATION_FILE)).toEqual([]);
   });
 
   it('requests every permission the tables require, at the level they require', () => {
@@ -178,8 +194,7 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
 
   it('goes red naming the level when the manifest requests one below what a call needs', () => {
     const weakened = { ...manifest().default_permissions, contents: 'read' };
-    const faults = auditPermissions(weakened, requiredAppPermissions());
-    expect(faults).toEqual([
+    expect(auditPermissions(weakened, requiredAppPermissions())).toEqual([
       expect.objectContaining({
         kind: 'below',
         permission: 'contents',
@@ -203,12 +218,9 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
 
   it('goes red naming an event the manifest subscribes to and no table declares', () => {
     const m = manifest();
-    const faults = auditEvents(
-      [...m.default_events, 'release'],
-      handledEvents(),
-      m.default_permissions,
-    );
-    expect(faults).toEqual([{ kind: 'undeclared', event: 'release' }]);
+    expect(
+      auditEvents([...m.default_events, 'release'], handledEvents(), m.default_permissions),
+    ).toEqual([{ kind: 'undeclared', event: 'release' }]);
   });
 
   it('goes red naming an event no handler in this repository acts on', () => {
@@ -222,180 +234,99 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
   it('goes red naming the event whose subscription permission is not requested', () => {
     const m = manifest();
     const { actions: _gone, ...without } = m.default_permissions;
-    const faults = auditEvents(m.default_events, handledEvents(), without);
-    expect(faults).toEqual([{ kind: 'ungranted', event: 'workflow_run', required: 'read' }]);
+    expect(auditEvents(m.default_events, handledEvents(), without)).toEqual([
+      { kind: 'ungranted', event: 'workflow_run', required: 'read' },
+    ]);
   });
 
   it('holds the lockstep annotation on both sides of the pair', () => {
-    const here = GITHUB_DIR;
-    const registry = readFileSync(join(here, 'app-permissions.ts'), 'utf8');
-    const connect = readFileSync(join(here, 'connect.ts'), 'utf8');
-    expect(registry).toContain(
+    const read = (f: string) => readFileSync(join(GITHUB_DIR, f), 'utf8');
+    expect(read('app-permissions.ts')).toContain(
       'cm:edge lockstep -> packages/core/src/integrations/github/connect.ts',
     );
-    expect(connect).toContain(
+    expect(read('connect.ts')).toContain(
       'cm:edge lockstep -> packages/core/src/integrations/github/app-permissions.ts',
     );
   });
 });
 
-describe('a transport reached through a property, which one word boundary sees (ISS-1153)', () => {
-  /** `${name}`, spelled so the source of this file carries no interpolation of its own. */
-  const interp = (name: string) => ['$', '{', name, '}'].join('');
-
-  it('names one the checker cannot read a path out of', () => {
-    const source = [
-      'const a = await globalThis.fetch(computedGitHubUrl, { headers });',
-      'const b = await http.fetch(url, { headers });',
-    ].join('\n');
-    expect(unreadableRequests('client.ts', source).map((r) => r.raw)).toEqual([
-      'computedGitHubUrl',
-      'url',
-    ]);
+describe('a call is found by what it calls, however it is written (ISS-1153)', () => {
+  it('names the call whose path is a variable', () => {
+    const found = only(collectGitHubCalls(VARIABLE_PATH));
+    expect(found.unresolved).toContain('endpoint');
+    expect(found.line).toBe(5);
   });
 
-  it('prices one whose URL it CAN read, rather than passing over it', () => {
-    const url = [
-      '`',
-      interp('base'),
-      '/repos/',
-      interp('owner'),
-      '/',
-      interp('repo'),
-      '/branches/',
-      interp('branch'),
-      '/protection`',
-    ].join('');
-    const source = [
-      'const r = await globalThis.fetch(',
-      `  ${url},`,
-      "  { method: 'GET' },",
-      ');',
-    ].join('\n');
-    const found = collectGitHubCalls(source, 'planted.ts');
-    expect(found.map((c) => key(c.method, c.path))).toEqual([
-      'GET /repos/:p/:p/branches/:p/protection',
-    ]);
-    expect(found[0]?.unresolved).toBeNull();
+  it('names the call whose path is concatenated onto a literal', () => {
+    const found = only(collectGitHubCalls(CONCATENATED));
+    expect(found.unresolved).toContain("prefix + '/merge'");
+    expect(found.line).toBe(5);
   });
 
-  it('names the call whose path is a variable, rather than passing over it', () => {
-    const planted = [
-      'const endpoint = somewhere();',
-      'await client.publish({',
-      "  method: 'POST',",
-      '  path: endpoint,',
-      '});',
-    ].join('\n');
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found).toHaveLength(1);
-    expect(found[0]?.unresolved).toContain('endpoint');
-    expect(found[0]?.line).toBe(4);
-  });
-
-  it('names the call whose path is concatenated onto a literal, rather than passing over it', () => {
-    const planted = [
-      'const prefix = repoPath(client);',
-      'await client.publish({',
-      "  method: 'PUT',",
-      "  path: prefix + '/merge',",
-      '});',
-    ].join('\n');
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found).toHaveLength(1);
-    expect(found[0]?.unresolved).toContain("prefix + '/merge'");
-    expect(found[0]?.line).toBe(4);
-  });
-
-  it('names a bare identifier passed straight to client.get, rather than passing over it', () => {
-    const planted = ['async function readIt(client) {', '  return client.get(endpoint);', '}'].join(
-      '\n',
-    );
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found).toHaveLength(1);
-    expect(found[0]?.method).toBe('GET');
-    expect(found[0]?.unresolved).toContain('endpoint');
-    expect(found[0]?.line).toBe(2);
+  it('names a bare identifier passed straight to client.get', () => {
+    const found = only(collectGitHubCalls(BARE_GET));
+    expect(found.method).toBe('GET');
+    expect(found.unresolved).toContain('endpoint');
+    expect(found.line).toBe(4);
   });
 
   it('still prices a client.get call whose template it CAN read', () => {
-    const url = ['`', '/repos/', interp('client.fullName'), '/pulls`'].join('');
-    const planted = ['async function readIt(client) {', `  return client.get(${url});`, '}'].join(
-      '\n',
-    );
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found.map((c) => key(c.method, c.path))).toEqual(['GET /repos/:p/:p/pulls']);
-    expect(found[0]?.unresolved).toBeNull();
+    const found = only(collectGitHubCalls(READABLE_GET));
+    expect(key(found.method, found.path)).toBe('GET /repos/:p/:p/pulls');
+    expect(found.unresolved).toBeNull();
   });
 
   it("does not fold a formatter's trailing comma into the argument it names", () => {
-    const planted = [
-      'async function readIt(client) {',
-      '  return client.get(',
-      '    endpoint,',
-      '  );',
-      '}',
-    ].join('\n');
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found[0]?.raw).toBe('endpoint');
+    expect(only(collectGitHubCalls(TRAILING_COMMA)).raw).toBe('endpoint');
   });
 
-  it('reads a type annotation as a declaration, never as a call', () => {
-    const planted = [
-      'interface Args {',
-      '  path: string;',
-      "  method: 'GET' | 'POST';",
-      '}',
-      'function ask(path: SubjectLookup, next: PublishSubject<Op>) {',
-      '  return [path, next];',
-      '}',
-    ].join('\n');
-    expect(collectGitHubCalls(planted, 'planted.ts')).toEqual([]);
+  it('reads a type annotation and a type alias as declarations, never as calls', () => {
+    expect(collectGitHubCalls(DECLARATIONS_ONLY)).toEqual([]);
   });
 
-  it('names a bare identifier passed as the URL argument to githubJson, rather than passing over it', () => {
-    const planted = [
-      'async function readIt(doFetch, token) {',
-      '  return githubJson(doFetch, someUrl, token);',
-      '}',
-    ].join('\n');
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found).toHaveLength(1);
-    expect(found[0]?.unresolved).toContain('someUrl');
-    expect(found[0]?.line).toBe(2);
+  it('names a bare identifier passed as the URL argument to a transport function', () => {
+    const found = only(collectGitHubCalls(GITHUB_JSON).filter((c) => c.kind === 'path'));
+    expect(found.unresolved).toContain('someUrl');
+    expect(found.line).toBe(6);
   });
 
   it("reads a request helper's own signature as a declaration, never as a request", () => {
-    const planted = [
-      'async function githubJson(',
-      '  doFetch,',
-      '  url,',
-      '  authorization,',
-      ') {',
-      '  return doFetch(url, { headers: { authorization } });',
-      '}',
-    ].join('\n');
-    expect(unreadableRequests('planted.ts', planted).map((r) => r.raw)).toEqual(['url']);
+    expect(unreadableRequests(GITHUB_JSON).map((r) => r.raw)).toEqual(['url']);
   });
 
-  it('names a path built before the call that carries it, rather than passing over an assigned object', () => {
-    const planted = [
-      'async function f(client) {',
-      "  const args = { method: 'GET', path: somewhereElse(client) };",
-      '  await client.publish(args);',
-      '}',
-    ].join('\n');
-    const found = collectGitHubCalls(planted, 'planted.ts');
-    expect(found).toHaveLength(1);
-    expect(found[0]?.unresolved).toContain('somewhereElse(client)');
-    expect(found[0]?.line).toBe(2);
+  it('names a path built into an object assigned before the call that carries it', () => {
+    const found = only(collectGitHubCalls(ASSIGNED_ARGS));
+    expect(found.unresolved).toContain('somewhereElse(client)');
+    expect(found.line).toBe(4);
   });
 
-  it('reads a type alias built the same way as an assignment, never as a call', () => {
-    const planted = ['type Args = {', '  path: string;', "  method: 'GET' | 'POST';", '};'].join(
-      '\n',
-    );
-    expect(collectGitHubCalls(planted, 'planted.ts')).toEqual([]);
+  it('names a path carried by a SHORTHAND property, which no colon marks', () => {
+    const found = only(collectGitHubCalls(SHORTHAND));
+    expect(found.unresolved).toContain('queuePath(client)');
+    expect(found.file).toBe(SHORTHAND);
+  });
+
+  it('names a path inside an argument object a HELPER returned', () => {
+    const found = only(collectGitHubCalls(RETURNED_ARGS));
+    expect(found.unresolved).toContain('queuePath(client)');
+    expect(found.file).toBe(RETURNED_ARGS);
+  });
+
+  it('prices a REAL path a shorthand property carries, rather than passing over it', () => {
+    const found = only(collectGitHubCalls(REAL_UNDECLARED_PATH));
+    expect(found.unresolved).toBeNull();
+    expect(key(found.method, found.path)).toBe('GET /repos/:p/:p/merge-queue');
+    expect(orphansIn(REAL_UNDECLARED_PATH)).toHaveLength(1);
+  });
+
+  it('refuses a transport reached through a receiver it cannot type, rather than skipping it', () => {
+    const found = only(collectGitHubCalls(UNTYPED_RECEIVER));
+    expect(found.unresolved).toContain('publish is a transport');
+    expect(found.unresolved).toContain('anything');
+  });
+
+  it('names that same path in the sweep over what is written, not only at the call', () => {
+    expect(undeclaredPathsIn(REAL_UNDECLARED_PATH).join(' ')).toContain('/repos/:p/:p/merge-queue');
   });
 });
 
