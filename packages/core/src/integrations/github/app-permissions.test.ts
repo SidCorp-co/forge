@@ -278,6 +278,33 @@ describe('a transport reached through a property, which one word boundary sees (
     ]);
     expect(found[0]?.unresolved).toBeNull();
   });
+
+  it('names the call whose path is a variable, rather than passing over it', () => {
+    const planted = [
+      'const endpoint = somewhere();',
+      'await client.publish({',
+      "  method: 'POST',",
+      '  path: endpoint,',
+      '});',
+    ].join('\n');
+    const found = collectGitHubCalls(planted, 'planted.ts');
+    expect(found).toHaveLength(1);
+    expect(found[0]?.unresolved).toContain('endpoint');
+    expect(found[0]?.line).toBe(4);
+  });
+
+  it('reads a type annotation as a declaration, never as a call', () => {
+    const planted = [
+      'interface Args {',
+      '  path: string;',
+      "  method: 'GET' | 'POST';",
+      '}',
+      'function ask(path: SubjectLookup, next: PublishSubject<Op>) {',
+      '  return [path, next];',
+      '}',
+    ].join('\n');
+    expect(collectGitHubCalls(planted, 'planted.ts')).toEqual([]);
+  });
 });
 
 describe('what an installation is short of (ISS-1153)', () => {

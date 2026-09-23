@@ -66,6 +66,15 @@ const PATH_SITES = [
     kind: 'path' as const,
   },
   {
+    // A `path:` whose value is a NAME. It resolves to nothing, and saying so is the whole point:
+    // a request reaching GitHub through a variable is one this audit priced no permission for,
+    // and the matcher above passes silently over it.
+    re: /\bpath:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*[,}]/g,
+    method: 'enclosing' as const,
+    kind: 'path' as const,
+    argumentOnly: true,
+  },
+  {
     re: new RegExp(String.raw`\bclient\.get\s*(?:<[^;]*?>)?\s*\(\s*(${TEMPLATE})`, 'g'),
     method: 'GET' as const,
     kind: 'path' as const,
@@ -107,22 +116,35 @@ export function resolvePath(raw: string): string {
   return s.replace(/\$\{[^}]*\}/g, ':p').split('?')[0] ?? '';
 }
 
-/** The object literal a `path:` property sits in, found by counting braces outwards. */
-export function enclosingObject(text: string, at: number): string {
+function enclosingOpen(text: string, at: number): number {
   let depth = 0;
-  let open = -1;
   for (let i = at; i >= 0; i -= 1) {
     if (text[i] === '}') depth += 1;
     else if (text[i] === '{') {
-      if (depth === 0) {
-        open = i;
-        break;
-      }
+      if (depth === 0) return i;
       depth -= 1;
     }
   }
+  return -1;
+}
+
+/**
+ * True where the object holding this property is a call's argument.
+ *
+ * `path:` also spells a TYPE — an interface member, a parameter, a generic — and a checker reading
+ * those as calls would price every declaration in this directory. An argument object opens right
+ * after `(`; a type's opens after a name or a `:`.
+ */
+export function inArgumentObject(text: string, at: number): boolean {
+  const open = enclosingOpen(text, at);
+  return open >= 0 && /\(\s*$/.test(text.slice(Math.max(0, open - 40), open));
+}
+
+/** The object literal a `path:` property sits in, found by counting braces outwards. */
+export function enclosingObject(text: string, at: number): string {
+  const open = enclosingOpen(text, at);
   if (open < 0) return '';
-  depth = 0;
+  let depth = 0;
   for (let i = open; i < text.length; i += 1) {
     if (text[i] === '{') depth += 1;
     else if (text[i] === '}') {
@@ -172,6 +194,7 @@ export function collectGitHubCalls(source: string, file: string): FoundCall[] {
     for (; m !== null; m = site.re.exec(text)) {
       const raw = m[1] ?? '';
       const at = m.index + m[0].indexOf(raw);
+      if ('argumentOnly' in site && !inArgumentObject(text, at)) continue;
       const line = text.slice(0, at).split('\n').length;
       const path = resolvePath(raw);
       const method =
