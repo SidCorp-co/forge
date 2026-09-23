@@ -112,6 +112,8 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A box can now ask a person, and read the answer back.** `forge-runner question ask` puts the
+  question on the screen the person was pointed at; `forge-runner question answer` reads the reply.
 - **Asking about a whole backlog now costs one request, not one per issue.** Two new streamed
   endpoints answer the ranked next-work question and the duplicate sweep as they work, reporting
   progress and saying plainly when an answer is partial.
@@ -3078,6 +3080,8 @@
   set is now 59.
 
 ### Fixed
+- **An issue with no decision round no longer claims it was parked without a question.** The panel
+  now says what it looked for, and keeps the way forward as its content rather than a footnote.
 - **The release panel names who deploys the project, instead of saying nobody does.** It read a
   field the server had renamed, and answered its own fallback. A roster key that goes missing now
   fails loudly rather than reading as absent.

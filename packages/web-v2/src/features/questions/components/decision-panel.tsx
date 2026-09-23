@@ -8,19 +8,30 @@ import { QuestionCard } from "./question-card";
 
 export const DECISION_PANEL_ANCHOR = "issue-decisions";
 
+/**
+ * What this panel found, and nothing about why.
+ *
+ * It said "This issue was parked without a question" until ISS-1210. It knows
+ * one thing — that the issue's own question list came back empty — and that
+ * sentence is a claim about the record, which it never read: an owner read it
+ * on an issue whose thread carried the question in full and stopped for
+ * nineteen hours. So the heading reports the query, and the way forward is the
+ * card's content rather than a footnote under a dismissal.
+ */
 function NothingToAnswer() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Nothing to answer here</CardTitle>
+        <CardTitle>No decision round on this issue</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         <p className="fg-body-sm text-fg">
-          This issue was parked without a question, so there is no round to answer on this screen.
+          Move the issue on from the header once whoever is waiting has what they need. A comment
+          does not restart the run.
         </p>
         <p className="fg-caption text-muted">
-          A comment does not restart the run. Once whoever is waiting has what they need, move the
-          issue on from the header.
+          This panel lists the questions filed against this issue, and there are none. A run that
+          asked in the thread instead leaves nothing here — read the comments.
         </p>
       </CardContent>
     </Card>
@@ -29,7 +40,7 @@ function NothingToAnswer() {
 
 /**
  * Every question on this issue — or, on an issue parked for information with none,
- * a statement that there is nothing here to answer.
+ * what was looked for and where else the asking may have gone.
  */
 export function DecisionPanel({
   issueId,
