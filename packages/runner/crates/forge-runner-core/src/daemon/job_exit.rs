@@ -253,13 +253,21 @@ mod tests {
 
     #[test]
     fn a_child_closing_over_a_lead_that_stopped_ends_the_work_too() {
-        assert_eq!(
-            verdict(
-                reported(Doing::Idle, Event::SubagentStopped, NOW - IDLE),
-                NOW
-            ),
-            Verdict::Finished { quiet_for: IDLE }
-        );
+        // `doing()` answers `Idle` for these only when the lead's turn has
+        // ALSO ended and no other child is left; a lead still mid-turn behind
+        // one of them is `Working` and is kept by the arm above.
+        for event in [Event::SubagentStopped, Event::TeammateWentIdle] {
+            assert_eq!(
+                verdict(reported(Doing::Idle, event, NOW - IDLE), NOW),
+                Verdict::Finished { quiet_for: IDLE },
+                "{event:?}"
+            );
+            assert_eq!(
+                verdict(reported(Doing::Working, event, NOW - IDLE * 10), NOW),
+                Verdict::Keep(KeepReason::Working),
+                "{event:?}"
+            );
+        }
     }
 
     #[test]
