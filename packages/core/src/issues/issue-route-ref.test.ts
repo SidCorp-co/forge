@@ -125,6 +125,15 @@ describe('resolveIssueRouteRef — the negative case is the whole point', () => 
     await expect(resolveIssueRouteRef('##nope##', undefined, USER_ID)).rejects.toMatchObject({
       status: 400,
     });
+    try {
+      await resolveIssueRouteRef('##nope##', undefined, USER_ID);
+      throw new Error('unreachable');
+    } catch (err) {
+      const details = (err as { cause?: { details?: { formErrors?: string[] } } }).cause?.details;
+      const message = details?.formErrors?.join(' ') ?? '';
+      expect(message).toMatch(/ISS-\d+/);
+      expect(message).toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    }
     expect(loadProjectAccess).not.toHaveBeenCalled();
   });
 
@@ -197,9 +206,18 @@ describe('resolveIssueKeyInProject — Layer A for a caller that already owns it
     });
   });
 
-  it('refuses a malformed identifier — 400, carrying an example', async () => {
+  it('refuses a malformed identifier — 400, carrying an example of each shape', async () => {
     await expect(resolveIssueKeyInProject('##nope##', PROJECT_ID)).rejects.toMatchObject({
       status: 400,
     });
+    try {
+      await resolveIssueKeyInProject('##nope##', PROJECT_ID);
+      throw new Error('unreachable');
+    } catch (err) {
+      const details = (err as { cause?: { details?: { formErrors?: string[] } } }).cause?.details;
+      const message = details?.formErrors?.join(' ') ?? '';
+      expect(message).toMatch(/ISS-\d+/);
+      expect(message).toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    }
   });
 });

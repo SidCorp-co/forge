@@ -11,6 +11,7 @@ import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
 	bulkAllowedStatuses,
+	canonicalIssueId,
 	COMMENT_KIND_META,
 	COMPLEXITY_LABELS,
 	complexityLabel,
@@ -1327,5 +1328,29 @@ describe("runningStepOf — a queued session names no running step (ISS-999)", (
 			{ activeStep: runningStepOf(running), failedStep: null },
 		);
 		expect(live.map((o) => [o.step, o.state])).toEqual([["drive", "running"]]);
+	});
+});
+
+describe("canonicalIssueId (ISS-1160)", () => {
+	const UUID = "123e4567-e89b-12d3-a456-426614174000";
+
+	it("passes a uuid straight through, ignoring whatever the fetch answered", () => {
+		expect(canonicalIssueId(UUID, "some-other-id")).toBe(UUID);
+	});
+
+	it("answers undefined for a display key until the fetch resolves — never the raw key itself", () => {
+		expect(canonicalIssueId("ISS-42", undefined)).toBeUndefined();
+	});
+
+	it("resolves a display key to the fetched row's own uuid once it answers", () => {
+		expect(canonicalIssueId("ISS-42", UUID)).toBe(UUID);
+	});
+
+	it("is what keeps two projects' own ISS-42 from colliding: the id passed on is project-a's row uuid, never the shared display key both rows answer to", () => {
+		const projectARowId = "aaaaaaaa-0000-0000-0000-000000000000";
+		const projectBRowId = "bbbbbbbb-0000-0000-0000-000000000000";
+		expect(canonicalIssueId("ISS-42", projectARowId)).toBe(projectARowId);
+		expect(canonicalIssueId("ISS-42", projectBRowId)).toBe(projectBRowId);
+		expect(canonicalIssueId("ISS-42", projectARowId)).not.toBe(canonicalIssueId("ISS-42", projectBRowId));
 	});
 });

@@ -42,6 +42,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  canonicalIssueId,
   deriveBlockerState,
   deriveStepOutcomes,
   runningStepOf,
@@ -98,6 +99,7 @@ const TASK_STATUS_LABELS: Record<TaskRow["status"], string> = {
   done: "Done",
 };
 
+
 interface IssueDetailScreenProps {
   projectId: string;
   slug: string;
@@ -126,15 +128,16 @@ export function IssueDetailScreen({
   // `projectId` (already resolved from the route's slug) is what lets it
   // resolve on every one of these reads.
   const issueQ = useIssue(id, projectId);
-  const commentsQ = useComments(id, projectId);
-  const activityQ = useActivity(id, projectId);
-  const tasksQ = useTasks(id, projectId);
-  const attachmentsQ = useAttachments(id, projectId);
-  const depsQ = useIssueDeps(id, true, projectId);
-  const costQ = useIssueCost(id, true, projectId);
+  const canonicalId = canonicalIssueId(id, issueQ.data?.id);
+  const commentsQ = useComments(canonicalId, projectId);
+  const activityQ = useActivity(canonicalId, projectId);
+  const tasksQ = useTasks(canonicalId, projectId);
+  const attachmentsQ = useAttachments(canonicalId, projectId);
+  const depsQ = useIssueDeps(canonicalId, true, projectId);
+  const costQ = useIssueCost(canonicalId, true, projectId);
   const membersQ = useProjectMembers(projectId);
-  const handoffsQ = useStepHandoffs(projectId, id);
-  const durationsQ = useStepDurations(projectId, id);
+  const handoffsQ = useStepHandoffs(projectId, canonicalId);
+  const durationsQ = useStepDurations(projectId, canonicalId);
 
   const patch = usePatchIssue();
   const { requestTransition, dialog: reasonDialog, isPending: transitionPending } =
@@ -143,7 +146,7 @@ export function IssueDetailScreen({
   const resumeRun = useResumeRun();
   const onResumeRun = (runId: string) =>
     resumeRun.mutate(runId, {
-      onSuccess: () => qc.invalidateQueries({ queryKey: ["issue", id] }),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ["issue", issue?.id ?? id] }),
     });
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
@@ -199,13 +202,13 @@ export function IssueDetailScreen({
     );
   }
 
-  const onTransition = (toStatus: IssueStatus) => requestTransition(id, toStatus);
+  const onTransition = (toStatus: IssueStatus) => requestTransition(issue.id, toStatus);
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
-    patch.mutate({ id, body });
+    patch.mutate({ id: issue.id, body });
 
-  const onApprove = () => requestTransition(id, "approved", { successMessage: "Issue approved" });
+  const onApprove = () => requestTransition(issue.id, "approved", { successMessage: "Issue approved" });
   const onBannerResume = () =>
-    requestTransition(id, "reopen", { successMessage: "Issue resumed" });
+    requestTransition(issue.id, "reopen", { successMessage: "Issue resumed" });
 
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
@@ -237,7 +240,7 @@ export function IssueDetailScreen({
     issue.status === "in_progress" ||
     issue.status === "reopen";
   const openSessions = () =>
-    router.push(`/projects/${slug}/agents?issue=${id}`);
+    router.push(`/projects/${slug}/agents?issue=${issue.id}`);
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
   const moreItems: MenuItem[] = [
@@ -519,7 +522,7 @@ export function IssueDetailScreen({
                     <TabError query={commentsQ} what="comments" />
                   ) : (
                     <CommentThread
-                      issueId={id}
+                      issueId={issue.id}
                       comments={commentsQ.data?.items ?? []}
                       members={membersQ.data}
                       readOnly={!canWrite}

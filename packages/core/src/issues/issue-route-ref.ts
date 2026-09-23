@@ -30,6 +30,15 @@ const needsProjectScopeMessage = (raw: string): string =>
   'which project before it can look one up: pass `?projectId=<project uuid>` alongside it, or ' +
   "use the row's uuid instead.";
 
+// A REST caller already ruled out uuid via `isUuid`, so a `SHAPE` refusal from
+// the shared parser (whose own contract stops at the display-key example) is
+// carrying an identifier that is neither shape — name both here.
+const UUID_EXAMPLE = '123e4567-e89b-12d3-a456-426614174000';
+const malformedRefMessage = (parsed: { code: string; message: string }): string =>
+  parsed.code === 'SHAPE'
+    ? `${parsed.message} Or a uuid, like \`${UUID_EXAMPLE}\`.`
+    : parsed.message;
+
 export const issueRouteIdParamSchema = z.object({ id: z.string().trim().min(1).max(200) });
 
 export const projectScopeQuerySchema = z.object({ projectId: z.uuid().optional() });
@@ -49,7 +58,7 @@ export async function resolveIssueRouteRef(
 
   const shapeOnly = parseIssueRef(rawId, []);
   if (!shapeOnly.ok && shapeOnly.code !== 'FOREIGN_PREFIX') {
-    throw badRequest({ formErrors: [shapeOnly.message], fieldErrors: {} });
+    throw badRequest({ formErrors: [malformedRefMessage(shapeOnly)], fieldErrors: {} });
   }
 
   if (!projectIdQuery) {
@@ -66,7 +75,7 @@ export async function resolveIssueRouteRef(
     rawId,
     issueRefNeedsHeldPrefixes(rawId) ? await heldIssuePrefixes(projectIdQuery) : [],
   );
-  if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
+  if (!parsed.ok) throw badRequest({ formErrors: [malformedRefMessage(parsed)], fieldErrors: {} });
 
   const issue = await findIssueByDisplaySeq(projectIdQuery, parsed.issSeq);
   if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
@@ -80,7 +89,7 @@ export async function resolveIssueKeyInProject(rawId: string, projectId: string)
     rawId,
     issueRefNeedsHeldPrefixes(rawId) ? await heldIssuePrefixes(projectId) : [],
   );
-  if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
+  if (!parsed.ok) throw badRequest({ formErrors: [malformedRefMessage(parsed)], fieldErrors: {} });
   const issue = await findIssueByDisplaySeq(projectId, parsed.issSeq);
   if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
   return issue.id;

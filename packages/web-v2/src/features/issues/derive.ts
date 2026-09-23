@@ -1017,3 +1017,10 @@ export const COMMENT_KIND_META: Record<
 	blocked: { label: "Blocked", tone: "red" },
 	comment: { label: "Comment", tone: "neutral" },
 };
+
+// ISS-1160 — a display key collides across projects; the fetched row's uuid never does.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function canonicalIssueId(rawId: string, fetchedId: string | undefined): string | undefined {
+	return UUID_RE.test(rawId) ? rawId : fetchedId;
+}
