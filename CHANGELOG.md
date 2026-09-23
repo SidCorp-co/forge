@@ -3076,6 +3076,10 @@
 
 ### Fixed
 
+- **A verdict now says whether the file it cites is still there.** Evidence that no longer resolves
+  is named, criterion by criterion, and the criterion stops reading as earned. Citing a path on the
+  judging machine is refused outright.
+
 - **A criterion's verdict now says what it was judged against, and stops counting once that is
   gone.** A pass taken at a runtime a repair replaced read as earned forever. Release holds the
   issue and names the criterion.

@@ -95,22 +95,22 @@ describe('record-in-comment', () => {
 /**
  * The identity rule reaching the door `screenAgentComment` calls, rather than standing beside it.
  */
-describe('recordRefusals carries the verdict identity rule', () => {
+describe('recordRefusals carries the verdict identity and evidence rules', () => {
   const verdictBody = (lines: string[]): string =>
     [`${FENCE}forge-record`, ...lines, FENCE, '', '`forge-record: verdict · contract 1`'].join(
       '\n',
     );
 
-  it('returns the identity refusal for a verdict naming nothing it was judged against', async () => {
+  it('returns both refusals for a verdict naming nothing and citing nothing', async () => {
     const refusals = await recordRefusals(
       'proj-1',
       parseForgeRecord(verdictBody(['criterion: 13', 'verdict: pass'])),
       undefined,
     );
-    expect(refusals.map((r) => r.rule)).toEqual(['verdict-identity']);
+    expect(refusals.map((r) => r.rule)).toEqual(['verdict-identity', 'verdict-evidence']);
   });
 
-  it('returns nothing for a verdict naming a runtime in full', async () => {
+  it('returns the evidence refusal for a verdict citing a path on the writing machine', async () => {
     const refusals = await recordRefusals(
       'proj-1',
       parseForgeRecord(
@@ -118,6 +118,24 @@ describe('recordRefusals carries the verdict identity rule', () => {
           'criterion: 13',
           'verdict: pass',
           'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
+          'evidence: /tmp/claude-1000/scratchpad/c17-cleared.png',
+        ]),
+      ),
+      undefined,
+    );
+    expect(refusals.map((r) => r.rule)).toEqual(['verdict-evidence']);
+    expect(refusals[0]?.why).toContain('/tmp/claude-1000/scratchpad/c17-cleared.png');
+  });
+
+  it('returns nothing for a verdict naming a runtime in full and citing an attachment', async () => {
+    const refusals = await recordRefusals(
+      'proj-1',
+      parseForgeRecord(
+        verdictBody([
+          'criterion: 13',
+          'verdict: pass',
+          'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
+          'evidence: iss-1198-judge-log.txt',
         ]),
       ),
       undefined,

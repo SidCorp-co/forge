@@ -21,9 +21,15 @@ interface IssueRow {
   mergedCommitSha: string | null;
 }
 let issueRows: IssueRow[] = [];
-const whereMock = vi.fn(async () => issueRows);
-const fromMock = vi.fn(() => ({ where: whereMock }));
-const selectMock = vi.fn((_arg: unknown) => ({ from: fromMock }));
+/** The names the tracker holds attachments under, for the issue under test. */
+let heldNames: string[] = [];
+/** The issue read selects `id`; the two attachment reads select `name`. */
+const selectMock = vi.fn((arg: unknown) => {
+  const columns = (arg ?? {}) as Record<string, unknown>;
+  const rows = async () => ('id' in columns ? issueRows : heldNames.map((name) => ({ name })));
+  const where = vi.fn(rows);
+  return { from: vi.fn(() => ({ where, innerJoin: vi.fn(() => ({ where })) })) };
+});
 vi.mock('../db/client.js', () => ({ db: { select: (arg: unknown) => selectMock(arg) } }));
 
 const { unearnedCriteriaReports, issuesWithUnearnedCriteria } = await import(
@@ -80,6 +86,7 @@ const THE_CORRECTION = {
 
 beforeEach(() => {
   listIssueCommentsMock.mockReset();
+  heldNames = ['daemon1.log'];
   issueRows = [
     {
       id: 'iss-1114',
