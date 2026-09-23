@@ -24,7 +24,7 @@ them: the work is **with an agent**, it **needs you**, or it is **finished**.
 | **On hold** | **you** | **Resume it.** Nothing moves until you do — this is a brake, not a question. |
 | **Awaiting release** | **you** | **Approve the release.** It is finished work waiting at the gate. |
 | **Reopened** | **you** | Move it on. Nothing picks a reopened issue up on its own. |
-| **Closed** | nobody | Done. |
+| **Closed** | nobody | Done — the work shipped. |
 | **Dropped** | nobody | Decided against. It has no way back — file a new issue instead. |
 
 ## How an issue moves
@@ -76,11 +76,13 @@ in your hands, not an agent's. Move it on when you want the work to resume.
 
 ## Dropped is final
 
-Closing an issue as *dropped* records that the work is not going to happen. There
-is no path back out of it — if the work turns out to be wanted after all, file a
-new issue. Dropped issues are kept, and appear alongside closed ones under
-**Finished** on the Issues list, marked differently: finishing work and deciding
-against it are different outcomes and should not read the same.
+Dropping an issue records that the work is not going to happen. *Dropped* is its
+own ending rather than a kind of close: *Closed* says the work shipped, and an
+issue that never shipped is refused a close. There is no path back out of
+*Dropped* — if the work turns out to be wanted after all, file a new issue.
+Dropped issues are kept, and appear alongside closed ones under **Finished** on
+the Issues list, marked differently: finishing work and deciding against it are
+different outcomes and should not read the same.
 
 ## While an agent is working
 
