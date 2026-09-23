@@ -22,7 +22,7 @@ import {
 } from './blocker-sentences.js';
 
 function hold(over: Partial<RunnerHold> = {}): RunnerHold {
-  return { name: 'dev1', reason: 'retired', lastSeenSeconds: 13, reporting: true, ...over };
+  return { deviceName: 'dev1', reason: 'retired', lastSeenSeconds: 13, reporting: true, ...over };
 }
 
 const EVERY_READING: RunnerHoldReason[] = [
@@ -41,7 +41,7 @@ const EVERY_READING: RunnerHoldReason[] = [
 describe('NO_RUNNER_ONLINE', () => {
   it('names the box, the state and the switch that returns it', () => {
     const message = releaseBlockerSentence('NO_RUNNER_ONLINE', {
-      runners: [hold({ name: 'sid-xeon-1', detail: 'draining' })],
+      runners: [hold({ deviceName: 'sid-xeon-1', detail: 'draining' })],
     });
 
     expect(message).toContain('sid-xeon-1');
@@ -52,8 +52,8 @@ describe('NO_RUNNER_ONLINE', () => {
   it('no longer sends the operator after a box that is up', () => {
     const message = releaseBlockerSentence('NO_RUNNER_ONLINE', {
       runners: [
-        hold({ name: 'dev1', detail: 'draining', lastSeenSeconds: 13 }),
-        hold({ name: 'sid-xeon-1', detail: 'disabled', lastSeenSeconds: 21 }),
+        hold({ deviceName: 'dev1', detail: 'draining', lastSeenSeconds: 13 }),
+        hold({ deviceName: 'sid-xeon-1', detail: 'disabled', lastSeenSeconds: 21 }),
       ],
     });
 

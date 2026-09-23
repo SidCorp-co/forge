@@ -8,6 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RunnerHold } from '../runners/ineligible.js';
 
 const selectRows = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
@@ -137,9 +138,13 @@ beforeEach(() => {
   unearned.mockResolvedValue([]);
 });
 
-/** One box registered, reporting, and taken out of the pool by an operator. */
-const RETIRED = {
-  name: 'dev1',
+/**
+ * One box registered, reporting, and taken out of the pool by an operator.
+ * Typed, because an untyped literal here let `name` survive a rename that the
+ * compiler would otherwise have caught (ISS-1127, criterion 17).
+ */
+const RETIRED: RunnerHold = {
+  deviceName: 'dev1',
   reason: 'retired',
   detail: 'draining',
   lastSeenSeconds: 13,
