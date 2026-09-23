@@ -15,7 +15,7 @@ import { loadIssueRelationsForIssues } from '../dependency-read.js';
 import { issueRefFormatter } from '../issue-prefix-read.js';
 import type { Cancellation } from './cancellation.js';
 import type { BacklogSource, SourceDone } from './emitter.js';
-import { issuePage, type PageCursor } from './page-read.js';
+import { cursorFrom, issuePage, type PageCursor } from './page-read.js';
 
 /** Rows read per database round trip. One relations query is spent per page, whatever its size. */
 export const ORDERING_PAGE_SIZE = 100;
@@ -61,7 +61,7 @@ async function readPage(input: OrderingInput, after: PageCursor | null) {
   });
   return rows.map((row) => {
     const { cursorAt, ...fields } = row;
-    return { fields, cursor: { cursorAt, id: row.id } satisfies PageCursor };
+    return { fields, cursorAt, id: row.id };
   });
 }
 
@@ -95,6 +95,6 @@ export async function* orderingSource(input: OrderingInput): BacklogSource<unkno
     const last = page[page.length - 1];
     if (!last) return { exhausted: true } satisfies SourceDone;
     if (page.length < ORDERING_PAGE_SIZE) return { exhausted: true } satisfies SourceDone;
-    cursor = last.cursor;
+    cursor = cursorFrom(last);
   }
 }

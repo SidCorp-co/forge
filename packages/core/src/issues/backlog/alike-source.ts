@@ -16,7 +16,7 @@ import { runMemorySearch } from '../../memory/search-service.js';
 import { issueRefFormatter } from '../issue-prefix-read.js';
 import type { Cancellation } from './cancellation.js';
 import type { BacklogSource, SourceDone } from './emitter.js';
-import { issuePage, type PageCursor } from './page-read.js';
+import { cursorFrom, issuePage, type PageCursor } from './page-read.js';
 
 /** Seeds embedded per provider round trip. `embedBatch` sends whatever it is given in one request. */
 export const EMBED_BATCH_SIZE = 64;
@@ -107,6 +107,6 @@ export async function* alikeSource(input: AlikeInput): BacklogSource<unknown> {
     const last = seeds[seeds.length - 1];
     if (!last) return { exhausted: true } satisfies SourceDone;
     if (seeds.length < EMBED_BATCH_SIZE) return { exhausted: true } satisfies SourceDone;
-    cursor = { cursorAt: last.cursorAt, id: last.id };
+    cursor = cursorFrom(last);
   }
 }

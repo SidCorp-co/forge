@@ -114,15 +114,19 @@ async function seedIssue(seq: number, status = 'open'): Promise<string> {
  * that truncates them re-reads the boundary row, and `now()` supplies them only by luck.
  *
  * `tiedFrom` gives every issue from that seq onward one identical `created_at`, which is how a
- * page boundary is made to land on an exact tie.
+ * page boundary is made to land on an exact tie; `from` moves the whole run to another era.
  */
-async function seedIssuesPastBoundary(count: number, opts: { tiedFrom?: number } = {}) {
+async function seedIssuesPastBoundary(
+  count: number,
+  opts: { tiedFrom?: number; from?: string } = {},
+) {
   const tiedFrom = opts.tiedFrom ?? count + 1;
+  const from = opts.from ?? "timestamptz '2026-01-01 00:00:00+00'";
   await harness.db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, description, status, created_by_id, created_at)
     SELECT gen_random_uuid(), ${projectId}, s, 'backlog subject ' || s, 'body of ' || s,
            'open', ${userId},
-           timestamptz '2026-01-01 00:00:00+00'
+           ${sql.raw(from)}
              + (least(s, ${tiedFrom}::int) || ' seconds')::interval
              + interval '456 microseconds'
     FROM generate_series(1, ${count}::int) AS s
@@ -452,6 +456,44 @@ describe('a backlog longer than one page', () => {
       emitted: total,
       total,
     });
+  });
+
+  it('pages across an era rather than reading a BC issue as AD', async () => {
+    // The cursor is text Postgres writes and Postgres parses back, and a spelling without `BC`
+    // reads a BC timestamp as AD — a boundary landing somewhere else entirely.
+    const total = ORDERING_PAGE_SIZE + 1;
+    await seedIssuesPastBoundary(total, { from: "timestamptz '0100-01-01 00:00:00 BC'" });
+
+    const { frames } = await readStream(`/api/projects/${projectId}/backlog/ordering`);
+    const census = itemCensus(frames);
+
+    expect(census.distinct).toBe(total);
+    expect(census.emitted).toBe(total);
+  });
+
+  it('refuses an issue whose timestamp no cursor can carry, instead of reporting complete', async () => {
+    // `to_char` answers NULL for `infinity`. Paging from that would read no further row and end
+    // the stream `complete` over everything behind it, which is the one outcome worse than a
+    // duplicate. An infinite timestamp sorts last, so it is a cursor exactly when it closes a full
+    // page and work remains — which is exactly when the pager must carry it and cannot. Two such
+    // issues put one of them at the boundary with the other still behind it.
+    await seedIssuesPastBoundary(ORDERING_PAGE_SIZE + 1);
+    await harness.db.execute(sql`
+      UPDATE issues SET created_at = 'infinity'::timestamptz
+      WHERE project_id = ${projectId} AND iss_seq IN (1, 2)
+    `);
+
+    const { frames } = await readStream(`/api/projects/${projectId}/backlog/ordering`);
+
+    expect(itemsOf(frames)).toHaveLength(ORDERING_PAGE_SIZE);
+    expect(terminalOf(frames)).toEqual([
+      {
+        type: 'error',
+        code: 'UNPAGEABLE_TIMESTAMP',
+        message: expect.stringContaining('infinite'),
+        emitted: ORDERING_PAGE_SIZE,
+      },
+    ]);
   });
 
   it('drops neither of two issues sharing the page boundary timestamp exactly', async () => {
