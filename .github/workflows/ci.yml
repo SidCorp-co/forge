@@ -340,12 +340,6 @@ jobs:
       # needed one of them to be load-bearing). It rides the `web` job because this
       # job's path filter already fires on `packages/contracts/**` and web-v2 is the
       # package that consumes the values.
-      # `@forge/contracts` emits `dist/document-patch.{js,d.ts}` — the one export in
-      # that package resolving through `dist` rather than `src` — so anything that
-      # type-checks or imports it needs the package built first. This job reaches the
-      # tests through pnpm rather than turbo, so turbo's `test dependsOn ^build` never
-      # applies here and the build has to be named.
-      - run: pnpm --filter @forge/contracts build
       - run: pnpm --filter @forge/contracts test
       - run: pnpm --filter web-v2 exec vitest run --passWithNoTests
       - run: pnpm --filter web-v2 build
@@ -367,12 +361,6 @@ jobs:
       # and typing debt, tracked not gated) do not fail the job. A failure here is
       # a real new violation.
       - run: pnpm --filter @forge/core lint
-      # `@forge/contracts` emits `dist/document-patch.{js,d.ts}` — the one export in
-      # that package resolving through `dist` rather than `src` — so anything that
-      # type-checks or imports it needs the package built first. This job reaches the
-      # tests through pnpm rather than turbo, so turbo's `test dependsOn ^build` never
-      # applies here and the build has to be named.
-      - run: pnpm --filter @forge/contracts build
       - run: pnpm --filter @forge/core test
       # BLOCKING since 2026-08-10. `typecheck` uses the base tsconfig, which
       # includes test files (build uses tsconfig.build.json and excludes them).
@@ -405,10 +393,6 @@ jobs:
       # mode, plus the v8 report that check-flow-coverage reads. Coverage costs a
       # couple of seconds on an 85s run, and it is the ONLY place the e2e report
       # is produced, so the flow gate below has evidence to work from.
-      # Same reason as the `core` job: this suite imports
-      # `@forge/contracts/document-patch`, which resolves through `dist`, and pnpm
-      # does not apply turbo's `test dependsOn ^build`.
-      - run: pnpm --filter @forge/contracts build
       - run: TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage
       # --require-sources turns "no coverage report" from a local skip into a
       # failure. `pnpm verify` skips this check when the report is absent; that
