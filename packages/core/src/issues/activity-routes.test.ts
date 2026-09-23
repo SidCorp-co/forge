@@ -195,6 +195,58 @@ describe('GET /api/issues/:id/activity', () => {
   });
 });
 
+/**
+ * ISS-1160 — the display key every screen actually shows (`ISS-1185`) reaches
+ * this route the same as the row uuid, scoped to a project the caller names
+ * and can read.
+ */
+describe('GET /api/issues/:id/activity — display-key resolution (ISS-1160)', () => {
+  it('resolves a display key scoped to ?projectId= the same as the row uuid', async () => {
+    auth();
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
+    selectOrderByLimit.mockResolvedValueOnce([]);
+
+    const res = await buildApp().request(`/api/issues/ISS-1185/activity?projectId=${PROJECT_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses a key with no project to scope it — 400, never the uuid-shape refusal this issue reported', async () => {
+    auth();
+    const res = await buildApp().request('/api/issues/ISS-1185/activity', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { details?: { formErrors?: string[] } };
+    expect(body.details?.formErrors?.join(' ')).toMatch(/projectId=/);
+  });
+
+  it('answers 404 naming the key when the project holds no issue at that number', async () => {
+    auth();
+    selectLimit.mockResolvedValueOnce([]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
+
+    const res = await buildApp().request(`/api/issues/ISS-1185/activity?projectId=${PROJECT_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toMatch(/ISS-1185/);
+  });
+});
+
 describe('GET /api/projects/:id/activity', () => {
   it('401 without token', async () => {
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/activity`);

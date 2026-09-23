@@ -33,6 +33,11 @@ import { serializeIssue } from './detail-projection.js';
 import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
+  issueRouteIdParamSchema,
+  projectScopeQuerySchema,
+  resolveIssueRouteRef,
+} from './issue-route-ref.js';
+import {
   LabelResolutionError,
   listIssueLabels,
   PrimaryModuleError,
@@ -391,16 +396,19 @@ async function loadIssue(issueId: string): Promise<IssueRow> {
 
 issueRoutes.get(
   '/:id',
-  zValidator('param', issueIdParamSchema, (r) => {
+  zValidator('param', issueRouteIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', projectScopeQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { id } = c.req.valid('param');
+    const { id: rawId } = c.req.valid('param');
+    const { projectId: projectIdQuery } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const issue = await loadIssue(id);
-    const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
+    const id = issue.id;
 
     const labelRows = await listIssueLabels(id);
 

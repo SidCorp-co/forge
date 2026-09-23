@@ -13,6 +13,11 @@ import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
+import {
+  issueRouteIdParamSchema,
+  projectScopeQuerySchema,
+  resolveIssueRouteRef,
+} from './issue-route-ref.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -86,22 +91,18 @@ issueAttachmentRoutes.post(
 
 issueAttachmentRoutes.get(
   '/:id/attachments',
-  zValidator('param', issueIdParamSchema, (r) => {
+  zValidator('param', issueRouteIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
   }),
+  zValidator('query', projectScopeQuerySchema, (r) => {
+    if (!r.success) throw badRequest('invalid query', 'BAD_REQUEST', z.flattenError(r.error));
+  }),
   async (c) => {
-    const { id: issueId } = c.req.valid('param');
+    const { id: rawId } = c.req.valid('param');
+    const { projectId: projectIdQuery } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
-    if (!issue) throw notFound('issue not found');
-
-    const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
 
     const rows = await db
       .select({

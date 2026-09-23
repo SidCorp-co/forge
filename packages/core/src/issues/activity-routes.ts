@@ -10,6 +10,11 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
+import {
+  issueRouteIdParamSchema,
+  projectScopeQuerySchema,
+  resolveIssueRouteRef,
+} from './issue-route-ref.js';
 
 const ACTIVITY_TYPES = ['issue', 'comment', 'member'] as const;
 
@@ -21,7 +26,9 @@ const activityQuerySchema = z
   })
   .strict();
 
-const perIssueQuerySchema = activityQuerySchema.omit({ type: true });
+const perIssueQuerySchema = activityQuerySchema.omit({ type: true }).extend({
+  projectId: projectScopeQuerySchema.shape.projectId,
+});
 const idParamSchema = z.object({ id: z.uuid() });
 
 const badRequest = (details: unknown) =>
@@ -91,26 +98,19 @@ issueActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 
 issueActivityRoutes.get(
   '/:id/activity',
-  zValidator('param', idParamSchema, (r) => {
+  zValidator('param', issueRouteIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('query', perIssueQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { id: issueId } = c.req.valid('param');
-    const { limit, before } = c.req.valid('query');
+    const { id: rawId } = c.req.valid('param');
+    const { limit, before, projectId: projectIdQuery } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
-    if (!issue) throw notFound('issue not found');
-
-    const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
+    const issueId = issue.id;
 
     const conditions = [eq(activityLog.issueId, issueId)];
     if (before) conditions.push(lt(activityLog.createdAt, before));

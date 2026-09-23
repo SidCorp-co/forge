@@ -12,6 +12,11 @@ import {
   taskStatuses,
   tasks,
 } from '../db/schema.js';
+import {
+  issueRouteIdParamSchema,
+  projectScopeQuerySchema,
+  resolveIssueRouteRef,
+} from '../issues/issue-route-ref.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -139,27 +144,23 @@ taskIssueRoutes.post(
 
 taskIssueRoutes.get(
   '/:id/tasks',
-  zValidator('param', issueIdParamSchema, (r) => {
+  zValidator('param', issueRouteIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', projectScopeQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { id: issueId } = c.req.valid('param');
+    const { id: rawId } = c.req.valid('param');
+    const { projectId: projectIdQuery } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
-    if (!issue) throw notFound('issue not found');
-
-    const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
 
     const rows = await db
       .select()
       .from(tasks)
-      .where(eq(tasks.issueId, issueId))
+      .where(eq(tasks.issueId, issue.id))
       .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
 
     return c.json(rows);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './client';
-import { formatApiError, formatPipelineConfigError } from './error';
+import { formatApiError, formatPipelineConfigError, isRetryableApiError } from './error';
 
 describe('formatPipelineConfigError', () => {
   it('names the offending stage for MISSING_SKILL_FOR_ENABLED_STAGE', () => {
@@ -80,5 +80,32 @@ describe('formatPipelineConfigError', () => {
   it('falls back to formatApiError for a generic Error', () => {
     const err = new Error('boom');
     expect(formatPipelineConfigError(err)).toBe(formatApiError(err));
+  });
+});
+
+/**
+ * ISS-1160 — no screen offers Retry on a refusal that retrying cannot change.
+ * A 4xx is the same request meeting the same answer again; only a 5xx or a
+ * transport failure (not an ApiError at all) is worth resubmitting.
+ */
+describe('isRetryableApiError', () => {
+  it('refuses retry on a 400 — the malformed-identifier / missing-scope refusal', () => {
+    expect(isRetryableApiError(new ApiError(400, 'Invalid input', 'BAD_REQUEST'))).toBe(false);
+  });
+
+  it('refuses retry on a 404 — the key-names-nothing refusal', () => {
+    expect(isRetryableApiError(new ApiError(404, 'not found', 'NOT_FOUND'))).toBe(false);
+  });
+
+  it('refuses retry on a 403 — the project-the-caller-cannot-read refusal', () => {
+    expect(isRetryableApiError(new ApiError(403, 'nope', 'FORBIDDEN'))).toBe(false);
+  });
+
+  it('allows retry on a 500 — a server fault the same request might not repeat', () => {
+    expect(isRetryableApiError(new ApiError(500, 'boom', 'INTERNAL_ERROR'))).toBe(true);
+  });
+
+  it('allows retry on a non-ApiError — a transport failure, not a refusal', () => {
+    expect(isRetryableApiError(new Error('fetch failed'))).toBe(true);
   });
 });

@@ -34,7 +34,7 @@ import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DECISION_PANEL_ANCHOR, DecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
-import { formatApiError } from "@/lib/api/error";
+import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
@@ -42,9 +42,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  canonicalIssueId,
   deriveBlockerState,
   deriveStepOutcomes,
   runningStepOf,
+  issueQueryKey,
   parseChecklist,
   statusLabel,
   statusToChip,
@@ -98,6 +100,7 @@ const TASK_STATUS_LABELS: Record<TaskRow["status"], string> = {
   done: "Done",
 };
 
+
 interface IssueDetailScreenProps {
   projectId: string;
   slug: string;
@@ -122,26 +125,35 @@ export function IssueDetailScreen({
   const canWrite = projectRole !== "viewer";
   const [modulePickerOpen, setModulePickerOpen] = useState(false);
 
-  const issueQ = useIssue(id);
-  const commentsQ = useComments(id);
-  const activityQ = useActivity(id);
-  const tasksQ = useTasks(id);
-  const attachmentsQ = useAttachments(id);
-  const depsQ = useIssueDeps(id);
-  const costQ = useIssueCost(id);
+  // ISS-1160 — `id` off the URL is the display key as often as the row uuid;
+  // `projectId` (already resolved from the route's slug) is what lets it
+  // resolve on every one of these reads.
+  const issueQ = useIssue(id, projectId);
+  const canonicalId = canonicalIssueId(id, issueQ.data?.id);
+  const commentsQ = useComments(canonicalId, projectId);
+  const activityQ = useActivity(canonicalId, projectId);
+  const tasksQ = useTasks(canonicalId, projectId);
+  const attachmentsQ = useAttachments(canonicalId, projectId);
+  const depsQ = useIssueDeps(canonicalId, true, projectId);
+  const costQ = useIssueCost(canonicalId, true, projectId);
   const membersQ = useProjectMembers(projectId);
-  const handoffsQ = useStepHandoffs(projectId, id);
-  const durationsQ = useStepDurations(projectId, id);
+  const handoffsQ = useStepHandoffs(projectId, canonicalId);
+  const durationsQ = useStepDurations(projectId, canonicalId);
 
   const patch = usePatchIssue();
   const { requestTransition, dialog: reasonDialog, isPending: transitionPending } =
     useGuardedTransition();
   const qc = useQueryClient();
   const resumeRun = useResumeRun();
+  // ISS-1160 — a display-key load keys `useIssue` on `id`+`projectId` (never
+  // globally unique on `id` alone), so an invalidation naming only the
+  // canonical uuid this mutation reports misses that entry; name both.
+  const refreshIssue = () => {
+    qc.invalidateQueries({ queryKey: ["issue", issue?.id ?? id] });
+    qc.invalidateQueries({ queryKey: issueQueryKey(id, projectId) });
+  };
   const onResumeRun = (runId: string) =>
-    resumeRun.mutate(runId, {
-      onSuccess: () => qc.invalidateQueries({ queryKey: ["issue", id] }),
-    });
+    resumeRun.mutate(runId, { onSuccess: refreshIssue });
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
@@ -190,19 +202,21 @@ export function IssueDetailScreen({
         <ErrorState
           title="Couldn't load issue"
           message={formatApiError(issueQ.error)}
-          onRetry={() => issueQ.refetch()}
+          onRetry={isRetryableApiError(issueQ.error) ? () => issueQ.refetch() : undefined}
         />
       </div>
     );
   }
 
-  const onTransition = (toStatus: IssueStatus) => requestTransition(id, toStatus);
+  const onTransition = (toStatus: IssueStatus) =>
+    requestTransition(issue.id, toStatus, { onSuccess: refreshIssue });
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
-    patch.mutate({ id, body });
+    patch.mutate({ id: issue.id, body }, { onSuccess: refreshIssue });
 
-  const onApprove = () => requestTransition(id, "approved", { successMessage: "Issue approved" });
+  const onApprove = () =>
+    requestTransition(issue.id, "approved", { successMessage: "Issue approved", onSuccess: refreshIssue });
   const onBannerResume = () =>
-    requestTransition(id, "reopen", { successMessage: "Issue resumed" });
+    requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
 
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
@@ -234,7 +248,7 @@ export function IssueDetailScreen({
     issue.status === "in_progress" ||
     issue.status === "reopen";
   const openSessions = () =>
-    router.push(`/projects/${slug}/agents?issue=${id}`);
+    router.push(`/projects/${slug}/agents?issue=${issue.id}`);
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
   const moreItems: MenuItem[] = [
@@ -516,7 +530,7 @@ export function IssueDetailScreen({
                     <TabError query={commentsQ} what="comments" />
                   ) : (
                     <CommentThread
-                      issueId={id}
+                      issueId={issue.id}
                       comments={commentsQ.data?.items ?? []}
                       members={membersQ.data}
                       readOnly={!canWrite}
@@ -635,8 +649,9 @@ function TabLoading() {
   );
 }
 
-/** Error body for a detail tab whose query failed, with the retry that gets the
- *  reader out of it. */
+/** Error body for a detail tab whose query failed. Retry is offered only where
+ *  retrying could change the answer (ISS-1160) — a refusal the same request
+ *  will meet again gets no dead Retry button. */
 function TabError({
   query,
   what,
@@ -648,7 +663,7 @@ function TabError({
     <ErrorState
       title={`Couldn't load ${what}`}
       message={formatApiError(query.error)}
-      onRetry={() => query.refetch()}
+      onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
     />
   );
 }

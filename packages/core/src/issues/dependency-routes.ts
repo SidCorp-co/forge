@@ -25,6 +25,11 @@ import {
   type SetIssueDependencyInput,
   setIssueDependency,
 } from './dependency-service.js';
+import {
+  issueRouteIdParamSchema,
+  projectScopeQuerySchema,
+  resolveIssueRouteRef,
+} from './issue-route-ref.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
@@ -44,9 +49,6 @@ const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 const conflict = (message: string, code: string, details?: unknown) =>
   new HTTPException(409, { message, cause: { code, details } });
 
@@ -61,24 +63,20 @@ issueDependencyRoutes.use('*', requireAuth(), assertEmailVerified());
  */
 issueDependencyRoutes.get(
   '/:id/dependencies',
-  zValidator('param', idParamSchema, (r) => {
+  zValidator('param', issueRouteIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', projectScopeQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { id } = c.req.valid('param');
+    const { id: rawId } = c.req.valid('param');
+    const { projectId: projectIdQuery } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, id))
-      .limit(1);
-    if (!issue) throw notFound('issue not found');
+    const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
 
-    const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
-
-    return c.json(await loadIssueDependencyEdges(id, issue.projectId));
+    return c.json(await loadIssueDependencyEdges(issue.id, issue.projectId));
   },
 );
 

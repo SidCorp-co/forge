@@ -11,6 +11,8 @@ import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
 	bulkAllowedStatuses,
+	canonicalIssueId,
+	issueQueryKey,
 	COMMENT_KIND_META,
 	COMPLEXITY_LABELS,
 	complexityLabel,
@@ -1327,5 +1329,48 @@ describe("runningStepOf — a queued session names no running step (ISS-999)", (
 			{ activeStep: runningStepOf(running), failedStep: null },
 		);
 		expect(live.map((o) => [o.step, o.state])).toEqual([["drive", "running"]]);
+	});
+});
+
+describe("canonicalIssueId (ISS-1160)", () => {
+	const UUID = "123e4567-e89b-12d3-a456-426614174000";
+
+	it("passes a uuid straight through, ignoring whatever the fetch answered", () => {
+		expect(canonicalIssueId(UUID, "some-other-id")).toBe(UUID);
+	});
+
+	it("answers undefined for a display key until the fetch resolves — never the raw key itself", () => {
+		expect(canonicalIssueId("ISS-42", undefined)).toBeUndefined();
+	});
+
+	it("resolves a display key to the fetched row's own uuid once it answers", () => {
+		expect(canonicalIssueId("ISS-42", UUID)).toBe(UUID);
+	});
+
+	it("is what keeps two projects' own ISS-42 from colliding: the id passed on is project-a's row uuid, never the shared display key both rows answer to", () => {
+		const projectARowId = "aaaaaaaa-0000-0000-0000-000000000000";
+		const projectBRowId = "bbbbbbbb-0000-0000-0000-000000000000";
+		expect(canonicalIssueId("ISS-42", projectARowId)).toBe(projectARowId);
+		expect(canonicalIssueId("ISS-42", projectBRowId)).toBe(projectBRowId);
+		expect(canonicalIssueId("ISS-42", projectARowId)).not.toBe(canonicalIssueId("ISS-42", projectBRowId));
+	});
+});
+
+describe("issueQueryKey (ISS-1160 — codex 1a508e/F1, recheck-confirmed)", () => {
+	const UUID = "123e4567-e89b-12d3-a456-426614174000";
+
+	it("keys a uuid the same as before this issue — the shape the WS event-router invalidates by", () => {
+		expect(issueQueryKey(UUID, "p1")).toEqual(["issue", UUID]);
+		expect(issueQueryKey(UUID, undefined)).toEqual(["issue", UUID]);
+	});
+
+	it("keys a display key with the project too, so project A's and B's own ISS-42 are different queries", () => {
+		expect(issueQueryKey("ISS-42", "project-a")).toEqual(["issue", "ISS-42", "project-a"]);
+		expect(issueQueryKey("ISS-42", "project-b")).toEqual(["issue", "ISS-42", "project-b"]);
+		expect(issueQueryKey("ISS-42", "project-a")).not.toEqual(issueQueryKey("ISS-42", "project-b"));
+	});
+
+	it("passes an absent id through unscoped, matching the hook's own disabled state", () => {
+		expect(issueQueryKey(undefined, "p1")).toEqual(["issue", undefined]);
 	});
 });

@@ -5,43 +5,47 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { issueDetailApi } from "./detail-api";
+import { issueQueryKey } from "./derive";
 
-export function useIssue(id: string | undefined) {
+// ISS-1160 — `id` is the display key as often as the row uuid; `projectId` is
+// what lets it resolve. Optional here (some callers hold only a uuid already),
+// required by the screen that reaches these hooks off a followed link.
+export function useIssue(id: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", id],
-    queryFn: () => issueDetailApi.get(id as string),
+    queryKey: issueQueryKey(id, projectId),
+    queryFn: () => issueDetailApi.get(id as string, projectId),
     enabled: !!id,
   });
 }
 
-export function useComments(id: string | undefined) {
+export function useComments(id: string | undefined, projectId?: string) {
   return useQuery({
     queryKey: ["comments", id],
-    queryFn: () => issueDetailApi.listComments(id as string),
+    queryFn: () => issueDetailApi.listComments(id as string, projectId),
     enabled: !!id,
   });
 }
 
-export function useActivity(id: string | undefined) {
+export function useActivity(id: string | undefined, projectId?: string) {
   return useQuery({
     queryKey: ["activities", id],
-    queryFn: () => issueDetailApi.listActivity(id as string),
+    queryFn: () => issueDetailApi.listActivity(id as string, 50, projectId),
     enabled: !!id,
   });
 }
 
-export function useTasks(id: string | undefined) {
+export function useTasks(id: string | undefined, projectId?: string) {
   return useQuery({
     queryKey: ["tasks", id],
-    queryFn: () => issueDetailApi.listTasks(id as string),
+    queryFn: () => issueDetailApi.listTasks(id as string, projectId),
     enabled: !!id,
   });
 }
 
-export function useAttachments(id: string | undefined) {
+export function useAttachments(id: string | undefined, projectId?: string) {
   return useQuery({
     queryKey: ["issue", id, "attachments"],
-    queryFn: () => issueDetailApi.listAttachments(id as string),
+    queryFn: () => issueDetailApi.listAttachments(id as string, projectId),
     enabled: !!id,
   });
 }

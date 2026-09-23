@@ -65,3 +65,48 @@ describe("issueDetailApi.listComments", () => {
     await expect(issueDetailApi.listComments("i1")).rejects.toThrow(/no cursor envelope/);
   });
 });
+
+/**
+ * ISS-1160 — `id` off the issue-detail URL is the display key (`ISS-1185`) as
+ * often as the row uuid, and a key resolves only inside a project the caller
+ * names. Every read below must carry `?projectId=` when the screen has one,
+ * and stay unchanged when it does not (a uuid needs no scope).
+ */
+describe("issueDetailApi carries ?projectId= for a display-key id (ISS-1160)", () => {
+  function lastUrl(): string {
+    const call = fetchMock.mock.calls.at(-1);
+    return String(call?.[0]);
+  }
+
+  it("get() appends projectId when given, and omits it when not", async () => {
+    fetchMock.mockImplementation(async () => json({ id: "i1" }));
+    await issueDetailApi.get("ISS-1185", "p1");
+    expect(lastUrl()).toBe("/api/issues/ISS-1185?projectId=p1");
+
+    await issueDetailApi.get("i1");
+    expect(lastUrl()).toBe("/api/issues/i1");
+  });
+
+  it("listActivity() appends projectId after the existing ?limit=", async () => {
+    fetchMock.mockImplementation(async () => json({ items: [], nextBefore: null }));
+    await issueDetailApi.listActivity("ISS-1185", 50, "p1");
+    expect(lastUrl()).toBe("/api/issues/ISS-1185/activity?limit=50&projectId=p1");
+  });
+
+  it("listTasks() and listAttachments() append projectId", async () => {
+    fetchMock.mockImplementation(async () => json([]));
+    await issueDetailApi.listTasks("ISS-1185", "p1");
+    expect(lastUrl()).toBe("/api/issues/ISS-1185/tasks?projectId=p1");
+
+    await issueDetailApi.listAttachments("ISS-1185", "p1");
+    expect(lastUrl()).toBe("/api/issues/ISS-1185/attachments?projectId=p1");
+  });
+
+  it("listComments() appends projectId on the first page", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({ items: [], returned: 0, total: 0, limit: 50, nextCursor: null, hasMore: false }),
+    );
+    await issueDetailApi.listComments("ISS-1185", "p1");
+    expect(lastUrl()).toBe("/api/issues/ISS-1185/comments?projectId=p1");
+  });
+});
