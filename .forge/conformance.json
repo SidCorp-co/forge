@@ -21,8 +21,8 @@
     },
     "knowledge": {
       "level": 3,
-      "gate": "check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + build-flow-map",
-      "owns": "whether a document asking to be adopted prices what adopting it costs; whether a doc injected into every session names the pipeline mode its status transitions belong to; whether the PAT permission menu covers every route it claims; whether one question in the source has more than one answer; whether the flow map is generated rather than hand-kept"
+      "gate": "check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations + build-flow-map",
+      "owns": "whether a document asking to be adopted prices what adopting it costs; whether a doc injected into every session names the pipeline mode its status transitions belong to; whether the PAT permission menu covers every route it claims; whether one question in the source has more than one answer; whether a document's citations of this repo's own files are still true; whether the flow map is generated rather than hand-kept"
     },
     "relations": {
       "level": 2,
@@ -105,6 +105,31 @@
         ".next",
         ".turbo",
         "drizzle"
+      ]
+    },
+    "doc-citations": {
+      "$comment": "ISS-1112 — a document that names a file makes a claim a machine can check, and nothing checked it: 93 documents had drifted far enough to be deleted rather than corrected before this landed, one of them crediting an invariant to a test file not in the tree. The unit is a CITATION, never a document — prose is not checkable and this does not try. A citation is resolved in two scopes and no third — the document's own directory and the package the document sits in — with a path written from the repository root resolved exactly or not at all. Nothing falls back to the whole tree, and no part of resolution reads whether the target is present: a resolution that widens at the moment a file disappears is a resolution that cannot report the disappearance. The cost is real and is paid rather than hidden: a document at the repository root writes the full path or is told it cites nothing, which is what the sweep in ISS-1112 did to sixteen citations in `CLAUDE.md` and `scripts/README.md`. One residual is stated at `scripts/check-doc-citations.mjs` rather than left to be found: a document inside a scope citing a root-level file whose name is ALSO taken inside that scope resolves to the root copy while it exists and to the scoped namesake once it is deleted. Closing it takes a syntactic root notation and a rewrite of every rooted citation in the repository. Nothing detects the collision while both files exist either, because the exact match returns before any scoped candidate is looked for; what bounds it is only that it needs one name taken twice, at the root and inside the citing document's own scope, which this repository does not do today. Three shapes fail: a path no tracked file carries, a line-number citation (which CLAUDE.md already forbids by name), and a file.ts:symbol anchor whose file does not hold that symbol. One shape only reports: a citation whose target was changed after the document was, which is the still-true/edited/deleted worklist entry and not a build failure. What it cannot see, each stated where it is skipped: prose, fenced and indented code blocks, a path in another repository (which carries no extension here and so is not read as a citation at all), a symbol that still exists but has changed meaning, and whether a count or a number in a document is right. A token that is not a claim about this repository says so at the citation, in an HTML comment reading `doc-citation: unchecked `<token>` `<token>` — <why>`, which NAMES what it excuses: a window alone would reach every citation in the same paragraph, and the migration README's template marker sat three lines above a live `meta/_journal.json` it would then have hidden. A marker naming no token is refused rather than left to excuse nothing in silence. Resolution reads the working tree as well as the index, because `git ls-files` still lists a file deleted and not yet staged — which is the one run whose job is to notice it went.",
+      "skipDocs": [
+        {
+          "glob": "CHANGELOG.md",
+          "why": "The external record of what shipped. It records what was true on the day it shipped and is MEANT to age — a citation in a released entry going stale is the record working, not rotting. Named out of scope by ISS-1112 and owned by the `record` axis instead."
+        },
+        {
+          "glob": "docs/proposals/**",
+          "why": "A proposal names the tree it WANTS, not the tree there is, so a forward reference and a dead citation are the same text and this checker cannot tell them apart. `check-honest-costs` already owns these documents on the axis they can be measured on: whether they price what adopting them costs."
+        },
+        {
+          "glob": ".forge/archmap/**",
+          "why": "A vendored third-party plugin's own documents, shipped with its source. Its citations are about its own tree and land here only because `pnpm install` needs no path outside the repo."
+        },
+        {
+          "glob": ".forge/code-quality/**",
+          "why": "The same: `eslint-plugin-code-quality` vendored at a path inside the repo so installation needs no path outside it. Its documents are its author's."
+        },
+        {
+          "glob": ".forge/backups/**",
+          "why": "Snapshots kept for recovery. A citation in a backup describes the tree AT THE TIME IT WAS TAKEN, which is the whole point of keeping it, so measuring it against today's tree would report the backup working as a fault."
+        }
       ]
     },
     "provider-literals": {

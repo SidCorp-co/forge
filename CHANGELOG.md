@@ -172,6 +172,9 @@
   it waits for and who owes the next move. Each status has its own clock.
 - **A claim left behind by a run that stopped is let go once it expires.** One still inside its
   time, or one that cannot be read, is left alone and reported instead.
+- **A document that names a file in this repo is now checked against it.** A path the tree no
+  longer carries fails the build, and a citation whose file changed after the document did comes
+  back on the doc-review worklist.
 - **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
   credential core mints for that one checkout, writes its `.mcp.json`, and records the local
   binding — no pasted token, no `bind` by hand.
@@ -3095,6 +3098,10 @@
 - **Issues closed before Forge recorded what shipped can be edited again, and the API starts.**
   The rule that `closed` means shipped was written about the row, not the move into it, so it
   locked older closes.
+
+- **The guides now describe the two endings correctly.** One promised no closed issue could exist
+  unshipped, untrue of issues closed before the rule. The help page called dropping an issue a
+  kind of close.
 
 - **A criterion's verdict now says what it was judged against, and stops counting once that is
   gone.** A pass taken at a runtime a repair replaced read as earned forever. Release holds the
