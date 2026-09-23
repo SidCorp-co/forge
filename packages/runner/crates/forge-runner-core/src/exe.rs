@@ -67,7 +67,7 @@ pub fn is_runnable(path: &Path) -> bool {
     let Ok(meta) = std::fs::metadata(path) else {
         return false;
     };
-    meta.is_file() && has_exec_bit(&meta)
+    meta.is_file() && may_execute(path)
 }
 
 /// The first runnable `name` on `PATH`, as a shell would resolve it.
@@ -78,14 +78,19 @@ pub fn on_path(name: &str) -> Option<PathBuf> {
         .find(|candidate| is_runnable(candidate))
 }
 
+/// Whether THIS process may execute the file, which is not the same question as
+/// whether any execute bit is set: a file at `0o045` owned by somebody else
+/// carries one for a class this daemon is not in, and a hook naming it dies with
+/// `Permission denied` exactly as the deleted path died with `not found`
+/// (consult 29edf1 F1). `access` asks the kernel the question a shell is about
+/// to ask it.
 #[cfg(unix)]
-fn has_exec_bit(meta: &std::fs::Metadata) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    meta.permissions().mode() & 0o111 != 0
+fn may_execute(path: &Path) -> bool {
+    nix::unistd::access(path, nix::unistd::AccessFlags::X_OK).is_ok()
 }
 
 #[cfg(not(unix))]
-fn has_exec_bit(_meta: &std::fs::Metadata) -> bool {
+fn may_execute(_path: &Path) -> bool {
     true
 }
 
@@ -209,6 +214,42 @@ mod tests {
             !is_runnable(&plain),
             "a hook naming this would fail at every call exactly as the deleted path did"
         );
+    }
+
+    /// An execute bit for a class this process is not in is not permission to
+    /// execute, and a mask test cannot tell the two apart (consult 29edf1 F1).
+    #[cfg(unix)]
+    #[test]
+    fn an_execute_bit_for_somebody_else_is_not_permission_to_run_it() {
+        use std::os::unix::fs::MetadataExt;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = Scratch::new("theirs");
+        // A file this process creates is owned by this process, so its owner is
+        // who we are. root bypasses the permission check whenever ANY execute
+        // bit is set, which is the very thing under test, so a pass there would
+        // be no evidence at all.
+        let mine = dir.0.join("whoami");
+        std::fs::write(&mine, "").expect("write");
+        assert_ne!(
+            mine.metadata().unwrap().uid(),
+            0,
+            "run this suite as a non-root user: as root the case under test cannot fail"
+        );
+        let theirs = dir.0.join("forge-runner");
+        std::fs::write(&theirs, "#!/bin/sh\nexit 0\n").expect("write");
+        // Owner: no bits at all. Group and other: read and execute.
+        std::fs::set_permissions(&theirs, std::fs::Permissions::from_mode(0o055)).expect("chmod");
+
+        assert_ne!(
+            theirs.metadata().unwrap().permissions().mode() & 0o111,
+            0,
+            "the case needs an execute bit set for SOMEBODY, or it is the previous test again"
+        );
+        assert!(
+            !is_runnable(&theirs),
+            "a hook naming this dies with Permission denied, which is the deleted path's failure under another name"
+        );
+        assert!(resolve(&theirs).is_err());
     }
 
     #[test]
