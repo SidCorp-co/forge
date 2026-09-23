@@ -144,7 +144,13 @@ pub fn https_host(url: &str) -> Option<String> {
 /// `.git/config` and every later fetch and push resolves through it, so a path
 /// that was true only while one process lived is the worst thing to put there.
 fn helper_program() -> Option<String> {
-    match crate::exe::own() {
+    helper_from(crate::exe::own())
+}
+
+/// The same with the resolution handed in, so every arm is reachable from a
+/// test while this process's own binary is present.
+fn helper_from(own: Result<crate::exe::OwnExe>) -> Option<String> {
+    match own {
         Ok(exe) => {
             if let Some(was) = &exe.replaced_from {
                 tracing::warn!(
@@ -153,7 +159,7 @@ fn helper_program() -> Option<String> {
                     exe.path.display()
                 );
             }
-            Some(exe.path.display().to_string())
+            named(&exe.path)
         }
         Err(e) => match crate::exe::on_path("forge-runner") {
             Some(found) => {
@@ -161,7 +167,7 @@ fn helper_program() -> Option<String> {
                     "[git-cred] {e} — the credential helper names {}, resolved on PATH instead",
                     found.display()
                 );
-                Some(found.display().to_string())
+                named(&found)
             }
             None => {
                 tracing::error!(
@@ -170,6 +176,25 @@ fn helper_program() -> Option<String> {
                 None
             }
         },
+    }
+}
+
+/// The path as the text a helper may carry, or nothing.
+///
+/// Never `display()`: it replaces bytes it cannot render, so a helper built
+/// from it names a different file and fails on every fetch and push — which is
+/// the refusal `hook_install::install` already makes for the same class
+/// (consult 7bbe98 F1).
+fn named(path: &std::path::Path) -> Option<String> {
+    match path.to_str() {
+        Some(text) => Some(text.to_string()),
+        None => {
+            tracing::error!(
+                "[git-cred] the runner's own path is not valid UTF-8 ({}), so no credential helper is written for this host rather than one naming a different file",
+                path.display()
+            );
+            None
+        }
     }
 }
 
@@ -301,6 +326,33 @@ mod tests {
             !program.ends_with(crate::exe::DELETED_SUFFIX),
             "the kernel's annotation was persisted into a checkout: {program:?}"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_runner_under_a_path_this_cannot_write_gets_no_helper_at_all() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let path = std::path::PathBuf::from(std::ffi::OsStr::from_bytes(b"/opt/forge-\xff-runner"));
+        let got = helper_from(Ok(crate::exe::OwnExe {
+            path: path.clone(),
+            replaced_from: None,
+        }));
+        assert_eq!(
+            got, None,
+            "display() renders those bytes as U+FFFD, and a helper carrying that names a file nothing can run"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_runner_this_can_write_is_named_exactly_as_it_stands() {
+        let path = std::path::PathBuf::from("/opt/Forge Runner/forge-runner");
+        let got = helper_from(Ok(crate::exe::OwnExe {
+            path: path.clone(),
+            replaced_from: None,
+        }));
+        assert_eq!(got.as_deref(), Some("/opt/Forge Runner/forge-runner"));
     }
 
     #[test]
