@@ -90,7 +90,7 @@ const CHECKS = [
     cmd: ['./.forge/archmap/archmap', 'check'],
     exclusive: 'archmap',
     scanned: /archmap · (\d+) files/,
-    needs: ['deps', 'archmap-resolver', 'observability-build'],
+    needs: ['deps', 'archmap-resolver', 'observability-build', 'contracts-build'],
   },
   {
     axis: 'form',
@@ -153,7 +153,7 @@ const CHECKS = [
     label: 'core typecheck',
     cmd: ['pnpm', '--filter', '@forge/core', 'exec', 'tsc', '--noEmit', '--extendedDiagnostics'],
     scanned: /^Files:\s+(\d+)/m,
-    needs: ['deps', 'observability-build'],
+    needs: ['deps', 'observability-build', 'contracts-build'],
   },
   {
     axis: 'runner',
