@@ -52,42 +52,76 @@ export const REQUEST_HELPERS: Record<string, { transports: readonly string[]; wh
 };
 
 const TEMPLATE = '`(?:[^`\\\\]|\\\\.)*`';
-const QUOTED = `(?:${TEMPLATE}|'[^'\\n]*'|"[^"\\n]*")`;
+
+/** The value after a property key, up to the point this property's own bracket depth returns to zero. */
+function propertyValue(text: string, from: number): string {
+  let depth = 0;
+  let i = from;
+  for (; i < text.length; i += 1) {
+    const c = text[i];
+    if (depth === 0 && (c === ',' || c === '}')) break;
+    if (c === '(' || c === '{' || c === '[') depth += 1;
+    else if (c === ')' || c === '}' || c === ']') depth -= 1;
+  }
+  return text.slice(from, i).trim();
+}
+
+/** The argument between a call's own parentheses, a formatter's trailing comma trimmed off. */
+function callArgument(text: string, openAt: number): string {
+  let depth = 1;
+  let i = openAt;
+  for (; i < text.length && depth > 0; i += 1) {
+    if (text[i] === '(') depth += 1;
+    else if (text[i] === ')') depth -= 1;
+  }
+  return text
+    .slice(openAt, i - 1)
+    .trim()
+    .replace(/,$/, '')
+    .trim();
+}
+
+/** Every `path:` value inside a call's own argument object, whatever expression it is. */
+function pathPropertyValues(text: string): Array<{ at: number; raw: string }> {
+  const out: Array<{ at: number; raw: string }> = [];
+  const re = /\bpath:\s*/g;
+  for (let m = re.exec(text); m !== null; m = re.exec(text)) {
+    const at = m.index + m[0].length;
+    if (inArgumentObject(text, at)) out.push({ at, raw: propertyValue(text, at) });
+  }
+  return out;
+}
+
+/** Every `client.get(...)` argument, whatever expression it is. */
+function clientGetValues(text: string): Array<{ at: number; raw: string }> {
+  const out: Array<{ at: number; raw: string }> = [];
+  const re = /\bclient\.get\b\s*(?:<[^;]*?>)?\s*\(/g;
+  for (let m = re.exec(text); m !== null; m = re.exec(text)) {
+    const at = m.index + m[0].length;
+    out.push({ at, raw: callArgument(text, at) });
+  }
+  return out;
+}
 
 /** Where a GitHub path can appear, and how the method that goes with it is known. */
-const PATH_SITES = [
-  {
-    // `path:` carries the expression; the method comes out of the object literal around it.
-    re: new RegExp(
-      String.raw`\bpath:\s*((?:${QUOTED}|[A-Za-z_$][\w$]*\([^)]*\))(?:\s*\+\s*(?:${TEMPLATE}))*)`,
-      'g',
-    ),
-    method: 'enclosing' as const,
-    kind: 'path' as const,
-  },
-  {
-    // A `path:` whose value is a NAME. It resolves to nothing, and saying so is the whole point:
-    // a request reaching GitHub through a variable is one this audit priced no permission for,
-    // and the matcher above passes silently over it.
-    re: /\bpath:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*[,}]/g,
-    method: 'enclosing' as const,
-    kind: 'path' as const,
-    argumentOnly: true,
-  },
-  {
-    re: new RegExp(String.raw`\bclient\.get\s*(?:<[^;]*?>)?\s*\(\s*(${TEMPLATE})`, 'g'),
-    method: 'GET' as const,
-    kind: 'path' as const,
-  },
-  {
-    re: new RegExp(
-      String.raw`\b(?:doFetch|fetch|githubJson)\s*(?:<[\s\S]*?>)?\s*\(\s*(?:doFetch\s*,\s*)?(${TEMPLATE})`,
-      'g',
-    ),
-    method: 'following' as const,
-    kind: 'fetch' as const,
-  },
+const PATH_SITES: Array<{
+  values: (text: string) => Array<{ at: number; raw: string }>;
+  method: 'enclosing' | 'GET';
+  kind: 'path';
+}> = [
+  { values: pathPropertyValues, method: 'enclosing', kind: 'path' },
+  { values: clientGetValues, method: 'GET', kind: 'path' },
 ];
+
+/** A `doFetch`/`fetch`/`githubJson` call named with a template; an opaque one is `unreadableRequests`' own scan. */
+const FETCH_SITE = {
+  re: new RegExp(
+    String.raw`\b(?:doFetch|fetch|githubJson)\s*(?:<[\s\S]*?>)?\s*\(\s*(?:doFetch\s*,\s*)?(${TEMPLATE})`,
+    'g',
+  ),
+  method: 'following' as const,
+  kind: 'fetch' as const,
+};
 
 /**
  * The file with every comment blanked and its line count kept.
@@ -184,32 +218,45 @@ export function methodFrom(block: string, fallback: string | null): string | nul
   return fallback;
 }
 
+/** The record for one call, wherever its `{ at, raw }` came from. */
+function callFromRaw(
+  text: string,
+  file: string,
+  at: number,
+  raw: string,
+  methodKind: 'enclosing' | 'GET' | 'following',
+  kind: 'path' | 'fetch',
+): FoundCall {
+  const line = text.slice(0, at).split('\n').length;
+  const path = resolvePath(raw);
+  const method =
+    methodKind === 'enclosing'
+      ? methodFrom(enclosingObject(text, at), null)
+      : methodKind === 'following'
+        ? methodFrom(followingObject(text, at + raw.length), 'GET')
+        : methodKind;
+  const unresolved = !path.startsWith('/')
+    ? `the path expression does not resolve to a GitHub path: ${raw}`
+    : method === null
+      ? `the call names no HTTP method: ${raw}`
+      : null;
+  return { file, line, raw, path, method: method ?? '?', kind, unresolved };
+}
+
 /** Every GitHub call one source file makes, as `METHOD /path`, or the reason one could not be read. */
 export function collectGitHubCalls(source: string, file: string): FoundCall[] {
   const text = withoutComments(source);
   const out: FoundCall[] = [];
   for (const site of PATH_SITES) {
-    site.re.lastIndex = 0;
-    let m = site.re.exec(text);
-    for (; m !== null; m = site.re.exec(text)) {
-      const raw = m[1] ?? '';
-      const at = m.index + m[0].indexOf(raw);
-      if ('argumentOnly' in site && !inArgumentObject(text, at)) continue;
-      const line = text.slice(0, at).split('\n').length;
-      const path = resolvePath(raw);
-      const method =
-        site.method === 'enclosing'
-          ? methodFrom(enclosingObject(text, at), null)
-          : site.method === 'following'
-            ? methodFrom(followingObject(text, at + raw.length), 'GET')
-            : site.method;
-      const unresolved = !path.startsWith('/')
-        ? `the path expression does not resolve to a GitHub path: ${raw}`
-        : method === null
-          ? `the call names no HTTP method: ${raw}`
-          : null;
-      out.push({ file, line, raw, path, method: method ?? '?', kind: site.kind, unresolved });
+    for (const { at, raw } of site.values(text)) {
+      out.push(callFromRaw(text, file, at, raw, site.method, site.kind));
     }
+  }
+  FETCH_SITE.re.lastIndex = 0;
+  for (let m = FETCH_SITE.re.exec(text); m !== null; m = FETCH_SITE.re.exec(text)) {
+    const raw = m[1] ?? '';
+    const at = m.index + m[0].indexOf(raw);
+    out.push(callFromRaw(text, file, at, raw, FETCH_SITE.method, FETCH_SITE.kind));
   }
   return out;
 }

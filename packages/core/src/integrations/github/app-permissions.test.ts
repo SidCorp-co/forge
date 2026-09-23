@@ -293,6 +293,53 @@ describe('a transport reached through a property, which one word boundary sees (
     expect(found[0]?.line).toBe(4);
   });
 
+  it('names the call whose path is concatenated onto a literal, rather than passing over it', () => {
+    const planted = [
+      'const prefix = repoPath(client);',
+      'await client.publish({',
+      "  method: 'PUT',",
+      "  path: prefix + '/merge',",
+      '});',
+    ].join('\n');
+    const found = collectGitHubCalls(planted, 'planted.ts');
+    expect(found).toHaveLength(1);
+    expect(found[0]?.unresolved).toContain("prefix + '/merge'");
+    expect(found[0]?.line).toBe(4);
+  });
+
+  it('names a bare identifier passed straight to client.get, rather than passing over it', () => {
+    const planted = ['async function readIt(client) {', '  return client.get(endpoint);', '}'].join(
+      '\n',
+    );
+    const found = collectGitHubCalls(planted, 'planted.ts');
+    expect(found).toHaveLength(1);
+    expect(found[0]?.method).toBe('GET');
+    expect(found[0]?.unresolved).toContain('endpoint');
+    expect(found[0]?.line).toBe(2);
+  });
+
+  it('still prices a client.get call whose template it CAN read', () => {
+    const url = ['`', '/repos/', interp('client.fullName'), '/pulls`'].join('');
+    const planted = ['async function readIt(client) {', `  return client.get(${url});`, '}'].join(
+      '\n',
+    );
+    const found = collectGitHubCalls(planted, 'planted.ts');
+    expect(found.map((c) => key(c.method, c.path))).toEqual(['GET /repos/:p/:p/pulls']);
+    expect(found[0]?.unresolved).toBeNull();
+  });
+
+  it("does not fold a formatter's trailing comma into the argument it names", () => {
+    const planted = [
+      'async function readIt(client) {',
+      '  return client.get(',
+      '    endpoint,',
+      '  );',
+      '}',
+    ].join('\n');
+    const found = collectGitHubCalls(planted, 'planted.ts');
+    expect(found[0]?.raw).toBe('endpoint');
+  });
+
   it('reads a type annotation as a declaration, never as a call', () => {
     const planted = [
       'interface Args {',
