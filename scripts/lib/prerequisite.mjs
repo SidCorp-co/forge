@@ -22,6 +22,11 @@ export const PREREQUISITES = {
     remedy: 'pnpm --filter @forge/observability build',
     paths: ['packages/observability/dist/index.js'],
   },
+  'contracts-build': {
+    what: "@forge/contracts has not been built, so '@forge/contracts/document-patch' fails to resolve",
+    remedy: 'pnpm --filter @forge/contracts build',
+    paths: ['packages/contracts/dist/document-patch.js'],
+  },
 };
 
 /** The declared prerequisites of `names` that are not on disk under `root`. */

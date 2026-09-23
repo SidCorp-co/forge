@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const NEEDS = ['deps', 'archmap-resolver', 'observability-build'];
+const NEEDS = ['deps', 'archmap-resolver', 'observability-build', 'contracts-build'];
 
 const missing = absentPrerequisites(ROOT, NEEDS);
 if (missing.length === 0) {

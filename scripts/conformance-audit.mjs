@@ -201,7 +201,12 @@ const lvl = (n) => Object.values(axes).filter((s) => (s.level ?? 0) >= n).length
 function unresolvableEdges() {
   const declared = manifest?.checkers?.archmap?.maxUnresolvableEdges;
   if (typeof declared !== 'number') return { declared: null };
-  const missing = absentPrerequisites(ROOT, ['deps', 'archmap-resolver', 'observability-build']);
+  const missing = absentPrerequisites(ROOT, [
+    'deps',
+    'archmap-resolver',
+    'observability-build',
+    'contracts-build',
+  ]);
   if (missing.length > 0) return { declared, blocked: remedyLines(missing)[0] };
   const r = spawnSync(at('.forge/archmap/archmap'), ['check', '--stats'], {
     cwd: ROOT,

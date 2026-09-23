@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
         with:
-          prebuild-observability: "false"
+          prebuild-deps: "false"
 
   # English-only source policy (ISS-65). Runs scripts/check-source-language.mjs
   # in --all mode. Always-on, ungated by paths-filter — language drift can land
