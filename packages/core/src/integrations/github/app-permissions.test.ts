@@ -147,6 +147,31 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
     expect(found.map((r) => r.raw).sort()).not.toEqual([...CLIENT_TRANSPORTS].sort());
   });
 
+  it('names a property-qualified transport, which the word boundary is the only thing catching', () => {
+    const source = [
+      'const a = await globalThis.fetch(computedGitHubUrl, { headers });',
+      'const b = await http.fetch(url, { headers });',
+    ].join('\n');
+    expect(unreadableRequests('client.ts', source).map((r) => r.raw)).toEqual([
+      'computedGitHubUrl',
+      'url',
+    ]);
+  });
+
+  it('prices a property-qualified call whose URL it CAN read, rather than passing over it', () => {
+    const source = [
+      'const r = await globalThis.fetch(',
+      '  `${base}/repos/${owner}/${repo}/branches/${branch}/protection`,',
+      "  { method: 'GET' },",
+      ');',
+    ].join('\n');
+    const found = collectGitHubCalls(source, 'planted.ts');
+    expect(found.map((c) => key(c.method, c.path))).toEqual([
+      'GET /repos/:p/:p/branches/:p/protection',
+    ]);
+    expect(found[0]?.unresolved).toBeNull();
+  });
+
   it('the declaration file makes no GitHub call of its own', () => {
     const text = readFileSync(join(GITHUB_DIR, DECLARATION_FILE), 'utf8');
     expect(
