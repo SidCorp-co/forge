@@ -3076,6 +3076,14 @@
 
 ### Fixed
 
+- **The API starts again: the production image shipped without a package it imports at runtime.**
+  Two services read helpers out of `@forge/contracts/document-patch` as values rather than types,
+  but the package was declared a development dependency of the API, so the production install
+  dropped it and the container died on its first import with `Cannot find package
+  '@forge/contracts'`. Promoting it alone was not enough: the package published its TypeScript
+  sources and nothing else, which the runtime refuses to load. It now compiles that module and the
+  production install carries the compiled copy.
+
 - **A verdict now says whether the file it cites is still there.** Evidence that no longer resolves
   is named, criterion by criterion, and the criterion stops reading as earned. Citing a path on the
   judging machine is refused outright.

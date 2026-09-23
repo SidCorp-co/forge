@@ -1,3 +1,5 @@
+// cm:edge contract -> packages/contracts/package.json — value import, not type: contracts stays a
+// runtime dependency of core and ships compiled dist, or `pnpm deploy --prod` boots without it (2026-09-23)
 import {
   applyDocumentPatch,
   comparePatchBase,
