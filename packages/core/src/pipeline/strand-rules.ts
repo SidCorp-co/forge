@@ -97,6 +97,13 @@ export function strandRuleFor(status: string): StrandRule | null {
   return Object.hasOwn(STRAND_RULES, status) ? (STRAND_RULES[status as IssueStatus] ?? null) : null;
 }
 
+function silence(lease: LeaseReading): string {
+  const minutes = Math.floor((lease.silentMs ?? 0) / 60_000);
+  if (minutes < 1) return 'less than a minute ago';
+  if (minutes < 120) return `${minutes} minute(s) ago`;
+  return `${Math.floor(minutes / 60)} hour(s) ago`;
+}
+
 /** What the pass could see about one row, and nothing it inferred. */
 export interface StrandEvidence {
   merged: boolean;
@@ -122,6 +129,15 @@ export function strandReason(args: {
 }): { reason: string; owes: StrandOwner } {
   const { status, rule, evidence } = args;
   const fallbackOwner: StrandOwner = rule.watch ? rule.owes : 'human';
+  const lease = evidence.lease;
+
+  // Ahead of the status-keyed answers below, alone among the readings: it measures the holder.
+  if (lease.verdict === 'abandoned') {
+    return {
+      reason: `the lease has not run out, and its holder stopped reporting ${silence(lease)} against a heartbeat it declared, so it has been released`,
+      owes: fallbackOwner,
+    };
+  }
 
   if (status === 'open' && !evidence.poolHasRunner) {
     return {
@@ -137,7 +153,6 @@ export function strandReason(args: {
     };
   }
 
-  const lease = evidence.lease;
   if (lease.verdict === 'expired') {
     // What was read is the lease's own state, and nothing about the holder: an expiry says the
     // claim has lapsed, not that a run stopped, and a release stamp says it was given up, not by

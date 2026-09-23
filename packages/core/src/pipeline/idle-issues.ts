@@ -29,6 +29,7 @@ import {
   leaseIsReleasable,
   leaseIsUnexpired,
   leaseIsWorkInProgress,
+  leaseShowsHolderGone,
 } from './session-claim.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import {
@@ -206,7 +207,11 @@ function judge(
     };
   }
   if (!rule.watch) return null;
-  if (now.getTime() - Date.parse(row.updated_at) < rule.graceMs) return null;
+  // At `in_progress` the two hours run from the holder's last write, so the grace, not the lease
+  // term, decides when a dead run's row is reached — and waiting it out buys the reading nothing.
+  if (!leaseShowsHolderGone(lease.verdict) && !graceSpent(row.updated_at, rule.graceMs, now)) {
+    return null;
+  }
 
   const evidence: StrandEvidence = {
     merged: row.merged_at !== null,
@@ -476,24 +481,49 @@ async function clearRecovered(now: Date, scope: { projectId?: string }): Promise
 }
 
 function stillStranded(
-  row: { status: string; updated_at: string; lease: unknown; nothing_running: boolean },
+  row: {
+    status: string;
+    updated_at: string;
+    lease: unknown;
+    strand: unknown;
+    nothing_running: boolean;
+  },
   now: Date,
   fanout: ReadonlyMap<string, number>,
 ): boolean {
   if (!row.nothing_running) return false;
   const rule = strandRuleFor(row.status);
   if (rule !== null && !rule.watch) return false;
-  // A row that has MOVED carries a finding written at the status it left, and the status it is at
-  // now has a clock of its own that has not run out. Holding the old finding through that clock
-  // shows progress as a standing failure.
-  if (rule?.watch && now.getTime() - Date.parse(row.updated_at) < rule.graceMs) return false;
   const holder = leaseHolderOf(row.lease);
   const lease = classifyLease({
     lease: row.lease,
     now,
     fanout: holder === null ? 0 : (fanout.get(holder) ?? 1),
   });
+  // A row that has MOVED carries a finding written at the status it left, whose new clock has not
+  // run out; holding the old finding through it shows progress as a standing failure. Asked of a
+  // row standing still, or of one whose holder is gone, it reads progress that never happened.
+  if (
+    hasMoved(row.status, row.strand) &&
+    !leaseShowsHolderGone(lease.verdict) &&
+    rule?.watch &&
+    !graceSpent(row.updated_at, rule.graceMs, now)
+  ) {
+    return false;
+  }
   return !leaseIsWorkInProgress(lease.verdict);
+}
+
+/** Left the status its finding was written at; unreadable reads as moved, as this arm did before. */
+function hasMoved(status: string, strand: unknown): boolean {
+  if (strand === null || typeof strand !== 'object' || Array.isArray(strand)) return true;
+  const written = (strand as Record<string, unknown>).status;
+  return typeof written !== 'string' || written !== status;
+}
+
+/** Whether a row has stood at its status long enough for that status's own clock to say anything. */
+function graceSpent(updatedAt: string, graceMs: number, now: Date): boolean {
+  return now.getTime() - Date.parse(updatedAt) >= graceMs;
 }
 
 async function surface(args: {

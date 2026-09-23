@@ -19,6 +19,7 @@ function reading(over: Partial<LeaseReading> = {}): LeaseReading {
     expiresAt: null,
     fanout: 0,
     stopped: false,
+    silentMs: null,
     detail: '',
     ...over,
   };
@@ -216,5 +217,67 @@ describe('the clocks are per status (ISS-1122)', () => {
       const rule = STRAND_RULES[status as IssueStatus];
       if (rule.watch) expect(rule.graceMs).toBeGreaterThan(60_000);
     }
+  });
+});
+
+/**
+ * ISS-1195 — the one reading that is a direct measurement of the holder, and the only one the pass
+ * acts on outside the status's own clock. Its sentence goes first for that reason: a row released
+ * because its holder stopped reporting, and then explained by the project's runner admission, would
+ * be the record contradicting the act taken on it.
+ */
+describe('strandReason answers an abandoned lease before it answers the status (ISS-1195)', () => {
+  const abandoned = (silentMs: number) => reading({ verdict: 'abandoned', silentMs });
+
+  it('says the holder stopped reporting, and how long ago', () => {
+    const { reason, owes } = strandReason({
+      status: 'in_progress',
+      rule: WATCHED,
+      evidence: evidence({ lease: abandoned(20 * 60_000) }),
+    });
+    expect(reason).toContain('stopped reporting 20 minute(s) ago');
+    expect(reason).toContain('has not run out');
+    expect(owes).toBe('agent');
+  });
+
+  it.each([
+    [30_000, 'less than a minute ago'],
+    [20 * 60_000, '20 minute(s) ago'],
+    [5 * 60 * 60_000, '5 hour(s) ago'],
+  ])('reads %d ms of silence as `%s`', (silentMs, said) => {
+    const { reason } = strandReason({
+      status: 'in_progress',
+      rule: WATCHED,
+      evidence: evidence({ lease: abandoned(silentMs) }),
+    });
+    expect(reason).toContain(said);
+  });
+
+  it('does not collapse into either expiry sentence', () => {
+    const said = (lease: LeaseReading) =>
+      strandReason({ status: 'in_progress', rule: WATCHED, evidence: evidence({ lease }) }).reason;
+    const gone = said(abandoned(20 * 60_000));
+    expect(gone).not.toBe(said(reading({ verdict: 'expired' })));
+    expect(gone).not.toBe(said(reading({ verdict: 'expired', stopped: true })));
+    expect(gone).not.toContain('expiry');
+  });
+
+  /**
+   * The position, held by a test rather than by line order: both `open` branches answer before any
+   * lease is read, so an abandoned holder on a project with no admitted runner would otherwise be
+   * explained by the pool.
+   */
+  it.each([
+    ['whose project has no admitted runner', { poolHasRunner: false, everRan: true }],
+    ['that never ran', { poolHasRunner: true, everRan: false }],
+  ])('still names the silent holder for an `open` row %s', (_name, over) => {
+    const { reason } = strandReason({
+      status: 'open',
+      rule: WATCHED,
+      evidence: evidence({ ...over, lease: abandoned(90 * 60_000) }),
+    });
+    expect(reason).toContain('stopped reporting');
+    expect(reason).not.toContain('job pool');
+    expect(reason).not.toContain('dispatch did not happen');
   });
 });
