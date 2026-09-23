@@ -32,6 +32,11 @@ pub enum Watch {
         /// When this box delivered the prompt, in wall-clock ms.
         delivered_at: i64,
     },
+    /// A pane this daemon adopted rather than opened. Its hooks still report
+    /// under `session_id` — the token map is on disk for exactly this — but
+    /// the delivery whose silence this module measures belongs to a daemon
+    /// that is gone, so nothing here may be concluded from its silence.
+    Adopted { session_id: String },
     /// No channel to this pane, so nothing may be concluded from its silence.
     Unhooked,
 }
@@ -40,7 +45,7 @@ impl Watch {
     /// The session whose reports answer for this job, if any do.
     pub fn session_id(&self) -> Option<&str> {
         match self {
-            Self::Hooked { session_id, .. } => Some(session_id),
+            Self::Hooked { session_id, .. } | Self::Adopted { session_id } => Some(session_id),
             Self::Unhooked => None,
         }
     }
@@ -177,6 +182,34 @@ mod tests {
         assert_eq!(
             read(&Watch::Unhooked, None, NOW + a_day),
             Evidence::Unproven
+        );
+    }
+
+    #[test]
+    fn an_adopted_pane_is_unproven_here_however_long_it_has_been_quiet() {
+        let a_day = 24 * 60 * 60 * 1000;
+        assert_eq!(
+            read(
+                &Watch::Adopted {
+                    session_id: "sess-1".into()
+                },
+                None,
+                NOW + a_day
+            ),
+            Evidence::Unproven,
+            "the delivery whose silence this measures was a previous daemon's, so this reading has nothing to measure from"
+        );
+    }
+
+    #[test]
+    fn an_adopted_pane_names_the_session_its_hooks_report_under() {
+        assert_eq!(
+            Watch::Adopted {
+                session_id: "sess-1".into()
+            }
+            .session_id(),
+            Some("sess-1"),
+            "job_exit reads that session, which is the whole point of keeping it across a restart"
         );
     }
 

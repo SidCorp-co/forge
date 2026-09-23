@@ -122,6 +122,25 @@ pub struct Activity {
     pub prompts: u64,
 }
 
+impl Doing {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Working => "working",
+            Self::AwaitingPermission => "awaiting_permission",
+            Self::Idle => "idle",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        Some(match s {
+            "working" => Self::Working,
+            "awaiting_permission" => Self::AwaitingPermission,
+            "idle" => Self::Idle,
+            _ => return None,
+        })
+    }
+}
+
 impl Activity {
     pub fn doing(&self) -> Doing {
         if self.awaiting_permission {
