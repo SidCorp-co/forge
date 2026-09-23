@@ -206,6 +206,19 @@ function binding(id: string, config: Record<string, unknown>, connection: Record
 
 const REST = { verify: PROBES, rollback: { mode: 'coolify-image' } };
 
+type Declared = ReturnType<typeof binding>;
+
+/** The act itself: drop `releaseRunnerLabel` and leave every other key where it was. */
+function withdrawReleaseRunnerLabel(declared: Declared[]): Declared[] {
+  const drop = (config: Record<string, unknown>) => {
+    const { releaseRunnerLabel: _gone, ...kept } = config;
+    return kept;
+  };
+  return declared.map((d) =>
+    binding(d.binding.id, drop(d.binding.config), drop(d.connection.config)),
+  );
+}
+
 /**
  * Every way `resolveReleaseChannels` can arrive at a label: the binding's own
  * key, the connection's where the binding has none, both at once, and two live
@@ -260,9 +273,8 @@ describe('the act RELEASE_RUNNER_PREFERENCE_UNMET names', () => {
     // below, and it is why the act names both.
     it(`raises RELEASE_RUNNER_UNDECLARED and nothing else new where ${branch}`, async () => {
       const before = await codesFor(declared);
-      const withdrawn = declared.map((d) => binding(d.binding.id, { ...REST }, {}));
 
-      const after = await codesFor(withdrawn);
+      const after = await codesFor(withdrawReleaseRunnerLabel(declared));
 
       expect(after).toContain('RELEASE_RUNNER_UNDECLARED');
       expect(after.filter((c) => !before.includes(c))).toEqual(['RELEASE_RUNNER_UNDECLARED']);
@@ -273,6 +285,26 @@ describe('the act RELEASE_RUNNER_PREFERENCE_UNMET names', () => {
   // from the BINDING, and `effectiveConfig` falls back to the connection's. A
   // half-withdrawal therefore raises nothing and clears nothing, which is why
   // the act names both places rather than the one route.
+  // The operation is a key removal, not a config rewrite: a fixture that
+  // rebuilt the config would pass while the real one dropped the probes.
+  it('leaves every other key on the binding and the connection where it was', async () => {
+    const declared = [
+      binding(
+        'b-1',
+        { ...REST, releaseRunnerLabel: 'release' },
+        { releaseRunnerLabel: 'other', apiKey: 'kept' },
+      ),
+    ];
+
+    const [withdrawn] = withdrawReleaseRunnerLabel(declared);
+
+    expect(withdrawn?.binding.config).toEqual(REST);
+    expect(withdrawn?.connection.config).toEqual({ apiKey: 'kept' });
+    expect(await codesFor(withdrawReleaseRunnerLabel(declared))).toContain(
+      'RELEASE_RUNNER_UNDECLARED',
+    );
+  });
+
   it('changes nothing where only the binding is withdrawn and the connection still declares one', async () => {
     const declared = [
       binding('b-1', { ...REST, releaseRunnerLabel: 'release' }, { releaseRunnerLabel: 'other' }),
