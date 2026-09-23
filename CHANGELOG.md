@@ -3082,6 +3082,10 @@
 ### Fixed
 - **An issue with no decision round no longer claims it was parked without a question.** The panel
   now says what it looked for, and keeps the way forward as its content rather than a footnote.
+- **The release panel names who deploys the project, instead of saying nobody does.** It read a
+  field the server had renamed, and answered its own fallback. A roster key that goes missing now
+  fails loudly rather than reading as absent.
+
 - **A refused settings save no longer throws away the edits it offered to rescue.** The banner
   names what moved and offers two ways on: take the stored values, or keep yours. Edits elsewhere
   on the page stand either way.
