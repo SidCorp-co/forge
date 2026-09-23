@@ -61,6 +61,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@forge/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@forge/observability':
         specifier: workspace:*
         version: link:../observability
@@ -128,9 +131,6 @@ importers:
       '@biomejs/biome':
         specifier: ^2.5.9
         version: 2.5.9
-      '@forge/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@testcontainers/postgresql':
         specifier: ^12.1.0
         version: 12.1.0

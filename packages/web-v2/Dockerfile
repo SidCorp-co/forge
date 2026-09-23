@@ -17,13 +17,13 @@ COPY packages ./packages
 # Install only web-v2's transitive deps (package name is "web-v2").
 RUN pnpm install --frozen-lockfile --filter web-v2...
 
-# Build workspace deps that ship compiled output before the Next.js build.
-# web-v2 imports @forge/contracts, which re-exports types from @forge/core,
-# which pulls in @forge/observability — and @forge/observability emits
-# dist/index.js (Node 22 refuses to load .ts under node_modules), so its
-# import is unresolvable until built. Mirrors packages/web/Dockerfile; without
-# this the `next build` TypeScript pass fails to resolve @forge/observability.
-RUN pnpm --filter @forge/observability build
+# Every workspace dep whose export map points at dist/ must be built before the
+# Next.js build, or that import is unresolvable and the `next build` TypeScript
+# pass fails with TS2307. Node 22 refuses .ts under node_modules, so a package
+# with a compiled export has no fallback. Two qualify, in dependency order:
+# @forge/observability, and @forge/contracts for its ./document-patch export.
+# Adding a compiled export to a workspace dep means adding it here.
+RUN pnpm --filter @forge/observability build && pnpm --filter @forge/contracts build
 
 WORKDIR /repo/packages/web-v2
 # web-v2 talks to core via an absolute API origin (e.g. the forge-beta-api

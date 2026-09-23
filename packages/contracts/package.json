@@ -35,12 +35,13 @@
       "default": "./src/status-sets.ts"
     },
     "./document-patch": {
-      "types": "./src/document-patch.ts",
-      "default": "./src/document-patch.ts"
+      "types": "./dist/document-patch.d.ts",
+      "default": "./dist/document-patch.js"
     }
   },
   "types": "./src/index.ts",
   "files": [
+    "dist",
     "src"
   ],
   "dependencies": {
@@ -53,7 +54,7 @@
     "vitest": "^5.0.0"
   },
   "scripts": {
-    "build": "tsc --noEmit -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.emit.json && tsc --noEmit -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }
