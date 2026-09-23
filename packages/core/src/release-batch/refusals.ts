@@ -76,16 +76,29 @@ export function releaseBlockerHttp(
 }
 
 export function declarationRefusal(err: unknown): HTTPException | null {
-  // These keep their own long sentences, which name the project and the labels;
-  // what they gain is the rest of the list standing with them (ISS-1127).
+  // Each of these composes through `releaseBlockerSentence`, from the same
+  // details `blockers.ts` passes it for readiness — one function, one text,
+  // whichever door reads it (ISS-1127 criterion 9).
   if (err instanceof ReleaseTargetUndeclaredError) {
-    return carrying(err, 'RELEASE_TARGET_UNDECLARED', err.message);
+    return carrying(
+      err,
+      'RELEASE_TARGET_UNDECLARED',
+      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseModel: err.releaseModel }),
+    );
   }
   if (err instanceof ReleaseRunnerAmbiguousError) {
-    return carrying(err, 'RELEASE_RUNNER_AMBIGUOUS', err.message);
+    return carrying(
+      err,
+      'RELEASE_RUNNER_AMBIGUOUS',
+      releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: err.labels }),
+    );
   }
   if (err instanceof ReleaseMultiChannelUnsupportedError) {
-    return carrying(err, 'RELEASE_MULTI_CHANNEL_UNSUPPORTED', err.message);
+    return carrying(
+      err,
+      'RELEASE_MULTI_CHANNEL_UNSUPPORTED',
+      releaseBlockerSentence('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: err.count }),
+    );
   }
   return null;
 }

@@ -27,7 +27,7 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   RunnerAlreadyBoundError: typeof import('../../src/runners/service.js').RunnerAlreadyBoundError;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  setRunnerStatus: typeof import('../../src/runners/service.js').setRunnerStatus;
+  setRunnerStatus: typeof import('../../src/runners/runner-events.js').setRunnerStatus;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   onlineCapableDeviceIds: typeof import('../../src/runners/select.js').onlineCapableDeviceIds;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
@@ -46,12 +46,13 @@ describe('a withdrawn runner and the way back', () => {
     process.env.NODE_ENV ??= 'test';
 
     const service = await import('../../src/runners/service.js');
+    const events = await import('../../src/runners/runner-events.js');
     const select = await import('../../src/runners/select.js');
     const admission = await import('../../src/devices/pool-admission.js');
     mods = {
       insertRunner: service.insertRunner,
       RunnerAlreadyBoundError: service.RunnerAlreadyBoundError,
-      setRunnerStatus: service.setRunnerStatus,
+      setRunnerStatus: events.setRunnerStatus,
       onlineCapableDeviceIds: select.onlineCapableDeviceIds,
       runnerAdmission: admission.runnerAdmission,
     };
@@ -91,10 +92,10 @@ describe('a withdrawn runner and the way back', () => {
       const s = await seed();
       expect(await mods.onlineCapableDeviceIds(s.projectId)).toContain(s.deviceId);
 
-      await mods.setRunnerStatus(s.runnerId, 'disabled');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'disabled', reason: 'test' });
       expect(await mods.onlineCapableDeviceIds(s.projectId)).not.toContain(s.deviceId);
 
-      await mods.setRunnerStatus(s.runnerId, 'online');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'online', reason: 'test' });
 
       expect(await mods.onlineCapableDeviceIds(s.projectId)).toContain(s.deviceId);
       expect(await statusOf(s.runnerId)).toBe('online');
@@ -102,9 +103,9 @@ describe('a withdrawn runner and the way back', () => {
 
     it('is not restored by `offline`, which the picker rejects on a live box', async () => {
       const s = await seed();
-      await mods.setRunnerStatus(s.runnerId, 'disabled');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'disabled', reason: 'test' });
 
-      await mods.setRunnerStatus(s.runnerId, 'offline');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'offline', reason: 'test' });
 
       expect(await mods.onlineCapableDeviceIds(s.projectId)).not.toContain(s.deviceId);
     });
@@ -122,13 +123,13 @@ describe('a withdrawn runner and the way back', () => {
         VALUES (${jobId}, ${s.projectId}, ${runId}, ${s.deviceId}, 'drive', 'queued', ${s.ownerId})
       `);
 
-      await mods.setRunnerStatus(s.runnerId, 'disabled');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'disabled', reason: 'test' });
       expect(await mods.runnerAdmission({ jobId, deviceId: s.deviceId })).toEqual({
         admitted: false,
         reason: 'runner_withdrawn',
       });
 
-      await mods.setRunnerStatus(s.runnerId, 'online');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'online', reason: 'test' });
       expect(await mods.runnerAdmission({ jobId, deviceId: s.deviceId })).toEqual({
         admitted: true,
       });
@@ -149,7 +150,7 @@ describe('a withdrawn runner and the way back', () => {
 
     it('is refused by name, naming the runner it collided with', async () => {
       const s = await seed();
-      await mods.setRunnerStatus(s.runnerId, 'disabled');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'disabled', reason: 'test' });
 
       const err = await register(s.projectId, s.deviceId).catch((e: unknown) => e);
 
@@ -160,7 +161,7 @@ describe('a withdrawn runner and the way back', () => {
 
     it('sends a retired collider to restore, which is the route that works', async () => {
       const s = await seed();
-      await mods.setRunnerStatus(s.runnerId, 'disabled');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'disabled', reason: 'test' });
 
       const err = (await register(s.projectId, s.deviceId).catch((e: unknown) => e)) as Error;
 
@@ -170,7 +171,7 @@ describe('a withdrawn runner and the way back', () => {
 
     it('leaves the existing row untouched, so a refused registration costs the operator nothing', async () => {
       const s = await seed();
-      await mods.setRunnerStatus(s.runnerId, 'disabled');
+      await mods.setRunnerStatus({ runnerId: s.runnerId, newStatus: 'disabled', reason: 'test' });
 
       await register(s.projectId, s.deviceId).catch(() => undefined);
 

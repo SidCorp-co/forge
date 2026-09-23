@@ -32,6 +32,11 @@ export type ReleaseBlockerCode =
   | 'RELEASE_CRITERIA_UNEARNED'
   | 'RELEASE_CHECK_UNEVALUATED';
 
+export type ReleaseWarningCode = 'RELEASE_RUNNER_PREFERENCE_UNMET' | 'RELEASE_CRITERIA_HELD_BACK';
+
+/** Every reason this project answers with, whether or not it stops a release. */
+export type ReleaseReasonCode = ReleaseBlockerCode | ReleaseWarningCode;
+
 export interface ReleaseBlocker {
   code: ReleaseBlockerCode;
   /** 409 where a declaration or roster must change, 503 where the fleet must. */
@@ -46,7 +51,7 @@ export interface ReleaseBlocker {
 
 /** Something that changes how a release runs without being a reason it will not. */
 export interface ReleaseWarning {
-  code: 'RELEASE_RUNNER_PREFERENCE_UNMET' | 'RELEASE_CRITERIA_HELD_BACK';
+  code: ReleaseWarningCode;
   message: string;
   details?: Record<string, unknown>;
 }
@@ -109,7 +114,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_RUNNER_AMBIGUOUS:
     'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_RUNNER_UNDECLARED:
-    'This project declares a release model and no live deploy binding names a release runner. Set `releaseRunnerLabel` on one — it recommends a box, it does not stop the others releasing when that box is unavailable. Send `null` for that key to withdraw it again.',
+    'This project declares a release model and no live deploy binding names a release runner, so there is no box the release job may be offered to and none will take it. Set `releaseRunnerLabel` on the live deploy binding. It names the box a release should PREFER and does not restrict the pool: where no box on the project carries that label the release goes to the pool this project has, so a project with one box may name anything.',
   RELEASE_PROBES_UNDECLARED:
     'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Two ways out. Either record where this project is deployed — `environments.live.commitUrl`, the endpoint that reports the running commit, and `environments.live.commitPath`, the dot path to it inside that endpoint\'s JSON body (`commit`, or `data.commit`; leave it empty where the whole body is the commit) — which answers this for every live binding at once. Or declare probes on the binding itself, which overrides the project\'s: `verify` = `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`. A binding that declares a `verify` Forge cannot read takes NO project default: correct it or remove it.',
   RELEASE_PROBES_UNREADABLE:
@@ -130,7 +135,59 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
 
-/** The one copy of each sentence. */
+/**
+ * An act a remedy names, and the reason taking it raises. `raises` is ONE code:
+ * an act whose consequence depends on state cannot be told to an operator, so it
+ * is not an act to put in a remedy at all (ISS-1127).
+ */
+export interface RemedyAct {
+  /** Worded so `remedyCostClause` reads as one sentence with it. */
+  act: string;
+  /** Stems, ANY one naming this act; a false positive is the cheaper error. */
+  worded: readonly string[];
+  raises: ReleaseReasonCode;
+}
+
+const WITHDRAW_RUNNER_LABEL: RemedyAct = {
+  // Both places: a binding-only withdrawal leaves the connection's standing.
+  act: 'Withdrawing the label instead, by sending `releaseRunnerLabel` as `null` on every live deploy binding and on the connection behind it,',
+  worded: ['withdraw', 'withdrawing'],
+  raises: 'RELEASE_RUNNER_UNDECLARED',
+};
+
+/** Over both unions, so a code added later cannot skip the question. */
+export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
+  NO_RELEASE_GATE: [],
+  RELEASE_TARGET_UNDECLARED: [],
+  CLAIM_CONFLICT: [],
+  RELEASE_ROSTER_EMPTY: [],
+  RELEASE_ROSTER_OVERSIZE: [],
+  RELEASE_RECORD_MISSING: [],
+  RELEASE_WORK_UNMERGED: [],
+  RELEASE_RUNNER_AMBIGUOUS: [],
+  RELEASE_RUNNER_UNDECLARED: [],
+  RELEASE_PROBES_UNDECLARED: [],
+  RELEASE_PROBES_UNREADABLE: [],
+  RELEASE_POOL_EMPTY: [],
+  NO_RUNNER_ONLINE: [],
+  RELEASE_BRANCHES_UNDECLARED: [],
+  RELEASE_MULTI_CHANNEL_UNSUPPORTED: [],
+  BATCH_IN_FLIGHT: [],
+  RELEASE_CRITERIA_UNEARNED: [],
+  RELEASE_CHECK_UNEVALUATED: [],
+  RELEASE_RUNNER_PREFERENCE_UNMET: [WITHDRAW_RUNNER_LABEL],
+  RELEASE_CRITERIA_HELD_BACK: [],
+};
+
+export function remedyCostClause(cost: RemedyAct): string {
+  return `${cost.act} raises \`${cost.raises}\`, which does stop a release until it is answered.`;
+}
+
+function withCosts(code: ReleaseReasonCode, sentence: string): string {
+  const costs = REMEDY_COST[code];
+  return costs.length === 0 ? sentence : [sentence, ...costs.map(remedyCostClause)].join(' ');
+}
+
 /** One owner, so no two doors disagree about whose problem a reason is. */
 export function blockerHttpStatus(code: ReleaseBlockerCode): 409 | 503 {
   return code === 'RELEASE_POOL_EMPTY' ||
@@ -142,7 +199,10 @@ export function blockerHttpStatus(code: ReleaseBlockerCode): 409 | 503 {
 
 /** One issue the release sweep will not carry, and what it still owes. */
 export interface HeldIssueRef {
+  /** The uuid, which the api and a follow-up call need and no screen shows. */
   issueId: string;
+  /** `ISS-nn` — what the issue list, the header and the url call it. */
+  displayId: string;
   criteria: number[];
 }
 
@@ -161,7 +221,7 @@ const RUNNER_HOLD_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => string> = 
   'device-disabled': () =>
     `sits on a device an operator has turned off. Re-enable that device under ${RUNNERS_TAB} before this box can take anything.`,
   retired: (h) =>
-    `has been taken out of the pool by an operator (\`${h.detail ?? 'draining'}\`). Switch "Takes jobs from the pool" back on for it under ${RUNNERS_TAB}.`,
+    `is \`${h.detail ?? 'draining'}\` and so takes nothing from the pool. Switch "Takes jobs from the pool" back on for it under ${RUNNERS_TAB}.`,
   'never-connected': () =>
     'is registered and has never reported in. Start `forge-runner` on that box.',
   disconnected: () =>
@@ -213,15 +273,15 @@ function runnersHeldSentence(holds: RunnerHold[]): string | null {
 
 function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
   const each = held
-    .map((h) => `\`${h.issueId}\` owes criterion ${h.criteria.join(', ')}`)
+    .map((h) => `\`${h.displayId}\` owes criterion ${h.criteria.join(', ')}`)
     .join('; ');
   return `${remedy} ${each}.`;
 }
 
 const NEAR_GATE_ACT =
-  "Nothing but the issue's own record moves it: write the verification naming where the " +
-  'change now runs, at which commit, and on what evidence, plus the release note where one ' +
-  'is owed. Its status control carries the same move.';
+  'An issue moves there once its own record earns it: the verification naming where the ' +
+  'change now runs, at which commit and on what evidence, plus the release note where one ' +
+  "is owed. With those written, the issue's own status control makes the move.";
 
 function nearGateSentence(nearGate: number): string {
   if (nearGate === 0) {
@@ -242,6 +302,10 @@ export function releaseBlockerSentence(
   code: ReleaseBlockerCode,
   details?: Record<string, unknown>,
 ): string {
+  return withCosts(code, sentenceFor(code, details));
+}
+
+function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>): string {
   const remedy = REMEDY[code];
   if (code === 'NO_RUNNER_ONLINE') {
     const holds = (details?.runners as RunnerHold[] | undefined) ?? [];
@@ -253,6 +317,16 @@ export function releaseBlockerSentence(
   if (code === 'RELEASE_CRITERIA_UNEARNED') {
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
     return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
+  }
+  if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.releaseModel === 'string') {
+    return `This project declares releaseModel \`${details.releaseModel}\` and has no active deploy binding carrying the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or set the release model to \`none\`.`;
+  }
+  if (code === 'RELEASE_RUNNER_AMBIGUOUS' && Array.isArray(details?.labels)) {
+    const labels = details.labels as string[];
+    return `Two live deploy bindings name different release runners (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
+  }
+  if (code === 'RELEASE_MULTI_CHANNEL_UNSUPPORTED' && typeof details?.count === 'number') {
+    return `This project declares ${details.count} live deploy bindings, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`;
   }
   const issueIds = details?.issueIds;
   if (Array.isArray(issueIds)) return remedy.replace('{n}', String(issueIds.length));
@@ -268,8 +342,20 @@ export function releaseBlockerSentence(
 /** The sweep is cutting a release and leaving these behind, which stops nothing. */
 export function heldBackWarningSentence(held: HeldIssueRef[]): string {
   const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
-  return heldIssuesSentence(
-    `A release will still be cut, without ${issues} the sweep is holding back: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`,
-    held,
+  return withCosts(
+    'RELEASE_CRITERIA_HELD_BACK',
+    heldIssuesSentence(
+      `A release will still be cut, without ${issues} the sweep is holding back: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`,
+      held,
+    ),
+  );
+}
+
+/** The declared release label no box carries. Here, not at the call site: this
+ *  module owns every sentence a door prints, warnings included (ISS-1127). */
+export function runnerPreferenceUnmetSentence(label: string): string {
+  return withCosts(
+    'RELEASE_RUNNER_PREFERENCE_UNMET',
+    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Label the box that holds the deploy credential with \`${label}\` under ${RUNNERS_TAB}.`,
   );
 }
