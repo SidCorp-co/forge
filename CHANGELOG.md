@@ -3082,6 +3082,9 @@
 ### Fixed
 - **An issue is no longer held by a run that has died.** A run that promises to report and then
   goes quiet has its claim given up, instead of the issue staying locked until that claim expires.
+- **A runner box takes new work once a job's agent has finished.** A pane whose agent had stopped,
+  or was waiting on a question nobody answers, held its slot until a person noticed, refusing every
+  project on the box.
 - **A runner upgraded in place reaps the worktrees its finished runs leave behind.** That sweep
   could switch off for six hours after an upgrade, in a warning nobody read; it now reports the
   outage and retries in a minute.

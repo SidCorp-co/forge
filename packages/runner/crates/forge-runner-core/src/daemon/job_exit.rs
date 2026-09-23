@@ -1,0 +1,460 @@
+/*
+ * When a job pane that has finished its work stops needing its slot.
+ *
+ * `run_exit` answers this for a run pane, and its header already states why a
+ * job pane is the same shape: a pane briefed ONCE "has nothing left to do
+ * after its last turn", so alive is evidence of nothing. Nothing in
+ * `pool_jobs` ever asked it. A job pane's slot was spent on the pane EXISTING
+ * and returned only when the pane died, when core disowned the job, or when
+ * `turn_evidence` found the agent had never been asked anything — so an agent
+ * that took its turn and stopped held a slot until a person noticed.
+ *
+ * Measured sid-xeon-1 2026-09-23 at `max_job_panes = 2`: two `release_batch`
+ * panes at 101 and 80 minutes, 5% and 7% context, $0.29 and $0.68 of spend,
+ * both parked at an empty prompt, both heartbeating every minute. Eight bound
+ * projects were refused 48 times in two minutes behind them.
+ *
+ * Liveness is not activity: every signal the fleet had said those two were
+ * alive, and none said either was doing anything. So this reads what the
+ * agent's own hooks REPORTED it did. `turn_evidence` reads the same record for
+ * the question one step earlier — whether a turn ever began at all — and the
+ * two stay separate readings because they are separate questions.
+ */
+
+use std::time::Duration;
+
+use crate::daemon::agent_activity::{Activity, Doing, Event};
+
+/// Nothing reported since a turn ENDED for this long: the agent is done.
+pub const IDLE_BEFORE_FINISHED: Duration = Duration::from_secs(15 * 60);
+
+/// Nothing reported since a boundary that ended NOTHING for this long. Longer
+/// than the one above, because a compaction is the one report `agent_activity`
+/// reads as idle while the agent may still be mid-turn behind it.
+pub const SILENT_BEFORE_ABANDONED: Duration = Duration::from_secs(60 * 60);
+
+/// What one job's session last reported about itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reported {
+    pub doing: Doing,
+    /// The event behind `doing`, which separates a turn that ENDED from a
+    /// compaction that merely interrupted one.
+    pub last_event: Event,
+    /// When that event was reported, in wall-clock ms.
+    pub at: i64,
+    /// Submitted prompts this session has reported. Zero means no turn has
+    /// begun, which is `turn_evidence`'s question and not this one.
+    pub prompts: u64,
+}
+
+impl Reported {
+    pub fn of(a: &Activity) -> Self {
+        Self {
+            doing: a.doing(),
+            last_event: a.last_event,
+            at: a.last_event_at,
+            prompts: a.prompts,
+        }
+    }
+
+    /// The shape a sweep leaves on a job's record, so the reading survives the
+    /// daemon that took it.
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "doing": self.doing.wire(),
+            "lastEvent": self.last_event.wire(),
+            "at": self.at,
+            "prompts": self.prompts,
+        })
+    }
+
+    /// `None` where any field is missing or unreadable: a half-read snapshot is
+    /// a session this box knows nothing about, never a finished one.
+    pub fn from_json(v: &serde_json::Value) -> Option<Self> {
+        Some(Self {
+            doing: Doing::from_wire(v.get("doing")?.as_str()?)?,
+            last_event: Event::from_wire(v.get("lastEvent")?.as_str()?)?,
+            at: v.get("at")?.as_i64()?,
+            prompts: v.get("prompts")?.as_u64()?,
+        })
+    }
+}
+
+/// Whether a job pane still needs the slot it is holding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    Keep(KeepReason),
+    /// The agent's last report ended a turn and nothing followed it.
+    Finished {
+        quiet_for: i64,
+    },
+    /// Stopped on a question nothing on this box answers.
+    Blocked {
+        quiet_for: i64,
+    },
+    /// A turn ran, the last report ended nothing, and nothing followed it.
+    Silent {
+        quiet_for: i64,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeepReason {
+    /// This session has reported nothing, so nothing is known about it.
+    Unreported,
+    /// It has reported, and no turn has begun.
+    NoTurnYet,
+    /// A turn is running, or a child of it is.
+    Working,
+    /// A turn ended, and not long enough ago.
+    RecentlyEnded,
+    /// Stopped on a question, and not long enough ago.
+    RecentlyAsked,
+    /// The last thing it reported was a compaction, inside the longer window.
+    Compacting,
+}
+
+pub fn verdict(reported: Option<Reported>, now: i64) -> Verdict {
+    let Some(r) = reported else {
+        return Verdict::Keep(KeepReason::Unreported);
+    };
+    if r.prompts == 0 {
+        return Verdict::Keep(KeepReason::NoTurnYet);
+    }
+    // Saturating, so a boundary reported in the future — clock skew, or a
+    // record written by a box whose clock ran ahead — reads as no time having
+    // passed at all and keeps the pane. Every window below is compared
+    // inclusively, so the boundary instant itself concludes it.
+    let quiet_for = now.saturating_sub(r.at);
+    let past = |w: Duration| quiet_for >= w.as_millis() as i64;
+    match r.doing {
+        Doing::Working => Verdict::Keep(KeepReason::Working),
+        Doing::AwaitingPermission if past(IDLE_BEFORE_FINISHED) => Verdict::Blocked { quiet_for },
+        Doing::AwaitingPermission => Verdict::Keep(KeepReason::RecentlyAsked),
+        Doing::Idle if r.last_event == Event::Compacted => {
+            if past(SILENT_BEFORE_ABANDONED) {
+                Verdict::Silent { quiet_for }
+            } else {
+                Verdict::Keep(KeepReason::Compacting)
+            }
+        }
+        Doing::Idle if past(IDLE_BEFORE_FINISHED) => Verdict::Finished { quiet_for },
+        Doing::Idle => Verdict::Keep(KeepReason::RecentlyEnded),
+    }
+}
+
+impl Verdict {
+    /// What core is told where this verdict ends the job. `None` is a keep.
+    ///
+    /// The three read differently on purpose: an operator meeting one of these
+    /// in a journal has no second source to ask what the pane was doing, and a
+    /// finished agent, an unanswerable question and a compaction that went
+    /// quiet want three different next acts.
+    pub fn reason(self, pane: &str) -> Option<String> {
+        Some(match self {
+            Verdict::Keep(_) => return None,
+            Verdict::Finished { quiet_for } => format!(
+                "the job's pane `{pane}` has reported nothing since its agent ended a turn {}s ago — a job pane is briefed once and has nothing left to do after its last turn, so the slot it held was holding a finished agent and not work in flight",
+                quiet_for / 1000
+            ),
+            Verdict::Blocked { quiet_for } => format!(
+                "the job's pane `{pane}` has been stopped on a question only a human can answer for {}s — nothing on this box answers a job pane's question, so that wait had no end of its own and the slot was holding it",
+                quiet_for / 1000
+            ),
+            Verdict::Silent { quiet_for } => format!(
+                "the job's pane `{pane}` has reported nothing since it compacted {}s ago — in that time its agent neither ended a turn nor asked anything, so this box can no longer call the slot work in flight",
+                quiet_for / 1000
+            ),
+        })
+    }
+}
+
+/// What to say about a pane that is holding a slot, for the one line an
+/// operator reads when this box can take no more work.
+pub fn holding_phrase(reported: Option<Reported>, now: i64) -> &'static str {
+    match verdict(reported, now) {
+        Verdict::Keep(KeepReason::Unreported) => "its agent has reported nothing",
+        Verdict::Keep(KeepReason::NoTurnYet) => "its prompt is delivered and no turn has begun",
+        Verdict::Keep(KeepReason::Working) => "working",
+        Verdict::Keep(KeepReason::RecentlyEnded) => "idle since its turn ended",
+        Verdict::Keep(KeepReason::RecentlyAsked) => "stopped on a question a human owes",
+        Verdict::Keep(KeepReason::Compacting) => "compacting",
+        Verdict::Finished { .. } => "finished, and this sweep has not let it go yet",
+        Verdict::Blocked { .. } => "blocked on a question, and this sweep has not let it go yet",
+        Verdict::Silent { .. } => "silent since it compacted, and this sweep has not let it go yet",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: i64 = 1_800_000_000_000;
+    const IDLE: i64 = IDLE_BEFORE_FINISHED.as_millis() as i64;
+    const SILENT: i64 = SILENT_BEFORE_ABANDONED.as_millis() as i64;
+
+    fn reported(doing: Doing, last_event: Event, at: i64) -> Option<Reported> {
+        Some(Reported {
+            doing,
+            last_event,
+            at,
+            prompts: 1,
+        })
+    }
+
+    fn ended(at: i64) -> Option<Reported> {
+        reported(Doing::Idle, Event::Stopped, at)
+    }
+
+    #[test]
+    fn a_pane_whose_turn_ended_past_the_window_is_finished() {
+        assert_eq!(
+            verdict(ended(NOW - IDLE - 1), NOW),
+            Verdict::Finished {
+                quiet_for: IDLE + 1
+            }
+        );
+    }
+
+    #[test]
+    fn the_boundary_instant_itself_concludes_the_pane() {
+        assert_eq!(
+            verdict(ended(NOW - IDLE), NOW),
+            Verdict::Finished { quiet_for: IDLE }
+        );
+    }
+
+    #[test]
+    fn a_turn_that_ended_a_moment_ago_keeps_its_slot() {
+        assert_eq!(
+            verdict(ended(NOW - IDLE + 1), NOW),
+            Verdict::Keep(KeepReason::RecentlyEnded)
+        );
+    }
+
+    #[test]
+    fn a_turn_still_running_keeps_its_slot_however_long_it_has_run() {
+        assert_eq!(
+            verdict(
+                reported(Doing::Working, Event::PromptSubmitted, NOW - SILENT * 10),
+                NOW
+            ),
+            Verdict::Keep(KeepReason::Working)
+        );
+    }
+
+    #[test]
+    fn a_failed_turn_ends_a_turn_as_surely_as_a_clean_one() {
+        assert_eq!(
+            verdict(reported(Doing::Idle, Event::StoppedFailed, NOW - IDLE), NOW),
+            Verdict::Finished { quiet_for: IDLE }
+        );
+    }
+
+    #[test]
+    fn a_child_closing_over_a_lead_that_stopped_ends_the_work_too() {
+        // `doing()` answers `Idle` for these only when the lead's turn has
+        // ALSO ended and no other child is left; a lead still mid-turn behind
+        // one of them is `Working` and is kept by the arm above.
+        for event in [Event::SubagentStopped, Event::TeammateWentIdle] {
+            assert_eq!(
+                verdict(reported(Doing::Idle, event, NOW - IDLE), NOW),
+                Verdict::Finished { quiet_for: IDLE },
+                "{event:?}"
+            );
+            assert_eq!(
+                verdict(reported(Doing::Working, event, NOW - IDLE * 10), NOW),
+                Verdict::Keep(KeepReason::Working),
+                "{event:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_question_a_human_owes_is_blocked_rather_than_finished() {
+        assert_eq!(
+            verdict(
+                reported(
+                    Doing::AwaitingPermission,
+                    Event::PermissionRequested,
+                    NOW - IDLE
+                ),
+                NOW
+            ),
+            Verdict::Blocked { quiet_for: IDLE },
+            "nothing on this box answers a job pane's question, so unlike a run pane the wait has no end of its own"
+        );
+    }
+
+    #[test]
+    fn a_question_asked_a_moment_ago_keeps_its_slot() {
+        assert_eq!(
+            verdict(
+                reported(
+                    Doing::AwaitingPermission,
+                    Event::PermissionRequested,
+                    NOW - IDLE + 1
+                ),
+                NOW
+            ),
+            Verdict::Keep(KeepReason::RecentlyAsked)
+        );
+    }
+
+    #[test]
+    fn a_compaction_is_not_a_turn_that_ended_and_outlives_the_idle_window() {
+        assert_eq!(
+            verdict(
+                reported(Doing::Idle, Event::Compacted, NOW - SILENT + 1),
+                NOW
+            ),
+            Verdict::Keep(KeepReason::Compacting),
+            "a mid-turn compaction reads as idle while the agent may still be working behind it"
+        );
+    }
+
+    #[test]
+    fn a_pane_silent_since_it_compacted_is_concluded_on_the_longer_window() {
+        assert_eq!(
+            verdict(reported(Doing::Idle, Event::Compacted, NOW - SILENT), NOW),
+            Verdict::Silent { quiet_for: SILENT }
+        );
+    }
+
+    #[test]
+    fn a_session_that_has_reported_nothing_is_never_concluded_here() {
+        assert_eq!(verdict(None, NOW), Verdict::Keep(KeepReason::Unreported));
+    }
+
+    #[test]
+    fn a_session_that_reported_without_submitting_belongs_to_the_other_reading() {
+        let no_turn = Some(Reported {
+            doing: Doing::Idle,
+            last_event: Event::Stopped,
+            at: NOW - SILENT * 10,
+            prompts: 0,
+        });
+        assert_eq!(
+            verdict(no_turn, NOW),
+            Verdict::Keep(KeepReason::NoTurnYet),
+            "whether a turn ever began is turn_evidence's question, and only it may conclude a pane on that"
+        );
+    }
+
+    #[test]
+    fn a_boundary_reported_in_the_future_concludes_no_pane() {
+        for r in [
+            ended(NOW + IDLE),
+            reported(
+                Doing::AwaitingPermission,
+                Event::PermissionRequested,
+                NOW + IDLE,
+            ),
+            reported(Doing::Idle, Event::Compacted, NOW + SILENT),
+        ] {
+            assert!(
+                matches!(verdict(r, NOW), Verdict::Keep(_)),
+                "a clock that ran ahead must not conclude a pane: {r:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_time_no_clock_could_have_produced_keeps_the_pane_rather_than_panicking() {
+        // A record this box wrote is still a file on a disk somebody else can
+        // reach, and `now - i64::MIN` is an overflow panic in a debug build —
+        // inside the supervision task, which would take every other job pane's
+        // accounting down with it.
+        assert!(matches!(
+            verdict(ended(i64::MIN), NOW),
+            Verdict::Finished { .. }
+        ));
+        assert!(matches!(
+            verdict(ended(i64::MAX), NOW),
+            Verdict::Keep(KeepReason::RecentlyEnded)
+        ));
+    }
+
+    #[test]
+    fn the_three_conclusions_say_three_different_things() {
+        let reasons: Vec<String> = [
+            Verdict::Finished { quiet_for: 1000 },
+            Verdict::Blocked { quiet_for: 1000 },
+            Verdict::Silent { quiet_for: 1000 },
+        ]
+        .into_iter()
+        .map(|v| {
+            v.reason("forge-job-abc")
+                .expect("a conclusion names itself")
+        })
+        .collect();
+        for r in &reasons {
+            assert!(r.contains("forge-job-abc"), "{r}");
+            assert!(r.contains("1s"), "{r}");
+        }
+        assert!(reasons[0].contains("ended a turn"), "{}", reasons[0]);
+        assert!(
+            reasons[1].contains("only a human can answer"),
+            "{}",
+            reasons[1]
+        );
+        assert!(reasons[2].contains("compacted"), "{}", reasons[2]);
+        let distinct: std::collections::BTreeSet<&String> = reasons.iter().collect();
+        assert_eq!(
+            distinct.len(),
+            3,
+            "an operator meeting one of these has no second source to ask what the pane was doing"
+        );
+    }
+
+    #[test]
+    fn a_keep_tells_core_nothing() {
+        assert_eq!(Verdict::Keep(KeepReason::Working).reason("p"), None);
+    }
+
+    #[test]
+    fn a_snapshot_survives_the_round_trip_a_restart_puts_it_through() {
+        let r = Reported {
+            doing: Doing::Idle,
+            last_event: Event::Stopped,
+            at: NOW,
+            prompts: 3,
+        };
+        assert_eq!(Reported::from_json(&r.to_json()), Some(r));
+    }
+
+    #[test]
+    fn a_snapshot_missing_any_field_is_a_session_this_box_knows_nothing_about() {
+        let whole = Reported {
+            doing: Doing::Idle,
+            last_event: Event::Stopped,
+            at: NOW,
+            prompts: 3,
+        }
+        .to_json();
+        for key in ["doing", "lastEvent", "at", "prompts"] {
+            let mut v = whole.clone();
+            v.as_object_mut().expect("json object").remove(key);
+            assert_eq!(
+                Reported::from_json(&v),
+                None,
+                "a half-read snapshot must not read as a finished pane: {key} removed"
+            );
+        }
+        let mut wrong = whole.clone();
+        wrong["doing"] = serde_json::json!("dreaming");
+        assert_eq!(Reported::from_json(&wrong), None);
+    }
+
+    #[test]
+    fn what_holds_a_slot_reads_differently_in_every_state() {
+        let phrases = [
+            holding_phrase(None, NOW),
+            holding_phrase(ended(NOW), NOW),
+            holding_phrase(ended(NOW - IDLE), NOW),
+            holding_phrase(reported(Doing::Working, Event::PromptSubmitted, NOW), NOW),
+        ];
+        let distinct: std::collections::BTreeSet<&&str> = phrases.iter().collect();
+        assert_eq!(distinct.len(), 4, "{phrases:?}");
+    }
+}

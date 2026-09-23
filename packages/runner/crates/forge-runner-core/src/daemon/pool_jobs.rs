@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::daemon::agent_activity::{now_ms, Activities};
+use crate::daemon::job_exit;
 use crate::daemon::turn_evidence::{self, Evidence, Watch};
 use crate::daemon::{control, hook_install, session_tokens, terminal};
 use crate::error::{Error, Result};
@@ -48,7 +49,7 @@ pub trait Report: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait Records: Send + Sync {
-    async fn note(&self, job_id: &str, pane: &str);
+    async fn note(&self, live: &Live);
     async fn forget(&self, job_id: &str);
     async fn all(&self) -> Vec<Live>;
 }
@@ -71,18 +72,58 @@ pub trait Panes: Send + Sync {
 
 const HEARTBEAT_KIND: &str = "progress";
 
-/// One job this box is running, the pane it is running in, and what this box
-/// may conclude from that pane's silence.
+/// One job this box is running, the pane it is running in, what this box may
+/// conclude from that pane's silence, and what the last sweep read of its
+/// agent.
+///
+/// `seen` is on the record rather than only in memory because `Activities` is
+/// in memory: after a restart a pane that went quiet BEFORE it never reports
+/// again, and without the snapshot it reads as a session that has said nothing
+/// — kept for the rest of its life by the rule meant to protect a pane that is
+/// mid-turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Live {
     pub job_id: String,
     pub pane: String,
     pub watch: Watch,
+    pub seen: Option<job_exit::Reported>,
+}
+
+/// One held slot, and since when this daemon has been counting it.
+#[derive(Debug, Clone)]
+struct Held {
+    pane: String,
+    watch: Watch,
+    seen: Option<job_exit::Reported>,
+    noted_at: i64,
+}
+
+/// A slot this box is holding, for the one line an operator reads when it can
+/// take no more work.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Holding {
+    pub job_id: String,
+    pub pane: String,
+    pub session: Option<String>,
+    /// What the last sweep read of this agent, which is what `job_exit` will
+    /// answer on where the session has said nothing in THIS daemon. A reader
+    /// told a pane has reported nothing, while the next sweep is about to
+    /// conclude it finished, has been handed two answers to one question.
+    pub seen: Option<job_exit::Reported>,
+    /// When this daemon began counting the pane, which for one it adopted is
+    /// the adoption and not the pane's own start.
+    pub noted_at: i64,
 }
 
 pub struct JobPanes {
-    inner: Mutex<HashMap<String, (String, Watch)>>,
+    inner: Mutex<HashMap<String, Held>>,
     session_id: String,
+    swept_at: Mutex<Option<i64>>,
+    /// Which set of jobs this box has already said is holding every slot, so
+    /// the condition is stated on its edges rather than on every pass. It
+    /// lives here because it is a fact about this registry and nothing else
+    /// reads it.
+    said_at_bound: Mutex<Option<String>>,
 }
 
 impl Default for JobPanes {
@@ -96,6 +137,8 @@ impl JobPanes {
         Self {
             inner: Mutex::new(HashMap::new()),
             session_id: uuid::Uuid::new_v4().to_string(),
+            swept_at: Mutex::new(None),
+            said_at_bound: Mutex::new(None),
         }
     }
 
@@ -104,9 +147,68 @@ impl JobPanes {
     }
 
     pub fn note(&self, job_id: &str, pane: &str, watch: Watch) {
-        if let Ok(mut map) = self.inner.lock() {
-            map.insert(job_id.to_string(), (pane.to_string(), watch));
+        self.hold(job_id, pane, watch, None);
+    }
+
+    /// The same, carrying what a previous daemon's sweep read of this agent.
+    pub fn hold(&self, job_id: &str, pane: &str, watch: Watch, seen: Option<job_exit::Reported>) {
+        let Ok(mut map) = self.inner.lock() else {
+            return;
+        };
+        let now = now_ms();
+        map.entry(job_id.to_string())
+            .and_modify(|h| {
+                h.pane = pane.to_string();
+                h.watch = watch.clone();
+                h.seen = seen;
+            })
+            .or_insert_with(|| Held {
+                pane: pane.to_string(),
+                watch,
+                seen,
+                noted_at: now,
+            });
+    }
+
+    /// That a supervision sweep ran to the end. Read where the box is refusing
+    /// work, because the slot's return depends on this sweep and a design that
+    /// leans on a sweep has to say when the sweep last ran.
+    pub fn swept(&self) {
+        if let Ok(mut at) = self.swept_at.lock() {
+            *at = Some(now_ms());
         }
+    }
+
+    pub fn last_swept(&self) -> Option<i64> {
+        self.swept_at.lock().ok().and_then(|at| *at)
+    }
+
+    /// What this box last said was holding every one of its slots, and what it
+    /// is saying now. `None` in, `None` out clears the memo.
+    pub fn said_at_bound(&self, now: Option<String>) -> Option<String> {
+        let Ok(mut said) = self.said_at_bound.lock() else {
+            return None;
+        };
+        std::mem::replace(&mut said, now)
+    }
+
+    /// What is holding this box's slots right now.
+    pub fn holding(&self) -> Vec<Holding> {
+        let Ok(map) = self.inner.lock() else {
+            return Vec::new();
+        };
+        let mut out: Vec<Holding> = map
+            .iter()
+            .map(|(job_id, h)| Holding {
+                job_id: job_id.clone(),
+                pane: h.pane.clone(),
+                session: h.watch.session_id().map(str::to_string),
+                seen: h.seen,
+                noted_at: h.noted_at,
+            })
+            .collect();
+        out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
+        out
     }
 
     pub fn forget(&self, job_id: &str) {
@@ -121,10 +223,11 @@ impl JobPanes {
         };
         let mut out: Vec<Live> = map
             .iter()
-            .map(|(job_id, (pane, watch))| Live {
+            .map(|(job_id, h)| Live {
                 job_id: job_id.clone(),
-                pane: pane.clone(),
-                watch: watch.clone(),
+                pane: h.pane.clone(),
+                watch: h.watch.clone(),
+                seen: h.seen,
             })
             .collect();
         out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
@@ -166,8 +269,8 @@ pub async fn adopt(
     let recorded = records.all().await;
     let live: Vec<String> = panes.names().await;
 
-    for rec in recorded {
-        if live.iter().any(|n| *n == rec.pane) {
+    for rec in &recorded {
+        if live.contains(&rec.pane) {
             continue;
         }
         let reason = format!(
@@ -194,11 +297,34 @@ pub async fn adopt(
     }
 
     for name in live {
-        if let Some(job_id) = job_id_of(&name) {
-            registry.note(&job_id, &name, Watch::Unhooked);
-            records.note(&job_id, &name).await;
-            out.alive += 1;
-        }
+        let Some(job_id) = job_id_of(&name) else {
+            continue;
+        };
+        // What the last daemon's sweep left on this job's record is the whole
+        // of what this one knows about its agent until the pane's own hooks
+        // speak again.
+        let held = recorded.iter().find(|r| r.job_id == job_id);
+        let watch = match held.and_then(|r| r.watch.session_id()) {
+            Some(session) => Watch::Adopted {
+                session_id: session.to_string(),
+            },
+            None => Watch::Unhooked,
+        };
+        let seen = held.and_then(|r| r.seen);
+        let adopted = Live {
+            job_id,
+            pane: name,
+            watch,
+            seen,
+        };
+        registry.hold(
+            &adopted.job_id,
+            &adopted.pane,
+            adopted.watch.clone(),
+            adopted.seen,
+        );
+        records.note(&adopted).await;
+        out.alive += 1;
     }
 
     if out.alive > 0 || out.buried > 0 {
@@ -320,7 +446,13 @@ pub async fn take_one(
         None => Watch::Unhooked,
     };
 
-    records.note(&prepared.job_id, &pane).await;
+    let opened = Live {
+        job_id: prepared.job_id.clone(),
+        pane: pane.clone(),
+        watch: watch.clone(),
+        seen: None,
+    };
+    records.note(&opened).await;
 
     match pool_ports.start(&prepared.job_id, session_id).await {
         Ok(Started::Ok) => {}
@@ -446,14 +578,35 @@ pub async fn supervise(
             tracing::warn!("[pool] job {} lost its pane {}", live.job_id, live.pane);
             continue;
         }
-        let reported = live
-            .watch
-            .session_id()
-            .and_then(|s| activity.get(s))
-            .map(|a| turn_evidence::Reported { prompts: a.prompts });
-        let evidence = turn_evidence::read(&live.watch, reported, now);
+        let said = live.watch.session_id().and_then(|s| activity.get(s));
+        let evidence = turn_evidence::read(
+            &live.watch,
+            said.as_ref()
+                .map(|a| turn_evidence::Reported { prompts: a.prompts }),
+            now,
+        );
         if let Evidence::NeverStarted { silent_for } = evidence {
-            if never_started(panes, report, records, registry, &live, silent_for).await {
+            let reason = turn_evidence::never_started_reason(&live.pane, silent_for);
+            if conclude(panes, report, records, registry, &live, reason).await {
+                continue;
+            }
+        }
+        // What this session has said in THIS daemon wins; the snapshot a
+        // previous one left answers for a pane that went quiet before the
+        // restart and will never speak again. A pane with neither is a session
+        // this box knows nothing about, and `job_exit` keeps it.
+        let seen = said.as_ref().map(job_exit::Reported::of).or(live.seen);
+        if seen != live.seen {
+            records
+                .note(&Live {
+                    seen,
+                    ..live.clone()
+                })
+                .await;
+            registry.hold(&live.job_id, &live.pane, live.watch.clone(), seen);
+        }
+        if let Some(reason) = job_exit::verdict(seen, now).reason(&live.pane) {
+            if conclude(panes, report, records, registry, &live, reason).await {
                 continue;
             }
         }
@@ -475,27 +628,32 @@ pub async fn supervise(
             Err(e) => tracing::warn!("[pool] progress for job {}: {e}", live.job_id),
         }
     }
+    registry.swept();
 }
 
-async fn never_started(
+/// End a job this box has decided is not work in flight: tell core by name,
+/// close the pane, and let go of the slot. `true` once the slot is back.
+///
+/// Every reading that can end a job comes through here, because the slot
+/// returns on `registry.forget` and nowhere else.
+async fn conclude(
     panes: &dyn Panes,
     report: &dyn Report,
     records: &dyn Records,
     registry: &JobPanes,
     live: &Live,
-    silent_for: i64,
+    reason: String,
 ) -> bool {
-    let reason = turn_evidence::never_started_reason(&live.pane, silent_for);
     if let Err(e) = report.fail(&live.job_id, &reason).await {
         tracing::warn!(
-            "[pool] could not tell core job {} never started: {e} — sending it again next tick",
+            "[pool] could not tell core job {} is over: {e} — sending it again next tick",
             live.job_id
         );
         return false;
     }
     if let Err(e) = panes.kill(&live.pane).await {
         tracing::warn!(
-            "[pool] job {} was reported as never started but {} would not close: {e} — keeping it under supervision",
+            "[pool] job {} is over but {} would not close: {e} — keeping it under supervision, because a slot given back while its pane runs is a slot this box would hand out twice",
             live.job_id,
             live.pane
         );
@@ -590,16 +748,33 @@ impl FileRecords {
 
 #[async_trait::async_trait]
 impl Records for FileRecords {
-    async fn note(&self, job_id: &str, pane: &str) {
-        let Some(path) = self.path(job_id) else {
-            tracing::error!("[pool] refusing to record job {job_id}: not a job id core would send");
+    async fn note(&self, live: &Live) {
+        let Some(path) = self.path(&live.job_id) else {
+            tracing::error!(
+                "[pool] refusing to record job {}: not a job id core would send",
+                live.job_id
+            );
             return;
         };
         let _ = std::fs::create_dir_all(&self.dir);
-        let body = serde_json::json!({ "pane": pane }).to_string();
-        if let Err(e) = std::fs::write(&path, body) {
+        let mut body = serde_json::json!({ "pane": live.pane });
+        let obj = body.as_object_mut().expect("json! object");
+        if let Some(session) = live.watch.session_id() {
+            obj.insert("session".into(), session.into());
+        }
+        if let Some(seen) = live.seen {
+            obj.insert("seen".into(), seen.to_json());
+        }
+        // Never in place. A sweep replaces this file every minute now that it
+        // carries the snapshot a restart is judged on, and `std::fs::write`
+        // truncates before it writes: a daemon that dies mid-write would leave
+        // half a record, which reads back as a pane nothing is known about and
+        // so is kept for the rest of its life — the very hole the snapshot
+        // closes. `session_tokens` learned this on the same disk (ISS-1099).
+        if let Err(e) = replace(&self.dir, &path, &body.to_string()) {
             tracing::warn!(
-                "[pool] could not record job {job_id} at {}: {e} — a restart will leave it to core",
+                "[pool] could not record job {} at {}: {e} — the record standing there is the one a restart will read",
+                live.job_id,
                 path.display()
             );
         }
@@ -624,14 +799,22 @@ impl Records for FileRecords {
             let Ok(body) = std::fs::read_to_string(entry.path()) else {
                 continue;
             };
-            let pane = serde_json::from_str::<serde_json::Value>(&body)
-                .ok()
-                .and_then(|v| v["pane"].as_str().map(str::to_string))
-                .unwrap_or_else(|| pane_name(job_id));
+            let held = serde_json::from_str::<serde_json::Value>(&body).ok();
+            let field = |k: &str| {
+                held.as_ref()
+                    .and_then(|v| v[k].as_str().map(str::to_string))
+            };
             out.push(Live {
                 job_id: job_id.to_string(),
-                pane,
-                watch: Watch::Unhooked,
+                pane: field("pane").unwrap_or_else(|| pane_name(job_id)),
+                watch: match field("session") {
+                    Some(session_id) => Watch::Adopted { session_id },
+                    None => Watch::Unhooked,
+                },
+                seen: held
+                    .as_ref()
+                    .map(|v| &v["seen"])
+                    .and_then(job_exit::Reported::from_json),
             });
         }
         out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
@@ -639,11 +822,26 @@ impl Records for FileRecords {
     }
 }
 
+/// Put `body` at `path` whole or not at all, leaving whatever stood there if
+/// the replacement cannot be completed.
+fn replace(dir: &Path, path: &Path, body: &str) -> std::io::Result<()> {
+    let tmp = dir.join(format!(
+        ".pool-job.{}.{}.tmp",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    let done = std::fs::write(&tmp, body).and_then(|()| std::fs::rename(&tmp, path));
+    if done.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    done
+}
+
 pub struct NoRecords;
 
 #[async_trait::async_trait]
 impl Records for NoRecords {
-    async fn note(&self, _job_id: &str, _pane: &str) {}
+    async fn note(&self, _live: &Live) {}
     async fn forget(&self, _job_id: &str) {}
     async fn all(&self) -> Vec<Live> {
         Vec::new()
@@ -687,6 +885,8 @@ impl Panes for TmuxPanes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const THIS_SOURCE: &str = include_str!("pool_jobs.rs");
     use crate::transport::pool::Refusal;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
@@ -837,36 +1037,36 @@ mod tests {
     }
 
     struct FakeRecords {
-        inner: Mutex<HashMap<String, String>>,
+        inner: Mutex<HashMap<String, Live>>,
         rec: Arc<Recorder>,
     }
 
     #[async_trait::async_trait]
     impl Records for FakeRecords {
-        async fn note(&self, job_id: &str, pane: &str) {
-            self.rec.recorded.lock().unwrap().push(job_id.into());
+        async fn note(&self, live: &Live) {
+            self.rec.recorded.lock().unwrap().push(live.job_id.clone());
             self.inner
                 .lock()
                 .unwrap()
-                .insert(job_id.into(), pane.into());
+                .insert(live.job_id.clone(), live.clone());
         }
         async fn forget(&self, job_id: &str) {
             self.inner.lock().unwrap().remove(job_id);
         }
         async fn all(&self) -> Vec<Live> {
-            let mut out: Vec<Live> = self
-                .inner
-                .lock()
-                .unwrap()
-                .iter()
-                .map(|(job_id, pane)| Live {
-                    job_id: job_id.clone(),
-                    pane: pane.clone(),
-                    watch: Watch::Unhooked,
-                })
-                .collect();
+            let mut out: Vec<Live> = self.inner.lock().unwrap().values().cloned().collect();
             out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
             out
+        }
+    }
+
+    /// A record a previous daemon left, as `adopt` reads it back.
+    fn recorded(job_id: &str, watch: Watch, seen: Option<job_exit::Reported>) -> Live {
+        Live {
+            job_id: job_id.into(),
+            pane: pane_name(job_id),
+            watch,
+            seen,
         }
     }
 
@@ -1452,6 +1652,362 @@ mod tests {
         );
     }
 
+    /// A session that submitted a prompt and then reported the boundary given,
+    /// that many ms ago.
+    fn said(
+        acts: &Activities,
+        session: &str,
+        event: crate::daemon::agent_activity::Event,
+        ago: i64,
+    ) {
+        use crate::daemon::agent_activity::{Event, Report};
+        let at = now_ms() - ago;
+        for e in [Event::PromptSubmitted, event] {
+            acts.record(
+                session,
+                Report {
+                    event: e,
+                    at,
+                    subject: None,
+                    conversation: None,
+                },
+            );
+        }
+    }
+
+    const PAST_IDLE: i64 = job_exit::IDLE_BEFORE_FINISHED.as_millis() as i64 + 1;
+    const PAST_SILENT: i64 = job_exit::SILENT_BEFORE_ABANDONED.as_millis() as i64 + 1;
+
+    /// What a previous daemon's sweep left behind for a pane in this state.
+    fn snapshot(
+        doing: crate::daemon::agent_activity::Doing,
+        event: crate::daemon::agent_activity::Event,
+        ago: i64,
+    ) -> Option<job_exit::Reported> {
+        Some(job_exit::Reported {
+            doing,
+            last_event: event,
+            at: now_ms() - ago,
+            prompts: 1,
+        })
+    }
+
+    #[tokio::test]
+    async fn a_pane_whose_agent_finished_its_turn_gives_the_slot_back() {
+        use crate::daemon::agent_activity::Event;
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        said(&acts, "sess-1", Event::Stopped, PAST_IDLE);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(failed.len(), 1, "the job must be ended by name");
+        assert_eq!(failed[0].0, "j1");
+        assert!(
+            failed[0].1.contains("ended a turn"),
+            "the reason names what the agent last reported: {}",
+            failed[0].1
+        );
+        assert_eq!(
+            w.rec.killed.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
+        assert_eq!(
+            w.registry.count(),
+            0,
+            "the slot comes back on this call and nowhere else"
+        );
+        assert!(
+            w.rec.beats.lock().unwrap().is_empty(),
+            "a job this box has just ended must not also be beaten as progress"
+        );
+    }
+
+    #[tokio::test]
+    async fn every_project_is_refused_until_a_finished_pane_lets_go() {
+        use crate::daemon::agent_activity::Event;
+        // The measured failure: max_job_panes = 2, both panes finished, and
+        // nothing on the box can start.
+        let w = world(
+            vec![entry("j3", None)],
+            Some(prepared("j3", Some("## Batch Release"))),
+            None,
+        );
+        let acts = Activities::new();
+        for job in ["j1", "j2"] {
+            let pane = pane_name(job);
+            w.panes.alive.lock().unwrap().push(pane.clone());
+            let session = format!("sess-{job}");
+            w.registry
+                .note(job, &pane, hooked(&session, PAST_THE_WINDOW));
+            said(&acts, &session, Event::Stopped, PAST_IDLE);
+        }
+
+        assert_eq!(take(&w, 2).await, Took::AtBound, "the box is full");
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert_eq!(w.registry.count(), 0);
+        assert_eq!(
+            take(&w, 2).await,
+            Took::Started("j3".into()),
+            "a slot held by a finished agent is a slot the next job never gets"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pane_stopped_on_a_question_nobody_answers_gives_the_slot_back() {
+        use crate::daemon::agent_activity::Event;
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        said(&acts, "sess-1", Event::PermissionRequested, PAST_IDLE);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(failed.len(), 1);
+        assert!(
+            failed[0].1.contains("only a human can answer"),
+            "an operator must be able to tell this from a pane that merely went idle: {}",
+            failed[0].1
+        );
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_pane_that_compacted_keeps_its_slot_past_the_idle_window() {
+        use crate::daemon::agent_activity::Event;
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        said(&acts, "sess-1", Event::Compacted, PAST_IDLE);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "a compaction reads as idle while the agent may still be working behind it"
+        );
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_pane_silent_since_it_compacted_gives_the_slot_back() {
+        use crate::daemon::agent_activity::Event;
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        said(&acts, "sess-1", Event::Compacted, PAST_SILENT);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(failed.len(), 1);
+        assert!(failed[0].1.contains("compacted"), "{}", failed[0].1);
+    }
+
+    #[tokio::test]
+    async fn a_sweep_leaves_what_it_read_on_the_job_record() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        said(&acts, "sess-1", Event::PromptSubmitted, 1_000);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let kept = w.records.all().await;
+        assert_eq!(kept.len(), 1);
+        let seen = kept[0].seen.expect("the sweep records what it read");
+        assert_eq!(seen.doing, Doing::Working);
+        assert_eq!(seen.last_event, Event::PromptSubmitted);
+        assert_eq!(seen.prompts, 2);
+    }
+
+    #[tokio::test]
+    async fn a_restart_keeps_the_session_its_hooks_report_under() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.records
+            .note(&recorded(
+                "j1",
+                Watch::Hooked {
+                    session_id: "sess-1".into(),
+                    delivered_at: now_ms() - PAST_THE_WINDOW,
+                },
+                snapshot(Doing::Working, Event::PromptSubmitted, 1_000),
+            ))
+            .await;
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+
+        let live = w.registry.live();
+        assert_eq!(
+            live[0].watch,
+            Watch::Adopted {
+                session_id: "sess-1".into()
+            },
+            "the pane's hooks still report under that session — the token map is on disk for exactly this"
+        );
+        assert_eq!(live[0].seen.map(|s| s.doing), Some(Doing::Working));
+    }
+
+    #[tokio::test]
+    async fn an_adopted_pane_the_record_shows_finished_is_concluded_after_the_restart() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.records
+            .note(&recorded(
+                "j1",
+                Watch::Adopted {
+                    session_id: "sess-1".into(),
+                },
+                snapshot(Doing::Idle, Event::Stopped, PAST_IDLE),
+            ))
+            .await;
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+        // Activities is empty: this pane went quiet before the restart and will
+        // never report again.
+        supervise(
+            &w.panes,
+            &w.report,
+            &w.records,
+            &w.registry,
+            &Activities::new(),
+        )
+        .await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(
+            failed.len(),
+            1,
+            "without the snapshot a restart makes every job pane unaccountable for the rest of its life"
+        );
+        assert!(failed[0].1.contains("ended a turn"), "{}", failed[0].1);
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn an_adopted_pane_caught_mid_turn_keeps_its_slot() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.records
+            .note(&recorded(
+                "j1",
+                Watch::Adopted {
+                    session_id: "sess-1".into(),
+                },
+                snapshot(Doing::Working, Event::PromptSubmitted, PAST_SILENT),
+            ))
+            .await;
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+        supervise(
+            &w.panes,
+            &w.report,
+            &w.records,
+            &w.registry,
+            &Activities::new(),
+        )
+        .await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "a turn still running at the restart is kept until its own agent reports again"
+        );
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn what_the_session_says_now_beats_what_a_previous_daemon_recorded() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry.hold(
+            "j1",
+            "forge-job-j1",
+            Watch::Adopted {
+                session_id: "sess-1".into(),
+            },
+            snapshot(Doing::Idle, Event::Stopped, PAST_IDLE),
+        );
+        let acts = Activities::new();
+        said(&acts, "sess-1", Event::PromptSubmitted, 0);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "a stale snapshot must never outrank the agent speaking in this daemon"
+        );
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_pane_with_no_channel_at_all_is_concluded_by_nothing_here() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
+
+        sup(&w).await;
+
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_sweep_that_ran_to_the_end_says_so() {
+        let w = world(vec![], None, None);
+        assert_eq!(
+            w.registry.last_swept(),
+            None,
+            "a box that has not swept must not read as one that has"
+        );
+
+        sup(&w).await;
+
+        assert!(w.registry.last_swept().is_some());
+    }
+
+    #[tokio::test]
+    async fn a_pane_that_will_not_close_keeps_its_slot_and_its_job() {
+        use crate::daemon::agent_activity::Event;
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        *w.panes.kill_errs.lock().unwrap() = 1;
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        said(&acts, "sess-1", Event::Stopped, PAST_IDLE);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert_eq!(
+            w.registry.count(),
+            1,
+            "a slot given back while its pane runs is a slot this box would hand out twice"
+        );
+    }
+
     #[tokio::test]
     async fn a_restart_adopts_the_panes_it_finds() {
         let mut w = world(vec![], None, None);
@@ -1471,12 +2027,14 @@ mod tests {
                 Live {
                     job_id: "j1".into(),
                     pane: "forge-job-j1".into(),
-                    watch: Watch::Unhooked
+                    watch: Watch::Unhooked,
+                    seen: None
                 },
                 Live {
                     job_id: "j2".into(),
                     pane: "forge-job-j2".into(),
-                    watch: Watch::Unhooked
+                    watch: Watch::Unhooked,
+                    seen: None
                 },
             ]
         );
@@ -1603,7 +2161,7 @@ mod tests {
         w.report.disowned = true;
         w.panes.alive.lock().unwrap().push("forge-job-j1".into());
         w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
-        w.records.note("j1", "forge-job-j1").await;
+        w.records.note(&recorded("j1", Watch::Unhooked, None)).await;
 
         sup(&w).await;
 
@@ -1636,7 +2194,7 @@ mod tests {
     #[tokio::test]
     async fn a_restart_reports_a_job_whose_pane_did_not_survive() {
         let w = world(vec![], None, None);
-        w.records.note("j1", "forge-job-j1").await;
+        w.records.note(&recorded("j1", Watch::Unhooked, None)).await;
 
         let adopted = adopt(&w.panes, &w.report, &w.records, &w.registry).await;
 
@@ -1659,7 +2217,7 @@ mod tests {
     async fn a_restart_reports_nothing_for_a_job_whose_pane_is_still_there() {
         let mut w = world(vec![], None, None);
         w.panes.names = vec!["forge-job-j1".into()];
-        w.records.note("j1", "forge-job-j1").await;
+        w.records.note(&recorded("j1", Watch::Unhooked, None)).await;
 
         let adopted = adopt(&w.panes, &w.report, &w.records, &w.registry).await;
 
@@ -1688,7 +2246,8 @@ mod tests {
             vec![Live {
                 job_id: "j9".into(),
                 pane: "forge-job-j9".into(),
-                watch: Watch::Unhooked
+                watch: Watch::Unhooked,
+                seen: None
             }]
         );
     }
@@ -1697,7 +2256,7 @@ mod tests {
     async fn a_restart_keeps_the_record_when_core_cannot_be_told() {
         let w = world(vec![], None, None);
         *w.report.fail_errs.lock().unwrap() = 1;
-        w.records.note("j1", "forge-job-j1").await;
+        w.records.note(&recorded("j1", Watch::Unhooked, None)).await;
 
         let adopted = adopt(&w.panes, &w.report, &w.records, &w.registry).await;
 
@@ -1715,7 +2274,7 @@ mod tests {
     async fn a_death_core_refused_at_boot_is_handed_to_the_supervisor() {
         let w = world(vec![], None, None);
         *w.report.fail_errs.lock().unwrap() = 1;
-        w.records.note("j1", "forge-job-j1").await;
+        w.records.note(&recorded("j1", Watch::Unhooked, None)).await;
 
         adopt(&w.panes, &w.report, &w.records, &w.registry).await;
         assert!(w.rec.failed.lock().unwrap().is_empty());
@@ -1753,7 +2312,7 @@ mod tests {
         let w = world(vec![], None, None);
         *w.report.fail_errs.lock().unwrap() = 1;
         w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
-        w.records.note("j1", "forge-job-j1").await;
+        w.records.note(&recorded("j1", Watch::Unhooked, None)).await;
 
         sup(&w).await;
         assert!(w.rec.failed.lock().unwrap().is_empty());
@@ -1763,6 +2322,106 @@ mod tests {
         assert_eq!(w.rec.failed.lock().unwrap().len(), 1);
         assert_eq!(w.registry.count(), 0);
         assert!(w.records.all().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_job_record_carries_the_session_and_the_snapshot_across_a_restart() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        let home = TempHome::new("filerecords");
+        let r = FileRecords {
+            dir: home.path().to_path_buf(),
+        };
+        let seen = job_exit::Reported {
+            doing: Doing::Idle,
+            last_event: Event::Stopped,
+            at: now_ms(),
+            prompts: 2,
+        };
+        r.note(&Live {
+            job_id: "j1".into(),
+            pane: "forge-job-j1".into(),
+            watch: Watch::Hooked {
+                session_id: "sess-1".into(),
+                delivered_at: now_ms(),
+            },
+            seen: Some(seen),
+        })
+        .await;
+
+        assert_eq!(
+            r.all().await,
+            vec![Live {
+                job_id: "j1".into(),
+                pane: "forge-job-j1".into(),
+                watch: Watch::Adopted {
+                    session_id: "sess-1".into()
+                },
+                seen: Some(seen)
+            }],
+            "what a restart reads back is what decides whether the pane is still work in flight"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_record_that_cannot_be_replaced_leaves_the_one_standing_there() {
+        #[cfg(unix)]
+        {
+            use crate::daemon::agent_activity::{Doing, Event};
+            use std::os::unix::fs::PermissionsExt;
+            let home = TempHome::new("filerecords-torn");
+            let dir = home.path().join("pool-jobs");
+            let r = FileRecords { dir: dir.clone() };
+            let first = job_exit::Reported {
+                doing: Doing::Working,
+                last_event: Event::PromptSubmitted,
+                at: now_ms(),
+                prompts: 1,
+            };
+            let live = |seen| Live {
+                job_id: "j1".into(),
+                pane: "forge-job-j1".into(),
+                watch: Watch::Adopted {
+                    session_id: "sess-1".into(),
+                },
+                seen: Some(seen),
+            };
+            r.note(&live(first)).await;
+
+            // No temp file can be created here, so the rename can never happen.
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+            r.note(&live(job_exit::Reported {
+                prompts: 9,
+                ..first
+            }))
+            .await;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+            assert_eq!(
+                r.all().await[0].seen,
+                Some(first),
+                "a write that could not be completed must leave the previous record whole — half a record reads back as a pane nothing is known about, kept for the rest of its life"
+            );
+            assert!(
+                std::fs::read_dir(&dir)
+                    .unwrap()
+                    .flatten()
+                    .all(|e| !e.file_name().to_string_lossy().ends_with(".tmp")),
+                "a failed replacement leaves no scratch behind"
+            );
+        }
+    }
+
+    #[test]
+    fn no_job_record_is_ever_written_in_place() {
+        let body = THIS_SOURCE
+            .split("impl Records for FileRecords {")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .unwrap_or_default();
+        assert!(
+            !body.contains("fs::write(&path"),
+            "a sweep replaces this file every minute now that it carries the snapshot a restart is judged on, and an in-place write truncates first (ISS-1099 on the same disk): {body}"
+        );
     }
 
     #[test]
