@@ -3080,6 +3080,9 @@
   set is now 59.
 
 ### Fixed
+- **The reasons a release will not start are legible again.** Code words inside those messages
+  were printed as grey on grey, so the part naming the setting to change was the hardest part of
+  the sentence to read.
 - **An issue is no longer held by a run that has died.** A run that promises to report and then
   goes quiet has its claim given up, instead of the issue staying locked until that claim expires.
 - **A runner box takes new work once a job's agent has finished.** A pane whose agent had stopped,
