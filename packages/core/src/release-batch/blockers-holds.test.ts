@@ -275,6 +275,45 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     expect(warned?.message).not.toContain(ISSUE_A);
   });
 
+  // The names are a courtesy on top of the reason. Returning on a failed name
+  // read would spend an actionable blocker on a lookup nobody asked for.
+  it('keeps the blocker standing beside the unevaluated entry where the name read throws', async () => {
+    ready();
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([heldReport(ISSUE_A, [4])]);
+    joinRows.mockRejectedValue(new Error('names unavailable'));
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+    const codes = report.blockers.map((b) => b.code);
+
+    expect(codes).toContain('RELEASE_CRITERIA_UNEARNED');
+    expect(codes).toContain('RELEASE_CHECK_UNEVALUATED');
+    const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
+    expect(held?.message).toContain(`\`${ISSUE_A}\` owes criterion 4`);
+  });
+
+  it('keeps the held-back warning too where the name read throws on a partly held roster', async () => {
+    projectRow();
+    liveBinding(DECLARED);
+    selectRows.mockResolvedValue([
+      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
+      { id: ISSUE_B, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
+    ]);
+    execRows.mockResolvedValue([{ device_id: 'dev-1' }]);
+    onlineIds.mockResolvedValue(['dev-1']);
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([
+      heldReport(ISSUE_A, [5]),
+      { issueId: ISSUE_B, unearned: [], broken: [] },
+    ]);
+    joinRows.mockRejectedValue(new Error('names unavailable'));
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+
+    expect(report.warnings.map((w) => w.code)).toContain('RELEASE_CRITERIA_HELD_BACK');
+    expect(report.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+
   it('leaves the uuid standing where the name read came back without that row', async () => {
     ready();
     autoRelease.mockResolvedValue(true);

@@ -1,7 +1,7 @@
 import { unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
-import { blocker, evaluate } from './blocker-kit.js';
+import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type HeldIssueRef,
   heldBackWarningSentence,
@@ -39,16 +39,14 @@ export async function criteriaHold(
   if (!reports) return;
   const owing = reports.filter((r) => r.unearned.length > 0);
   if (owing.length === 0) return;
-  // A row gone between the two reads leaves the uuid standing: this never throws.
-  const shown = await evaluate(
-    'issue-display-ids',
-    async () => await issueDisplayIds(owing.map((r) => r.issueId)),
-    out,
+  // Beside the reason, never in front of it: a failed name read keeps the uuid.
+  const shown = await attempt('issue-display-ids', async () =>
+    issueDisplayIds(owing.map((r) => r.issueId)),
   );
-  if (!shown) return;
+  if (shown.failure) out.push(shown.failure);
   const held: HeldIssueRef[] = owing.map((r) => ({
     issueId: r.issueId,
-    displayId: shown.get(r.issueId) ?? r.issueId,
+    displayId: shown.value?.get(r.issueId) ?? r.issueId,
     criteria: r.unearned.map((c) => c.criterion),
   }));
   if (owing.length === waiting.length) {

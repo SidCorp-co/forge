@@ -110,6 +110,20 @@ function withoutDeclaredClauses(code: ReasonCode, message: string): string {
   return rest;
 }
 
+/** The reasons this message describes an act towards without declaring it. */
+function trespassingIn(code: ReasonCode, message: string): string[] {
+  const acts = Object.entries(REMEDY_COST).flatMap(([owner, costs]) =>
+    costs.map((cost) => ({ owner, cost })),
+  );
+  const rest = withoutDeclaredClauses(code, message).toLowerCase();
+  return acts
+    .filter(({ owner }) => owner !== code)
+    .filter(({ cost }) => cost.worded.some((w) => rest.includes(w.toLowerCase())))
+    .map(({ cost }) => cost.raises);
+}
+
+const REMEDY_POOL_EMPTY = releaseBlockerSentence('RELEASE_POOL_EMPTY');
+
 describe('REMEDY_COST', () => {
   it('answers for every reason this project prints, and for no other', () => {
     expect(new Set(Object.keys(REMEDY_COST))).toEqual(
@@ -135,17 +149,24 @@ describe('REMEDY_COST', () => {
   });
 
   it('lets no message carry an act declared against a different reason', () => {
-    const acts = Object.entries(REMEDY_COST).flatMap(([owner, costs]) =>
-      costs.map((cost) => ({ owner, cost })),
-    );
     for (const { code, message } of everyMessage()) {
-      const rest = withoutDeclaredClauses(code, message).toLowerCase();
-      const trespassing = acts
-        .filter(({ owner }) => owner !== code)
-        .filter(({ cost }) => cost.worded.every((w) => rest.includes(w.toLowerCase())))
-        .map(({ cost }) => cost.raises);
-      expect({ code, trespassing }).toEqual({ code, trespassing: [] });
+      expect({ code, trespassing: trespassingIn(code, message) }).toEqual({
+        code,
+        trespassing: [],
+      });
     }
+  });
+
+  // The words the shipped defect used and the words a reviewer reached for are
+  // not the same words, which is why `worded` holds stems and not sentences.
+  it.each([
+    'Send `null` for that key to withdraw it again.',
+    'Withdraw the release runner label to go back.',
+    'You may withdraw this at any time.',
+  ])('catches an undeclared withdrawal written as %s', (planted) => {
+    expect(trespassingIn('RELEASE_POOL_EMPTY', `${REMEDY_POOL_EMPTY} ${planted}`)).toEqual([
+      'RELEASE_RUNNER_UNDECLARED',
+    ]);
   });
 });
 
@@ -186,11 +207,13 @@ function binding(id: string, config: Record<string, unknown>, connection: Record
 const REST = { verify: PROBES, rollback: { mode: 'coolify-image' } };
 
 /**
- * Every way `resolveReleaseChannels` can arrive at a label, which is the whole
- * input space of the check that raises `RELEASE_RUNNER_UNDECLARED`: the
- * binding's own key, the connection's where the binding has none, both at once,
- * and two live bindings disagreeing. A branch added there leaves this table
- * short and this case red.
+ * Every way `resolveReleaseChannels` can arrive at a label: the binding's own
+ * key, the connection's where the binding has none, both at once, and two live
+ * bindings disagreeing. Read by hand off `effectiveConfig` and
+ * `releaseRunnerLabelOf` in `channel.ts`, and NOT derived from them — a branch
+ * added there leaves this table short in silence, and re-deriving it belongs to
+ * that change. Priced rather than guarded: a structural check would have to
+ * enumerate a resolver's branches from its source, which nothing here does.
  */
 const LABEL_BRANCHES = [
   {
@@ -232,6 +255,9 @@ describe('the act RELEASE_RUNNER_PREFERENCE_UNMET names', () => {
   });
 
   for (const { branch, declared } of LABEL_BRANCHES) {
+    // The act is worded to cover the binding AND the connection behind it, so
+    // that is what is taken here. Withdrawing from one of the two is the case
+    // below, and it is why the act names both.
     it(`raises RELEASE_RUNNER_UNDECLARED and nothing else new where ${branch}`, async () => {
       const before = await codesFor(declared);
       const withdrawn = declared.map((d) => binding(d.binding.id, { ...REST }, {}));
@@ -242,4 +268,20 @@ describe('the act RELEASE_RUNNER_PREFERENCE_UNMET names', () => {
       expect(after.filter((c) => !before.includes(c))).toEqual(['RELEASE_RUNNER_UNDECLARED']);
     });
   }
+
+  // Sending `releaseRunnerLabel: null` to the integrations PATCH drops the key
+  // from the BINDING, and `effectiveConfig` falls back to the connection's. A
+  // half-withdrawal therefore raises nothing and clears nothing, which is why
+  // the act names both places rather than the one route.
+  it('changes nothing where only the binding is withdrawn and the connection still declares one', async () => {
+    const declared = [
+      binding('b-1', { ...REST, releaseRunnerLabel: 'release' }, { releaseRunnerLabel: 'other' }),
+    ];
+    const before = await codesFor(declared);
+
+    const after = await codesFor([binding('b-1', { ...REST }, { releaseRunnerLabel: 'other' })]);
+
+    expect(after).not.toContain('RELEASE_RUNNER_UNDECLARED');
+    expect(after).toEqual(before);
+  });
 });

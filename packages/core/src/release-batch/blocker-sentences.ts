@@ -141,21 +141,21 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
  * is not an act to put in a remedy at all (ISS-1127).
  */
 export interface RemedyAct {
-  /** The act, worded so `remedyCostClause` reads as one sentence with it. */
+  /** Worded so `remedyCostClause` reads as one sentence with it. */
   act: string;
-  /** Every phrase naming this act however written, so an undeclared copy is found. */
+  /** Stems, ANY one naming this act; a false positive is the cheaper error. */
   worded: readonly string[];
   raises: ReleaseReasonCode;
 }
 
 const WITHDRAW_RUNNER_LABEL: RemedyAct = {
-  act: 'Withdrawing the label instead, by sending `releaseRunnerLabel` as `null`,',
-  worded: ['withdraw', '`null`'],
+  // Both places: a binding-only withdrawal leaves the connection's standing.
+  act: 'Withdrawing the label instead, by sending `releaseRunnerLabel` as `null` on every live deploy binding and on the connection behind it,',
+  worded: ['withdraw', 'withdrawing'],
   raises: 'RELEASE_RUNNER_UNDECLARED',
 };
 
-/** Which acts each reason's message names that raise another; over both unions,
- *  so a code added later cannot skip the question. */
+/** Over both unions, so a code added later cannot skip the question. */
 export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   NO_RELEASE_GATE: [],
   RELEASE_TARGET_UNDECLARED: [],
