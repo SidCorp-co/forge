@@ -129,6 +129,15 @@ describe('RELEASE_ROSTER_EMPTY', () => {
   it('reads as one issue rather than 1 issues', () => {
     expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 1 })).toContain('1 issue ');
   });
+
+  it('names the act that moves an issue there, not only the status it must reach', () => {
+    for (const details of [{ nearGate: 11 }, { nearGate: 0 }]) {
+      const message = releaseBlockerSentence('RELEASE_ROSTER_EMPTY', details);
+
+      expect(message).toContain('verification');
+      expect(message).not.toContain('is an act of its own');
+    }
+  });
 });
 
 describe('the criteria hold', () => {

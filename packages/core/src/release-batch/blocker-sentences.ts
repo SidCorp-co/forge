@@ -218,12 +218,17 @@ function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
   return `${remedy} ${each}.`;
 }
 
+const NEAR_GATE_ACT =
+  "Nothing but the issue's own record moves it: write the verification naming where the " +
+  'change now runs, at which commit, and on what evidence, plus the release note where one ' +
+  'is owed. Its status control carries the same move.';
+
 function nearGateSentence(nearGate: number): string {
   if (nearGate === 0) {
-    return 'Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is at `testing` or at `tested`. An issue reaches the gate by moving to `awaiting_release` from one of those.';
+    return `Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is at \`testing\` or at \`tested\`. An issue reaches the gate at \`awaiting_release\`. ${NEAR_GATE_ACT}`;
   }
   const issues = `${nearGate} issue${nearGate === 1 ? '' : 's'}`;
-  return `Nothing is waiting at the release gate, so there is no release to cut. ${issues} on this project stand one move short of it, at \`testing\` or at \`tested\`: a release carries an issue only once its status is \`awaiting_release\`, and moving it there is an act of its own.`;
+  return `Nothing is waiting at the release gate, so there is no release to cut. ${issues} on this project stand one move short of it, at \`testing\` or at \`tested\`: a release carries an issue only once its status is \`awaiting_release\`. ${NEAR_GATE_ACT}`;
 }
 
 /**
