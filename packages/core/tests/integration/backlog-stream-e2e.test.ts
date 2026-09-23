@@ -264,12 +264,22 @@ describe('the ordering endpoint', () => {
     'waitingKind',
   ];
 
-  it('carries the fields the contract lists and no other, paging state included', async () => {
+  it('carries the fields the contract lists and no other, in both body modes', async () => {
     for (let seq = 1; seq <= 3; seq++) await seedIssue(seq);
-    const { frames } = await readStream(`/api/projects/${projectId}/backlog/ordering`);
+    const without = await readStream(`/api/projects/${projectId}/backlog/ordering`);
+    const withBody = await readStream(`/api/projects/${projectId}/backlog/ordering?body=true`);
 
-    for (const item of itemsOf(frames)) {
+    for (const item of itemsOf(without.frames)) {
       expect(Object.keys(item).sort()).toEqual(ORDERING_ITEM_KEYS);
+    }
+    const withBodyKeys = [
+      ...ORDERING_ITEM_KEYS,
+      'acceptanceCriteria',
+      'description',
+      'plan',
+    ].sort();
+    for (const item of itemsOf(withBody.frames)) {
+      expect(Object.keys(item).sort()).toEqual(withBodyKeys);
     }
   });
 
