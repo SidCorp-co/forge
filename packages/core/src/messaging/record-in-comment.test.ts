@@ -4,18 +4,24 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { verdictEvidenceRefusals } from './evidence-citation.js';
 import { parseForgeRecord } from './forge-record.js';
 import {
   destinationFor,
   ISSUE_ASSERTION_ROUTE,
   RECORD_GUIDE_SLUG,
   RECORD_RULE_IDS,
+  recordFenceRefusal,
   recordInCommentRefusal,
   recordInCommentWarning,
   recordRefusals,
 } from './record-screen.js';
+import { verdictIdentityRefusals } from './verdict-identity.js';
 
 const FENCE = '```';
+
+const verdictBodyOf = (lines: string[]): string =>
+  [`${FENCE}forge-record`, ...lines, FENCE, '', '`forge-record: verdict · contract 1`'].join('\n');
 
 const bodyOf = (kind: string | null): string =>
   [
@@ -95,22 +101,22 @@ describe('record-in-comment', () => {
 /**
  * The identity rule reaching the door `screenAgentComment` calls, rather than standing beside it.
  */
-describe('recordRefusals carries the verdict identity rule', () => {
+describe('recordRefusals carries the verdict identity and evidence rules', () => {
   const verdictBody = (lines: string[]): string =>
     [`${FENCE}forge-record`, ...lines, FENCE, '', '`forge-record: verdict · contract 1`'].join(
       '\n',
     );
 
-  it('returns the identity refusal for a verdict naming nothing it was judged against', async () => {
+  it('returns both refusals for a verdict naming nothing and citing nothing', async () => {
     const refusals = await recordRefusals(
       'proj-1',
       parseForgeRecord(verdictBody(['criterion: 13', 'verdict: pass'])),
       undefined,
     );
-    expect(refusals.map((r) => r.rule)).toEqual(['verdict-identity']);
+    expect(refusals.map((r) => r.rule)).toEqual(['verdict-identity', 'verdict-evidence']);
   });
 
-  it('returns nothing for a verdict naming a runtime in full', async () => {
+  it('returns the evidence refusal for a verdict citing a path on the writing machine', async () => {
     const refusals = await recordRefusals(
       'proj-1',
       parseForgeRecord(
@@ -118,6 +124,24 @@ describe('recordRefusals carries the verdict identity rule', () => {
           'criterion: 13',
           'verdict: pass',
           'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
+          'evidence: /tmp/claude-1000/scratchpad/c17-cleared.png',
+        ]),
+      ),
+      undefined,
+    );
+    expect(refusals.map((r) => r.rule)).toEqual(['verdict-evidence']);
+    expect(refusals[0]?.why).toContain('/tmp/claude-1000/scratchpad/c17-cleared.png');
+  });
+
+  it('returns nothing for a verdict naming a runtime in full and citing an attachment', async () => {
+    const refusals = await recordRefusals(
+      'proj-1',
+      parseForgeRecord(
+        verdictBody([
+          'criterion: 13',
+          'verdict: pass',
+          'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
+          'evidence: iss-1198-judge-log.txt',
         ]),
       ),
       undefined,
@@ -135,5 +159,38 @@ describe('recordRefusals carries the verdict identity rule', () => {
       '`forge-record: finding · contract 1`',
     ].join('\n');
     expect(await recordRefusals('proj-1', parseForgeRecord(other), undefined)).toEqual([]);
+  });
+});
+
+describe('every example a record refusal hands back', () => {
+  /**
+   * An example is what a refused caller copies, so one rule's example being another rule's
+   * refusal sends them straight back into the door they just met.
+   */
+  const examples = (): string[] => {
+    const out: string[] = [];
+    const fromFence = recordFenceRefusal({ quote: '```forge-record', why: 'x' })?.example;
+    if (fromFence) out.push(fromFence);
+    for (const refusal of verdictIdentityRefusals(
+      parseForgeRecord(verdictBodyOf(['criterion: 13', 'verdict: pass'])),
+    )) {
+      out.push(refusal.example);
+    }
+    for (const refusal of verdictEvidenceRefusals(
+      parseForgeRecord(verdictBodyOf(['criterion: 13', 'verdict: pass'])),
+    )) {
+      out.push(refusal.example);
+    }
+    return out;
+  };
+
+  it('passes every rule this module owns', async () => {
+    const all = examples();
+    expect(all.length).toBeGreaterThan(2);
+    for (const example of all) {
+      const record = parseForgeRecord(example);
+      expect(record).not.toBeNull();
+      expect(await recordRefusals('proj-1', record, undefined)).toEqual([]);
+    }
   });
 });

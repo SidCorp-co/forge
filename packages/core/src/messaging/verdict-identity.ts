@@ -14,6 +14,9 @@ import type { ForgeRecord } from './forge-record.js';
 export const RUNTIME_FIELD = 'runtime';
 export const SOURCE_FIELD = 'commit';
 
+/** The field a criterion block cites what its verdict was taken from in. */
+export const EVIDENCE_FIELD = 'evidence';
+
 /** Seven is the shortest abbreviation git mints; forty is a whole object id. */
 export const SHORTEST_ABBREVIATION = 7;
 export const SHORTEST_WHOLE_IDENTITY = 40;
@@ -30,6 +33,7 @@ const EXAMPLE = [
   'criterion: 13',
   'verdict: pass',
   'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
+  'evidence: iss-1198-judge-log.txt',
   '```',
 ].join('\n');
 
@@ -75,6 +79,8 @@ export interface CriterionBlock {
   readonly verdict: string | null;
   readonly runtime: string | null;
   readonly source: string | null;
+  /** Everything this block cites, in the order written. An empty value cites nothing. */
+  readonly cited: readonly string[];
 }
 
 interface OpenBlock {
@@ -82,6 +88,7 @@ interface OpenBlock {
   verdict: string | null;
   runtime: string | null;
   source: string | null;
+  cited: string[];
 }
 
 /**
@@ -104,7 +111,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
       close();
       const n = Number.parseInt(value, 10);
       if (Number.isFinite(n)) {
-        block = { criterion: n, verdict: null, runtime: null, source: null };
+        block = { criterion: n, verdict: null, runtime: null, source: null, cited: [] };
       }
       continue;
     }
@@ -112,6 +119,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
     if (field.key === 'verdict' && block.verdict === null) block.verdict = value;
     else if (field.key === RUNTIME_FIELD && block.runtime === null) block.runtime = value;
     else if (field.key === SOURCE_FIELD && block.source === null) block.source = value;
+    else if (field.key === EVIDENCE_FIELD && value !== '') block.cited.push(value);
   }
   close();
   return out;

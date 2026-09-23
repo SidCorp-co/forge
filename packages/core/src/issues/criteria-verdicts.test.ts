@@ -12,9 +12,15 @@ interface IssueRow {
   mergedCommitSha?: string | null;
 }
 let issueRows: IssueRow[] = [];
-const whereMock = vi.fn(async () => issueRows);
-const fromMock = vi.fn(() => ({ where: whereMock }));
-const selectMock = vi.fn((_arg: unknown) => ({ from: fromMock }));
+/** The names the tracker holds attachments under, for the issue under test. */
+let heldNames: string[] = [];
+/** The issue read selects `id`; the two attachment reads select `name`. */
+const selectMock = vi.fn((arg: unknown) => {
+  const columns = (arg ?? {}) as Record<string, unknown>;
+  const rows = async () => ('id' in columns ? issueRows : heldNames.map((name) => ({ name })));
+  const where = vi.fn(rows);
+  return { from: vi.fn(() => ({ where, innerJoin: vi.fn(() => ({ where })) })) };
+});
 vi.mock('../db/client.js', () => ({ db: { select: (arg: unknown) => selectMock(arg) } }));
 
 const {
@@ -41,6 +47,7 @@ beforeEach(() => {
   listIssueCommentsMock.mockReset();
   listIssueCommentsMock.mockResolvedValue([]);
   issueRows = [];
+  heldNames = ['judge-evidence.txt'];
 });
 
 describe('acceptanceCriteriaNumbers', () => {
@@ -92,6 +99,9 @@ function verdictComment(blocks: string[]): string {
   ].join('\n');
 }
 
+/** What every block `verdictBlock` writes cites, which is one attachment name. */
+const CITED = ['judge-evidence.txt'];
+
 describe('verdictPairsIn', () => {
   it('reads every criterion, verdict and identity out of one fence, ISS-1114-shaped', () => {
     const body = verdictComment([
@@ -99,8 +109,8 @@ describe('verdictPairsIn', () => {
       verdictBlock(13, 'The daemon log carries the three-way verdict.', 'skipped'),
     ]);
     expect(verdictPairsIn(body)).toEqual([
-      { criterion: 12, verdict: 'pass', at: { kind: 'runtime', value: SERVING } },
-      { criterion: 13, verdict: 'skipped', at: { kind: 'runtime', value: SERVING } },
+      { criterion: 12, verdict: 'pass', at: { kind: 'runtime', value: SERVING }, cited: CITED },
+      { criterion: 13, verdict: 'skipped', at: { kind: 'runtime', value: SERVING }, cited: CITED },
     ]);
   });
 
@@ -109,13 +119,15 @@ describe('verdictPairsIn', () => {
       verdictBlock(1, 'a', 'pass', { runtime: null, commit: 'dce6f354c' }),
     ]);
     expect(verdictPairsIn(body)).toEqual([
-      { criterion: 1, verdict: 'pass', at: { kind: 'source', value: 'dce6f354c' } },
+      { criterion: 1, verdict: 'pass', at: { kind: 'source', value: 'dce6f354c' }, cited: CITED },
     ]);
   });
 
   it('names no identity where the block carries neither field', () => {
     const body = verdictComment([verdictBlock(1, 'a', 'pass', { runtime: null })]);
-    expect(verdictPairsIn(body)).toEqual([{ criterion: 1, verdict: 'pass', at: null }]);
+    expect(verdictPairsIn(body)).toEqual([
+      { criterion: 1, verdict: 'pass', at: null, cited: CITED },
+    ]);
   });
 
   it('prefers the runtime where a block carries both', () => {
@@ -129,8 +141,8 @@ describe('verdictPairsIn', () => {
       ['criterion: 2 — b', 'verdict: pass', `runtime: ${SERVING}`].join('\n'),
     ]);
     expect(verdictPairsIn(body)).toEqual([
-      { criterion: 1, verdict: 'pass', at: null },
-      { criterion: 2, verdict: 'pass', at: { kind: 'runtime', value: SERVING } },
+      { criterion: 1, verdict: 'pass', at: null, cited: [] },
+      { criterion: 2, verdict: 'pass', at: { kind: 'runtime', value: SERVING }, cited: [] },
     ]);
   });
 
@@ -153,7 +165,7 @@ describe('verdictPairsIn', () => {
       '```',
     ].join('\n');
     expect(verdictPairsIn(body)).toEqual([
-      { criterion: 13, verdict: 'pass', at: { kind: 'runtime', value: SERVING } },
+      { criterion: 13, verdict: 'pass', at: { kind: 'runtime', value: SERVING }, cited: CITED },
     ]);
   });
 
@@ -285,7 +297,7 @@ describe('unearnedCriteriaReports', () => {
   it('reports an issue with no numbered criteria as owing nothing', async () => {
     issueRows = [deployed('iss-no-criteria', 'prose with no numbered line')];
     expect(await unearnedCriteriaReports(['iss-no-criteria'])).toEqual([
-      { issueId: 'iss-no-criteria', unearned: [] },
+      { issueId: 'iss-no-criteria', unearned: [], broken: [] },
     ]);
   });
 
@@ -297,5 +309,134 @@ describe('unearnedCriteriaReports', () => {
     const reports = await unearnedCriteriaReports(['iss-a', 'iss-b']);
     expect(reports.filter((r) => r.unearned.length > 0).map((r) => r.issueId)).toEqual(['iss-b']);
     expect(await issuesWithUnearnedCriteria(['iss-a', 'iss-b'])).toEqual(['iss-b']);
+  });
+});
+
+describe('what a verdict cites, once the evidence is gone', () => {
+  /** The incident: a verdict citing a capture the run wrote, and the capture destroyed. */
+  const judged = (verdict = 'pass') =>
+    listIssueCommentsMock.mockResolvedValueOnce([
+      { body: verdictComment([verdictBlock(1, 'the screen cleared', verdict)]) },
+    ]);
+
+  it('leaves an earned, standing verdict alone while the tracker holds what it cites', async () => {
+    issueRows = [deployed('iss-497', '1. ok')];
+    judged();
+    const [report] = await unearnedCriteriaReports(['iss-497']);
+    expect(report?.unearned).toEqual([]);
+    expect(report?.broken).toEqual([]);
+  });
+
+  it('stops an earned, standing verdict reading as earned once what it cites is gone', async () => {
+    issueRows = [deployed('iss-497', '1. ok')];
+    heldNames = [];
+    judged();
+    const [report] = await unearnedCriteriaReports(['iss-497']);
+    expect(report?.unearned).toEqual([
+      {
+        criterion: 1,
+        verdict: 'pass',
+        standing: 'stands',
+        why: 'its evidence does not resolve: `judge-evidence.txt` names no attachment this issue holds',
+      },
+    ]);
+  });
+
+  it('names the criterion and the citation beside the unearned list', async () => {
+    issueRows = [deployed('iss-497', '1. ok')];
+    heldNames = [];
+    judged();
+    const [report] = await unearnedCriteriaReports(['iss-497']);
+    expect(report?.broken).toEqual([
+      { criterion: 1, unresolved: [{ cited: 'judge-evidence.txt', standing: 'dangling' }] },
+    ]);
+  });
+
+  it('carries the runtime reason and the citation reason where both hold', async () => {
+    const stale = 'ffffffffffffffffffffffffffffffffffffffff';
+    issueRows = [deployed('iss-497', '1. ok')];
+    heldNames = [];
+    listIssueCommentsMock.mockResolvedValueOnce([
+      { body: verdictComment([verdictBlock(1, 'a', 'pass', { runtime: stale })]) },
+    ]);
+    const [report] = await unearnedCriteriaReports(['iss-497']);
+    expect(report?.unearned[0]?.why).toContain(`judged at ${stale}`);
+    expect(report?.unearned[0]?.why).toContain('does not resolve');
+  });
+
+  it('carries the verdict-word reason and the citation reason where both hold', async () => {
+    issueRows = [deployed('iss-497', '1. ok')];
+    heldNames = [];
+    judged('fail');
+    const [report] = await unearnedCriteriaReports(['iss-497']);
+    expect(report?.unearned[0]?.why).toContain('not earned');
+    expect(report?.unearned[0]?.why).toContain('does not resolve');
+  });
+
+  it('reports a criterion whose citation is gone through issuesWithUnearnedCriteria too', async () => {
+    issueRows = [deployed('iss-497', '1. ok')];
+    heldNames = [];
+    judged();
+    expect(await issuesWithUnearnedCriteria(['iss-497'])).toEqual(['iss-497']);
+  });
+
+  it('leaves a citation pointing outside the tracker alone, and says it was not followed', async () => {
+    issueRows = [deployed('iss-653', '1. ok')];
+    heldNames = [];
+    listIssueCommentsMock.mockResolvedValueOnce([
+      {
+        body: verdictComment([
+          [
+            'criterion: 1 — a',
+            'verdict: pass',
+            `runtime: ${SERVING}`,
+            'evidence: https://example.test/run.log',
+            'evidence: packages/core/src/ws/server.test.ts',
+            'evidence: afd83c9a4',
+          ].join('\n'),
+        ]),
+      },
+    ]);
+    const [report] = await unearnedCriteriaReports(['iss-653']);
+    expect(report?.unearned).toEqual([]);
+    expect(report?.broken).toEqual([]);
+  });
+
+  it('reports a citation written as a path on the writing machine as unreachable', async () => {
+    issueRows = [deployed('iss-497', '1. ok')];
+    heldNames = [];
+    listIssueCommentsMock.mockResolvedValueOnce([
+      {
+        body: verdictComment([
+          [
+            'criterion: 1 — a',
+            'verdict: pass',
+            `runtime: ${SERVING}`,
+            'evidence: /tmp/claude-1000/scratchpad/c17-cleared.png',
+          ].join('\n'),
+        ]),
+      },
+    ]);
+    const [report] = await unearnedCriteriaReports(['iss-497']);
+    expect(report?.broken[0]?.unresolved).toEqual([
+      { cited: '/tmp/claude-1000/scratchpad/c17-cleared.png', standing: 'unreachable' },
+    ]);
+    expect(report?.unearned[0]?.why).toContain('the tracker never held');
+  });
+
+  it('reports every criterion whose citation is gone, not only the first', async () => {
+    issueRows = [deployed('iss-497', '1. ok\n2. ok\n3. ok')];
+    heldNames = [];
+    listIssueCommentsMock.mockResolvedValueOnce([
+      {
+        body: verdictComment([
+          verdictBlock(1, 'a', 'pass'),
+          verdictBlock(2, 'b', 'pass'),
+          verdictBlock(3, 'c', 'pass'),
+        ]),
+      },
+    ]);
+    const [report] = await unearnedCriteriaReports(['iss-497']);
+    expect(report?.broken.map((b) => b.criterion)).toEqual([1, 2, 3]);
   });
 });

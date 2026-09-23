@@ -33,6 +33,15 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('reads as unanchored');
   });
 
+  it('says what a verdict cites, and what each standing of a citation reads as', () => {
+    expect(prose).toContain('the tracker holds an attachment under that name');
+    expect(prose).toContain('the tracker holds nothing under it');
+    expect(prose).toContain('a path on the machine that wrote it');
+    expect(prose).toContain('reported as not followed rather than read as resolved');
+    expect(prose).toContain('refused at the write door under `verdict-evidence`');
+    expect(prose).toContain('has not been attached');
+  });
+
   it('names a store for every destination the rule routes to', () => {
     for (const route of new Set(RECORD_DESTINATIONS.values())) {
       expect(body).toContain(route);

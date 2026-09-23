@@ -3087,6 +3087,10 @@
   sources and nothing else, which the runtime refuses to load. It now compiles that module and the
   production install carries the compiled copy.
 
+- **A verdict now says whether the file it cites is still there.** Evidence that no longer resolves
+  is named, criterion by criterion, and the criterion stops reading as earned. Citing a path on the
+  judging machine is refused outright.
+
 - **Issues closed before Forge recorded what shipped can be edited again, and the API starts.**
   The rule that `closed` means shipped was written about the row, not the move into it, so it
   locked older closes.

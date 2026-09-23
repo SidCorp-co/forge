@@ -121,8 +121,8 @@ describe('criterionBlocksIn', () => {
         ),
       ),
     ).toEqual([
-      { criterion: 1, verdict: 'pass', runtime: null, source: null },
-      { criterion: 2, verdict: 'fail', runtime: WHOLE, source: null },
+      { criterion: 1, verdict: 'pass', runtime: null, source: null, cited: [] },
+      { criterion: 2, verdict: 'fail', runtime: WHOLE, source: null, cited: [] },
     ]);
   });
 
