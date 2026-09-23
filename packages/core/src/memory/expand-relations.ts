@@ -5,12 +5,12 @@
 
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, memories, projects } from '../db/schema.js';
+import { memories } from '../db/schema.js';
 import {
   type IssueRelationDigest,
   loadIssueRelationsForIssues,
 } from '../issues/dependency-read.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
+import { issueDisplayIds } from '../issues/display-ids.js';
 import { deriveMemoryStaleness, type MemoryHit, type MemoryVia } from './search.js';
 
 export const EXPAND_SEED_LIMIT = 5;
@@ -23,17 +23,6 @@ export interface ExpandRelationsInput {
 }
 
 type Neighbour = { issueId: string; via: MemoryVia };
-
-/** One read for every seed's `ISS-<n>`, never one per seed. */
-async function displayIds(issueIds: string[]): Promise<Map<string, string>> {
-  if (issueIds.length === 0) return new Map();
-  const rows = await db
-    .select({ id: issues.id, issSeq: issues.issSeq, issuePrefix: projects.issuePrefix })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(inArray(issues.id, issueIds));
-  return new Map(rows.map((r) => [r.id, formatIssueRef(r.issuePrefix, r.issSeq)]));
-}
 
 function isExpandable(kind: string): kind is MemoryVia['relation'] {
   return (EXPAND_RELATION_KINDS as ReadonlyArray<string>).includes(kind);
@@ -70,7 +59,7 @@ export async function expandIssueRelations(input: ExpandRelationsInput): Promise
 
   const seedRefs = seeds.map((s) => s.sourceRef);
   const [labels, relations] = await Promise.all([
-    displayIds(seedRefs),
+    issueDisplayIds(seedRefs),
     loadIssueRelationsForIssues(seedRefs, input.projectId),
   ]);
   const perSeed = seeds.map((seed) =>

@@ -163,6 +163,20 @@ async function seedIssue(w: World, note: unknown = NOTE): Promise<string> {
   return id;
 }
 
+/**
+ * What the issue list shows this issue as, read back from the same two tables
+ * the check reads. The uuid the rows are keyed by appears on no list, no header
+ * and no url a reader would recognise (ISS-1127).
+ */
+async function shownAs(issueId: string): Promise<string> {
+  const rows = await harness.db.execute<{ prefix: string | null; seq: number }>(sql`
+    SELECT p.issue_prefix AS prefix, i.iss_seq AS seq
+      FROM issues i JOIN projects p ON p.id = i.project_id
+     WHERE i.id = ${issueId}
+  `);
+  return `${rows[0]?.prefix ?? 'ISS'}-${Number(rows[0]?.seq)}`;
+}
+
 /** One issue at a status one move short of the gate, which nothing claims. */
 async function seedNearGate(w: World, status: 'testing' | 'tested'): Promise<string> {
   const id = randomUUID();
@@ -189,7 +203,12 @@ async function readiness(w: World) {
     status: res.status,
     body: (await res.json()) as {
       gaps: string[];
-      blockers: Array<{ code: string; message: string; evaluated: boolean }>;
+      blockers: Array<{
+        code: string;
+        message: string;
+        evaluated: boolean;
+        details?: Record<string, unknown>;
+      }>;
       warnings: Array<{ code: string; message: string }>;
     },
   };
@@ -325,6 +344,55 @@ describe('release-readiness and the create door answer the same question', () =>
     expect(answer.body.blockers).toEqual([]);
     expect(created.status).toBe(201);
   });
+
+  // The judging run took this warning's own second remedy against the live
+  // project and went from two blockers to three: withdrawing the label raises
+  // RELEASE_RUNNER_UNDECLARED, a 409, whose sentence then named withdrawal
+  // again. Acting on a reason made the release harder to start, which is the
+  // compounding sequence ISS-1127 was filed about, inside its own answer.
+  it('does not offer withdrawing the label without saying it raises a blocker', async () => {
+    const w = await seed();
+    const device = await createTestDevice(harness.db, w.userId, { status: 'online' });
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device.id}, 'unlabelled',
+              'online', now(), '[]'::jsonb)
+    `);
+    await seedIssue(w);
+
+    const answer = await readiness(w);
+    const warned = answer.body.warnings.find((x) => x.code === 'RELEASE_RUNNER_PREFERENCE_UNMET');
+
+    expect(warned?.message).toContain('Label the box that holds the deploy credential');
+    expect(warned?.message).toContain('RELEASE_RUNNER_UNDECLARED');
+    expect(warned?.message).toContain('does stop a release');
+  });
+
+  it('takes the withdrawal the warning names and answers the reason it warned of', async () => {
+    const w = await seed();
+    const device = await createTestDevice(harness.db, w.userId, { status: 'online' });
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device.id}, 'unlabelled',
+              'online', now(), '[]'::jsonb)
+    `);
+    await seedIssue(w);
+    await harness.db.execute(sql`
+      UPDATE integration_bindings
+         SET config = config - 'releaseRunnerLabel'
+       WHERE project_id = ${w.projectId}
+    `);
+
+    const answer = await readiness(w);
+    const raised = answer.body.blockers.find((b) => b.code === 'RELEASE_RUNNER_UNDECLARED');
+
+    expect(raised).toBeDefined();
+    expect(answer.body.warnings.map((x) => x.code)).not.toContain(
+      'RELEASE_RUNNER_PREFERENCE_UNMET',
+    );
+    expect(raised?.message.toLowerCase()).not.toContain('withdraw');
+    expect(raised?.message).toContain('does not restrict the pool');
+  });
 });
 
 describe('a reason names the state it was read from and the act that clears it', () => {
@@ -435,8 +503,11 @@ describe('the reason the unattended sweep will not carry an issue', () => {
     const held = answer.body.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
 
     expect(held).toBeDefined();
-    expect(held?.message).toContain(issue);
-    expect(held?.message).toContain('owes criterion 1, 2');
+    expect(held?.message).toContain(`\`${await shownAs(issue)}\` owes criterion 1, 2`);
+    expect(held?.message).not.toContain(issue);
+    expect(held?.details?.held).toEqual([
+      { issueId: issue, displayId: await shownAs(issue), criteria: [1, 2] },
+    ]);
   });
 
   // A partial exclusion is not a stopped release: `sweepProject` returns early
@@ -453,7 +524,8 @@ describe('the reason the unattended sweep will not carry an issue', () => {
 
     expect(answer.body.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
     const warned = answer.body.warnings.find((x) => x.code === 'RELEASE_CRITERIA_HELD_BACK');
-    expect(warned?.message).toContain(held);
+    expect(warned?.message).toContain(`\`${await shownAs(held)}\` owes criterion 1`);
+    expect(warned?.message).not.toContain(held);
   });
 
   it('says nothing about criteria on a project a person releases by hand', async () => {

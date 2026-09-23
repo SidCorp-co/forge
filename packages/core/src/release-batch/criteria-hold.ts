@@ -1,4 +1,5 @@
 import { unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
+import { issueDisplayIds } from '../issues/display-ids.js';
 import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { blocker, evaluate } from './blocker-kit.js';
 import {
@@ -36,11 +37,21 @@ export async function criteriaHold(
     out,
   );
   if (!reports) return;
-  const held: HeldIssueRef[] = reports
-    .filter((r) => r.unearned.length > 0)
-    .map((r) => ({ issueId: r.issueId, criteria: r.unearned.map((c) => c.criterion) }));
-  if (held.length === 0) return;
-  if (held.length === waiting.length) {
+  const owing = reports.filter((r) => r.unearned.length > 0);
+  if (owing.length === 0) return;
+  // A row gone between the two reads leaves the uuid standing: this never throws.
+  const shown = await evaluate(
+    'issue-display-ids',
+    async () => await issueDisplayIds(owing.map((r) => r.issueId)),
+    out,
+  );
+  if (!shown) return;
+  const held: HeldIssueRef[] = owing.map((r) => ({
+    issueId: r.issueId,
+    displayId: shown.get(r.issueId) ?? r.issueId,
+    criteria: r.unearned.map((c) => c.criterion),
+  }));
+  if (owing.length === waiting.length) {
     out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held }, 'roster'));
     return;
   }
