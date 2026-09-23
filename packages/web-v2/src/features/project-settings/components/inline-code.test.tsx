@@ -1,15 +1,10 @@
 // @vitest-environment jsdom
 //
-// A release blocker is only a remedy if the operator can read it. The `<code>`
-// spans this renderer emits shipped with `bg-subtle`, and `--color-subtle` is
-// `--fg-subtle` — a foreground token — so every span filled with ink-500 grey and
-// kept the banner's own tone as its text: 1.21:1 in attention and 1.46:1 in danger
-// against AA's 4.5:1 (ISS-1127). Tailwind generates a `bg-*` utility for every
-// `--color-*` name, so nothing refuses that class; the measurement below does.
-//
-// The colours are resolved from the stylesheets rather than restated here, and the
-// tones from `banner.tsx`'s own map, so a token moved or a tone added is measured
-// and not assumed.
+// `bg-subtle` resolves `--color-subtle`, which is `--fg-subtle` — a foreground
+// token — so a `<code>` filled with ink-500 grey and kept the banner's own tone as
+// its text: 1.21:1 and 1.46:1 against AA's 4.5:1. Tailwind generates a `bg-*`
+// utility for every `--color-*` name, so nothing refuses that class; this does.
+// Colours come from the stylesheets and tones from banner.tsx's map (ISS-1127).
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -60,6 +55,21 @@ function classRule(name: string): { color?: string; background?: string } {
 	return { color: pick("color"), background: pick("background") };
 }
 
+/** Every rule in the two stylesheets whose selector can reach this `<code>`. */
+function codeSelectorRules(sheets: string[] = [TOKENS, GLOBALS]): { selector: string; body: string }[] {
+	const out: { selector: string; body: string }[] = [];
+	for (const sheet of sheets) {
+		for (const m of uncommented(sheet).matchAll(/([^{}@]+)\{([^{}]*)\}/g)) {
+			for (const selector of m[1].split(",").map((s) => s.trim())) {
+				const reaches = selector === "code" || /(?:^|[\s>+~])code$/.test(selector) ||
+					selector.split(/[\s>+~]+/).pop() === ".fg-code";
+				if (reaches) out.push({ selector, body: m[2] });
+			}
+		}
+	}
+	return out;
+}
+
 /** What a class list on an element paints, before anything it inherits. */
 function painted(classList: string): { color?: string; background?: string } {
 	const out: { color?: string; background?: string } = {};
@@ -103,7 +113,7 @@ function bannerTones(): { tone: string; fg: string; bg: string }[] {
 
 /** The class the renderer actually puts on a paired span. */
 function codeClass(): string {
-	const view = render(<div>{inlineCode("send `releaseRunnerLabel` as null")}</div>);
+	const view = render(<p>{inlineCode("send `releaseRunnerLabel` as null")}</p>);
 	const el = view.container.querySelector("code");
 	if (!el) throw new Error("the renderer emitted no <code> element");
 	const cls = el.className;
@@ -131,6 +141,21 @@ describe("a code span inside a release banner is readable", () => {
 		expect(cls.split(/\s+/)).toContain("fg-code");
 		expect(classRule("fg-code").background).toBeTruthy();
 		expect(classRule("fg-code").color).toBeTruthy();
+	});
+
+	// jsdom computes no cascade, so a later rule reaching this span would leave the
+	// measurement green while the screen went dark. Those rules are enumerable, so
+	// they are enumerated (ISS-1127 consult cba47a F1).
+	it("is painted by one rule, so nothing later in the cascade reaches it", () => {
+		const painting = [...codeSelectorRules()].filter(
+			(r) => /(?:^|;)\s*(?:color|background)\s*:/.test(r.body),
+		);
+		expect(painting.map((r) => r.selector)).toEqual([".fg-code"]);
+	});
+
+	it("declares its own colour, so the banner's inline tone cannot reach it", () => {
+		expect(painted(codeClass()).color).toBeTruthy();
+		expect(painted(codeClass()).background).toBeTruthy();
 	});
 
 	it("names no background utility built from a foreground token", () => {
@@ -164,16 +189,23 @@ describe("the measurement can fail", () => {
 		}
 	});
 
+	// Against the tone colours the judging run saw, not whatever banner.tsx declares
+	// today, so a tone restyled later does not fail a historical reproduction
+	// (ISS-1127 consult cba47a F2).
 	it("reproduces the two ratios the judging run measured", () => {
 		const span = painted(SHIPPED);
-		const tones = new Map(bannerTones().map((t) => [t.tone, t]));
-		const at = (tone: string) => {
-			const t = tones.get(tone);
-			if (!t) throw new Error(`banner.tsx no longer carries a ${tone} tone`);
-			return Number(contrast(span.color ?? t.fg, span.background ?? t.bg).toFixed(2));
-		};
-		expect(at("attention")).toBe(1.21);
-		expect(at("danger")).toBe(1.46);
+		const background = span.background ?? "";
+		const at = (judgedFg: string) => Number(contrast(judgedFg, background).toFixed(2));
+		expect(at("#C6790A")).toBe(1.21);
+		expect(at("#B5332A")).toBe(1.46);
+	});
+
+	it("catches a later rule that would repaint the span", () => {
+		const planted = `${GLOBALS}\ncode { color: var(--fg-subtle); }\n`;
+		const painting = codeSelectorRules([TOKENS, planted])
+			.filter((r) => /(?:^|;)\s*(?:color|background)\s*:/.test(r.body))
+			.map((r) => r.selector);
+		expect(painting).toEqual([".fg-code", "code"]);
 	});
 
 	it("computes a ratio it can be checked against by hand", () => {
