@@ -19,32 +19,34 @@ import { PROJECTED_EVENTS } from './projection-events.js';
 
 const SRC_ROOT = join(import.meta.dirname, '..', '..');
 
+/** A template like `${base}${path}`, spelled without a literal interpolation in a string. */
+const tpl = (...parts: string[]) =>
+  ['`', ...parts.map((p) => ['$', '{', p, '}'].join('')), '`'].join('');
+
 /**
- * Files holding a request helper — a `fetch` whose URL is a parameter rather than a literal.
+ * Every request whose URL the checker cannot read a path out of, listed expression by expression.
  *
- * Declared rather than skipped, and declared by COUNT rather than by file. The checker reads a call
- * site by the path it names, so a helper's own `fetch(url, …)` names nothing and would read as an
- * unresolvable call. Exempting the file would then exempt the next one too: a second variable-URL
- * request added to `client.ts` would be a GitHub call nobody prices, and every test here would stay
- * green without naming it. The count is what closes that — a file may hold exactly the transports
- * declared here and no more. Their `path:` properties are still read, so a real call site inside one
- * of them is priced like any other.
+ * Exempting the FILE exempts the next one too, and exempting a COUNT still lets one be swapped for
+ * another — either way a GitHub call nobody prices, with every test here green. Listing the exact
+ * expressions makes an added, removed or substituted request disagree with this list, and the check
+ * says which. Reformatting one fails the check until the list is updated: a loud failure with an
+ * obvious fix, against a hole that would be silent.
  */
-export const REQUEST_HELPERS: Record<string, { transports: number; why: string }> = {
+export const REQUEST_HELPERS: Record<string, { transports: readonly string[]; why: string }> = {
   'client.ts': {
-    transports: 2,
+    transports: [tpl('base', 'path'), tpl('base', 'args.path')],
     why: 'GitHubRepoClient.get and .publish — the transport every repository call goes through',
   },
   'agent-client.ts': {
-    transports: 2,
+    transports: [tpl('base', 'args.path'), tpl('base', 'args.path')],
     why: 'GitHubAgentClient.json and .text — the same, for the agent face',
   },
   'repositories.ts': {
-    transports: 1,
+    transports: ['url'],
     why: 'githubJson — one JSON read shared by the two App-JWT listings',
   },
   'installation-permissions.ts': {
-    transports: 1,
+    transports: ['url'],
     why: 'askGitHub — one App-JWT read shared by the two probes here',
   },
 };
@@ -214,12 +216,10 @@ export function callsInTree(): FoundCall[] {
 }
 
 /**
- * Every request in this file whose URL is not a path the checker can read — because the argument is
- * a variable, or because it is a template of nothing but interpolations.
+ * The two shapes that hide a URL, with the line each sits on so a failure can point at it.
  *
- * The line each one sits on, because the count alone would say a file grew a transport without
- * saying where. Both shapes are counted here and neither is counted twice: the first branch takes
- * only the arguments that are not templates, which is exactly what the second does not see.
+ * Neither is counted twice: the first branch takes only arguments that are not templates, which is
+ * exactly what the second does not see.
  */
 export function unreadableRequests(
   file: string,
@@ -241,7 +241,7 @@ export function unreadableRequests(
   return out.sort((a, b) => a.line - b.line);
 }
 
-/** Whether this file makes any request the checker cannot read a path out of. */
+/** Whether this file holds any of them at all. */
 export function hasRequestHelper(file: string, source: string): boolean {
   return unreadableRequests(file, source).length > 0;
 }

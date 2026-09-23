@@ -306,4 +306,29 @@ describe('the github health probe and the inbound door', () => {
       expect(readFileSync(join(dir, file), 'utf8')).toContain('adapter.healthcheck(');
     }
   });
+  it('reports the webhook fault and the permission fault together, not one per probe', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    globalThis.fetch = serving(
+      { body: { url: 'https://api.example.test/api/webhooks/in/forge-dev', active: false } },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(result?.message).toMatch(/switched off/);
+    expect(result?.message).toContain('`administration: read`');
+  });
+
+  it('still reads the grant when the webhook configuration could not be read at all', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    globalThis.fetch = serving(
+      { status: 500 },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(result?.message).toContain('webhook configuration returned HTTP 500');
+    expect(result?.message).toContain('`administration: read`');
+  });
 });

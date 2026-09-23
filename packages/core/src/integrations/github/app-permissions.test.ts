@@ -39,6 +39,14 @@ import {
   requiredAppPermissions,
 } from './app-permissions.js';
 
+/** `client.ts`'s declared transports, and a file that makes exactly the requests it is given. */
+const CLIENT_TRANSPORTS = REQUEST_HELPERS['client.ts']?.transports ?? [];
+
+function plantedTransports(urls: readonly string[]) {
+  const source = urls.map((u) => `const r = await fetch(${u}, { headers });`).join('\n');
+  return unreadableRequests('client.ts', source);
+}
+
 describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
   const calls = callsInTree();
 
@@ -109,33 +117,34 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
     ).toEqual([]);
   });
 
-  it('declares how many transports each of those files holds, and holds exactly that many', () => {
-    const miscounted = Object.entries(REQUEST_HELPERS)
+  it('holds exactly the transport expressions each of those files declares', () => {
+    const wrong = Object.entries(REQUEST_HELPERS)
       .map(([file, declared]) => {
         if (!sourceFiles().includes(file)) return `${file} — declared, and no longer a source file`;
         const found = unreadableRequests(file, readFileSync(join(GITHUB_DIR, file), 'utf8'));
-        if (found.length === declared.transports) return null;
-        return `${file} — declares ${declared.transports}, holds ${found.length} at line(s) ${found.map((r) => r.line).join(', ')}`;
+        const held = found.map((r) => r.raw).sort();
+        const want = [...declared.transports].sort();
+        if (held.join('\u0000') === want.join('\u0000')) return null;
+        return `${file} — declares [${want.join(', ')}], holds [${held.join(', ')}] at line(s) ${found.map((r) => r.line).join(', ')}`;
       })
       .filter((m): m is string => m !== null);
     expect(
-      miscounted,
-      'a request beyond the declared transports is a GitHub call nobody prices; name its path at the call site, or raise the count and say what the new transport is',
+      wrong,
+      'a request the checker cannot read a path out of is a GitHub call nobody prices; name its path at the call site, or list the expression here and say what the transport is',
     ).toEqual([]);
   });
 
-  it('names a second transport added to a file that already declares one', () => {
-    const declared = REQUEST_HELPERS['client.ts'];
-    const interp = (name: string) => ['$', '{', name, '}'].join('');
-    const planted = [
-      `const res = await fetch(\`${interp('base')}${interp('path')}\`, { headers });`,
-      `const two = await fetch(\`${interp('base')}${interp('args.path')}\`, { headers });`,
-      'const three = await fetch(computedGitHubUrl, { headers });',
-    ].join('\n');
-    const found = unreadableRequests('client.ts', planted);
-    expect(found).toHaveLength(3);
-    expect(found.length).toBeGreaterThan(declared?.transports ?? 0);
-    expect(found.map((r) => r.line)).toEqual([1, 2, 3]);
+  it('names a transport ADDED to a file that already declares its own', () => {
+    const found = plantedTransports([...CLIENT_TRANSPORTS, 'computedGitHubUrl']);
+    expect(found.map((r) => r.raw).sort()).not.toEqual([...CLIENT_TRANSPORTS].sort());
+    expect(found.map((r) => r.raw)).toContain('computedGitHubUrl');
+  });
+
+  it('names a transport SUBSTITUTED for one a file declares, with the count unchanged', () => {
+    const swapped = [CLIENT_TRANSPORTS[0] as string, 'computedGitHubUrl'];
+    const found = plantedTransports(swapped);
+    expect(found).toHaveLength(CLIENT_TRANSPORTS.length);
+    expect(found.map((r) => r.raw).sort()).not.toEqual([...CLIENT_TRANSPORTS].sort());
   });
 
   it('the declaration file makes no GitHub call of its own', () => {

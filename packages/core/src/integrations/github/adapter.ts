@@ -85,6 +85,49 @@ function isServedVerb(name: string): name is (typeof SERVED_VERBS)[number] {
   return (SERVED_VERBS as readonly string[]).includes(name);
 }
 
+/**
+ * Where GitHub is addressed for this App, stored as the ANSWER rather than as a verdict on it.
+ *
+ * ISS-1140: the App can be called OUT to and still be calling nothing IN. What this may decide is
+ * limited on purpose — it rules only on what is true of the whole App, no address, an address
+ * switched off, or a read that failed, because `last_health_status` is the CONNECTION's column and
+ * one connection may serve bindings in several projects. Whether that one address is the one a
+ * given BINDING needs is a per-binding question made at read time against this stored observation.
+ */
+async function observeInboundEndpoint(
+  connectionId: string,
+  args: { appId: string; privateKey: string; repository: string; apiBaseUrl?: string },
+): Promise<{ fault: string | null; url: string | null }> {
+  const hook = await readAppHookConfig({
+    appId: args.appId,
+    privateKey: args.privateKey,
+    ...(args.apiBaseUrl ? { apiBaseUrl: args.apiBaseUrl } : {}),
+  });
+  const observedAt = new Date().toISOString();
+  if (!hook.read) {
+    await updateConnection(connectionId, {
+      inboundEndpointObserved: { url: null, active: null, observedAt, readError: hook.reason },
+    });
+    return { fault: hook.reason, url: null };
+  }
+  await updateConnection(connectionId, {
+    inboundEndpointObserved: { url: hook.url, active: hook.active, observedAt },
+  });
+  if (hook.url === null || hook.url === '') {
+    return {
+      fault: `${args.repository} answers, and this App holds no webhook address at all, so GitHub will never call in. Nothing that depends on a delivery — the pull request projection, the observed merge — can run for any project on this App.`,
+      url: null,
+    };
+  }
+  if (hook.active === false) {
+    return {
+      fault: `${args.repository} answers, and this App's webhook at ${hook.url} is switched off on GitHub's side, so GitHub will never call in. Switch it back on under the App's Settings, Webhook.`,
+      url: hook.url,
+    };
+  }
+  return { fault: null, url: hook.url };
+}
+
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
   inboundSecret: (connection) => githubInboundSecret(connection as IntegrationConnectionRow),
   onBindingCreated: async ({ projectId, role, config }) => ({
@@ -149,43 +192,19 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       if (!res.ok) return finish('error', `GitHub returned HTTP ${res.status}`);
       const body = (await res.json()) as { full_name?: string; default_branch?: string };
 
-      // ISS-1140: the App can be called OUT to and still be calling nothing IN. Ask GitHub where
-      // it is addressed, store the ANSWER rather than a verdict on it, and demote only on what is
-      // true of the whole connection — no address, or an address switched off, or a read that
-      // failed. Whether that one address is the one a given BINDING needs is a per-binding
-      // question: the URL carries a project slug and one App may serve bindings in several
-      // projects, so that comparison is made at read time against this stored observation.
-      const hook = await readAppHookConfig({
+      const inbound = await observeInboundEndpoint(ctx.connectionId, {
         appId,
         privateKey,
+        repository: `${owner}/${repo}`,
         ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
       });
-      const observedAt = new Date().toISOString();
-      if (!hook.read) {
-        await updateConnection(ctx.connectionId, {
-          inboundEndpointObserved: { url: null, active: null, observedAt, readError: hook.reason },
-        });
-        return finish('degraded', hook.reason);
-      }
-      await updateConnection(ctx.connectionId, {
-        inboundEndpointObserved: { url: hook.url, active: hook.active, observedAt },
-      });
-      if (hook.url === null || hook.url === '') {
-        return finish(
-          'degraded',
-          `${owner}/${repo} answers, and this App holds no webhook address at all, so GitHub will never call in. Nothing that depends on a delivery — the pull request projection, the observed merge — can run for any project on this App.`,
-        );
-      }
-      if (hook.active === false) {
-        return finish(
-          'degraded',
-          `${owner}/${repo} answers, and this App's webhook at ${hook.url} is switched off on GitHub's side, so GitHub will never call in. Switch it back on under the App's Settings, Webhook.`,
-        );
-      }
+
       // ISS-1153: every branch above turns on whether GitHub ANSWERS, and none of them on what the
       // installation is allowed to do. An App granted less than Forge's code asks of it passed all
-      // of them and reported `ok` while it could not merge, so the owner met the gap as a 403 in
-      // the middle of a merge. This is the branch that exercises a permission.
+      // of them and reported `ok` while it could not merge. Both faults are collected rather than
+      // returned on the first, because an App with a switched-off webhook AND a missing permission
+      // would otherwise be told about the webhook, and learn about the permission only on the probe
+      // after that — the second round this issue exists to remove.
       const grant = await checkInstallationGrant({
         appId,
         privateKey,
@@ -193,8 +212,11 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
         repository: `${owner}/${repo}`,
         ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
       });
-      if (grant.kind === 'unread') return finish('degraded', grant.reason);
-      if (grant.kind === 'short') return finish('degraded', grant.message);
+      const shortfall =
+        grant.kind === 'unread' ? grant.reason : grant.kind === 'short' ? grant.message : null;
+
+      const faults = [inbound.fault, shortfall].filter((f): f is string => f !== null);
+      if (faults.length > 0) return finish('degraded', faults.join(' '));
 
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
@@ -207,7 +229,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
           repository: body.full_name,
           defaultBranch: body.default_branch,
           installationId,
-          webhookUrl: hook.url,
+          webhookUrl: inbound.url,
         },
       };
     } catch (err) {
