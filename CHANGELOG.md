@@ -3099,6 +3099,10 @@
   ordering stream, and every sixty-fourth in the duplicate sweep, arrived a second time, so the
   count overran the total the stream itself declared.
 
+- **A GitHub App created from Forge's setup link can now merge onto a protected branch.** It was
+  never granted permission to read branch protection. A connection short of any permission now
+  says which, and where to grant it.
+
 - **The API starts again: the production image shipped without a package it imports at runtime.**
   Two services read helpers out of `@forge/contracts/document-patch` as values rather than types,
   but the package was declared a development dependency of the API, so the production install

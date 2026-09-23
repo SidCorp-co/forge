@@ -11,6 +11,8 @@
  * stores the observation for the per-binding comparison `agent-client` makes at read time.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const updateConnectionMock = vi.fn(async (_id: string, _patch: Record<string, unknown>) => null);
@@ -38,6 +40,7 @@ vi.mock('./app-auth.js', async () => {
   return { ...real, installationToken: (...a: unknown[]) => installationTokenMock(...(a as [])) };
 });
 
+const { GITHUB_ENDPOINTS, requiredAppPermissions } = await import('./app-permissions.js');
 const { getAdapter } = await import('../registry.js');
 const { registerAllIntegrations } = await import('../register-all.js');
 registerAllIntegrations();
@@ -51,8 +54,22 @@ const PEM = generateKeyPairSync('rsa', { modulusLength: 2048 })
   .privateKey.export({ type: 'pkcs1', format: 'pem' })
   .toString();
 
-/** The repository answers, and the App's webhook configuration is whatever a case says it is. */
-function serving(hook: { status?: number; body?: unknown; ok?: boolean }) {
+const INSTALLATION_URL = 'https://github.com/organizations/SidCorp-co/settings/installations/42';
+
+/** An installation granted everything the tables require. */
+function fullGrant(): Record<string, string> {
+  return Object.fromEntries(requiredAppPermissions());
+}
+
+/**
+ * The repository answers, the App's webhook configuration is whatever a case says it is, and so is
+ * what the installation is granted — a fixture that answers the repository read alone cannot tell
+ * an App that can merge from one that cannot (ISS-1153).
+ */
+function serving(
+  hook: { status?: number; body?: unknown; ok?: boolean },
+  install: { status?: number; body?: unknown; ok?: boolean } = {},
+) {
   return vi.fn(async (url: string): Promise<Response> => {
     if (url.endsWith('/app/hook/config')) {
       const status = hook.status ?? 200;
@@ -60,6 +77,24 @@ function serving(hook: { status?: number; body?: unknown; ok?: boolean }) {
         ok: hook.ok ?? status < 400,
         status,
         json: async () => hook.body ?? {},
+      } as unknown as Response;
+    }
+    if (/\/app\/installations\/\d+$/.test(url)) {
+      const status = install.status ?? 200;
+      return {
+        ok: install.ok ?? status < 400,
+        status,
+        json: async () => install.body ?? { permissions: fullGrant(), html_url: INSTALLATION_URL },
+      } as unknown as Response;
+    }
+    if (url.endsWith('/app')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          slug: 'forge-dev',
+          owner: { login: 'SidCorp-co', type: 'Organization' },
+        }),
       } as unknown as Response;
     }
     return {
@@ -84,6 +119,18 @@ const ctx = {
 
 // biome-ignore lint/suspicious/noExplicitAny: the adapter context is generic over config/secrets
 const probe = () => getAdapter('github')?.healthcheck(ctx as any);
+
+/**
+ * A matcher for one declared endpoint path, where `:p` is the only thing that varies.
+ *
+ * The literal halves are escaped whole — backslash included — rather than having their dots picked
+ * out, because a table row is only a constant until somebody adds one holding a `+` or a `(`, and
+ * an under-escaped matcher fails by quietly matching NOTHING. This matcher decides whether the
+ * probe touched a costly endpoint, so one that cannot match is a green that means nothing.
+ */
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const endpointMatcher = (path: string): RegExp =>
+  new RegExp(`^${path.split(':p').map(escapeRe).join('[^/]+')}$`);
 
 /** Every `updateConnection` patch this probe wrote, merged in the order they were written. */
 function written(): Record<string, unknown> {
@@ -173,5 +220,148 @@ describe('the github health probe and the inbound door', () => {
 
     await expect(probe()).resolves.toMatchObject({ status: 'error' });
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/app/hook/config'))).toBe(false);
+  });
+  // ISS-1153: a probe that asks only whether GitHub answers cannot tell an App that can merge
+  // from one that cannot. These cases turn on what the installation is allowed to do.
+  const LIVE_HOOK = { url: 'https://api.example.test/api/webhooks/in/forge-dev', active: true };
+
+  it('refuses ok for an installation missing a permission Forge s code needs', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    globalThis.fetch = serving(
+      { body: LIVE_HOOK },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(written()).toMatchObject({ lastHealthStatus: 'degraded' });
+  });
+
+  it('names the permission, the page it is granted on, and the grant the installation must accept', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    globalThis.fetch = serving(
+      { body: LIVE_HOOK },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.message).toContain('`administration: read`');
+    expect(result?.message).toContain('/settings/apps/forge-dev/permissions');
+    expect(result?.message).toContain(INSTALLATION_URL);
+    expect(result?.message).toContain('accept the new grant on the installation');
+  });
+
+  it('refuses ok for an installation holding a permission below the level a call needs', async () => {
+    globalThis.fetch = serving(
+      { body: LIVE_HOOK },
+      { body: { permissions: { ...fullGrant(), contents: 'read' }, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(result?.message).toContain('`contents: write`');
+    expect(result?.message).toContain('holds only at `read`');
+  });
+
+  it('reports a grant it could not read as that, rather than as a missing permission', async () => {
+    globalThis.fetch = serving({ body: LIVE_HOOK }, { status: 500 }) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(result?.message).toContain('HTTP 500');
+    expect(result?.message).not.toContain('administration');
+  });
+
+  // The probe's own `GET /repos/:owner/:repo` is the one repository call it makes, and it needs
+  // `metadata: read`, which GitHub grants every installation and which nothing can decline. So it
+  // can never be the 403 an operator meets. Every OTHER endpoint in the table spends a permission
+  // that can be missing, and the probe must report the shortfall without touching one.
+  it('reports the shortfall without making any call that spends a permission beyond metadata', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    const fetchMock = serving(
+      { body: LIVE_HOOK },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await probe();
+
+    const costly = GITHUB_ENDPOINTS.filter(
+      (e) => e.auth === 'installation' && !(e.permission === 'metadata' && e.level === 'read'),
+    ).map((e) => endpointMatcher(e.path));
+    const asked = fetchMock.mock.calls.map(
+      (c) =>
+        String(c[0])
+          .replace(/^https?:\/\/[^/]+/, '')
+          .split('?')[0],
+    );
+    // The matcher must be able to say yes, or the assertion below is a green that means nothing.
+    expect(costly.some((re) => re.test('/repos/SidCorp-co/forge/branches/main/protection'))).toBe(
+      true,
+    );
+    expect(costly.some((re) => re.test('/repos/SidCorp-co/forge'))).toBe(false);
+
+    const spent = asked.filter((p) => costly.some((re) => re.test(p ?? '')));
+    expect(spent, 'the probe reached an endpoint whose permission may be the missing one').toEqual(
+      [],
+    );
+    expect(asked).toContain('/repos/SidCorp-co/forge');
+  });
+
+  it('still reports ok for an installation granted everything', async () => {
+    globalThis.fetch = serving({ body: LIVE_HOOK }) as unknown as typeof fetch;
+    await expect(probe()).resolves.toMatchObject({ status: 'ok' });
+  });
+  it('is the probe the health sweep and the integrations route both run', () => {
+    const dir = join(import.meta.dirname, '..');
+    for (const file of ['health-sweep.ts', 'routes.ts']) {
+      expect(readFileSync(join(dir, file), 'utf8')).toContain('adapter.healthcheck(');
+    }
+  });
+  it('reports the webhook fault and the permission fault together, not one per probe', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    globalThis.fetch = serving(
+      { body: { url: 'https://api.example.test/api/webhooks/in/forge-dev', active: false } },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(result?.message).toMatch(/switched off/);
+    expect(result?.message).toContain('`administration: read`');
+  });
+
+  it('still reads the grant when the webhook configuration could not be read at all', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    globalThis.fetch = serving(
+      { status: 500 },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(result?.message).toContain('webhook configuration returned HTTP 500');
+    expect(result?.message).toContain('`administration: read`');
+  });
+});
+
+describe('the endpoint matcher the probe assertion is built on (ISS-1153)', () => {
+  it('matches a declared path whose literal half already carries a regex metacharacter', () => {
+    const re = endpointMatcher('/repos/:p/:p/compare/:p...:p');
+    expect(re.test('/repos/SidCorp-co/forge/compare/main...head')).toBe(true);
+    expect(re.test('/repos/SidCorp-co/forge/compare/mainXXXhead')).toBe(false);
+  });
+
+  it('treats a backslash and a quantifier in a path as text, not as pattern', () => {
+    expect(endpointMatcher('/repos/:p/a+b').test('/repos/one/a+b')).toBe(true);
+    expect(endpointMatcher('/repos/:p/a+b').test('/repos/one/aaab')).toBe(false);
+    expect(endpointMatcher('/repos/:p/a\\d').test('/repos/one/a\\d')).toBe(true);
+    expect(endpointMatcher('/repos/:p/a\\d').test('/repos/one/a7')).toBe(false);
+  });
+
+  it('is anchored, so a longer path does not match a shorter declaration', () => {
+    const re = endpointMatcher('/repos/:p/:p');
+    expect(re.test('/repos/SidCorp-co/forge')).toBe(true);
+    expect(re.test('/repos/SidCorp-co/forge/branches/main/protection')).toBe(false);
   });
 });

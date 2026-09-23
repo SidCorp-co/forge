@@ -201,6 +201,18 @@ Four contracts:
    `needs` is named in its result loop. `ci-passed` runs `if: always()`, so a job it needs but never
    asserts completes, is ignored, and cannot block a merge — `archmap` sat there while this repo
    called it the relations gate.
+
+   **What parity cannot reach: a check with no step in this tree.** CodeQL runs from GitHub's
+   default setup, so there is no workflow file for the parser to read and nothing here can run it.
+   Measured on PR #586 (ISS-1153): every job in `ci.yml` passed, `ci-passed` was green, and the PR
+   was still held — by a high-severity CodeQL alert on a test helper that `pnpm verify` had no way
+   to mention. It is named now in the `CI runs these too — verify does NOT` block, as a line rather
+   than a command, since it is not runnable locally. What would stop the merge is requiring CodeQL
+   at the merge gate in its own right — a branch-protection setting adding that check to the
+   repository's required status checks, which no diff in this repository can do. It would NOT make
+   `ci-passed` reflect CodeQL: `ci-passed` reads only its own `needs`, and a default-setup job is
+   not in this workflow's graph. The two would sit side by side, and a green aggregate would still
+   not mean the merge is clear.
 2. **Fail-closed** — each checker must emit a file count that this script can read, and a count of
    zero exits `2`, not `0`. A checker whose scope matched nothing reports "clean"; forwarding that as
    a pass is the failure mode this guards.
