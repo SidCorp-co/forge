@@ -40,7 +40,7 @@ vi.mock('./app-auth.js', async () => {
   return { ...real, installationToken: (...a: unknown[]) => installationTokenMock(...(a as [])) };
 });
 
-const { requiredAppPermissions } = await import('./app-permissions.js');
+const { GITHUB_ENDPOINTS, requiredAppPermissions } = await import('./app-permissions.js');
 const { getAdapter } = await import('../registry.js');
 const { registerAllIntegrations } = await import('../register-all.js');
 registerAllIntegrations();
@@ -260,7 +260,11 @@ describe('the github health probe and the inbound door', () => {
     expect(result?.message).not.toContain('administration');
   });
 
-  it('reports the shortfall without asking GitHub to merge anything', async () => {
+  // The probe's own `GET /repos/:owner/:repo` is the one repository call it makes, and it needs
+  // `metadata: read`, which GitHub grants every installation and which nothing can decline. So it
+  // can never be the 403 an operator meets. Every OTHER endpoint in the table spends a permission
+  // that can be missing, and the probe must report the shortfall without touching one.
+  it('reports the shortfall without making any call that spends a permission beyond metadata', async () => {
     const { administration: _gone, ...without } = fullGrant();
     const fetchMock = serving(
       { body: LIVE_HOOK },
@@ -269,8 +273,27 @@ describe('the github health probe and the inbound door', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     await probe();
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/merge'))).toBe(false);
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/protection'))).toBe(false);
+
+    const costly = GITHUB_ENDPOINTS.filter(
+      (e) => e.auth === 'installation' && !(e.permission === 'metadata' && e.level === 'read'),
+    ).map((e) => new RegExp(`^${e.path.replace(/:p/g, '[^/]+').replace(/\./g, '\\.')}$`));
+    const asked = fetchMock.mock.calls.map(
+      (c) =>
+        String(c[0])
+          .replace(/^https?:\/\/[^/]+/, '')
+          .split('?')[0],
+    );
+    // The matcher must be able to say yes, or the assertion below is a green that means nothing.
+    expect(costly.some((re) => re.test('/repos/SidCorp-co/forge/branches/main/protection'))).toBe(
+      true,
+    );
+    expect(costly.some((re) => re.test('/repos/SidCorp-co/forge'))).toBe(false);
+
+    const spent = asked.filter((p) => costly.some((re) => re.test(p ?? '')));
+    expect(spent, 'the probe reached an endpoint whose permission may be the missing one').toEqual(
+      [],
+    );
+    expect(asked).toContain('/repos/SidCorp-co/forge');
   });
 
   it('still reports ok for an installation granted everything', async () => {

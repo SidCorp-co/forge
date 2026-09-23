@@ -22,17 +22,31 @@ const SRC_ROOT = join(import.meta.dirname, '..', '..');
 /**
  * Files holding a request helper — a `fetch` whose URL is a parameter rather than a literal.
  *
- * Declared rather than skipped. The checker reads a call site by the path it names, so a helper's
- * own `fetch(url, …)` names nothing and would read as an unresolvable call; and a file that quietly
- * grew one would be a call nobody prices. Both halves are asserted below: a file with such a call
- * and no entry here fails, and an entry with no such call fails. Their `path:` properties are still
- * read, so a real call site inside one of them is priced like any other.
+ * Declared rather than skipped, and declared by COUNT rather than by file. The checker reads a call
+ * site by the path it names, so a helper's own `fetch(url, …)` names nothing and would read as an
+ * unresolvable call. Exempting the file would then exempt the next one too: a second variable-URL
+ * request added to `client.ts` would be a GitHub call nobody prices, and every test here would stay
+ * green without naming it. The count is what closes that — a file may hold exactly the transports
+ * declared here and no more. Their `path:` properties are still read, so a real call site inside one
+ * of them is priced like any other.
  */
-export const REQUEST_HELPERS: Record<string, string> = {
-  'client.ts': 'GitHubRepoClient.get/publish — the transport every repository call goes through',
-  'agent-client.ts': 'GitHubAgentClient.json/text — the same, for the agent face',
-  'repositories.ts': 'githubJson — one JSON read shared by the two App-JWT listings',
-  'installation-permissions.ts': 'askGitHub — one App-JWT read shared by the two probes here',
+export const REQUEST_HELPERS: Record<string, { transports: number; why: string }> = {
+  'client.ts': {
+    transports: 2,
+    why: 'GitHubRepoClient.get and .publish — the transport every repository call goes through',
+  },
+  'agent-client.ts': {
+    transports: 2,
+    why: 'GitHubAgentClient.json and .text — the same, for the agent face',
+  },
+  'repositories.ts': {
+    transports: 1,
+    why: 'githubJson — one JSON read shared by the two App-JWT listings',
+  },
+  'installation-permissions.ts': {
+    transports: 1,
+    why: 'askGitHub — one App-JWT read shared by the two probes here',
+  },
 };
 
 const TEMPLATE = '`(?:[^`\\\\]|\\\\.)*`';
@@ -200,21 +214,36 @@ export function callsInTree(): FoundCall[] {
 }
 
 /**
- * Whether this file makes a request whose URL is not a path the checker can read — either because
- * the argument is a variable, or because it is a template of nothing but interpolations.
+ * Every request in this file whose URL is not a path the checker can read — because the argument is
+ * a variable, or because it is a template of nothing but interpolations.
+ *
+ * The line each one sits on, because the count alone would say a file grew a transport without
+ * saying where. Both shapes are counted here and neither is counted twice: the first branch takes
+ * only the arguments that are not templates, which is exactly what the second does not see.
  */
-export function hasRequestHelper(file: string, source: string): boolean {
+export function unreadableRequests(
+  file: string,
+  source: string,
+): Array<{ line: number; raw: string }> {
   const text = withoutComments(source);
+  const out: Array<{ line: number; raw: string }> = [];
   for (const m of text.matchAll(/\b(?:doFetch|fetch)\s*\(/g)) {
-    if (
-      !text
-        .slice(m.index + m[0].length)
-        .trimStart()
-        .startsWith('`')
-    )
-      return true;
+    const after = text.slice(m.index + m[0].length).trimStart();
+    if (after.startsWith('`')) continue;
+    out.push({
+      line: text.slice(0, m.index).split('\n').length,
+      raw: after.split(/[,)\n]/)[0] ?? '',
+    });
   }
-  return collectGitHubCalls(source, file).some((c) => c.kind === 'fetch' && c.unresolved);
+  for (const c of collectGitHubCalls(source, file)) {
+    if (c.kind === 'fetch' && c.unresolved) out.push({ line: c.line, raw: c.raw });
+  }
+  return out.sort((a, b) => a.line - b.line);
+}
+
+/** Whether this file makes any request the checker cannot read a path out of. */
+export function hasRequestHelper(file: string, source: string): boolean {
+  return unreadableRequests(file, source).length > 0;
 }
 
 /**

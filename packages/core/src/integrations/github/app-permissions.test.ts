@@ -28,6 +28,7 @@ import {
   manifest,
   REQUEST_HELPERS,
   sourceFiles,
+  unreadableRequests,
   withoutComments,
 } from './app-permissions.fixture.js';
 import {
@@ -108,16 +109,33 @@ describe('the manifest requests what Forge’s code needs (ISS-1153)', () => {
     ).toEqual([]);
   });
 
-  it('declares no request helper that no longer exists', () => {
-    const gone = Object.keys(REQUEST_HELPERS).filter(
-      (f) =>
-        !sourceFiles().includes(f) ||
-        !hasRequestHelper(f, readFileSync(join(GITHUB_DIR, f), 'utf8')),
-    );
+  it('declares how many transports each of those files holds, and holds exactly that many', () => {
+    const miscounted = Object.entries(REQUEST_HELPERS)
+      .map(([file, declared]) => {
+        if (!sourceFiles().includes(file)) return `${file} — declared, and no longer a source file`;
+        const found = unreadableRequests(file, readFileSync(join(GITHUB_DIR, file), 'utf8'));
+        if (found.length === declared.transports) return null;
+        return `${file} — declares ${declared.transports}, holds ${found.length} at line(s) ${found.map((r) => r.line).join(', ')}`;
+      })
+      .filter((m): m is string => m !== null);
     expect(
-      gone,
-      'the helper is gone; drop the entry rather than keeping a hole open for it',
+      miscounted,
+      'a request beyond the declared transports is a GitHub call nobody prices; name its path at the call site, or raise the count and say what the new transport is',
     ).toEqual([]);
+  });
+
+  it('names a second transport added to a file that already declares one', () => {
+    const declared = REQUEST_HELPERS['client.ts'];
+    const interp = (name: string) => ['$', '{', name, '}'].join('');
+    const planted = [
+      `const res = await fetch(\`${interp('base')}${interp('path')}\`, { headers });`,
+      `const two = await fetch(\`${interp('base')}${interp('args.path')}\`, { headers });`,
+      'const three = await fetch(computedGitHubUrl, { headers });',
+    ].join('\n');
+    const found = unreadableRequests('client.ts', planted);
+    expect(found).toHaveLength(3);
+    expect(found.length).toBeGreaterThan(declared?.transports ?? 0);
+    expect(found.map((r) => r.line)).toEqual([1, 2, 3]);
   });
 
   it('the declaration file makes no GitHub call of its own', () => {
