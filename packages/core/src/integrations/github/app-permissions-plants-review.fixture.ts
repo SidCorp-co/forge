@@ -351,3 +351,27 @@ export const SHIFTED_TRANSPORT = plant(
     '}',
   ]),
 );
+
+/** The object written to through a second name of its own: consult 7b34e3 F1. */
+export const ALIAS_MUTATION = plant(
+  'planted-alias-mutation.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, branch: string) {',
+    `  const args = { path: \`${REPO}\` };`,
+    '  const alias = args;',
+    `  alias.path += \`/branches/${interp('encodeURIComponent(branch)')}/protection\`;`,
+    '  return client.get(args.path);',
+    '}',
+  ]),
+);
+
+/** A transport reached through `.call`, whose arguments are not its own: consult 7b34e3 F2. */
+export const REFLECTED_TRANSPORT = plant(
+  'planted-reflected-transport.ts',
+  AS_FILE([
+    'declare const endpoint: string;',
+    'export async function f(client: GitHubRepoClient) {',
+    "  await client.publish.call(client, { op: 'lookup', method: 'POST', path: endpoint });",
+    '}',
+  ]),
+);

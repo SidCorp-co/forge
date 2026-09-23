@@ -15,6 +15,7 @@ import {
   type PermissionLevel,
 } from './app-permissions.js';
 import {
+  collectGitHubCalls,
   type FoundCall,
   pathLiterals,
   unreadableRequests,
@@ -83,12 +84,20 @@ export function callsToPrice(calls: readonly FoundCall[]): FoundCall[] {
 
 export const key = (method: string, path: string) => `${method} ${path}`;
 
+/** Every call in one source whose `METHOD /path` no declared endpoint accounts for. */
+export function orphansIn(file: string): string[] {
+  const declared = new Set(GITHUB_ENDPOINTS.map((e) => key(e.method, e.path)));
+  return callsToPrice(collectGitHubCalls(file))
+    .filter((c) => !c.unresolved && !declared.has(key(c.method, c.path)))
+    .map((c) => `${c.file}:${c.line} — ${key(c.method, c.path)}`);
+}
+
 /** The first segment of every path the tables declare — what a GitHub path in this source looks like. */
 export function declaredRoots(): Set<string> {
   return new Set(GITHUB_ENDPOINTS.map((e) => e.path.split('/')[1] ?? ''));
 }
 
-/** Every GitHub-shaped path written in one source that no declared endpoint accounts for. */
+/** Every GitHub path a source WRITES that no row prices, whatever expression carries it. */
 export function undeclaredPathsIn(file: string): string[] {
   const declared = new Set(GITHUB_ENDPOINTS.map((e) => e.path));
   const roots = declaredRoots();

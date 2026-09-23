@@ -5,24 +5,28 @@
  * something answering with a `Response` — and every call to one of them is a call site whatever its
  * arguments look like. Only the argument's VALUE can then be unreadable, which is what this reports.
  *
- * The one call shape left outside that: a transport method on a receiver the type checker cannot
- * name. `untypedTransportCall` refuses that one rather than passing over it.
+ * What it is NOT: a sound analysis of every request this directory can send. It is a bounded
+ * syntactic audit whose guarantee covers the transport references and value constructions its
+ * resolver recognises, and a reader must not take a green run as proof that no other call exists.
+ * Named residuals: a transport on a receiver no type names, refused by `untypedTransportCall`
+ * rather than passed over; a value mutated through a path `isWrittenTo` does not reach, such as one
+ * an escaping call writes; and an invocation reaching a transport by some route other than a name,
+ * a bind or `.call`. Seven reviews closed twenty-four such shapes (ISS-1153); the class of
+ * spellings is open and the mechanisms are the ones above.
  */
 
 import ts from 'typescript';
 import {
-  bodyExpression,
-  declarationOf,
   evaluate,
   GITHUB_DIR,
-  isConstBinding,
   isNetworkCall,
   isStringLike,
-  isWrittenTo,
   lineOf,
-  MAX_DEPTH,
+  objectOf,
   program,
+  propertyOf,
   resolvePathOf,
+  shown,
   sourceFile,
   sourceFiles,
   symbolOf,
@@ -134,99 +138,6 @@ function transports(): Transport[] {
   return TRANSPORTS;
 }
 
-function objectOf(
-  node: ts.Node | undefined,
-  checker: ts.TypeChecker,
-  depth = 0,
-): ts.ObjectLiteralExpression | null {
-  if (!node || depth > MAX_DEPTH) return null;
-  if (ts.isObjectLiteralExpression(node)) return node;
-  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node))
-    return objectOf(node.expression, checker, depth + 1);
-  if (ts.isIdentifier(node)) {
-    const decl = declarationOf(node, checker);
-    if (!decl || !ts.isVariableDeclaration(decl) || !isConstBinding(decl)) return null;
-    return isWrittenTo(node, checker) ? null : objectOf(decl.initializer, checker, depth + 1);
-  }
-  if (ts.isCallExpression(node)) {
-    const decl = declarationOf(node.expression, checker);
-    const body = decl ? bodyExpression(decl) : null;
-    return body ? objectOf(body, checker, depth + 1) : null;
-  }
-  return null;
-}
-
-/**
- * The node carrying `name` in this object, following a spread the same way the runtime would.
- *
- * A spread whose object cannot be read, and whose TYPE says it may carry `name`, takes the value
- * back: the runtime would overwrite whatever an earlier property established, and keeping the
- * earlier one prices a path the call does not send.
- */
-/** What this property NAMES, or null where the key is computed out of something unreadable. */
-function keyOf(property: ts.ObjectLiteralElementLike): string | null {
-  const name = property.name;
-  if (!name) return null;
-  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name))
-    return name.text;
-  if (ts.isComputedPropertyName(name) && ts.isStringLiteralLike(name.expression))
-    return name.expression.text;
-  return null;
-}
-
-function propertyOf(
-  object: ts.ObjectLiteralExpression,
-  name: string,
-  checker: ts.TypeChecker,
-  depth = 0,
-): { value: ts.Node | null; blockedBy: ts.Node | null } {
-  let held: ts.Node | null = null;
-  let blockedBy: ts.Node | null = null;
-  for (const property of object.properties) {
-    if (ts.isPropertyAssignment(property) && keyOf(property) === name) {
-      held = property.initializer;
-      blockedBy = null;
-    } else if (ts.isShorthandPropertyAssignment(property) && keyOf(property) === name) {
-      held = property.name;
-      blockedBy = null;
-    } else if (
-      (ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property)) &&
-      keyOf(property) === null
-    ) {
-      blockedBy = property.name;
-    } else if (ts.isSpreadAssignment(property)) {
-      const spread = depth < MAX_DEPTH ? objectOf(property.expression, checker) : null;
-      const inner = spread ? propertyOf(spread, name, checker, depth + 1) : null;
-      if (inner?.value) {
-        held = inner.value;
-        blockedBy = null;
-      } else if (inner?.blockedBy) blockedBy = inner.blockedBy;
-      else if (
-        !spread &&
-        checker.getPropertyOfType(checker.getTypeAtLocation(property.expression), name)
-      )
-        blockedBy = property.expression;
-    }
-  }
-  return blockedBy ? { value: null, blockedBy } : { value: held, blockedBy: null };
-}
-
-/** The expression a name stands for, so a refusal names what was written AND what it led to. */
-function shown(node: ts.Node, checker: ts.TypeChecker): string {
-  const text = node.getText();
-  if (!ts.isIdentifier(node)) return text;
-  const decl = declarationOf(node, checker);
-  if (decl && ts.isVariableDeclaration(decl) && decl.initializer)
-    return `${text} → ${decl.initializer.getText()}`;
-  if (decl && ts.isShorthandPropertyAssignment(decl)) {
-    const value = checker.getShorthandAssignmentValueSymbol(decl);
-    const from = value?.valueDeclaration;
-    if (from && ts.isVariableDeclaration(from) && from.initializer)
-      return `${text} → ${from.initializer.getText()}`;
-  }
-  return text;
-}
-
 export interface FoundCall {
   file: string;
   line: number;
@@ -330,6 +241,18 @@ function methodRefusal(
   return `the call's options cannot be read, so its method is unknown: ${second?.getText() ?? ''}`;
 }
 
+/** A transport reached through `.call` or `.apply`, whose arguments are not the transport's own. */
+function reflectedTransport(
+  call: ts.CallExpression,
+  known: ReadonlyMap<ts.Symbol, Transport>,
+  checker: ts.TypeChecker,
+): boolean {
+  const callee = call.expression;
+  if (!ts.isPropertyAccessExpression(callee)) return false;
+  if (callee.name.text !== 'call' && callee.name.text !== 'apply') return false;
+  return transportFor(symbolOf(callee.expression, checker), known, checker) !== undefined;
+}
+
 function shiftedCall(call: ts.CallExpression, file: string): FoundCall {
   const callee = call.expression.getText();
   return record({
@@ -339,7 +262,7 @@ function shiftedCall(call: ts.CallExpression, file: string): FoundCall {
     path: null,
     method: null,
     kind: 'path',
-    why: `this transport was bound with arguments, so nothing sits where its signature puts it: ${callee}`,
+    why: `this transport is reached in a way that does not put its arguments where its signature does: ${callee}`,
   });
 }
 
@@ -461,7 +384,8 @@ export function collectGitHubCalls(file: string): FoundCall[] {
     const transport = transportFor(symbol, known, checker);
     // A transport that answers with the `Response` itself wears both shapes; its callers carry the
     // path, so the transport reading is the one that prices the call.
-    if (transport === 'shifted') out.push(shiftedCall(node, file));
+    const reflected = reflectedTransport(node, known, checker);
+    if (transport === 'shifted' || reflected) out.push(shiftedCall(node, file));
     else if (transport) out.push(transportCall(node, transport, file, checker));
     else if (isNetworkCall(node, checker)) out.push(networkCall(node, file, checker));
     else if (!symbol) out.push(...untypedTransportCall(node, file));
