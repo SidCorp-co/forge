@@ -3079,6 +3079,10 @@
 
 ### Fixed
 
+- **A whole-backlog read no longer lists the same issue twice.** Every hundredth issue in the
+  ordering stream, and every sixty-fourth in the duplicate sweep, arrived a second time, so the
+  count overran the total the stream itself declared.
+
 - **The API starts again: the production image shipped without a package it imports at runtime.**
   Two services read helpers out of `@forge/contracts/document-patch` as values rather than types,
   but the package was declared a development dependency of the API, so the production install

@@ -36,6 +36,12 @@ let embeddingsMod: typeof import('../../src/embeddings/index.js');
 let parseSseStream: typeof import('../../src/assistant/providers/sse.js').parseSseStream;
 let signUserToken: (id: string) => Promise<string>;
 
+// Read off the code rather than copied, so a page size that moves moves these cases with it. They
+// are imported in `beforeAll` for the reason every other module here is: importing the sources
+// pulls in `db/client.js`, which validates the environment the harness has not written yet.
+let ORDERING_PAGE_SIZE: number;
+let EMBED_BATCH_SIZE: number;
+
 let userId: string;
 let projectId: string;
 let token: string;
@@ -102,6 +108,39 @@ async function seedIssue(seq: number, status = 'open'): Promise<string> {
   return id;
 }
 
+/**
+ * `count` issues in one statement, cheap enough to cross a page boundary, and every one of them
+ * carrying sub-millisecond digits on `created_at`. Those digits are the whole subject: a cursor
+ * that truncates them re-reads the boundary row, and `now()` supplies them only by luck.
+ *
+ * `tiedFrom` gives every issue from that seq onward one identical `created_at`, which is how a
+ * page boundary is made to land on an exact tie.
+ */
+async function seedIssuesPastBoundary(count: number, opts: { tiedFrom?: number } = {}) {
+  const tiedFrom = opts.tiedFrom ?? count + 1;
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, description, status, created_by_id, created_at)
+    SELECT gen_random_uuid(), ${projectId}, s, 'backlog subject ' || s, 'body of ' || s,
+           'open', ${userId},
+           timestamptz '2026-01-01 00:00:00+00'
+             + (least(s, ${tiedFrom}::int) || ' seconds')::interval
+             + interval '456 microseconds'
+    FROM generate_series(1, ${count}::int) AS s
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO memories (project_id, source, source_ref, text_content, embedding)
+    SELECT ${projectId}, 'issue', i.id, i.title, ${`[${vectorFor(0).join(',')}]`}::vector
+    FROM issues i WHERE i.project_id = ${projectId}
+  `);
+}
+
+/** What a caller counts: how many item frames arrived, and how many distinct issues they named. */
+function itemCensus(frames: Frame[]) {
+  const items = itemsOf(frames);
+  const ids = new Set(items.map((f) => (f.issueId ?? f.id) as string));
+  return { emitted: items.length, distinct: ids.size };
+}
+
 beforeAll(async () => {
   harness = await setupTestDatabase();
   process.env.DATABASE_URL = harness.url;
@@ -112,6 +151,8 @@ beforeAll(async () => {
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
   ({ parseSseStream } = await import('../../src/assistant/providers/sse.js'));
   embeddingsMod = await import('../../src/embeddings/index.js');
+  ({ ORDERING_PAGE_SIZE } = await import('../../src/issues/backlog/ordering-source.js'));
+  ({ EMBED_BATCH_SIZE } = await import('../../src/issues/backlog/alike-source.js'));
   server = await startTestServer();
 }, 180_000);
 
@@ -193,6 +234,38 @@ describe('the ordering endpoint', () => {
       expect(item).not.toHaveProperty('score');
       expect(item).not.toHaveProperty('rank');
       expect(item).not.toHaveProperty('position');
+    }
+  });
+
+  // The contract lists exactly these, so a column the source reads for its own purposes — the
+  // paging cursor, say — reaching an item is a break a reader can see and this case names.
+  const ORDERING_ITEM_KEYS = [
+    'assigneeId',
+    'category',
+    'complexity',
+    'createdAt',
+    'displayId',
+    'id',
+    'issSeq',
+    'mergedAt',
+    'mergedCommitSha',
+    'priority',
+    'relations',
+    'reopenCount',
+    'seq',
+    'status',
+    'title',
+    'type',
+    'updatedAt',
+    'waitingKind',
+  ];
+
+  it('carries the fields the contract lists and no other, paging state included', async () => {
+    for (let seq = 1; seq <= 3; seq++) await seedIssue(seq);
+    const { frames } = await readStream(`/api/projects/${projectId}/backlog/ordering`);
+
+    for (const item of itemsOf(frames)) {
+      expect(Object.keys(item).sort()).toEqual(ORDERING_ITEM_KEYS);
     }
   });
 
@@ -334,5 +407,64 @@ describe('what one streamed request costs', () => {
     const limit = Number(res.headers.get('X-RateLimit-Limit'));
     const remaining = Number(res.headers.get('X-RateLimit-Remaining'));
     expect(limit - remaining).toBe(1);
+  });
+});
+
+/**
+ * ISS-1173, judged at production a594f28eb: 1226 item frames over 1214 issues, one duplicate at
+ * every multiple of the page size, and an `end` frame whose `emitted` exceeded its own `total`.
+ * Every case above seeds twelve issues, so no page boundary was ever crossed and the assertion
+ * could not go red. These cross it.
+ */
+describe('a backlog longer than one page', () => {
+  it('emits the ordering page-boundary issue once, not twice', async () => {
+    const total = ORDERING_PAGE_SIZE + 1;
+    await seedIssuesPastBoundary(total);
+
+    const { frames } = await readStream(`/api/projects/${projectId}/backlog/ordering`);
+    const census = itemCensus(frames);
+
+    expect(census.distinct).toBe(total);
+    expect(census.emitted).toBe(total);
+    expect(itemsOf(frames).map((f) => f.seq)).toEqual(
+      Array.from({ length: total }, (_, i) => i + 1),
+    );
+    expect(terminalOf(frames)[0]).toMatchObject({
+      type: 'end',
+      complete: true,
+      emitted: total,
+      total,
+    });
+  });
+
+  it('emits the alike batch-boundary seed once, not twice', async () => {
+    const total = EMBED_BATCH_SIZE + 1;
+    await seedIssuesPastBoundary(total);
+
+    const { frames } = await readStream(`/api/projects/${projectId}/backlog/alike?topK=1`);
+    const census = itemCensus(frames);
+
+    expect(census.distinct).toBe(total);
+    expect(census.emitted).toBe(total);
+    expect(terminalOf(frames)[0]).toMatchObject({
+      type: 'end',
+      complete: true,
+      emitted: total,
+      total,
+    });
+  });
+
+  it('drops neither of two issues sharing the page boundary timestamp exactly', async () => {
+    // The two rows either side of the boundary hold one identical `created_at`, so `id` is the
+    // only thing separating them. A cursor nudged forward by a millisecond to stop the duplicate
+    // would skip the second of them here; an exact one emits each exactly once.
+    const total = ORDERING_PAGE_SIZE + 1;
+    await seedIssuesPastBoundary(total, { tiedFrom: ORDERING_PAGE_SIZE });
+
+    const { frames } = await readStream(`/api/projects/${projectId}/backlog/ordering`);
+    const census = itemCensus(frames);
+
+    expect(census.distinct).toBe(total);
+    expect(census.emitted).toBe(total);
   });
 });

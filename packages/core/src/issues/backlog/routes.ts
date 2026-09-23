@@ -18,10 +18,11 @@ import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
-import { alikeSource, countSeeds } from './alike-source.js';
+import { alikeSource } from './alike-source.js';
 import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';
-import { countMatching, orderingSource } from './ordering-source.js';
+import { orderingSource } from './ordering-source.js';
+import { countMatching } from './page-read.js';
 
 /** What `forge next` calls takeable: the statuses a run may claim work from. */
 export const TAKEABLE_STATUSES: IssueStatus[] = ['open', 'confirmed', 'approved', 'reopen'].filter(
@@ -158,7 +159,7 @@ backlogStreamRoutes.get(
     await assertProjectAccess(id, c.get('userId'), 'viewer');
 
     const statuses = q.status ?? UNSETTLED_STATUSES;
-    const total = await countSeeds(id, statuses);
+    const total = await countMatching(id, statuses);
     const cancellation = new Cancellation();
     streamHeaders(c);
     return streamSSE(c, async (stream) => {
