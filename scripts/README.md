@@ -312,6 +312,14 @@ claim; this is the check that tests the claim.
 Also fails when an axis is declared with no probe, or probed with no declaration, so neither half can
 drift out of the other's sight.
 
+**Both sides of a direction check are read out of git, never off disk.** `ratchetFault` in
+`lib/baseline-ratchet.mjs` reads the declared baseline at `baseRev()` and again at `HEAD` — so a
+baseline file corrected in the working tree is invisible to it, and `pnpm verify` goes on reporting
+the committed number until the fix is committed. The other checkers read the tree, which is why the
+two can disagree inside one run: `check-size-budget` can pass on a file the working tree has already
+brought back under budget while this one still faults on the number `HEAD` holds. Commit the
+baseline, then re-measure.
+
 An axis whose probe is not on disk has **no measured level** — reported as `n/a`, compared against
 nothing, and taking the script to exit `2`. Level `0` is not the answer there: `0` means "no checker
 exists", a measured fact about the repo, and returning it for an absent binary reported three axes
@@ -615,9 +623,9 @@ Three rules:
 
 | | Fails when |
 |---|---|
-| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice |
+| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
 | `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
-| `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held |
+| `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held. The refusal names each entry with the ceiling actually applied to it and whether it paired as a correction, because an inherited ceiling advertised to an entry that did not inherit one reads as a rule the checker is not following |
 
 Entries are compared as a **set of whitespace-normalised bullet texts, position-independent**. That
 is what lets `forge-cut-release` promote `## [Unreleased]` to `## [X.Y.Z]` and open a fresh one — a
@@ -634,14 +642,81 @@ the other. No published entry could be corrected at all, which is what held `mai
 job: `CHANGELOG.md` linked `docs/flows/issue-work.html`, a directory `c74d9b3f7` deleted, and the
 only edit that would fix it was the one edit the gate refused.
 
-`pairEdits` in `lib/release-record.mjs` now matches each removed entry to at most one added entry,
-best match first. **Two entries are the same entry when more than half the words of the longer one
-survive into the other, in order.** A paired entry is neither a loss nor an addition, and it answers
-to the larger of the budget and what the entry it replaces held — so a correction may hold its
-length or shrink, and never buys words. The threshold is measured on this record: 14,270 sampled
-pairs of DIFFERENT entries peak at 0.250, while the corrections `.forge/changelog-amnesty.json`
-already declares run 0.469 to 0.996. A rewrite that keeps less pays the budget as a new entry, and
-its removal still needs the amnesty row.
+`pairEdits` in `lib/release-record.mjs` matches each removed entry to at most one added entry.
+**Two entries are the same entry when more than half the words of the longer one survive into the
+other in order, AND the change moved at most `CORRECTION_SPAN` words each way** — at most that many
+of the published entry's words gone, at most that many new ones standing where they were. A paired
+entry is neither a loss nor an addition, and it answers to the larger of the budget and what the
+entry it replaces held, so a correction never buys words. A wider change is a withdrawal and a new
+entry however much of the wording it carries over: it pays the budget as a new entry and its removal
+still needs the amnesty row.
+
+**The share alone was not enough, and no share is.** ISS-1145's first round shipped the share by
+itself, and a review of the merged head found the hole from the other side: the share of a long
+entry that survives is buyable with background prose. A 120-word entry holding 61 words of
+background beside a 59-word claim scores 61/120 with that whole claim replaced by an unrelated one
+— the removal reads as a correction, the replacement inherits the 120-word ceiling, and the record
+is rewritten under a green gate. Raising the share moves the ratio and nothing else, because an
+entry padded to any ratio has the remainder free. An absolute span cannot be padded into.
+
+Both bounds are measured on this record rather than picked. The share: 14,270 sampled pairs of
+DIFFERENT entries peak at 0.250, while the corrections `.forge/changelog-amnesty.json` already
+declares run 0.469 to 0.996. The span: over every commit that has touched `CHANGELOG.md`, the widest
+change that is plainly still the same entry moved 9 words in and 16 out (`226ddf039`), and the
+narrowest that is plainly a different claim moved 52 in and 54 out (`021b26c2a`) — which clears the
+share at 0.578, so the adversarial shape is already in this repo's own record and the span is what
+refuses it. `CORRECTION_SPAN` is 16.
+
+**The allocation takes the most pairs, not the likeliest one.** Sorting candidates by similarity and
+taking each irrevocably lets two genuine corrections in one change refuse each other: where a removed
+entry's best match is also the only match another removed entry has, the greedy answer reports one
+entry lost and the other over budget while a pairing satisfying both exists. `bestMatching` grows the
+matching along augmenting paths, so a pair already held is given up to buy two, and similarity only
+breaks ties between pairings of the same size.
+
+### Prose a blank line orphaned is named, not dropped
+
+A blank line ends an entry, so a bullet's second paragraph belongs to no bullet: `parseRecord` drops
+it, the What's New feed never renders it, and neither the loss rule nor the budget can see it. That
+was tolerable while every entry was compared by byte identity, and it stopped being tolerable the
+moment corrections paired: a published 50-word bullet split after word 40 by a blank line leaves a
+40-word bullet that pairs with what it truncated, inherits its ceiling, and passes green — where the
+same edit before ISS-1145 raised `no-silent-loss`. Ten published words leave the record and the gate
+reports nothing, which is the silent substitution CLAUDE.md refuses, made by the gate that exists to
+catch it.
+
+So an entry the change ADDS that carries orphaned prose is refused under `structure`, before the
+pairing runs, and it is excluded from the pairing: the truncation is named as a truncation rather
+than forgiven as a trim. The refusal says how to join the prose back — an indented continuation with
+no blank line — or to give it a bullet of its own.
+
+**Only prose this change added.** The published record carries 1,718 such lines under 2-space
+indents, inherited from before anything bounded the file, and refusing those would turn every change
+red on bytes nobody in it wrote — the opposite of the rule's own promise that nothing already
+published turns it red. Prose already orphaned at the base revision is therefore grandfathered, so
+an entry may still be corrected with its paragraphs left as they are, which is what ISS-1112's
+citation sweep needs.
+
+**The exemption is an edge the pairing runs over, and the pairing stays one-to-one.** Three readings
+of "already published" were tried and two of them were holes, so the shape is worth stating in full:
+
+| Read as | Hole |
+|---|---|
+| a set of every orphaned text in the record | transferable — an unrelated published bullet whose paragraph holds the same words exempts a fresh truncation elsewhere, and a change can arrange that |
+| a test applied to the pairing once it is chosen | the matching maximises pairs and then similarity and knows nothing of paragraphs, so two corrections whose CROSS pairing scores higher are each handed the other's predecessor, both refused, and the valid pairing is unreachable once they are excluded |
+| any predecessor the rule admits, asked of the edges | pairwise feasibility is not a joint assignment: two added entries both borrow the one predecessor's paragraph, the matching pairs one, and the other is a brand-new unpaired entry whose prose is dropped in silence |
+
+What holds is the third question asked of the *assignment* rather than of edge existence.
+`correctionEdges` is split out of `pairEdits`, an edge from an orphan-carrying added entry survives
+only where that removed entry already carried exactly that prose, and the matching is run over what
+is left. An orphan-carrying entry the matching does not pair is refused — so one predecessor exempts
+one correction, which is the same one-to-one rule corrections already answer to. What is NOT covered: prose orphaned under a `###` heading with no
+bullet above it at all — the record holds none, and there is no entry to attach it to.
+
+**What the pairing does not claim.** A change inside the span can still reverse what an entry says —
+one word can — and no rule that counts words can tell that from a typo fix. The gate bounds how much
+of the published record one change may replace without declaring it; the meaning of a narrow edit is
+the diff review's, which sees it as two lines.
 
 Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against `origin/main`
 with the `HEAD~1` fallback, because a commit pushed straight to `main` has `origin/main == HEAD` and

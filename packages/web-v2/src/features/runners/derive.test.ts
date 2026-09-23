@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	deviceBuildChip,
 	deviceVersionLabel,
 	formatElapsed,
 	runnerLimitDisplay,
@@ -117,5 +118,64 @@ describe("deviceVersionLabel", () => {
 	it("says a version was not reported rather than rendering nothing", () => {
 		expect(deviceVersionLabel(null)).toBe("version not reported");
 		expect(deviceVersionLabel("")).toBe("version not reported");
+	});
+});
+
+describe("deviceBuildChip", () => {
+	it("warns on a box that is behind, carrying the server's own sentence", () => {
+		const chip = deviceBuildChip({
+			agentOutdated: true,
+			agentBuildState: "behind",
+			agentBuildDetail: "runner 0.17.0 is behind the published 0.17.1",
+		});
+		expect(chip).toEqual({
+			label: "update pending",
+			title: "runner 0.17.0 is behind the published 0.17.1",
+			tone: "warning",
+		});
+	});
+
+	it("warns on a box the release itself left behind, where the box matches what was published", () => {
+		const chip = deviceBuildChip({
+			agentOutdated: true,
+			agentBuildState: "current",
+			agentBuildDetail: "runner 0.17.0 (bd2e36d5ea), but no release carries what landed",
+		});
+		expect(chip?.tone).toBe("warning");
+	});
+
+	// A box the health endpoint refuses must not read as a box with nothing wrong.
+	it("says so when the build could not be compared, rather than showing nothing", () => {
+		const chip = deviceBuildChip({
+			agentOutdated: false,
+			agentBuildState: "unknown",
+			agentBuildDetail: "this box did not say which build it is running",
+		});
+		expect(chip).toEqual({
+			label: "build unknown",
+			title: "this box did not say which build it is running",
+			tone: "muted",
+		});
+	});
+
+	it("shows nothing for a box running what landed", () => {
+		expect(
+			deviceBuildChip({
+				agentOutdated: false,
+				agentBuildState: "current",
+				agentBuildDetail: "runner 0.17.1 (fbe6468ddf)",
+			}),
+		).toBeNull();
+	});
+
+	it("still labels a chip whose sentence the server left empty", () => {
+		expect(
+			deviceBuildChip({ agentOutdated: true, agentBuildState: "behind", agentBuildDetail: "" })
+				?.title,
+		).toBe("Update pending");
+		expect(
+			deviceBuildChip({ agentOutdated: false, agentBuildState: "unknown", agentBuildDetail: "" })
+				?.title,
+		).toBe("This build could not be compared");
 	});
 });

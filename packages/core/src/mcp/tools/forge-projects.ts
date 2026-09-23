@@ -12,11 +12,11 @@ import {
   normalizeEnvironments,
   RETIRED_PREVIEW_DEPLOY_NOTES_MESSAGE,
 } from '../../projects/environments.js';
+import { writeEnvironmentsLimits } from '../../projects/environments-service.js';
 import { readableLiveBranch } from '../../projects/release-model.js';
 import {
   createProject,
   ProjectSlugTakenError,
-  readEnvironments,
   readProjectSummary,
   updateProject,
 } from '../../projects/service.js';
@@ -157,7 +157,19 @@ function refuseRetiredPatchKeys(raw: unknown, ctx: z.RefinementCtx): void {
       message: RETIRED_PREVIEW_DEPLOY_NOTES_MESSAGE,
     });
   }
+  const limits = (raw as { environmentsLimits?: unknown }).environmentsLimits;
+  if (limits !== undefined && (typeof limits === 'string' || limits === null)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['environmentsLimits'],
+      message: BARE_LIMITS_MESSAGE,
+    });
+  }
 }
+
+/** `environments.limits` is a leaf of a shared document, so a write to it says what it read. */
+const BARE_LIMITS_MESSAGE =
+  'environmentsLimits is `{ base, value }` rather than a bare string: `base` is the `limits` that `forge_projects.get` answered with (null where there was none) and `value` is what you want it to say (null clears it). A bare string overwrote whatever another writer had stored in the meantime without anybody hearing about it.';
 
 const updateInputSchema = z
   .object({
@@ -174,7 +186,13 @@ const updateInputSchema = z
             baseBranch: z.string().trim().max(100).nullable().optional(),
             liveBranch: z.string().trim().max(100).nullable().optional(),
             kind: z.enum(projectKinds).optional(),
-            environmentsLimits: z.string().trim().max(8000).nullable().optional(),
+            environmentsLimits: z
+              .object({
+                base: z.string().max(8000).nullable(),
+                value: z.string().trim().max(8000).nullable(),
+              })
+              .strict()
+              .optional(),
             workspaceSetup: z.string().trim().max(8000).nullable().optional(),
           })
           .strict()
@@ -247,10 +265,18 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       updates.workspaceSetup = input.patch.workspaceSetup;
     }
     if (input.patch.environmentsLimits !== undefined) {
-      const current = await readEnvironments(input.projectId);
-      updates.environments = { ...current, limits: input.patch.environmentsLimits };
+      await writeEnvironmentsLimits({
+        projectId: input.projectId,
+        base: input.patch.environmentsLimits.base,
+        value: input.patch.environmentsLimits.value,
+      });
     }
 
+    if (Object.keys(updates).length === 0) {
+      const summary = await readProjectSummary(input.projectId);
+      if (!summary) throw new Error('NOT_FOUND: project not found');
+      return { project: summary };
+    }
     const project = await updateProject(input.projectId, updates);
     if (!project) throw new Error('NOT_FOUND: project not found');
     return { project };

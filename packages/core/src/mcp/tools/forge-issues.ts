@@ -30,6 +30,7 @@ import {
   MergeMarkerError,
   mergedCommitShaSchema,
 } from '../../issues/merge-marker.js';
+import { mergeMarkFields } from '../../issues/merge-record.js';
 import { parkQuestionNotMinted } from '../../issues/park-question.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issues/patch-fields.js';
 import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
@@ -48,7 +49,9 @@ import {
   type TaskRow,
   updateTask as updateTaskRow,
 } from '../../tasks/task-service.js';
+import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
+import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -80,7 +83,7 @@ const filtersSchema = z
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
-    issue: z.uuid().optional(),
+    issue: issueRefSchema.optional(),
     taskStatus: z.enum(taskStatuses).optional(),
     label: z
       .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
@@ -120,7 +123,7 @@ const dataObject = z
     commit: mergedCommitShaSchema.optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
-    issueId: z.uuid().optional(),
+    issueId: issueRefSchema.optional(),
     taskTitle: z.string().trim().min(1).max(500).optional(),
     taskDescription: z.string().max(50_000).nullable().optional(),
     taskStatus: z.enum(taskStatuses).optional(),
@@ -190,7 +193,7 @@ const inputSchema = z
       'setAttributes',
     ]),
     projectId: z.uuid().optional(),
-    documentId: z.uuid().optional(),
+    documentId: issueRefSchema.optional(),
     filters: filtersSchema,
     data: dataSchema,
     attributes: z
@@ -266,6 +269,7 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
     sessionContext: sanitizeDeep(row.sessionContext),
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
+    ...mergeMarkFields(row),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -296,6 +300,7 @@ export function serializeListRow(
     assigneeId: row.assigneeId,
     reopenCount: row.reopenCount,
     mergedAt: row.mergedAt,
+    ...mergeMarkFields(row),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     ...(row.matchedFields ? { matchedFields: row.matchedFields } : {}),
@@ -357,6 +362,7 @@ export function serializeManifest(row: IssueRow, prefix: string | null): Record<
     reopenCount: row.reopenCount,
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
+    ...mergeMarkFields(row),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     bodyTruncated: true as const,
@@ -450,64 +456,12 @@ function parseDate(value: string, field: string): Date {
 
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
-  description:
-    'Issues and their tasks; every sub-action is in the action enum, and documentId takes a ' +
-    'uuid or the short ISS-<n>.\n' +
-    'READING. list returns a summary projection - it omits the five heavy fields the fields ' +
-    'enum names - to stay under the response token cap; get returns the full body. ' +
-    'filters.issue and filters.taskStatus belong to listTasks - list REFUSES them, use get. ' +
-    'Triage with list, get only the one issue you are about to work, and never re-get a body ' +
-    'already loaded this session; after a lean forge_step_start manifest (bodyTruncated:true) ' +
-    'pull just the fields:[...] you need. Read hasMore before calling any count complete: a ' +
-    'list cut short by your own limit looks exactly like a complete one. truncated/truncatedBy ' +
-    'name the cap that bit.\n' +
-    'CREATE. Fill title, description, priority, category. plan and acceptanceCriteria are the ' +
-    "clarify/plan steps' output - pre-filling them deletes that step's reason to exist (red " +
-    'flag: plan-by-hand). description is a requirements contract (outcome, business rules, ' +
-    'invariants, out-of-scope), not an implementation script: file paths, endpoints and ' +
-    '"follow the pattern at <path>" go stale and outrank live exploration. Body shape: guides ' +
-    'pipeline-and-issue-lifecycle and writing-an-issue; mermaid fences render; ATTACH .html ' +
-    'rather than pasting it.\n' +
-    'FILTERS. search: a literal substring or identifier-split token over ' +
-    'title/description/plan/acceptanceCriteria, with matchedFields naming which matched per ' +
-    'row, so a clause cited only on a criterion is findable. label/module: a name or uuid or ' +
-    'an array of either (OR); an unknown name returns an EMPTY set, and module matches MODULE ' +
-    'labels only.\n' +
-    'LABELS. data.labels takes label NAMES or UUIDs from this project; unknown ones are ' +
-    'refused, never auto-created. On update it is a REPLACE-SET, not additive: [] clears all, ' +
-    'omitting it changes none. Read the current labels[] off a FULL get before a delta, or you ' +
-    'clobber the set. A module is a label with kind:"module", and each labels[] entry reports ' +
-    'kind and isPrimary. Set the primary module by sending { labelId, isPrimary: true } among ' +
-    'the plain strings - at most one, and it must be a module, or the whole write is refused. ' +
-    'A new primary replaces the old atomically; omit isPrimary everywhere for none.\n' +
-    'RELATIONS. data.relations applies on create AND update and works with a personal access ' +
-    'token; for a kind its own enum does not list, use forge_project_pm set_dependency. Send ' +
-    'exactly one of dependsOnId (THIS issue is blocked BY it) or blocksId (THIS issue blocks ' +
-    'it). Edges commit before the dispatch trigger, so nothing dispatches ahead of its ' +
-    "blocker, and the reply's relations[] confirms each edge. Re-send an edge with validUntil " +
-    'in the past to RETRACT it (updated:true). get returns relations.blocks (this blocks them) ' +
-    'and relations.blockedBy (they block this), each flagged expired when its validUntil has ' +
-    'passed and it no longer gates dispatch.\n' +
-    'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
-    'closed auto-stamps merged_at when still NULL (closed = done, for the blocks-gate), so a ' +
-    'close meaning "abandoned, code never landed" needs unmark after it.\n' +
-    'MERGE MARK. mark_merged (data.issueId, data.target, optional data.commit / data.mergedAt ' +
-    'ISO / data.note) idempotently stamps merged_at and merged_commit_sha together, defaulting ' +
-    "commit to the recorded implementation handoff's, and unblocks dependents. target is an " +
-    'audit label; every value stamps the same column. unmark (data.issueId + optional ' +
-    'data.note) clears merged_at to NULL, re-blocking children when a merge is rolled back.\n' +
-    'TASKS. createTask needs data.issueId + data.taskTitle; listTasks needs filters.issue and ' +
-    'accepts filters.taskStatus; updateTask/deleteTask take the task UUID as documentId. Tasks ' +
-    'inherit project membership from their issue.\n' +
-    'ATTACHMENTS. Use forge_uploads (presigned URL) for anything past a tiny snippet; base64 ' +
-    'in data.attachments[] is slow and burns context, though it still works for up to 10 tiny ' +
-    'files (total <= UPLOADS_MAX_BYTES) and on partial failure returns attachments plus ' +
-    'attachmentErrors (code/message).\n' +
-    'The X-Forge-Project-Slug header sets the project; projectId only overrides it.',
+  description: forgeIssuesDescription(ISSUE_REF_CLAUSE),
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const { principal } = ctx;
+    const refs = refsFor(input, ctx, principal);
 
     if (
       input.data?.relations !== undefined &&
@@ -574,13 +528,16 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'get': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
-        const issue = await loadIssue(input.documentId);
+        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsMember(principal, issue.projectId);
         if (input.fields && input.fields.length > 0) {
           const full = serialize(issue, await activeIssuePrefix(issue.projectId));
+          // ISS-1126 — `fields` narrows the heavy BODIES; the mark rides with the identity, so a
+          // narrowed answer never reads as an issue with no mark.
           const projected: Record<string, unknown> = {
             documentId: full.documentId,
             issueId: full.issueId,
+            ...mergeMarkFields(issue),
           };
           for (const field of input.fields) {
             projected[field] = full[field] ?? null;
@@ -602,7 +559,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error(
             'BAD_REQUEST: attributes is required for setAttributes — each entry is { key, value }, and the registered keys come back on action=get under `attributes`',
           );
-        const issue = await loadIssue(input.documentId);
+        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
         try {
           return await setIssueAttributes(
@@ -668,7 +625,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'update': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
-        const issue = await loadIssue(input.documentId);
+        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
 
         let labelIds: ResolvedLabelAttach[] | undefined;
@@ -752,12 +709,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'transition': {
-        if (!input.documentId) {
+        if (!input.documentId)
           throw new Error('BAD_REQUEST: documentId is required for transition');
-        }
         const target = input.data?.status;
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
-        const issue = await loadIssue(input.documentId);
+        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
         await transitionIssueStatus(issue, target, principalActor(principal), {
           transitionReason: input.data?.reason ?? input.data?.note,
@@ -778,19 +734,22 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'mark_merged':
       case 'unmark': {
-        const issueId = input.data?.issueId;
-        if (!issueId) {
-          throw new Error(`BAD_REQUEST: data.issueId is required for ${input.action}`);
-        }
+        const ref = input.data?.issueId;
+        if (!ref) throw new Error(`BAD_REQUEST: data.issueId is required for ${input.action}`);
         const marking = input.action === 'mark_merged';
         if (marking && !input.data?.target) {
           throw new Error('BAD_REQUEST: data.target is required for mark_merged');
         }
-        const issue = await loadIssue(issueId);
+        const issue = await loadIssue(await refs.issue('data.issueId', ref));
         await assertPrincipalIsWriter(principal, issue.projectId);
 
         try {
-          const { issue: fresh, action } = await applyMergeMarker({
+          const {
+            issue: fresh,
+            action,
+            mark,
+            markDetail: detail,
+          } = await applyMergeMarker({
             issue,
             op: marking ? 'mark' : 'unmark',
             ...(input.data?.target ? { target: input.data.target } : {}),
@@ -805,7 +764,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               hookActor: principalHookActor(principal),
             },
           });
-          return { ...(await serializeWithAttachments(fresh)), action };
+          return { ...(await serializeWithAttachments(fresh)), action, mark, detail };
         } catch (err) {
           if (err instanceof MergeMarkerError) throw new Error(`${err.code}: ${err.message}`);
           throw err;
@@ -813,8 +772,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'listTasks': {
-        const issueId = input.filters?.issue;
-        if (!issueId) throw new Error('BAD_REQUEST: filters.issue required for listTasks');
+        const ref = input.filters?.issue;
+        if (!ref) throw new Error('BAD_REQUEST: filters.issue required for listTasks');
+        const issueId = await refs.issue('filters.issue', ref);
         const projectId = await loadIssueProjectId(issueId);
         await assertPrincipalIsMember(principal, projectId);
 
@@ -837,11 +797,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const data = input.data;
         if (!data?.issueId) throw new Error('BAD_REQUEST: data.issueId required for createTask');
         if (!data.taskTitle) throw new Error('BAD_REQUEST: data.taskTitle required for createTask');
-        const projectId = await loadIssueProjectId(data.issueId);
+        const issueId = await refs.issue('data.issueId', data.issueId);
+        const projectId = await loadIssueProjectId(issueId);
         await assertPrincipalIsWriter(principal, projectId);
 
         const created = await createTaskRow({
-          issueId: data.issueId,
+          issueId,
           projectId,
           title: data.taskTitle,
           description: data.taskDescription ?? null,
@@ -856,10 +817,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'updateTask': {
-        if (!input.documentId) {
-          throw new Error('BAD_REQUEST: documentId required for updateTask');
-        }
-        const row = await loadTaskForAccess(input.documentId);
+        if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for updateTask');
+        const row = await loadTaskForAccess(refs.task('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, row.projectId);
 
         const data = input.data ?? {};
@@ -882,13 +841,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'deleteTask': {
-        if (!input.documentId) {
-          throw new Error('BAD_REQUEST: documentId required for deleteTask');
-        }
-        const row = await loadTaskForAccess(input.documentId);
+        if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for deleteTask');
+        const row = await loadTaskForAccess(refs.task('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, row.projectId);
         await deleteTaskRow(row, principalHookActor(principal));
-        return { deleted: true, documentId: input.documentId };
+        return { deleted: true, documentId: row.id };
       }
     }
   },

@@ -617,24 +617,10 @@ describe('detectOrphanedRunAssertions wiring (ISS-1050 — the inverse of the ru
   });
 
   it('runs AFTER the reaping passes, not before them', async () => {
-    const order: string[] = [];
-    reapConcludedRunsMock.mockImplementation(async () => {
-      order.push('concludedRuns');
-      return { reaped: 0 };
-    });
-    reapJoblessRunsMock.mockImplementation(async () => {
-      order.push('joblessRuns');
-      return { reaped: 0 };
-    });
-    detectOrphanedRunAssertionsMock.mockImplementation(async () => {
-      order.push('orphanedRunAssertions');
-      return { detected: 0, reported: 0 };
-    });
-
     await runPipelineSweep();
-
-    expect(order.indexOf('orphanedRunAssertions')).toBeGreaterThan(order.indexOf('concludedRuns'));
-    expect(order.indexOf('orphanedRunAssertions')).toBeGreaterThan(order.indexOf('joblessRuns'));
+    const namedAt = detectOrphanedRunAssertionsMock.mock.invocationCallOrder[0] ?? -1;
+    expect(namedAt).toBeGreaterThan(reapConcludedRunsMock.mock.invocationCallOrder[0] ?? -1);
+    expect(namedAt).toBeGreaterThan(reapJoblessRunsMock.mock.invocationCallOrder[0] ?? -1);
   });
 });
 
@@ -670,6 +656,16 @@ describe('reapJoblessRuns wiring (ISS-654 — the job-less issue-run phantom)', 
     await expect(runPipelineSweep()).rejects.toThrow();
     expect(alertsMock).toHaveBeenCalled();
   });
+});
+
+it('releaseSweep (ISS-1117) runs after reapStaleReleaseBatchClaims and reports its count', async () => {
+  const result = await runPipelineSweep();
+  const calls = dbExecute.mock.calls.map((c) => sqlText(c[0]));
+  const claims = calls.findIndex((s) => s.includes('SET release_batch_run_id = NULL'));
+  const scan = calls.findIndex((s) => s.includes('awaiting_release'));
+  expect(claims).toBeGreaterThanOrEqual(0);
+  expect(scan).toBeGreaterThan(claims);
+  expect(result.releaseSweep).toEqual({ projectsCut: 0, issuesCut: 0, issuesExcluded: 0 });
 });
 
 describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {

@@ -1,6 +1,6 @@
 /**
  * The two release-path functions the flow map names and the suites did not run
- * (ISS-863): the deploy dispatch that job completion triggers, and the CAS that
+ * (ISS-863): the deploy dispatch that a landing triggers, and the CAS that
  * flips a job to `done`.
  *
  * `tryDispatchCoolifyRelease` carries `cm:flow release/deploy`, and

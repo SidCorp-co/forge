@@ -101,7 +101,7 @@ describe('F6 pipeline E2E', () => {
   ): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, title, description, status, priority, reopen_count, created_by_id, iss_seq)
+      INSERT INTO issues (id, project_id, title, description, status, priority, reopen_count, created_by_id, iss_seq, merged_at)
       VALUES (
         ${id},
         ${projectId},
@@ -111,7 +111,8 @@ describe('F6 pipeline E2E', () => {
         ${overrides.priority ?? 'medium'},
         ${overrides.reopenCount ?? 0},
         ${createdById},
-        ${Math.floor(Math.random() * 1_000_000)}
+        ${Math.floor(Math.random() * 1_000_000)},
+        CASE WHEN ${overrides.status ?? 'open'} = 'closed' THEN now() END
       )
     `);
     return id;

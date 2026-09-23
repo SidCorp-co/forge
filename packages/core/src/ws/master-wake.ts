@@ -69,8 +69,16 @@ async function publishWake(
     for (const id of deviceIds) {
       delivered += roomManager.publish(deviceRoom(id), { event: 'master.wake', data });
     }
-    if (deviceIds.length > 0) {
+    if (delivered > 0) {
       logger.debug({ ...data, delivered }, 'master.wake published');
+    } else {
+      // ISS-1122 — published and acted on are different facts, and this room has no buffer and no
+      // replay, so a wake nobody received is the one observable moment of an issue nothing on this
+      // project will pick up.
+      logger.warn(
+        { ...data, boxes: deviceIds.length },
+        'master.wake reached no listener — nothing on this project consumed it',
+      );
     }
     return { boxes: deviceIds.length, delivered };
   } catch (err) {

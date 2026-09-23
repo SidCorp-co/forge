@@ -149,12 +149,13 @@ Three things wear that same face, and only the first is the caller's:
   *silently, forever* and the container serves new code on an old schema (ISS-807); a call that
   returns `200` and does nothing is a defect on our side of the line. Fix it to fail loudly, and
   plant the malformed input to watch it go red before the fix counts for anything.
-- **An affordance defect** → the wrong use IS the natural reading of the interface. A `patch` that
-  replaces a nested map wholesale wipes every key the caller did not resend — the
-  `wholesale-config-clobber` red flag exists because no message saves an interface whose name
-  promises the other semantics. One reader misreading buys a clearer error; the same affordance
-  biting twice buys a redesign, and "we will document it better" is how that redesign gets
-  deferred a third time.
+- **An affordance defect** → the wrong use IS the natural reading of the interface. One reader
+  misreading buys a clearer error; the same affordance biting twice buys a redesign, and "we will
+  document it better" is how that redesign gets deferred a third time. A `patch` that replaced a
+  nested map wholesale wiped every key the caller did not resend, and four callers each defended
+  themselves against it by hand — so ISS-1170 took the redesign: a settings write is
+  `{ base, patch }`, `patch` names only the keys being changed and merges by path, `base` is what
+  the caller read, and a write whose base moved at a path it writes is refused naming that path.
 
 Which of the three you may absorb follows `VISION: kernel-hard-policy-soft`. Kernel input — job,
 session, run, state, transition, evidence, retry, escalation — has zero tolerance: a

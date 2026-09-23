@@ -7,7 +7,7 @@
 // row.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionSummary, IntegrationSummary } from "../../types";
 
@@ -16,6 +16,12 @@ const CONNECTION = "b1d6b9c2-5f3a-4a1e-9f0e-6c2a7d8e4f10";
 const BINDING = "3f7c1a44-9e52-4d6b-8a21-0b5c9d2e7f61";
 
 const bind = vi.fn();
+/** The connect start: asserted for the ownership choice it must NOT carry. */
+const connectStart = vi.fn(async (_params: { org?: string; orgId?: string }) => ({
+  postUrl: "https://github.com/settings/apps/new",
+  state: "signed-state",
+  manifest: { name: "Forge — Forge", default_permissions: { contents: "write" } },
+}));
 const update = vi.fn();
 const remove = vi.fn();
 
@@ -45,6 +51,18 @@ let repos: {
   error: unknown;
 };
 
+/** The project's own org is what the App will belong to, so the screen reads it. */
+let project = {
+  id: PROJECT,
+  orgId: "63b1b3a0-1f0e-4a77-9f2d-2c5e6a7b8c90",
+  orgName: "SidCorp",
+  orgIsPersonal: false,
+  orgRole: "owner",
+};
+vi.mock("@/features/projects/hooks", () => ({
+  useProjects: () => ({ data: [project] }),
+}));
+
 vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({ data: { items } }),
   useConnections: () => ({ data: { items: connections } }),
@@ -62,7 +80,12 @@ vi.mock("../../hooks", () => ({
     isError: false,
     error: null,
   }),
-  useGitHubConnect: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false, error: null }),
+  useGitHubConnect: () => ({
+    mutateAsync: connectStart,
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
   useUpdateConnection: () => ({ mutate: vi.fn(), isPending: false }),
   useOrgConnectionLocked: () => false,
   useIsOrgAdmin: () => true,
@@ -323,5 +346,56 @@ describe("a project with no github binding row at all", () => {
         agentAccess: "none",
       },
     });
+  });
+});
+
+/**
+ * The App's owner follows the project, so the create screen says who that is
+ * instead of offering a choice the server does not honour. Offering
+ * "Personal (only me)" there is how a project's App ended up reachable by one
+ * person (ISS-1115).
+ */
+describe("the screen that creates a new App", () => {
+  beforeEach(() => {
+    items = [];
+    connections = [];
+    project = { ...project, orgIsPersonal: false, orgName: "SidCorp" };
+  });
+
+  it("names the org the App will belong to rather than asking who should own it", () => {
+    mount();
+
+    expect(screen.queryByLabelText("Credential owner")).toBeNull();
+    expect(screen.queryByText("Personal (only me)")).toBeNull();
+    expect(screen.getByText(/will belong to SidCorp/i)).toBeInTheDocument();
+  });
+
+  it("starts the flow with no ownership choice, so the sentence above cannot go stale", async () => {
+    // jsdom has no navigation, and the submit is what the real flow ends on.
+    const submit = vi
+      .spyOn(HTMLFormElement.prototype, "submit")
+      .mockImplementation(() => undefined);
+    mount();
+
+    fireEvent.change(screen.getByLabelText("GitHub organization"), {
+      target: { value: "SidCorp-co" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create github app/i }));
+    await waitFor(() => expect(submit).toHaveBeenCalled());
+
+    expect(connectStart).toHaveBeenCalledTimes(1);
+    // Strict, so a lingering `orgId: undefined` key is a failure too: the point
+    // is that no ownership choice is composed at all.
+    expect(connectStart.mock.calls[0][0]).toStrictEqual({ org: "SidCorp-co" });
+    submit.mockRestore();
+  });
+
+  it("tells a solo operator the App is theirs, since a personal org owns nothing shared", () => {
+    project = { ...project, orgIsPersonal: true, orgName: "Chuong" };
+
+    mount();
+
+    expect(screen.getByText(/will belong to you/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Credential owner")).toBeNull();
   });
 });

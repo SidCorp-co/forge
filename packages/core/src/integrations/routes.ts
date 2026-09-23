@@ -229,14 +229,14 @@ integrationsRoutes.patch(
       }
     }
 
-    // Connection-level fields (connection-tier config/secrets/active) of an
-    // ORG-owned credential are managed at the org tier — a project admin alone
-    // must not rotate or reconfigure a credential shared across the org's
-    // projects. Binding-tier deploy-target fields stay project-admin editable:
-    // they only affect THIS project's binding.
+    // Connection-tier config and secrets of an ORG-owned credential are managed
+    // at the org tier: a project admin alone must not rotate a credential the
+    // org's projects share. Binding-tier fields stay project-admin editable,
+    // `active` among them — the tier split below writes it to the binding, and
+    // DELETE throws that same switch for a project admin alone (ISS-1115).
     if (
       connection.ownerType === 'org' &&
-      (mergedConfig !== undefined || patch.secrets !== undefined || patch.active !== undefined)
+      (mergedConfig !== undefined || patch.secrets !== undefined)
     ) {
       const access = await effectiveProjectRole(userId, projectId);
       if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();

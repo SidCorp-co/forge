@@ -12,6 +12,7 @@ import {
   RECORD_RULE_IDS,
   recordInCommentRefusal,
   recordInCommentWarning,
+  recordRefusals,
 } from './record-screen.js';
 
 const FENCE = '```';
@@ -88,5 +89,51 @@ describe('record-in-comment', () => {
     expect(plain).toBeNull();
     expect(recordInCommentRefusal(plain)).toBeNull();
     expect(recordInCommentWarning(plain)).toBeNull();
+  });
+});
+
+/**
+ * The identity rule reaching the door `screenAgentComment` calls, rather than standing beside it.
+ */
+describe('recordRefusals carries the verdict identity rule', () => {
+  const verdictBody = (lines: string[]): string =>
+    [`${FENCE}forge-record`, ...lines, FENCE, '', '`forge-record: verdict · contract 1`'].join(
+      '\n',
+    );
+
+  it('returns the identity refusal for a verdict naming nothing it was judged against', async () => {
+    const refusals = await recordRefusals(
+      'proj-1',
+      parseForgeRecord(verdictBody(['criterion: 13', 'verdict: pass'])),
+      undefined,
+    );
+    expect(refusals.map((r) => r.rule)).toEqual(['verdict-identity']);
+  });
+
+  it('returns nothing for a verdict naming a runtime in full', async () => {
+    const refusals = await recordRefusals(
+      'proj-1',
+      parseForgeRecord(
+        verdictBody([
+          'criterion: 13',
+          'verdict: pass',
+          'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
+        ]),
+      ),
+      undefined,
+    );
+    expect(refusals).toEqual([]);
+  });
+
+  it('returns nothing for a record of another kind that carries the same fields', async () => {
+    const other = [
+      `${FENCE}forge-record`,
+      'criterion: 13',
+      'verdict: pass',
+      FENCE,
+      '',
+      '`forge-record: finding · contract 1`',
+    ].join('\n');
+    expect(await recordRefusals('proj-1', parseForgeRecord(other), undefined)).toEqual([]);
   });
 });

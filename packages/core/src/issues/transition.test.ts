@@ -309,16 +309,16 @@ describe('POST /api/issues/:id/transition', () => {
     expect(envelope.event).toBe('issue.statusChanged');
   });
 
-  it('200 draft → closed discards the proposal', async () => {
+  it('200 draft → dropped discards the proposal', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'draft' });
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'closed', reopenCount: 0, updatedAt: new Date() },
+      { id: ISSUE_ID, status: 'dropped', reopenCount: 0, updatedAt: new Date() },
     ]);
-    const res = await req({ toStatus: 'closed', reason: 'draft discarded' }, token);
+    const res = await req({ toStatus: 'dropped', reason: 'draft discarded' }, token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { status: string };
-    expect(body.status).toBe('closed');
+    expect(body.status).toBe('dropped');
   });
 
   it('409 ILLEGAL_TRANSITION when draft attempts to skip into the pipeline', async () => {
@@ -475,11 +475,9 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
   });
 });
 
-// `noOpSentence` names the release gate's rewrite and the endpoints that reach
-// `closed`, so a NO_OP must answer with the thrower's own detail. Its own
-// describe: the suite above is at its function-length budget.
-describe('POST /api/issues/:id/transition — a NO_OP says why', () => {
-  it("409 answers with the error's own detail, not a fixed string", async () => {
+// Its own describe because the suite above is at its function-length budget.
+describe('POST /api/issues/:id/transition — a refusal answers in its own words', () => {
+  it("409 NO_OP answers with the error's own detail, not a fixed string", async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
     const res = await req({ toStatus: 'open' }, token);
@@ -487,5 +485,15 @@ describe('POST /api/issues/:id/transition — a NO_OP says why', () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('NO_OP');
     expect(body.message).toContain('already in status open');
+  });
+
+  it('422 CLOSE_REQUIRES_SHIPPED for a close on an issue with no merged_at (ISS-1108)', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'draft' });
+    const res = await req({ toStatus: 'closed', reason: 'draft discarded' }, token);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('CLOSE_REQUIRES_SHIPPED');
+    expect(body.message).toContain('`dropped`');
   });
 });

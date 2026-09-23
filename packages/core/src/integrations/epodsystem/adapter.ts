@@ -247,6 +247,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
   capabilities: {
     canDispatch: false,
     canReceiveWebhook: false,
+    inboundUnprompted: false,
     // A storefront IS somewhere Forge deploys to: its preview is the draft theme and its live is
     // the published one, which is why three fleet storefronts carry one binding on both stages.
     canDeploy: true,

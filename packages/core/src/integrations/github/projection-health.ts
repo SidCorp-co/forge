@@ -10,10 +10,11 @@
 
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { integrationBindings, integrationDeliveries } from '../../db/schema.js';
+import { integrationBindings } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
+import { readInboundDoorTraffic } from '../inbound-door.js';
 
-/** How many inbound deliveries have reached one binding, and when the last one did. */
+/** How many inbound deliveries have come through one binding's door, and when the last one did. */
 export interface InboundDeliveryReport {
   count: number;
   lastAt: Date | null;
@@ -28,22 +29,17 @@ export interface ProjectionPipeReport {
   inbound: InboundDeliveryReport;
 }
 
-export async function inboundDeliveriesForBinding(
-  bindingId: string,
-): Promise<InboundDeliveryReport> {
-  const [row] = await db
-    .select({
-      n: sql<number>`count(*)::int`,
-      last: sql<Date | null>`max(${integrationDeliveries.createdAt})`,
-    })
-    .from(integrationDeliveries)
-    .where(
-      and(
-        eq(integrationDeliveries.bindingId, bindingId),
-        eq(integrationDeliveries.direction, 'inbound'),
-      ),
-    );
-  return { count: Number(row?.n ?? 0), lastAt: row?.last ? new Date(row.last) : null };
+/**
+ * Deliveries that came THROUGH the door, which is not every inbound row.
+ *
+ * ISS-1140 gave a call turned away at the door a row of its own, and counting those here would
+ * say a door had opened when what actually happened is that something knocked and was refused —
+ * the same false green this module exists to refuse, wearing a new cause. `inbound-door.ts` is
+ * the one reader of that table for this fact and this defers to it.
+ */
+async function inboundDeliveriesForBinding(bindingId: string): Promise<InboundDeliveryReport> {
+  const traffic = await readInboundDoorTraffic(bindingId);
+  return { count: traffic.accepted, lastAt: traffic.lastAcceptedAt };
 }
 
 /** What this project's projection holds, and what has reached the door that writes it. */

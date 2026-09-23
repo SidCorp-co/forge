@@ -186,9 +186,21 @@ mod tests {
         .unwrap();
         led.attach_session("run-1", "sess-1").unwrap();
 
+        let repo = std::env::temp_dir().join(format!(
+            "forge-recovery-ports-repo-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["init", "-q", "-b", "main"])
+            .current_dir(&repo)
+            .output();
         let st = close(
             &mut led,
             "run-1",
+            Some(&repo),
             &Terminal,
             &CoreRunState { client: &client },
         )

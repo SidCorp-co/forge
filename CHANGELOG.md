@@ -112,6 +112,12 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Asking about a whole backlog now costs one request, not one per issue.** Two new streamed
+  endpoints answer the ranked next-work question and the duplicate sweep as they work, reporting
+  progress and saying plainly when an answer is partial.
+- **An issue at `awaiting_release` on a project that already leaves nobody an act now releases
+  itself** once every acceptance criterion is judged `pass` or `short`; one left `skipped`,
+  failed, or unjudged holds the issue in place.
 - **Forge shows its own version**, once, in the sidebar footer. It is read from the deployment
   answering you, so it names what is actually serving you rather than what this page was built
   from.
@@ -162,6 +168,10 @@
 - **A comment carrying a machine record is told where that record belongs.** The answer names the
   route for its kind, and a guide. Guidance today; a refusal only for a client that says it can
   comply.
+- **An issue sitting in a live status with nothing working it now says so on itself**, naming what
+  it waits for and who owes the next move. Each status has its own clock.
+- **A claim left behind by a run that stopped is let go once it expires.** One still inside its
+  time, or one that cannot be read, is left alone and reported instead.
 - **A document that names a file in this repo is now checked against it.** A path the tree no
   longer carries fails the build, and a citation whose file changed after the document did comes
   back on the doc-review worklist.
@@ -2452,6 +2462,10 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **"Deploy when a change lands" is gone from the Coolify settings.** Nothing ever deployed
+  through it. A deploy is now only ever something a person or an agent asks for, at the point
+  of releasing.
+
 - **The dead second copy of four project settings is gone** — checkout path, base branch,
   production branch and default device. Nothing you set changes. A save naming a dead copy is now
   refused, saying which setting owns that value.
@@ -3065,13 +3079,90 @@
 
 ### Fixed
 
+- **A criterion's verdict now says what it was judged against, and stops counting once that is
+  gone.** A pass taken at a runtime a repair replaced read as earned forever. Release holds the
+  issue and names the criterion.
+
+- **Editing one part of project settings no longer wipes another part you just saved.** Each save
+  sends only what it changed. A setting somebody else moved is refused by name, not overwritten,
+  and the screen offers the re-read.
+
+- **A release record no longer verifies on an abbreviation the caller chose.** A short prefix of
+  the serving commit used to pass, closing issues nobody released. A claim must be the whole sha;
+  production may report a short one.
+
+- **A run counts as having given its checkout back only once git says so.** Moving a checkout left
+  the ledger claiming the work was released while it sat on disk. The box asks git now, and says
+  when it cannot.
+
+- **A finished run whose work this machine cannot ask a remote about now ends, instead of holding
+  its issues forever.** The work is kept where you can find it, and a release that cannot be made
+  is reported once.
+
+- **A finished run that was working in the project's own copy now ends instead of holding its
+  issues forever.** Those issues come back within seconds, and the copy is left untouched,
+  including unsaved work.
+
+- **One project that cannot be set up on a machine no longer stops the rest.** The others go
+  through as normal, and the failing one is named with its reason instead of an error code with no
+  cause.
+- **Two requests replacing the same token at once no longer fail one of them.** Re-pairing a
+  machine while it signs in, or rotating one token twice, could hand one caller an error instead
+  of a token.
+- **Giving a machine to someone else now takes the previous owner's access.** Their credential
+  stayed valid beside the new one, and which of the two the machine spoke as was arbitrary.
+- **A revoked machine credential can no longer be renewed into a working one.** Whoever held it
+  before could list it and rotate it back into live access to a machine already handed on.
+- **A record written into a comment now lands or is refused, never silently neither.**
+  The tag may sit on the opening fence as well as after the block; one that cannot be read is
+  refused as you write it.
+- **A comment is stored as you wrote it, indentation and all.** An indented record example at the
+  top of a comment used to lose its indent, and was then refused as a fence you never closed, or
+  warned about.
+- **A machine now says when it can no longer be heard by a session it is running.**
+  `forge-runner master status` gives that answer, how long it has stood, and a command that ends
+  the session it names.
+- **Splitting a release note in two with a blank line is now refused instead of quietly losing the
+  second half.** The words after the break reached no reader, and the shortened note passed as a
+  trim of what it replaced.
+
+- **An issue can now be named by its short key everywhere the issue tools take one.** They
+  answered with that key and refused it back. A key naming nothing is now refused saying which.
+
+- **Two tool descriptions that told you to call something the wrong way have been corrected.** One
+  named the project list as an action on another tool; the other offered a filter that did not exist.
+
+- **A refusal while minting a GitHub token no longer sends you to check repository access.**
+  Minting needs no repository permission at all; the message now names the installation's own
+  state instead — suspended, or its access revoked.
+
+- **A landed change can now be deployed straight away, rather than waiting for an unrelated
+  release to carry it.** Turn it on under Coolify settings; who may deploy to production is
+  unchanged.
+
+- **Approving one production deploy no longer approves every one after it.** The approval was
+  remembered against the destination rather than the work it was given for, so one press waved
+  through everything after. Each deploy now asks its own.
+
+- **A runner change now reaches the machines that run it.** Publishing was a step someone had to
+  remember; a missed one left every box on the old program. Releases are automatic now, and a box
+  behind what landed says so.
+
 - **An attribute pointing at the wrong comment is refused whichever door writes it.** The agent
   tool stored it and called it written, or answered with the database's insert statement. An id in
   upper case is accepted, not refused as nothing.
 
-- **A published release entry can be corrected.** An edit keeping over half its words reads as
-  that entry, not a deletion plus a new one, so a dead link can be fixed without cutting the
-  entry to the 40-word budget.
+- **A repository connection that cannot receive anything no longer reports itself healthy.** The
+  check now asks GitHub where it has been told to call, compares that to the address this
+  repository needs, and names both when they differ.
+
+- **A webhook call Forge turns away now leaves a trace.** Rejected calls are counted apart from
+  ones that got through, with the reason, no content kept, nobody named as sender, and repeats
+  inside ten minutes sharing one record.
+
+- **A published release entry can be corrected.** An edit of a few words reads as that entry, not
+  a deletion plus a new one, so a dead link can be fixed without cutting the entry to the 40-word
+  budget.
 
 - **Forge's version is on screen in the narrow sidebar you get by default.** That sidebar ran
   taller than the window, so the row under it — version, account menu, Docs — sat below the fold,
@@ -3143,6 +3234,14 @@
   machine rather than forbidding the others, so a project whose boxes carry no matching label still
   ships, and records the unmet preference.
 
+- **A merged issue now shows whether Forge watched the merge happen or only recorded somebody's
+  claim that it did.** The merge row carries **observed** or **claimed**, and marking an issue
+  merged tells you which of the two you just wrote.
+
+- **The instructions agents read about marking an issue merged stated two untrue things.** A commit
+  you name is kept as your claim, never as Forge's own record, and marking releases no issue
+  waiting on this one.
+
 - **A pull request Forge opened is now one Forge can merge.** Forge knew only the pull requests
   GitHub announced by webhook, so one Forge opened itself left no record and could not be merged.
   Opening one now writes that record.
@@ -3191,8 +3290,6 @@
 - **The instructions a master is given no longer contradict themselves.** The text typed into its
   pane disagreed with the guide it works from about what decides whether work gets declared. It now
   carries only what the guide cannot know.
-
-
 
 - **Work an agent does now shows as the agent's on the issue list, not as yours.** A box filing on
   your token was credited to you, while the activity log said an agent. Issues already filed are
@@ -5771,6 +5868,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **Closing an issue now means the work shipped.** A close is refused unless the issue says the code landed. Work that turned out not to be work leaves by Dropped, which frees whatever was waiting on it just the same.
+
+- **Every change of an issue's status is now recorded in the same ledger as the rest of the work.** Who moved it, when, and under whose authority is answered from that record instead of from a comment somebody wrote.
+
 - **Two project settings saved at once no longer overwrite each other.** Each setting is written on
   its own now, instead of rewriting the whole configuration; and a save that fails part-way leaves
   every setting in it untouched.

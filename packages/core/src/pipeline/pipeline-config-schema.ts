@@ -201,68 +201,68 @@ export function defaultStatesConfig(): NonNullable<StatesConfig> {
  * `previewEnabled`, etc.) round-trip through the API without causing 400s
  * but are not surfaced as configurable controls.
  */
-export const pipelineConfigSchema = z
-  .object({
-    enabled: z.boolean().optional(),
-    intakeGate: z
-      .object({
-        enabled: z.boolean(),
-        notify: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
-    githubIntake: z
-      .object({
-        enabled: z.boolean(),
-      })
-      .strict()
-      .optional(),
-    knowledgePromotion: z
-      .object({
-        enabled: z.boolean(),
-        candidatesPerRun: z.number().int().min(1).max(10).optional(),
-        minRetrievals: z.number().int().min(1).max(100).optional(),
-      })
-      .strict()
-      .optional(),
-    assistantWeekly: z
-      .object({
-        enabled: z.boolean(),
-        pinnedIssue: z.string().regex(/^[A-Z]{2,6}-\d+$/, 'an issue key such as ISS-1060'),
-        judgeProviderId: z.string().min(1),
-        judgeModel: z.string().min(1),
-        source: z.string().min(1).optional(),
-      })
-      .strict()
-      .optional(),
-    poolBacklog: poolBacklogSchema.optional(),
-    states: statesConfigSchema,
-    maxResumeTokens: z.number().int().min(0).optional(),
-    reopenPolicy: z
-      .object({
-        noProgressRounds: z.number().int().min(1).max(100),
-      })
-      .strict()
-      .optional(),
-    mcpServers: z.record(z.string(), z.unknown()).optional(),
-    autoProdDeploy: z.boolean().optional(),
-    lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
-    sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
-    [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),
-    statusEntryCriteria: z
-      .partialRecord(z.enum(issueStatuses), z.array(z.enum(ENTRY_CRITERION_KEYS)).min(1).max(16))
-      .optional(),
-  })
-  .superRefine((cfg, ctx) => {
-    if (cfg.intakeGate?.enabled === true && cfg.poolBacklog?.statuses?.includes('draft')) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['poolBacklog', 'statuses'],
-        message:
-          'intakeGate is on, which parks every new issue at `draft` for a human to approve — so `draft` cannot also be admitted to `poolBacklog.statuses`, which lets a master approve it instead. Turn off `intakeGate`, or admit a status other than `draft`.',
-      });
-    }
-  });
+const pipelineConfigObject = z.object({
+  enabled: z.boolean().optional(),
+  intakeGate: z
+    .object({
+      enabled: z.boolean(),
+      notify: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
+  githubIntake: z
+    .object({
+      enabled: z.boolean(),
+    })
+    .strict()
+    .optional(),
+  knowledgePromotion: z
+    .object({
+      enabled: z.boolean(),
+      candidatesPerRun: z.number().int().min(1).max(10).optional(),
+      minRetrievals: z.number().int().min(1).max(100).optional(),
+    })
+    .strict()
+    .optional(),
+  assistantWeekly: z
+    .object({
+      enabled: z.boolean(),
+      pinnedIssue: z.string().regex(/^[A-Z]{2,6}-\d+$/, 'an issue key such as ISS-1060'),
+      judgeProviderId: z.string().min(1),
+      judgeModel: z.string().min(1),
+      source: z.string().min(1).optional(),
+    })
+    .strict()
+    .optional(),
+  poolBacklog: poolBacklogSchema.optional(),
+  states: statesConfigSchema,
+  maxResumeTokens: z.number().int().min(0).optional(),
+  reopenPolicy: z
+    .object({
+      noProgressRounds: z.number().int().min(1).max(100),
+    })
+    .strict()
+    .optional(),
+  mcpServers: z.record(z.string(), z.unknown()).optional(),
+  autoProdDeploy: z.boolean().optional(),
+  lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
+  sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
+  [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),
+  statusEntryCriteria: z
+    .partialRecord(z.enum(issueStatuses), z.array(z.enum(ENTRY_CRITERION_KEYS)).min(1).max(16))
+    .optional(),
+});
+
+export const pipelineConfigSchema = pipelineConfigObject.superRefine((cfg, ctx) => {
+  if (cfg.intakeGate?.enabled === true && cfg.poolBacklog?.statuses?.includes('draft')) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['poolBacklog', 'statuses'],
+      message:
+        'intakeGate is on, which parks every new issue at `draft` for a human to approve — so `draft` cannot also be admitted to `poolBacklog.statuses`, which lets a master approve it instead. Turn off `intakeGate`, or admit a status other than `draft`.',
+    });
+  }
+});
 
 export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;
 
@@ -315,15 +315,49 @@ export function refuseUnknownMcpServerNames(raw: unknown, ctx: z.RefinementCtx):
   }
 }
 
+export const PIPELINE_CONFIG_KEYS = Object.keys(pipelineConfigObject.shape).sort();
+
+/** Keys once declared, each with its refusal — dropped from the shape alone, one reads as a typo. */
+export const RETIRED_PIPELINE_CONFIG_KEYS: Record<string, string> = {
+  deployOnLanding:
+    'pipelineConfig.deployOnLanding no longer exists. It armed a `transition` subscriber that dispatched a Coolify deployment the moment an issue reached `developed`, and ISS-1186 removed that subscriber outright rather than defaulting it off: a deploy is never a side effect of code, it is a tool call an agent makes, and `developed` is before any verdict exists in any case. Nothing replaces it here — reach a landed change on a local preview, and release through the deploy tool at the release rung. Remove deployOnLanding and resend.',
+};
+
+/**
+ * A patch, not a document: it names the keys it changes, the schema above judges the MERGED
+ * result, and a key this config does not have is refused rather than dropped.
+ */
 export const pipelineConfigPatchSchema = z
   .unknown()
   .superRefine((raw, ctx) => {
-    refuseRetiredStageKeys((raw as { states?: unknown } | null | undefined)?.states, ctx);
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'a pipeline config patch is an object holding the keys you are changing — `{"intakeGate":{"enabled":true}}`, never a whole document and never a list.',
+      });
+      return;
+    }
+    for (const key of Object.keys(raw as Record<string, unknown>)) {
+      if (PIPELINE_CONFIG_KEYS.includes(key)) continue;
+      // `hasOwn`, never a bare lookup: `toString` would come back refused with a function body.
+      const retired = Object.hasOwn(RETIRED_PIPELINE_CONFIG_KEYS, key)
+        ? RETIRED_PIPELINE_CONFIG_KEYS[key]
+        : undefined;
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message:
+          retired ??
+          `\`${key}\` is not a pipeline config key. The keys are: ${PIPELINE_CONFIG_KEYS.join(', ')}.`,
+      });
+    }
+    refuseRetiredStageKeys((raw as { states?: unknown }).states, ctx);
     refuseUnknownMcpServerNames(raw, ctx);
   })
-  .pipe(pipelineConfigSchema);
+  .transform((raw) => raw as Record<string, unknown>);
 
-export type PipelineConfigPatchInput = z.infer<typeof pipelineConfigPatchSchema>;
+export type PipelineConfigPatchInput = Record<string, unknown>;
 
 /**
  * Defaults surfaced by `GET /pipeline-config` when a project has no stored

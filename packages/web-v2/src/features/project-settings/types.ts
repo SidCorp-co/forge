@@ -1,4 +1,21 @@
+import { buildDocumentPatch } from "@forge/contracts/document-patch";
 import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts/status-sets";
+
+/** A settings write: the keys being changed, and the values they were read against.
+ *  `patch` is sparse — a key it does not name is untouched at any depth, `null` deletes
+ *  one — and `base` is compared at the paths `patch` writes and nowhere else. */
+export interface DocumentWrite {
+	base: Record<string, unknown>;
+	patch: Record<string, unknown>;
+}
+
+/** The write one section sends, from the slice it seeded with and the slice it holds now.
+ *  A section names its own keys and no others, so two sections of one page load overlap at
+ *  no path and both land (ISS-1170). */
+export function sectionWrite(before: unknown, after: unknown): DocumentWrite {
+	const { patch, base } = buildDocumentPatch(before, after);
+	return { base, patch };
+}
 
 /** Patch body accepted by `PATCH /api/projects/:id` (basics + repo + testing).
  *  `orgId` moves the project to another org — requires org admin on BOTH the
@@ -15,7 +32,8 @@ export interface ProjectUpdateInput {
 	liveBranch?: string | null;
 	releaseModel?: "none" | "promote" | "publish";
 	releaseStrategy?: "merge-branch" | "cherry-pick" | "tag-mr" | null;
-	environments?: EnvironmentsConfig | null;
+	/** NOT `environments`: that document is written through
+	 *  `PATCH /api/projects/:id/environments`, which refuses it here by name. */
 	orgId?: string;
 	/** ISS-609 — chat/RC-bot reply-style knob; scoped server-side write into
 	 *  `agentConfig.personaStyle`. null/'' clears it. */
@@ -441,18 +459,6 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 		const extra = [...tools].filter((t) => !baseline.has(t));
 		return { status: row.status, isOutlier: missing.length > 0 || extra.length > 0, extra, missing };
 	});
-}
-
-export function withStagePatch(
-	cfg: PipelineConfig,
-	status: string,
-	patch: PipelineStateConfig,
-): PipelineConfig {
-	const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig | undefined>;
-	return {
-		...cfg,
-		states: { ...states, [status]: { ...(states[status] ?? {}), ...patch } },
-	};
 }
 
 /** Every tool id already named anywhere in the config — the add-picker's seed.

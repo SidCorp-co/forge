@@ -25,7 +25,8 @@ export function noOpSentence(input: NoOpSentenceInput): string {
       `Two things reach \`closed\` from here. Run the release: ` +
       `POST /api/projects/${projectId}/release-batches. Or, where the release has already ` +
       `happened and no batch could be created, record it: ` +
-      `POST /api/projects/${projectId}/release-records with the commit production is serving, an ` +
+      `POST /api/projects/${projectId}/release-records with the whole 40-character sha of the ` +
+      `commit production is serving, an ` +
       `account of how it was released, and the issues it carried — core reads this project's live ` +
       `probes itself and refuses the record where they are not serving that commit.`
     );

@@ -358,6 +358,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
   capabilities: {
     canDispatch: true,
     canReceiveWebhook: false,
+    inboundUnprompted: false,
     canDeploy: true,
     liveConfirmGate: true,
     hasDeliveryLog: true,

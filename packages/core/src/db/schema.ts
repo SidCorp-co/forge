@@ -1,4 +1,4 @@
-import { type InferSelectModel, relations, type SQL, sql } from 'drizzle-orm';
+import { type InferSelectModel, isNull, relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
@@ -469,6 +469,7 @@ export const devices = pgTable(
     name: text('name').notNull(),
     platform: text('platform', { enum: devicePlatforms }).notNull(),
     agentVersion: text('agent_version'),
+    agentCommit: text('agent_commit'),
     status: text('status', { enum: deviceStatuses }).notNull().default('offline'),
     disabledAt: timestamp('disabled_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
@@ -508,7 +509,7 @@ export const personalAccessTokens = pgTable(
     rateLimitMax: integer('rate_limit_max'),
   },
   (t) => ({
-    userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name),
+    userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name).where(isNull(t.revokedAt)),
     userActiveIdx: index('pat_user_active_idx').on(t.userId, t.revokedAt),
     tokenPrefixIdx: index('pat_token_prefix_idx').on(t.tokenPrefix),
     deviceIdIdx: index('pat_device_id_idx').on(t.deviceId),
@@ -796,7 +797,7 @@ export const jobEvents = pgTable(
 // scraping logs. `from_status` is the declared prior status (the CAS guard's
 // expected value); `actor_id` is a bare uuid (no FK) so a system/sweeper actor
 // with no principal records NULL without a join target.
-export const kernelTransitionEntities = ['job', 'session', 'run'] as const;
+export const kernelTransitionEntities = ['job', 'session', 'run', 'issue'] as const;
 export type KernelTransitionEntity = (typeof kernelTransitionEntities)[number];
 
 export const kernelTransitionActorTypes = ['user', 'system', 'runner', 'sweeper'] as const;
@@ -2465,11 +2466,9 @@ export const projectGitCredentialsRelations = relations(projectGitCredentials, (
   }),
 }));
 
-export const integrationDeliveryDirections = ['outbound', 'inbound'] as const;
-export type IntegrationDeliveryDirection = (typeof integrationDeliveryDirections)[number];
+import * as ints from './schema-integration-types.js';
 
-export const integrationDeliveryStatuses = ['pending', 'ok', 'failed'] as const;
-export type IntegrationDeliveryStatus = (typeof integrationDeliveryStatuses)[number];
+export * from './schema-integration-types.js';
 
 export const integrationDeliveries = pgTable(
   'integration_deliveries',
@@ -2478,10 +2477,10 @@ export const integrationDeliveries = pgTable(
     bindingId: uuid('binding_id').references(() => integrationBindings.id, {
       onDelete: 'cascade',
     }),
-    direction: text('direction', { enum: integrationDeliveryDirections }).notNull(),
+    direction: text('direction', { enum: ints.integrationDeliveryDirections }).notNull(),
     eventName: text('event_name').notNull(),
     requestId: text('request_id'),
-    status: text('status', { enum: integrationDeliveryStatuses }).notNull().default('pending'),
+    status: text('status', { enum: ints.integrationDeliveryStatuses }).notNull().default('pending'),
     payload: jsonb('payload').notNull().default({}),
     response: jsonb('response'),
     errorMessage: text('error_message'),
@@ -2514,16 +2513,13 @@ export const integrationDeliveriesRelations = relations(integrationDeliveries, (
 // using project_integrations until the REST cutover issue flips them. Owner is a
 // generic principal so org-level sharing arrives without a data migration.
 
-export const integrationOwnerTypes = ['user', 'org'] as const;
-export type IntegrationOwnerType = (typeof integrationOwnerTypes)[number];
-
 export const integrationConnections = pgTable(
   'integration_connections',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     // Generic principal. ownerType discriminates the namespace of ownerId so we
     // can add 'org' later without re-keying rows; no FK because it is polymorphic.
-    ownerType: text('owner_type', { enum: integrationOwnerTypes }).notNull().default('user'),
+    ownerType: text('owner_type', { enum: ints.integrationOwnerTypes }).notNull().default('user'),
     ownerId: uuid('owner_id').notNull(),
     provider: text('provider').notNull(),
     displayName: text('display_name'),
@@ -2539,7 +2535,9 @@ export const integrationConnections = pgTable(
     active: boolean('active').notNull().default(true),
     breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
     lastHealthStatus: text('last_health_status'),
+    lastHealthDetail: text('last_health_detail'),
     lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
+    inboundEndpointObserved: jsonb('inbound_endpoint_observed').$type<ints.ObservedEndpoint>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -39,11 +39,23 @@ pub async fn run_pending(client: &CoreClient, cfg: &Config) {
             return;
         }
     };
-    if pending.is_empty() {
+    // What core could not build, named per project. This used to arrive as
+    // `provisions failed: 500 Internal Server Error` for the whole device,
+    // every ninety seconds, saying neither which project nor why (ISS-1184).
+    for f in &pending.failures {
+        tracing::warn!("[provision] {} {}: {}", f.slug, f.kind, f.reason);
+    }
+    if pending.dropped > 0 {
+        tracing::warn!(
+            "[provision] {} further failure(s) did not fit the response header — each one is on its runner's row in web",
+            pending.dropped
+        );
+    }
+    if pending.provisions.is_empty() {
         return;
     }
-    tracing::info!("[provision] {} pending", pending.len());
-    for p in pending {
+    tracing::info!("[provision] {} pending", pending.provisions.len());
+    for p in pending.provisions {
         process_one(client, cfg, &p).await;
     }
 }

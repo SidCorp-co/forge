@@ -8,9 +8,9 @@ import {
   CardTitle,
   Toggle,
 } from "@/design";
-import { formatPipelineConfigError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
-import type { PipelineConfig } from "../types";
+import { type PipelineConfig, sectionWrite } from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 
 const DEFAULT_PER_RUN = 3;
 const DEFAULT_MIN_RETRIEVALS = 3;
@@ -43,11 +43,12 @@ export function KnowledgePromotionSection({
 		enabled !== seededEnabled || perRun !== seededPerRun || minRetrievals !== seededMin;
 
 	function save() {
-		const next: PipelineConfig = {
-			...config,
-			knowledgePromotion: { enabled, candidatesPerRun: perRun, minRetrievals },
-		};
-		update.mutate(next);
+		update.mutate(
+			sectionWrite(
+				{ knowledgePromotion: config.knowledgePromotion },
+				{ knowledgePromotion: { enabled, candidatesPerRun: perRun, minRetrievals } },
+			),
+		);
 	}
 
 	return (
@@ -112,9 +113,11 @@ export function KnowledgePromotionSection({
 			{canEdit && (
 				<div className="mt-3 space-y-3">
 					{update.isError && (
-						<Banner tone="danger" onDismiss={() => update.reset()}>
-							{formatPipelineConfigError(update.error)}
-						</Banner>
+						<SaveRefusedBanner
+							projectId={projectId}
+							error={update.error}
+							onDismiss={() => update.reset()}
+						/>
 					)}
 					{update.isSuccess && !dirty && (
 						<Banner tone="success" onDismiss={() => update.reset()}>

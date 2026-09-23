@@ -371,7 +371,7 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
     selectQueue.push([{ status: 'running' }]);
     selectQueue.push([]); // projectAutoProdDeploy: no agentConfig → gate stays on
-    selectQueue.push([]); // getProdGateState: no run carries a gate
+    selectQueue.push([]); // getProdGateStateForRun: this run carries no gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read
 
     const outcome = await tryDispatchCoolifyRelease({
@@ -385,6 +385,40 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
     expect(outcome.dispatched).toBe(false);
     expect(outcome.pendingHumanConfirm).toBe(true);
     expect(outcome.integrationIds).toEqual([PROD_INT]);
+  });
+
+  // ISS-1152 — one human confirmation authorises one deploy, and a landing asks
+  // for a deploy far more often than a release does.
+  it('refuses a gate confirmed for a different run — one confirmation is one deploy', async () => {
+    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    selectQueue.push([{ status: 'running' }]);
+    selectQueue.push([]); // projectAutoProdDeploy: gate stays on
+    selectQueue.push([
+      {
+        metadata: {
+          __forge_prod_deploy_gate: {
+            [PROD_INT]: {
+              runId: 'a-run-somebody-else-confirmed',
+              issueId: ISSUE_ID,
+              bindingId: PROD_INT,
+              requestedAt: '2026-09-01T00:00:00.000Z',
+              confirmedAt: '2026-09-01T00:05:00.000Z',
+            },
+          },
+        },
+      },
+    ]);
+    selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(outcome.dispatched).toBe(false);
+    expect(outcome.pendingHumanConfirm).toBe(true);
   });
 });
 

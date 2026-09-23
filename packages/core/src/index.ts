@@ -80,6 +80,7 @@ import { integrationConnectionsRoutes, integrationsRoutes } from './integrations
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
+import { backlogStreamRoutes, closeBacklogStreams } from './issues/backlog/routes.js';
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueMergeRoutes } from './issues/merge-routes.js';
@@ -140,7 +141,6 @@ import { registerPhaseJournalClose } from './pipeline/phase-journal-close.js';
 import { phaseRoutes } from './pipeline/phase-routes.js';
 import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
-import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
 import { registerRetentionSweeper } from './pipeline/retention/sweep.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
@@ -240,6 +240,7 @@ export async function runShutdown(
 
   const sequence = (async () => {
     await closeWs();
+    await closeBacklogStreams();
     await stopRocketChatManager();
     await unregisterScheduleTicker();
     await unregisterPmCadenceTicker();
@@ -267,11 +268,8 @@ export async function runShutdown(
 
 registerEagerSubscribers(hooks);
 
-app.use('/mcp', mcpRequestClass());
-app.use('/mcp', requirePat());
-app.post('/mcp', mcpHandler);
-app.get('/mcp', mcpHandler);
-app.delete('/mcp', mcpHandler);
+app.use('/mcp', mcpRequestClass(), requirePat());
+app.on(['POST', 'GET', 'DELETE'], '/mcp', mcpHandler);
 
 app.route('/', installRoutes);
 app.route('/api', installRoutes);
@@ -325,6 +323,7 @@ app.route('/api/projects', reconcileRoutes);
 app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', searchRoutes);
+app.route('/api/projects', backlogStreamRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', moduleDiagramRoutes);
 app.route('/api/projects', projectActivityRoutes);
@@ -429,7 +428,6 @@ if (isMain) {
   await assertVaultBootSafety();
   registerAllIntegrations();
   await registerIntegrationsWorker();
-  registerReleaseCompletedSubscriber(hooks);
   const skillSeed = await seedBuiltinSkills(db);
   for (const change of skillSeed.changes) {
     await hooks.emit('globalSkillUpdated', {

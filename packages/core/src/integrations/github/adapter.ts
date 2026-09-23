@@ -19,6 +19,7 @@ import {
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
 import { CHECK_PUBLISH_EVENT, publishForStoredPullRequest } from './contract-check.js';
+import { readAppHookConfig } from './hook-config.js';
 import { MERGE_EVENT, MERGE_METHODS, type MergeMethod, mergeStoredPullRequest } from './merge.js';
 import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
@@ -98,9 +99,12 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     const base = (ctx.config?.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
     const { appId, privateKey } = ctx.secrets ?? {};
 
+    // The sentence goes to the connection beside the status. Until ISS-1140 the sweep dropped it,
+    // so an operator reading `error` an hour later had the verdict and not one word of why.
     const finish = async (status: HealthCheckResult['status'], message?: string) => {
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: status,
+        lastHealthDetail: message ?? null,
         lastHealthAt: new Date(),
       });
       return message === undefined ? { status } : { status, message };
@@ -143,8 +147,43 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       }
       if (!res.ok) return finish('error', `GitHub returned HTTP ${res.status}`);
       const body = (await res.json()) as { full_name?: string; default_branch?: string };
+
+      // ISS-1140: the App can be called OUT to and still be calling nothing IN. Ask GitHub where
+      // it is addressed, store the ANSWER rather than a verdict on it, and demote only on what is
+      // true of the whole connection — no address, or an address switched off, or a read that
+      // failed. Whether that one address is the one a given BINDING needs is a per-binding
+      // question: the URL carries a project slug and one App may serve bindings in several
+      // projects, so that comparison is made at read time against this stored observation.
+      const hook = await readAppHookConfig({
+        appId,
+        privateKey,
+        ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
+      });
+      const observedAt = new Date().toISOString();
+      if (!hook.read) {
+        await updateConnection(ctx.connectionId, {
+          inboundEndpointObserved: { url: null, active: null, observedAt, readError: hook.reason },
+        });
+        return finish('degraded', hook.reason);
+      }
+      await updateConnection(ctx.connectionId, {
+        inboundEndpointObserved: { url: hook.url, active: hook.active, observedAt },
+      });
+      if (hook.url === null || hook.url === '') {
+        return finish(
+          'degraded',
+          `${owner}/${repo} answers, and this App holds no webhook address at all, so GitHub will never call in. Nothing that depends on a delivery — the pull request projection, the observed merge — can run for any project on this App.`,
+        );
+      }
+      if (hook.active === false) {
+        return finish(
+          'degraded',
+          `${owner}/${repo} answers, and this App's webhook at ${hook.url} is switched off on GitHub's side, so GitHub will never call in. Switch it back on under the App's Settings, Webhook.`,
+        );
+      }
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
+        lastHealthDetail: null,
         lastHealthAt: new Date(),
       });
       return {
@@ -153,6 +192,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
           repository: body.full_name,
           defaultBranch: body.default_branch,
           installationId,
+          webhookUrl: hook.url,
         },
       };
     } catch (err) {
@@ -299,6 +339,9 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
   capabilities: {
     canDispatch: true,
     canReceiveWebhook: true,
+    // GitHub calls on every push and pull request against a repository this App is installed on.
+    // A live binding that has recorded nothing is a pipe that is not carrying, not a quiet repo.
+    inboundUnprompted: true,
     canDeploy: false,
     liveConfirmGate: false,
     hasDeliveryLog: true,

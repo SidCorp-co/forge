@@ -54,16 +54,6 @@ export interface EmbedDetailed {
   model: string;
 }
 
-export interface EmbedDetailed {
-  vectors: number[][];
-  model: string;
-}
-
-export interface EmbedDetailed {
-  vectors: number[][];
-  model: string;
-}
-
 export class EmbeddingsClient {
   private readonly cfg: EmbeddingsConfig;
   private readonly breaker: CircuitBreakerState;

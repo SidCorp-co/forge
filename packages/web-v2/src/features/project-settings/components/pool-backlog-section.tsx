@@ -22,9 +22,9 @@ import {
 } from "@/design";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
-import { formatPipelineConfigError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
-import type { PipelineConfig } from "../types";
+import { type PipelineConfig, sectionWrite } from "../types";
+import { SaveRefusedBanner } from "./save-refused-banner";
 
 const DEFAULT_LIMIT = 20;
 
@@ -67,10 +67,12 @@ export function PoolBacklogSection({
 	}
 
 	function save() {
-		const next: PipelineConfig = { ...config };
-		if (statuses.length === 0) delete next.poolBacklog;
-		else next.poolBacklog = { statuses, limit };
-		update.mutate(next);
+		update.mutate(
+			sectionWrite(
+				{ poolBacklog: config.poolBacklog },
+				{ poolBacklog: statuses.length === 0 ? undefined : { statuses, limit } },
+			),
+		);
 	}
 
 	return (
@@ -156,9 +158,11 @@ export function PoolBacklogSection({
 			{canEdit && (
 				<div className="mt-3 space-y-3">
 					{update.isError && (
-						<Banner tone="danger" onDismiss={() => update.reset()}>
-							{formatPipelineConfigError(update.error)}
-						</Banner>
+						<SaveRefusedBanner
+							projectId={projectId}
+							error={update.error}
+							onDismiss={() => update.reset()}
+						/>
 					)}
 					{update.isSuccess && !dirty && (
 						<Banner tone="success" onDismiss={() => update.reset()}>

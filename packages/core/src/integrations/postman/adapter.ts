@@ -154,6 +154,7 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
   capabilities: {
     canDispatch: false,
     canReceiveWebhook: false,
+    inboundUnprompted: false,
     canDeploy: false,
     liveConfirmGate: false,
     hasDeliveryLog: false,

@@ -1,0 +1,76 @@
+name: runner-autorelease
+
+# A change under `packages/runner/` that lands on `main` becomes an installable
+# build, without anybody remembering to cut a tag.
+#
+# Before this existed, `runner-v*` tags were a hand act. Measured 2026-09-21:
+# seven runner commits sat on `main` past the last tag, every box was still
+# running the binary from before them, and nothing anywhere read as anything but
+# healthy — `packages/runner/Cargo.toml` still declared the released version, so
+# the box and `main` reported the same number over different code (ISS-1165).
+#
+# What it produces: the tag `runner-v<next>` at the commit that landed, and —
+# through runner-release.yml, called from here rather than triggered by the tag —
+# a GitHub Release carrying the two `forge-runner-<target>` binaries, `VERSION`
+# and `COMMIT`. Core's `fetch-release.js` picks that up within 30 minutes and
+# boxes with `update.auto` apply it on their next check.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/runner/**"
+
+permissions:
+  contents: write
+
+# Two merges landing together must not compute the same next version in
+# parallel. They are serialised here; the tag push itself is the second defence,
+# and refuses rather than moving a tag somebody else cut.
+concurrency:
+  group: runner-autorelease
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      tag: ${{ steps.next.outputs.tag }}
+      sha: ${{ steps.head.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The next version is read off the existing `runner-v*` tags, so the
+          # tags have to be here: a shallow checkout would compute the manifest's
+          # own version every time and collide on the first push.
+          fetch-depth: 0
+      # The identity a release carries is the newest commit that TOUCHED the runner,
+      # not the head of the push. A push can carry a runner commit followed by an
+      # unrelated one; stamping the push head would leave the binary claiming a
+      # commit that core's own path-filtered read of the branch never returns, and
+      # every freshly updated box would read as behind for ever.
+      - name: The runner this release is cut from
+        id: head
+        run: echo "sha=$(git log -1 --format=%H -- packages/runner)" >> "$GITHUB_OUTPUT"
+      - name: The version this release carries
+        id: next
+        run: node scripts/next-runner-version.mjs >> "$GITHUB_OUTPUT"
+      - name: Cut the tag
+        env:
+          TAG: ${{ steps.next.outputs.tag }}
+          SHA: ${{ steps.head.outputs.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          node scripts/cut-runner-tag.mjs "$TAG" "$SHA"
+
+  # Called, not triggered: a tag pushed with this workflow's own GITHUB_TOKEN
+  # does not start a workflow run, so the release has to be invoked here.
+  release:
+    needs: tag
+    permissions:
+      contents: write
+    uses: ./.github/workflows/runner-release.yml
+    with:
+      version: ${{ needs.tag.outputs.version }}
+      sha: ${{ needs.tag.outputs.sha }}

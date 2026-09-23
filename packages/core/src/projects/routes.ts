@@ -33,24 +33,31 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
-  pipelineConfigPatchSchema,
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
-import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { PERSONA_STYLE_MAX, SYSTEM_PROMPT_MAX } from './agent-config-schema.js';
 import { announceContractInput } from './contract-input-announce.js';
-import { environmentsPatchSchema } from './environments.js';
+import { ENVIRONMENTS_MOVED_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
-import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
 import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
 import { refuseRetiredProjectKeys } from './retired-project-keys.js';
+import {
+  badRequest,
+  flatten,
+  forbidden,
+  idParamSchema,
+  notFound,
+  pipelineFlagOff,
+  refuseByName,
+} from './route-errors.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
+import { projectSettingsWriteRoutes } from './settings-write-routes.js';
 
 export const createProjectSchema = z.object({
   slug: z
@@ -83,7 +90,6 @@ export const updateProjectSchema = z
     rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
     systemPrompt: z.string().trim().max(SYSTEM_PROMPT_MAX).nullable().optional(),
     categories: z.array(z.string().trim().min(1).max(100)).max(50).nullable().optional(),
-    environments: environmentsPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
     // Move the project to another org. Requires org owner/admin on BOTH the
     // current org (route gate) and the target org (checked in the handler).
@@ -97,60 +103,6 @@ export const updateProjectPatchSchema = z
   .pipe(updateProjectSchema);
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
-
-const idParamSchema = z.object({
-  id: z.uuid(),
-});
-
-/**
- * `z.flattenError`, with the path a nested field is actually at.
- *
- * ISS-1069 — `flattenError` buckets every issue under its TOP-LEVEL key and throws the rest of the
- * path away, which was survivable while this route's nested values were one level deep and stopped
- * being so with `environments`: a bad `live.commitPath`, a missing `testCredentials[0].username`
- * and a whitespace-only `preview.urls[2].label` all answered the operator with the same sentence,
- * `environments: Invalid input`. A refusal that cannot say WHERE is a refusal the caller has to
- * bisect by hand.
- *
- * The SHAPE is unchanged — `{ formErrors, fieldErrors }`, keyed on the top-level field — because
- * web-v2 renders it and every other route on this file answers with it. Only the message grows the
- * path it was always about.
- */
-function flatten(error: { issues: readonly { path: readonly PropertyKey[]; message: string }[] }): {
-  formErrors: string[];
-  fieldErrors: Record<string, string[]>;
-} {
-  const formErrors: string[] = [];
-  const fieldErrors: Record<string, string[]> = {};
-  for (const issue of error.issues) {
-    const [head, ...rest] = issue.path;
-    if (head === undefined) {
-      formErrors.push(issue.message);
-      continue;
-    }
-    const key = String(head);
-    const where = rest.length > 0 ? `${key}.${rest.join('.')}: ` : '';
-    const bucket = fieldErrors[key] ?? [];
-    bucket.push(`${where}${issue.message}`);
-    fieldErrors[key] = bucket;
-  }
-  return { formErrors, fieldErrors };
-}
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, {
-    message: 'Invalid input',
-    cause: { code: 'BAD_REQUEST', details },
-  });
-
-const notFound = () =>
-  new HTTPException(404, {
-    message: 'project not found',
-    cause: { code: 'NOT_FOUND' },
-  });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 export const projectRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -380,7 +332,9 @@ projectRoutes.patch(
     if (!result.success) throw badRequest(flatten(result.error));
   }),
   zValidator('json', updateProjectPatchSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (result.success) return;
+    refuseByName(result.error, ENVIRONMENTS_MOVED_MESSAGE, 'ENVIRONMENTS_MOVED');
+    throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -424,7 +378,6 @@ projectRoutes.patch(
         patch.systemPrompt === null || patch.systemPrompt.length === 0 ? null : patch.systemPrompt;
     }
     if (patch.categories !== undefined) agentConfigPatch.categories = patch.categories;
-    if (patch.environments !== undefined) updates.environments = patch.environments;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
     const [updated] = await db.transaction(async (tx) => {
@@ -541,12 +494,6 @@ projectRoutes.post(
 //
 // Gated on `pipelineControl` feature flag; off by default in production.
 
-const pipelineFlagOff = () =>
-  new HTTPException(404, {
-    message: 'pipeline configuration disabled',
-    cause: { code: 'FEATURE_OFF' },
-  });
-
 projectRoutes.get(
   '/:id/pipeline-config',
   zValidator('param', idParamSchema, (result) => {
@@ -578,33 +525,6 @@ projectRoutes.get(
     // primary → standby deterministically with no type-chain fallback; per-
     // stage `runner` overrides on step toggles continue to work.
     return c.json({ pipelineConfig });
-  },
-);
-
-projectRoutes.patch(
-  '/:id/pipeline-config',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
-  }),
-  zValidator('json', pipelineConfigPatchSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
-  }),
-  async (c) => {
-    if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
-
-    const { id } = c.req.valid('param');
-    const patch = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
-
-    try {
-      const result = await updatePipelineConfig({ projectId: id, patch });
-      return c.json(result);
-    } catch (err) {
-      throw pipelineConfigHttpError(err);
-    }
   },
 );
 
@@ -716,3 +636,4 @@ projectRoutes.get(
 // ISS-733 — POST /:id/onboard. The "Build Project Brain" trigger; the thin
 // HTTP delegate lives in ./onboard-routes.ts.
 projectRoutes.route('/', projectOnboardRoutes);
+projectRoutes.route('/', projectSettingsWriteRoutes);

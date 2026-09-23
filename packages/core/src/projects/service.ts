@@ -212,25 +212,6 @@ export async function readProjectSummary(projectId: string) {
   return row ?? null;
 }
 
-/**
- * The stored `environments` blob, RAW.
- *
- * Raw and not normalised, because its one caller is the scoped `environmentsLimits` write, which
- * read-modify-writes the whole value back: handing it the four named fields would silently drop
- * every key the schema does not name the moment somebody edits the limits text.
- */
-export async function readEnvironments(projectId: string): Promise<Record<string, unknown>> {
-  const [row] = await db
-    .select({ environments: projects.environments })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const value = row?.environments;
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
 export async function updateProject(projectId: string, updates: Record<string, unknown>) {
   const [row] = await db.update(projects).set(updates).where(eq(projects.id, projectId)).returning({
     id: projects.id,

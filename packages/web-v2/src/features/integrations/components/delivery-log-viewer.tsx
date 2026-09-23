@@ -27,6 +27,10 @@ const STATUS_META: Record<IntegrationDelivery["status"], { icon: IconName; fg: s
   ok: { icon: "check", fg: "var(--green-600)", label: "ok" },
   failed: { icon: "alert", fg: "var(--red-600)", label: "failed" },
   pending: { icon: "clock", fg: "var(--amberw-600)", label: "pending" },
+  // ISS-1140: a call turned away AT the door — bad or missing signature — which never became a
+  // delivery at all. Its own row rather than the `?? pending` fallback, which would have rendered
+  // a refusal as work still in flight.
+  refused: { icon: "x", fg: "var(--red-600)", label: "refused" },
 };
 
 function DeliveryRow({

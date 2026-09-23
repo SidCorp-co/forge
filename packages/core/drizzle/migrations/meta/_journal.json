@@ -1947,6 +1947,48 @@
       "when": 1808697600000,
       "tag": "0296_agency_is_the_users_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1808784000000,
+      "tag": "0297_a_box_says_which_build",
+      "breakpoints": true
+    },
+    {
+      "idx": 300,
+      "version": "7",
+      "when": 1809043200000,
+      "tag": "0300_the_inbound_door",
+      "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1809216000000,
+      "tag": "0302_pat_name_unique_while_live",
+      "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1809302400000,
+      "tag": "0303_issue_transition_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 304,
+      "version": "7",
+      "when": 1809388800000,
+      "tag": "0304_closed_means_shipped",
+      "breakpoints": true
+    },
+    {
+      "idx": 305,
+      "version": "7",
+      "when": 1809475200000,
+      "tag": "0305_no_code_fires_a_deploy",
+      "breakpoints": true
     }
   ]
 }

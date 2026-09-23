@@ -155,6 +155,9 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
   capabilities: {
     canDispatch: true,
     canReceiveWebhook: true,
+    // Sentry calls when an error happens. A project with no errors has correctly received
+    // nothing, so silence on this door is good news and never a fault.
+    inboundUnprompted: false,
     canDeploy: false,
     liveConfirmGate: false,
     hasDeliveryLog: true,

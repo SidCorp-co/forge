@@ -26,6 +26,13 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('A comment is prose a person reads');
   });
 
+  it('says a verdict block names the runtime it held in, and what naming none is read as', () => {
+    expect(prose).toContain('an identity something was observed serving');
+    expect(prose).toContain('never that the code was running');
+    expect(prose).toContain('refused at the write door under `verdict-identity`');
+    expect(prose).toContain('reads as unanchored');
+  });
+
   it('names a store for every destination the rule routes to', () => {
     for (const route of new Set(RECORD_DESTINATIONS.values())) {
       expect(body).toContain(route);
@@ -57,9 +64,41 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('not the lever');
   });
 
+  it('states both shapes a fence is read in, so a writer reads them rather than infers them', () => {
+    expect(prose).toContain('Two, and the parser takes either');
+    expect(body).toContain('```forge-record: verdict · contract 1');
+    expect(body).toContain('`forge-record: verdict · contract 1`');
+  });
+
+  it('names the refusal a fence carrying no record earns, and the three that earn it', () => {
+    expect(body).toContain('record-fence-shape');
+    expect(prose).toContain('An info string that is not that tag, a fence that is never closed');
+    expect(prose).toContain('either carries one or is told it does not');
+  });
+
+  it('says where a fence has to sit to be read at all', () => {
+    expect(prose).toContain('read only where it opens at the left margin');
+    expect(prose).toContain('stored exactly as it was written');
+    expect(prose).toContain('An example belongs indented; a record does not');
+  });
+
+  it('says a fence quoted inside another fence opens nothing', () => {
+    expect(prose).toContain(
+      'inside an enclosing fence is that fence\u2019s content'.replace('\u2019', "'"),
+    );
+  });
+
   it('states that the MCP comment door is warned and never refused, and why', () => {
     expect(prose).toContain('warned and never refused');
     expect(prose).toContain('no request context');
+  });
+
+  it('says which of the two rules the dormancy governs, and which it does not', () => {
+    expect(prose).toContain(
+      'This section is about `record-in-comment`, the rule for a fence that DID parse',
+    );
+    expect(prose).toContain('It does not govern `record-fence-shape`');
+    expect(prose).toContain('refused whatever the caller declared');
   });
 
   it('explains the dormancy the refusal is reachable through', () => {

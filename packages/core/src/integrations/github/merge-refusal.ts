@@ -23,13 +23,18 @@ const MERGE_SUBJECT: PublishSubject<MergeOp> = {
   mint: {
     where: 'minting the installation token',
     permission:
-      'the installation itself refused it. Minting a token needs no repository permission, so ' +
-      'granting one changes nothing here: open the installation on GitHub and check that it is ' +
-      'still active and still covers this repository.',
+      'the installation itself refused it: minting a token needs no repository permission, so ' +
+      'coverage of any repository is not why. What is left, short of removal — which GitHub ' +
+      'answers 404 for, and is handled separately — is the state of the installation itself: it ' +
+      'may be suspended, or its access may have been revoked some other way. Open the ' +
+      'installation on GitHub and act on what it says there — reactivate it if it is suspended, ' +
+      'or reinstall it if its access was revoked.',
     ambiguous:
       'sent nothing naming a cause, so nothing here is ruled out. The readings worth trying ' +
-      'first: the installation may be suspended, it may no longer cover this repository, or this ' +
-      'may be a secondary rate limit. Read the installation on GitHub, then retry after a pause.',
+      'first: the installation may be suspended, its access may have been revoked some other way ' +
+      'short of removal, or this may be a secondary rate limit — minting needs no repository ' +
+      'permission, so coverage of this repository is not among them. Read the installation on ' +
+      'GitHub, then retry after a pause.',
     nothingWritten: 'so nothing was read and the merge was never sent. Retrying is safe.',
     unprocessable:
       'Nothing here names a cause beyond what GitHub sent with it. An installation ' +

@@ -277,10 +277,11 @@ export async function mintAgentCredential(
 /**
  * Mint under a name `pat_user_name_uniq` will accept, escalating rather than looping.
  *
- * `personal_access_tokens` is unique on `(user_id, name)` and a REVOKED row keeps
- * its name, so the obvious `agent:<handle>` collides the second time an admin
- * credentials the same agent — which is the ordinary case, since taking the
- * credential away and giving a new one is what this pair of routes is for.
+ * `pat_user_name_uniq` is unique on `(user_id, name)` among LIVE rows only
+ * (partial on `revoked_at is null`, ISS-1184), so the obvious `agent:<handle>`
+ * collides while the agent still holds a live credential of that name — which
+ * is what happens when an admin credentials the same agent again without
+ * taking the previous one away first.
  */
 async function mintDistinctlyNamed(
   userId: string,
@@ -303,7 +304,7 @@ async function mintDistinctlyNamed(
     }
   }
   throw badRequest(
-    `every name this route would give a credential for agent ${userId} is already taken (${names.join(', ')}); ask again and the third name is drawn fresh — revoking will not free one, because a revoked row keeps its name under pat_user_name_uniq`,
+    `every name this route would give a credential for agent ${userId} is held by a live token (${names.join(', ')}); ask again and the third name is drawn fresh, or revoke one of those tokens — pat_user_name_uniq is partial on revoked_at is null, so revoking frees the name`,
     'AGENT_CREDENTIAL_NAME_TAKEN',
   );
 }

@@ -38,7 +38,7 @@ use crate::daemon::run_record;
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::close_loop;
-use crate::runner::ledger::{Ledger, MasterStanding, Run};
+use crate::runner::ledger::{Ledger, MasterAuthority, MasterStanding, Run};
 use crate::runner::terminate;
 use crate::transport::admissible::{self, AdmissibleIssue, DISPATCH_GATING_KIND};
 use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
@@ -113,6 +113,19 @@ struct Registry {
     served: Served,
     /// Why each project's master pane was not placed on the last sweep.
     unplaced: HashMap<String, Unplaced>,
+    /// The last thing this box said about each project's pane, so a project
+    /// stuck in one state is reported on the sweep that finds it and not on all
+    /// forty-five after it.
+    ///
+    /// Keyed by project rather than held on `MasterState`, because every one of
+    /// its callers can run for a project this daemon holds no live master for —
+    /// which is every project on a daemon that has just started, since `live`
+    /// is filled by `remember` and `remember` runs after the sweep's first two
+    /// reports. Held on the state, the latch answered "already said" about a
+    /// project nothing had said anything about, and the report was lost
+    /// (ISS-1099; it is why ISS-1118's contradiction error fired only on the
+    /// daemon that placed the pane).
+    said: HashMap<String, &'static str>,
 }
 
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -163,6 +176,26 @@ pub(crate) enum Unplaced {
     /// it placed nothing rather than deciding it was driving.
     StandingUnreadable {
         detail: String,
+    },
+    /// A pane is up for this project and this box cannot hear it: the
+    /// capability it holds names a session core has since replaced, so every
+    /// declaration it makes is refused (ISS-1099).
+    ///
+    /// The pane is placed and the project still has no working master, which is
+    /// why this is an `Unplaced` reason and not a state of the pane. The record
+    /// exists so the sweep that learns it does not leave the registry saying
+    /// nothing: the landed change cleared this map on exactly this path, at the
+    /// moment the daemon found out.
+    ///
+    /// Its one reader is `run_declare`, so the only thing that ever sees this
+    /// sentence is the pane itself — which is inside tmux and reaches the
+    /// runner's own server through `$TMUX`. That is why a bare `tmux
+    /// kill-session` is the right remedy HERE and the wrong one on
+    /// `forge-runner master status`, where the reader is an operator in a shell
+    /// of their own and the runner's socket is not the default server.
+    StaleCapability {
+        session: String,
+        pane: String,
     },
 }
 
@@ -218,6 +251,10 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "this box cannot read whether its owner stood this project down ({detail}), so it places no master rather than deciding it is driving. A box that cannot tell a stood-down project from a driving one must not decide it is driving"
             ),
+            Self::StaleCapability { session, pane } => write!(
+                f,
+                "its pane {pane} is up but this box cannot hear it — the capability that pane holds names a session core has since replaced, core's session for it is now {session}, and a running pane cannot be handed a new capability. Every declaration it makes is refused and it is not being nudged while it stands like this. `tmux kill-session -t {pane}` ends it, which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other"
+            ),
         }
     }
 }
@@ -234,6 +271,9 @@ impl Unplaced {
             Self::StoodDown {
                 pane: Some(pane), ..
             } => format!("{pane} is RUNNING and this box is not driving it"),
+            Self::StaleCapability { pane, .. } => {
+                format!("{pane} is RUNNING and this box cannot be heard by it")
+            }
             _ => "no master pane placed".to_string(),
         }
     }
@@ -241,14 +281,18 @@ impl Unplaced {
     /// Whether this is a state an operator has to act on before the box's two
     /// answers agree.
     ///
-    /// Two of them are. A pane running against a stand-down is the nine-hour
-    /// silence this issue was filed over; a standing this box could not read
-    /// is a box that cannot say what it is doing. Everything else here is a
-    /// pane absent for a reason the box is content with.
+    /// Three of them are. A pane running against a stand-down is the nine-hour
+    /// silence ISS-1118 was filed over; a standing this box could not read is a
+    /// box that cannot say what it is doing; a pane whose capability is stale
+    /// is the four-hour silence ISS-1099 was filed over, and no sweep resolves
+    /// it. Everything else here is a pane absent for a reason the box is
+    /// content with.
     fn is_error(&self) -> bool {
         matches!(
             self,
-            Self::StoodDown { pane: Some(_), .. } | Self::StandingUnreadable { .. }
+            Self::StoodDown { pane: Some(_), .. }
+                | Self::StandingUnreadable { .. }
+                | Self::StaleCapability { .. }
         )
     }
 }
@@ -336,10 +380,6 @@ struct MasterState {
     /// had reported by then.
     last_nudge: Option<Nudge>,
     mcp_stale_reported: bool,
-    /// The last thing this box said about the capability the pane holds, so a
-    /// pane stuck in one state is reported on the sweep that finds it and not
-    /// on all forty-five after it.
-    capability_said: Option<&'static str>,
 }
 
 /// One nudge, and the evidence a later sweep judges it by.
@@ -494,19 +534,22 @@ impl Masters {
     /// Record what this box now says about a pane's capability, and answer
     /// whether that is a change from what it last said.
     ///
-    /// Only for a project THIS process placed or adopted a pane for: the state
-    /// lives on the `reg.live` entry, so a project absent from it answers
-    /// `false` and whatever the caller guards is never said. That is sound for
-    /// a capability, which is a fact about a pane in `reg.live` and nothing
-    /// else. It was not sound for the two ISS-1118 reports about a project
-    /// that reaches no pane at all, which is why they use `note_unplaced`.
+    /// Answers `true` for a project it has said nothing about yet, whether or
+    /// not this daemon holds a live master for it: a project absent from the
+    /// registry is one nothing here has ever reported, so the first thing said
+    /// about it is a change.
+    ///
+    /// The latch used to live on the `reg.live` entry, which `remember` fills
+    /// and which is empty for every project on a daemon that has just started.
+    /// A caller reached before `ensure_master` therefore asked a latch that
+    /// answered "already said" about a project nothing had said anything about,
+    /// and the report was lost. ISS-1118's two reports route through
+    /// `note_unplaced` for a reason of their own — they are about a project
+    /// that reaches no pane at all — and that stands whichever way this answers.
     fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
-        let Some(m) = reg.live.get_mut(project_id) else {
-            return false;
-        };
-        let changed = m.capability_said != Some(said);
-        m.capability_said = Some(said);
+        let changed = reg.said.get(project_id) != Some(&said);
+        reg.said.insert(project_id.to_string(), said);
         changed
     }
 
@@ -880,6 +923,7 @@ async fn sweep(
             })
             .unwrap_or_default();
         let told = std::sync::atomic::AtomicBool::new(false);
+        let authority = AuthoritySink::default();
         let pane = ensure_master(
             client,
             masters,
@@ -892,9 +936,18 @@ async fn sweep(
                 stood_down_told: &told,
             },
             placement,
-            tokens,
+            &CapabilityPorts {
+                tokens,
+                authority: &authority,
+            },
         )
         .await;
+        // Written before the `Absent` gate below, because a verdict reached and
+        // dropped is the defect this issue was reopened for: the sweep that
+        // learns a pane is refused is the only one that knows it.
+        if let Some(said) = authority.take() {
+            write_authority(ledger.as_ref(), &runner.project_id, &resolved.slug, &said);
+        }
         if pane == PaneState::Absent {
             continue;
         }
@@ -927,7 +980,8 @@ async fn sweep(
                 StandingRead::Known(s) => s,
                 StandingRead::Unreadable(detail) => {
                     tracing::error!(
-                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end — and it is NOT being nudged either. If it was stood down, `tmux kill-session -t {pane_name}`.",
+                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end — and it is NOT being nudged either. If it was stood down, `forge-runner master kill {}` — a bare `tmux kill-session` typed in your own shell reaches a different tmux server than the one masters run on.",
+                        runner.slug,
                         runner.slug
                     );
                     standing_unknown = true;
@@ -946,7 +1000,8 @@ async fn sweep(
                 let mut left_running = None;
                 if let Err(e) = terminal::kill(&pane_name).await {
                     tracing::error!(
-                        "[master] {}: could not withdraw {pane_name}: {e} — it is running against a stand-down and `tmux kill-session -t {pane_name}` is what ends it",
+                        "[master] {}: could not withdraw {pane_name}: {e} — it is running against a stand-down and `forge-runner master kill {}` is what ends it, a bare `tmux kill-session` in your own shell reaching a different tmux server than the one masters run on",
+                        resolved.slug,
                         resolved.slug
                     );
                     left_running = Some(pane_name.clone());
@@ -1188,6 +1243,17 @@ struct Reclaim<'a> {
     closer: &'a dyn close_loop::RunCloser,
 }
 
+/// The same binding the release resolves, handed to the sweep that runs before
+/// it: the close loop's worktree mark is a question about a repository's
+/// registry, and this is where that repository is (ISS-1193).
+impl recovery::RepoRoots for Reclaim<'_> {
+    fn root_for(&self, project_id: &str) -> Option<std::path::PathBuf> {
+        resolve_repo(self.served, self.cfg, project_id)
+            .ok()
+            .map(|r| r.repo_path)
+    }
+}
+
 async fn release_held_tree(
     led: &mut Ledger,
     r: &recovery::Recovered,
@@ -1213,7 +1279,7 @@ async fn release_held_tree(
             return false;
         }
     };
-    match terminate::force_terminal(
+    match terminate::release(
         led,
         &r.run_id,
         terminate::Forcing {
@@ -1228,24 +1294,75 @@ async fn release_held_tree(
             sessions,
             leases,
         },
+        now_secs(),
     )
     .await
     {
-        Ok(forced) => {
+        Ok(terminate::Release::Done(forced)) => {
             tracing::info!(
-                "[master] run {} reclaimed by {:?}: diff {:?}, close {:?}",
+                "[master] run {} reclaimed by {:?}: diff {:?}, checkout {:?}, commits {:?}, close {:?}",
                 r.run_id,
                 forced.verb,
                 forced.salvage.as_ref().map(|s| s.outcome),
+                forced.worktree,
+                forced.commits,
                 forced.close
             );
             forced.close.is_closed()
+        }
+        // Said once at the head of the window and then left alone: the
+        // sweep runs every twenty seconds, and a line per sweep is how a
+        // refusal that mattered got lost among nine hundred that did not.
+        Ok(terminate::Release::Refusing {
+            why,
+            first,
+            standing_secs: _,
+        }) => {
+            if first {
+                tracing::warn!(
+                    "[master] run {} could not be released: {why} — trying again each sweep for the next {}s",
+                    r.run_id,
+                    terminate::RELEASE_GRACE_SECS
+                );
+            }
+            false
+        }
+        Ok(terminate::Release::Terminal { why, after, close }) => {
+            tracing::error!(
+                "[master] run {} will not be released and is over: {why}. {} — so it is not one a \
+                 retry gets past. Its leases are back ({}/{}) and its checkout is still on disk, \
+                 which nothing on this box will remove. Fix what the refusal names and run \
+                 `forge-runner run release {}` to have the next sweep try again.",
+                r.run_id,
+                match after {
+                    terminate::Decided::ByTheWindow { standing_secs } =>
+                        format!("It stood for {standing_secs}s of retrying"),
+                    terminate::Decided::ByTheAttempts { attempts } => format!(
+                        "It was taken {attempts} times, and this box's clock never let the \
+                         window it should have ended in arrive"
+                    ),
+                },
+                close.leases_returned,
+                close.leases_total,
+                r.run_id
+            );
+            // Not `is_closed()`: the checkout is still there by decision, so
+            // the run is over without that mark and the caller must not read
+            // this as a close.
+            true
         }
         Err(e) => {
             tracing::warn!("[master] run {} could not be released: {e}", r.run_id);
             false
         }
     }
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 async fn report_run_death(run: Option<Run>, r: &recovery::Recovered, world: &Reclaim<'_>) {
@@ -1333,7 +1450,12 @@ async fn give_back_lost_runs(
         tracing::warn!("[master] this box reports no boot id — leaving unclosed runs alone");
         return;
     }
-    match recovery::reconcile(led, boot_id, live, world.procs, sessions, leases, watch).await {
+    let closing = recovery::Closing {
+        sessions,
+        leases,
+        roots: world,
+    };
+    match recovery::reconcile(led, boot_id, live, world.procs, closing, watch).await {
         Ok(done) => {
             for r in done {
                 if r.owed_idle_exit {
@@ -1352,10 +1474,10 @@ async fn give_back_lost_runs(
                     continue;
                 }
                 tracing::warn!(
-                    "[master] run {} is partially closed: session_terminal={} worktree_gone={} leases={}/{}",
+                    "[master] run {} is partially closed: session_terminal={} checkout_returned={} leases={}/{}",
                     r.run_id,
                     r.state.session_terminal,
-                    r.state.worktree_gone,
+                    r.state.checkout_returned,
                     r.state.leases_returned,
                     r.state.leases_total
                 );
@@ -1714,7 +1836,7 @@ fn report_stale_pane_config(
         return;
     }
     tracing::error!(
-        "[master] {slug}: the resident session {name} was started before this project's MCP servers were resolved, or before they last changed, so its runs do NOT have {}. A pane cannot be told a new MCP config — end it with `tmux kill-session -t {name}` and the next sweep starts one that carries them.",
+        "[master] {slug}: the resident session {name} was started before this project's MCP servers were resolved, or before they last changed, so its runs do NOT have {}. A pane cannot be told a new MCP config — end it with `forge-runner master kill {slug}`, which reaches the tmux server masters run on where a bare `tmux kill-session` does not, and the next sweep starts one that carries them.",
         if declared.resolved_names.is_empty() {
             "the servers it now declares".to_string()
         } else {
@@ -1756,6 +1878,63 @@ pub(crate) struct Carryover<'a> {
     stood_down_told: &'a std::sync::atomic::AtomicBool,
 }
 
+/// The verdict `ensure_master` reached about the capability a pane holds, on
+/// its way to somewhere a restart cannot erase it.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct Authority {
+    /// The pane it is about, by name and by which incarnation of that name was
+    /// running: the name is derived from the slug, so every pane this project
+    /// ever has carries it and the name alone identifies nothing.
+    pane: String,
+    incarnation: Option<String>,
+    /// One of `MasterAuthority`'s three.
+    verdict: &'static str,
+    /// Why the verdict is `unknown`, and `None` on the other two.
+    detail: Option<String>,
+}
+
+/// Where `ensure_master` leaves that verdict for the sweep to write down.
+///
+/// An out-parameter rather than a return value because `ensure_master` has ten
+/// exits and three of them reach a verdict, and rather than the `Ledger`
+/// itself because a `rusqlite::Connection` is not `Sync`: holding one across
+/// an await inside this spawned future makes the future itself unspawnable.
+/// The same shape `Carryover::stood_down_told` already uses for the same
+/// reason.
+#[derive(Default)]
+pub(crate) struct AuthoritySink(Mutex<Option<Authority>>);
+
+impl AuthoritySink {
+    fn set(
+        &self,
+        pane: &str,
+        incarnation: Option<String>,
+        verdict: &'static str,
+        detail: Option<&str>,
+    ) {
+        *self.0.lock().expect("authority sink poisoned") = Some(Authority {
+            pane: pane.to_string(),
+            incarnation,
+            verdict,
+            detail: detail.map(str::to_string),
+        });
+    }
+
+    fn take(&self) -> Option<Authority> {
+        self.0.lock().expect("authority sink poisoned").take()
+    }
+}
+
+/// What `ensure_master` is given to consult and to answer into: this box's own
+/// capability map, and the sink the verdict about it goes to.
+///
+/// One struct rather than two parameters because `ensure_master` sits at
+/// exactly the argument count `clippy::too_many_arguments` allows.
+pub(crate) struct CapabilityPorts<'a> {
+    tokens: Option<&'a session_tokens::SessionTokens>,
+    authority: &'a AuthoritySink,
+}
+
 async fn ensure_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
@@ -1763,8 +1942,9 @@ async fn ensure_master(
     resolved: &crate::daemon::dispatch::Resolved,
     carry: &Carryover<'_>,
     placement: Placement,
-    tokens: Option<&session_tokens::SessionTokens>,
+    ports: &CapabilityPorts<'_>,
 ) -> PaneState {
+    let tokens = ports.tokens;
     let stored_conversation = carry.conversation;
     let inherited = carry.inherited;
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
@@ -1815,24 +1995,54 @@ async fn ensure_master(
             );
             remember(masters, project_id, &session);
         }
-        masters.clear_unplaced(project_id);
+        let pane_now = terminal::incarnation(&name).await;
         return match capability_of(tokens, &session.session_id) {
             Capability::Current => {
-                masters.note_capability(project_id, "current");
+                masters.clear_unplaced(project_id);
+                masters.note_capability(project_id, MasterAuthority::CURRENT);
+                ports
+                    .authority
+                    .set(&name, pane_now, MasterAuthority::CURRENT, None);
                 PaneState::Adopted
             }
             Capability::Stale => {
-                if masters.note_capability(project_id, "stale") {
+                // NOT `clear_unplaced`. The pane is up and this box cannot hear
+                // it, so the project has no working master and the registry has
+                // to say so — clearing it here erased the one record of why, at
+                // the moment the daemon learned it.
+                //
+                // `note_unplaced` and not `say_unplaced`, because the error
+                // below already carries this state to the journal and says more
+                // about it than the generic line would. Recording it twice is
+                // two entries for one event and a reader who cannot tell
+                // whether it happened once.
+                masters.note_unplaced(
+                    project_id,
+                    Unplaced::StaleCapability {
+                        session: session.session_id.clone(),
+                        pane: name.clone(),
+                    },
+                );
+                ports
+                    .authority
+                    .set(&name, pane_now, MasterAuthority::STALE, None);
+                if masters.note_capability(project_id, MasterAuthority::STALE) {
                     tracing::error!(
-                        "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `tmux kill-session -t {name}`, and a master carrying the current capability starts in its place. It is not being nudged while it stands like this.",
+                        "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `forge-runner master kill {}`, which reaches the tmux server masters actually run on where a bare `tmux kill-session` does not, and which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other. It is not being nudged while it stands like this. `forge-runner master status {}` says the same thing without this log.",
                         resolved.slug,
-                        session.session_id
+                        session.session_id,
+                        resolved.slug,
+                        resolved.slug
                     );
                 }
                 PaneState::StaleCapability
             }
             Capability::Unknown(why) => {
-                if masters.note_capability(project_id, "unknown") {
+                masters.clear_unplaced(project_id);
+                ports
+                    .authority
+                    .set(&name, pane_now, MasterAuthority::UNKNOWN, Some(&why));
+                if masters.note_capability(project_id, MasterAuthority::UNKNOWN) {
                     tracing::warn!(
                         "[master] {}: cannot tell whether {name}'s capability is current: {why}. Saying nothing about it rather than calling it stale — an unreadable map is not evidence about any pane.",
                         resolved.slug
@@ -1960,6 +2170,18 @@ async fn ensure_master(
     );
     remember(masters, project_id, &session);
     masters.clear_unplaced(project_id);
+    // A pane this sweep started carries a capability minted for this very
+    // session moments ago, so the verdict is not in doubt. It is written all the
+    // same: the record has to say `current` for a replaced pane, or an operator
+    // who killed a stale one reads the old verdict back and concludes the kill
+    // did nothing.
+    masters.note_capability(project_id, MasterAuthority::CURRENT);
+    ports.authority.set(
+        &name,
+        terminal::incarnation(&name).await,
+        MasterAuthority::CURRENT,
+        None,
+    );
 
     let reach = crate::mcp::config::pane_reach(&resolved.repo_path, mcp_config.as_deref());
     match reach.forge() {
@@ -2092,6 +2314,32 @@ async fn standing_verdict(
     Some((placed, standing))
 }
 
+/// Put the verdict this sweep reached about a pane's authority where a restart
+/// cannot take it, and where a process other than this daemon can read it.
+///
+/// The registry holds the same answer and dies with the daemon; the journal
+/// holds it and has to be read. This is the copy `forge-runner master status`
+/// prints, which is the surface an operator reaches for when a project has
+/// stopped (ISS-1099).
+fn write_authority(ledger: Option<&Ledger>, project_id: &str, slug: &str, said: &Authority) {
+    let Some(led) = ledger else {
+        return;
+    };
+    if let Err(e) = led.note_master_authority(
+        project_id,
+        slug,
+        (&said.pane, said.incarnation.as_deref()),
+        said.verdict,
+        said.detail.as_deref(),
+    ) {
+        tracing::warn!(
+            "[master] {slug}: cannot record that {}'s capability is {}: {e} — `forge-runner master status {slug}` will not say it, and the daemon log is then the only account of it",
+            said.pane,
+            said.verdict
+        );
+    }
+}
+
 /// Say why a project got no pane, once per change of reason and at the level
 /// the reason earns.
 ///
@@ -2122,7 +2370,6 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
             last_work: Instant::now(),
             last_nudge: None,
             mcp_stale_reported: false,
-            capability_said: None,
         },
     );
 }
@@ -3785,7 +4032,7 @@ mod give_back_tests {
 
         assert!(
             !wt.exists(),
-            "the checkout must actually leave the disk: while it is there the `worktree_gone` mark cannot be observed, so `end_run` is never reached and the reap refuses the tree because the run is `ended_by IS NULL` — the cycle has no other exit"
+            "a LINKED checkout must actually leave the disk: while it is there the `worktree_gone` mark cannot be observed, so `end_run` is never reached and the reap refuses the tree because the run is `ended_by IS NULL` — the cycle has no other exit. A main working tree is the one path that earns the mark without going, because it is not a checkout the run ever held (ISS-1183)"
         );
         let run = ledger.as_ref().unwrap().run("run-1").unwrap().unwrap();
         assert_eq!(
@@ -4564,7 +4811,6 @@ impl Masters {
                 last_work: Instant::now(),
                 last_nudge: None,
                 mcp_stale_reported: false,
-                capability_said: None,
             },
         );
     }
@@ -4750,6 +4996,135 @@ mod unplaced_tests {
         );
     }
 
+    /// The finding the review of `7d13c344d` returned `changes-requested` on.
+    /// Withdrawing the nudge took the account of the state with it: the pane
+    /// runs a pass only when nudged, so it never declares, so `why_unplaced` is
+    /// never called — and the adopt branch then cleared the registry's own
+    /// record at the moment the daemon learned there was something to record
+    /// (ISS-1099 criterion 9).
+    #[test]
+    fn the_sweep_that_finds_a_pane_refused_records_why_instead_of_clearing_it() {
+        let body = ensure_master_body();
+        let arm = body
+            .split("Capability::Stale =>")
+            .nth(1)
+            .expect("the stale arm has to be findable");
+        let arm = &arm[..arm
+            .find("Capability::Unknown")
+            .expect("the stale arm ends where the unknown arm starts")];
+        assert!(
+            arm.contains("Unplaced::StaleCapability"),
+            "the sweep that learns a project has no working master is the only one that knows it; recording nothing leaves the daemon journal as the whole account"
+        );
+        assert!(
+            !arm.contains("clear_unplaced("),
+            "clearing here erases the record of why, at the exact moment there is finally a why to record"
+        );
+        for other in ["Capability::Current =>", "Capability::Unknown(why) =>"] {
+            let arm = body
+                .split(other)
+                .nth(1)
+                .expect("the arm has to be findable");
+            let arm = &arm[..arm.find("PaneState::").unwrap_or(arm.len())];
+            assert!(
+                arm.contains("clear_unplaced("),
+                "`{other}` is a pane this box CAN place, so whatever stood against it before no longer does"
+            );
+        }
+    }
+
+    /// A verdict reached and dropped is the defect over again. The sweep writes
+    /// it down before it decides what to do about the pane, because every exit
+    /// below that point is one where the verdict is the only thing left
+    /// (ISS-1099 criterion 10).
+    #[test]
+    fn the_verdict_is_written_down_before_the_sweep_acts_on_it() {
+        let body = sweep_body();
+        let taken = body
+            .find("authority.take()")
+            .expect("the sweep has to collect what `ensure_master` reached");
+        let written = body
+            .find("write_authority(")
+            .expect("and put it where a restart cannot take it");
+        let absent_gate = body
+            .find("if pane == PaneState::Absent {")
+            .expect("the sweep still leaves the iteration for a project with no pane");
+        assert!(
+            taken < written && written < absent_gate,
+            "a verdict collected after the gate that leaves the loop is a verdict nothing writes down"
+        );
+        let production = production();
+        assert!(
+            production.contains("fn write_authority("),
+            "and the write is one function, so there is one place a reader has to check to know what the ledger can say"
+        );
+    }
+
+    /// `note_capability`'s latch lived on `MasterState`, which `remember` fills
+    /// — and `remember` runs after the sweep's first two reports. So a latch
+    /// consulted before it answered "already said" about a project nothing had
+    /// said anything about, and the report was lost. Across a daemon restart
+    /// that is every project (ISS-1099 criterion 16).
+    #[test]
+    fn a_project_this_daemon_holds_no_master_for_is_still_reported_once() {
+        let masters = Masters::new();
+        assert!(
+            masters.get("proj-1").is_none(),
+            "the case is exactly a project the registry has never held — a daemon that has just adopted panes it did not start"
+        );
+        assert!(
+            masters.note_capability("proj-1", "stood-down-contradicted"),
+            "the first thing this box says about a project is a change from the nothing it said before"
+        );
+        for _ in 0..45 {
+            assert!(
+                !masters.note_capability("proj-1", "stood-down-contradicted"),
+                "and saying it again is not news, whether or not a master was ever placed"
+            );
+        }
+        assert!(
+            masters.note_capability("proj-1", MasterAuthority::STALE),
+            "a different thing said about the same project is said"
+        );
+    }
+
+    /// Every remedy this daemon prints to its own journal is typed by an
+    /// operator into a shell of their own, and masters run on a tmux server of
+    /// the runner's own at a socket under the config directory. A bare `tmux
+    /// kill-session` there reaches the DEFAULT server: it ends nothing, or it
+    /// ends a same-named session belonging to something else. The one place
+    /// the bare form is right is `Unplaced`'s `Display`, whose only reader is
+    /// `run_declare` — that is, the pane, which is inside tmux and finds its
+    /// own server through `$TMUX`.
+    ///
+    /// The status line was fixed for this under ISS-1099's own review; these
+    /// four journal lines said the same wrong thing to the same reader.
+    ///
+    /// It is `-t` that is looked for and not the two words: an operator copies
+    /// a command with a target in it, and naming the bare form to say it is
+    /// NOT the remedy is the sentence that stops them reaching for it.
+    #[test]
+    fn no_line_this_daemon_logs_sends_an_operator_at_a_bare_tmux_kill_session() {
+        let offenders: Vec<&str> = production()
+            .lines()
+            .filter(|l| l.contains("[master] ") && l.contains("tmux kill-session -t"))
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "a journal line is read in the operator's own shell, where `tmux kill-session` reaches a different server than the one masters run on — name `forge-runner master kill <slug>`: {offenders:#?}"
+        );
+        let display = production()
+            .split("impl std::fmt::Display for Unplaced {")
+            .nth(1)
+            .and_then(|r| r.split("\nimpl Unplaced {").next())
+            .expect("Unplaced's Display must be findable");
+        assert!(
+            display.contains("tmux kill-session -t {pane}"),
+            "and the one sentence a PANE reads keeps the bare form, because a pane is inside tmux and reaches the right server without being told which: {display}"
+        );
+    }
+
     #[test]
     fn nothing_under_the_sweep_resolves_this_boxs_real_capability_map() {
         let production = production();
@@ -4817,6 +5192,32 @@ mod unplaced_tests {
                 "a refusal may not name a deadline the sweep does not enforce: {why}"
             );
         }
+    }
+
+    /// The sentence the registry now holds for this case. It has to name the
+    /// one act that ends the state, because a refusal that says only "refused"
+    /// sends an operator looking for a sweep that will never fix it.
+    #[test]
+    fn the_recorded_reason_for_a_refused_pane_names_the_act_that_ends_it() {
+        let masters = Masters::new();
+        masters.note_served(Served::Read(vec!["proj-1".into()]));
+        masters.note_unplaced(
+            "proj-1",
+            Unplaced::StaleCapability {
+                session: "sess-NEW".into(),
+                pane: "forge-master-sidpeak".into(),
+            },
+        );
+        let why = masters.why_unplaced("proj-1");
+        assert!(
+            why.contains("tmux kill-session -t forge-master-sidpeak"),
+            "ending the pane is the only act that clears this, and it is not guessable from the symptom: {why}"
+        );
+        assert!(
+            why.contains("sess-NEW"),
+            "the session core now gives this box is what the pane's own capability has to be compared against: {why}"
+        );
+        carries_no_deadline(&why);
     }
 
     #[test]
@@ -5578,12 +5979,16 @@ mod stand_down_tests {
             branch.contains("return None;"),
             "the verdict has to refuse rather than answer, and every caller places nothing on a refusal — carrying on to `ensure_master` would place the pane an owner may have withheld"
         );
+        // Read through a copy with one line ending: a checkout with CRLF holds
+        // `\r\n` where a multi-line literal here holds `\n`, and this assertion
+        // then reports a missing branch on source that carries it.
+        let sweep = sweep_body().replace("\r\n", "\n");
         for call in [
             "standing_verdict(",
             "else {\n            continue;\n        };",
         ] {
             assert!(
-                sweep_body().contains(call),
+                sweep.contains(call),
                 "and the sweep consumes that refusal by leaving the iteration: `{call}` is missing"
             );
         }
