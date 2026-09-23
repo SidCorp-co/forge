@@ -180,15 +180,18 @@ function enclosingOpen(text: string, at: number): number {
 }
 
 /**
- * True where the object holding this property is a call's argument.
+ * True where the object holding this property is a runtime VALUE — a call's own argument, or one
+ * built first and passed by name — rather than a TYPE.
  *
  * `path:` also spells a TYPE — an interface member, a parameter, a generic — and a checker reading
- * those as calls would price every declaration in this directory. An argument object opens right
- * after `(`; a type's opens after a name or a `:`.
+ * those as calls would price every declaration in this directory. A value's object opens right
+ * after `(` or a `const`/`let`/`var` assignment; a type's opens after `type X =`, a name or a `:`.
  */
 export function inArgumentObject(text: string, at: number): boolean {
   const open = enclosingOpen(text, at);
-  return open >= 0 && /\(\s*$/.test(text.slice(Math.max(0, open - 40), open));
+  if (open < 0) return false;
+  const before = text.slice(Math.max(0, open - 60), open);
+  return /\(\s*$/.test(before) || /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*$/.test(before);
 }
 
 /** The object literal a `path:` property sits in, found by counting braces outwards. */

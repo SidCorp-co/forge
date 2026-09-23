@@ -377,6 +377,26 @@ describe('a transport reached through a property, which one word boundary sees (
     ].join('\n');
     expect(unreadableRequests('planted.ts', planted).map((r) => r.raw)).toEqual(['url']);
   });
+
+  it('names a path built before the call that carries it, rather than passing over an assigned object', () => {
+    const planted = [
+      'async function f(client) {',
+      "  const args = { method: 'GET', path: somewhereElse(client) };",
+      '  await client.publish(args);',
+      '}',
+    ].join('\n');
+    const found = collectGitHubCalls(planted, 'planted.ts');
+    expect(found).toHaveLength(1);
+    expect(found[0]?.unresolved).toContain('somewhereElse(client)');
+    expect(found[0]?.line).toBe(2);
+  });
+
+  it('reads a type alias built the same way as an assignment, never as a call', () => {
+    const planted = ['type Args = {', '  path: string;', "  method: 'GET' | 'POST';", '};'].join(
+      '\n',
+    );
+    expect(collectGitHubCalls(planted, 'planted.ts')).toEqual([]);
+  });
 });
 
 describe('what an installation is short of (ISS-1153)', () => {
