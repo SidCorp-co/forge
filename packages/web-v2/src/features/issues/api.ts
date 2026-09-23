@@ -113,11 +113,19 @@ export const issuesApi = {
       }),
     }),
 
-  /** `GET /api/issues/:id/cost-summary` — usage rollup for the issue. */
-  costSummary: (id: string) => apiClient<IssueCostSummary>(`/issues/${id}/cost-summary`),
+  /** `GET /api/issues/:id/cost-summary` — usage rollup for the issue. `id` is
+   *  the display key as often as the row uuid (ISS-1160); `projectId` is what
+   *  lets a key resolve. */
+  costSummary: (id: string, projectId?: string) =>
+    apiClient<IssueCostSummary>(
+      `/issues/${id}/cost-summary${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
+    ),
 
   /** `GET /api/issues/:id/dependencies` → `{ outgoing, incoming }` (IDs only). */
-  dependencies: (id: string) => apiClient<IssueDependencies>(`/issues/${id}/dependencies`),
+  dependencies: (id: string, projectId?: string) =>
+    apiClient<IssueDependencies>(
+      `/issues/${id}/dependencies${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
+    ),
 
   /** `GET /api/projects/:projectId/members` — creator filter option source. */
   members: (projectId: string) => apiClient<ProjectMember[]>(`/projects/${projectId}/members`),

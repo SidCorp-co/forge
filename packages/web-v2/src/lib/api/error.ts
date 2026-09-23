@@ -31,6 +31,14 @@ const FRIENDLY_CODES: Record<string, string> = {
   UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
 };
 
+/** ISS-1160 — a screen offers Retry only where retrying could change the answer.
+ *  A 4xx is the same request meeting the same refusal again; only a network
+ *  failure or a 5xx is worth resubmitting. */
+export function isRetryableApiError(err: unknown): boolean {
+  if (err instanceof ApiError) return err.status >= 500;
+  return true;
+}
+
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];

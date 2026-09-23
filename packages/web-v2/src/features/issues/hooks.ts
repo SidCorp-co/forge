@@ -42,21 +42,21 @@ export function useIssues(projectId: string | undefined, opts: IssueSearchOpts) 
   });
 }
 
-/** Per-issue cost rollup. Keyed `['issue', id, 'cost']` — lazy + cached. */
-export function useIssueCost(id: string | undefined, enabled = true) {
+/** Per-issue cost rollup. Keyed `['issue', id, 'cost']` — lazy + cached; `projectId` lets a display-key `id` (ISS-1160) resolve. */
+export function useIssueCost(id: string | undefined, enabled = true, projectId?: string) {
   return useQuery({
     queryKey: ["issue", id, "cost"],
-    queryFn: () => issuesApi.costSummary(id as string),
+    queryFn: () => issuesApi.costSummary(id as string, projectId),
     enabled: !!id && enabled,
     staleTime: 60_000,
   });
 }
 
-/** Per-issue dependency edges. Keyed `['issue', id, 'dependencies']` — lazy. */
-export function useIssueDeps(id: string | undefined, enabled = true) {
+/** Per-issue dependency edges. Keyed `['issue', id, 'dependencies']` — lazy, same ISS-1160 scoping. */
+export function useIssueDeps(id: string | undefined, enabled = true, projectId?: string) {
   return useQuery({
     queryKey: ["issue", id, "dependencies"],
-    queryFn: () => issuesApi.dependencies(id as string),
+    queryFn: () => issuesApi.dependencies(id as string, projectId),
     enabled: !!id && enabled,
     staleTime: 30_000,
   });

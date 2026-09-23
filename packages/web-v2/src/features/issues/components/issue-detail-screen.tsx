@@ -34,7 +34,7 @@ import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DECISION_PANEL_ANCHOR, DecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
-import { formatApiError } from "@/lib/api/error";
+import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
@@ -122,13 +122,16 @@ export function IssueDetailScreen({
   const canWrite = projectRole !== "viewer";
   const [modulePickerOpen, setModulePickerOpen] = useState(false);
 
-  const issueQ = useIssue(id);
-  const commentsQ = useComments(id);
-  const activityQ = useActivity(id);
-  const tasksQ = useTasks(id);
-  const attachmentsQ = useAttachments(id);
-  const depsQ = useIssueDeps(id);
-  const costQ = useIssueCost(id);
+  // ISS-1160 — `id` off the URL is the display key as often as the row uuid;
+  // `projectId` (already resolved from the route's slug) is what lets it
+  // resolve on every one of these reads.
+  const issueQ = useIssue(id, projectId);
+  const commentsQ = useComments(id, projectId);
+  const activityQ = useActivity(id, projectId);
+  const tasksQ = useTasks(id, projectId);
+  const attachmentsQ = useAttachments(id, projectId);
+  const depsQ = useIssueDeps(id, true, projectId);
+  const costQ = useIssueCost(id, true, projectId);
   const membersQ = useProjectMembers(projectId);
   const handoffsQ = useStepHandoffs(projectId, id);
   const durationsQ = useStepDurations(projectId, id);
@@ -190,7 +193,7 @@ export function IssueDetailScreen({
         <ErrorState
           title="Couldn't load issue"
           message={formatApiError(issueQ.error)}
-          onRetry={() => issueQ.refetch()}
+          onRetry={isRetryableApiError(issueQ.error) ? () => issueQ.refetch() : undefined}
         />
       </div>
     );
@@ -635,8 +638,9 @@ function TabLoading() {
   );
 }
 
-/** Error body for a detail tab whose query failed, with the retry that gets the
- *  reader out of it. */
+/** Error body for a detail tab whose query failed. Retry is offered only where
+ *  retrying could change the answer (ISS-1160) — a refusal the same request
+ *  will meet again gets no dead Retry button. */
 function TabError({
   query,
   what,
@@ -648,7 +652,7 @@ function TabError({
     <ErrorState
       title={`Couldn't load ${what}`}
       message={formatApiError(query.error)}
-      onRetry={() => query.refetch()}
+      onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
     />
   );
 }

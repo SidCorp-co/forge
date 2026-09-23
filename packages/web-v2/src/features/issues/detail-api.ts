@@ -16,11 +16,19 @@ interface ActivityEnvelope {
   nextBefore: string | null;
 }
 
+// ISS-1160 — `id` may be the display key, which resolves only with `projectId`.
+function withProject(path: string, projectId?: string): string {
+  if (!projectId) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}projectId=${encodeURIComponent(projectId)}`;
+}
+
 export const issueDetailApi = {
   /** `GET /api/issues/:id` — full row incl. pipelineHealth, labels, metadata. */
-  get: (id: string) => apiClient<IssueDetail>(`/issues/${id}`),
+  get: (id: string, projectId?: string) =>
+    apiClient<IssueDetail>(withProject(`/issues/${id}`, projectId)),
 
-  listComments: (id: string) => apiClientCursorAll<CommentNode>(`/issues/${id}/comments`),
+  listComments: (id: string, projectId?: string) =>
+    apiClientCursorAll<CommentNode>(withProject(`/issues/${id}/comments`, projectId)),
 
   /** `POST /api/issues/:id/comments` — create (optional `parentId`). */
   createComment: (id: string, body: string, parentId?: string) =>
@@ -36,14 +44,16 @@ export const issueDetailApi = {
   },
 
   /** `GET /api/issues/:id/activity` — reverse-chron timeline + `nextBefore`. */
-  listActivity: (id: string, limit = 50) =>
-    apiClient<ActivityEnvelope>(`/issues/${id}/activity?limit=${limit}`),
+  listActivity: (id: string, limit = 50, projectId?: string) =>
+    apiClient<ActivityEnvelope>(withProject(`/issues/${id}/activity?limit=${limit}`, projectId)),
 
   /** `GET /api/issues/:id/tasks` — flat task rows. */
-  listTasks: (id: string) => apiClient<TaskRow[]>(`/issues/${id}/tasks`),
+  listTasks: (id: string, projectId?: string) =>
+    apiClient<TaskRow[]>(withProject(`/issues/${id}/tasks`, projectId)),
 
   /** `GET /api/issues/:id/attachments` — rows with download `url`. */
-  listAttachments: (id: string) => apiClient<AttachmentRow[]>(`/issues/${id}/attachments`),
+  listAttachments: (id: string, projectId?: string) =>
+    apiClient<AttachmentRow[]>(withProject(`/issues/${id}/attachments`, projectId)),
 
   listHandoffs: (projectId: string, id: string) =>
     apiClient<{ rows: StepHandoffRow[] }>(
