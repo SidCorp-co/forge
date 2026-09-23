@@ -134,6 +134,14 @@ async function seedRunner(w: World): Promise<void> {
   `);
 }
 
+async function seedAutoRelease(w: World): Promise<void> {
+  await harness.db.execute(sql`
+    UPDATE projects
+       SET agent_config = ${JSON.stringify({ pipelineConfig: { autoProdDeploy: true } })}::jsonb
+     WHERE id = ${w.projectId}
+  `);
+}
+
 let seq = 0;
 async function seedIssue(w: World, note: unknown = NOTE): Promise<string> {
   const id = randomUUID();
@@ -146,6 +154,24 @@ async function seedIssue(w: World, note: unknown = NOTE): Promise<string> {
   return id;
 }
 
+/** One issue at a status one move short of the gate, which nothing claims. */
+async function seedNearGate(w: World, status: 'testing' | 'tested'): Promise<string> {
+  const id = randomUUID();
+  seq += 1;
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
+    VALUES (${id}, ${w.projectId}, ${seq}, ${`near ${seq}`}, ${status}, ${w.userId}, now())
+  `);
+  return id;
+}
+
+/** Numbered criteria and no verdict for any of them, which is what holds it. */
+async function owesCriteria(issueId: string, text: string): Promise<void> {
+  await harness.db.execute(sql`
+    UPDATE issues SET acceptance_criteria = ${text} WHERE id = ${issueId}
+  `);
+}
+
 async function readiness(w: World) {
   const res = await app.request(`/api/projects/${w.projectId}/release-readiness`, {
     headers: { Authorization: `Bearer ${w.token}` },
@@ -155,7 +181,7 @@ async function readiness(w: World) {
     body: (await res.json()) as {
       gaps: string[];
       blockers: Array<{ code: string; message: string; evaluated: boolean }>;
-      warnings: Array<{ code: string }>;
+      warnings: Array<{ code: string; message: string }>;
     },
   };
 }
@@ -267,6 +293,103 @@ describe('release-readiness and the create door answer the same question', () =>
 
     expect(answer.body.warnings.map((x) => x.code)).toContain('RELEASE_RUNNER_PREFERENCE_UNMET');
     expect(answer.body.blockers).toEqual([]);
+    expect(created.status).toBe(201);
+  });
+});
+
+describe('a reason names the state it was read from and the act that clears it', () => {
+  // The failure ISS-1127 was reopened on. Both forge-dev boxes were green and
+  // Idle on the Runners tab at 13s and 21s, and the release surface told the
+  // operator to bring one up or wait for one to reconnect.
+  it('names the box an operator retired, and the switch that returns it', async () => {
+    const w = await seed();
+    const device = await createTestDevice(harness.db, w.userId, { status: 'online' });
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device.id}, 'dev1', 'draining',
+              now(), ${JSON.stringify([LABEL])}::jsonb)
+    `);
+    await seedIssue(w);
+
+    const answer = await readiness(w);
+    const held = answer.body.blockers.find((b) => b.code === 'NO_RUNNER_ONLINE');
+
+    expect(held).toBeDefined();
+    expect(held?.message).toContain('dev1');
+    expect(held?.message).toContain('draining');
+    expect(held?.message).toContain('Takes jobs from the pool');
+    expect(held?.message).not.toContain('Bring one up');
+  });
+
+  it('counts the issues standing one move short of the gate', async () => {
+    const w = await seed();
+    await seedRunner(w);
+    await seedNearGate(w, 'testing');
+    await seedNearGate(w, 'tested');
+
+    const empty = (await readiness(w)).body.blockers.find((b) => b.code === 'RELEASE_ROSTER_EMPTY');
+
+    expect(empty?.message).toContain('2 issues');
+    expect(empty?.message).toContain('`awaiting_release`');
+    expect(empty?.message).not.toContain('merged and marked');
+  });
+});
+
+describe('the reason the unattended sweep will not carry an issue', () => {
+  it('blocks where every waiting issue owes a judging run', async () => {
+    const w = await seed();
+    await seedAutoRelease(w);
+    await seedRunner(w);
+    const issue = await seedIssue(w);
+    await owesCriteria(issue, '1. it answers\n2. it answers twice');
+
+    const answer = await readiness(w);
+    const held = answer.body.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
+
+    expect(held).toBeDefined();
+    expect(held?.message).toContain(issue);
+    expect(held?.message).toContain('owes criterion 1, 2');
+  });
+
+  // A partial exclusion is not a stopped release: `sweepProject` returns early
+  // only where NOTHING is left eligible, and otherwise cuts the subset.
+  it('warns rather than blocks where a release still starts without them', async () => {
+    const w = await seed();
+    await seedAutoRelease(w);
+    await seedRunner(w);
+    const held = await seedIssue(w);
+    await owesCriteria(held, '1. it answers');
+    await seedIssue(w);
+
+    const answer = await readiness(w);
+
+    expect(answer.body.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
+    const warned = answer.body.warnings.find((x) => x.code === 'RELEASE_CRITERIA_HELD_BACK');
+    expect(warned?.message).toContain(held);
+  });
+
+  it('says nothing about criteria on a project a person releases by hand', async () => {
+    const w = await seed();
+    await seedRunner(w);
+    const issue = await seedIssue(w);
+    await owesCriteria(issue, '1. it answers');
+
+    const codes = (await readiness(w)).body.blockers.map((b) => b.code);
+
+    expect(codes).not.toContain('RELEASE_CRITERIA_UNEARNED');
+  });
+
+  it('never refuses a create that named its own list by that code', async () => {
+    const w = await seed();
+    await seedAutoRelease(w);
+    await seedRunner(w);
+    const issue = await seedIssue(w);
+    await owesCriteria(issue, '1. it answers');
+
+    const answer = await readiness(w);
+    const created = await createBatch(w, [issue]);
+
+    expect(answer.body.blockers.map((b) => b.code)).toContain('RELEASE_CRITERIA_UNEARNED');
     expect(created.status).toBe(201);
   });
 });

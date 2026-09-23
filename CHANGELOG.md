@@ -3080,6 +3080,10 @@
   set is now 59.
 
 ### Fixed
+- **Why a release will not start now names the box, its state and the switch that changes it.** It
+  told you to bring up runners already up, and to merge issues you had merged. A held release says
+  so.
+
 - **An issue with no decision round no longer claims it was parked without a question.** The panel
   now says what it looked for, and keeps the way forward as its content rather than a footnote.
 - **The release panel names who deploys the project, instead of saying nobody does.** It read a
