@@ -8,20 +8,31 @@
 // via the existing draft→open transition. Review queue = issues list filtered
 // to status draft + label intake.
 //
-// Save-island contract mirrors concurrency-section.tsx: take the full fetched
-// config, edit only this slice, spread `...config` so sibling keys survive the
-// shallow PATCH merge.
+// The save names this section's own keys and the values it read them against, and nothing else
+// of the document (ISS-1170).
 
-import { useEffect, useState } from "react";
 import {
   Banner,
   Button,
   CardTitle,
   Toggle,
 } from "@/design";
+import { useSettingsDraft } from "../draft";
 import { useUpdatePipelineConfig } from "../hooks";
 import { type PipelineConfig, sectionWrite } from "../types";
 import { SaveRefusedBanner } from "./save-refused-banner";
+
+const AT = ["intakeGate"] as const;
+
+interface Slice {
+	enabled: boolean;
+	notify: boolean;
+}
+
+const seed = (config: PipelineConfig): Slice => ({
+	enabled: config.intakeGate?.enabled ?? false,
+	notify: config.intakeGate?.notify !== false,
+});
 
 export function IntakeGateSection({
 	projectId,
@@ -35,16 +46,11 @@ export function IntakeGateSection({
 }) {
 	const update = useUpdatePipelineConfig(projectId);
 
-	const seededEnabled = config.intakeGate?.enabled ?? false;
-	const seededNotify = config.intakeGate?.notify !== false;
-	const [enabled, setEnabled] = useState(seededEnabled);
-	const [notify, setNotify] = useState(seededNotify);
-	useEffect(() => {
-		setEnabled(config.intakeGate?.enabled ?? false);
-		setNotify(config.intakeGate?.notify !== false);
-	}, [config]);
-
-	const dirty = enabled !== seededEnabled || notify !== seededNotify;
+	const held = useSettingsDraft(seed(config), { at: AT });
+	const { enabled, notify } = held.draft;
+	const dirty = held.dirty;
+	const setEnabled = (next: boolean) => held.setDraft((d) => ({ ...d, enabled: next }));
+	const setNotify = (next: boolean) => held.setDraft((d) => ({ ...d, notify: next }));
 
 	function save() {
 		update.mutate(
@@ -95,13 +101,12 @@ export function IntakeGateSection({
 
 			{canEdit && (
 				<div className="mt-3 space-y-3">
-					{update.isError && (
-						<SaveRefusedBanner
-							projectId={projectId}
-							error={update.error}
-							onDismiss={() => update.reset()}
-						/>
-					)}
+					<SaveRefusedBanner
+						projectId={projectId}
+						error={update.isError ? update.error : null}
+						onDismiss={() => update.reset()}
+						draft={held}
+					/>
 					{update.isSuccess && !dirty && (
 						<Banner tone="success" onDismiss={() => update.reset()}>
 							Intake gate saved.

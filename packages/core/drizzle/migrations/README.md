@@ -88,8 +88,9 @@ floor off `main` and off every unmerged sibling yourself — the gate reads your
 ### Hand-written SQL (rare)
 
 Use only when codegen can't express the change (data backfills,
-expression indexes, partial indexes, stored functions). When you
-hand-write a `NNNN_name.sql`, you **must also**:
+expression indexes, partial indexes, stored functions).
+<!-- doc-citation: unchecked `NNNN_name.sql` — the naming TEMPLATE a new migration follows, not a file that exists. -->
+When you hand-write a `NNNN_name.sql`, you **must also**:
 
 1. Append an entry to `meta/_journal.json` with the next `idx`,
    matching `tag`, and a unique `when` timestamp:

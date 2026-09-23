@@ -11,7 +11,6 @@
 // config, edit only this slice, spread `...config` so sibling keys survive the
 // shallow PATCH merge.
 
-import { useEffect, useState } from "react";
 import { REGISTRY_BACKLOG_ADMISSIBLE_STATUSES } from "@forge/contracts/pipeline-registry";
 import {
   Banner,
@@ -22,6 +21,7 @@ import {
 } from "@/design";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
+import { useSettingsDraft } from "../draft";
 import { useUpdatePipelineConfig } from "../hooks";
 import { type PipelineConfig, sectionWrite } from "../types";
 import { SaveRefusedBanner } from "./save-refused-banner";
@@ -29,6 +29,18 @@ import { SaveRefusedBanner } from "./save-refused-banner";
 const DEFAULT_LIMIT = 20;
 
 const ADMISSIBLE = [...REGISTRY_BACKLOG_ADMISSIBLE_STATUSES] as IssueStatus[];
+
+const AT = ["poolBacklog"] as const;
+
+interface Slice {
+	statuses: string[];
+	limit: number;
+}
+
+const seed = (config: PipelineConfig): Slice => ({
+	statuses: config.poolBacklog?.statuses ?? [],
+	limit: config.poolBacklog?.limit ?? DEFAULT_LIMIT,
+});
 
 export function PoolBacklogSection({
 	projectId,
@@ -42,28 +54,20 @@ export function PoolBacklogSection({
 }) {
 	const update = useUpdatePipelineConfig(projectId);
 
-	const seededStatuses = config.poolBacklog?.statuses ?? [];
-	const seededLimit = config.poolBacklog?.limit ?? DEFAULT_LIMIT;
-	const [statuses, setStatuses] = useState<string[]>(seededStatuses);
-	const [limit, setLimit] = useState(seededLimit);
-	useEffect(() => {
-		setStatuses(config.poolBacklog?.statuses ?? []);
-		setLimit(config.poolBacklog?.limit ?? DEFAULT_LIMIT);
-	}, [config]);
+	const held = useSettingsDraft(seed(config), { at: AT });
+	const { statuses, limit } = held.draft;
+	const dirty = held.dirty;
+	const setLimit = (next: number) => held.setDraft((d) => ({ ...d, limit: next }));
 
 	const enabled = statuses.length > 0;
 	const intakeGateOn = config.intakeGate?.enabled === true;
-	const dirty =
-		limit !== seededLimit ||
-		statuses.length !== seededStatuses.length ||
-		statuses.some((s) => !seededStatuses.includes(s));
-
 	const conflict = intakeGateOn && statuses.includes("draft");
 
 	function toggleStatus(status: string, on: boolean) {
-		setStatuses((prev) =>
-			on ? [...prev, status] : prev.filter((s) => s !== status),
-		);
+		held.setDraft((d) => ({
+			...d,
+			statuses: on ? [...d.statuses, status] : d.statuses.filter((s) => s !== status),
+		}));
 	}
 
 	function save() {
@@ -96,7 +100,9 @@ export function PoolBacklogSection({
 				<div className="flex items-center gap-3">
 					<Toggle
 						checked={enabled}
-						onChange={(on) => setStatuses(on ? ["draft"] : [])}
+						onChange={(on) =>
+							held.setDraft((d) => ({ ...d, statuses: on ? ["draft"] : [] }))
+						}
 						disabled={!canEdit}
 						aria-label="Show a backlog to this project's master agents"
 					/>
@@ -157,13 +163,12 @@ export function PoolBacklogSection({
 
 			{canEdit && (
 				<div className="mt-3 space-y-3">
-					{update.isError && (
-						<SaveRefusedBanner
-							projectId={projectId}
-							error={update.error}
-							onDismiss={() => update.reset()}
-						/>
-					)}
+					<SaveRefusedBanner
+						projectId={projectId}
+						error={update.isError ? update.error : null}
+						onDismiss={() => update.reset()}
+						draft={held}
+					/>
 					{update.isSuccess && !dirty && (
 						<Banner tone="success" onDismiss={() => update.reset()}>
 							Master backlog saved.

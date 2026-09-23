@@ -16,11 +16,20 @@ COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter @forge/core...
-# `--filter @forge/core...` (three dots) builds @forge/core AND its
-# workspace deps in topological order. Without the third dot,
-# @forge/observability ships as raw .ts source under node_modules and
-# Node 22 refuses to load it (no type-stripping under node_modules).
-RUN pnpm --filter @forge/core... build
+# @forge/core and @forge/contracts declare each other, so turbo prints
+# `Circular package dependency detected` and there is NO topological order
+# between them: left to `--filter @forge/core...` alone, `packages/core build`
+# races `packages/contracts build` and reads a half-emitted dist — CI 2026-09-23
+# failed TS7016 naming dist/document-patch.js, the .js written and the .d.ts not
+# yet. Build the emit-only deps first, in their own layer, so the ordering is the
+# Dockerfile's rather than the scheduler's.
+RUN pnpm --filter @forge/observability build && pnpm --filter @forge/contracts build
+# No third dot HERE, deliberately: `@forge/core...` would pull @forge/contracts
+# back into this invocation and let it build a second time beside core's tsc,
+# which is the same race again. The install above keeps its `...` — that is
+# where the workspace deps have to be present, and @forge/observability shipping
+# as raw .ts under node_modules is what the third dot prevents there.
+RUN pnpm --filter @forge/core build
 # `pnpm deploy` materialises a self-contained app at /prod/core with
 # zero workspace symlinks — every dependency is a real install. The
 # runtime stage just copies that directory and runs node. Honors the

@@ -25,7 +25,7 @@ function state(over: Partial<ReleaseRoster>, claimed: string | null = null) {
     data: {
       gateStatus: "tested",
       nextCutAt: null,
-      channel: "coolify",
+      channels: ["coolify"],
       releaseRunnerLabel: null,
       baseBranch: "main",
       issues: [

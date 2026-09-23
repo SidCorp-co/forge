@@ -7,7 +7,9 @@ import {
 	describeConflicts,
 	patchLeafPaths,
 	formatPath,
+	parsePath,
 	readPath,
+	rebaseDocumentDraft,
 	sameStoredValue,
 } from "./document-patch.js";
 
@@ -241,5 +243,152 @@ describe("a key that contains a period", () => {
 		expect(formatPath(["states", "open", "deviceIds"])).toBe(
 			"states.open.deviceIds",
 		);
+	});
+});
+
+describe("parsePath", () => {
+	it("reads back every path formatPath writes", () => {
+		for (const path of [
+			["states", "open", "deviceIds"],
+			["mcpServers", "team.prod", "url"],
+			["limits"],
+			["preview", "urls"],
+			["mcpServers", 'he said "hi".prod'],
+			["mcpServers", ""],
+		]) {
+			expect(parsePath(formatPath(path))).toEqual(path);
+		}
+	});
+
+	it("keeps a quote that is not a quoted segment as the character it is", () => {
+		expect(parsePath('a"b.c')).toEqual(['a"b', "c"]);
+	});
+});
+
+// The client half of the same contract: what a person holding unsaved edits keeps when the
+// document they read is read again (ISS-1170 criterion 20).
+describe("rebaseDocumentDraft", () => {
+	const read = {
+		states: { open: { disallowedTools: ["Bash"], allowedTools: ["Read"] } },
+		assistantWeekly: { pinnedIssue: "ISS-25", enabled: true },
+	};
+
+	it("keeps every edit the person made and takes the stored value everywhere else", () => {
+		const held = {
+			...read,
+			assistantWeekly: { pinnedIssue: "ISS-9999", enabled: true },
+		};
+		const fresh = {
+			...read,
+			states: { open: { disallowedTools: ["Bash", "WebFetch"], allowedTools: ["Read"] } },
+		};
+		const { draft, replaced } = rebaseDocumentDraft({ read, held, fresh });
+		expect(draft.assistantWeekly).toEqual({ pinnedIssue: "ISS-9999", enabled: true });
+		expect(draft.states).toEqual({
+			open: { disallowedTools: ["Bash", "WebFetch"], allowedTools: ["Read"] },
+		});
+		expect(replaced).toEqual([]);
+	});
+
+	it("keeps the person's edit at a path the store moved too, where nothing yields it", () => {
+		const held = {
+			...read,
+			states: { open: { disallowedTools: ["Bash", "mine"], allowedTools: ["Read"] } },
+		};
+		const fresh = {
+			...read,
+			states: { open: { disallowedTools: ["Bash", "theirs"], allowedTools: ["Read"] } },
+		};
+		const { draft, replaced } = rebaseDocumentDraft({ read, held, fresh });
+		expect(readPath(draft, ["states", "open", "disallowedTools"])).toEqual(["Bash", "mine"]);
+		expect(replaced).toEqual([]);
+	});
+
+	it("takes the stored value at a yielded path, and says which edit went", () => {
+		const held = {
+			...read,
+			states: { open: { disallowedTools: ["Bash", "mine"], allowedTools: ["Read", "Edit"] } },
+			assistantWeekly: { pinnedIssue: "ISS-9999", enabled: true },
+		};
+		const fresh = {
+			...read,
+			states: { open: { disallowedTools: ["Bash", "theirs"], allowedTools: ["Read"] } },
+		};
+		const { draft, replaced } = rebaseDocumentDraft({
+			read,
+			held,
+			fresh,
+			yielding: [["states", "open", "disallowedTools"]],
+		});
+		expect(readPath(draft, ["states", "open", "disallowedTools"])).toEqual(["Bash", "theirs"]);
+		// Yielding one path yields that path alone: the allowlist edit beside it stands, and so
+		// does the section that was never named.
+		expect(readPath(draft, ["states", "open", "allowedTools"])).toEqual(["Read", "Edit"]);
+		expect(draft.assistantWeekly).toEqual({ pinnedIssue: "ISS-9999", enabled: true });
+		expect(replaced).toEqual([
+			{
+				path: "states.open.disallowedTools",
+				typed: ["Bash", "mine"],
+				stored: ["Bash", "theirs"],
+			},
+		]);
+	});
+
+	it("reports nothing replaced where the person had typed nothing at the yielded path", () => {
+		const { draft, replaced } = rebaseDocumentDraft({
+			read,
+			held: read,
+			fresh: { ...read, assistantWeekly: { pinnedIssue: "ISS-77", enabled: true } },
+			yielding: [["assistantWeekly", "pinnedIssue"]],
+		});
+		expect(draft.assistantWeekly).toEqual({ pinnedIssue: "ISS-77", enabled: true });
+		expect(replaced).toEqual([]);
+	});
+
+	it("yields an edit made above the path named, and one made below it", () => {
+		const above = rebaseDocumentDraft({
+			read,
+			held: { ...read, states: { open: { disallowedTools: ["mine"], allowedTools: ["Read"] } } },
+			fresh: { ...read, states: { open: { disallowedTools: ["theirs"], allowedTools: ["Read"] } } },
+			yielding: [["states"]],
+		});
+		expect(readPath(above.draft, ["states", "open", "disallowedTools"])).toEqual(["theirs"]);
+		expect(above.replaced.map((r) => r.path)).toEqual(["states.open.disallowedTools"]);
+
+		const below = rebaseDocumentDraft({
+			read,
+			held: { ...read, assistantWeekly: { pinnedIssue: "ISS-9999", enabled: true } },
+			fresh: { ...read, assistantWeekly: { pinnedIssue: "ISS-77", enabled: true } },
+			yielding: [["assistantWeekly", "pinnedIssue"]],
+		});
+		expect(below.draft.assistantWeekly).toEqual({ pinnedIssue: "ISS-77", enabled: true });
+		expect(below.replaced.map((r) => r.path)).toEqual(["assistantWeekly.pinnedIssue"]);
+	});
+
+	it("carries a deletion the person made, and takes a key the store added", () => {
+		const { draft } = rebaseDocumentDraft({
+			read,
+			held: { states: read.states },
+			fresh: { ...read, intakeGate: { enabled: true } },
+		});
+		expect(draft).not.toHaveProperty("assistantWeekly");
+		expect(draft.intakeGate).toEqual({ enabled: true });
+	});
+
+	it("takes the fresh document whole where the person changed nothing", () => {
+		const fresh = { ...read, enabled: false };
+		expect(rebaseDocumentDraft({ read, held: read, fresh }).draft).toEqual(fresh);
+	});
+
+	it("keeps an edit at a key whose name contains a period", () => {
+		const base = { mcpServers: { "team.prod": { url: "old" } } };
+		const { draft, replaced } = rebaseDocumentDraft({
+			read: base,
+			held: { mcpServers: { "team.prod": { url: "mine" } } },
+			fresh: { mcpServers: { "team.prod": { url: "theirs" } } },
+			yielding: [["mcpServers", "team.prod", "url"]],
+		});
+		expect(readPath(draft, ["mcpServers", "team.prod", "url"])).toBe("theirs");
+		expect(replaced[0]?.path).toBe('mcpServers."team.prod".url');
 	});
 });

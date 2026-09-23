@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
         with:
-          prebuild-observability: "false"
+          prebuild-deps: "false"
 
   # English-only source policy (ISS-65). Runs scripts/check-source-language.mjs
   # in --all mode. Always-on, ungated by paths-filter — language drift can land
@@ -94,6 +94,13 @@ jobs:
       # refs/remotes/origin/* on disk for it; with a depth-1 checkout it would have nothing to
       # compare against, which it reports as exit 2 rather than as a pass.
       - run: node scripts/check-migration-order.mjs
+      # Doc citations: a document that names a file in this repo makes a claim a machine
+      # can check, and nothing checked it — 93 documents had drifted far enough to be
+      # deleted rather than corrected before this landed. Reads markdown and `git ls-files`
+      # only, so it lives in this install-free job; the `fetch-depth: 0` above is what lets
+      # it date a document against the file it cites, and it says so rather than reporting
+      # no drift when the checkout is shallow.
+      - run: node scripts/check-doc-citations.mjs --all
       # CI-parity: proves every step in this file is either run by `pnpm verify`
       # or declared as covered by another root script. Without it the local
       # command and this workflow drift, and a green `pnpm verify` stops meaning

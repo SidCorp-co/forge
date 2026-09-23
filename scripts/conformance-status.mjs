@@ -26,13 +26,14 @@ const PROBES = {
     ],
   },
   knowledge: {
-    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples',
+    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations',
     probe: ['node', 'scripts/check-honest-costs.mjs'],
     from: 'none',
     also: [
       { from: 'none', probe: ['node', 'scripts/check-injected-doc-modes.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-pat-surface.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-status-tuples.mjs', '--all'] },
+      { from: 'none', probe: ['node', 'scripts/check-doc-citations.mjs', '--all'] },
     ],
   },
   relations: {

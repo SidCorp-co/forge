@@ -60,7 +60,7 @@ const ISSUES: ReleaseRoster["issues"] = [
 
 function state(over: Partial<ReleaseRoster> | null, flags: Record<string, unknown> = {}) {
   roster.mockReturnValue({
-    data: over === null ? undefined : { gateStatus: "tested", nextCutAt: null, channel: "coolify", releaseRunnerLabel: null, issues: [], ...over },
+    data: over === null ? undefined : { gateStatus: "tested", nextCutAt: null, channels: ["coolify"], releaseRunnerLabel: null, issues: [], ...over },
     isLoading: false,
     isError: false,
     error: null,
@@ -109,6 +109,41 @@ describe("ReleaseGatePanel — the three unknowns render differently", () => {
     state({ gateStatus: null });
     const { container } = renderPanel();
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("ReleaseGatePanel — who deploys this", () => {
+  it("names the project's live deploy target rather than saying nobody deploys it", () => {
+    state({ channels: ["coolify"] });
+    renderPanel();
+    expect(screen.getByText("coolify")).toBeInTheDocument();
+    expect(screen.queryByText("nothing — a person deploys")).not.toBeInTheDocument();
+  });
+
+  it("names every target where the project declares more than one", () => {
+    state({ channels: ["coolify", "vercel"] });
+    renderPanel();
+    expect(screen.getByText("coolify")).toBeInTheDocument();
+    expect(screen.getByText("vercel")).toBeInTheDocument();
+  });
+
+  it("says a person deploys this only where the roster names no target at all", () => {
+    state({ channels: [] });
+    renderPanel();
+    expect(screen.getByText("nothing — a person deploys")).toBeInTheDocument();
+  });
+
+  it("shows the error state, and no sentence about deploying, when the response was refused", () => {
+    state(null, {
+      isError: true,
+      error: new Error(
+        "/projects/p1/release-batches/roster answered a release roster this app cannot read: channels should be an array of strings, and the response carries no such key.",
+      ),
+    });
+    renderPanel();
+    expect(screen.getByText("Couldn't load the release gate")).toBeInTheDocument();
+    expect(screen.queryByText(/Deploys via/)).not.toBeInTheDocument();
+    expect(screen.queryByText("nothing — a person deploys")).not.toBeInTheDocument();
   });
 });
 

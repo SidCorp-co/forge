@@ -14,14 +14,14 @@ number.
 
 | Package | What |
 |---|---|
-| `packages/core` | Hono backend. Single app (`src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the job pool a master agent claims from. |
+| `packages/core` | Hono backend. Single app (`packages/core/src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the job pool a master agent claims from. |
 | `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
 | `packages/runner` | Headless Rust `forge-runner` CLI daemon (crates `forge-runner` / `forge-runner-core`) for servers/CI; pairs as a device. |
-| `packages/contracts` | Shared cross-app TS types & registries (`src/issues.ts`, `src/pipeline-registry.ts`, `src/requests.ts`, `src/responses.ts`, `src/rows.ts`, `src/domain-templates.ts`). |
+| `packages/contracts` | Shared cross-app TS types & registries, all under `packages/contracts/src/`: `packages/contracts/src/issues.ts`, `packages/contracts/src/pipeline-registry.ts`, `packages/contracts/src/requests.ts`, `packages/contracts/src/responses.ts`, `packages/contracts/src/rows.ts`, `packages/contracts/src/domain-templates.ts`. |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
 
-**The driver skill lives in a second repo.** `github.com/SidCorp-co/forge-plugin` is Forge's own
-Claude Code plugin — the `forge` CLI, the session hooks, and `plugin/skills/issue-flow`, which is
+**The driver skill lives in a second repo**, github.com/SidCorp-co/forge-plugin — Forge's own
+Claude Code plugin, carrying the `forge` CLI, the session hooks, and the issue-flow skill, which is
 the skill `AUTONOMOUS_SKILL_NAME` names and every `drive` job runs. It reaches a runner through
 `pipelineConfig.plugins` → `GET /api/devices/me/plugins`, gated by that box's `[plugins] enabled`.
 Nothing in this repo can gate the pair: a change to the five driver statuses, the drive prompt, or
@@ -71,7 +71,7 @@ a CI step: a `- run:` in `.github/workflows/ci.yml` that `verify`
 neither runs nor declares fails the build, so the local command and the workflow cannot drift
 apart.
 
-Seven axes — form (gated 5×), knowledge (gated 4×), relations, behaviour (gated 3×), language,
+Seven axes — form (gated 5×), knowledge (gated 5×), relations, behaviour (gated 3×), language,
 record, comment. Five of them own a property of the code; `record` owns `CHANGELOG.md`, the
 external record of what shipped, which was nobody's until 1,034 lines of it left in silence, and
 `comment` owns what a comment SAYS. An axis measures at its weakest gate. `.forge/conformance.json` declares each axis's level and the repo's profile
@@ -183,9 +183,9 @@ reasons to go green.
 
 ### The one carve-out: forge-plugin is reached by issue, never by diff
 
-**A defect in `github.com/SidCorp-co/forge-plugin` leaves as an issue on the `forge-plugin`
+**A defect in github.com/SidCorp-co/forge-plugin leaves as an issue on the `forge-plugin`
 project, and you do not edit that repo from a job in this one.** The `forge` CLI, the session
-hooks and `plugin/skills/issue-flow` live there; a verb that refuses wrongly, a missing way out, a
+hooks and the issue-flow skill live there; a verb that refuses wrongly, a missing way out, a
 skill naming something this repo no longer has — all of it files there and is named in your
 comment under `Extra fixes:` as **reported**, not fixed.
 
@@ -243,8 +243,12 @@ lost the time the doc was written to save.
 
 **The files you read are your doc-review worklist.** Finishing an issue means every `.md` you
 opened while working it comes back marked *still true* / *edited* / *deleted*. "Did not touch" is
-not one of the three. Enforced in the pipeline by `forge-code`.
+not one of the three. The pipeline's `forge-code` step decides which of the three a document gets,
+and `check-doc-citations` decides whether it was entitled to say *still true*: every citation of a
+file in this repo is resolved against the tree, a dead one fails the build, and one whose target
+moved after the document did comes back on the worklist. Prose is still the step's alone.
 
+<!-- doc-citation: unchecked `file.ts:symbol` — the NOTATION being defined, not a file this repo holds. -->
 Cite a doc claim so it can be checked: name the identifier or the `file.ts:symbol` anchor, never a
 line number — a line number is stale the moment anything above it moves, and stale in silence.
 
@@ -264,7 +268,7 @@ line number — a line number is stale the moment anything above it moves, and s
     LAST job's outcome so a run whose last job failed never closes `completed`.
   - New code that flips `pipeline_runs.status` terminal MUST route through a cascade-calling
     helper — on either axis, there is exactly one writer.
-- **A migration's `when` in `drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
+- **A migration's `when` in `packages/core/drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
   already in the target DB** — drizzle reads the single highest `created_at` once and skips lower
   entries **silently, forever**, so the container starts and serves new code against an old schema
   (ISS-807: a live 500 on `GET /me/attention` for every signed-in user). **`node
@@ -275,7 +279,7 @@ line number — a line number is stale the moment anything above it moves, and s
 
   The set is the subject, not your branch. Branches each deriving `+86400000` from one `main` all
   land on the SAME number and whichever merges first silently kills the rest — measured twice on
-  2026-09-17, four open migrations, three of them holding `1796083200000`. Two gates split the
+  2026-09-17, four open migrations, three of them holding one and the same `when`. Two gates split the
   work: `packages/core/src/db/migrations-journal.test.ts` owns one journal's own properties, and
   `scripts/check-migration-order.mjs` owns the relation between branches, running from `pnpm verify` and
   from the always-on `lang-check` CI job. What neither can catch is a merge taken out of the order

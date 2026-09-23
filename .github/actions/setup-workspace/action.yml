@@ -2,20 +2,20 @@ name: Setup workspace
 description: |
   Checkout-aware composite for forge's pnpm workspace. Handles pnpm + Node
   setup, the pre-install lockfile-transport refusal, frozen-lockfile install,
-  and the @forge/observability prebuild that every consumer needs (Node 22
-  won't load .ts under node_modules so dist/ must exist before vitest/tsc/build
-  commands resolve it).
+  and the prebuild of every emit-only workspace dep that consumers need (Node
+  22 won't load .ts under node_modules, so dist/ must exist — and dist/ is
+  gitignored — before vitest/tsc/build commands resolve it).
 
   Use this in every job that touches a workspace package. Do NOT add per-job
   pnpm/setup-node/install steps — drift between jobs is exactly what this
   composite exists to prevent.
 
 inputs:
-  prebuild-observability:
+  prebuild-deps:
     description: |
-      Set to "false" to skip the @forge/observability dist build. Default
+      Set to "false" to skip building the emit-only workspace deps. Default
       "true" matches what every package consumer needs. Skip only for jobs
-      that don't import @forge/observability (e.g. docs).
+      that import none of them (e.g. docs, install-check).
     required: false
     default: "true"
 
@@ -43,7 +43,15 @@ runs:
       shell: bash
       run: pnpm install --frozen-lockfile
 
+    # Every workspace dep whose export map points at dist/ is built here, in
+    # dependency order. dist/ is gitignored, so a checkout has none of it and a
+    # job running `pnpm --filter <pkg> typecheck` directly (not through turbo,
+    # which would build deps itself) fails TS2307 on the specifier. Adding a
+    # compiled export to a workspace dep means adding it here — @forge/contracts
+    # joined on 2026-09-23 when ./document-patch was repointed at dist.
     - name: Prebuild emit-only workspace deps
-      if: inputs.prebuild-observability == 'true'
+      if: inputs.prebuild-deps == 'true'
       shell: bash
-      run: pnpm --filter @forge/observability build
+      run: |
+        pnpm --filter @forge/observability build
+        pnpm --filter @forge/contracts build

@@ -32,3 +32,10 @@ answered the same question in several places at once. Better no document than a 
   rule exists to forbid.
 - **The set states its own coverage.** It is silent on plenty, and an audit run against it must
   not read that silence as approval.
+- **Every document here prices what adopting it costs, under `## Honest costs`.** `VISION.md` and
+  every file under `proposals/` carries one; a `README.md` at any depth carries this rule instead
+  of a price of its own. The section holds the price of the choices the document makes, not the
+  boundaries it draws — one cost per row, as a table or a list, at least twelve words across it,
+  and never `TBD`, `none` or `n/a`. A cost nobody has worked out is not a priced trade-off, and a
+  section that is present and says nothing is the shape this rule exists to refuse.
+  `check-honest-costs` measures it and `scripts/README.md` has the gate's row.

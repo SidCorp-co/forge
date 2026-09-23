@@ -1,42 +1,28 @@
 // Every reason a release will not start, enumerated once and read by every door.
 //
-// Before ISS-1127 there were two lists. `readiness.ts` computed `gaps` from the
-// declarations for a human to read; `createReleaseBatch` refused on its own
-// checks in its own order; `recorded.ts` refused on a third set. None named the
-// others, so clearing one list predicted nothing about the next, and an operator
-// learnt the reasons one at a time — each only after clearing the one before it.
-//
-// Three properties hold here and are what the callers rely on:
-//
-//   - It never throws. A check that cannot be evaluated becomes an answer of
-//     its own, in the position that check held. A reason that cannot be read
-//     is not the same as a reason that is absent.
-//
-//   - It makes no outbound request. `readLiveCommit` stays in the create path,
-//     and what is checked here is the probe DECLARATION.
-//
-//   - It reports in the order the doors refuse in, and a door throws the FIRST
-//     blocker under its existing name, so no caller meets a different code than
-//     it does today for the same state.
-
+// Before ISS-1127 there were three lists — `readiness.ts`'s `gaps`,
+// `createReleaseBatch`'s own checks, `recorded.ts`'s third set — none naming the
+// others, so an operator learnt the reasons one at a time. Three properties the
+// callers rely on: it never throws (a check that cannot be evaluated becomes an
+// answer in the position that check held); it makes no outbound request, so what
+// is checked here is the probe DECLARATION; and it reports in the order the doors
+// refuse in, a door throwing the FIRST blocker under its existing name.
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { readProjectBranches } from '../projects/service.js';
+import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
+import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
-  blockerHttpStatus,
   type CollectReleaseBlockersOptions,
   RELEASE_ROSTER_LIMIT,
-  type ReleaseBlockedError,
   type ReleaseBlocker,
-  type ReleaseBlockerCode,
   type ReleaseBlockerReport,
   type ReleaseDoor,
   type ReleaseWarning,
-  releaseBlockerSentence,
 } from './blocker-sentences.js';
 import {
   projectRunnerDeviceIds,
@@ -46,66 +32,40 @@ import {
   resolveReleaseChannels,
   resolveReleaseDeviceIds,
 } from './channel.js';
-import {
-  BatchInFlightError,
-  ClaimConflictError,
-  NoReleaseGateError,
-  NoRunnerOnlineError,
-  ReleaseMultiChannelUnsupportedError,
-  ReleasePoolEmptyError,
-  ReleaseProbesUndeclaredError,
-  ReleaseRecordMissingError,
-  ReleaseRunnerUndeclaredError,
-  ReleaseWorkUnmergedError,
-} from './errors.js';
-import {
-  RELEASE_GATE_STATUS,
-  ReleaseTargetUndeclaredError,
-  resolveReleaseDeclaration,
-} from './gate.js';
-import { ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
+import { criteriaHold } from './criteria-hold.js';
+import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
+import { releaseBranches } from './plan.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { invalidProbeUrls } from './verify.js';
 
 export * from './blocker-sentences.js';
 
-function blocker(
-  code: ReleaseBlockerCode,
-  details?: Record<string, unknown>,
-  scope?: 'roster',
-): ReleaseBlocker {
-  return {
-    code,
-    httpStatus: blockerHttpStatus(code),
-    message: releaseBlockerSentence(code, details),
-    evaluated: code !== 'RELEASE_CHECK_UNEVALUATED',
-    ...(details ? { details } : {}),
-    ...(scope ? { scope } : {}),
-  };
-}
+/** One transition short of the gate, which `RELEASE_ROSTER_EMPTY` counts so its
+ *  sentence names where the work stands. `transitions` admits `needs_info` and
+ *  `on_hold` too, and both are parks rather than work on its way. */
+const NEAR_GATE_STATUSES: readonly IssueStatus[] = ['testing', 'tested'];
 
-/** One check, and the blocker that stands in for it when it cannot be run. */
-async function evaluate<T>(
-  check: string,
-  read: () => Promise<T>,
+/** How many issues stand one move short of the gate; undefined where the read failed. */
+async function countNearGate(
+  projectId: string,
   out: ReleaseBlocker[],
-): Promise<T | undefined> {
-  const { value, failure } = await attempt(check, read);
-  if (failure) out.push(failure);
-  return value;
+): Promise<number | undefined> {
+  const rows = await evaluate(
+    'near-gate',
+    async () =>
+      await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.projectId, projectId), inArray(issues.status, NEAR_GATE_STATUSES))),
+    out,
+  );
+  return rows?.length;
 }
 
-/** The same read, with its failure handed back rather than appended. */
-async function attempt<T>(
-  check: string,
-  read: () => Promise<T>,
-): Promise<{ value: T | undefined; failure: ReleaseBlocker | null }> {
-  try {
-    return { value: await read(), failure: null };
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    return { value: undefined, failure: blocker('RELEASE_CHECK_UNEVALUATED', { check, detail }) };
-  }
+interface RosterRead {
+  ids: string[];
+  /** The subset no release batch has claimed, which is what the sweep works on. */
+  unclaimed: string[];
 }
 
 /** The issues this call is about: the caller's list, or the whole roster. */
@@ -114,21 +74,25 @@ async function resolveRoster(
   gateStatus: IssueStatus,
   issueIds: string[] | undefined,
   out: ReleaseBlocker[],
-): Promise<string[] | undefined> {
-  if (issueIds) return issueIds;
+): Promise<RosterRead | undefined> {
+  if (issueIds) return { ids: issueIds, unclaimed: issueIds };
   const rows = await evaluate(
     'roster',
     async () =>
       await db
-        .select({ id: issues.id })
+        .select({ id: issues.id, claimed: issues.releaseBatchRunId })
         .from(issues)
         .where(and(eq(issues.projectId, projectId), eq(issues.status, gateStatus))),
     out,
   );
   if (!rows) return undefined;
   const ids = rows.map((r) => r.id);
-  if (ids.length === 0) out.push(blocker('RELEASE_ROSTER_EMPTY', undefined, 'roster'));
-  else if (ids.length > RELEASE_ROSTER_LIMIT) {
+  if (ids.length === 0) {
+    const nearGate = await countNearGate(projectId, out);
+    out.push(
+      blocker('RELEASE_ROSTER_EMPTY', nearGate === undefined ? undefined : { nearGate }, 'roster'),
+    );
+  } else if (ids.length > RELEASE_ROSTER_LIMIT) {
     out.push(
       blocker(
         'RELEASE_ROSTER_OVERSIZE',
@@ -137,7 +101,7 @@ async function resolveRoster(
       ),
     );
   }
-  return ids;
+  return { ids, unclaimed: rows.filter((r) => r.claimed === null).map((r) => r.id) };
 }
 
 /** Wrong status, wrong project, already claimed — the caller's own list only. */
@@ -246,7 +210,8 @@ async function poolBlockers(
   );
   if (!pool) return;
   if (pool.eligible.length === 0) {
-    out.push(blocker(pool.fleet.length === 0 ? 'RELEASE_POOL_EMPTY' : 'NO_RUNNER_ONLINE'));
+    if (pool.fleet.length === 0) out.push(blocker('RELEASE_POOL_EMPTY'));
+    else await heldFleetBlocker(projectId, out);
   }
   // ISS-1128 made the label rank the pool rather than filter it, so an unmet
   // preference is no longer a reason a release will not start. It is still a
@@ -261,6 +226,20 @@ async function poolBlockers(
       details: { label, eligible: pool.eligible.length },
     });
   }
+}
+
+/**
+ * Which boxes are held, and by what. Read in an `attempt` of its own so a
+ * failure here leaves `NO_RUNNER_ONLINE` standing beside the unevaluated entry
+ * rather than replacing a reason the operator can act on with one they cannot.
+ */
+async function heldFleetBlocker(projectId: string, out: ReleaseBlocker[]): Promise<void> {
+  const holds = await attempt(
+    'runner-holds',
+    async () => await releaseIneligibleRunners(projectId),
+  );
+  out.push(blocker('NO_RUNNER_ONLINE', { runners: holds.value ?? [] }));
+  if (holds.failure) out.push(holds.failure);
 }
 
 /**
@@ -336,12 +315,10 @@ export async function collectReleaseBlockers(
   }
 
   // `read === undefined` means the declaration THREW, and the checks below run
-  // anyway. The declaration is a precondition for exactly two reasons — the two
-  // above — and for the judgement that the rest are moot; where it cannot be
-  // read that judgement cannot be made, and none of the checks below reads it:
-  // each takes a project id and the gate status. Returning here instead reported
-  // one reason, and it was the one reason the operator could not act on
-  // (ISS-1127).
+  // anyway: the declaration is a precondition for exactly the two reasons above
+  // and for the judgement that the rest are moot, which cannot be made where it
+  // cannot be read. Returning here instead reported one reason, and it was the
+  // one reason the operator could not act on (ISS-1127).
   const channels = await gatedBlockers(projectId, door, options.issueIds, blockers, warnings);
   return {
     projectId,
@@ -373,7 +350,7 @@ async function gatedBlockers(
   if (issueIds && issueIds.length > 0) {
     await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, roster);
   }
-  await rosterBlockers(door, found ?? [], roster);
+  await rosterBlockers(door, found?.ids ?? [], roster);
 
   const machinery: ReleaseBlocker[] = [];
   if (ch.failure) machinery.push(ch.failure);
@@ -402,97 +379,10 @@ async function gatedBlockers(
       out,
     );
     if (active) out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId }));
+    if (!issueIds && found) await criteriaHold(projectId, found.unclaimed, out, warnings);
   }
   return channels;
 }
 
-/**
- * The error the first blocker is thrown as, carrying the whole list.
- *
- * The class, the code and the wording are the ones that door already used, so
- * nothing's `instanceof` and no operator's vocabulary moves. What rides along
- * is every other reason standing at the same moment — which is the issue.
- */
-export function releaseBlockerError(report: ReleaseBlockerReport): ReleaseBlockedError | null {
-  const first = report.blockers[0];
-  if (!first) return null;
-  const ids = Array.isArray(first.details?.issueIds) ? (first.details.issueIds as string[]) : [];
-  const err = errorFor(first, ids, report);
-  const carried: ReleaseBlockedError = err;
-  carried.releaseBlockers = report.blockers;
-  return carried;
-}
-
-export class ReleaseCheckUnevaluatedError extends Error {
-  constructor(public readonly check: string) {
-    super(`RELEASE_CHECK_UNEVALUATED: ${check}`);
-    this.name = 'ReleaseCheckUnevaluatedError';
-  }
-}
-
-/** The probes declare a url no request could be made to. */
-export class ReleaseProbesUnreadableError extends Error {
-  constructor(public readonly urls: string[]) {
-    super(`RELEASE_PROBES_UNREADABLE: ${urls.join(', ')}`);
-    this.name = 'ReleaseProbesUnreadableError';
-  }
-}
-
-/** The roster read for this project cannot be cut as one release. */
-export class ReleaseRosterUnusableError extends Error {
-  constructor(
-    public readonly code: 'RELEASE_ROSTER_EMPTY' | 'RELEASE_ROSTER_OVERSIZE',
-    public readonly waiting: number,
-  ) {
-    super(`${code}: ${waiting} issue(s) at the release gate`);
-    this.name = 'ReleaseRosterUnusableError';
-  }
-}
-
-function errorFor(
-  first: ReleaseBlocker,
-  ids: string[],
-  report: ReleaseBlockerReport,
-): ReleaseBlockedError {
-  switch (first.code) {
-    case 'NO_RELEASE_GATE':
-      return new NoReleaseGateError();
-    case 'RELEASE_TARGET_UNDECLARED':
-      return new ReleaseTargetUndeclaredError(
-        report.projectId,
-        (first.details?.releaseModel as 'promote' | 'publish') ?? 'publish',
-      );
-    case 'CLAIM_CONFLICT':
-      return new ClaimConflictError(ids);
-    case 'RELEASE_ROSTER_EMPTY':
-    case 'RELEASE_ROSTER_OVERSIZE':
-      return new ReleaseRosterUnusableError(first.code, Number(first.details?.waiting ?? 0));
-    case 'RELEASE_RECORD_MISSING':
-      return new ReleaseRecordMissingError(ids);
-    case 'RELEASE_WORK_UNMERGED':
-      return new ReleaseWorkUnmergedError(ids);
-    case 'RELEASE_RUNNER_AMBIGUOUS':
-      return new ReleaseRunnerAmbiguousError(
-        report.projectId,
-        (first.details?.labels as string[]) ?? [],
-      );
-    case 'RELEASE_RUNNER_UNDECLARED':
-      return new ReleaseRunnerUndeclaredError();
-    case 'RELEASE_PROBES_UNDECLARED':
-      return new ReleaseProbesUndeclaredError();
-    case 'RELEASE_PROBES_UNREADABLE':
-      return new ReleaseProbesUnreadableError((first.details?.urls as string[]) ?? []);
-    case 'RELEASE_POOL_EMPTY':
-      return new ReleasePoolEmptyError();
-    case 'NO_RUNNER_ONLINE':
-      return new NoRunnerOnlineError();
-    case 'RELEASE_BRANCHES_UNDECLARED':
-      return new ReleaseBranchesUndeclaredError();
-    case 'RELEASE_MULTI_CHANNEL_UNSUPPORTED':
-      return new ReleaseMultiChannelUnsupportedError(Number(first.details?.count ?? 0));
-    case 'BATCH_IN_FLIGHT':
-      return new BatchInFlightError(null);
-    case 'RELEASE_CHECK_UNEVALUATED':
-      return new ReleaseCheckUnevaluatedError(String(first.details?.check ?? 'unknown'));
-  }
-}
+export * from './blocker-errors.js';
+export * from './blocker-kit.js';

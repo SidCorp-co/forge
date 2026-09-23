@@ -112,6 +112,8 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A box can now ask a person, and read the answer back.** `forge-runner question ask` puts the
+  question on the screen the person was pointed at; `forge-runner question answer` reads the reply.
 - **Asking about a whole backlog now costs one request, not one per issue.** Two new streamed
   endpoints answer the ranked next-work question and the duplicate sweep as they work, reporting
   progress and saying plainly when an answer is partial.
@@ -172,6 +174,9 @@
   it waits for and who owes the next move. Each status has its own clock.
 - **A claim left behind by a run that stopped is let go once it expires.** One still inside its
   time, or one that cannot be read, is left alone and reported instead.
+- **A document that names a file in this repo is now checked against it.** A path the tree no
+  longer carries fails the build, and a citation whose file changed after the document did comes
+  back on the doc-review worklist.
 - **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
   credential core mints for that one checkout, writes its `.mcp.json`, and records the local
   binding — no pasted token, no `bind` by hand.
@@ -3075,6 +3080,24 @@
   set is now 59.
 
 ### Fixed
+- **Why a release will not start now names the box, its state and the switch that changes it.** It
+  told you to bring up runners already up, and to merge issues you had merged. A held release says
+  so.
+
+- **An issue with no decision round no longer claims it was parked without a question.** The panel
+  now says what it looked for, and keeps the way forward as its content rather than a footnote.
+- **The release panel names who deploys the project, instead of saying nobody does.** It read a
+  field the server had renamed, and answered its own fallback. A roster key that goes missing now
+  fails loudly rather than reading as absent.
+
+- **A refused settings save no longer throws away the edits it offered to rescue.** The banner
+  names what moved and offers two ways on: take the stored values, or keep yours. Edits elsewhere
+  on the page stand either way.
+
+
+- **A whole-backlog read no longer lists the same issue twice.** Every hundredth issue in the
+  ordering stream, and every sixty-fourth in the duplicate sweep, arrived a second time, so the
+  count overran the total the stream itself declared.
 
 - **A GitHub App created from Forge's setup link can now merge onto a protected branch.** It was
   never granted permission to read branch protection. A connection short of any permission now
@@ -3088,9 +3111,17 @@
   sources and nothing else, which the runtime refuses to load. It now compiles that module and the
   production install carries the compiled copy.
 
+- **A verdict now says whether the file it cites is still there.** Evidence that no longer resolves
+  is named, criterion by criterion, and the criterion stops reading as earned. Citing a path on the
+  judging machine is refused outright.
+
 - **Issues closed before Forge recorded what shipped can be edited again, and the API starts.**
   The rule that `closed` means shipped was written about the row, not the move into it, so it
   locked older closes.
+
+- **The guides now describe the two endings correctly.** One promised no closed issue could exist
+  unshipped, untrue of issues closed before the rule. The help page called dropping an issue a
+  kind of close.
 
 - **A criterion's verdict now says what it was judged against, and stops counting once that is
   gone.** A pass taken at a runtime a repair replaced read as earned forever. Release holds the

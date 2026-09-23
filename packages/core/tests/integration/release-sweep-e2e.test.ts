@@ -99,10 +99,20 @@ describe('release sweep E2E (ISS-1117)', () => {
     `);
   }
 
+  /**
+   * The comment, and the file every block in it cites. ISS-1198 resolves a verdict's `evidence:`
+   * against what the tracker holds, so a fixture that posts the verdict and attaches nothing is
+   * one whose criteria are unearned for a citation that does not resolve.
+   */
   async function postVerdict(issueId: string, body: string): Promise<void> {
     await harness.db.execute(sql`
       INSERT INTO comments (id, issue_id, author_id, body)
       VALUES (${randomUUID()}, ${issueId}, ${ownerId}, ${body})
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO issue_attachments (id, issue_id, uploader_id, name, path, mime, size)
+      VALUES (${randomUUID()}, ${issueId}, ${ownerId}, ${'judge-evidence.txt'},
+              ${`uploads/${issueId}`}, ${'text/plain'}, ${64})
     `);
   }
 

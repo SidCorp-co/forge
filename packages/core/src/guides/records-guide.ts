@@ -114,6 +114,30 @@ A block carrying a verdict and naming neither is refused at the write door under
 abbreviation. A verdict already stored naming neither reads as unanchored: nothing says where it
 held, so nothing can say it still holds.
 
+### What a verdict block cites, and whether it is still there
+
+A verdict outlives the run that wrote it; the file it was taken from may not. Each \`evidence:\`
+line of a block cites what that criterion's verdict was taken from, and a reader of the issue is
+told what became of each one:
+
+- \`held\` — the tracker holds an attachment under that name, on the issue or on one of its
+  comments. It says the tracker HOLDS the file, not that the object store still has its bytes; a
+  reader who follows it and finds otherwise is answered \`410 ATTACHMENT_FILE_MISSING\` rather than
+  a blank.
+- \`dangling\` — it is written as a file name and the tracker holds nothing under it. The verdict
+  cites something nobody can open, so the criterion stops reading as earned and says which citation
+  broke.
+- \`unreachable\` — it is written as a path on the machine that wrote it. The tracker never held
+  that file, so the citation could never have resolved for anyone else.
+- \`elsewhere\` — a URL, an object id, or a path inside the repository. Named, outside what this
+  check follows, and reported as not followed rather than read as resolved.
+
+A block whose verdict was taken by looking — \`pass\`, \`fail\` or \`short\` — and which cites
+nothing is refused at the write door under \`verdict-evidence\`, as is any citation written as a
+machine-local path. \`skipped\` cites nothing because nobody looked, and is not refused for it.
+Attach the file first and cite it by its name: an attachment written only to a run's scratch has
+not been attached.
+
 A fence is read only where it opens at the left margin, and the body is stored exactly as it was
 written, so where you put the block is where it is read. Indent it at all — the four spaces of an
 indented code block, or the one to three markdown would still call a fence — and it is prose, as a

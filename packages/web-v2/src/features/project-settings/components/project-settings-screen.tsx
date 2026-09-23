@@ -180,7 +180,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						/>
 					)}
 					{tab === "testing" && (
-						<TestingTab project={project} canEdit={canEdit} />
+						<TestingTab projectId={project.id} canEdit={canEdit} />
 					)}
 					{tab === "pipeline" && (
 						<PipelineTab
