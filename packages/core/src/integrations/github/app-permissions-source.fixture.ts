@@ -44,29 +44,35 @@ function declaredValue(node: ts.Node): string | undefined {
   return HOLE_VALUES[`${file}:${text}`] ?? HOLE_VALUES[text];
 }
 
+/**
+ * Every TypeScript source under a directory, subdirectories included, relative to it: a listing of
+ * the top level alone leaves a call in `helpers/extra.ts` in no scan and no sweep.
+ */
+export function sourceFilesIn(dir: string, prefix = ''): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const at = `${prefix}${entry.name}`;
+    if (entry.isDirectory()) return sourceFilesIn(join(dir, entry.name), `${at}/`);
+    const source =
+      entry.name.endsWith('.ts') &&
+      !entry.name.endsWith('.test.ts') &&
+      !entry.name.endsWith('.fixture.ts');
+    return source ? [at] : [];
+  });
+}
+
 export function sourceFiles(): string[] {
-  return readdirSync(GITHUB_DIR).filter(
-    (f) =>
-      f.endsWith('.ts') &&
-      !f.endsWith('.test.ts') &&
-      !f.endsWith('.fixture.ts') &&
-      f !== DECLARATION_FILE,
-  );
+  return sourceFilesIn(GITHUB_DIR).filter((f) => f !== DECLARATION_FILE);
 }
 
 function programFiles(): string[] {
-  return readdirSync(GITHUB_DIR).filter(
-    (f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.endsWith('.fixture.ts'),
-  );
+  return sourceFilesIn(GITHUB_DIR);
 }
 
 const PLANTS = new Map<string, string>();
 
 /**
- * Register a source the checker will read exactly as it reads a file of this directory.
- *
- * Call it at module scope: the program is built once, on the first read, and holds every source
- * planted before then.
+ * Register a source read exactly as a file of this directory is. Call it at module scope: the
+ * program is built once, on the first read, and holds every source planted before then.
  */
 export function plant(file: string, source: string): string {
   if (BUILT) throw new Error(`${file} was planted after the checker's program was built`);
@@ -221,10 +227,7 @@ function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): strin
  * `:p` where this expression cannot carry a `/`, else null: a number has no separator to carry and
  * `encodeURIComponent` escapes the one that would make a value two segments.
  */
-/**
- * A binding nothing can write to after it is read: a `let p = repoPath(client)` followed by
- * `p += '/branches/…/protection'` sends a path its initializer does not name.
- */
+/** A binding nothing rebinds: a `let p = …` followed by `p += '/branches/…'` sends another path. */
 export function isConstBinding(decl: ts.VariableDeclaration): boolean {
   return (decl.parent.flags & ts.NodeFlags.Const) !== 0;
 }

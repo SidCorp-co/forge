@@ -144,9 +144,8 @@ function objectOf(
     return objectOf(node.expression, checker, depth + 1);
   if (ts.isIdentifier(node)) {
     const decl = declarationOf(node, checker);
-    return decl && ts.isVariableDeclaration(decl) && isConstBinding(decl)
-      ? objectOf(decl.initializer, checker, depth + 1)
-      : null;
+    if (!decl || !ts.isVariableDeclaration(decl) || !isConstBinding(decl)) return null;
+    return isWrittenTo(node, checker) ? null : objectOf(decl.initializer, checker, depth + 1);
   }
   if (ts.isCallExpression(node)) {
     const decl = declarationOf(node.expression, checker);
@@ -154,6 +153,30 @@ function objectOf(
     return body ? objectOf(body, checker, depth + 1) : null;
   }
   return null;
+}
+
+/**
+ * Whether anything in this file assigns to a property of the name, which `const` does not stop.
+ *
+ * `const args = { path: repoPath(client) }` then `args.path += '/branches/…'` sends a path the
+ * initializer does not name, and pricing the initializer prices the wrong permission.
+ */
+function isWrittenTo(name: ts.Identifier, checker: ts.TypeChecker): boolean {
+  const target = symbolOf(name, checker);
+  if (!target) return true;
+  let written = false;
+  walk(name.getSourceFile(), (node) => {
+    if (written || !ts.isBinaryExpression(node)) return;
+    const op = node.operatorToken.kind;
+    if (op < ts.SyntaxKind.FirstAssignment || op > ts.SyntaxKind.LastAssignment) return;
+    const left = node.left;
+    const root =
+      ts.isPropertyAccessExpression(left) || ts.isElementAccessExpression(left)
+        ? left.expression
+        : left;
+    if (ts.isIdentifier(root) && symbolOf(root, checker) === target) written = true;
+  });
+  return written;
 }
 
 /**
@@ -403,6 +426,10 @@ function transportFor(
   const decl = symbol.valueDeclaration;
   if (decl && (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl)) && decl.initializer)
     return transportFor(symbolOf(decl.initializer, checker), known, checker, seen);
+  if (decl && ts.isShorthandPropertyAssignment(decl)) {
+    const value = checker.getShorthandAssignmentValueSymbol(decl) ?? null;
+    return transportFor(value, known, checker, seen);
+  }
   if (decl && ts.isBindingElement(decl) && ts.isIdentifier(decl.name)) {
     const owner = decl.parent.parent;
     const from = ts.isVariableDeclaration(owner) ? owner.initializer : undefined;

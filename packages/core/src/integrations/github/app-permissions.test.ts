@@ -11,7 +11,8 @@
  * the shapes under "however the call is written" are the ones that class was last demonstrated by.
  */
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -28,6 +29,7 @@ import {
   manifest,
   REQUEST_HELPERS,
   sourceFiles,
+  sourceFilesIn,
   undeclaredHelperFiles,
   undeclaredPathLiterals,
   undeclaredPathsIn,
@@ -35,48 +37,53 @@ import {
 } from './app-permissions.fixture.js';
 import { GITHUB_ENDPOINTS, requiredAppPermissions } from './app-permissions.js';
 import {
-  ALIASED_RESPONSE,
-  ARROW_TRANSPORT,
   ASSIGNED_ARGS,
   BARE_GET,
   CLIENT_TRANSPORTS,
-  COMPUTED_KEY,
   CONCATENATED,
-  CONST_PATH,
   DECLARATIONS_ONLY,
+  GITHUB_JSON,
+  NO_METHOD,
+  READABLE_GET,
+  REAL_UNDECLARED_PATH,
+  RETURNED_ARGS,
+  SHORTHAND,
+  TRAILING_COMMA,
+  TRANSPORT_ADDED,
+  TRANSPORT_PROPERTY,
+  TRANSPORT_SWAPPED,
+  UNRESOLVED,
+  UNTYPED_RECEIVER,
+  VARIABLE_PATH,
+} from './app-permissions-plants.fixture.js';
+
+import {
+  ALIASED_RESPONSE,
+  ARROW_TRANSPORT,
+  COMPUTED_KEY,
+  CONST_PATH,
   DESTRUCTURED_MEMBER,
   DYNAMIC_METHOD,
   ENCODE_URI_HOLE,
   ENCODED_SEGMENT,
   EXTRACTED_ENCODING,
   EXTRACTED_MEMBER,
-  GITHUB_JSON,
   MULTI_SEGMENT_HOLE,
+  MUTATED_ARGS,
   MUTATED_PATH,
   NESTED_SPREAD_OVERRIDE,
-  NO_METHOD,
   OBJECT_HELD_TRANSPORT,
   QUOTED_METHOD,
-  READABLE_GET,
-  REAL_UNDECLARED_PATH,
-  RETURNED_ARGS,
   SCALAR_METHOD,
   SHADOWED_HOLE,
-  SHORTHAND,
+  SHORTHAND_HELD_TRANSPORT,
   SPREAD_METHOD,
   SPREAD_OVERRIDE,
   SPREAD_THEN_METHOD,
   SPREAD_THEN_PATH,
-  TRAILING_COMMA,
-  TRANSPORT_ADDED,
-  TRANSPORT_PROPERTY,
-  TRANSPORT_SWAPPED,
   TWO_HOP_ALIAS,
-  UNRESOLVED,
   UNTYPED_ELEMENT_ACCESS,
-  UNTYPED_RECEIVER,
-  VARIABLE_PATH,
-} from './app-permissions-plants.fixture.js';
+} from './app-permissions-plants-review.fixture.js';
 
 const orphansIn = (file: string) => {
   const declared = new Set(GITHUB_ENDPOINTS.map((e) => key(e.method, e.path)));
@@ -454,6 +461,23 @@ describe('a call is found by what it calls, however it is written (ISS-1153)', (
 
   it('gives back a path a key it cannot read could be naming', () => {
     expect(only(collectGitHubCalls(COMPUTED_KEY)).unresolved).toContain('which');
+  });
+
+  it('refuses a const object whose property is written to after it is built', () => {
+    expect(only(collectGitHubCalls(MUTATED_ARGS)).unresolved).toContain('args');
+  });
+
+  it('follows a transport held by a shorthand property of an object', () => {
+    expect(only(collectGitHubCalls(SHORTHAND_HELD_TRANSPORT)).unresolved).toContain('endpoint');
+  });
+
+  it('reads a source one directory down, which a listing of the top level would miss', () => {
+    const root = mkdtempSync(join(tmpdir(), 'iss1153-'));
+    mkdirSync(join(root, 'helpers'));
+    writeFileSync(join(root, 'top.ts'), 'export const a = 1;\n');
+    writeFileSync(join(root, 'helpers', 'extra.ts'), 'export const b = 2;\n');
+    writeFileSync(join(root, 'helpers', 'extra.test.ts'), 'export const c = 3;\n');
+    expect(sourceFilesIn(root).sort()).toEqual(['helpers/extra.ts', 'top.ts']);
   });
 
   it('names that same path in the sweep over what is written, not only at the call', () => {

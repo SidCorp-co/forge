@@ -36,6 +36,7 @@ export {
   GITHUB_DIR,
   plant,
   sourceFiles,
+  sourceFilesIn,
 } from './app-permissions-source.fixture.js';
 
 const SRC_ROOT = join(GITHUB_DIR, '..', '..');
