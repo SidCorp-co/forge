@@ -18,6 +18,7 @@ import {
   isConstBinding,
   isNetworkCall,
   isStringLike,
+  isWrittenTo,
   lineOf,
   MAX_DEPTH,
   program,
@@ -153,30 +154,6 @@ function objectOf(
     return body ? objectOf(body, checker, depth + 1) : null;
   }
   return null;
-}
-
-/**
- * Whether anything in this file assigns to a property of the name, which `const` does not stop.
- *
- * `const args = { path: repoPath(client) }` then `args.path += '/branches/…'` sends a path the
- * initializer does not name, and pricing the initializer prices the wrong permission.
- */
-function isWrittenTo(name: ts.Identifier, checker: ts.TypeChecker): boolean {
-  const target = symbolOf(name, checker);
-  if (!target) return true;
-  let written = false;
-  walk(name.getSourceFile(), (node) => {
-    if (written || !ts.isBinaryExpression(node)) return;
-    const op = node.operatorToken.kind;
-    if (op < ts.SyntaxKind.FirstAssignment || op > ts.SyntaxKind.LastAssignment) return;
-    const left = node.left;
-    const root =
-      ts.isPropertyAccessExpression(left) || ts.isElementAccessExpression(left)
-        ? left.expression
-        : left;
-    if (ts.isIdentifier(root) && symbolOf(root, checker) === target) written = true;
-  });
-  return written;
 }
 
 /**
@@ -353,6 +330,19 @@ function methodRefusal(
   return `the call's options cannot be read, so its method is unknown: ${second?.getText() ?? ''}`;
 }
 
+function shiftedCall(call: ts.CallExpression, file: string): FoundCall {
+  const callee = call.expression.getText();
+  return record({
+    file,
+    at: call,
+    raw: callee,
+    path: null,
+    method: null,
+    kind: 'path',
+    why: `this transport was bound with arguments, so nothing sits where its signature puts it: ${callee}`,
+  });
+}
+
 function networkCall(call: ts.CallExpression, file: string, checker: ts.TypeChecker): FoundCall {
   const argument = call.arguments[0];
   const second = call.arguments[1];
@@ -413,19 +403,38 @@ function untypedTransportCall(call: ts.CallExpression, file: string): FoundCall[
  * `const publish = client.publish` and `const { publish } = client` each put a local symbol between
  * the call and the transport, and a lookup stopping at that symbol loses the call altogether.
  */
+/**
+ * The method behind `x.publish.bind(x)`, or `shifted` where the bind fixes an argument as well.
+ *
+ * Binding a receiver leaves every argument where the transport's signature puts it; binding an
+ * argument moves them, and a path read at the old index is a path from another call.
+ */
+function boundReceiver(node: ts.Expression): ts.Expression | 'shifted' | null {
+  if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return null;
+  if (node.expression.name.text !== 'bind') return null;
+  return node.arguments.length > 1 ? 'shifted' : node.expression.expression;
+}
+
 function transportFor(
   symbol: ts.Symbol | null,
   known: ReadonlyMap<ts.Symbol, Transport>,
   checker: ts.TypeChecker,
   seen: Set<ts.Symbol> = new Set(),
-): Transport | undefined {
+): Transport | 'shifted' | undefined {
   if (!symbol || seen.has(symbol)) return undefined;
   seen.add(symbol);
   const direct = known.get(symbol);
   if (direct) return direct;
   const decl = symbol.valueDeclaration;
-  if (decl && (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl)) && decl.initializer)
-    return transportFor(symbolOf(decl.initializer, checker), known, checker, seen);
+  if (
+    decl &&
+    (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl)) &&
+    decl.initializer
+  ) {
+    const bound = boundReceiver(decl.initializer);
+    if (bound === 'shifted') return 'shifted';
+    return transportFor(symbolOf(bound ?? decl.initializer, checker), known, checker, seen);
+  }
   if (decl && ts.isShorthandPropertyAssignment(decl)) {
     const value = checker.getShorthandAssignmentValueSymbol(decl) ?? null;
     return transportFor(value, known, checker, seen);
@@ -452,7 +461,8 @@ export function collectGitHubCalls(file: string): FoundCall[] {
     const transport = transportFor(symbol, known, checker);
     // A transport that answers with the `Response` itself wears both shapes; its callers carry the
     // path, so the transport reading is the one that prices the call.
-    if (transport) out.push(transportCall(node, transport, file, checker));
+    if (transport === 'shifted') out.push(shiftedCall(node, file));
+    else if (transport) out.push(transportCall(node, transport, file, checker));
     else if (isNetworkCall(node, checker)) out.push(networkCall(node, file, checker));
     else if (!symbol) out.push(...untypedTransportCall(node, file));
   });

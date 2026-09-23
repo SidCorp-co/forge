@@ -205,6 +205,7 @@ function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): strin
     if (!decl) return null;
     if (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl)) {
       if (ts.isVariableDeclaration(decl) && !isConstBinding(decl)) return null;
+      if (ts.isPropertyAccessExpression(node) && isWrittenTo(node.expression, checker)) return null;
       return decl.initializer ? evaluate(decl.initializer, checker, depth + 1) : null;
     }
     if (ts.isShorthandPropertyAssignment(decl)) {
@@ -227,6 +228,31 @@ function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): strin
  * `:p` where this expression cannot carry a `/`, else null: a number has no separator to carry and
  * `encodeURIComponent` escapes the one that would make a value two segments.
  */
+/**
+ * Whether anything in this file assigns to a property of the name, which `const` does not stop.
+ *
+ * `const args = { path: repoPath(client) }` then `args.path += '/branches/…'` sends a path the
+ * initializer does not name, and pricing the initializer prices the wrong permission.
+ */
+export function isWrittenTo(name: ts.Expression, checker: ts.TypeChecker): boolean {
+  if (!ts.isIdentifier(name)) return false;
+  const target = symbolOf(name, checker);
+  if (!target) return true;
+  let written = false;
+  walk(name.getSourceFile(), (node) => {
+    if (written || !ts.isBinaryExpression(node)) return;
+    const op = node.operatorToken.kind;
+    if (op < ts.SyntaxKind.FirstAssignment || op > ts.SyntaxKind.LastAssignment) return;
+    const left = node.left;
+    const root =
+      ts.isPropertyAccessExpression(left) || ts.isElementAccessExpression(left)
+        ? left.expression
+        : left;
+    if (ts.isIdentifier(root) && symbolOf(root, checker) === target) written = true;
+  });
+  return written;
+}
+
 /** A binding nothing rebinds: a `let p = …` followed by `p += '/branches/…'` sends another path. */
 export function isConstBinding(decl: ts.VariableDeclaration): boolean {
   return (decl.parent.flags & ts.NodeFlags.Const) !== 0;

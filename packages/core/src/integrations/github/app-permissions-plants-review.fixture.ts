@@ -305,3 +305,49 @@ export const SHORTHAND_HELD_TRANSPORT = plant(
     '}',
   ]),
 );
+
+/** A scalar property of an object written to after it is built: consult 52ee7d F1. */
+export const MUTATED_PROPERTY = plant(
+  'planted-mutated-property.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, branch: string) {',
+    `  const args = { path: \`${REPO}\` };`,
+    `  args.path += \`/branches/${interp('encodeURIComponent(branch)')}/protection\`;`,
+    '  return client.get(args.path);',
+    '}',
+  ]),
+);
+
+/** The same property on an object nothing writes to: consult 52ee7d F1. */
+export const STABLE_PROPERTY = plant(
+  'planted-stable-property.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient) {',
+    `  const args = { path: \`${REPO}/pulls\` };`,
+    '  return client.get(args.path);',
+    '}',
+  ]),
+);
+
+/** A transport bound to its receiver, which moves no argument: consult 52ee7d F2. */
+export const BOUND_TRANSPORT = plant(
+  'planted-bound-transport.ts',
+  AS_FILE([
+    'declare const endpoint: string;',
+    'export async function f(client: GitHubRepoClient) {',
+    '  const send = client.publish.bind(client);',
+    "  await send({ op: 'lookup', method: 'POST', path: endpoint });",
+    '}',
+  ]),
+);
+
+/** The same bind fixing an argument as well, which moves every other one: consult 52ee7d F2. */
+export const SHIFTED_TRANSPORT = plant(
+  'planted-shifted-transport.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient) {',
+    `  const send = client.get.bind(client, \`${REPO}/pulls\`);`,
+    '  await send();',
+    '}',
+  ]),
+);

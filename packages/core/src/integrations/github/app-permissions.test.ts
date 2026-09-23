@@ -60,6 +60,7 @@ import {
 import {
   ALIASED_RESPONSE,
   ARROW_TRANSPORT,
+  BOUND_TRANSPORT,
   COMPUTED_KEY,
   CONST_PATH,
   DESTRUCTURED_MEMBER,
@@ -71,16 +72,19 @@ import {
   MULTI_SEGMENT_HOLE,
   MUTATED_ARGS,
   MUTATED_PATH,
+  MUTATED_PROPERTY,
   NESTED_SPREAD_OVERRIDE,
   OBJECT_HELD_TRANSPORT,
   QUOTED_METHOD,
   SCALAR_METHOD,
   SHADOWED_HOLE,
+  SHIFTED_TRANSPORT,
   SHORTHAND_HELD_TRANSPORT,
   SPREAD_METHOD,
   SPREAD_OVERRIDE,
   SPREAD_THEN_METHOD,
   SPREAD_THEN_PATH,
+  STABLE_PROPERTY,
   TWO_HOP_ALIAS,
   UNTYPED_ELEMENT_ACCESS,
 } from './app-permissions-plants-review.fixture.js';
@@ -478,6 +482,26 @@ describe('a call is found by what it calls, however it is written (ISS-1153)', (
     writeFileSync(join(root, 'helpers', 'extra.ts'), 'export const b = 2;\n');
     writeFileSync(join(root, 'helpers', 'extra.test.ts'), 'export const c = 3;\n');
     expect(sourceFilesIn(root).sort()).toEqual(['helpers/extra.ts', 'top.ts']);
+  });
+
+  it('refuses a scalar property of an object written to after it is built', () => {
+    expect(only(collectGitHubCalls(MUTATED_PROPERTY)).unresolved).toContain('args.path');
+  });
+
+  it('prices the same property on an object nothing writes to', () => {
+    const found = only(collectGitHubCalls(STABLE_PROPERTY));
+    expect(found.unresolved).toBeNull();
+    expect(found.path).toBe('/repos/:p/:p/pulls');
+  });
+
+  it('follows a transport bound to its receiver, which moves no argument', () => {
+    expect(only(collectGitHubCalls(BOUND_TRANSPORT)).unresolved).toContain('endpoint');
+  });
+
+  it('refuses a transport bound with an argument, which moves every other one', () => {
+    expect(only(collectGitHubCalls(SHIFTED_TRANSPORT)).unresolved).toContain(
+      'bound with arguments',
+    );
   });
 
   it('names that same path in the sweep over what is written, not only at the call', () => {
