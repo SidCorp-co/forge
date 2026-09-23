@@ -80,6 +80,7 @@ export function inboundWebhookUrl(apiBaseUrl: string, projectSlug: string): stri
  * The manifest GitHub renders as the App it is about to create. `redirect_url`
  * receives the conversion code; `hook_attributes.url` is where deliveries land.
  */
+// cm:edge lockstep -> packages/core/src/integrations/github/app-permissions.ts — what needs them
 export function buildAppManifest(args: {
   appName: string;
   webBaseUrl: string;
@@ -97,12 +98,13 @@ export function buildAppManifest(args: {
     setup_on_update: true,
     public: false,
     default_permissions: {
+      actions: 'read',
+      administration: 'read',
+      checks: 'write',
       contents: 'write',
       issues: 'write',
       metadata: 'read',
       pull_requests: 'write',
-      checks: 'write',
-      actions: 'read',
     },
     default_events: [
       'issues',

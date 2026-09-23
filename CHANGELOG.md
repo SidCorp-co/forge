@@ -3076,6 +3076,10 @@
 
 ### Fixed
 
+- **A GitHub App created from Forge's setup link can now merge onto a protected branch.** It was
+  never granted permission to read branch protection. A connection short of any permission now
+  says which, and where to grant it.
+
 - **Editing one part of project settings no longer wipes another part you just saved.** Each save
   sends only what it changed. A setting somebody else moved is refused by name, not overwritten,
   and the screen offers the re-read.

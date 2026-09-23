@@ -20,6 +20,7 @@ import { GitHubAuthError, installationToken } from './app-auth.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
 import { CHECK_PUBLISH_EVENT, publishForStoredPullRequest } from './contract-check.js';
 import { readAppHookConfig } from './hook-config.js';
+import { checkInstallationGrant } from './installation-permissions.js';
 import { MERGE_EVENT, MERGE_METHODS, type MergeMethod, mergeStoredPullRequest } from './merge.js';
 import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
@@ -181,6 +182,20 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
           `${owner}/${repo} answers, and this App's webhook at ${hook.url} is switched off on GitHub's side, so GitHub will never call in. Switch it back on under the App's Settings, Webhook.`,
         );
       }
+      // ISS-1153: every branch above turns on whether GitHub ANSWERS, and none of them on what the
+      // installation is allowed to do. An App granted less than Forge's code asks of it passed all
+      // of them and reported `ok` while it could not merge, so the owner met the gap as a 403 in
+      // the middle of a merge. This is the branch that exercises a permission.
+      const grant = await checkInstallationGrant({
+        appId,
+        privateKey,
+        installationId,
+        repository: `${owner}/${repo}`,
+        ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
+      });
+      if (grant.kind === 'unread') return finish('degraded', grant.reason);
+      if (grant.kind === 'short') return finish('degraded', grant.message);
+
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
         lastHealthDetail: null,

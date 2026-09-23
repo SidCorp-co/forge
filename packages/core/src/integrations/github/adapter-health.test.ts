@@ -11,6 +11,8 @@
  * stores the observation for the per-binding comparison `agent-client` makes at read time.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const updateConnectionMock = vi.fn(async (_id: string, _patch: Record<string, unknown>) => null);
@@ -38,6 +40,7 @@ vi.mock('./app-auth.js', async () => {
   return { ...real, installationToken: (...a: unknown[]) => installationTokenMock(...(a as [])) };
 });
 
+const { requiredAppPermissions } = await import('./app-permissions.js');
 const { getAdapter } = await import('../registry.js');
 const { registerAllIntegrations } = await import('../register-all.js');
 registerAllIntegrations();
@@ -51,8 +54,22 @@ const PEM = generateKeyPairSync('rsa', { modulusLength: 2048 })
   .privateKey.export({ type: 'pkcs1', format: 'pem' })
   .toString();
 
-/** The repository answers, and the App's webhook configuration is whatever a case says it is. */
-function serving(hook: { status?: number; body?: unknown; ok?: boolean }) {
+const INSTALLATION_URL = 'https://github.com/organizations/SidCorp-co/settings/installations/42';
+
+/** An installation granted everything the tables require. */
+function fullGrant(): Record<string, string> {
+  return Object.fromEntries(requiredAppPermissions());
+}
+
+/**
+ * The repository answers, the App's webhook configuration is whatever a case says it is, and so is
+ * what the installation is granted — a fixture that answers the repository read alone cannot tell
+ * an App that can merge from one that cannot (ISS-1153).
+ */
+function serving(
+  hook: { status?: number; body?: unknown; ok?: boolean },
+  install: { status?: number; body?: unknown; ok?: boolean } = {},
+) {
   return vi.fn(async (url: string): Promise<Response> => {
     if (url.endsWith('/app/hook/config')) {
       const status = hook.status ?? 200;
@@ -60,6 +77,24 @@ function serving(hook: { status?: number; body?: unknown; ok?: boolean }) {
         ok: hook.ok ?? status < 400,
         status,
         json: async () => hook.body ?? {},
+      } as unknown as Response;
+    }
+    if (/\/app\/installations\/\d+$/.test(url)) {
+      const status = install.status ?? 200;
+      return {
+        ok: install.ok ?? status < 400,
+        status,
+        json: async () => install.body ?? { permissions: fullGrant(), html_url: INSTALLATION_URL },
+      } as unknown as Response;
+    }
+    if (url.endsWith('/app')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          slug: 'forge-dev',
+          owner: { login: 'SidCorp-co', type: 'Organization' },
+        }),
       } as unknown as Response;
     }
     return {
@@ -173,5 +208,79 @@ describe('the github health probe and the inbound door', () => {
 
     await expect(probe()).resolves.toMatchObject({ status: 'error' });
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/app/hook/config'))).toBe(false);
+  });
+  // ISS-1153: a probe that asks only whether GitHub answers cannot tell an App that can merge
+  // from one that cannot. These cases turn on what the installation is allowed to do.
+  const LIVE_HOOK = { url: 'https://api.example.test/api/webhooks/in/forge-dev', active: true };
+
+  it('refuses ok for an installation missing a permission Forge s code needs', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    globalThis.fetch = serving(
+      { body: LIVE_HOOK },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(written()).toMatchObject({ lastHealthStatus: 'degraded' });
+  });
+
+  it('names the permission, the page it is granted on, and the grant the installation must accept', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    globalThis.fetch = serving(
+      { body: LIVE_HOOK },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.message).toContain('`administration: read`');
+    expect(result?.message).toContain('/settings/apps/forge-dev/permissions');
+    expect(result?.message).toContain(INSTALLATION_URL);
+    expect(result?.message).toContain('accept the new grant on the installation');
+  });
+
+  it('refuses ok for an installation holding a permission below the level a call needs', async () => {
+    globalThis.fetch = serving(
+      { body: LIVE_HOOK },
+      { body: { permissions: { ...fullGrant(), contents: 'read' }, html_url: INSTALLATION_URL } },
+    ) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(result?.message).toContain('`contents: write`');
+    expect(result?.message).toContain('holds only at `read`');
+  });
+
+  it('reports a grant it could not read as that, rather than as a missing permission', async () => {
+    globalThis.fetch = serving({ body: LIVE_HOOK }, { status: 500 }) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('degraded');
+    expect(result?.message).toContain('HTTP 500');
+    expect(result?.message).not.toContain('administration');
+  });
+
+  it('reports the shortfall without asking GitHub to merge anything', async () => {
+    const { administration: _gone, ...without } = fullGrant();
+    const fetchMock = serving(
+      { body: LIVE_HOOK },
+      { body: { permissions: without, html_url: INSTALLATION_URL } },
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await probe();
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/merge'))).toBe(false);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/protection'))).toBe(false);
+  });
+
+  it('still reports ok for an installation granted everything', async () => {
+    globalThis.fetch = serving({ body: LIVE_HOOK }) as unknown as typeof fetch;
+    await expect(probe()).resolves.toMatchObject({ status: 'ok' });
+  });
+  it('is the probe the health sweep and the integrations route both run', () => {
+    const dir = join(import.meta.dirname, '..');
+    for (const file of ['health-sweep.ts', 'routes.ts']) {
+      expect(readFileSync(join(dir, file), 'utf8')).toContain('adapter.healthcheck(');
+    }
   });
 });
