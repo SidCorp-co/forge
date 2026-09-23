@@ -262,7 +262,7 @@ describe("a write against a document that moved under it", () => {
 		await saveRunnerPool();
 		await screen.findByText(/changed by someone else/i);
 
-		fireEvent.click(screen.getByRole("button", { name: /load the current settings/i }));
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
 		await waitFor(() => expect(reads).toBeGreaterThan(before));
 		await waitFor(() =>
 			expect(screen.getByRole("button", { name: "Queued on box-b" })).toHaveAttribute(

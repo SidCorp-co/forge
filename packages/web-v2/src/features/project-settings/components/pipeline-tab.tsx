@@ -1,7 +1,6 @@
 "use client";
 
 
-import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -17,6 +16,7 @@ import {
 } from "@/design";
 import { formatApiError, } from "@/lib/api/error";
 import { useProjectRunners } from "@/features/runners/hooks";
+import { useSettingsDraft } from "../draft";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
 import { IntakeGateSection } from "./intake-gate-section";
@@ -27,15 +27,19 @@ import { StagePermissionsSection } from "./stage-permissions-section";
 import { RunnerPoolsSection } from "./runner-pools-section";
 import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
-import { API_ONLY_KEYS, type PipelineConfig, sectionWrite } from "../types";
+import {
+  API_ONLY_KEYS,
+  type PipelineConfig,
+  type PipelineStateConfig,
+  sectionWrite,
+} from "../types";
 import { SaveRefusedBanner } from "./save-refused-banner";
 
 const ENTRY_STATUS = "open";
 
-type EntryGate = { enabled?: boolean; mode?: string };
 
-function entryOf(cfg: PipelineConfig): EntryGate | undefined {
-  return (cfg.states as Record<string, EntryGate> | undefined)?.[ENTRY_STATUS];
+function entryOf(cfg: PipelineConfig): PipelineStateConfig | undefined {
+  return (cfg.states as Record<string, PipelineStateConfig> | undefined)?.[ENTRY_STATUS];
 }
 
 function entryGateOpen(cfg: PipelineConfig): boolean {
@@ -44,7 +48,7 @@ function entryGateOpen(cfg: PipelineConfig): boolean {
 }
 
 function withEntryGate(cfg: PipelineConfig, open: boolean): PipelineConfig {
-  const states = (cfg.states ?? {}) as Record<string, EntryGate>;
+  const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig>;
   return {
     ...cfg,
     states: {
@@ -60,12 +64,11 @@ function withEntryGate(cfg: PipelineConfig, open: boolean): PipelineConfig {
 
 /** The two switches this card owns — the master one and the entry gate — and no other key
  *  of the document, so a section below saving from the same page load is not touched. */
-function masterWrite(server: PipelineConfig, draft: PipelineConfig) {
-  const slice = (cfg: PipelineConfig) => ({
+function masterSlice(cfg: PipelineConfig): PipelineConfig {
+  return {
     enabled: cfg.enabled,
     states: { [ENTRY_STATUS]: { enabled: entryOf(cfg)?.enabled, mode: entryOf(cfg)?.mode } },
-  });
-  return sectionWrite(slice(server), slice(draft));
+  };
 }
 
 function StageRow({
@@ -106,10 +109,11 @@ export function PipelineTab({
     if (r.deviceId && r.deviceName) deviceNames[r.deviceId] = r.deviceName;
   }
 
-  const [draft, setDraft] = useState<PipelineConfig | null>(null);
-  useEffect(() => {
-    if (cfgQ.data) setDraft(cfgQ.data.pipelineConfig);
-  }, [cfgQ.data]);
+  // The two switches this card owns, and only those: every other key of the document belongs
+  // to a section below, which holds its own draft over the same read.
+  const seeded = masterSlice(cfgQ.data?.pipelineConfig ?? {});
+  const held = useSettingsDraft(seeded);
+  const draft = held.draft;
 
   if (cfgQ.isLoading) {
     return (
@@ -148,12 +152,9 @@ export function PipelineTab({
     );
   }
 
-  if (!draft) return null;
-
   const server = cfgQ.data?.pipelineConfig ?? {};
   const masterEnabled = draft.enabled !== false;
-  const dirty =
-    (server.enabled !== false) !== masterEnabled || entryGateOpen(server) !== entryGateOpen(draft);
+  const dirty = held.dirty;
   const libraryHref = slug ? `/projects/${slug}/library?tab=skills` : undefined;
 
   return (
@@ -180,7 +181,7 @@ export function PipelineTab({
             control={
               <Toggle
                 checked={masterEnabled}
-                onChange={(v) => setDraft((d) => (d ? { ...d, enabled: v } : d))}
+                onChange={(v) => held.setDraft((d) => ({ ...d, enabled: v }))}
                 disabled={!canEdit}
                 aria-label="Pipeline enabled"
               />
@@ -192,7 +193,7 @@ export function PipelineTab({
             control={
               <Toggle
                 checked={entryGateOpen(draft)}
-                onChange={(v) => setDraft((d) => (d ? withEntryGate(d, v) : d))}
+                onChange={(v) => held.setDraft((d) => withEntryGate(d, v))}
                 disabled={!canEdit || !masterEnabled}
                 aria-label="Start queued issues automatically"
               />
@@ -202,18 +203,17 @@ export function PipelineTab({
 
         {canEdit && (
           <div className="mt-4 space-y-3">
-            {update.isError && (
-              <SaveRefusedBanner
-                projectId={projectId}
-                error={update.error}
-                onDismiss={() => update.reset()}
-              />
-            )}
+            <SaveRefusedBanner
+              projectId={projectId}
+              error={update.isError ? update.error : null}
+              onDismiss={() => update.reset()}
+              draft={held}
+            />
             <Button
               variant="primary"
               loading={update.isPending}
               disabled={!dirty}
-              onClick={() => update.mutate(masterWrite(server, draft))}
+              onClick={() => update.mutate(sectionWrite(masterSlice(server), draft))}
               className="min-h-11"
             >
               Save pipeline config

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
   Banner,
   Button,
@@ -8,6 +7,7 @@ import {
   Toggle,
 	Input,
 } from "@/design";
+import { useSettingsDraft } from "../draft";
 import { useRunAssistantWeekly, useUpdatePipelineConfig } from "../hooks";
 import { type PipelineConfig, sectionWrite } from "../types";
 import { SaveRefusedBanner } from "./save-refused-banner";
@@ -15,6 +15,8 @@ import { SaveRefusedBanner } from "./save-refused-banner";
 type Slice = NonNullable<PipelineConfig["assistantWeekly"]>;
 
 const EMPTY: Slice = { enabled: false, pinnedIssue: "", judgeProviderId: "", judgeModel: "" };
+
+const AT = ["assistantWeekly"] as const;
 
 const seed = (config: PipelineConfig): Slice => ({ ...EMPTY, ...(config.assistantWeekly ?? {}) });
 
@@ -31,12 +33,8 @@ export function AssistantWeeklySection({
 	const update = useUpdatePipelineConfig(projectId);
 	const runNow = useRunAssistantWeekly(projectId);
 	const seeded = seed(config);
-	const [slice, setSlice] = useState<Slice>(seeded);
-	useEffect(() => {
-		setSlice(seed(config));
-	}, [config]);
-
-	const dirty = JSON.stringify(slice) !== JSON.stringify(seeded);
+	const held = useSettingsDraft(seeded, { at: AT });
+	const { draft: slice, setDraft: setSlice, dirty } = held;
 	const complete =
 		!slice.enabled ||
 		(slice.pinnedIssue.trim() !== "" &&
@@ -116,13 +114,12 @@ export function AssistantWeeklySection({
 
 			{canEdit && (
 				<div className="mt-3 space-y-3">
-					{update.isError && (
-						<SaveRefusedBanner
-							projectId={projectId}
-							error={update.error}
-							onDismiss={() => update.reset()}
-						/>
-					)}
+					<SaveRefusedBanner
+						projectId={projectId}
+						error={update.isError ? update.error : null}
+						onDismiss={() => update.reset()}
+						draft={held}
+					/>
 					{update.isSuccess && !dirty && (
 						<Banner tone="success" onDismiss={() => update.reset()}>
 							Assistant weekly reading saved.
