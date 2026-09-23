@@ -1,19 +1,33 @@
 "use client";
 
 
-import { useEffect, useState } from "react";
 import {
   Banner,
   Button,
   CardTitle,
   Toggle,
 } from "@/design";
+import { useSettingsDraft } from "../draft";
 import { useUpdatePipelineConfig } from "../hooks";
 import { type PipelineConfig, sectionWrite } from "../types";
 import { SaveRefusedBanner } from "./save-refused-banner";
 
 const DEFAULT_PER_RUN = 3;
 const DEFAULT_MIN_RETRIEVALS = 3;
+
+const AT = ["knowledgePromotion"] as const;
+
+interface Slice {
+	enabled: boolean;
+	perRun: number;
+	minRetrievals: number;
+}
+
+const seed = (config: PipelineConfig): Slice => ({
+	enabled: config.knowledgePromotion?.enabled ?? false,
+	perRun: config.knowledgePromotion?.candidatesPerRun ?? DEFAULT_PER_RUN,
+	minRetrievals: config.knowledgePromotion?.minRetrievals ?? DEFAULT_MIN_RETRIEVALS,
+});
 
 export function KnowledgePromotionSection({
 	projectId,
@@ -27,20 +41,13 @@ export function KnowledgePromotionSection({
 }) {
 	const update = useUpdatePipelineConfig(projectId);
 
-	const seededEnabled = config.knowledgePromotion?.enabled ?? false;
-	const seededPerRun = config.knowledgePromotion?.candidatesPerRun ?? DEFAULT_PER_RUN;
-	const seededMin = config.knowledgePromotion?.minRetrievals ?? DEFAULT_MIN_RETRIEVALS;
-	const [enabled, setEnabled] = useState(seededEnabled);
-	const [perRun, setPerRun] = useState(seededPerRun);
-	const [minRetrievals, setMinRetrievals] = useState(seededMin);
-	useEffect(() => {
-		setEnabled(config.knowledgePromotion?.enabled ?? false);
-		setPerRun(config.knowledgePromotion?.candidatesPerRun ?? DEFAULT_PER_RUN);
-		setMinRetrievals(config.knowledgePromotion?.minRetrievals ?? DEFAULT_MIN_RETRIEVALS);
-	}, [config]);
-
-	const dirty =
-		enabled !== seededEnabled || perRun !== seededPerRun || minRetrievals !== seededMin;
+	const held = useSettingsDraft(seed(config), { at: AT });
+	const { enabled, perRun, minRetrievals } = held.draft;
+	const dirty = held.dirty;
+	const setEnabled = (next: boolean) => held.setDraft((d) => ({ ...d, enabled: next }));
+	const setPerRun = (next: number) => held.setDraft((d) => ({ ...d, perRun: next }));
+	const setMinRetrievals = (next: number) =>
+		held.setDraft((d) => ({ ...d, minRetrievals: next }));
 
 	function save() {
 		update.mutate(
@@ -112,13 +119,12 @@ export function KnowledgePromotionSection({
 
 			{canEdit && (
 				<div className="mt-3 space-y-3">
-					{update.isError && (
-						<SaveRefusedBanner
-							projectId={projectId}
-							error={update.error}
-							onDismiss={() => update.reset()}
-						/>
-					)}
+					<SaveRefusedBanner
+						projectId={projectId}
+						error={update.isError ? update.error : null}
+						onDismiss={() => update.reset()}
+						draft={held}
+					/>
 					{update.isSuccess && !dirty && (
 						<Banner tone="success" onDismiss={() => update.reset()}>
 							Knowledge promotion saved.

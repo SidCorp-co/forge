@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useState } from "react";
+import { useSettingsDraft } from "../draft";
 import {
   Badge,
   Button,
@@ -78,8 +78,29 @@ function editableRows(config: PipelineConfig): StagePermissionRow[] {
   }));
 }
 
-function stageEditorKey(config: PipelineStateConfig): string {
-  return JSON.stringify(config);
+/** The three leaves one stage's editor holds, as it holds them. */
+interface StageDraft {
+  denied: string[];
+  allowed: string[];
+  mcp: Record<string, unknown>;
+}
+
+const seedStage = (stored: PipelineStateConfig): StageDraft => ({
+  denied: stored.disallowedTools ?? [],
+  allowed: stored.allowedTools ?? [],
+  mcp: stored.mcpServers ?? {},
+});
+
+/** This draft is one stage's three permission leaves, under `states.<stage>`. */
+function locateStage(status: string) {
+  return (path: readonly string[]): string[] | null => {
+    if (path[0] !== "states" || path[1] !== status) return null;
+    const leaf = path[2];
+    if (leaf === "disallowedTools") return ["denied"];
+    if (leaf === "allowedTools") return ["allowed"];
+    if (leaf === "mcpServers") return ["mcp", ...path.slice(3)];
+    return null;
+  };
 }
 
 function StageEditor({
@@ -94,15 +115,13 @@ function StageEditor({
   const update = useUpdatePipelineConfig(projectId);
   const stored = ((config.states ?? {}) as Record<string, PipelineStateConfig | undefined>)[status] ?? {};
 
-  const [denied, setDenied] = useState<string[]>(stored.disallowedTools ?? []);
-  const [allowed, setAllowed] = useState<string[]>(stored.allowedTools ?? []);
-  const [mcp, setMcp] = useState<Record<string, unknown>>(stored.mcpServers ?? {});
-
-  const snapshot = (d: string[], a: string[], m: Record<string, unknown>) =>
-    JSON.stringify([[...d], [...a], Object.keys(m).sort().map((k) => [k, m[k]])]);
-  const dirty =
-    snapshot(denied, allowed, mcp) !==
-    snapshot(stored.disallowedTools ?? [], stored.allowedTools ?? [], stored.mcpServers ?? {});
+  const held = useSettingsDraft(seedStage(stored), { locate: locateStage(status) });
+  const { denied, allowed, mcp } = held.draft;
+  const setDenied = (next: string[]) => held.setDraft((d) => ({ ...d, denied: next }));
+  const setAllowed = (next: string[]) => held.setDraft((d) => ({ ...d, allowed: next }));
+  const setMcp = (next: (m: Record<string, unknown>) => Record<string, unknown>) =>
+    held.setDraft((d) => ({ ...d, mcp: next(d.mcp) }));
+  const dirty = held.dirty;
 
   // This stage's three permission leaves, and no other key of the document: a runner-pool
   // save from the same page load writes `states.<stage>.deviceIds`, which is not among them.
@@ -178,13 +197,12 @@ function StageEditor({
         </p>
       </div>
 
-      {update.isError && (
-        <SaveRefusedBanner
-          projectId={projectId}
-          error={update.error}
-          onDismiss={() => update.reset()}
-        />
-      )}
+      <SaveRefusedBanner
+        projectId={projectId}
+        error={update.isError ? update.error : null}
+        onDismiss={() => update.reset()}
+        draft={held}
+      />
 
       <Button
         variant="primary"
@@ -319,7 +337,6 @@ export function StagePermissionsSection({
 
                   {canEdit && (
                     <StageEditor
-                      key={stageEditorKey(row.config)}
                       projectId={projectId}
                       config={config}
                       status={row.status}

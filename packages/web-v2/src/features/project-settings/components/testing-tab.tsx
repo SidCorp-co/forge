@@ -6,19 +6,22 @@
 // (owner-gated, validated by `environmentsPatchSchema`) as the keys this form changed beside
 // the values it read them against; `PATCH /api/projects/:id` refuses `environments` by name
 // (ISS-1170). Passwords are masked by default with a per-row reveal; values are never logged.
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Button,
   Card,
   CardContent,
+  ErrorState,
   Field,
   IconButton,
   Input,
   SectionTitle,
+  Skeleton,
   Textarea,
 } from "@/design";
-import type { ProjectDetail } from "@/features/projects/types";
-import { useUpdateEnvironments } from "../hooks";
+import { formatApiError } from "@/lib/api/error";
+import { useSettingsDraft } from "../draft";
+import { useEnvironments, useUpdateEnvironments } from "../hooks";
 import {
   type EnvironmentsConfig,
   sectionWrite,
@@ -95,6 +98,25 @@ function parse(raw: unknown): Form {
   };
 }
 
+/** Where each rendered field lives in the stored document, so a path a refusal named can be
+ *  found in this form. A path the form does not render maps to nothing, which is the truth:
+ *  there is no edit of the person's standing there. */
+const FIELD_AT: Record<string, keyof Form> = {
+  "live.url": "liveUrl",
+  "live.commitUrl": "liveCommitUrl",
+  "live.commitPath": "liveCommitPath",
+  "preview.url": "previewUrl",
+  "preview.apiUrl": "previewApiUrl",
+  "preview.urls": "previewUrls",
+  testCredentials: "testCredentials",
+  limits: "limits",
+};
+
+function locateField(path: readonly string[]): string[] | null {
+  const key = FIELD_AT[path.join(".")];
+  return key ? [key] : null;
+}
+
 /** The stored preview side as an object, or `null` where the project declares none. */
 function storedPreviewOf(raw: unknown): Record<string, unknown> | null {
   const preview = ((raw ?? {}) as EnvironmentsConfig).preview;
@@ -149,27 +171,47 @@ function canonical(form: Form): string {
   });
 }
 
-export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
-  const update = useUpdateEnvironments(project.id);
+export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const envQ = useEnvironments(projectId);
+  const update = useUpdateEnvironments(projectId);
 
-  const [form, setForm] = useState<Form>(() => parse(project.environments));
+  // The document this form writes is also the document it reads its `base` from — one source,
+  // so a write is compared against what this screen actually saw (ISS-1170).
+  const environments = envQ.data?.environments;
+  const held = useSettingsDraft(parse(environments), { locate: locateField });
+  const form = held.draft;
+  const setForm = held.setDraft;
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
 
-  // Re-hydrate when the project refetches (e.g. after a save invalidates it).
-  useEffect(() => {
-    setForm(parse(project.environments));
-    setRevealed(new Set());
-  }, [project.environments]);
-
-  const storedPreview = useMemo(
-    () => storedPreviewOf(project.environments),
-    [project.environments],
-  );
-  const original = useMemo(
-    () => canonical(parse(project.environments)),
-    [project.environments],
-  );
+  const storedPreview = useMemo(() => storedPreviewOf(environments), [environments]);
+  const original = useMemo(() => canonical(parse(environments)), [environments]);
   const dirty = canonical(form) !== original;
+
+  // No form before the document is in hand: a blank one over an unread document would let
+  // somebody type against a base nobody has seen.
+  if (envQ.isPending) {
+    return (
+      <Card>
+        <CardContent>
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (envQ.isError) {
+    return (
+      <Card>
+        <CardContent>
+          <ErrorState message={formatApiError(envQ.error)} onRetry={() => envQ.refetch()} />
+        </CardContent>
+      </Card>
+    );
+  }
 
   // Validation — block save on malformed URLs or partially-filled rows.
   function urlError(value: string): string | undefined {
@@ -269,7 +311,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
   // showed is named by no path here, so nothing can carry it away (ISS-1170).
   function save() {
     if (!dirty || hasErrors) return;
-    const stored = (project.environments ?? {}) as Record<string, unknown>;
+    const stored = (environments ?? {}) as Record<string, unknown>;
     const storedLive = (stored.live ?? {}) as Record<string, unknown>;
     const rendered = (side: Record<string, unknown>, fields: Record<string, unknown>) =>
       Object.fromEntries(Object.keys(fields).map((k) => [k, side[k]]));
@@ -591,14 +633,13 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
 
       {canEdit && (
         <div className="space-y-3">
-          {update.isError && (
-            <SaveRefusedBanner
-              projectId={project.id}
-              error={update.error}
-              onDismiss={() => update.reset()}
-              document="environments"
-            />
-          )}
+          <SaveRefusedBanner
+            projectId={projectId}
+            error={update.isError ? update.error : null}
+            onDismiss={() => update.reset()}
+            document="environments"
+            draft={held}
+          />
           <Button
             variant="primary"
             loading={update.isPending}

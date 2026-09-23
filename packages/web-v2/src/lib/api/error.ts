@@ -215,6 +215,11 @@ function listOf(names: string[]): string {
   return `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}`;
 }
 
+/** Dotted document paths as one phrase in the screen's own names, for a sentence about them. */
+export function settingsThatMoved(paths: string[]): string {
+  return listOf(paths.map(settingLabel));
+}
+
 /**
  * What a refused settings save reads as on screen: the settings that moved, in the
  * screen's own names, and that nothing was written. The re-read is an action beside this
@@ -223,7 +228,7 @@ function listOf(names: string[]): string {
 export function formatSettingsWriteError(err: unknown): string {
   const conflicts = writeConflicts(err);
   if (conflicts.length === 0) return formatApiError(err);
-  const names = listOf(conflicts.map((c) => settingLabel(c.path)));
+  const names = settingsThatMoved(conflicts.map((c) => c.path));
   const changed = conflicts.length === 1 ? 'was changed' : 'were changed';
   return `${names} ${changed} by someone else while this page was open. Nothing was saved — your edits are still here.`;
 }

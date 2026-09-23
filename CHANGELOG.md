@@ -3078,6 +3078,10 @@
   set is now 59.
 
 ### Fixed
+- **A refused settings save no longer throws away the edits it offered to rescue.** The banner
+  names what moved and offers two ways on: take the stored values, or keep yours. Edits elsewhere
+  on the page stand either way.
+
 
 - **A whole-backlog read no longer lists the same issue twice.** Every hundredth issue in the
   ordering stream, and every sixty-fourth in the duplicate sweep, arrived a second time, so the
@@ -3098,6 +3102,10 @@
 - **Issues closed before Forge recorded what shipped can be edited again, and the API starts.**
   The rule that `closed` means shipped was written about the row, not the move into it, so it
   locked older closes.
+
+- **The guides now describe the two endings correctly.** One promised no closed issue could exist
+  unshipped, untrue of issues closed before the rule. The help page called dropping an issue a
+  kind of close.
 
 - **A criterion's verdict now says what it was judged against, and stops counting once that is
   gone.** A pass taken at a runtime a repair replaced read as earned forever. Release holds the
