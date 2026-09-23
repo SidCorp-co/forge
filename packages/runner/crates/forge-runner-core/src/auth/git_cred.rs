@@ -137,10 +137,48 @@ pub fn https_host(url: &str) -> Option<String> {
     }
 }
 
+/// The program the persisted helper names, or `None` where this box can name
+/// none — which is a helper not written rather than one written dead.
+///
+/// The helper outlives the daemon that wrote it: it goes into a checkout's own
+/// `.git/config` and every later fetch and push resolves through it, so a path
+/// that was true only while one process lived is the worst thing to put there.
+fn helper_program() -> Option<String> {
+    match crate::exe::own() {
+        Ok(exe) => {
+            if let Some(was) = &exe.replaced_from {
+                tracing::warn!(
+                    "[git-cred] the binary this process started on ({}) was replaced while it ran — the credential helper names {}, the build standing there now",
+                    was.display(),
+                    exe.path.display()
+                );
+            }
+            Some(exe.path.display().to_string())
+        }
+        Err(e) => match crate::exe::on_path("forge-runner") {
+            Some(found) => {
+                tracing::warn!(
+                    "[git-cred] {e} — the credential helper names {}, resolved on PATH instead",
+                    found.display()
+                );
+                Some(found.display().to_string())
+            }
+            None => {
+                tracing::error!(
+                    "[git-cred] {e}, and PATH resolves no `forge-runner` either — no credential helper is written for this host, rather than one that fails on every fetch and push"
+                );
+                None
+            }
+        },
+    }
+}
+
+/// The `-c` overrides that point git at this runner's helper for `host`, or
+/// nothing at all where no program can be named.
 pub fn credential_helper_git_args(host: &str) -> Vec<String> {
-    let exe = std::env::current_exe()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "forge-runner".to_string());
+    let Some(exe) = helper_program() else {
+        return Vec::new();
+    };
     let helper = format!("!{} git-credential", shell_quote(&exe));
     vec![
         "-c".into(),
@@ -157,10 +195,16 @@ pub fn credential_helper_git_args(host: &str) -> Vec<String> {
 pub fn set_repo_credential_helper(repo_path: &std::path::Path, host: &str) {
     let key = format!("credential.https://{host}.helper");
     let args = credential_helper_git_args(host);
-    let helper_value = args
+    let Some(helper_value) = args
         .get(3)
         .and_then(|v| v.split_once('=').map(|(_, v)| v.to_string()))
-        .unwrap_or_default();
+    else {
+        tracing::error!(
+            "[provision] no program could be named for {host}'s credential helper, so {}'s git config is left as it is — an empty helper would refuse every fetch and push in it",
+            repo_path.display()
+        );
+        return;
+    };
 
     let steps: Vec<Vec<String>> = vec![
         vec![
@@ -235,6 +279,28 @@ mod tests {
         assert!(args[3].starts_with("credential.https://github.com.helper=!"));
         assert!(args[3].contains("git-credential"));
         assert_eq!(args[5], "credential.https://github.com.useHttpPath=true");
+    }
+
+    /// The helper goes into a checkout's own `.git/config` and outlives the
+    /// daemon that wrote it, so the one thing it may never name is a path that
+    /// was true only while one process lived (ISS-1200).
+    #[test]
+    fn the_helper_names_a_program_that_can_actually_be_run() {
+        let args = credential_helper_git_args("github.com");
+        let helper = args[3].split_once("helper=!").expect("the helper clause").1;
+        let program = helper
+            .strip_suffix(" git-credential")
+            .expect("the verb the helper invokes")
+            .trim_matches('\'')
+            .replace(r"'\''", "'");
+        assert!(
+            crate::exe::is_runnable(std::path::Path::new(&program)),
+            "the helper names {program:?}, which nothing on this box can run"
+        );
+        assert!(
+            !program.ends_with(crate::exe::DELETED_SUFFIX),
+            "the kernel's annotation was persisted into a checkout: {program:?}"
+        );
     }
 
     #[test]

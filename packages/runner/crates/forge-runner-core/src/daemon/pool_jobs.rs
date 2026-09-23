@@ -488,6 +488,41 @@ pub async fn take_one(
     Took::Started(prepared.job_id)
 }
 
+/// Register this daemon's hooks for a job pane, saying what it did. `false`
+/// where the pane has to start unhooked; the resolution is handed in so both of
+/// its arms are reachable from a test.
+fn install_pane_hooks(
+    cwd: &Path,
+    project_id: &str,
+    pane: &str,
+    own: crate::error::Result<crate::exe::OwnExe>,
+) -> bool {
+    let exe = match own {
+        Ok(exe) => exe,
+        Err(e) => {
+            tracing::error!(
+                "[pool] {project_id}: {e} — {pane} starts with no hooks rather than commands that die at every call, blind to its own turn boundaries"
+            );
+            return false;
+        }
+    };
+    if let Some(was) = &exe.replaced_from {
+        tracing::warn!(
+            "[pool] {project_id}: the binary this daemon started on ({}) was replaced while it ran — {pane}'s hooks name {}, the build standing there now",
+            was.display(),
+            exe.path.display()
+        );
+    }
+    if let Err(e) = hook_install::install(cwd, &exe.path) {
+        tracing::error!(
+            "[pool] {project_id}: could not register hooks in {} ({e}) — {pane} starts blind to its own turn boundaries",
+            cwd.display()
+        );
+        return false;
+    }
+    true
+}
+
 fn open_channel(
     cwd: &Path,
     agent_session_id: &str,
@@ -509,20 +544,7 @@ fn open_channel(
         );
         return (env, None);
     }
-    let exe = match std::env::current_exe() {
-        Ok(exe) => exe,
-        Err(e) => {
-            tracing::error!(
-                "[pool] {project_id}: cannot name this binary ({e}) — {pane} starts with no hooks, blind to its own turn boundaries"
-            );
-            return (env, None);
-        }
-    };
-    if let Err(e) = hook_install::install(cwd, &exe) {
-        tracing::error!(
-            "[pool] {project_id}: could not register hooks in {} ({e}) — {pane} starts blind to its own turn boundaries",
-            cwd.display()
-        );
+    if !install_pane_hooks(cwd, project_id, pane, crate::exe::own()) {
         return (env, None);
     }
     let Some(store) = tokens else {
@@ -2496,6 +2518,129 @@ mod tests {
         assert!(
             kind.is_some(),
             "the heartbeat kind is not one core accepts, so every beat is a 400: {req}"
+        );
+    }
+}
+
+/// What a job pane's preparation says when this daemon's own binary has been
+/// replaced under it, or is gone (ISS-1200).
+#[cfg(test)]
+mod own_exe_reporting_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    fn logged_while(f: impl FnOnce()) -> String {
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        // Why a capture needs this: `crate::daemon::keep_tracing_capturable`.
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn scratch(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-pool-exe-{label}-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).expect("scratch");
+        dir
+    }
+
+    #[cfg(unix)]
+    fn runnable(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write");
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        p
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_replaced_binary_is_named_in_the_journal_with_the_project_the_pane_and_both_paths() {
+        let dir = scratch("replaced");
+        let installed = runnable(&dir, "forge-runner");
+        let annotated = dir.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        let cwd = dir.join("checkout");
+        std::fs::create_dir_all(&cwd).expect("checkout");
+
+        let mut went = false;
+        let said = logged_while(|| {
+            went = install_pane_hooks(
+                &cwd,
+                "proj-7",
+                "forge-job-1",
+                crate::exe::resolve(&annotated),
+            );
+        });
+
+        assert!(
+            went,
+            "the pane was refused although a build stands at the path"
+        );
+        assert!(said.contains("proj-7"), "the project is not named: {said}");
+        assert!(
+            said.contains("forge-job-1"),
+            "the pane is not named: {said}"
+        );
+        assert!(
+            said.contains(annotated.to_str().unwrap())
+                && said.contains(installed.to_str().unwrap()),
+            "both paths must be in the line, or a reader cannot tell what was replaced by what: {said}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_binary_that_is_gone_refuses_the_hooks_and_says_why() {
+        let dir = scratch("gone");
+        let annotated = dir.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        let cwd = dir.join("checkout");
+        std::fs::create_dir_all(&cwd).expect("checkout");
+
+        let mut went = true;
+        let said = logged_while(|| {
+            went = install_pane_hooks(
+                &cwd,
+                "proj-7",
+                "forge-job-1",
+                crate::exe::resolve(&annotated),
+            );
+        });
+
+        assert!(
+            !went,
+            "the pane was opened as though its hooks were registered"
+        );
+        assert!(
+            said.contains("proj-7") && said.contains("forge-job-1"),
+            "{said}"
+        );
+        assert!(
+            said.contains("nothing can invoke it"),
+            "the reason is not in the line: {said}"
+        );
+        assert!(
+            !hook_install::settings_path(&cwd).exists(),
+            "commands that die at every call were written anyway"
         );
     }
 }

@@ -3080,6 +3080,9 @@
   set is now 59.
 
 ### Fixed
+- **A runner that has replaced its own binary no longer installs hooks that cannot run.** Its
+  safety gate and its turn reports name a file that is really there, and settings already written
+  with a dead one are repaired.
 - **An issue is no longer held by a run that has died.** A run that promises to report and then
   goes quiet has its claim given up, instead of the issue staying locked until that claim expires.
 - **A runner box takes new work once a job's agent has finished.** A pane whose agent had stopped,

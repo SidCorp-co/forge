@@ -28,6 +28,17 @@ pub struct InstallArgs {
 /// Install the OS service for this platform, the same way `service install`
 /// does. `setup` calls it rather than telling the operator to run a second
 /// command, and rather than growing a second unit writer beside this one.
+/// The path a service unit may name as the program to start.
+///
+/// Not `current_exe()` raw: that is a `/proc` link on Linux and reads
+/// `<path> (deleted)` once the file behind it is gone, and a unit carrying that
+/// string fails at every boot with nothing but `not found` to say why
+/// (ISS-1200).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn own_exe() -> anyhow::Result<std::path::PathBuf> {
+    Ok(forge_runner_core::exe::own()?.path)
+}
+
 pub fn install_now() -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     {
@@ -88,7 +99,7 @@ fn plist_path() -> anyhow::Result<std::path::PathBuf> {
 
 #[cfg(target_os = "macos")]
 fn install_launchd() -> anyhow::Result<()> {
-    let exe = std::env::current_exe()?;
+    let exe = own_exe()?;
     let home = dirs_next::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
     let log = home.join("Library").join("Logs").join("forge-runner.log");
     let plist = format!(
@@ -193,7 +204,7 @@ fn unit_path() -> anyhow::Result<std::path::PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn install_systemd(no_linger: bool) -> anyhow::Result<()> {
-    let exe = std::env::current_exe()?;
+    let exe = own_exe()?;
     let unit = format!(
         "[Unit]\n\
          Description=Forge Runner\n\

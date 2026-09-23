@@ -227,6 +227,47 @@ where
     }
 }
 
+/// Rewrite the hook commands of every project bound on this box that name a
+/// program nothing can run.
+///
+/// Fixing where the path comes from reaches only panes prepared from now on.
+/// A project this daemon does not dispatch to keeps whatever a pre-fix daemon
+/// wrote into it — a dead declaration gate and eight dead reporters — until
+/// somebody opens a session in it by hand. `when` names the moment this ran, so
+/// the journal distinguishes the sweep at boot from the one an update triggered.
+fn repair_installed_hooks(cfg: &Config, when: &str) {
+    let exe = match crate::exe::own() {
+        Ok(exe) => exe,
+        Err(e) => {
+            tracing::error!(
+                "[hooks] {when}: {e} — no project's hooks can be repaired, and any already naming a dead path stay dead"
+            );
+            return;
+        }
+    };
+    if let Some(was) = &exe.replaced_from {
+        tracing::warn!(
+            "[hooks] {when}: the binary this daemon started on ({}) was replaced while it ran — every hook it writes from here names {}, the build standing there now",
+            was.display(),
+            exe.path.display()
+        );
+    }
+    for (slug, binding) in &cfg.bindings {
+        match crate::daemon::hook_install::repair(&binding.repo_path, &exe.path) {
+            Ok(unrunnable) if unrunnable.is_empty() => {}
+            Ok(unrunnable) => tracing::warn!(
+                "[hooks] {when}: {slug}'s hooks named {}, which nothing can run — every hook in a session there was dying at every call, and they now name {}",
+                unrunnable.join(", "),
+                exe.path.display()
+            ),
+            Err(e) => tracing::warn!(
+                "[hooks] {when}: {slug}'s hooks in {} could not be repaired: {e}",
+                binding.repo_path.display()
+            ),
+        }
+    }
+}
+
 async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>) -> usize {
     runner.checkpoint_and_close(CHECKPOINT_BUDGET).await.len()
 }
@@ -309,6 +350,10 @@ pub async fn run(
         );
     }
 
+    // Before any pane is prepared: whatever the daemon this one replaced wrote
+    // into these checkouts is still there, and this process CAN name itself.
+    repair_installed_hooks(&cfg, "boot");
+
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
     let (ledger_tx, ledger_rx) = watch::channel::<Option<String>>(None);
@@ -369,6 +414,7 @@ pub async fn run(
         let auto = cfg.update.auto;
         let inflight = inflight.clone();
         let runner = runner.clone();
+        let bound = cfg.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -394,6 +440,14 @@ pub async fn run(
                                         o.from,
                                         o.to
                                     );
+                                    // From this instant `current_exe()` in this
+                                    // process reads `<path> (deleted)`, and the
+                                    // restart that would end that waits on an
+                                    // idle window a working box never reaches.
+                                    // So every bound checkout is repointed at
+                                    // the build just installed, now, rather
+                                    // than at the next pane preparation.
+                                    repair_installed_hooks(&bound, "after an update");
                                     if drain_to_idle(&inflight, "update", live_run_sessions, || {
                                         close_parked_sessions(&runner)
                                     })
@@ -1173,6 +1227,152 @@ mod tests {
             SESSION_LEDGER_INTERVAL <= std::time::Duration::from_secs(30),
             "a box must speak at least every 30s; this one waits {:?}",
             SESSION_LEDGER_INTERVAL
+        );
+    }
+}
+
+/// The sweep that repoints hook commands a pre-fix daemon left dead, and the
+/// two moments it has to run at (ISS-1200).
+#[cfg(test)]
+mod hook_repair_tests {
+    use super::*;
+
+    const SOURCE: &str = include_str!("mod.rs");
+
+    /// Everything above this module, which is where the calls live. Splitting
+    /// at the first `#[cfg(test)]` would stop at `keep_tracing_capturable`,
+    /// hundreds of lines before `run`; splitting at nothing would match this
+    /// module's own literals and pass whatever the daemon does.
+    fn production() -> &'static str {
+        SOURCE.split("\nmod hook_repair_tests {").next().unwrap()
+    }
+
+    fn scratch(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-hook-repair-{label}-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).expect("scratch");
+        dir
+    }
+
+    #[cfg(unix)]
+    fn runnable(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write");
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        p
+    }
+
+    /// A checkout whose settings file names a program nothing can run.
+    #[cfg(unix)]
+    fn poisoned_checkout(root: &std::path::Path, slug: &str) -> std::path::PathBuf {
+        let repo = root.join(slug);
+        let settings = crate::daemon::hook_install::settings_path(&repo);
+        std::fs::create_dir_all(settings.parent().expect("parent")).expect("dot claude");
+        let gone = root.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        std::fs::write(
+            &settings,
+            crate::daemon::hook_install::merged(None, gone.to_str().expect("utf-8"))
+                .expect("poisoned settings"),
+        )
+        .expect("write");
+        repo
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn every_bound_project_is_swept_and_not_only_the_one_being_dispatched_to() {
+        let root = scratch("all-bindings");
+        let _installed = runnable(&root, "forge-runner");
+        let mut cfg = Config::default();
+        for slug in ["alpha", "beta", "gamma"] {
+            cfg.bindings.insert(
+                slug.to_string(),
+                crate::config::Binding {
+                    repo_path: poisoned_checkout(&root, slug),
+                    branch: None,
+                    project_id: None,
+                },
+            );
+        }
+
+        repair_installed_hooks(&cfg, "a test");
+
+        for slug in ["alpha", "beta", "gamma"] {
+            let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(
+                &root.join(slug),
+            ))
+            .expect("read back");
+            assert!(
+                !text.contains(crate::exe::DELETED_SUFFIX),
+                "{slug} was left with commands nothing can run: {text}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_binding_whose_checkout_is_not_there_does_not_stop_the_rest_of_the_sweep() {
+        let root = scratch("missing-checkout");
+        let _installed = runnable(&root, "forge-runner");
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "absent".into(),
+            crate::config::Binding {
+                repo_path: root.join("no-such-checkout"),
+                branch: None,
+                project_id: None,
+            },
+        );
+        cfg.bindings.insert(
+            "present".into(),
+            crate::config::Binding {
+                repo_path: poisoned_checkout(&root, "present"),
+                branch: None,
+                project_id: None,
+            },
+        );
+
+        repair_installed_hooks(&cfg, "a test");
+
+        let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(
+            &root.join("present"),
+        ))
+        .expect("read back");
+        assert!(
+            !text.contains(crate::exe::DELETED_SUFFIX),
+            "a binding with no checkout took the sweep down with it: {text}"
+        );
+    }
+
+    /// The sweep exists to reach a project no pane is being prepared for, so
+    /// where it is CALLED is the whole of what it buys. Both moments are read
+    /// out of this module's own source: a call quietly dropped from either one
+    /// leaves every test above green.
+    #[test]
+    fn the_sweep_runs_at_boot_and_again_the_moment_an_update_replaces_the_binary() {
+        let src = production();
+        assert!(
+            src.contains(r#"repair_installed_hooks(&cfg, "boot")"#),
+            "nothing sweeps at boot, so a file a pre-fix daemon poisoned is never repaired"
+        );
+
+        let applied = src
+            .find("— draining before restart")
+            .expect("the line the update writes once it has replaced the binary");
+        let after_applied = &src[applied..];
+        let next_sweep = after_applied
+            .find(r#"repair_installed_hooks(&bound, "after an update")"#)
+            .expect("nothing sweeps once the binary has been replaced under this process");
+        let next_drain = after_applied
+            .find("drain_to_idle")
+            .expect("the drain the restart waits on");
+        assert!(
+            next_sweep < next_drain,
+            "the sweep is behind the drain, which is the wait that never ends on a busy box — so it never runs"
         );
     }
 }
