@@ -20,8 +20,8 @@ number.
 | `packages/contracts` | Shared cross-app TS types & registries, all under `packages/contracts/src/`: `packages/contracts/src/issues.ts`, `packages/contracts/src/pipeline-registry.ts`, `packages/contracts/src/requests.ts`, `packages/contracts/src/responses.ts`, `packages/contracts/src/rows.ts`, `packages/contracts/src/domain-templates.ts`. |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
 
-**The driver skill lives in a second repo.** `github.com/SidCorp-co/forge-plugin` is Forge's own
-Claude Code plugin — the `forge` CLI, the session hooks, and `plugin/skills/issue-flow`, which is
+**The driver skill lives in a second repo**, github.com/SidCorp-co/forge-plugin — Forge's own
+Claude Code plugin, carrying the `forge` CLI, the session hooks, and the issue-flow skill, which is
 the skill `AUTONOMOUS_SKILL_NAME` names and every `drive` job runs. It reaches a runner through
 `pipelineConfig.plugins` → `GET /api/devices/me/plugins`, gated by that box's `[plugins] enabled`.
 Nothing in this repo can gate the pair: a change to the five driver statuses, the drive prompt, or
@@ -183,9 +183,9 @@ reasons to go green.
 
 ### The one carve-out: forge-plugin is reached by issue, never by diff
 
-**A defect in `github.com/SidCorp-co/forge-plugin` leaves as an issue on the `forge-plugin`
+**A defect in github.com/SidCorp-co/forge-plugin leaves as an issue on the `forge-plugin`
 project, and you do not edit that repo from a job in this one.** The `forge` CLI, the session
-hooks and `plugin/skills/issue-flow` live there; a verb that refuses wrongly, a missing way out, a
+hooks and the issue-flow skill live there; a verb that refuses wrongly, a missing way out, a
 skill naming something this repo no longer has — all of it files there and is named in your
 comment under `Extra fixes:` as **reported**, not fixed.
 
@@ -279,7 +279,7 @@ line number — a line number is stale the moment anything above it moves, and s
 
   The set is the subject, not your branch. Branches each deriving `+86400000` from one `main` all
   land on the SAME number and whichever merges first silently kills the rest — measured twice on
-  2026-09-17, four open migrations, three of them holding `1796083200000`. Two gates split the
+  2026-09-17, four open migrations, three of them holding one and the same `when`. Two gates split the
   work: `packages/core/src/db/migrations-journal.test.ts` owns one journal's own properties, and
   `scripts/check-migration-order.mjs` owns the relation between branches, running from `pnpm verify` and
   from the always-on `lang-check` CI job. What neither can catch is a merge taken out of the order
