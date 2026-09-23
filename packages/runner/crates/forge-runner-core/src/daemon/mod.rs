@@ -22,6 +22,7 @@ pub mod dispatch_gate;
 pub mod held_report;
 pub mod hook_install;
 pub mod inbox;
+pub mod job_exit;
 pub mod master;
 pub mod master_exit;
 pub mod master_limit;

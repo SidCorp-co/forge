@@ -28,6 +28,7 @@ use crate::daemon::agent_activity;
 use crate::daemon::checkpoint;
 use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::held_report;
+use crate::daemon::job_exit;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::master_limit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
@@ -1077,6 +1078,7 @@ async fn sweep(
     }
 
     report_account_limit(client, &served, &account_said, account_limit_said, now_unix).await;
+    report_job_capacity(cfg, job_panes, activity);
 
     let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
     let sessions = run_record::CoreSessions(client);
@@ -1115,6 +1117,73 @@ async fn sweep(
     )
     .await;
     delay
+}
+
+/// Say, once, that this box can take no more work — and once again when it can.
+///
+/// Measured sid-xeon-1 2026-09-23: two finished job panes held both slots and
+/// the daemon refused all eight bound projects 48 times in two minutes, one
+/// `info!` at a time, each naming only the project it had just refused. Nothing
+/// anywhere said the box as a whole had stopped, what was holding it, or
+/// whether the sweep that returns a slot was still running — so the condition
+/// was legible only to somebody who already suspected it.
+///
+/// The sweep's own last run is in the line because the slot comes back on that
+/// sweep and nowhere else: a reader meeting this needs to know whether the
+/// panes are working or the supervisor is not.
+fn report_job_capacity(
+    cfg: &Config,
+    job_panes: &Arc<JobPanes>,
+    activity: &agent_activity::Activities,
+) {
+    let bound = cfg.runner.max_job_panes.max(1) as usize;
+    let holding = job_panes.holding();
+    if holding.len() < bound {
+        if job_panes.said_at_bound(None).is_some() {
+            tracing::warn!(
+                "[master] this box is under its job-pane ceiling again ({} of {bound} held) — the pool is claimable",
+                holding.len()
+            );
+        }
+        return;
+    }
+    let mark = holding
+        .iter()
+        .map(|h| h.job_id.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    if job_panes.said_at_bound(Some(mark.clone())).as_deref() == Some(mark.as_str()) {
+        return;
+    }
+    let now = agent_activity::now_ms();
+    let who = holding
+        .iter()
+        .map(|h| {
+            // The same precedence the sweep itself reads on: what this daemon
+            // has heard, and otherwise what the last one recorded.
+            let seen = h
+                .session
+                .as_deref()
+                .and_then(|s| activity.get(s))
+                .map(|a| job_exit::Reported::of(&a))
+                .or(h.seen);
+            format!(
+                "{} in {} for {}m, {}",
+                h.job_id,
+                h.pane,
+                now.saturating_sub(h.noted_at) / 60_000,
+                job_exit::holding_phrase(seen, now)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let swept = match job_panes.last_swept() {
+        Some(at) => format!("{}s ago", now.saturating_sub(at) / 1000),
+        None => "never since this daemon started".to_string(),
+    };
+    tracing::warn!(
+        "[master] every project bound to this box is being refused the pool: all {bound} job slot(s) are held (max_job_panes = {bound}) — {who}. The job supervisor last swept {swept}."
+    );
 }
 
 fn account_verdict(
@@ -1227,7 +1296,10 @@ async fn take_pool_job(
     )
     .await;
     if let pool_jobs::Took::AtBound = took {
-        tracing::info!(
+        // Per project and per pass, which is eight projects times six passes a
+        // minute on the box this was measured on. What an operator reads is
+        // `report_job_capacity`, once on the edge, for the box as a whole.
+        tracing::debug!(
             "[master] {}: {} job pane(s) already open on this box (max_job_panes = {bound}) — taking no more this pass",
             runner.slug,
             job_panes.count()
@@ -2594,6 +2666,180 @@ mod tests {
         assert!(
             barrier < claim,
             "the barrier has to precede the claim, or it gates nothing (ISS-1080)"
+        );
+    }
+
+    fn box_at(bound: u32) -> Config {
+        let mut cfg = Config::default();
+        cfg.runner.max_job_panes = bound;
+        cfg
+    }
+
+    #[test]
+    fn a_box_that_can_take_no_more_work_says_so_once_and_names_what_holds_it() {
+        use crate::daemon::turn_evidence::Watch;
+        let cfg = box_at(2);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        let activity = agent_activity::Activities::new();
+        for job in ["j1", "j2"] {
+            let session = format!("sess-{job}");
+            panes.note(
+                job,
+                &pool_jobs::pane_name(job),
+                Watch::Hooked {
+                    session_id: session.clone(),
+                    delivered_at: agent_activity::now_ms(),
+                },
+            );
+            for event in [
+                agent_activity::Event::PromptSubmitted,
+                agent_activity::Event::Stopped,
+            ] {
+                activity.record(
+                    &session,
+                    agent_activity::Report {
+                        event,
+                        at: agent_activity::now_ms()
+                            - job_exit::IDLE_BEFORE_FINISHED.as_millis() as i64
+                            - 1,
+                        subject: None,
+                        conversation: None,
+                    },
+                );
+            }
+        }
+
+        let first = give_back_tests::logged_while(|| report_job_capacity(&cfg, &panes, &activity));
+
+        assert!(first.contains("every project bound to this box"), "{first}");
+        assert!(first.contains("max_job_panes = 2"), "{first}");
+        assert!(first.contains("j1"), "{first}");
+        assert!(first.contains("j2"), "{first}");
+        assert!(first.contains("forge-job-j1"), "{first}");
+        assert!(
+            first.contains("finished"),
+            "the line says what each slot is holding, not only that one is: {first}"
+        );
+        assert!(
+            first.contains("last swept never since this daemon started"),
+            "the slot comes back on that sweep and nowhere else, so a reader is told when it last ran: {first}"
+        );
+
+        let again = give_back_tests::logged_while(|| report_job_capacity(&cfg, &panes, &activity));
+
+        assert_eq!(
+            again, "",
+            "eight projects times every pass is the 48 lines in two minutes this replaced: {again}"
+        );
+    }
+
+    #[test]
+    fn a_ceiling_after_a_restart_says_what_the_record_says_the_pane_is() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        use crate::daemon::turn_evidence::Watch;
+        let cfg = box_at(1);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        panes.hold(
+            "j1",
+            "forge-job-j1",
+            Watch::Adopted {
+                session_id: "sess-1".into(),
+            },
+            Some(job_exit::Reported {
+                doing: Doing::Idle,
+                last_event: Event::Stopped,
+                at: agent_activity::now_ms()
+                    - job_exit::IDLE_BEFORE_FINISHED.as_millis() as i64
+                    - 1,
+                prompts: 1,
+            }),
+        );
+
+        // Nothing has been heard in THIS daemon: the pane went quiet before the
+        // restart and will never report again.
+        let out = give_back_tests::logged_while(|| {
+            report_job_capacity(&cfg, &panes, &agent_activity::Activities::new())
+        });
+
+        assert!(
+            out.contains("finished"),
+            "a reader told the pane has reported nothing, while the next sweep is about to conclude it finished, has two answers to one question: {out}"
+        );
+        assert!(!out.contains("reported nothing"), "{out}");
+    }
+
+    #[test]
+    fn a_box_that_is_taking_work_again_says_that_too() {
+        use crate::daemon::turn_evidence::Watch;
+        let cfg = box_at(1);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        let activity = agent_activity::Activities::new();
+        panes.note("j1", "forge-job-j1", Watch::Unhooked);
+        give_back_tests::logged_while(|| report_job_capacity(&cfg, &panes, &activity));
+        assert!(
+            panes.said_at_bound(None).is_some(),
+            "the box was at its ceiling"
+        );
+        panes.said_at_bound(Some("j1".into()));
+
+        panes.forget("j1");
+        let out = give_back_tests::logged_while(|| report_job_capacity(&cfg, &panes, &activity));
+
+        assert!(out.contains("under its job-pane ceiling again"), "{out}");
+        assert!(
+            panes.said_at_bound(None).is_none(),
+            "the condition is over and is said once"
+        );
+        assert_eq!(
+            give_back_tests::logged_while(|| report_job_capacity(&cfg, &panes, &activity)),
+            "",
+            "a box under its ceiling says nothing every pass"
+        );
+    }
+
+    #[test]
+    fn a_box_below_its_ceiling_that_never_reached_it_says_nothing() {
+        let cfg = box_at(2);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        assert_eq!(
+            give_back_tests::logged_while(|| report_job_capacity(
+                &cfg,
+                &panes,
+                &agent_activity::Activities::new()
+            )),
+            ""
+        );
+    }
+
+    #[test]
+    fn a_ceiling_held_by_different_jobs_is_a_different_condition() {
+        use crate::daemon::turn_evidence::Watch;
+        let cfg = box_at(1);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        let activity = agent_activity::Activities::new();
+        panes.note("j1", "forge-job-j1", Watch::Unhooked);
+        give_back_tests::logged_while(|| report_job_capacity(&cfg, &panes, &activity));
+
+        panes.forget("j1");
+        panes.note("j2", "forge-job-j2", Watch::Unhooked);
+        let out = give_back_tests::logged_while(|| report_job_capacity(&cfg, &panes, &activity));
+
+        assert!(
+            out.contains("j2"),
+            "a ceiling somebody else is now holding is news: {out}"
+        );
+    }
+
+    #[test]
+    fn the_per_project_refusal_is_no_longer_what_an_operator_reads() {
+        let body = THIS_SOURCE
+            .split("async fn take_pool_job(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        assert!(
+            !body.contains("tracing::info!"),
+            "this fired once per bound project per pass — 48 lines in two minutes across eight projects, none of them saying the box as a whole had stopped (ISS-1205): {body}"
         );
     }
 
