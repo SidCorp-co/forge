@@ -15,7 +15,7 @@
 // was seeded with — so a stage-permissions save from the same page load, which writes
 // other leaves of the same `states` map, overlaps at no path and both land (ISS-1170).
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Banner,
   Button,
@@ -26,6 +26,7 @@ import {
 } from "@/design";
 import { useProjectRunners } from "@/features/runners/hooks";
 import type { ProjectRunner } from "@/features/runners/types";
+import { useSettingsDraft } from "../draft";
 import { useUpdatePipelineConfig } from "../hooks";
 import { PIPELINE_STATUS_ROWS, type PipelineConfig, sectionWrite } from "../types";
 import { SaveRefusedBanner } from "./save-refused-banner";
@@ -68,6 +69,11 @@ function blockedReason(r: ProjectRunner): string | null {
   return null;
 }
 
+/** This draft is one array per stage, which the document holds at `states.<stage>.deviceIds`. */
+function locatePool(path: readonly string[]): string[] | null {
+  return path[0] === "states" && path[2] === "deviceIds" && path[1] ? [path[1]] : null;
+}
+
 export function RunnerPoolsSection({
   projectId,
   config,
@@ -85,11 +91,11 @@ export function RunnerPoolsSection({
   );
 
   const seeded = useMemo(() => seedPools(config), [config]);
-  const [pools, setPools] = useState<PoolMap>(seeded);
-  useEffect(() => {
-    setPools(seedPools(config));
-  }, [config]);
-
+  const held = useSettingsDraft(seeded, { locate: locatePool });
+  const pools = held.draft;
+  const setPools = held.setDraft;
+  // Order-insensitive and blind to an empty pool, which `held.dirty` is not: a stage cleared
+  // when it was already empty is not an edit.
   const dirty = snapshot(pools) !== snapshot(seeded);
 
   const known = useMemo(() => new Set(runners.map((r) => r.deviceId)), [runners]);
@@ -248,13 +254,12 @@ export function RunnerPoolsSection({
             </Banner>
           )}
 
-          {update.isError && (
-            <SaveRefusedBanner
-              projectId={projectId}
-              error={update.error}
-              onDismiss={() => update.reset()}
-            />
-          )}
+          <SaveRefusedBanner
+            projectId={projectId}
+            error={update.isError ? update.error : null}
+            onDismiss={() => update.reset()}
+            draft={held}
+          />
 
           {update.isSuccess && !dirty && (
             <Banner tone="success" onDismiss={() => update.reset()}>

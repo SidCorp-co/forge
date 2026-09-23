@@ -11,7 +11,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import type { ProjectDetail } from "@/features/projects/types";
 import { TestingTab } from "./components/testing-tab";
 
 expect.extend(matchers);
@@ -20,6 +19,9 @@ type Doc = Record<string, unknown>;
 
 let stored: Doc;
 let sent: unknown[];
+/** Held open, or made to fail, by the cases about a read that has not landed. */
+let held: Promise<void> | null;
+let fails: boolean;
 
 vi.mock("@/lib/api/client", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -40,6 +42,11 @@ vi.mock("@/lib/api/client", async () => {
 				}
 				stored = applyDocumentPatch(stored, write.patch);
 				return { environments: stored };
+			}
+			if (path.endsWith("/environments")) {
+				if (fails) throw new ApiError(500, "the environments read failed", "SERVER_ERROR");
+				if (held) await held;
+				return { environments: structuredClone(stored) };
 			}
 			throw new Error(`unmocked ${init?.method ?? "GET"} ${path}`);
 		},
@@ -62,14 +69,17 @@ const START: Doc = {
 	limits: "The QA account is not a member of every project.",
 };
 
-function mount() {
+async function mount() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	const project = { id: "p1", environments: structuredClone(stored) } as unknown as ProjectDetail;
-	return render(
+	const view = render(
 		<QueryClientProvider client={qc}>
-			<TestingTab project={project} canEdit />
+			<TestingTab projectId="p1" canEdit />
 		</QueryClientProvider>,
 	);
+	// The form seeds from the environments document's own read, so nothing is on screen until
+	// that read lands (ISS-1170).
+	await screen.findByDisplayValue("https://preview.example");
+	return view;
 }
 
 function clear(label: RegExp | string) {
@@ -84,13 +94,15 @@ function save() {
 beforeEach(() => {
 	stored = structuredClone(START);
 	sent = [];
+	held = null;
+	fails = false;
 	toast.mockClear();
 });
 afterEach(cleanup);
 
 describe("clearing every rendered preview field", () => {
 	beforeEach(async () => {
-		mount();
+		await mount();
 		clear(/preview url/i);
 		clear(/preview api url/i);
 		fireEvent.click(screen.getAllByRole("button", { name: /remove/i })[0]);
@@ -125,9 +137,44 @@ describe("clearing every rendered preview field", () => {
 	});
 });
 
+// F1 of the ISS-1170 criterion-20 review: the form seeds from the environments document, so a
+// read that has not landed or has failed must not present an editable form over an unread base.
+describe("before the document is in hand", () => {
+	it("offers no editable field while the read is in flight", async () => {
+		const opened: { release: () => void } = { release: () => {} };
+		held = new Promise<void>((resolve) => {
+			opened.release = resolve;
+		});
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		render(
+			<QueryClientProvider client={qc}>
+				<TestingTab projectId="p1" canEdit />
+			</QueryClientProvider>,
+		);
+		expect(screen.queryByRole("button", { name: /save testing config/i })).toBeNull();
+		expect(screen.queryByLabelText(/environment limits/i)).toBeNull();
+		opened.release();
+		held = null;
+		await screen.findByDisplayValue("https://preview.example");
+	});
+
+	it("says the read failed and offers it again, rather than a blank form", async () => {
+		fails = true;
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		render(
+			<QueryClientProvider client={qc}>
+				<TestingTab projectId="p1" canEdit />
+			</QueryClientProvider>,
+		);
+		await screen.findByRole("button", { name: /retry/i });
+		expect(screen.queryByLabelText(/environment limits/i)).toBeNull();
+		expect(screen.queryByRole("button", { name: /save testing config/i })).toBeNull();
+	});
+});
+
 describe("a limits edit", () => {
 	it("sends that key alone and leaves both deployment sides standing", async () => {
-		mount();
+		await mount();
 		fireEvent.change(screen.getByLabelText(/environment limits/i), {
 			target: { value: "No issue ever rests at the release gate here." },
 		});

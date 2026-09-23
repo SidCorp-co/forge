@@ -3075,6 +3075,10 @@
   set is now 59.
 
 ### Fixed
+- **A refused settings save no longer throws away the edits it offered to rescue.** The banner
+  names what moved and offers two ways on: take the stored values, or keep yours. Edits elsewhere
+  on the page stand either way.
+
 
 - **The API starts again: the production image shipped without a package it imports at runtime.**
   Two services read helpers out of `@forge/contracts/document-patch` as values rather than types,

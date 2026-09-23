@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Button,
   CardTitle,
@@ -10,6 +10,7 @@ import {
   Textarea,
   Toggle,
 } from "@/design";
+import { useSettingsDraft } from "../draft";
 import { useUpdatePipelineConfig } from "../hooks";
 import { providerForMcpServerName } from "@/features/integrations/providers/registry";
 import {
@@ -37,6 +38,8 @@ function customEntries(map: ServerMap): Array<{ name: string; value: unknown }> 
     .map(([name, value]) => ({ name, value }));
 }
 
+const AT = ["mcpServers"] as const;
+
 export function McpServersSection({
   projectId,
   config,
@@ -54,11 +57,8 @@ export function McpServersSection({
     return m && typeof m === "object" ? (m as ServerMap) : {};
   }, [config.mcpServers]);
 
-  // Local working copy of the map; reset whenever the server config changes.
-  const [draft, setDraft] = useState<ServerMap>(serverMap);
-  useEffect(() => {
-    setDraft(serverMap);
-  }, [serverMap]);
+  const held = useSettingsDraft(serverMap, { at: AT });
+  const { draft, setDraft } = held;
 
   // "Add custom server" form state.
   const [addOpen, setAddOpen] = useState(false);
@@ -66,7 +66,7 @@ export function McpServersSection({
   const [customSpec, setCustomSpec] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(serverMap);
+  const dirty = held.dirty;
 
   function toggleCatalog(name: string, on: boolean) {
     setDraft((d) => {
@@ -227,13 +227,12 @@ export function McpServersSection({
             </Button>
           )}
 
-          {update.isError && (
-            <SaveRefusedBanner
-              projectId={projectId}
-              error={update.error}
-              onDismiss={() => update.reset()}
-            />
-          )}
+          <SaveRefusedBanner
+            projectId={projectId}
+            error={update.isError ? update.error : null}
+            onDismiss={() => update.reset()}
+            draft={held}
+          />
 
           <Button
             variant="primary"
