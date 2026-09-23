@@ -46,6 +46,7 @@ import {
   deriveBlockerState,
   deriveStepOutcomes,
   runningStepOf,
+  issueQueryKey,
   parseChecklist,
   statusLabel,
   statusToChip,
@@ -144,10 +145,15 @@ export function IssueDetailScreen({
     useGuardedTransition();
   const qc = useQueryClient();
   const resumeRun = useResumeRun();
+  // ISS-1160 — a display-key load keys `useIssue` on `id`+`projectId` (never
+  // globally unique on `id` alone), so an invalidation naming only the
+  // canonical uuid this mutation reports misses that entry; name both.
+  const refreshIssue = () => {
+    qc.invalidateQueries({ queryKey: ["issue", issue?.id ?? id] });
+    qc.invalidateQueries({ queryKey: issueQueryKey(id, projectId) });
+  };
   const onResumeRun = (runId: string) =>
-    resumeRun.mutate(runId, {
-      onSuccess: () => qc.invalidateQueries({ queryKey: ["issue", issue?.id ?? id] }),
-    });
+    resumeRun.mutate(runId, { onSuccess: refreshIssue });
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
@@ -202,13 +208,15 @@ export function IssueDetailScreen({
     );
   }
 
-  const onTransition = (toStatus: IssueStatus) => requestTransition(issue.id, toStatus);
+  const onTransition = (toStatus: IssueStatus) =>
+    requestTransition(issue.id, toStatus, { onSuccess: refreshIssue });
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
-    patch.mutate({ id: issue.id, body });
+    patch.mutate({ id: issue.id, body }, { onSuccess: refreshIssue });
 
-  const onApprove = () => requestTransition(issue.id, "approved", { successMessage: "Issue approved" });
+  const onApprove = () =>
+    requestTransition(issue.id, "approved", { successMessage: "Issue approved", onSuccess: refreshIssue });
   const onBannerResume = () =>
-    requestTransition(issue.id, "reopen", { successMessage: "Issue resumed" });
+    requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
 
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;

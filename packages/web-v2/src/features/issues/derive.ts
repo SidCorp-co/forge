@@ -1024,3 +1024,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function canonicalIssueId(rawId: string, fetchedId: string | undefined): string | undefined {
 	return UUID_RE.test(rawId) ? rawId : fetchedId;
 }
+
+export function issueQueryKey(id: string | undefined, projectId: string | undefined): readonly unknown[] {
+	return !id || UUID_RE.test(id) ? ["issue", id] : ["issue", id, projectId];
+}

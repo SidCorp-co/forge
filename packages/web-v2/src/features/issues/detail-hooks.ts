@@ -5,13 +5,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { issueDetailApi } from "./detail-api";
+import { issueQueryKey } from "./derive";
 
 // ISS-1160 — `id` is the display key as often as the row uuid; `projectId` is
 // what lets it resolve. Optional here (some callers hold only a uuid already),
 // required by the screen that reaches these hooks off a followed link.
 export function useIssue(id: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", id],
+    queryKey: issueQueryKey(id, projectId),
     queryFn: () => issueDetailApi.get(id as string, projectId),
     enabled: !!id,
   });
