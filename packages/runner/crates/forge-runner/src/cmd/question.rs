@@ -169,6 +169,29 @@ fn project_id_of(cfg: &Config, project: &str) -> String {
         .unwrap_or_else(|| project.to_string())
 }
 
+/// The identity this ask is registered under.
+///
+/// An absent `--run` is minted, because a master asking from its pane may hold
+/// no run id and would otherwise be unable to read its own answer back. An
+/// EMPTY one is a caller that meant to pass an identity and passed nothing, and
+/// it is refused rather than treated as absent: core registers a waiter only
+/// for a truthy `runId`, so an empty string is accepted by the door, no waiter
+/// is written, and the read-back this verb prints refuses forever. A run is
+/// kernel input, where a representable-looking wrong value is how state starts
+/// lying, so it is refused by name.
+fn run_identity(run: Option<&str>) -> anyhow::Result<String> {
+    match run {
+        None => Ok(uuid::Uuid::new_v4().to_string()),
+        Some(r) if r.trim().is_empty() => anyhow::bail!(
+            "`--run` was given with nothing in it. An empty run identity registers this box as \
+             the waiter for nothing, so the question would be created and its answer never \
+             readable from here. Pass the run this question belongs to, or leave `--run` off \
+             and one is minted for you."
+        ),
+        Some(r) => Ok(r.trim().to_string()),
+    }
+}
+
 fn client_for(ctx: &Ctx, cfg: &Config) -> anyhow::Result<CoreClient> {
     let Some(core_url) = ctx.resolve_core_url(cfg) else {
         anyhow::bail!(
@@ -222,14 +245,12 @@ async fn ask(ctx: Ctx, a: AskArgs) -> anyhow::Result<()> {
     // Refused here rather than inside `send_ask` so a malformed `--option`
     // costs no round trip and reads as this verb's refusal, not core's.
     shape_of(&a)?;
+    run_identity(a.run.as_deref())?;
     let cfg = Config::load()?;
     let client = client_for(&ctx, &cfg)?;
     let project_id = project_id_of(&cfg, &a.project);
     let id = uuid::Uuid::new_v4().to_string();
-    let run_id = a
-        .run
-        .clone()
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let run_id = run_identity(a.run.as_deref())?;
     match send_ask(&client, &a, &project_id, &id, &run_id).await {
         Ok(question_id) => {
             print!("{}", asked(&question_id, &run_id, a.issue.as_deref()));
@@ -432,6 +453,34 @@ mod tests {
     fn an_unbound_project_is_sent_exactly_as_it_was_typed() {
         let cfg = Config::default();
         assert_eq!(project_id_of(&cfg, "typo-dev"), "typo-dev");
+    }
+
+    #[test]
+    fn no_run_at_all_mints_one_so_the_caller_can_always_come_back() {
+        let minted = run_identity(None).unwrap();
+        assert_eq!(minted.len(), 36, "a minted identity is a uuid: {minted}");
+        assert_ne!(minted, run_identity(None).unwrap(), "each ask gets its own");
+    }
+
+    #[test]
+    fn a_run_that_was_given_is_carried_as_given() {
+        assert_eq!(run_identity(Some("  run-7 ")).unwrap(), "run-7");
+    }
+
+    /// The door registers a waiter only for a truthy `runId`, so an empty one
+    /// is taken, writes no waiter, and leaves the read-back refusing forever.
+    #[test]
+    fn an_empty_run_is_refused_rather_than_read_as_no_run_at_all() {
+        for given in ["", "   ", "\t"] {
+            let err = run_identity(Some(given))
+                .expect_err("an empty run identity must not be read as an absent one");
+            let text = format!("{err}");
+            assert!(text.contains("--run"), "{text}");
+            assert!(
+                text.contains("waiter for nothing"),
+                "the refusal must say what an empty identity costs: {text}"
+            );
+        }
     }
 
     #[test]
