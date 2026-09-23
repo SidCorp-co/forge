@@ -51,19 +51,23 @@ export const REQUEST_HELPERS: Record<string, { transports: readonly string[]; wh
   },
 };
 
-const TEMPLATE = '`(?:[^`\\\\]|\\\\.)*`';
-
-/** The value after a property key, up to the point this property's own bracket depth returns to zero. */
-function propertyValue(text: string, from: number): string {
+/** The text from `from` up to whichever of `stops` this expression's own bracket depth returns to zero at. */
+function untilTopLevel(text: string, from: number, stops: string): string {
   let depth = 0;
   let i = from;
   for (; i < text.length; i += 1) {
     const c = text[i];
-    if (depth === 0 && (c === ',' || c === '}')) break;
+    if (c === undefined) break;
+    if (depth === 0 && stops.includes(c)) break;
     if (c === '(' || c === '{' || c === '[') depth += 1;
     else if (c === ')' || c === '}' || c === ']') depth -= 1;
   }
   return text.slice(from, i).trim();
+}
+
+/** The value after a property key, up to the point this property's own bracket depth returns to zero. */
+function propertyValue(text: string, from: number): string {
+  return untilTopLevel(text, from, ',}');
 }
 
 /** The argument between a call's own parentheses, a formatter's trailing comma trimmed off. */
@@ -103,25 +107,38 @@ function clientGetValues(text: string): Array<{ at: number; raw: string }> {
   return out;
 }
 
+/** True where `name(` is that name's own declaration, never a call to it — `async function githubJson(`. */
+function isDeclarationSite(text: string, nameAt: number): boolean {
+  return /\bfunction\s+$/.test(text.slice(Math.max(0, nameAt - 20), nameAt));
+}
+
+/**
+ * Every `doFetch`/`fetch`/`githubJson` argument that carries the URL, whatever expression it is.
+ * `githubJson(doFetch, url, …)` takes it second; the other two take it first.
+ */
+function fetchValues(text: string): Array<{ at: number; raw: string }> {
+  const out: Array<{ at: number; raw: string }> = [];
+  const re = /\b(?:doFetch|fetch|githubJson)\b\s*(?:<[\s\S]*?>)?\s*\(\s*/g;
+  for (let m = re.exec(text); m !== null; m = re.exec(text)) {
+    if (isDeclarationSite(text, m.index)) continue;
+    let at = m.index + m[0].length;
+    const skip = /^doFetch\s*,\s*/.exec(text.slice(at, at + 40));
+    if (skip) at += skip[0].length;
+    out.push({ at, raw: untilTopLevel(text, at, ',)') });
+  }
+  return out;
+}
+
 /** Where a GitHub path can appear, and how the method that goes with it is known. */
 const PATH_SITES: Array<{
   values: (text: string) => Array<{ at: number; raw: string }>;
-  method: 'enclosing' | 'GET';
-  kind: 'path';
+  method: 'enclosing' | 'GET' | 'following';
+  kind: 'path' | 'fetch';
 }> = [
   { values: pathPropertyValues, method: 'enclosing', kind: 'path' },
   { values: clientGetValues, method: 'GET', kind: 'path' },
+  { values: fetchValues, method: 'following', kind: 'fetch' },
 ];
-
-/** A `doFetch`/`fetch`/`githubJson` call named with a template; an opaque one is `unreadableRequests`' own scan. */
-const FETCH_SITE = {
-  re: new RegExp(
-    String.raw`\b(?:doFetch|fetch|githubJson)\s*(?:<[\s\S]*?>)?\s*\(\s*(?:doFetch\s*,\s*)?(${TEMPLATE})`,
-    'g',
-  ),
-  method: 'following' as const,
-  kind: 'fetch' as const,
-};
 
 /**
  * The file with every comment blanked and its line count kept.
@@ -252,12 +269,6 @@ export function collectGitHubCalls(source: string, file: string): FoundCall[] {
       out.push(callFromRaw(text, file, at, raw, site.method, site.kind));
     }
   }
-  FETCH_SITE.re.lastIndex = 0;
-  for (let m = FETCH_SITE.re.exec(text); m !== null; m = FETCH_SITE.re.exec(text)) {
-    const raw = m[1] ?? '';
-    const at = m.index + m[0].indexOf(raw);
-    out.push(callFromRaw(text, file, at, raw, FETCH_SITE.method, FETCH_SITE.kind));
-  }
   return out;
 }
 
@@ -285,30 +296,15 @@ export function callsInTree(): FoundCall[] {
   );
 }
 
-/**
- * The two shapes that hide a URL, with the line each sits on so a failure can point at it.
- *
- * Neither is counted twice: the first branch takes only arguments that are not templates, which is
- * exactly what the second does not see.
- */
+/** Every request whose URL `collectGitHubCalls` could not read, with the line it sits on. */
 export function unreadableRequests(
   file: string,
   source: string,
 ): Array<{ line: number; raw: string }> {
-  const text = withoutComments(source);
-  const out: Array<{ line: number; raw: string }> = [];
-  for (const m of text.matchAll(/\b(?:doFetch|fetch)\s*\(/g)) {
-    const after = text.slice(m.index + m[0].length).trimStart();
-    if (after.startsWith('`')) continue;
-    out.push({
-      line: text.slice(0, m.index).split('\n').length,
-      raw: after.split(/[,)\n]/)[0] ?? '',
-    });
-  }
-  for (const c of collectGitHubCalls(source, file)) {
-    if (c.kind === 'fetch' && c.unresolved) out.push({ line: c.line, raw: c.raw });
-  }
-  return out.sort((a, b) => a.line - b.line);
+  return collectGitHubCalls(source, file)
+    .filter((c) => c.kind === 'fetch' && c.unresolved)
+    .map((c) => ({ line: c.line, raw: c.raw }))
+    .sort((a, b) => a.line - b.line);
 }
 
 /** Whether this file holds any of them at all. */

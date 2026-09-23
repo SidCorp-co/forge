@@ -352,6 +352,31 @@ describe('a transport reached through a property, which one word boundary sees (
     ].join('\n');
     expect(collectGitHubCalls(planted, 'planted.ts')).toEqual([]);
   });
+
+  it('names a bare identifier passed as the URL argument to githubJson, rather than passing over it', () => {
+    const planted = [
+      'async function readIt(doFetch, token) {',
+      '  return githubJson(doFetch, someUrl, token);',
+      '}',
+    ].join('\n');
+    const found = collectGitHubCalls(planted, 'planted.ts');
+    expect(found).toHaveLength(1);
+    expect(found[0]?.unresolved).toContain('someUrl');
+    expect(found[0]?.line).toBe(2);
+  });
+
+  it("reads a request helper's own signature as a declaration, never as a request", () => {
+    const planted = [
+      'async function githubJson(',
+      '  doFetch,',
+      '  url,',
+      '  authorization,',
+      ') {',
+      '  return doFetch(url, { headers: { authorization } });',
+      '}',
+    ].join('\n');
+    expect(unreadableRequests('planted.ts', planted).map((r) => r.raw)).toEqual(['url']);
+  });
 });
 
 describe('what an installation is short of (ISS-1153)', () => {
