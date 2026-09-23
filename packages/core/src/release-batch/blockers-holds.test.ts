@@ -13,11 +13,16 @@ import type { RunnerHold } from '../runners/ineligible.js';
 const selectRows = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
 const execRows = vi.fn(async () => [] as unknown[]);
+/** The joined read behind `issueDisplayIds`, which names a held issue as a screen does. */
+const joinRows = vi.fn(async () => [] as unknown[]);
 
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
-      from: () => ({ where: () => Object.assign(selectRows(), { limit: selectLimit }) }),
+      from: () => ({
+        where: () => Object.assign(selectRows(), { limit: selectLimit }),
+        innerJoin: () => ({ where: () => joinRows() }),
+      }),
     }),
     execute: () => execRows(),
   },
@@ -128,6 +133,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   listBindings.mockResolvedValue([]);
   selectLimit.mockResolvedValue([]);
+  joinRows.mockResolvedValue([]);
   selectRows.mockResolvedValue([]);
   execRows.mockResolvedValue([]);
   onlineIds.mockResolvedValue([]);
@@ -205,11 +211,17 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     autoRelease.mockResolvedValue(true);
     unearned.mockResolvedValue([heldReport(ISSUE_A, [3, 7])]);
 
+    joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1127, issuePrefix: 'ISS' }]);
+
     const report = await collectReleaseBlockers(PROJECT_ID);
     const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
 
     expect(held?.scope).toBe('roster');
-    expect(held?.message).toContain('owes criterion 3, 7');
+    expect(held?.message).toContain('`ISS-1127` owes criterion 3, 7');
+    expect(held?.message).not.toContain(ISSUE_A);
+    expect(held?.details?.held).toEqual([
+      { issueId: ISSUE_A, displayId: 'ISS-1127', criteria: [3, 7] },
+    ]);
   });
 
   // The create door answers about the list it was given, and does not read
@@ -252,11 +264,65 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
       { issueId: ISSUE_B, unearned: [], broken: [] },
     ]);
 
+    joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1142, issuePrefix: 'ISS' }]);
+
     const report = await collectReleaseBlockers(PROJECT_ID);
 
     expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
     const warned = report.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK');
     expect(warned?.message).toContain('A release will still be cut');
-    expect(warned?.message).toContain(ISSUE_A);
+    expect(warned?.message).toContain('`ISS-1142` owes criterion 1');
+    expect(warned?.message).not.toContain(ISSUE_A);
+  });
+
+  // The names are a courtesy on top of the reason. Returning on a failed name
+  // read would spend an actionable blocker on a lookup nobody asked for.
+  it('keeps the blocker standing beside the unevaluated entry where the name read throws', async () => {
+    ready();
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([heldReport(ISSUE_A, [4])]);
+    joinRows.mockRejectedValue(new Error('names unavailable'));
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+    const codes = report.blockers.map((b) => b.code);
+
+    expect(codes).toContain('RELEASE_CRITERIA_UNEARNED');
+    expect(codes).toContain('RELEASE_CHECK_UNEVALUATED');
+    const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
+    expect(held?.message).toContain(`\`${ISSUE_A}\` owes criterion 4`);
+  });
+
+  it('keeps the held-back warning too where the name read throws on a partly held roster', async () => {
+    projectRow();
+    liveBinding(DECLARED);
+    selectRows.mockResolvedValue([
+      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
+      { id: ISSUE_B, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
+    ]);
+    execRows.mockResolvedValue([{ device_id: 'dev-1' }]);
+    onlineIds.mockResolvedValue(['dev-1']);
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([
+      heldReport(ISSUE_A, [5]),
+      { issueId: ISSUE_B, unearned: [], broken: [] },
+    ]);
+    joinRows.mockRejectedValue(new Error('names unavailable'));
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+
+    expect(report.warnings.map((w) => w.code)).toContain('RELEASE_CRITERIA_HELD_BACK');
+    expect(report.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+
+  it('leaves the uuid standing where the name read came back without that row', async () => {
+    ready();
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([heldReport(ISSUE_A, [2])]);
+    joinRows.mockResolvedValue([]);
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+    const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
+
+    expect(held?.message).toContain(`\`${ISSUE_A}\` owes criterion 2`);
   });
 });

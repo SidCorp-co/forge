@@ -19,6 +19,7 @@ import {
   heldBackWarningSentence,
   releaseBlockerSentence,
   runnerHoldClause,
+  runnerPreferenceUnmetSentence,
 } from './blocker-sentences.js';
 
 function hold(over: Partial<RunnerHold> = {}): RunnerHold {
@@ -102,6 +103,38 @@ describe('NO_RUNNER_ONLINE', () => {
   });
 });
 
+describe('the release runner label', () => {
+  it('sends the operator to the box, not back round the loop, when the label is unmet', () => {
+    const message = runnerPreferenceUnmetSentence('release');
+
+    expect(message).toContain('Label the box that holds the deploy credential');
+    expect(message).toContain('Settings \u2192 Runners');
+  });
+
+  it('says what withdrawing the label costs, in the same breath as offering it', () => {
+    const message = runnerPreferenceUnmetSentence('release');
+
+    expect(message).toContain('Withdrawing the label instead');
+    expect(message).toContain('RELEASE_RUNNER_UNDECLARED');
+    expect(message).toContain('does stop a release');
+  });
+
+  it('offers no withdrawal from the reason withdrawal produces', () => {
+    const message = releaseBlockerSentence('RELEASE_RUNNER_UNDECLARED');
+
+    expect(message.toLowerCase()).not.toContain('withdraw');
+    expect(message).not.toContain('`null`');
+  });
+
+  it('tells a project with one unlabelled box that naming a label still releases', () => {
+    const message = releaseBlockerSentence('RELEASE_RUNNER_UNDECLARED');
+
+    expect(message).toContain('Set `releaseRunnerLabel` on the live deploy binding');
+    expect(message).toContain('does not restrict the pool');
+    expect(message).toContain('the pool this project has');
+  });
+});
+
 describe('RELEASE_ROSTER_EMPTY', () => {
   it('counts what stands one move short of the gate and names the move', () => {
     const message = releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 11 });
@@ -138,12 +171,34 @@ describe('RELEASE_ROSTER_EMPTY', () => {
       expect(message).not.toContain('is an act of its own');
     }
   });
+
+  // It said 'Nothing but the issue's own record moves it' and then 'Its status
+  // control carries the same move', which read cold is the control refusing and
+  // the control doing it. One answer, or the reader picks (ISS-1127).
+  it('gives one account of the move rather than two that read against each other', () => {
+    for (const details of [{ nearGate: 11 }, { nearGate: 0 }]) {
+      const message = releaseBlockerSentence('RELEASE_ROSTER_EMPTY', details);
+
+      expect(message).not.toContain("Nothing but the issue's own record moves it");
+      expect(message).toContain('once its own record earns it');
+      expect(message).toContain('With those written');
+    }
+  });
+});
+
+describe('a box taken out of the pool', () => {
+  it('names the status that was read rather than who is supposed to have set it', () => {
+    const clause = runnerHoldClause(hold({ reason: 'retired', detail: 'disabled' }));
+
+    expect(clause).toContain('`disabled`');
+    expect(clause).not.toContain('by an operator');
+  });
 });
 
 describe('the criteria hold', () => {
   const held = [
-    { issueId: 'ISS-1127', criteria: [3, 7] },
-    { issueId: 'ISS-1142', criteria: [1] },
+    { issueId: 'e5f0-uuid-a', displayId: 'ISS-1127', criteria: [3, 7] },
+    { issueId: 'e5f0-uuid-b', displayId: 'ISS-1142', criteria: [1] },
   ];
 
   it('names each held issue and the criteria it owes', () => {

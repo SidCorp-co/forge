@@ -62,6 +62,10 @@ function snapshot(pools: PoolMap): string {
 function blockedReason(r: ProjectRunner): string | null {
   if (r.deviceDisabledAt) return "turned off";
   if (r.deviceStatus === "revoked") return "revoked";
+  // A draining or disabled runner is up and reporting and taking nothing, so
+  // calling it offline contradicted the release blocker naming the same box as
+  // up, a few hundred pixels above on this same tab (ISS-1127).
+  if (r.runnerStatus === "draining" || r.runnerStatus === "disabled") return "out of the pool";
   if (r.deviceStatus !== "online" || r.runnerStatus !== "online") return "offline";
   if (r.limitReason === "usage_limit") return "spend limit";
   if (r.limitReason === "rate_limit") return "rate limited";

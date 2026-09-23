@@ -2726,8 +2726,11 @@ export const queueSnapshots = pgTable(
   }),
 );
 
-// ISS-381 (2.3) — runner status-change audit. One row per actual transition,
-// written change-gated at every runners.status mutation site. old_status is
+// ISS-381 (2.3) — runner status-change audit, one row per transition written by
+// `runners/runner-events.ts:setRunnerStatus`. NOT every mutation site:
+// `runners/heartbeat-ws.ts` writes status directly, so this records what was
+// DECIDED about a runner and never an actor of `runners.status`
+// (`docs/proposals/destination/runner-status-provenance.md`). old_status is
 // nullable for the initial bind/create event.
 export const runnerEvents = pgTable(
   'runner_events',

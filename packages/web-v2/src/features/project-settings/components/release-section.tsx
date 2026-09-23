@@ -10,6 +10,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import Link from "next/link";
+import { inlineCode } from "./inline-code";
 import { useReleaseReadiness } from "../hooks";
 import type { ReleaseReadiness } from "../types";
 
@@ -217,7 +218,7 @@ export function ReleaseSection({
           </h4>
           {r.blockers.map((b) => (
             <Banner key={`${b.code}:${b.message}`} tone={b.evaluated ? "danger" : "attention"}>
-              <span className="font-mono">{b.code}</span> — {b.message}
+              <span className="font-mono">{b.code}</span> — {inlineCode(b.message)}
             </Banner>
           ))}
         </div>
@@ -230,7 +231,7 @@ export function ReleaseSection({
           </h4>
           {r.warnings.map((w) => (
             <Banner key={`${w.code}:${w.message}`} tone="attention">
-              <span className="font-mono">{w.code}</span> — {w.message}
+              <span className="font-mono">{w.code}</span> — {inlineCode(w.message)}
             </Banner>
           ))}
         </div>
