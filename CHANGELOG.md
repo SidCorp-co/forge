@@ -3083,6 +3083,8 @@
 - **A runner upgraded in place reaps the worktrees its finished runs leave behind.** That sweep
   could switch off for six hours after an upgrade, in a warning nobody read; it now reports the
   outage and retries in a minute.
+- **A runner defers a restart when it cannot read what is running.** An unreadable record read as
+  an idle box, so an update could restart over jobs in flight; it now counts as busy and waits.
 - **Why a release will not start names the box the Runners tab shows, its state and the switch
   that changes it.** It told you to bring up runners already up, and to merge merged issues. A
   held release says so.

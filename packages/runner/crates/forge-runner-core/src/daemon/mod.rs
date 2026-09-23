@@ -121,17 +121,45 @@ const DRAIN_POLL_SECS: u64 = 30;
 
 const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// What a ledger that will not answer counts as, for the drain that decides
+/// whether a restart would take the box out from under running work.
+const A_LEDGER_THAT_WILL_NOT_ANSWER: usize = 1;
+
 fn live_run_sessions() -> usize {
-    let Ok(led) = crate::runner::ledger::Ledger::default_path()
+    let runs = crate::runner::ledger::Ledger::default_path()
         .and_then(|p| crate::runner::ledger::Ledger::open(&p))
-    else {
-        return 0;
-    };
-    let Ok(runs) = led.unclosed_runs() else {
-        return 0;
-    };
+        .and_then(|led| led.unclosed_runs());
     let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
-    count_live_runs(&runs, &boot, pid_alive)
+    live_sessions_from(runs, &boot, pid_alive)
+}
+
+/// How many run sessions the drain must assume are live.
+///
+/// A ledger this cannot read is not an empty one. Answering nought there told
+/// the drain the box was idle, and the drain's whole job is to decide whether a
+/// restart would kill work — so the one reply it could not check became the one
+/// that restarts over every run in flight. The path that reaches it is the
+/// first start after an upgrade, which is exactly where the ledger was
+/// unreadable in the first place (ISS-1201).
+///
+/// So a ledger that will not answer counts as busy. The restart is deferred to
+/// the next idle window, which is what the drain already does with any other
+/// box that is busy, and the reply that cannot be checked no longer reads as
+/// the safest one.
+fn live_sessions_from(
+    runs: Result<Vec<crate::runner::ledger::Run>>,
+    this_boot: &str,
+    alive: impl Fn(u32) -> bool,
+) -> usize {
+    match runs {
+        Ok(runs) => count_live_runs(&runs, this_boot, alive),
+        Err(err) => {
+            tracing::error!(
+                "[drain] the run ledger will not answer ({err}) — this box counts as busy rather than idle, so a restart is deferred instead of taken over work nothing can see"
+            );
+            A_LEDGER_THAT_WILL_NOT_ANSWER
+        }
+    }
 }
 
 fn count_live_runs(
@@ -941,6 +969,40 @@ mod tests {
         if let Some(p) = pid {
             led.attach_pid(run_id, p).unwrap();
         }
+    }
+
+    /// The reply the drain cannot check is the one that used to read as safest:
+    /// a ledger that would not open answered nought, the drain read the box as
+    /// idle, and the restart went over every run in flight. The path that
+    /// reaches it is the first start after an upgrade, which is where the
+    /// ledger was unreadable to begin with (ISS-1201).
+    #[test]
+    fn a_ledger_that_will_not_answer_holds_the_restart_rather_than_clearing_it() {
+        assert_eq!(
+            live_sessions_from(
+                Err(crate::error::Error::Other("ledger: no such column".into())),
+                "boot-a",
+                |_| true
+            ),
+            A_LEDGER_THAT_WILL_NOT_ANSWER,
+            "a ledger nothing can read says nothing about what is running, and the drain's whole \
+             job is to decide whether a restart would kill work"
+        );
+        assert!(
+            A_LEDGER_THAT_WILL_NOT_ANSWER > 0,
+            "counting it as busy is the whole of it: nought is the answer that restarts"
+        );
+    }
+
+    #[test]
+    fn a_ledger_that_answers_with_nothing_running_does_clear_the_restart() {
+        let led = Ledger::open_in_memory().unwrap();
+        assert_eq!(
+            live_sessions_from(led.unclosed_runs(), "boot-a", |_| true),
+            0,
+            "an empty ledger is an idle box, and holding the restart for it would pin the box on a \
+             stale binary for ever"
+        );
     }
 
     #[test]
