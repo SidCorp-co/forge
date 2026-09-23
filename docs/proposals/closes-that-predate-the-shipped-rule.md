@@ -24,8 +24,10 @@ them, and `mergeMarkKindOf` reads every one of them as `unmarked`.
 
 Two things, and only two:
 
-- A count, not a decision. The migration names the population in a `NOTICE` at every deploy, so
-  the number is on the record rather than in one agent's transcript.
+- A count, not a decision. The migration named the population in a `NOTICE` when it ran, so the
+  number is on the record rather than in one agent's transcript. It is journaled and does not run
+  again, so nothing re-counts on a later deploy: `SELECT count(*) FROM issues WHERE status =
+  'closed' AND merged_at IS NULL` is how the number is read now.
 - The trigger governs the **transition** and not the state — `NEW.status = 'closed' AND
   NEW.merged_at IS NULL AND (OLD.status IS DISTINCT FROM 'closed' OR OLD.merged_at IS NOT NULL)`.
   A row already standing there stays writable; nothing can newly enter the state, on UPDATE or on

@@ -101,6 +101,8 @@ const ABSOLUTE =
   '(?:no way|cannot|can never|never|nothing|impossible|(?:by |in )?any route|whatever route|no route)';
 const REACHING_THE_STATE =
   '(?:reach|reached|write|writes|written|exist|exists|stand|stands|put|get)';
+const HOLDS_NO_CLAIM =
+  '(?:unshipped|without (?:a |any )?(?:merge |shipped )?claim|without `merged_at`)';
 
 /**
  * The rule `trg_issues_closed_means_shipped` holds governs the TRANSITION into `closed`, so a row
@@ -112,6 +114,7 @@ const CLAIMS_THE_STATE_ITSELF_IS_UNREACHABLE = new RegExp(
   [
     `\\b${ABSOLUTE}\\b[^.;:]{0,80}\\b${REACHING_THE_STATE}\\b[^.;:]{0,40}\`?closed\`?`,
     `\\bno \`?\\w+\`? (?:row|issue)s?\\b[^.;:]{0,40}\\b(?:can|may|could|will)\\b[^.;:]{0,25}\\b${REACHING_THE_STATE}\\b`,
+    `\`?closed\`? (?:issue|row)s?\\b[^.;:]{0,25}\\b${ABSOLUTE}\\b[^.;:]{0,40}\\b${HOLDS_NO_CLAIM}`,
   ].join('|'),
   'i',
 );
@@ -156,6 +159,8 @@ describe('that guard, against the wordings the state-shaped promise comes back i
     'Nothing may write `closed` while `merged_at` is null.',
     'No `closed` row can exist with no `merged_at`, and none ever did.',
     'The database refuses the same write whatever route it took, so nothing stands at `closed` unshipped.',
+    'A closed issue is never unshipped.',
+    'Closed issues are never without a merge claim.',
   ];
 
   it.each(recurrences)('rejects %s', (sentence) => {
