@@ -83,6 +83,7 @@ const FENCE_EXAMPLE = [
   '```forge-record: verdict · contract 1',
   'criterion: 13',
   'verdict: skipped',
+  'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
   '```',
 ].join('\n');
 

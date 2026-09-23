@@ -33,6 +33,7 @@ const EXAMPLE = [
   'criterion: 13',
   'verdict: pass',
   'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
+  'evidence: iss-1198-judge-log.txt',
   '```',
 ].join('\n');
 

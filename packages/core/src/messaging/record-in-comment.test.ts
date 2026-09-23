@@ -5,17 +5,23 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseForgeRecord } from './forge-record.js';
+import { verdictEvidenceRefusals } from './evidence-citation.js';
 import {
   destinationFor,
   ISSUE_ASSERTION_ROUTE,
   RECORD_GUIDE_SLUG,
   RECORD_RULE_IDS,
+  recordFenceRefusal,
   recordInCommentRefusal,
   recordInCommentWarning,
   recordRefusals,
 } from './record-screen.js';
+import { verdictIdentityRefusals } from './verdict-identity.js';
 
 const FENCE = '```';
+
+const verdictBodyOf = (lines: string[]): string =>
+  [`${FENCE}forge-record`, ...lines, FENCE, '', '`forge-record: verdict · contract 1`'].join('\n');
 
 const bodyOf = (kind: string | null): string =>
   [
@@ -153,5 +159,38 @@ describe('recordRefusals carries the verdict identity and evidence rules', () =>
       '`forge-record: finding · contract 1`',
     ].join('\n');
     expect(await recordRefusals('proj-1', parseForgeRecord(other), undefined)).toEqual([]);
+  });
+});
+
+describe('every example a record refusal hands back', () => {
+  /**
+   * An example is what a refused caller copies, so one rule's example being another rule's
+   * refusal sends them straight back into the door they just met.
+   */
+  const examples = (): string[] => {
+    const out: string[] = [];
+    const fromFence = recordFenceRefusal({ quote: '```forge-record', why: 'x' })?.example;
+    if (fromFence) out.push(fromFence);
+    for (const refusal of verdictIdentityRefusals(
+      parseForgeRecord(verdictBodyOf(['criterion: 13', 'verdict: pass'])),
+    )) {
+      out.push(refusal.example);
+    }
+    for (const refusal of verdictEvidenceRefusals(
+      parseForgeRecord(verdictBodyOf(['criterion: 13', 'verdict: pass'])),
+    )) {
+      out.push(refusal.example);
+    }
+    return out;
+  };
+
+  it('passes every rule this module owns', async () => {
+    const all = examples();
+    expect(all.length).toBeGreaterThan(2);
+    for (const example of all) {
+      const record = parseForgeRecord(example);
+      expect(record).not.toBeNull();
+      expect(await recordRefusals('proj-1', record, undefined)).toEqual([]);
+    }
   });
 });
