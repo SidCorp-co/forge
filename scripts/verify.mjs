@@ -537,7 +537,20 @@ function reportNotRunHere() {
   for (const cmd of [...new Set(elsewhere.map(([, where]) => where))].sort()) {
     console.log(`    ${cmd}`);
   }
+  for (const line of OFF_TREE_CHECKS) console.log(`    ${line}`);
 }
+
+/**
+ * Checks that gate a merge and have no step in `ci.yml` for `--ci-parity` to find.
+ *
+ * CodeQL runs from GitHub's default setup, so nothing in this tree declares it and nothing here can
+ * run it. It went unnamed until an alert on a test helper held a PR whose own `ci-passed` was green
+ * (ISS-1153). Named here rather than measured, because naming it is the whole of what this checkout
+ * can do about it.
+ */
+const OFF_TREE_CHECKS = [
+  'CodeQL — no workflow file here and not runnable locally; read its alerts on the PR',
+];
 
 const RUN_ELSEWHERE_HINT = ['test:integration', 'web-v2', '@forge/core test', '@forge/core build'];
 

@@ -120,6 +120,18 @@ const ctx = {
 // biome-ignore lint/suspicious/noExplicitAny: the adapter context is generic over config/secrets
 const probe = () => getAdapter('github')?.healthcheck(ctx as any);
 
+/**
+ * A matcher for one declared endpoint path, where `:p` is the only thing that varies.
+ *
+ * The literal halves are escaped whole — backslash included — rather than having their dots picked
+ * out, because a table row is only a constant until somebody adds one holding a `+` or a `(`, and
+ * an under-escaped matcher fails by quietly matching NOTHING. This matcher decides whether the
+ * probe touched a costly endpoint, so one that cannot match is a green that means nothing.
+ */
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const endpointMatcher = (path: string): RegExp =>
+  new RegExp(`^${path.split(':p').map(escapeRe).join('[^/]+')}$`);
+
 /** Every `updateConnection` patch this probe wrote, merged in the order they were written. */
 function written(): Record<string, unknown> {
   return Object.assign({}, ...updateConnectionMock.mock.calls.map((c) => c[1] ?? {}));
@@ -276,7 +288,7 @@ describe('the github health probe and the inbound door', () => {
 
     const costly = GITHUB_ENDPOINTS.filter(
       (e) => e.auth === 'installation' && !(e.permission === 'metadata' && e.level === 'read'),
-    ).map((e) => new RegExp(`^${e.path.replace(/:p/g, '[^/]+').replace(/\./g, '\\.')}$`));
+    ).map((e) => endpointMatcher(e.path));
     const asked = fetchMock.mock.calls.map(
       (c) =>
         String(c[0])
@@ -330,5 +342,26 @@ describe('the github health probe and the inbound door', () => {
     expect(result?.status).toBe('degraded');
     expect(result?.message).toContain('webhook configuration returned HTTP 500');
     expect(result?.message).toContain('`administration: read`');
+  });
+});
+
+describe('the endpoint matcher the probe assertion is built on (ISS-1153)', () => {
+  it('matches a declared path whose literal half already carries a regex metacharacter', () => {
+    const re = endpointMatcher('/repos/:p/:p/compare/:p...:p');
+    expect(re.test('/repos/SidCorp-co/forge/compare/main...head')).toBe(true);
+    expect(re.test('/repos/SidCorp-co/forge/compare/mainXXXhead')).toBe(false);
+  });
+
+  it('treats a backslash and a quantifier in a path as text, not as pattern', () => {
+    expect(endpointMatcher('/repos/:p/a+b').test('/repos/one/a+b')).toBe(true);
+    expect(endpointMatcher('/repos/:p/a+b').test('/repos/one/aaab')).toBe(false);
+    expect(endpointMatcher('/repos/:p/a\\d').test('/repos/one/a\\d')).toBe(true);
+    expect(endpointMatcher('/repos/:p/a\\d').test('/repos/one/a7')).toBe(false);
+  });
+
+  it('is anchored, so a longer path does not match a shorter declaration', () => {
+    const re = endpointMatcher('/repos/:p/:p');
+    expect(re.test('/repos/SidCorp-co/forge')).toBe(true);
+    expect(re.test('/repos/SidCorp-co/forge/branches/main/protection')).toBe(false);
   });
 });
