@@ -17,7 +17,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 use crate::error::{Error, Result};
 
@@ -629,13 +629,39 @@ impl Ledger {
         Self::from_conn(Connection::open_in_memory().map_err(sql_err)?)
     }
 
-    fn from_conn(conn: Connection) -> Result<Self> {
+    fn from_conn(mut conn: Connection) -> Result<Self> {
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;")
             .map_err(sql_err)?;
-        conn.execute_batch(SCHEMA).map_err(sql_err)?;
-        Self::add_missing_columns(&conn)?;
-        Self::carry_the_old_mark_forward(&conn)?;
+        Self::migrate(&mut conn)?;
         Ok(Self { conn })
+    }
+
+    /// Bring the ledger to this build's shape, under one write lock.
+    ///
+    /// The lock is the subject. Deciding which columns are missing and adding
+    /// them are two statements, and one box has many openers of this one file:
+    /// the daemon's start, its reaper tick, its control socket, its
+    /// session-ledger tick, and every CLI call. On the first start after an
+    /// upgrade they all migrate at once, and with no lock between the two
+    /// statements each reads the old shape before any `ALTER` has landed — the
+    /// winner adds the column and every other opener is refused `duplicate
+    /// column name`, which is `Ledger::open` returning an error to callers that
+    /// then do nothing for the life of the process (ISS-1201). `IMMEDIATE`
+    /// takes the write lock before the first read, so a second opener waits the
+    /// first out on the `busy_timeout` set above and then reads a table already
+    /// at this build's shape, with nothing left to alter.
+    ///
+    /// One transaction over all three steps for the same reason the lock is
+    /// taken at all: a migration that fails part-way leaves the shape its
+    /// opener found, rather than one no build has a name for.
+    fn migrate(conn: &mut Connection) -> Result<()> {
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sql_err)?;
+        tx.execute_batch(SCHEMA).map_err(sql_err)?;
+        Self::add_missing_columns(&tx)?;
+        Self::carry_the_old_mark_forward(&tx)?;
+        tx.commit().map_err(sql_err)
     }
 
     pub fn create_run_group(&mut self, new: NewRun) -> Result<Run> {
@@ -1315,7 +1341,11 @@ impl Ledger {
                 .expect("the table's columns were just read");
             if !have.iter().any(|c| c == name) {
                 conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {name} {ty};"))
-                    .map_err(sql_err)?;
+                    .map_err(|e| {
+                        Error::Other(format!(
+                            "ledger: {table}.{name} is missing and could not be added ({e})"
+                        ))
+                    })?;
                 have.push((*name).to_string());
             }
         }
@@ -3121,6 +3151,223 @@ mod tests {
             Some("sess-1"),
             "and nothing else about the pane is forgotten with it"
         );
+    }
+
+    /// Columns the `runs` table gained by `ALTER` rather than by `CREATE`, as a
+    /// ledger written before them records. Dropping them from a ledger this
+    /// build made is how a test reaches the one state the migration has work to
+    /// do in: a fresh ledger already has every column and alters nothing, so it
+    /// proves nothing about an upgrade (ISS-1201).
+    const COLUMNS_A_LEDGER_FROM_BEFORE_THE_RELEASE_MARKS_LACKS: [&str; 5] = [
+        "release_refused_at",
+        "release_refusal",
+        "release_terminal_at",
+        "release_attempts",
+        "released_as",
+    ];
+
+    /// A ledger as a build before the release marks left it.
+    fn a_ledger_from_before_the_release_marks(path: &Path) {
+        let conn = Connection::open(path).unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+        for column in COLUMNS_A_LEDGER_FROM_BEFORE_THE_RELEASE_MARKS_LACKS {
+            conn.execute_batch(&format!("ALTER TABLE runs DROP COLUMN {column};"))
+                .unwrap();
+        }
+    }
+
+    /// A directory of this test's own, so two of them never share a ledger.
+    fn a_ledger_path(what: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-ledger-{what}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        path
+    }
+
+    /// The `ALTER` statements a build applies to a ledger missing the release
+    /// marks, so a test can stand in for another opener part-way through its
+    /// own migration.
+    fn add_the_release_marks(conn: &Connection) {
+        for (table, name, ty) in ADDED_COLUMNS {
+            if *table == "runs"
+                && COLUMNS_A_LEDGER_FROM_BEFORE_THE_RELEASE_MARKS_LACKS.contains(name)
+            {
+                conn.execute_batch(&format!("ALTER TABLE runs ADD COLUMN {name} {ty};"))
+                    .unwrap();
+            }
+        }
+    }
+
+    /// ISS-1201: the migration reads the table's columns and then alters each
+    /// one missing, and one box has many openers of this one file — the
+    /// daemon's start, its reaper tick, its control socket, its session-ledger
+    /// tick, and every CLI call. On the first start after an upgrade they all
+    /// run it at once. Measured on sid-xeon-1: one opener read the columns
+    /// before another's `ALTER` landed, its own came back `duplicate column
+    /// name: release_refused_at`, `Ledger::open` returned that error, and the
+    /// sweep that opened it reaped nothing for six hours.
+    #[test]
+    fn every_opener_of_a_ledger_needing_the_migration_opens_it() {
+        let path = a_ledger_path("race");
+        a_ledger_from_before_the_release_marks(&path);
+
+        let ready = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let openers: Vec<_> = (0..8)
+            .map(|_| {
+                let path = path.clone();
+                let ready = ready.clone();
+                std::thread::spawn(move || {
+                    ready.wait();
+                    Ledger::open(&path).map(|_| ())
+                })
+            })
+            .collect();
+        let refused: Vec<String> = openers
+            .into_iter()
+            .filter_map(|h| h.join().unwrap().err())
+            .map(|e| e.to_string())
+            .collect();
+
+        assert!(
+            refused.is_empty(),
+            "a box that has run an earlier build has one ledger and many openers, and every one of \
+             them must migrate it or find it migrated: {refused:?}"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The property the case above rests on, asserted directly: the exclusion
+    /// is the database's, so it holds between processes and not only between
+    /// threads. The holder here is a bare connection this file owns nothing
+    /// else of — an opener that waits on it is waiting on SQLite.
+    #[test]
+    fn an_opener_arriving_mid_migration_waits_for_it_and_alters_nothing() {
+        let path = a_ledger_path("mid-migration");
+        a_ledger_from_before_the_release_marks(&path);
+
+        let holder = Connection::open(&path).unwrap();
+        holder
+            .execute_batch("PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE;")
+            .unwrap();
+        add_the_release_marks(&holder);
+
+        let (arrived_tx, arrived_rx) = std::sync::mpsc::channel();
+        let opener = {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let opened = Ledger::open(&path).map(|_| ());
+                arrived_tx.send(()).unwrap();
+                opened
+            })
+        };
+        assert!(
+            arrived_rx.recv_timeout(Duration::from_millis(250)).is_err(),
+            "the opener decided what was missing while another migration was still in flight, \
+             which is the read that loses the race"
+        );
+
+        holder.execute_batch("COMMIT;").unwrap();
+        let opened = opener.join().unwrap();
+        assert!(
+            opened.is_ok(),
+            "an opener that waited out the migration must then find it done: {opened:?}"
+        );
+
+        let conn = Connection::open(&path).unwrap();
+        let columns = Ledger::column_names(&conn, "runs").unwrap();
+        for name in COLUMNS_A_LEDGER_FROM_BEFORE_THE_RELEASE_MARKS_LACKS {
+            assert_eq!(
+                columns.iter().filter(|c| *c == name).count(),
+                1,
+                "`{name}` was added by the migration that ran, and the opener that waited for it \
+                 added nothing: {columns:?}"
+            );
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The migration is three statements over two tables, so a failure in the
+    /// second table's is a failure with the first table's `ALTER`s already
+    /// applied. Under one transaction the opener that hits it leaves the shape
+    /// it found, and the next build to open the ledger sees the upgrade it
+    /// expects rather than one half of it.
+    ///
+    /// The fault: a view standing where `masters` should be. `CREATE TABLE IF
+    /// NOT EXISTS` leaves any object of that name alone, and the `ALTER` that
+    /// follows cannot add a column to a view.
+    #[test]
+    fn a_migration_that_cannot_finish_leaves_the_shape_it_found() {
+        let path = a_ledger_path("half-migrated");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(SCHEMA).unwrap();
+            for column in COLUMNS_A_LEDGER_FROM_BEFORE_THE_RELEASE_MARKS_LACKS {
+                conn.execute_batch(&format!("ALTER TABLE runs DROP COLUMN {column};"))
+                    .unwrap();
+            }
+            conn.execute_batch(
+                "DROP TABLE masters; CREATE VIEW masters AS SELECT run_id AS project_id FROM runs;",
+            )
+            .unwrap();
+        }
+
+        let refused = Ledger::open(&path).map(|_| ()).expect_err(
+            "a migration that cannot add the column it was asked for must say so, not open",
+        );
+        assert!(
+            refused.to_string().contains("masters"),
+            "the refusal names what it could not migrate: {refused}"
+        );
+
+        let conn = Connection::open(&path).unwrap();
+        let columns = Ledger::column_names(&conn, "runs").unwrap();
+        for name in COLUMNS_A_LEDGER_FROM_BEFORE_THE_RELEASE_MARKS_LACKS {
+            assert!(
+                !columns.contains(&name.to_string()),
+                "`{name}` was added by a migration that then failed, and the rollback did not take \
+                 it back off: {columns:?}"
+            );
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The upgrade end to end, which is the only path that reaches any of this:
+    /// a row an earlier build wrote, read back through this build's columns
+    /// after the migration, and a second open that finds nothing left to do.
+    #[test]
+    fn a_row_an_earlier_build_wrote_survives_the_upgrade_and_the_next_open() {
+        let path = a_ledger_path("upgrade");
+        a_ledger_from_before_the_release_marks(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute(
+                "INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, boot_id,
+                                   incarnation, work, created_at)
+                 VALUES ('run-1', 'proj-1', 'm', '/tmp/w', 'boot-1', 'inc-1', 'work', 1)",
+                [],
+            )
+            .unwrap();
+        }
+
+        for _ in 0..2 {
+            let led = Ledger::open(&path).expect("an upgraded ledger opens, and opens again");
+            let run = led
+                .run("run-1")
+                .unwrap()
+                .expect("the row an older build wrote");
+            assert_eq!(run.project_id.as_deref(), Some("proj-1"));
+            assert_eq!(
+                (run.release_refused_at, run.release_attempts),
+                (None, 0),
+                "a column the row predates reads as the default the migration gave it"
+            );
+        }
+        let _ = std::fs::remove_file(&path);
     }
 
     /// The other direction of the same compatibility question: a ledger this
