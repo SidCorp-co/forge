@@ -211,8 +211,9 @@ would leave a freshly updated box reading as behind for ever. A commit some rele
 already carries is refused rather than released again — a rerun of an older release
 job would otherwise publish that code under a version higher than what followed it.
 
-Withdrawing a release takes two acts, not one: `fetch-release.ts` never moves
-`RUNNER_RELEASE_DIR` backwards, so deleting a tag and its GitHub Release leaves
+Withdrawing a release takes two acts, not one: core's
+`packages/core/src/install/fetch-release.ts` never moves `RUNNER_RELEASE_DIR` backwards,
+so deleting a tag and its GitHub Release leaves
 the bad build still being served. Either delete `VERSION` and the
 `forge-runner-*` assets from that directory on the core host, or publish a higher
 corrective release — then read `/api/install/latest.json` back before reinstalling
