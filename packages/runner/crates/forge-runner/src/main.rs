@@ -58,6 +58,8 @@ enum Command {
     Runners(cmd::runners::Args),
     /// Look at, talk to, stand down and end this box's resident masters.
     Master(cmd::master::Args),
+    /// Ask a person on this box's pairing, and read the answer back.
+    Question(cmd::question::Args),
     /// Pull the latest skills for bound projects now (on-demand, one-shot).
     Sync(cmd::sync::Args),
     /// Check for a newer release and self-update.
@@ -101,6 +103,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Run(a) => cmd::run::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Master(a) => cmd::master::run(ctx, a).await,
+        Command::Question(a) => cmd::question::run(ctx, a).await,
         Command::Sync(a) => cmd::sync::run(ctx, a).await,
         Command::Update(a) => cmd::update::run(ctx, a).await,
     }
