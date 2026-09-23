@@ -23,6 +23,7 @@ import {
   type ReleaseBlockerReport,
   type ReleaseDoor,
   type ReleaseWarning,
+  runnerPreferenceUnmetSentence,
 } from './blocker-sentences.js';
 import {
   projectRunnerDeviceIds,
@@ -222,7 +223,7 @@ async function poolBlockers(
   if (label && !pool.preferenceMet) {
     warnings.push({
       code: 'RELEASE_RUNNER_PREFERENCE_UNMET',
-      message: `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Label the box that holds the deploy credential, or withdraw the label by sending it as \`null\`.`,
+      message: runnerPreferenceUnmetSentence(label),
       details: { label, eligible: pool.eligible.length },
     });
   }

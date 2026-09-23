@@ -3088,6 +3088,9 @@
 - **Why a release will not start names the box the Runners tab shows, its state and the switch
   that changes it.** It told you to bring up runners already up, and to merge merged issues. A
   held release says so.
+- **A reason that stops nothing no longer sends you to one that does.** Withdrawing a release
+  runner label was offered as a way out and raised a blocker. Held issues are named as the issue
+  list names them.
 - **Three release refusals — an undeclared target, ambiguous runner labels, and more than one
   live deploy binding — now answer with the same sentence release readiness already gives, not a
   wording of their own.**

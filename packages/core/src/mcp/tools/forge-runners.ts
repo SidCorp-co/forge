@@ -15,7 +15,6 @@ import {
   listRunners,
   RunnerAlreadyBoundError,
   setRunnerCapabilities,
-  setRunnerStatus,
 } from '../../runners/service.js';
 import { runnerCapabilitiesSchema } from '../../runners/types.js';
 import {
@@ -153,10 +152,21 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
           `BAD_REQUEST: RUNNER_BUSY: runner has ${inFlight} in-flight job(s); pass force:true to override`,
         );
       }
+      // Both writes go through the AUDITED setter, as `restore` below does.
+      // Retiring wrote the same column with the unaudited one, so the two states
+      // an operator is sent to fix — `draining` and `disabled` — were the two
+      // with no provenance, and the release blocker naming them could say a box
+      // was taken out of the pool without anything saying by whom (ISS-1127).
       if (force && inFlight > 0) {
-        await setRunnerStatus(runnerId, 'draining');
+        await auditedSetRunnerStatus({ runnerId, newStatus: 'draining', reason: 'mcp_retire' });
       }
-      const row = await setRunnerStatus(runnerId, 'disabled');
+      const retired = await auditedSetRunnerStatus({
+        runnerId,
+        newStatus: 'disabled',
+        reason: 'mcp_retire',
+      });
+      if (!retired.found) throw new Error('NOT_FOUND: runner not found');
+      const row = await findRunnerById(runnerId);
       if (!row) throw new Error('NOT_FOUND: runner not found');
       return { runner: publicRunnerRow(row) };
     }

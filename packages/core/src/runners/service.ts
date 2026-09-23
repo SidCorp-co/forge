@@ -128,15 +128,6 @@ async function readBinding(input: NewRunner) {
   return row ?? null;
 }
 
-export async function setRunnerStatus(runnerId: string, status: RunnerStatus) {
-  const [row] = await db
-    .update(runners)
-    .set({ status, updatedAt: new Date() })
-    .where(eq(runners.id, runnerId))
-    .returning();
-  return row ?? null;
-}
-
 export async function setRunnerCapabilities(
   runnerId: string,
   capabilities: Record<string, unknown>,
