@@ -223,3 +223,18 @@ describe('loadReleaseReadiness — a gap is never inferred from a read that fail
     expect(out?.gaps).not.toContain('live-commit-endpoint');
   });
 });
+
+// The second sentence ISS-1127 was reopened on: it named the merge, which
+// eleven waiting issues had, and not the status move, which none of them had.
+describe('what readiness says about an empty roster', () => {
+  it('names the status move rather than the merge', async () => {
+    project({ releaseModel: 'publish' });
+    liveBinding({ verify: PROBES, releaseRunnerLabel: 'box', rollback: { mode: 'coolify-image' } });
+
+    const answer = await loadReleaseReadiness(PROJECT_ID);
+    const empty = answer?.blockers.find((b) => b.code === 'RELEASE_ROSTER_EMPTY');
+
+    expect(empty?.message).toContain('`awaiting_release`');
+    expect(empty?.message).not.toContain('merged and marked');
+  });
+});

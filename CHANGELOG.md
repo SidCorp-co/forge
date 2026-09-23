@@ -3078,6 +3078,10 @@
   set is now 59.
 
 ### Fixed
+- **Why a release will not start now names the box, its state and the switch that changes it.** It
+  told you to bring up runners already up, and to merge issues you had merged. A held release says
+  so.
+
 - **The release panel names who deploys the project, instead of saying nobody does.** It read a
   field the server had renamed, and answered its own fallback. A roster key that goes missing now
   fails loudly rather than reading as absent.

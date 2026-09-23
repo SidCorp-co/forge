@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, pipelineRuns, projects } from '../db/schema.js';
+import { issues, pipelineRuns } from '../db/schema.js';
 import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueOutboundDispatch } from '../integrations/queue.js';
 import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { projectAutoProdDeploy } from './auto-prod-deploy.js';
 import { openDeployDispatchHold } from './deploy-confirmations.js';
 import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
 
@@ -16,6 +17,9 @@ import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
  * The in-flight / failed / done trio lives in `runs.ts` beside the gate that
  * writes it; these two are dispatch-side only.
  */
+/** Re-exported so this module's existing callers and their mocks keep one path. */
+export { projectAutoProdDeploy };
+
 export const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
 export const RELEASE_DEPLOY_SKIPPED = 'release.deploy.skipped';
 
@@ -24,28 +28,6 @@ export interface DispatchOutcome {
   pendingHumanConfirm: boolean;
   integrationIds: string[];
   reason?: string;
-}
-
-/**
- * Per-project opt-in: when `agentConfig.pipelineConfig.autoProdDeploy === true`,
- * a prod Coolify deploy auto-dispatches on release exactly like staging,
- * skipping the human-confirm gate. Default false keeps the gate. Best-effort —
- * a read failure falls back to the safe (gated) behavior.
- */
-export async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
-  try {
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    const ac = (row?.agentConfig ?? null) as Record<string, unknown> | null;
-    const pc = ac?.pipelineConfig as Record<string, unknown> | undefined;
-    return pc?.autoProdDeploy === true;
-  } catch (err) {
-    logger.warn({ err, projectId }, 'coolify: failed to read autoProdDeploy — keeping prod gate');
-    return false;
-  }
 }
 
 /**
