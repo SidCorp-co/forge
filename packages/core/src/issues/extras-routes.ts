@@ -30,6 +30,11 @@ import {
 import { TransitionError, transitionIssueStatus } from './apply-transition.js';
 import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import {
+  issueRouteIdParamSchema,
+  projectScopeQuerySchema,
+  resolveIssueRouteRef,
+} from './issue-route-ref.js';
 import { triggerTerminalDispatch } from './transition.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -463,22 +468,19 @@ issueExtrasRoutes.get(
 
 issueExtrasRoutes.get(
   '/:id/cost-summary',
-  zValidator('param', idParamSchema, (r) => {
+  zValidator('param', issueRouteIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', projectScopeQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { id: issueId } = c.req.valid('param');
+    const { id: rawId } = c.req.valid('param');
+    const { projectId: projectIdQuery } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
-    if (!issue) throw notFound('issue not found');
-
-    const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
+    const issueId = issue.id;
 
     const sessionIdSubquery = sql`(
       SELECT DISTINCT ${jobs.agentSessionId}::text

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
@@ -307,5 +307,91 @@ describe('GET /api/issues/pipeline-timing', () => {
     expect(byStatus.open?.avgMs).toBe(60 * 60 * 1000);
     expect(byStatus.confirmed?.avgMs).toBe(2 * 60 * 60 * 1000);
     expect(byStatus.approved).toBeUndefined();
+  });
+});
+
+/**
+ * ISS-1160 — `GET /:id/cost-summary` sits behind the same shared resolver as
+ * the other seven doors this defect spanned. `.where(...)` here is awaited
+ * directly (no `.limit()`), so the shared `selectWhere` mock is overridden by
+ * call position: 1) the auth email-verified read, 2) the identifier
+ * resolution, 3) this route's own totals query.
+ */
+describe('GET /api/issues/:id/cost-summary — display-key resolution (ISS-1160)', () => {
+  // This block's happy/404 cases override `selectWhere`'s implementation (its
+  // default terminates on `.limit()`; this route's totals query is awaited
+  // directly). Restore the shared default before and after each case so no
+  // override leaks into a sibling test — `vi.clearAllMocks()` in the file's
+  // own `beforeEach` clears calls, never a `mockImplementation`.
+  const defaultSelectWhere = () => ({ limit: selectLimit });
+  beforeEach(() => {
+    selectWhere.mockImplementation(defaultSelectWhere);
+  });
+  afterEach(() => {
+    selectWhere.mockImplementation(defaultSelectWhere);
+  });
+
+  function mockAuthThenResolverThenTotals(resolverRow: unknown[], totalsRows: unknown[]) {
+    let call = 0;
+    const impl = (): { limit: typeof selectLimit } | unknown[] => {
+      call += 1;
+      if (call === 1) {
+        selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+        return { limit: selectLimit };
+      }
+      if (call === 2) {
+        selectLimit.mockResolvedValueOnce(resolverRow);
+        return { limit: selectLimit };
+      }
+      return totalsRows;
+    };
+    selectWhere.mockImplementation(impl as unknown as () => { limit: typeof selectLimit });
+  }
+
+  it('resolves a display key scoped to ?projectId= the same as the row uuid', async () => {
+    mockAuthThenResolverThenTotals([{ id: ISSUE_ID, projectId: PROJECT_ID }], []);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
+
+    const res = await buildApp().request(
+      `/api/issues/ISS-1185/cost-summary?projectId=${PROJECT_ID}`,
+      { headers: { authorization: `Bearer ${await token()}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { issueId: string; projectId: string };
+    expect(body.issueId).toBe(ISSUE_ID);
+    expect(body.projectId).toBe(PROJECT_ID);
+  });
+
+  it('refuses a key with no project to scope it — 400, never the uuid-shape refusal this issue reported', async () => {
+    authVerified();
+    const res = await buildApp().request('/api/issues/ISS-1185/cost-summary', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { details?: { formErrors?: string[] } };
+    expect(body.details?.formErrors?.join(' ')).toMatch(/projectId=/);
+  });
+
+  it('answers 404 naming the key when the project holds no issue at that number', async () => {
+    mockAuthThenResolverThenTotals([], []);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
+
+    const res = await buildApp().request(
+      `/api/issues/ISS-1185/cost-summary?projectId=${PROJECT_ID}`,
+      { headers: { authorization: `Bearer ${await token()}` } },
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toMatch(/ISS-1185/);
   });
 });

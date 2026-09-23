@@ -7,6 +7,11 @@ import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
 import { resolveActors } from '../issues/actor-resolution.js';
+import {
+  issueRouteIdParamSchema,
+  projectScopeQuerySchema,
+  resolveIssueRouteRef,
+} from '../issues/issue-route-ref.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -46,7 +51,10 @@ import { attachAuthors, buildCommentTree, type CommentAttachmentLite } from './t
 /** The comment projection every REST response here shares. */
 const idParamSchema = z.object({ id: z.uuid() });
 
-const threadQuerySchema = paginationSchema.extend({ cursor: z.string().min(1).optional() });
+const threadQuerySchema = paginationSchema.extend({
+  cursor: z.string().min(1).optional(),
+  projectId: projectScopeQuerySchema.shape.projectId,
+});
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -190,20 +198,19 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
 
   router.get(
     '/:id/comments',
-    zValidator('param', idParamSchema, (r) => {
+    zValidator('param', issueRouteIdParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
     zValidator('query', threadQuerySchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
     async (c) => {
-      const { id: issueId } = c.req.valid('param');
-      const { limit, cursor } = c.req.valid('query');
+      const { id: rawId } = c.req.valid('param');
+      const { limit, cursor, projectId: projectIdQuery } = c.req.valid('query');
       const userId = c.get('userId');
 
-      const issue = await loadIssue(issueId);
-      const access = await loadProjectAccess(issue.projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
+      const issueId = issue.id;
 
       let after: ReturnType<typeof decodeCommentCursor> | undefined;
       if (cursor !== undefined) {

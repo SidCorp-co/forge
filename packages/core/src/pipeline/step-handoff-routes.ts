@@ -2,6 +2,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { resolveIssueKeyInProject } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -25,7 +26,9 @@ const writeBodySchema = z.object({
 
 const listQuerySchema = z.object({
   projectId: z.uuid(),
-  issueId: z.uuid(),
+  // ISS-1160 — the screen this feeds passes the display key it has (`ISS-1185`),
+  // not a uuid; `projectId` above is already the scope a key resolves inside.
+  issueId: z.string().trim().min(1).max(200),
   pipelineRunId: z.uuid().optional(),
   steps: z
     .string()
@@ -78,9 +81,10 @@ stepHandoffRoutes.get(
     const q = c.req.valid('query');
     const userId = c.get('userId');
     await assertProjectAccess(q.projectId, userId, 'viewer');
+    const issueId = await resolveIssueKeyInProject(q.issueId, q.projectId);
     const rows = await getIssueContexts({
       projectId: q.projectId,
-      issueId: q.issueId,
+      issueId,
       kind: 'handoff',
       ...(q.pipelineRunId ? { pipelineRunId: q.pipelineRunId } : {}),
       ...(q.steps ? { steps: q.steps } : {}),
