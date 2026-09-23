@@ -201,7 +201,7 @@ export function runnerHoldClause(hold: RunnerHold): string {
       ? ''
       : ` Last seen ${hold.lastSeenSeconds}s ago.`
     : lastSeenPhrase(hold);
-  return `\`${hold.name}\` ${act}${age}`;
+  return `\`${hold.deviceName}\` ${act}${age}`;
 }
 
 function runnersHeldSentence(holds: RunnerHold[]): string | null {
