@@ -2602,9 +2602,15 @@ mod own_exe_reporting_tests {
             "the pane is not named: {said}"
         );
         assert!(
-            said.contains(annotated.to_str().unwrap())
-                && said.contains(installed.to_str().unwrap()),
-            "both paths must be in the line, or a reader cannot tell what was replaced by what: {said}"
+            said.contains(annotated.to_str().unwrap()),
+            "the path it started on is not named, so a reader cannot tell what was replaced: {said}"
+        );
+        assert!(
+            said.contains(&format!(
+                "hooks name {}, the build standing there now",
+                installed.display()
+            )),
+            "the destination is not named in its own right — and the annotated path CONTAINS it, so a bare `contains` here passes whatever the line says (consult bec748 F1): {said}"
         );
     }
 

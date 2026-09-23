@@ -135,24 +135,53 @@ pub fn install(cwd: &Path, exe: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// The program a managed hook command invokes, unquoted.
+/// The program a managed hook command invokes, unquoted, and `None` for a
+/// command that is not one of ours.
+///
+/// The program comes off the FRONT rather than out of a search for the marker:
+/// a runner installed at `/opt/runner hook --event tools/forge-runner` carries
+/// the marker inside its own quoted name, and a search would cut the path in
+/// half and call a healthy hook dead.
 fn program_of(command: &str) -> Option<String> {
-    let cut = MANAGED_MARKERS
+    let (program, rest) = split_program(command)?;
+    MANAGED_MARKERS
         .iter()
-        .filter_map(|m| command.find(m))
-        .min()?;
-    Some(unquoted(command[..cut].trim()))
+        .any(|m| rest.starts_with(m))
+        .then_some(program)
 }
 
-/// The inverse of `shell_quoted`, for both shells it writes.
-fn unquoted(head: &str) -> String {
-    if let Some(inner) = head.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
-        return inner.replace(r"'\''", "'");
+/// The program and what follows it, with the quoting taken off the way the
+/// shell `shell_quoted` wrote for would take it off.
+fn split_program(command: &str) -> Option<(String, &str)> {
+    let command = command.trim_start();
+    if let Some(after) = command.strip_prefix('\'') {
+        return posix_quoted(after);
     }
-    if let Some(inner) = head.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-        return inner.to_string();
+    if let Some(after) = command.strip_prefix('"') {
+        let end = after.find('"')?;
+        return Some((after[..end].to_string(), &after[end + 1..]));
     }
-    head.to_string()
+    let end = command.find(' ').unwrap_or(command.len());
+    Some((command[..end].to_string(), &command[end..]))
+}
+
+/// Inside a single-quoted word: a literal quote is written `'\''`, which closes,
+/// escapes and reopens, so the real close is the first `'` not followed by `\''`.
+fn posix_quoted(after_open: &str) -> Option<(String, &str)> {
+    let mut program = String::new();
+    let mut rest = after_open;
+    loop {
+        let close = rest.find('\'')?;
+        program.push_str(&rest[..close]);
+        rest = &rest[close + 1..];
+        match rest.strip_prefix(r"\''") {
+            Some(reopened) => {
+                program.push('\'');
+                rest = reopened;
+            }
+            None => return Some((program, rest)),
+        }
+    }
 }
 
 /// The programs this daemon's own hook commands in `text` name that nothing can
@@ -189,8 +218,19 @@ pub fn unrunnable_in(text: &str) -> Result<Vec<String>> {
 /// that could not be run, empty when nothing was owed.
 pub fn repair(cwd: &Path, exe: &Path) -> Result<Vec<String>> {
     let path = settings_path(cwd);
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Ok(Vec::new());
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        // Absent is the answer for a project no pane was ever prepared for.
+        // Anything else — unreadable bytes, a permission this daemon lost — is
+        // not knowing, and reporting it as nothing to do is the silence this
+        // whole issue is about.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => {
+            return Err(Error::Other(format!(
+            "cannot read {} ({e}), so whether the hooks in it can run is unknown rather than fine",
+            path.display()
+        )))
+        }
     };
     let unrunnable = unrunnable_in(&text)?;
     if unrunnable.is_empty() {
@@ -628,6 +668,75 @@ mod tests {
             program_of("audit-hook --event PreToolUse"),
             None,
             "somebody else's command names no program of ours"
+        );
+        assert_eq!(
+            program_of("/bin/forge-runner hook --event Stop").as_deref(),
+            Some("/bin/forge-runner"),
+            "a command nothing quoted still names its program"
+        );
+    }
+
+    /// A path can carry the marker inside its own name, and a parser that goes
+    /// looking for the marker cuts such a path in half and calls a healthy hook
+    /// dead. Raised as F2 on consult 5542c8.
+    #[cfg(unix)]
+    #[test]
+    fn a_runner_whose_own_path_holds_the_marker_is_read_back_whole() {
+        let exe = "/opt/runner hook --event tools/forge-runner";
+        let command = command_for(exe, Event::PromptSubmitted, true);
+        assert_eq!(
+            program_of(&command).as_deref(),
+            Some(exe),
+            "the program was cut at the marker inside its own name: {command}"
+        );
+
+        let dir = scratch_dir("marker-in-path");
+        let home = dir.join("opt/runner hook --event tools");
+        std::fs::create_dir_all(&home).expect("home");
+        let installed = {
+            use std::os::unix::fs::PermissionsExt;
+            let p = home.join("forge-runner");
+            std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write");
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+            p
+        };
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+        let path = install(&repo, &installed).expect("install");
+        let before = std::fs::read_to_string(&path).expect("read");
+
+        assert!(
+            repair(&repo, &installed).expect("repair").is_empty(),
+            "a healthy runner was called unrunnable because its path holds the marker"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read back"),
+            before,
+            "the sweep rewrote a file whose every command runs"
+        );
+    }
+
+    /// Raised as F3 on consult 5542c8: a read that failed is not a file whose
+    /// hooks are fine, and the caller has nothing to report if this says so.
+    #[cfg(unix)]
+    #[test]
+    fn a_settings_file_that_cannot_be_read_is_refused_rather_than_called_healthy() {
+        let dir = scratch_dir("unreadable");
+        let (_home, good) = scratch_runner("ours");
+        let path = settings_path(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let bytes = b"\xff\xfe not utf-8 at all";
+        std::fs::write(&path, bytes).unwrap();
+
+        let err = repair(&dir, &good).expect_err("bytes this cannot read are not a healthy file");
+        assert!(
+            err.to_string().contains("unknown rather than fine"),
+            "{err}"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            bytes,
+            "a file it could not read was rewritten anyway"
         );
     }
 
