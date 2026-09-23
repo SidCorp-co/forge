@@ -51,14 +51,10 @@ export interface RunnerHold {
 }
 
 /**
- * The order a hold is selected in, which is a presentation rule and not the
- * database's.
- *
+ * The order a hold is selected in: a presentation rule, not the database's.
  * `onlineCapableDeviceIds` ANDs its conditions, so a row failing four of them
- * fails them equally and the SQL ranks nothing. This order is chosen as the one
- * the operator acts in — a turned-off device before a retired runner, a retired
- * runner before a limit that expires on its own — and the test pins it so the
- * choice stays a decision rather than a side effect of statement order.
+ * fails them equally and the SQL ranks nothing. This is the order the operator
+ * acts in, and the test pins it so it stays a decision.
  */
 export const RUNNER_HOLD_PRECEDENCE: readonly RunnerHoldReason[] = [
   'device-disabled',
@@ -111,10 +107,8 @@ function reasonFor(
 export function classifyRunnerHold(
   row: RunnerLivenessRow,
   now: Date = new Date(),
-  // Strict, and in the seconds the SQL is given: `runnerFresh` reads
-  // `last_seen_at > now() - (livenessSeconds())`, so a heartbeat exactly one
-  // window old is stale there. Reading it fresh here drops the box from the
-  // holds and leaves `NO_RUNNER_ONLINE` with nothing to name.
+  // `runnerFresh` is `last_seen_at > now() - livenessSeconds()`, strictly, so
+  // the comparison below is `<` and the window comes from the same seconds.
   livenessMs: number = livenessSeconds() * 1000,
 ): RunnerHold | null {
   const lastSeenSeconds = row.lastSeenAt === null ? null : secondsSince(row.lastSeenAt, now);
