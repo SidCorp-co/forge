@@ -105,6 +105,11 @@ pub struct Holding {
     pub job_id: String,
     pub pane: String,
     pub session: Option<String>,
+    /// What the last sweep read of this agent, which is what `job_exit` will
+    /// answer on where the session has said nothing in THIS daemon. A reader
+    /// told a pane has reported nothing, while the next sweep is about to
+    /// conclude it finished, has been handed two answers to one question.
+    pub seen: Option<job_exit::Reported>,
     /// When this daemon began counting the pane, which for one it adopted is
     /// the adoption and not the pane's own start.
     pub noted_at: i64,
@@ -198,6 +203,7 @@ impl JobPanes {
                 job_id: job_id.clone(),
                 pane: h.pane.clone(),
                 session: h.watch.session_id().map(str::to_string),
+                seen: h.seen,
                 noted_at: h.noted_at,
             })
             .collect();

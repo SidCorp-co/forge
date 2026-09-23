@@ -1159,11 +1159,14 @@ fn report_job_capacity(
     let who = holding
         .iter()
         .map(|h| {
+            // The same precedence the sweep itself reads on: what this daemon
+            // has heard, and otherwise what the last one recorded.
             let seen = h
                 .session
                 .as_deref()
                 .and_then(|s| activity.get(s))
-                .map(|a| job_exit::Reported::of(&a));
+                .map(|a| job_exit::Reported::of(&a))
+                .or(h.seen);
             format!(
                 "{} in {} for {}m, {}",
                 h.job_id,
@@ -2728,6 +2731,41 @@ mod tests {
             again, "",
             "eight projects times every pass is the 48 lines in two minutes this replaced: {again}"
         );
+    }
+
+    #[test]
+    fn a_ceiling_after_a_restart_says_what_the_record_says_the_pane_is() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        use crate::daemon::turn_evidence::Watch;
+        let cfg = box_at(1);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        panes.hold(
+            "j1",
+            "forge-job-j1",
+            Watch::Adopted {
+                session_id: "sess-1".into(),
+            },
+            Some(job_exit::Reported {
+                doing: Doing::Idle,
+                last_event: Event::Stopped,
+                at: agent_activity::now_ms()
+                    - job_exit::IDLE_BEFORE_FINISHED.as_millis() as i64
+                    - 1,
+                prompts: 1,
+            }),
+        );
+
+        // Nothing has been heard in THIS daemon: the pane went quiet before the
+        // restart and will never report again.
+        let out = give_back_tests::logged_while(|| {
+            report_job_capacity(&cfg, &panes, &agent_activity::Activities::new())
+        });
+
+        assert!(
+            out.contains("finished"),
+            "a reader told the pane has reported nothing, while the next sweep is about to conclude it finished, has two answers to one question: {out}"
+        );
+        assert!(!out.contains("reported nothing"), "{out}");
     }
 
     #[test]
