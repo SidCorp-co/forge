@@ -155,26 +155,43 @@ function objectOf(
   return null;
 }
 
-/** The node carrying `name` in this object, following a spread the same way the runtime would. */
+/**
+ * The node carrying `name` in this object, following a spread the same way the runtime would.
+ *
+ * A spread whose object cannot be read, and whose TYPE says it may carry `name`, takes the value
+ * back: the runtime would overwrite whatever an earlier property established, and keeping the
+ * earlier one prices a path the call does not send.
+ */
 function propertyOf(
   object: ts.ObjectLiteralExpression,
   name: string,
   checker: ts.TypeChecker,
   depth = 0,
-): ts.Node | null {
+): { value: ts.Node | null; blockedBy: ts.Node | null } {
   let held: ts.Node | null = null;
+  let blockedBy: ts.Node | null = null;
   for (const property of object.properties) {
-    if (ts.isPropertyAssignment(property) && property.name.getText() === name)
+    if (ts.isPropertyAssignment(property) && property.name.getText() === name) {
       held = property.initializer;
-    else if (ts.isShorthandPropertyAssignment(property) && property.name.getText() === name)
+      blockedBy = null;
+    } else if (ts.isShorthandPropertyAssignment(property) && property.name.getText() === name) {
       held = property.name;
-    else if (ts.isSpreadAssignment(property) && depth < MAX_DEPTH) {
-      const spread = objectOf(property.expression, checker);
-      const inner = spread ? propertyOf(spread, name, checker, depth + 1) : null;
-      if (inner) held = inner;
+      blockedBy = null;
+    } else if (ts.isSpreadAssignment(property)) {
+      const spread = depth < MAX_DEPTH ? objectOf(property.expression, checker) : null;
+      const inner = spread ? propertyOf(spread, name, checker, depth + 1).value : null;
+      if (inner) {
+        held = inner;
+        blockedBy = null;
+      } else if (
+        !spread &&
+        checker.getPropertyOfType(checker.getTypeAtLocation(property.expression), name)
+      ) {
+        blockedBy = property.expression;
+      }
     }
   }
-  return held;
+  return blockedBy ? { value: null, blockedBy } : { value: held, blockedBy: null };
 }
 
 /** The expression a name stands for, so a refusal names what was written AND what it led to. */
@@ -247,7 +264,7 @@ function methodOf(
   const where = transport.method;
   if (where === null) return 'GET';
   if (where.property === null) return literalMethod(call.arguments[where.index] ?? null, checker);
-  return object ? literalMethod(propertyOf(object, where.property, checker), checker) : null;
+  return object ? literalMethod(propertyOf(object, where.property, checker).value, checker) : null;
 }
 
 function transportCall(
@@ -258,18 +275,19 @@ function transportCall(
 ): FoundCall {
   const argument = call.arguments[transport.path.index];
   const object = transport.path.property === null ? null : objectOf(argument, checker);
-  const pathNode =
-    transport.path.property === null
-      ? (argument ?? null)
-      : object
-        ? propertyOf(object, transport.path.property, checker)
-        : null;
+  const found =
+    transport.path.property === null || !object
+      ? { value: argument ?? null, blockedBy: null }
+      : propertyOf(object, transport.path.property, checker);
+  const pathNode = transport.path.property !== null && !object ? null : found.value;
   const why =
-    pathNode === null
-      ? object === null
-        ? `the call's arguments cannot be read: ${argument?.getText() ?? call.getText()}`
-        : `the call names no path: ${argument?.getText() ?? call.getText()}`
-      : null;
+    pathNode !== null
+      ? null
+      : found.blockedBy
+        ? `a spread this checker cannot read may overwrite the path: ${found.blockedBy.getText()}`
+        : object === null
+          ? `the call's arguments cannot be read: ${argument?.getText() ?? call.getText()}`
+          : `the call names no path: ${argument?.getText() ?? call.getText()}`;
   const method = methodOf(call, transport, object, checker);
   return record({
     file,
@@ -284,16 +302,25 @@ function transportCall(
 
 function networkCall(call: ts.CallExpression, file: string, checker: ts.TypeChecker): FoundCall {
   const argument = call.arguments[0];
-  const options = objectOf(call.arguments[1], checker);
-  const named = options ? literalMethod(propertyOf(options, 'method', checker), checker) : null;
+  const second = call.arguments[1];
+  const options = second ? objectOf(second, checker) : null;
+  const named = options ? propertyOf(options, 'method', checker).value : null;
+  // GET only where the call is READ to send no method. An options object the checker cannot open,
+  // or a method expression it cannot evaluate, is a call whose row nobody knows.
+  const method = named ? literalMethod(named, checker) : options || !second ? 'GET' : null;
   return record({
     file,
     at: argument ?? call,
     raw: argument?.getText() ?? '',
     path: argument ? resolvePathOf(argument, checker) : null,
-    method: named ?? 'GET',
+    method,
     kind: 'fetch',
-    why: null,
+    why:
+      method === null && named
+        ? `the call names a method this checker cannot read: ${named.getText()}`
+        : method === null
+          ? `the call's options cannot be read, so its method is unknown: ${second?.getText() ?? ''}`
+          : null,
   });
 }
 
@@ -337,22 +364,22 @@ function transportFor(
   symbol: ts.Symbol | null,
   known: ReadonlyMap<ts.Symbol, Transport>,
   checker: ts.TypeChecker,
+  seen: Set<ts.Symbol> = new Set(),
 ): Transport | undefined {
-  if (!symbol) return undefined;
+  if (!symbol || seen.has(symbol)) return undefined;
+  seen.add(symbol);
   const direct = known.get(symbol);
   if (direct) return direct;
   const decl = symbol.valueDeclaration;
-  if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
-    const inner = symbolOf(decl.initializer, checker);
-    return inner ? known.get(inner) : undefined;
-  }
+  if (decl && ts.isVariableDeclaration(decl) && decl.initializer)
+    return transportFor(symbolOf(decl.initializer, checker), known, checker, seen);
   if (decl && ts.isBindingElement(decl) && ts.isIdentifier(decl.name)) {
     const owner = decl.parent.parent;
     const from = ts.isVariableDeclaration(owner) ? owner.initializer : undefined;
     if (!from) return undefined;
     const name = (decl.propertyName ?? decl.name).getText();
     const member = checker.getPropertyOfType(checker.getTypeAtLocation(from), name);
-    return member ? known.get(member) : undefined;
+    return transportFor(member ?? null, known, checker, seen);
   }
   return undefined;
 }

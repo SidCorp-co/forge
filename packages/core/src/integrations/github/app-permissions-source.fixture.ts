@@ -2,9 +2,7 @@
  * The sources the checker reads, and what one expression in them evaluates to.
  *
  * A regex over source text cannot tell "no GitHub call here" from "a GitHub call I did not
- * recognise", so it answers the second as the first. Everything here is read off a TypeScript
- * program instead, planted sources included, so a call is found by what it calls and only the
- * value of its argument can be unreadable. `app-permissions-scan.fixture.ts` does the finding.
+ * recognise", and answers the second as the first. This reads a TypeScript program instead.
  */
 
 import { readdirSync } from 'node:fs';
@@ -15,7 +13,7 @@ import { GITHUB_API_BASE } from './types.js';
 const SRC_ROOT = join(import.meta.dirname, '..', '..');
 export const GITHUB_DIR = join(SRC_ROOT, 'integrations', 'github');
 
-/** The table itself, which calls nothing: reading its rows as call sites would price its own declarations. */
+/** The table itself, which calls nothing, so its rows are never read as call sites. */
 export const DECLARATION_FILE = 'app-permissions.ts';
 
 export const MAX_DEPTH = 8;
@@ -23,13 +21,28 @@ export const MAX_DEPTH = 8;
 /**
  * Values the checker cannot read out of the source, declared as the path fragment they stand for.
  *
- * These are VALUES, not call shapes: a wrong entry here resolves a path to the wrong pattern, which
- * the endpoint comparison reports by name. It cannot make a call invisible.
+ * A wrong entry resolves a path to the wrong pattern, which the endpoint comparison reports by
+ * name; it cannot make a call invisible. A hole neither declared here nor provably one segment
+ * leaves the path unresolved: `:p` claims the value carries no `/`, and `/pulls/${tail}` priced as
+ * `/pulls/:p` matches the pull-request row while the runtime sends `/pulls/12/reviews`.
  */
 const HOLE_VALUES: Record<string, string> = {
   base: '',
   'client.fullName': ':p/:p',
+  'client.owner': ':p',
+  'client.repo': ':p',
+  // Qualified by file where the name alone is too common to declare globally. `path` here is the
+  // repository file path the contents endpoint takes, priced as one segment because what sits under
+  // it buys no further permission.
+  'merge-read.ts:headSha': ':p',
+  'runner-release-repo.ts:path': ':p',
 };
+
+function declaredValue(node: ts.Node): string | undefined {
+  const file = node.getSourceFile().fileName.split('/').pop() ?? '';
+  const text = node.getText();
+  return HOLE_VALUES[`${file}:${text}`] ?? HOLE_VALUES[text];
+}
 
 export function sourceFiles(): string[] {
   return readdirSync(GITHUB_DIR).filter(
@@ -153,7 +166,7 @@ export function evaluate(node: ts.Node, checker: ts.TypeChecker, depth = 0): str
   const read = readValue(node, checker, depth);
   // The declared value is what the source does not carry, so it answers only where reading failed:
   // a spelling that DOES have a value in the tree resolves to that value and is judged on it.
-  return read ?? HOLE_VALUES[node.getText()] ?? null;
+  return read ?? declaredValue(node) ?? null;
 }
 
 function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): string | null {
@@ -165,7 +178,14 @@ function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): strin
   if (ts.isTemplateExpression(node)) {
     let out = node.head.text;
     for (const span of node.templateSpans) {
-      out += (evaluate(span.expression, checker, depth + 1) ?? ':p') + span.literal.text;
+      // Past the `?` the text is the query string, which `toPattern` drops: a hole there adds no
+      // path segment, so it is not held to proving it carries none.
+      const query = out.includes('?');
+      const filled =
+        evaluate(span.expression, checker, depth + 1) ??
+        (query ? ':p' : oneSegment(span.expression, checker));
+      if (filled === null) return null;
+      out += filled + span.literal.text;
     }
     return out;
   }
@@ -192,6 +212,19 @@ function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): strin
     const body = decl ? bodyExpression(decl) : null;
     return body ? evaluate(body, checker, depth + 1) : null;
   }
+  return null;
+}
+
+/**
+ * `:p` where this expression cannot carry a `/`, else null: a number has no separator to carry and
+ * `encodeURIComponent` escapes the one that would make a value two segments.
+ */
+function oneSegment(node: ts.Expression, checker: ts.TypeChecker): string | null {
+  const type = checker.getTypeAtLocation(node);
+  const numeric = (t: ts.Type) => (t.flags & ts.TypeFlags.NumberLike) !== 0;
+  if (type.isUnion() ? type.types.every(numeric) : numeric(type)) return ':p';
+  if (ts.isCallExpression(node) && /^encodeURI(Component)?$/.test(node.expression.getText()))
+    return ':p';
   return null;
 }
 

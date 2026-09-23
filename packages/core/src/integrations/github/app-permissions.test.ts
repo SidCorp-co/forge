@@ -49,8 +49,11 @@ import {
   CONCATENATED,
   DECLARATIONS_ONLY,
   DESTRUCTURED_MEMBER,
+  DYNAMIC_METHOD,
+  ENCODED_SEGMENT,
   EXTRACTED_MEMBER,
   GITHUB_JSON,
+  MULTI_SEGMENT_HOLE,
   NO_METHOD,
   READABLE_GET,
   REAL_UNDECLARED_PATH,
@@ -58,10 +61,13 @@ import {
   SCALAR_METHOD,
   SHADOWED_HOLE,
   SHORTHAND,
+  SPREAD_OVERRIDE,
+  SPREAD_THEN_PATH,
   TRAILING_COMMA,
   TRANSPORT_ADDED,
   TRANSPORT_PROPERTY,
   TRANSPORT_SWAPPED,
+  TWO_HOP_ALIAS,
   UNRESOLVED,
   UNTYPED_ELEMENT_ACCESS,
   UNTYPED_RECEIVER,
@@ -364,6 +370,38 @@ describe('a call is found by what it calls, however it is written (ISS-1153)', (
     expect(only(collectGitHubCalls(UNTYPED_ELEMENT_ACCESS)).unresolved).toContain(
       'publish is a transport',
     );
+  });
+
+  it('follows a transport alias as far as it goes, not one hop', () => {
+    expect(only(collectGitHubCalls(TWO_HOP_ALIAS)).unresolved).toContain('endpoint');
+  });
+
+  it('gives back a path a later spread could overwrite unread', () => {
+    expect(only(collectGitHubCalls(SPREAD_OVERRIDE)).unresolved).toContain(
+      'a spread this checker cannot read may overwrite the path: override',
+    );
+  });
+
+  it('keeps a path written after that spread, which the runtime would keep too', () => {
+    const found = only(collectGitHubCalls(SPREAD_THEN_PATH));
+    expect(found.unresolved).toBeNull();
+    expect(found.path).toBe('/repos/:p/:p');
+  });
+
+  it('refuses a hole that nothing proves is one path segment', () => {
+    expect(only(collectGitHubCalls(MULTI_SEGMENT_HOLE)).unresolved).toContain('reviewTail(n)');
+  });
+
+  it('accepts one the source proves carries no separator', () => {
+    const found = only(collectGitHubCalls(ENCODED_SEGMENT));
+    expect(found.unresolved).toBeNull();
+    expect(found.path).toBe('/repos/:p/:p/pulls/:p');
+  });
+
+  it('refuses a request whose method it cannot read, rather than calling it a GET', () => {
+    const found = only(collectGitHubCalls(DYNAMIC_METHOD));
+    expect(found.unresolved).toContain('cannot read');
+    expect(found.unresolved).toContain('method');
   });
 
   it('names that same path in the sweep over what is written, not only at the call', () => {

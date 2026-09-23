@@ -303,3 +303,68 @@ export const UNTYPED_ELEMENT_ACCESS = plant(
     '}',
   ].join('\n'),
 );
+
+/** A transport alias two hops from the member it holds: consult ef12bd F1. */
+export const TWO_HOP_ALIAS = plant(
+  'planted-two-hop-alias.ts',
+  AS_FILE([
+    'declare const endpoint: string;',
+    'export async function f(client: GitHubRepoClient) {',
+    '  const first = client.publish;',
+    '  const send = first;',
+    "  await send({ op: 'lookup', method: 'GET', path: endpoint });",
+    '}',
+  ]),
+);
+
+/** A spread that could overwrite a path the checker read: consult ef12bd F2. */
+export const SPREAD_OVERRIDE = plant(
+  'planted-spread-override.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, override: { path?: string }) {',
+    `  await client.publish({ op: 'lookup', method: 'GET', path: \`${REPO}\`, ...override });`,
+    '}',
+  ]),
+);
+
+/** The same spread, overwritten in turn by a property the checker CAN read: consult ef12bd F2. */
+export const SPREAD_THEN_PATH = plant(
+  'planted-spread-then-path.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, override: { path?: string }) {',
+    `  await client.publish({ op: 'lookup', method: 'GET', ...override, path: \`${REPO}\` });`,
+    '}',
+  ]),
+);
+
+/** A hole standing for more than one path segment: consult ef12bd F3. */
+export const MULTI_SEGMENT_HOLE = plant(
+  'planted-multi-segment-hole.ts',
+  AS_FILE([
+    'declare function reviewTail(n: number): string;',
+    'export async function f(client: GitHubRepoClient, n: number) {',
+    `  return client.get(\`${REPO}/pulls/${interp('reviewTail(n)')}\`);`,
+    '}',
+  ]),
+);
+
+/** The same shape where the hole is proven to carry no separator: consult ef12bd F3. */
+export const ENCODED_SEGMENT = plant(
+  'planted-encoded-segment.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, ref: string) {',
+    `  return client.get(\`${REPO}/pulls/${interp('encodeURIComponent(ref)')}\`);`,
+    '}',
+  ]),
+);
+
+/** A direct request whose method is a value rather than a literal: consult ef12bd F4. */
+export const DYNAMIC_METHOD = plant(
+  'planted-dynamic-method.ts',
+  [
+    'declare const doFetch: typeof fetch;',
+    "export async function f(method: 'GET' | 'DELETE') {",
+    "  return doFetch('/repos/a/b/branches/main/protection', { method });",
+    '}',
+  ].join('\n'),
+);
