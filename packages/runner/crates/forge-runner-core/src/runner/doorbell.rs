@@ -672,19 +672,34 @@ mod tests {
         }
     }
 
+    /// The claim is that nothing here BLOCKS, and the loop is what makes it
+    /// reachable: 200,000 one-byte rings overrun any pipe buffer many times
+    /// over, so a blocking write would stop dead once the door filled and a
+    /// blocking open would never have started.
+    ///
+    /// It used to assert that against the wall clock — 200,000 rings inside 20
+    /// seconds — which measures the box rather than the code. On a shared
+    /// macOS runner that budget is crossed by a build that never blocks at
+    /// all, and it was crossed twice on the same commit (ISS-1210, extra fix).
+    /// A hang does not take 21 seconds, it takes forever, so the loop runs on
+    /// a thread and the deadline is what separates "finished" from "never
+    /// will" rather than "fast enough".
     #[test]
     fn neither_arming_nor_ringing_waits_on_the_other_side() {
         let p = led_path();
-        let started = Instant::now();
-        let ear = listen(&p, "run-1").unwrap();
-        for _ in 0..200_000 {
-            let _ = ring(&p, "run-1").unwrap();
-        }
-        drop(ear);
-        assert!(
-            started.elapsed() < Duration::from_secs(20),
-            "a blocking open or write would never reach here at all"
-        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        let door = p.clone();
+        let ringer = std::thread::spawn(move || {
+            let ear = listen(&door, "run-1").unwrap();
+            for _ in 0..200_000 {
+                let _ = ring(&door, "run-1").unwrap();
+            }
+            drop(ear);
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(Duration::from_secs(120))
+            .expect("a blocking open or write would never report back at all");
+        ringer.join().expect("the ringer ran to completion");
     }
 
     #[test]
