@@ -204,6 +204,18 @@ async function projectRunners(w: World): Promise<Array<{ deviceName: string | nu
   return (await res.json()) as Array<{ deviceName: string | null }>;
 }
 
+/** Binds a device to the project through the real route — the write that
+ *  snapshots `runners.name` from `devices.name` at that moment and never
+ *  again (ISS-1127, criterion 17). */
+async function bindRunner(w: World, deviceId: string): Promise<void> {
+  const res = await app.request(`/api/projects/${w.projectId}/runners`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${w.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId }),
+  });
+  expect(res.status).toBe(201);
+}
+
 async function createBatch(w: World, issueIds: string[]) {
   const res = await app.request(`/api/projects/${w.projectId}/release-batches`, {
     method: 'POST',
@@ -365,6 +377,36 @@ describe('a reason names the state it was read from and the act that clears it',
     expect(tab.map((r) => r.deviceName)).toEqual(['workshop-box']);
     expect(held?.message).toContain('workshop-box');
     expect(held?.message).not.toContain('binding-42');
+  });
+
+  // The actual mechanism, not just the mismatch as it stands today:
+  // `POST /:id/runners` snapshots `runners.name` from `devices.name` at bind
+  // time and never refreshes it (no `name` in its `onConflictDoUpdate` set,
+  // and no other write keeps the two in step for a box that stays bound and
+  // is later renamed). A test asserting only that two already-different
+  // strings compare correctly would pass on a fresh row and never have
+  // caught this — so this one binds first, at one name, and renames the
+  // device only afterward.
+  it('keeps naming the box by its current name after the device is renamed post-bind', async () => {
+    const w = await seed();
+    const device = await createTestDevice(harness.db, w.userId, {
+      status: 'online',
+      name: 'sid-xeon-1',
+    });
+    await bindRunner(w, device.id);
+    await harness.db.execute(
+      sql`UPDATE runners SET status = 'draining' WHERE device_id = ${device.id}`,
+    );
+    await harness.db.execute(
+      sql`UPDATE devices SET name = 'sid-xeon-1 (CLI runner)' WHERE id = ${device.id}`,
+    );
+    await seedIssue(w);
+
+    const tab = await projectRunners(w);
+    const held = (await readiness(w)).body.blockers.find((b) => b.code === 'NO_RUNNER_ONLINE');
+
+    expect(tab.map((r) => r.deviceName)).toEqual(['sid-xeon-1 (CLI runner)']);
+    expect(held?.message).toContain('sid-xeon-1 (CLI runner)');
   });
 
   it('counts the issues standing one move short of the gate', async () => {
