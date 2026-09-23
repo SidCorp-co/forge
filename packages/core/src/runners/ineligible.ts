@@ -25,9 +25,10 @@ export type RunnerHoldReason =
   | 'provisioning'
   | 'below-floor';
 
-/** The columns the dispatch filter reads, and only those. */
+/** The columns the dispatch filter reads, plus the one name a screen shows. */
 export interface RunnerLivenessRow {
-  name: string;
+  /** `devices.name` — what the Runners tab shows; `runners.name` can be stale. */
+  deviceName: string;
   status: RunnerStatus;
   lastSeenAt: Date | null;
   limitReason: string | null;
@@ -39,7 +40,7 @@ export interface RunnerLivenessRow {
 }
 
 export interface RunnerHold {
-  name: string;
+  deviceName: string;
   reason: RunnerHoldReason;
   /** The reading itself, where naming it tells the operator which box to open. */
   detail?: string;
@@ -116,7 +117,7 @@ export function classifyRunnerHold(
   const found = reasonFor(row, now, fresh);
   if (!found) return null;
   return {
-    name: row.name,
+    deviceName: row.deviceName,
     reason: found.reason,
     ...(found.detail === undefined ? {} : { detail: found.detail }),
     lastSeenSeconds,
@@ -125,7 +126,7 @@ export function classifyRunnerHold(
 }
 
 interface RunnerLivenessSqlRow extends Record<string, unknown> {
-  name: string;
+  device_name: string;
   status: RunnerStatus;
   last_seen_at: string | null;
   limit_reason: string | null;
@@ -140,16 +141,17 @@ const asDate = (raw: string | null): Date | null => (raw === null ? null : new D
 
 export async function readRunnerLiveness(projectId: string): Promise<RunnerLivenessRow[]> {
   const rows = await db.execute<RunnerLivenessSqlRow>(sql`
-    SELECT r.name, r.status, r.last_seen_at, r.limit_reason, r.rate_limited_until,
+    SELECT d.name AS device_name,
+           r.status, r.last_seen_at, r.limit_reason, r.rate_limited_until,
            r.quarantined_until, r.provision_status,
            d.disabled_at AS device_disabled_at, d.agent_version AS device_agent_version
       FROM runners r
       JOIN devices d ON d.id = r.device_id
      WHERE r.project_id = ${projectId}
-     ORDER BY r.name ASC
+     ORDER BY d.name ASC
   `);
   return rows.map((r) => ({
-    name: r.name,
+    deviceName: r.device_name,
     status: r.status,
     lastSeenAt: asDate(r.last_seen_at),
     limitReason: r.limit_reason,
@@ -174,7 +176,7 @@ export async function releaseIneligibleRunners(projectId: string): Promise<Runne
   for (const row of rows) {
     const hold = classifyRunnerHold(row, now);
     if (!hold) continue;
-    const key = `${hold.name}|${hold.reason}`;
+    const key = `${hold.deviceName}|${hold.reason}`;
     if (seen.has(key)) continue;
     seen.add(key);
     held.push(hold);

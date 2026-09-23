@@ -45,16 +45,26 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
 
-  const [batch, jwt, err, registry] = await Promise.all([
+  const [batch, jwt, err, registry, runnersTab, auth] = await Promise.all([
     import('../../src/release-batch/routes.js'),
     import('../../src/auth/jwt.js'),
     import('../../src/middleware/error.js'),
     import('../../src/integrations/register-all.js'),
+    import('../../src/projects/runners-routes.js'),
+    import('../../src/middleware/auth.js'),
   ]);
   registry.registerAllIntegrations();
   signUserToken = jwt.signUserToken;
   app = new Hono();
   app.route('/api/projects', batch.releaseBatchRoutes);
+  // The Runners tab's own route, behind the auth it actually runs behind
+  // (see the NOTE atop `projectRunnerRoutes`) — a criterion-17 test reads a
+  // box's name through this route rather than trusting a literal, so the two
+  // surfaces cannot drift apart unnoticed.
+  const runnersTabApp = new Hono<{ Variables: import('../../src/middleware/auth.js').AuthVars }>();
+  runnersTabApp.use('*', auth.requireAuth(), auth.assertEmailVerified());
+  runnersTabApp.route('/', runnersTab.projectRunnerRoutes);
+  app.route('/api/projects', runnersTabApp);
   app.onError(err.errorHandler);
 
   probe = createServer((_req, res) => res.end('commit-live'));
@@ -186,6 +196,27 @@ async function readiness(w: World) {
   };
 }
 
+/** What the project Runners tab lists, read through the route that feeds it. */
+async function projectRunners(w: World): Promise<Array<{ deviceName: string | null }>> {
+  const res = await app.request(`/api/projects/${w.projectId}/runners`, {
+    headers: { Authorization: `Bearer ${w.token}` },
+  });
+  expect(res.status).toBe(200);
+  return (await res.json()) as Array<{ deviceName: string | null }>;
+}
+
+/** Binds a device to the project through the real route — the write that
+ *  snapshots `runners.name` from `devices.name` at that moment and never
+ *  again (ISS-1127, criterion 17). */
+async function bindRunner(w: World, deviceId: string): Promise<void> {
+  const res = await app.request(`/api/projects/${w.projectId}/runners`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${w.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId }),
+  });
+  expect(res.status).toBe(201);
+}
+
 async function createBatch(w: World, issueIds: string[]) {
   const res = await app.request(`/api/projects/${w.projectId}/release-batches`, {
     method: 'POST',
@@ -303,7 +334,7 @@ describe('a reason names the state it was read from and the act that clears it',
   // operator to bring one up or wait for one to reconnect.
   it('names the box an operator retired, and the switch that returns it', async () => {
     const w = await seed();
-    const device = await createTestDevice(harness.db, w.userId, { status: 'online' });
+    const device = await createTestDevice(harness.db, w.userId, { status: 'online', name: 'dev1' });
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
       VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device.id}, 'dev1', 'draining',
@@ -319,6 +350,62 @@ describe('a reason names the state it was read from and the act that clears it',
     expect(held?.message).toContain('draining');
     expect(held?.message).toContain('Takes jobs from the pool');
     expect(held?.message).not.toContain('Bring one up');
+  });
+
+  // forge-dev's own fleet: `runners.name` = `dev1`, `devices.name` = `dev1 · CLI
+  // runner` — the Runners tab shows the second, the blocker (before this fix)
+  // read the first. The two names are deliberately unrelated substrings here:
+  // one containing the other would let a `toContain` assertion pass on either
+  // column and never catch a read of the wrong one.
+  it("names the box under the name the Runners tab shows it under, not the runner row's own name", async () => {
+    const w = await seed();
+    const device = await createTestDevice(harness.db, w.userId, {
+      status: 'online',
+      name: 'workshop-box',
+    });
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device.id}, 'binding-42',
+              'draining', now(), ${JSON.stringify([LABEL])}::jsonb)
+    `);
+    await seedIssue(w);
+
+    const tab = await projectRunners(w);
+    const held = (await readiness(w)).body.blockers.find((b) => b.code === 'NO_RUNNER_ONLINE');
+
+    expect(tab.map((r) => r.deviceName)).toEqual(['workshop-box']);
+    expect(held?.message).toContain('workshop-box');
+    expect(held?.message).not.toContain('binding-42');
+  });
+
+  // The actual mechanism, not just the mismatch as it stands today:
+  // `POST /:id/runners` snapshots `runners.name` from `devices.name` at bind
+  // time and never refreshes it (no `name` in its `onConflictDoUpdate` set,
+  // and no other write keeps the two in step for a box that stays bound and
+  // is later renamed). A test asserting only that two already-different
+  // strings compare correctly would pass on a fresh row and never have
+  // caught this — so this one binds first, at one name, and renames the
+  // device only afterward.
+  it('keeps naming the box by its current name after the device is renamed post-bind', async () => {
+    const w = await seed();
+    const device = await createTestDevice(harness.db, w.userId, {
+      status: 'online',
+      name: 'sid-xeon-1',
+    });
+    await bindRunner(w, device.id);
+    await harness.db.execute(
+      sql`UPDATE runners SET status = 'draining' WHERE device_id = ${device.id}`,
+    );
+    await harness.db.execute(
+      sql`UPDATE devices SET name = 'sid-xeon-1 (CLI runner)' WHERE id = ${device.id}`,
+    );
+    await seedIssue(w);
+
+    const tab = await projectRunners(w);
+    const held = (await readiness(w)).body.blockers.find((b) => b.code === 'NO_RUNNER_ONLINE');
+
+    expect(tab.map((r) => r.deviceName)).toEqual(['sid-xeon-1 (CLI runner)']);
+    expect(held?.message).toContain('sid-xeon-1 (CLI runner)');
   });
 
   it('counts the issues standing one move short of the gate', async () => {

@@ -8,6 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RunnerHold } from '../runners/ineligible.js';
 
 const selectRows = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
@@ -137,9 +138,14 @@ beforeEach(() => {
   unearned.mockResolvedValue([]);
 });
 
-/** One box registered, reporting, and taken out of the pool by an operator. */
-const RETIRED = {
-  name: 'dev1',
+/**
+ * One box registered, reporting, and taken out of the pool by an operator.
+ * Typed, so a rename of the field the way ISS-1127's criterion 17 renamed it
+ * is caught by the compiler rather than passing silently on an untyped
+ * literal.
+ */
+const RETIRED: RunnerHold = {
+  deviceName: 'dev1',
   reason: 'retired',
   detail: 'draining',
   lastSeenSeconds: 13,

@@ -103,7 +103,12 @@ beforeEach(() => {
 });
 
 describe('POST /:projectId/release-batches — the declaration refusals', () => {
-  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the project and the remedy', async () => {
+  // ISS-1127 criterion 9: this text is `releaseBlockerSentence`'s, the same
+  // function `GET /release-readiness` composes its own `RELEASE_TARGET_UNDECLARED`
+  // entry from (`blockers.ts`'s `blocker('RELEASE_TARGET_UNDECLARED', { releaseModel })`)
+  // — not the error class's own `.message`, which named the project id this
+  // call is already scoped to and neither door needed.
+  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the declared model and the remedy', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(
       new ReleaseTargetUndeclaredError(PROJECT_ID, 'promote'),
@@ -114,9 +119,8 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
 
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
-    expect(body.message).toContain(PROJECT_ID);
-    expect(body.message).toContain("releaseModel='promote'");
-    expect(body.message).toContain("no active deploy binding carrying the 'live' stage");
+    expect(body.message).toContain('releaseModel `promote`');
+    expect(body.message).toContain('no active deploy binding carrying the `live` stage');
   });
 
   it('answers 409 RELEASE_RUNNER_AMBIGUOUS, naming both labels', async () => {

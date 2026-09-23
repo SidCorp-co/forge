@@ -201,7 +201,7 @@ export function runnerHoldClause(hold: RunnerHold): string {
       ? ''
       : ` Last seen ${hold.lastSeenSeconds}s ago.`
     : lastSeenPhrase(hold);
-  return `\`${hold.name}\` ${act}${age}`;
+  return `\`${hold.deviceName}\` ${act}${age}`;
 }
 
 function runnersHeldSentence(holds: RunnerHold[]): string | null {
@@ -253,6 +253,16 @@ export function releaseBlockerSentence(
   if (code === 'RELEASE_CRITERIA_UNEARNED') {
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
     return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
+  }
+  if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.releaseModel === 'string') {
+    return `This project declares releaseModel \`${details.releaseModel}\` and has no active deploy binding carrying the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or set the release model to \`none\`.`;
+  }
+  if (code === 'RELEASE_RUNNER_AMBIGUOUS' && Array.isArray(details?.labels)) {
+    const labels = details.labels as string[];
+    return `Two live deploy bindings name different release runners (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
+  }
+  if (code === 'RELEASE_MULTI_CHANNEL_UNSUPPORTED' && typeof details?.count === 'number') {
+    return `This project declares ${details.count} live deploy bindings, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`;
   }
   const issueIds = details?.issueIds;
   if (Array.isArray(issueIds)) return remedy.replace('{n}', String(issueIds.length));

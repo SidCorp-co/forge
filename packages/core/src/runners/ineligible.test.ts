@@ -18,7 +18,7 @@ const ago = (seconds: number) => new Date(NOW.getTime() - seconds * 1000);
 
 function row(over: Partial<RunnerLivenessRow> = {}): RunnerLivenessRow {
   return {
-    name: 'dev1',
+    deviceName: 'dev1',
     status: 'online',
     lastSeenAt: ago(5),
     limitReason: null,

@@ -3082,7 +3082,9 @@
 ### Fixed
 - **Why a release will not start now names the box, its state and the switch that changes it.** It
   told you to bring up runners already up, and to merge issues you had merged. A held release says
-  so.
+  so. Each box is named by what its Runners tab calls it, not by a second, staler copy of that name.
+  Three refusals that used to answer with their own wording now read the same sentence the release
+  settings screen does, whichever door you meet them at.
 
 - **An issue with no decision round no longer claims it was parked without a question.** The panel
   now says what it looked for, and keeps the way forward as its content rather than a footnote.
