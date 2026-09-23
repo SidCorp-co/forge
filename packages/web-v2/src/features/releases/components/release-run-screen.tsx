@@ -162,7 +162,9 @@ function Roster({ state }: { state: ReleaseRunState }) {
 		<div className="flex flex-col gap-2" data-testid="roster">
 			<div className="flex flex-wrap items-center gap-2 text-xs text-muted">
 				{roster.baseBranch ? <MonoTag>{roster.baseBranch}</MonoTag> : null}
-				{roster.channel ? <span>channel {roster.channel}</span> : null}
+				{roster.channels.length > 0 ? (
+					<span>channel {roster.channels.join(", ")}</span>
+				) : null}
 				{roster.releaseRunnerLabel ? (
 					<span>prefers {roster.releaseRunnerLabel}</span>
 				) : null}

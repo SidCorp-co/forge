@@ -1,3 +1,5 @@
+import type { ReleaseRoster } from "./roster";
+
 
 export type ReleaseAttemptStage = "promote" | "deploy" | "verify" | "repair";
 
@@ -14,10 +16,8 @@ export interface ReleaseAttempt {
 	verdict: "ok" | "failed" | null;
 	verdictReason: string | null;
 	readings: string[] | null;
-	/** The agent's own account of this act. */
 	account: string | null;
 	logTail: string | null;
-	/** True when the machine cut the tail short. */
 	logTailTruncated: boolean;
 	/** `null` means nobody has read past the cut. */
 	logTailReadAt: string | null;
@@ -61,23 +61,7 @@ export interface ReleaseMethod {
 	announcedAt: string;
 }
 
-export interface ReleaseRosterEntry {
-	id: string;
-	displayId: string;
-	title: string;
-	mergedAt: string | null;
-	waitingDays: number | null;
-	claimedByRunId: string | null;
-}
-
-export interface ReleaseRoster {
-	gateStatus: string | null;
-	channel: string | null;
-	releaseRunnerLabel: string | null;
-	baseBranch: string | null;
-	nextCutAt: string | null;
-	issues: ReleaseRosterEntry[];
-}
+export type { ReleaseRoster, ReleaseRosterEntry } from "./roster";
 
 /** `GET /api/projects/:projectId/release-batches/:runId/state`. */
 export interface ReleaseRunState {
