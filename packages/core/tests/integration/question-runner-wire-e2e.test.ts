@@ -195,6 +195,23 @@ describe('the read-back the box prints for itself', () => {
     expect(await back.json()).toEqual({ answer: null });
   });
 
+  it('serves a run identity carrying query syntax, which the box must not have mangled', async () => {
+    // `+`, `&`, `#` and a space are all legal in `question_waiters.run_id`,
+    // which is plain text. Interpolated into the query string rather than
+    // encoded, `+` arrives as a space and `&` ends the parameter, so the
+    // lookup misses a question the box really did ask.
+    for (const runId of ['run+7', 'run&7', 'run#7', 'run 7', 'run=7']) {
+      const { res } = await ask(bodyOf(FREE_TEXT, { runId }));
+      const { questionId } = (await res.json()) as { questionId: string };
+
+      const back = await app.request(
+        `/api/devices/me/questions/${questionId}?runId=${encodeURIComponent(runId)}`,
+        { headers: { authorization: `Bearer ${deviceToken}` } },
+      );
+      expect(back.status, `run identity ${runId} was not served its own question`).toBe(200);
+    }
+  });
+
   it('404s a run identity this box never asked under, rather than serving the answer', async () => {
     const { res } = await ask(bodyOf(FREE_TEXT));
     const { questionId } = (await res.json()) as { questionId: string };

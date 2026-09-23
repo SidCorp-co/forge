@@ -112,17 +112,22 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
     Ok(parsed.question_id)
 }
 
+/// `run_id` goes through the client's own query serializer rather than into the
+/// string. A run identity is free text on core's side, so one carrying `+`, `&`,
+/// `#` or a space interpolated straight in reaches the server as a different
+/// value — `+` as a space, `&` as the end of the parameter — and the waiter
+/// lookup misses. That is a read-back that fails for a question this box really
+/// did ask, which is the silence this whole path exists to end (ISS-1210).
 pub async fn answer(
     client: &CoreClient,
     question_id: &str,
     run_id: &str,
 ) -> Result<Option<Answer>> {
-    let url = client.url(&format!(
-        "/api/devices/me/questions/{question_id}?runId={run_id}"
-    ));
+    let url = client.url(&format!("/api/devices/me/questions/{question_id}"));
     let resp = client
         .http()
         .get(&url)
+        .query(&[("runId", run_id)])
         .bearer_auth(client.device_token())
         .send()
         .await
@@ -228,6 +233,80 @@ mod tests {
         let base = one_shot("200 OK", r#"{"answer":null}"#).await;
         let client = CoreClient::new(base, "tok");
         assert_eq!(answer(&client, "q-1", "run-1").await.unwrap(), None);
+    }
+
+    /// One request, one canned response, and the request line back — the only
+    /// way to hold a claim about what reaches the server's query parser.
+    async fn one_shot_capturing(
+        status: &str,
+        body: &str,
+    ) -> (String, tokio::sync::oneshot::Receiver<String>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let resp = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            if let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 4096];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.flush().await;
+            }
+        });
+        (format!("http://{addr}"), rx)
+    }
+
+    /// A run identity is free text on core's side. Interpolated into the query
+    /// string, `&` ends the parameter and `+` arrives as a space, so the waiter
+    /// lookup misses a question this box really did ask.
+    ///
+    /// The expectations below are form-urlencoded, which is what the client's
+    /// serializer emits and what core's router decodes: measured against hono,
+    /// `runId=run%2B7` reads back as `run+7` and `runId=run+7` as `run 7`. So
+    /// the round trip is exact, and core's side of it is held by
+    /// `question-runner-wire-e2e.test.ts` rather than by this reading.
+    #[tokio::test]
+    async fn a_run_identity_carrying_query_syntax_reaches_the_server_unchanged() {
+        for (run, encoded) in [
+            ("run+7", "run%2B7"),
+            ("run&7", "run%267"),
+            ("run#7", "run%237"),
+            ("run 7", "run+7"),
+            ("run=7", "run%3D7"),
+        ] {
+            let (base, request) = one_shot_capturing("200 OK", r#"{"answer":null}"#).await;
+            let client = CoreClient::new(base, "tok");
+            answer(&client, "q-1", run).await.unwrap();
+            let line = request.await.unwrap();
+            let first = line.lines().next().unwrap_or_default().to_string();
+            assert!(
+                first.contains(&format!("runId={encoded}")),
+                "`{run}` must reach the query parser as `{encoded}`: {first}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_url_safe_run_identity_is_not_mangled_on_the_way_out() {
+        let (base, request) = one_shot_capturing("200 OK", r#"{"answer":null}"#).await;
+        let client = CoreClient::new(base, "tok");
+        answer(&client, "q-1", "run-7").await.unwrap();
+        let first = request
+            .await
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap_or("")
+            .to_string();
+        assert!(
+            first.contains("/api/devices/me/questions/q-1?runId=run-7"),
+            "{first}"
+        );
     }
 
     #[tokio::test]
