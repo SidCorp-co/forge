@@ -91,12 +91,19 @@ impl RunCloser for CoreRunState<'_> {
 
 #[async_trait::async_trait]
 impl LeaseKeeper for CoreRunState<'_> {
-    async fn release(&self, issue_key: &str) -> Result<()> {
-        run_sessions::release_lease(self.client, issue_key).await
+    async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()> {
+        run_sessions::release_lease(self.client, project_id, issue_key).await
     }
 
-    async fn is_returned(&self, issue_key: &str) -> Result<bool> {
-        Ok(!run_sessions::lease_held(self.client, issue_key).await?)
+    async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool> {
+        // THIS box's half, not the fleet's: the close loop is asking whether it
+        // gave the lease back, and an issue another box legitimately holds must
+        // not stop this one from ever marking its own run closed (ISS-1109).
+        Ok(
+            !run_sessions::lease_state(self.client, project_id, issue_key)
+                .await?
+                .held_by_this_device,
+        )
     }
 }
 
@@ -139,6 +146,58 @@ mod tests {
             port.state("sess-1").await,
             MasterPresence::Gone,
             "the registry named a pane and tmux has no such pane; that is an observation, and softening it would leave every dead master unrecoverable"
+        );
+    }
+
+    /// ISS-1139 — the whole close loop over a key core resolves to no project.
+    ///
+    /// A ledger run carrying the prefixed key the pool handed the box, a core
+    /// answering every lease call with the refusal a spent prefix earns, and
+    /// the marks the loop sets from reading the world back. The project is
+    /// gone and nothing the box does brings the prefix back, so a refusal it
+    /// cannot clear has to leave the run closable all the same.
+    #[tokio::test]
+    async fn a_run_whose_key_reaches_no_project_still_closes() {
+        use crate::runner::close_loop::close;
+        use crate::runner::ledger::{Ledger, NewRun};
+        use crate::transport::fake_core;
+        use std::path::PathBuf;
+
+        struct Terminal;
+        #[async_trait::async_trait]
+        impl SessionReader for Terminal {
+            async fn is_terminal(&self, _: &str) -> Result<bool> {
+                Ok(true)
+            }
+        }
+
+        let url = fake_core::serve_always("404 Not Found", fake_core::UNKNOWN_PREFIX).await;
+        let client = CoreClient::new(url, String::from("tok"));
+
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-gone".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: PathBuf::from("/tmp/forge-recovery-ports-absent-by-construction"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["FD-880".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "sess-1").unwrap();
+
+        let st = close(
+            &mut led,
+            "run-1",
+            &Terminal,
+            &CoreRunState { client: &client },
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            st.is_closed(),
+            "a refusal the box cannot clear leaves this run open for ever, and `master_exit` waits on it: {st:?}"
         );
     }
 }

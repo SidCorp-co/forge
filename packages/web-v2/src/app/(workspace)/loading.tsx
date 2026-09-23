@@ -1,3 +1,4 @@
+// A loading boundary here and not at src/app/ — docs/modules/guides/public-pages.md.
 import { ColdBoot } from "@/design/patterns/mascot-loaders";
 
 export default function Loading() {

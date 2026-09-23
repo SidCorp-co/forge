@@ -29,6 +29,10 @@
     "./deploy-capability": {
       "types": "./src/deploy-capability.ts",
       "default": "./src/deploy-capability.ts"
+    },
+    "./status-sets": {
+      "types": "./src/status-sets.ts",
+      "default": "./src/status-sets.ts"
     }
   },
   "types": "./src/index.ts",

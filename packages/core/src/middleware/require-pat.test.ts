@@ -99,7 +99,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     );
   });
 
-  it('stamps nothing on a person-owned token, whatever its name imitates', async () => {
+  it("stamps its owner's own kind on a person-owned token, whatever its name imitates", async () => {
     const jobId = '77777777-7777-4777-8777-777777777777';
     vi.mocked(verifyPat).mockResolvedValue({
       ownerKind: 'human',
@@ -115,7 +115,9 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       agentUserId: string | null;
       machine?: unknown;
     };
-    expect(body.agency).toBeNull();
+    // ISS-1137 — `human`, not null. A null here was read as 'agent' downstream,
+    // which is how a person filing on their own token was stored as one.
+    expect(body.agency).toBe('human');
     expect(body.agentUserId).toBeNull();
     expect(body.machine).toBeUndefined();
   });

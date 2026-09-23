@@ -80,8 +80,10 @@ describe('MCP list projections', () => {
     `);
     const sessionId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, title, status, messages)
-      VALUES (${sessionId}, ${project.id}, ${user.id}, ${runId}, 'chat', 'completed', ${messages}::jsonb)
+      INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, title, kind, status,
+                                  messages)
+      VALUES (${sessionId}, ${project.id}, ${user.id}, ${runId}, 'chat', 'chat', 'completed',
+              ${messages}::jsonb)
     `);
     for (const turnIndex of [0, 1, 2]) {
       await harness.db.execute(sql`

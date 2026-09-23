@@ -34,6 +34,10 @@ import {
   MergeInputError,
   mergeStoredPullRequest,
 } from '../integrations/github/merge.js';
+import {
+  describeEmptyProjection,
+  projectionPipeReport,
+} from '../integrations/github/projection-health.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
@@ -132,11 +136,30 @@ const kernelMergeBodySchema = z
   })
   .strict();
 
+/**
+ * The refusal for an issue with no row, with the two states told apart.
+ *
+ * ISS-1123: `NO_PULL_REQUEST` reads as "you named the wrong number", and for the first year of this
+ * route's life it was never once true — the projection had a single writer nothing reached, so
+ * EVERY pull request on EVERY project answered that sentence. A projection holding nothing at all
+ * is reported as what it is, under its own code, before the number is blamed.
+ */
+async function noRowRefusal(
+  projectId: string,
+  about: string,
+): Promise<{ refusal: string; code: 'NO_PULL_REQUEST' | 'PROJECTION_EMPTY' }> {
+  const empty = describeEmptyProjection(await projectionPipeReport(projectId));
+  return empty
+    ? { refusal: empty, code: 'PROJECTION_EMPTY' }
+    : { refusal: about, code: 'NO_PULL_REQUEST' };
+}
+
 /** The stored pull request this call is about, or the sentence saying why there is none. */
 async function resolveStoredPullRequest(
+  projectId: string,
   issueId: string,
   number: number | undefined,
-): Promise<{ id: string } | { refusal: string }> {
+): Promise<{ id: string } | { refusal: string; code: string }> {
   if (number !== undefined) {
     const [row] = await db
       .select({ id: repoPullRequests.id })
@@ -145,20 +168,22 @@ async function resolveStoredPullRequest(
       .limit(1);
     return row
       ? { id: row.id }
-      : {
-          refusal: `this issue has no pull request #${number} on Forge's projection of the repository`,
-        };
+      : noRowRefusal(
+          projectId,
+          `this issue has no pull request #${number} on Forge's projection of the repository`,
+        );
   }
   const open = await openPullRequestsForIssue(issueId);
   if (open.length === 0) {
-    return {
-      refusal:
-        "this issue has no open pull request on Forge's projection of the repository — name one with `pullRequest`, or check that the branch names this issue",
-    };
+    return noRowRefusal(
+      projectId,
+      "this issue has no open pull request on Forge's projection of the repository — name one with `pullRequest`, or check that the branch names this issue",
+    );
   }
   if (open.length > 1) {
     return {
       refusal: `this issue has ${open.length} open pull requests and Forge will not choose between them — name the one to merge with \`pullRequest\``,
+      code: 'NO_PULL_REQUEST',
     };
   }
   return { id: open[0] as string };
@@ -187,11 +212,11 @@ issueMergeRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'member');
 
-    const stored = await resolveStoredPullRequest(issueId, body.pullRequest);
+    const stored = await resolveStoredPullRequest(issue.projectId, issueId, body.pullRequest);
     if ('refusal' in stored) {
       throw new HTTPException(422, {
         message: stored.refusal,
-        cause: { code: 'NO_PULL_REQUEST' },
+        cause: { code: stored.code },
       });
     }
 

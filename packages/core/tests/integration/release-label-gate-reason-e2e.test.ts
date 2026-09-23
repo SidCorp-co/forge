@@ -1,5 +1,8 @@
 /**
- * ISS-1080 criteria 1-5 and 27 — the release label is a gate a reader can see.
+ * ISS-1080 criteria 1-5 and 27 — the release label is a gate a reader can see;
+ * and ISS-1128, which made it a preference, so what the gate now reports is
+ * whether ANY box that could claim may take the job rather than whether this
+ * one carries the label.
  *
  * `RUNNER_MAY_TAKE_JOB` hid a `release_batch` job from every box on the fleet
  * and `buildGateReasonCase` had no arm for it, so the two surfaces that exist
@@ -134,6 +137,34 @@ async function seed(opts: {
 const reasonFor = async (w: World) =>
   (await mods.gateReasonsForQueuedJobs(w.projectId)).get(w.jobId);
 
+/**
+ * A second box on the same project.
+ *
+ * ISS-1128 — a release job is hidden from an unlabelled box only while a box
+ * that CAN take the release carries the label, so every case meaning "the
+ * label hides this job" has to put one on the fleet.
+ */
+async function addBox(
+  w: World,
+  labels: string[],
+  opts: { agentVersion?: string } = {},
+): Promise<void> {
+  const [row] = await harness.db.execute(sql`
+    SELECT created_by FROM projects WHERE id = ${w.projectId} LIMIT 1
+  `);
+  const device = await createTestDevice(harness.db, String(row?.created_by), {
+    status: 'online',
+    ...(opts.agentVersion === undefined ? {} : { agentVersion: opts.agentVersion }),
+  });
+  await harness.db.execute(sql`
+    INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at, labels)
+    VALUES (
+      ${randomUUID()}, ${w.projectId}, ${device.id}, 'claude-code',
+      ${`box-${device.id.slice(0, 8)}`}, 'online', now(), ${JSON.stringify(labels)}::jsonb
+    )
+  `);
+}
+
 const wedgeCount = async (): Promise<number> => {
   const rows = (await harness.db.execute(sql`
     SELECT count(*)::int AS n FROM notifications WHERE type = 'pipeline_wedge'
@@ -142,16 +173,44 @@ const wedgeCount = async (): Promise<number> => {
 };
 
 describe('the release label is a gate reason', () => {
-  it('names the label when a live box carries the wrong one', async () => {
+  // ISS-1128 — this arm answers a question about the JOB, not about one box:
+  // can anything that could claim take it. A box carrying the wrong label beside
+  // one carrying the right label is ordinary routing, and the job is not waiting
+  // on anybody.
+  it('says nothing when a live box carries the wrong one and another carries it', async () => {
     const w = await seed({ type: 'release_batch', labels: ['staging-box'], declaredLabel: LABEL });
+    await addBox(w, [LABEL]);
+
+    expect(await reasonFor(w)).toBeUndefined();
+  });
+
+  it('names the label when the project resolves no label at all', async () => {
+    const w = await seed({ type: 'release_batch', labels: [LABEL], declaredLabel: null });
 
     expect(await reasonFor(w)).toBe('release_label_missing');
   });
 
-  it('names the label when a live box carries none at all', async () => {
+  it('says nothing when no box that could claim carries the label', async () => {
     const w = await seed({ type: 'release_batch', labels: [], declaredLabel: LABEL });
 
-    expect(await reasonFor(w)).toBe('release_label_missing');
+    expect(await reasonFor(w)).toBeUndefined();
+  });
+
+  it('says nothing when the box carrying the label is below the claim floor', async () => {
+    const w = await seed({ type: 'release_batch', labels: [], declaredLabel: LABEL });
+    await addBox(w, [LABEL], { agentVersion: '0.10.0' });
+
+    expect(await reasonFor(w)).toBeUndefined();
+  });
+
+  it('still says runner_too_old when every fresh box is below the claim floor', async () => {
+    const w = await seed({ type: 'release_batch', labels: [LABEL], declaredLabel: LABEL });
+    await harness.db.execute(sql`
+      UPDATE devices SET agent_version = '0.10.0'
+      WHERE id IN (SELECT device_id FROM runners WHERE project_id = ${w.projectId})
+    `);
+
+    expect(await reasonFor(w)).toBe('runner_too_old');
   });
 
   it('names the label when two live bindings disagree about it', async () => {
@@ -182,7 +241,7 @@ describe('the release label is a gate reason', () => {
   });
 
   it('answers assertDispatchable with the same reason', async () => {
-    const w = await seed({ type: 'release_batch', labels: [], declaredLabel: LABEL });
+    const w = await seed({ type: 'release_batch', labels: [], declaredLabel: null });
 
     expect(await mods.assertDispatchable(w.jobId)).toEqual({
       ok: false,
@@ -213,7 +272,7 @@ describe('the surfaces that report a waiting job', () => {
     const w = await seed({
       type: 'release_batch',
       labels: [],
-      declaredLabel: LABEL,
+      declaredLabel: null,
       queuedMinutesAgo: 120,
     });
 
@@ -236,7 +295,21 @@ describe('the surfaces that report a waiting job', () => {
     expect(await wedgeCount()).toBe(1);
   });
 
-  it('counts a label-hidden release job as starvation', async () => {
+  it('counts a release job no box may take as starvation', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [],
+      declaredLabel: null,
+      queuedMinutesAgo: 120,
+    });
+
+    const alerts = await mods.computeAlerts({ now: new Date() });
+    const a3 = alerts.find((a) => a.id === 'A3');
+
+    expect(a3?.entities.map((e) => e.ref)).toContain(w.projectId);
+  });
+
+  it('stops counting one an unlabelled box may now take', async () => {
     const w = await seed({
       type: 'release_batch',
       labels: [],
@@ -247,7 +320,7 @@ describe('the surfaces that report a waiting job', () => {
     const alerts = await mods.computeAlerts({ now: new Date() });
     const a3 = alerts.find((a) => a.id === 'A3');
 
-    expect(a3?.entities.map((e) => e.ref)).toContain(w.projectId);
+    expect(a3?.entities.map((e) => e.ref) ?? []).not.toContain(w.projectId);
   });
 
   it('does not count a release job its own box can take', async () => {

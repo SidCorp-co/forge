@@ -2,6 +2,9 @@
 // own their own suites (admissible.test.ts, run-session's e2e) and are stubs here,
 // so a change to the RESPONSE — the key a runner decodes, the status code a
 // refusal arrives on — fails here and nowhere else.
+//
+// The two `/me/issue-leases/:issueKey` routes are the same kind of suite and
+// live in `pool-routes-lease.test.ts`, because one file may not exceed 500 lines.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -36,12 +39,23 @@ vi.mock('./pool.js', () => ({ readPool: (a: unknown) => readPool(a) }));
 vi.mock('./admissible.js', () => ({
   readAdmissibleIssues: (a: unknown) => readAdmissibleIssues(a),
 }));
+vi.mock('../issues/issue-lease.js', () => ({
+  readDeviceIssueLease: vi.fn(async () => ({
+    held: false,
+    heldByThisDevice: false,
+    holder: null,
+  })),
+  resolveLeaseKey: vi.fn(async (a: { rawKey: string; projectId?: string | null }) => ({
+    ok: true,
+    key: { issueKey: a.rawKey, projectId: a.projectId ?? null },
+  })),
+}));
 vi.mock('./run-session.js', () => ({
   openRunSession: (a: unknown) => openRunSession(a),
   closeRunSession: vi.fn(),
   readRunSessionTerminal: (a: unknown) => readRunSessionTerminal(a),
   isIssueLeaseHeld: vi.fn(),
-  releaseIssueLease: vi.fn(),
+  releaseIssueLease: vi.fn(async () => ({ released: true, projectId: 'proj-1' })),
 }));
 vi.mock('./claim.js', () => ({
   claimJobForMaster: vi.fn(),

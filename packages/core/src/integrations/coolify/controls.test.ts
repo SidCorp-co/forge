@@ -132,7 +132,9 @@ describe('runCoolifyCancel', () => {
     expect(out).toMatchObject({ performed: false, pendingHumanConfirm: true });
     expect(client.cancelDeployment).not.toHaveBeenCalled();
     // The gate is asked about THIS binding's stages, not about nothing.
-    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live']);
+    // The third argument is what the binding actually deploys to: the gate asks
+    // whether those applications are production, not what the stage is called.
+    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live'], ['app-1']);
   });
 });
 
@@ -212,7 +214,7 @@ describe('runCoolifyRollback', () => {
     expect(out).toMatchObject({ performed: false, pendingHumanConfirm: true });
     expect(client.listRollbackImages).not.toHaveBeenCalled();
     expect(client.rollbackApplication).not.toHaveBeenCalled();
-    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live']);
+    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live'], ['app-1']);
   });
 
   it('refuses to pick a target for the caller when the binding has several', async () => {

@@ -266,7 +266,7 @@ describe('POST /api/issues/:id/attachments', () => {
 
   it('201 via PAT: requireAnyAuth resolves userId from PAT.userId', async () => {
     const row = { id: 'pat-1', userId: USER_ID, scopes: ['read', 'write'] };
-    verifyPatMock.mockResolvedValueOnce({ row });
+    verifyPatMock.mockResolvedValueOnce({ row, ownerKind: 'human' });
     grantIssueAccess();
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([

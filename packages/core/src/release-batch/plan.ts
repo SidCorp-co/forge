@@ -144,7 +144,7 @@ export interface ReleaseChannel {
   label: string;
   /** Verbatim operator text for the channel. Never contains a credential. */
   instructions: string | null;
-  /** Matched against `runners.labels` to pick the boxes allowed to release. */
+  /** Matched against `runners.labels` to rank the boxes; it does not filter them. */
   releaseRunnerLabel: string | null;
   /** How the kernel proves the deploy landed. `null` → nothing is proven. */
   verify: VerifyConfig | null;

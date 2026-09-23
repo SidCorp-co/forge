@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { OCCUPYING_JOB_STATUSES } from '../../src/jobs/status-sets.js';
 import {
   createTestDevice,
   createTestProject,
@@ -130,7 +131,7 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
     expect(await statusOf(runnerId)).toBe('disabled');
   });
 
-  it.each(['dispatched', 'running'])(
+  it.each(OCCUPYING_JOB_STATUSES)(
     'leaves a long-offline runner still holding a `%s` job',
     async (jobStatus) => {
       const { runnerId } = await seedRunner({ lastSeenDaysAgo: 90 });
@@ -155,8 +156,9 @@ describe('reapGhostRunners predicate E2E (ISS-654)', () => {
   it('leaves a long-offline runner whose device still holds a live session', async () => {
     const { runnerId, deviceId } = await seedRunner({ lastSeenDaysAgo: 90 });
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, status)
-      VALUES (${randomUUID()}, ${projectId}, ${await seedRun()}, ${deviceId}, 'running')
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, kind, status)
+      VALUES (${randomUUID()}, ${projectId}, ${await seedRun()}, ${deviceId}, 'run_session',
+              'running')
     `);
 
     const res = await reapGhostRunners();

@@ -174,9 +174,10 @@ export function alertFixtures(harness: TestDatabase): AlertFixtures {
         VALUES (${runId}, ${args.projectId}, 'system', 'completed', ${createdAt}, now())
       `);
       await db.execute(sql`
-        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata, created_at, updated_at)
+        INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata,
+                                    created_at, updated_at)
         VALUES (
-          ${randomUUID()}, ${args.projectId}, ${runId}, ${args.status},
+          ${randomUUID()}, ${args.projectId}, ${runId}, 'chat', ${args.status},
           ${JSON.stringify({ source: 'schedule.run', scheduleId: args.scheduleId })}::jsonb,
           ${createdAt}, ${createdAt}
         )

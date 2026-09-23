@@ -103,9 +103,9 @@ async function queuedSession(opts: {
   `);
   await harness.db.execute(sql`
     INSERT INTO agent_sessions
-      (id, project_id, pipeline_run_id, status, metadata, dispatched_at, last_heartbeat_at,
+      (id, project_id, pipeline_run_id, kind, status, metadata, dispatched_at, last_heartbeat_at,
        created_at, updated_at)
-    VALUES (${id}, ${projectId}, ${runId}, 'queued',
+    VALUES (${id}, ${projectId}, ${runId}, 'pipeline', 'queued',
             ${JSON.stringify({ type: 'pipeline' })}::jsonb,
             ${ago(opts.dispatchedAgo)}::timestamptz,
             ${opts.heardAgo === null ? null : ago(opts.heardAgo)}::timestamptz,
@@ -220,8 +220,10 @@ describe('the queue hop, split on whether anything ever reported', () => {
       INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${projectId}, 'interactive', 'running')
     `);
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata, dispatched_at, last_heartbeat_at)
-      VALUES (${id}, ${projectId}, ${runId}, 'queued', ${JSON.stringify({ agentChat: {} })}::jsonb,
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata,
+                                  dispatched_at, last_heartbeat_at)
+      VALUES (${id}, ${projectId}, ${runId}, 'chat', 'queued',
+              ${JSON.stringify({ agentChat: {} })}::jsonb,
               ${ago(QUIET() * 100)}::timestamptz, ${ago(QUIET() * 100)}::timestamptz)
     `);
 

@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { check } from 'drizzle-orm/pg-core';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { check, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { releaseVersionText } from './column-checks.js';
 
 export const releaseModels = ['none', 'promote', 'publish'] as const;
 export type ReleaseModel = (typeof releaseModels)[number];
@@ -44,3 +46,23 @@ export const bindingShapeChecks = {
   roleStagesChk: check('integration_bindings_role_stages_chk', ROLE_STAGES_CHK),
   agentAccessChk: check('integration_bindings_agent_access_chk', AGENT_ACCESS_CHK),
 } as const;
+
+/** A release's number and its ship stamp; both NULL on every run that is not a release. */
+export const releaseRunVersionColumns = {
+  releaseVersion: text('release_version'),
+  releaseReleasedAt: timestamp('release_released_at', { withTimezone: true }),
+} as const;
+
+/** Unique per project and `int[]`-comparable: what makes that number an identity. Partial, so it
+ *  says nothing about a run that is not a release. The rules: `release-batch/version-store.ts`. */
+export function releaseRunIdentity(t: { projectId: AnyPgColumn; releaseVersion: AnyPgColumn }) {
+  return {
+    releaseVersionUq: uniqueIndex('pipeline_runs_release_version_uq')
+      .on(t.projectId, t.releaseVersion)
+      .where(sql`release_version IS NOT NULL`),
+    releaseVersionChk: check(
+      'pipeline_runs_release_version_chk',
+      releaseVersionText(t.releaseVersion),
+    ),
+  } as const;
+}

@@ -26,12 +26,13 @@ const PROBES = {
     ],
   },
   knowledge: {
-    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-doc-citations',
+    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations',
     probe: ['node', 'scripts/check-honest-costs.mjs'],
     from: 'none',
     also: [
       { from: 'none', probe: ['node', 'scripts/check-injected-doc-modes.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-pat-surface.mjs'] },
+      { from: 'none', probe: ['node', 'scripts/check-status-tuples.mjs', '--all'] },
       { from: 'none', probe: ['node', 'scripts/check-doc-citations.mjs', '--all'] },
     ],
   },
@@ -55,6 +56,11 @@ const PROBES = {
   record: {
     gate: 'check-release-record',
     probe: ['node', 'scripts/check-release-record.mjs'],
+  },
+  comment: {
+    gate: 'check-comment-budget',
+    probe: ['node', 'scripts/check-comment-budget.mjs', '--all'],
+    needs: ['deps'],
   },
 };
 

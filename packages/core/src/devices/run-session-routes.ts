@@ -11,8 +11,9 @@
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest, notFound, sessionParamsSchema } from './route-errors.js';
+import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
 import {
   heldWorktreeSchema,
   resumeChoiceSchema,
@@ -40,14 +41,23 @@ deviceRunSessionRoutes.post(
   }),
   async (c) => {
     const body = c.req.valid('json');
-    const session = await openRunSession({
-      deviceId: c.get('device').id,
-      projectId: body.projectId,
-      issueKeys: body.issueKeys,
-      name: body.name,
-      boxRunId: body.runId,
-    });
-    return c.json(session);
+    try {
+      const session = await openRunSession({
+        deviceId: c.get('device').id,
+        projectId: body.projectId,
+        issueKeys: body.issueKeys,
+        name: body.name,
+        boxRunId: body.runId,
+      });
+      return c.json(session);
+    } catch (err) {
+      // The refusal IS the deliverable here: a box told only that the open
+      // failed retries against the same holder until the lease lapses.
+      if (err instanceof IssueLeaseHeldError) {
+        throw conflict(err.code, err.message, { holders: err.holders });
+      }
+      throw err;
+    }
   },
 );
 

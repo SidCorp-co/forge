@@ -368,6 +368,8 @@ export interface UpdateBindingPatch {
   label?: string;
   instructions?: string | null;
   agentAccess?: AgentAccess;
+  /** `deploy` only, and never empty there — the DB check refuses the other shapes. */
+  stages?: DeployStage[];
 }
 
 export async function updateBinding(
@@ -381,6 +383,7 @@ export async function updateBinding(
   if (patch.label !== undefined) set.label = patch.label;
   if (patch.instructions !== undefined) set.instructions = patch.instructions;
   if (patch.agentAccess !== undefined) set.agentAccess = patch.agentAccess;
+  if (patch.stages !== undefined) set.stages = patch.stages;
   const [row] = await db
     .update(integrationBindings)
     .set(set)

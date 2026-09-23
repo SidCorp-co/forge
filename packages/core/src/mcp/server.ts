@@ -8,7 +8,7 @@ import {
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
-import { FORGE_MCP_INSTRUCTIONS } from './instructions.js';
+import { forgeMcpInstructions } from './instructions.js';
 import { toToolCallContent } from './tool-result.js';
 import {
   forgeAgentSessionsGetTool,
@@ -172,7 +172,7 @@ export function createMcpServer(ctx: McpContext): Server {
 
   const server = new Server(
     { name: '@forge/core', version: pkg.version },
-    { capabilities: { tools: {}, prompts: {} }, instructions: FORGE_MCP_INSTRUCTIONS },
+    { capabilities: { tools: {}, prompts: {} }, instructions: forgeMcpInstructions() },
   );
 
   const metaProjectId = async (): Promise<string | null> => {

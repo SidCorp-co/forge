@@ -19,7 +19,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "release-procedure":
     "No release-procedure fact — the release runs a generic fallback written for another repo.",
   "release-runner":
-    "The live binding names no release runner — a release is refused rather than sent to an arbitrary box.",
+    "The live binding names no release runner — a release is refused rather than sent to an arbitrary box. Naming one recommends a box; it does not stop the others releasing when that box is unavailable.",
   "release-runner-ambiguous":
     "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
   "release-multi-channel":
@@ -48,6 +48,10 @@ const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, strin
   unrepresentable: "free text — not executed, abort and comment",
 };
 
+/** What a field says when the read behind it failed. Never its default, which
+ *  would show an unreadable binding as a binding that declares nothing. */
+const UNREAD = "could not be read";
+
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
 
 /** What the badge says for each declared model — the words a reader of the screen uses. */
@@ -64,6 +68,15 @@ function branchPair(r: ReleaseReadiness): string {
 }
 
 function stateLine(r: ReleaseReadiness) {
+  // An unreadable declaration is not a project that declares nothing. Saying so
+  // would be the substitution this whole section exists to stop (ISS-1127).
+  if (!r.declarationRead)
+    return (
+      <>
+        This project's release declaration could not be read just now, so nothing below it is a
+        reading. What could not be evaluated is named underneath.
+      </>
+    );
   if (r.hasReleaseGate)
     return (
       <>
@@ -133,6 +146,7 @@ export function ReleaseSection({
     <div className="mt-6 border-t border-line pt-5">
       {headingFor(r)}
 
+      {r.declarationRead && (
       <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
         <div>
           <dt className="fg-caption text-subtle">Release</dt>
@@ -149,26 +163,35 @@ export function ReleaseSection({
         <div>
           <dt className="fg-caption text-subtle">Live targets</dt>
           <dd className="fg-body-sm text-fg">
-            {r.providers.length > 0 ? r.providers.join(", ") : "—"}
+            {!r.channelsRead ? UNREAD : r.providers.length > 0 ? r.providers.join(", ") : "—"}
           </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Release runner label</dt>
-          <dd className="fg-body-sm font-mono text-fg">{r.releaseRunnerLabel ?? "—"}</dd>
+          <dd className="fg-body-sm font-mono text-fg">
+            {!r.channelsRead ? UNREAD : (r.releaseRunnerLabel ?? "—")}
+          </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Rollback</dt>
           <dd className="fg-body-sm text-fg">
-            {r.rollbackMode ? ROLLBACK_TEXT[r.rollbackMode] : "abort and comment"}
+            {!r.channelsRead
+              ? UNREAD
+              : r.rollbackMode
+                ? ROLLBACK_TEXT[r.rollbackMode]
+                : "abort and comment"}
           </dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Deploy verified by</dt>
-          <dd className="fg-body-sm text-fg">{r.hasVerify ? "a probe" : "nothing"}</dd>
+          <dd className="fg-body-sm text-fg">
+            {!r.channelsRead ? UNREAD : r.hasVerify ? "a probe" : "nothing"}
+          </dd>
         </div>
       </dl>
+      )}
 
-      {!r.hasReleaseGate && (
+      {r.declarationRead && !r.hasReleaseGate && (
         <p className="fg-caption mt-3 text-muted">
           {r.targetUndeclared ? (
             <>
@@ -187,8 +210,35 @@ export function ReleaseSection({
         </p>
       )}
 
+      {r.blockers.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">
+            Why a release will not start — every reason, now
+          </h4>
+          {r.blockers.map((b) => (
+            <Banner key={`${b.code}:${b.message}`} tone={b.evaluated ? "danger" : "attention"}>
+              <span className="font-mono">{b.code}</span> — {b.message}
+            </Banner>
+          ))}
+        </div>
+      )}
+
+      {r.warnings.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">
+            What will change how the release runs, without stopping it
+          </h4>
+          {r.warnings.map((w) => (
+            <Banner key={`${w.code}:${w.message}`} tone="attention">
+              <span className="font-mono">{w.code}</span> — {w.message}
+            </Banner>
+          ))}
+        </div>
+      )}
+
       {r.gaps.length > 0 && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-4 space-y-2">
+          <h4 className="fg-caption text-subtle">What this project has not declared</h4>
           {r.gaps.map((g) => (
             <Banner key={g} tone="attention">
               {GAP_TEXT[g]}{" "}

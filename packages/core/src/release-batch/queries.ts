@@ -12,7 +12,7 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, pipelineRuns, schedules } from '../db/schema.js';
+import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readProjectBranches } from '../projects/service.js';
@@ -20,6 +20,7 @@ import { nextRunFor } from '../schedules/cron.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
+import { currentReleaseVersion } from './version-store.js';
 
 export interface ReleaseRosterEntry {
   id: string;
@@ -42,6 +43,12 @@ export interface ReleaseRoster {
   baseBranch: string | null;
   /** When the next scheduled cut fires. `null` = nobody scheduled one. */
   nextCutAt: string | null;
+  /**
+   * The version the project is serving: what the last release to SHIP cut. `null` when no release
+   * here has ever shipped. Read off the ship stamp rather than the run's status, because
+   * `cancelConcludedRun` flips a `completed` run to `cancelled` without taking the bytes down.
+   */
+  currentVersion: string | null;
   issues: ReleaseRosterEntry[];
 }
 
@@ -82,10 +89,12 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       releaseRunnerLabel: null,
       baseBranch: null,
       nextCutAt: null,
+      currentVersion: null,
       issues: [],
     };
   }
   const nextCutAt = await nextScheduledCutAt(projectId);
+  const currentVersion = await currentReleaseVersion(projectId);
   const branches = await readProjectBranches(projectId);
 
   const rows = await db
@@ -108,6 +117,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     releaseRunnerLabel: releaseRunnerLabelOf(projectId, channels),
     baseBranch: branches?.baseBranch ?? null,
     nextCutAt,
+    currentVersion,
     issues: rows.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(prefix, r.issSeq) : r.id,
@@ -163,13 +173,20 @@ export interface ActiveReleaseBatchInfo {
   runId: string;
   issueIds: string[];
   startedAt: string;
+  /** The version this release cut. `null` only on a release row nothing versioned. */
+  version: string | null;
 }
 
 export async function getActiveReleaseBatch(
   projectId: string,
 ): Promise<ActiveReleaseBatchInfo | null> {
-  const [run] = await db.execute<{ id: string; metadata: unknown; started_at: Date }>(sql`
-    SELECT r.id, r.metadata, r.started_at
+  const [run] = await db.execute<{
+    id: string;
+    metadata: unknown;
+    started_at: Date;
+    release_version: string | null;
+  }>(sql`
+    SELECT r.id, r.metadata, r.started_at, r.release_version
     FROM pipeline_runs r
     WHERE r.project_id = ${projectId}
       AND r.kind = 'system'
@@ -190,6 +207,7 @@ export async function getActiveReleaseBatch(
     issueIds: claimedIssues.map((r) => r.id),
     startedAt:
       run.started_at instanceof Date ? run.started_at.toISOString() : String(run.started_at),
+    version: run.release_version,
   };
 }
 
@@ -201,16 +219,56 @@ export interface ReleaseBatchIssue {
   status: IssueStatus;
 }
 
+/**
+ * Which box this release was meant for, whether it got one, and which box took
+ * the job.
+ *
+ * `null` for a run opened before ISS-1128, which recorded no verdict: saying
+ * `preferenceMet: false` there would claim a reading nobody took.
+ */
+export interface ReleaseRunnerAccount {
+  /** The declared preference, as the live deploy bindings resolved it. */
+  label: string | null;
+  /** False where no box eligible to release carried the label. */
+  preferenceMet: boolean;
+  /** The box the release job was claimed on, or `null` while nobody has. */
+  claimedByDeviceId: string | null;
+}
+
 export interface ReleaseBatchContext {
   runId: string;
   projectId: string;
   gateStatus: IssueStatus;
+  /** The version this release cut, which the release agent writes into the tag it pushes. */
+  version: string | null;
   baseBranch: string;
   /** Where a `promote` release lands; equals `baseBranch` under every other model. */
   liveBranch: string;
   deployPlanned: boolean;
   promotePlanned: boolean;
+  releaseRunner: ReleaseRunnerAccount | null;
   issues: ReleaseBatchIssue[];
+}
+
+/** The declared preference and its verdict, off the run's own metadata. */
+async function releaseRunnerAccount(
+  runId: string,
+  meta: Record<string, unknown>,
+): Promise<ReleaseRunnerAccount | null> {
+  const recorded = meta.releaseRunner;
+  if (typeof recorded !== 'object' || recorded === null) return null;
+  const { label, preferenceMet } = recorded as { label?: unknown; preferenceMet?: unknown };
+  const [job] = await db
+    .select({ deviceId: jobs.deviceId })
+    .from(jobs)
+    .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
+    .orderBy(sql`${jobs.queuedAt} DESC`)
+    .limit(1);
+  return {
+    label: typeof label === 'string' && label.length > 0 ? label : null,
+    preferenceMet: preferenceMet === true,
+    claimedByDeviceId: job?.deviceId ?? null,
+  };
 }
 
 export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBatchContext | null> {
@@ -219,6 +277,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
       id: pipelineRuns.id,
       projectId: pipelineRuns.projectId,
       metadata: pipelineRuns.metadata,
+      releaseVersion: pipelineRuns.releaseVersion,
     })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
@@ -256,10 +315,12 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     runId,
     projectId: run.projectId,
     gateStatus,
+    version: run.releaseVersion,
     baseBranch,
     liveBranch,
     deployPlanned,
     promotePlanned,
+    releaseRunner: await releaseRunnerAccount(runId, meta),
     issues: claimedIssues.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(claimedPrefix, r.issSeq) : r.id,

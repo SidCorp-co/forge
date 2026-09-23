@@ -2,15 +2,27 @@
  * A run session as core knows it: one box, one worktree, a GROUP of issues.
  *
  * Membership lives in `pipeline_runs.metadata.runIssues` because
- * `pipeline_runs.issue_id` is one column and a run carries many. Core only
- * ever reads it by run id — to say which issues came back when a box is lost —
- * so a jsonb array serves the access pattern and no migration ships for it.
+ * `pipeline_runs.issue_id` is one column and a run carries many. Core reads it
+ * by run id, to say which issues came back when a box is lost, and a jsonb
+ * array serves that.
+ *
+ * It is no longer what says who HOLDS an issue (ISS-1109). No index can
+ * constrain an array element, so nothing refused the second taker and every
+ * reader wrote its own predicate; the lease is a row in `issue_leases` and
+ * `issues/issue-lease.ts` is the only thing that writes or reads it.
  */
 
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import {
+  type IssueLeaseRelease,
+  readDeviceIssueLease,
+  releaseIssueLeaseRow,
+  takeIssueLeases,
+} from '../issues/issue-lease.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
+import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -20,10 +32,10 @@ import {
   insertOneShotRun,
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
+import { liveMasterSessionId } from './master-owner.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
-/** What `metadata.type` a run session carries. */
-export const RUN_SESSION_TYPE = 'run_session';
+export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 
 /** Where a run's issue group lives on its one-shot run. */
 export const RUN_ISSUES_METADATA_KEY = 'runIssues';
@@ -103,7 +115,7 @@ async function openSessionForBoxRun(
     .where(
       and(
         eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
         notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
         sql`${pipelineRuns.metadata}->>${BOX_RUN_ID_METADATA_KEY} = ${args.boxRunId}`,
       ),
@@ -162,13 +174,26 @@ export async function openRunSession(args: {
       return { sessionId: existing.sessionId, runId: existing.runId };
     }
   }
+  // Core issues the owner edge. The box is authenticated as a device and says
+  // which project it is running for; which master that is, core already knows.
+  // No master registered yet leaves a root rather than a guess.
+  const masterSessionId = await liveMasterSessionId({
+    deviceId: args.deviceId,
+    projectId: args.projectId,
+  });
+  if (!masterSessionId) {
+    logger.warn(
+      { deviceId: args.deviceId, projectId: args.projectId, name: args.name },
+      'run-session: no live master registered for this device and project, so this run opens as a root',
+    );
+  }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {
     projectId: args.projectId,
     kind: 'system',
     metadata: {
-      type: RUN_SESSION_TYPE,
+      type: RUN_SESSION_KIND,
       deviceId: args.deviceId,
       [RUN_ISSUES_METADATA_KEY]: canonical.keys,
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
@@ -192,13 +217,25 @@ export async function openRunSession(args: {
         deviceId: args.deviceId,
         pipelineRunId: run.id,
         title: `run: ${args.name}`,
+        kind: RUN_SESSION_KIND,
+        parentSessionId: masterSessionId,
         status: 'running',
         startedAt: new Date(),
         lastHeartbeatAt: new Date(),
-        metadata: { type: RUN_SESSION_TYPE, terminalName: args.name, deviceId: args.deviceId },
+        metadata: { terminalName: args.name, deviceId: args.deviceId },
       })
       .returning({ id: agentSessions.id });
     if (!row) throw new Error('openRunSession: insert returned no row');
+    // Inside the transaction on purpose: a key somebody live already holds
+    // rolls the run and the session back with it, so a refused open leaves a
+    // box with nothing rather than with half a group.
+    await takeIssueLeases(tx, {
+      projectId: args.projectId,
+      deviceId: args.deviceId,
+      sessionId: row.id,
+      runId: run.id,
+      issueKeys: canonical.keys,
+    });
     return { opened: { sessionId: row.id, runId: run.id } };
   });
   if (claimed.existing) {
@@ -250,7 +287,7 @@ export async function readRunSessionTerminal(args: {
       and(
         eq(agentSessions.id, args.sessionId),
         eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
       ),
     );
   if (!row) return null;
@@ -258,35 +295,51 @@ export async function readRunSessionTerminal(args: {
 }
 
 /**
- * Is one issue still held by a live run session on this box?
+ * Is one issue held by a live run session on ANY box this device can see?
+ *
+ * The device bounds which projects may be asked about, never who counts as a
+ * holder: filtering holders by device is what let box B open a second run over
+ * an issue box A was running (ISS-1109).
  */
 export async function isIssueLeaseHeld(args: {
   deviceId: string;
   issueKey: string;
+  projectId?: string | null;
 }): Promise<boolean> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(agentSessions)
-    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
-    .where(
-      and(
-        eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
-        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-        sql`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)`,
-      ),
-    );
-  return (row?.n ?? 0) > 0;
+  return (await readDeviceIssueLease(args)).held;
 }
 
 /**
- * Give one issue's lease back, per ISSUE and never per run.
+ * Give one issue's lease back, per ISSUE and per PROJECT, never per run.
+ *
+ * Two writes, because there are two records: the lease row, which says who is
+ * holding the issue, and the run's membership array, which says what this run
+ * was carrying and is what `returnIssuesForRun` reads to give statuses back.
+ * Dropping the key from membership without dropping the lease would leave the
+ * issue held by a run that no longer claims it.
+ *
+ * Total on purpose: a release that matched nothing, and one that matched more
+ * than it could identify, are answers rather than throws, and the route turns
+ * each into the refusal a box reads.
  */
 export async function releaseIssueLease(args: {
   deviceId: string;
   issueKey: string;
-}): Promise<void> {
-  await db.execute(sql`
+  projectId?: string | null;
+}): Promise<IssueLeaseRelease> {
+  // One transaction, because they are two halves of one act. With the lease
+  // dropped and committed on its own, a replacement open on this same device
+  // can take the lease back before the UPDATE below runs — and that UPDATE
+  // would then strip membership from the NEW run while leaving its lease
+  // standing. The run then holds an issue that `returnIssuesForRun` will not
+  // give back when the box dies.
+  return await db.transaction(async (tx) => {
+    const outcome = await releaseIssueLeaseRow(tx, args);
+    if (!outcome.released) return outcome;
+    // Narrowed to the project whose row went: the same key names a different
+    // issue in every other project this box serves, and a run of one of those
+    // is still carrying it (ISS-1139).
+    await tx.execute(sql`
     UPDATE pipeline_runs r
        SET metadata = jsonb_set(
              COALESCE(r.metadata, '{}'::jsonb),
@@ -301,9 +354,12 @@ export async function releaseIssueLease(args: {
       FROM agent_sessions s
      WHERE s.pipeline_run_id = r.id
        AND s.device_id = ${args.deviceId}
-       AND s.metadata->>'type' = ${RUN_SESSION_TYPE}
+       AND s.kind = ${RUN_SESSION_KIND}
+       AND r.project_id = ${outcome.projectId}
        AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)
   `);
+    return outcome;
+  });
 }
 
 /** Every live run session on one device, for the daemon's own reconcile. */
@@ -321,7 +377,7 @@ export async function listRunSessionsForDevice(
     .where(
       and(
         eq(agentSessions.deviceId, deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
         notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
       ),
     );
@@ -380,7 +436,7 @@ export async function closeRunSession(args: {
       and(
         eq(agentSessions.id, args.sessionId),
         eq(agentSessions.deviceId, args.deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
       ),
     );
   if (!row) return null;

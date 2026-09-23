@@ -84,9 +84,15 @@ export async function prepareJobForMaster(args: {
   if (!releaseLabel.allowed) {
     logger.warn(
       { jobId: args.jobId, deviceId: args.deviceId, ...releaseLabel },
-      'claim: release job refused, this box does not carry the project release label',
+      'claim: release job refused, a box carrying the project release label is available',
     );
     return { ok: false, reason: 'release_label_missing' };
+  }
+  if (!releaseLabel.preferenceMet) {
+    logger.warn(
+      { jobId: args.jobId, deviceId: args.deviceId, releaseRunnerLabel: releaseLabel.label },
+      'claim: release job taken by a box that does not carry the declared release label, because no eligible box does',
+    );
   }
 
   const claimed = await db.transaction(async (tx) => {

@@ -22,6 +22,7 @@ const BASE = {
   releaseModel: 'promote' as const,
   releaseStrategy: 'merge-branch' as const,
   issues: [{ id: 'i1', displayId: 'ISS-9', title: 'checkout 500s' }],
+  releaseRunnerPreferenceMet: true,
 };
 
 const channel = (over: Partial<ReleaseChannel> = {}): ReleaseChannel => ({
@@ -176,5 +177,48 @@ describe('buildReleaseBatchPrompt', () => {
     });
 
     expect(out).toContain('issue.title');
+  });
+});
+
+describe('the release runner preference the agent is told about', () => {
+  it('says nothing where the project declares no release runner label', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+
+    expect(out).not.toContain('release runner:');
+  });
+
+  it('names the preferred box where one is declared and a box carries it', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: true,
+    });
+
+    expect(out).toContain('release runner: this project prefers a box labelled `prod-box`');
+    expect(out).not.toContain('running somewhere else');
+  });
+
+  it('tells the agent to record a preference no eligible box could honour', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: false,
+    });
+
+    expect(out).toContain('no box eligible to release carried it when this batch was cut');
+    expect(out).toContain('whether the preference was honoured');
+  });
+
+  // The job is claimed after this string is built, so a labelled box coming
+  // online in between would make any claim about where it ran a guess.
+  it('says where the box that took it is read, rather than asserting where it ran', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ releaseRunnerLabel: 'prod-box' }),
+      releaseRunnerPreferenceMet: false,
+    });
+
+    expect(out).toContain('Read `releaseRunner` in the batch context');
+    expect(out).not.toContain('is running somewhere else');
   });
 });

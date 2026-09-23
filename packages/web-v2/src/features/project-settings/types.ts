@@ -1,3 +1,5 @@
+import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts/status-sets";
+
 /** Patch body accepted by `PATCH /api/projects/:id` (basics + repo + testing).
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */
@@ -161,6 +163,24 @@ export interface PluginDesignation {
 	autoUpdate?: boolean;
 }
 
+/** One reason a release will not start, and what to do about it — mirrors
+ *  `ReleaseBlocker` in core `release-batch/blocker-sentences.ts`. */
+export interface ReleaseBlocker {
+	code: string;
+	/** The one sentence an operator reads, carrying its own remedy. */
+	message: string;
+	details?: Record<string, unknown>;
+	/** False when this check could not be run at all. */
+	evaluated: boolean;
+}
+
+/** Something that changes how a release runs without being a reason it will not. */
+export interface ReleaseWarning {
+	code: string;
+	message: string;
+	details?: Record<string, unknown>;
+}
+
 /** What a project still has to declare — mirrors `ReleaseReadiness` in core
  *  `release-batch/readiness.ts`. `gaps` is what settings says out loud. */
 export interface ReleaseReadiness {
@@ -178,6 +198,18 @@ export interface ReleaseReadiness {
 	rollback: string | null;
 	rollbackMode: "manual" | "coolify-image" | "unrepresentable" | null;
 	hasVerify: boolean;
+	/** False where the declaration could not be READ, which makes every field
+	 *  below a fallback rather than a reading (ISS-1127). */
+	declarationRead: boolean;
+	/** False where the live bindings could not be READ, which makes providers,
+	 *  rollback, hasVerify and the runner label fallbacks (ISS-1127). */
+	channelsRead: boolean;
+	/** Every reason a release would be refused RIGHT NOW — the declarations, and
+	 *  also the roster and the fleet, which `gaps` never looked at. Empty here
+	 *  means a release over this roster starts (ISS-1127). */
+	blockers: ReleaseBlocker[];
+	/** What changes how the release runs without stopping it. */
+	warnings: ReleaseWarning[];
 	gaps: (
 		| "build-commands"
 		| "test-commands"
@@ -485,14 +517,7 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 
 export type MemoryModel = "flat" | "chunked";
 
-export const MEMORY_REINDEX_STATES = [
-	"queued",
-	"running",
-	"completed",
-	"failed",
-	"cancelled",
-] as const;
-export type MemoryReindexState = (typeof MEMORY_REINDEX_STATES)[number];
+export { MEMORY_REINDEX_STATES, type MemoryReindexState };
 
 /** `app_config.memory_reindex` as `GET /api/app-config/:id/memory-model/reindex` returns it. */
 export interface MemoryReindex {

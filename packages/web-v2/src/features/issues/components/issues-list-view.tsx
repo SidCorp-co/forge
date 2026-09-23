@@ -43,8 +43,8 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
 import {
+  ANY_AGENT_LABEL,
   filterToQueryParams,
-  FORGE_AGENT_LABEL,
   groupRows,
   priorityLabel,
   statusesFromParam,
@@ -78,6 +78,9 @@ const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
 ];
 const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "you", "agent", "done"];
+/* status-tuple: differs — this is the "Finished" segment's cut of the status counts, not core's
+   ISSUE_TERMINAL_STATUSES. It names which buckets that one filter chip sums, and a segment added
+   or re-cut here moves it without anything about the issue lifecycle having changed. */
 const FINISHED_CUTS = ["closed", "dropped"];
 const DEFAULT_FILTER: IssueFilter = "all";
 
@@ -253,11 +256,21 @@ export function IssuesListView({
     isPending: transitionPending,
   } = useGuardedTransition();
 
+  // ISS-1137 — a writer is a named account, so every member is offered under
+  // its own name and an agent is marked rather than replaced by a class label.
+  // "any agent" stays as a KIND filter above them, which is a different
+  // question from "which writer" and is why it is not one of the names.
   const creatorFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Creator: anyone" },
-      { value: "agent", label: `Creator: ${FORGE_AGENT_LABEL}` },
-      ...(membersQ.data ?? []).map((m) => ({ value: m.userId, label: m.email })),
+      { value: "agent", label: `Creator: ${ANY_AGENT_LABEL}` },
+      ...(membersQ.data ?? []).map((m) => ({
+        value: m.userId,
+        label:
+          m.kind === "agent"
+            ? `${m.displayName ?? m.email} (agent)`
+            : (m.displayName ?? m.email),
+      })),
     ],
     [membersQ.data],
   );
@@ -661,7 +674,7 @@ export function IssuesListView({
                         <TH>Issue</TH>
                         <TH>Module</TH>
                         <TH>Status</TH>
-                        <TH>Waiting</TH>
+                        <TH>Updated</TH>
                         <TH>Priority</TH>
                         <TH>Complexity</TH>
                         <TH className="text-right">Cost</TH>

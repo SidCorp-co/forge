@@ -94,10 +94,12 @@ describe('unaudited transitions: a hand on the database (ISS-884, ISS-943)', () 
     const pmRun = await fx.insertIssuelessRun();
     const chatSession = await fx.insertSession('running', {
       runId: pmRun,
+      kind: 'pm',
       metadata: { issueId: fx.ids.issueId },
     });
     const bogusSession = await fx.insertSession('running', {
       runId: pmRun,
+      kind: 'pm',
       metadata: { issueId: 'not-a-uuid' },
     });
 

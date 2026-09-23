@@ -11,6 +11,10 @@ import {
 	type StatusExits,
 } from "@forge/contracts/pipeline-registry";
 import {
+	BLOCKER_SETTLED_STATUSES,
+	REASON_REQUIRED_ISSUE_STATUSES,
+} from "@forge/contracts/status-sets";
+import {
 	type SemanticTone,
 	STATUS_KEY_TONE,
 	type StatusKey,
@@ -107,13 +111,11 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 	xl: "XL",
 };
 
+/** The issue's own status, written out: one word per kernel status, all 17 distinct. Every surface that REPORTS a status takes this one. */
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
 
-/**
- * Label an issue the way its project reads. `mode` is
- * `agentConfig.pipelineConfig.mode`; anything but `autonomous` is unchanged.
- */
-export const statusLabelFor = (s: IssueStatus): string =>
+/** The nine-bucket LANE word, for the board's column heads, the tabs, the grouping and the status-move menus. Lossy, so never for a surface that reports the status. */
+export const laneLabel = (s: IssueStatus): string =>
 	LABEL_VIEW[toAutonomousLabel(s)]?.label ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;
@@ -197,6 +199,10 @@ export interface GroupedTransition {
 }
 
 const BOUNCE_TARGETS = new Set<IssueStatus>(["needs_info", "on_hold", "reopen"]);
+/* status-tuple: differs — this is the transition MENU's discard group, not core's
+   ISSUE_TERMINAL_STATUSES. It answers which exits the menu draws under one rule, and its sibling
+   BOUNCE_TARGETS is deliberately not core's HUMAN_PARK_STATUSES for the same reason: the grouping
+   follows what the menu offers from a rung, which core's terminal set does not decide. */
 const DISCARD_TARGETS = new Set<IssueStatus>(["closed", "dropped"]);
 
 const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
@@ -269,14 +275,12 @@ export function bulkAllowedStatuses(
 			common = common.filter((s) => allowedSet.has(s));
 		}
 	}
-	return (common ?? []).filter((s) => !BULK_EXCLUDED_STATUSES.has(s));
+	return (common ?? []).filter((s) => !BULK_HAS_NO_REASON_TO_COLLECT.has(s));
 }
 
-const BULK_EXCLUDED_STATUSES = new Set<IssueStatus>([
-	"reopen",
-	"waiting",
-	"needs_info",
-]);
+const BULK_HAS_NO_REASON_TO_COLLECT: ReadonlySet<string> = new Set(
+	REASON_REQUIRED_ISSUE_STATUSES,
+);
 
 export interface DepCounts {
 	blockedBy: number;
@@ -362,20 +366,15 @@ export function memberLabel(
 	return m ? m.email : assigneeId.slice(0, 8);
 }
 
-export const FORGE_AGENT_LABEL = "Forge Agent";
+/** The creator-filter option that selects every agent's issues at once. */
+export const ANY_AGENT_LABEL = "any agent";
 
-/** ISS-756 — the ONE creator-label helper for every surface (cell, mobile
- *  card, rail, filter option, group header). NEVER falls back to a raw id —
- *  a creator need not be a project member (unlike `memberLabel`'s id-slice). */
+/** ISS-756 — the ONE creator-label helper for every surface. A writer is a
+ *  named account, so never a class label (ISS-1137) and never a raw id. */
 export function creatorLabelOf(
-	row: Pick<IssueRow, "creatorLabel" | "creatorEmail" | "creatorIsAgent">,
+	row: Pick<IssueRow, "creatorLabel" | "creatorEmail">,
 ): string {
-	return (
-		row.creatorLabel ||
-		(row.creatorIsAgent
-			? FORGE_AGENT_LABEL
-			: row.creatorEmail || "Unknown user")
-	);
+	return row.creatorLabel || row.creatorEmail || "Unknown user";
 }
 
 /** Two-letter initials from an email/id, for an Avatar. */
@@ -401,27 +400,23 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 		let key: string;
 		if (groupBy === "status") key = r.status;
 		else if (groupBy === "priority") key = r.priority;
-		else key = r.creatorIsAgent ? "__agent__" : r.createdById;
+		else key = r.createdById;
 		const arr = buckets.get(key);
 		if (arr) arr.push(r);
 		else buckets.set(key, [r]);
 	}
 	const groups: IssueGroup[] = [];
 	for (const [key, groupRowsArr] of buckets) {
-		let label = key;
-		if (groupBy === "creator") {
-			label =
-				key === "__agent__"
-					? FORGE_AGENT_LABEL
-					: creatorLabelOf(groupRowsArr[0]);
-		}
+		const label =
+			groupBy === "creator" ? creatorLabelOf(groupRowsArr[0]) : key;
 		groups.push({ key, label, rows: groupRowsArr });
 	}
 	if (groupBy === "creator") {
+		// An agent is an account with a name, not a class (ISS-1137).
+		const isAgentGroup = (g: IssueGroup) => g.rows[0].creatorIsAgent;
 		groups.sort((a, b) => {
-			if (a.key === "__agent__") return 1;
-			if (b.key === "__agent__") return -1;
-			return a.label.localeCompare(b.label);
+			const byKind = Number(isAgentGroup(a)) - Number(isAgentGroup(b));
+			return byKind !== 0 ? byKind : a.label.localeCompare(b.label);
 		});
 	}
 	return groups;
@@ -575,14 +570,11 @@ export interface BlockerState {
 	detail?: string;
 }
 
-const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set([
-	"awaiting_release",
-	"closed",
-]);
+const SETTLED_BLOCKERS: ReadonlySet<string> = new Set(BLOCKER_SETTLED_STATUSES);
 
-/** Incoming `blocks` edges whose blocker isn't terminal — i.e. this issue is
- *  genuinely blocked-by an open issue. Exported so list/board rows can flag a
- *  genuinely-stuck issue (danger chip) without re-deriving the terminal rule. */
+/** Incoming `blocks` edges whose blocker core has not settled — i.e. this issue is genuinely
+ *  blocked-by one Forge will not dispatch past. Exported so list/board rows can flag a
+ *  genuinely-stuck issue (danger chip) without re-deriving the rule. */
 export function openBlockingRefs(
 	deps: IssueDependencies | undefined,
 ): BlockingRef[] {
@@ -591,7 +583,7 @@ export function openBlockingRefs(
 		.filter(
 			(e) =>
 				e.kind === "blocks" &&
-				!(e.fromStatus && TERMINAL_STATUSES.has(e.fromStatus)),
+				!(e.fromStatus && SETTLED_BLOCKERS.has(e.fromStatus)),
 		)
 		.map((e) => ({
 			id: e.fromIssueId,

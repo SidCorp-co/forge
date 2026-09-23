@@ -4,7 +4,7 @@ import {
   hasLiveAgentSession,
   queuedChipStatus,
   STALE_AFTER_MS,
-  waitedFor,
+  sinceLastWrite,
   WAITING_REASON_SHORT,
 } from "./waiting";
 import type { IssueStatus, PipelineHealth, WaitingReason } from "./types";
@@ -197,10 +197,10 @@ describe("a gate this build has no words for", () => {
   });
 });
 
-describe("how long a row has sat", () => {
+describe("how long since the row was last written", () => {
   const NOW_MS = Date.parse("2026-09-15T12:00:00.000Z");
   const sat = (ms: number, status: IssueStatus = "in_progress") =>
-    waitedFor(
+    sinceLastWrite(
       { status, updatedAt: new Date(NOW_MS - ms).toISOString() },
       NOW_MS,
     );
@@ -223,7 +223,7 @@ describe("how long a row has sat", () => {
   });
 
   it("gives no figure rather than NaN when the timestamp is unusable", () => {
-    expect(waitedFor({ status: "open", updatedAt: "not a date" }, NOW_MS)).toBeNull();
+    expect(sinceLastWrite({ status: "open", updatedAt: "not a date" }, NOW_MS)).toBeNull();
   });
 
   it("never counts backwards from a row stamped in the future", () => {

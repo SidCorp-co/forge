@@ -17,6 +17,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { resolveAutonomousParkTarget } from './autonomous-park.js';
+import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
@@ -26,6 +27,7 @@ import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
+import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import {
   parkReasonFault,
@@ -39,8 +41,6 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'closed',
   'dropped',
 ]);
-
-export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed', 'dropped']);
 
 /**
  * Who is performing the transition. `id` feeds the outbox actor context
@@ -325,10 +325,16 @@ export async function transitionIssueStatus(
     viaReleasePath: options.viaReleasePath === true,
   });
   if (fromStatus === toStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
-      status: fromStatus,
-      requested: requestedStatus,
-    });
+    throw new TransitionError(
+      'NO_OP',
+      noOpSentence({
+        projectId: issue.projectId,
+        requested: requestedStatus,
+        parked: parkTarget,
+        final: toStatus,
+      }),
+      { status: fromStatus, requested: requestedStatus, substituted: toStatus },
+    );
   }
 
   const unrecorded = await refuseUnrecordedClose(issue.id, toStatus, actor, options);
@@ -409,7 +415,7 @@ export async function transitionIssueStatus(
 
   await setCurrentStepForOpenIssueRun(issue.id, toStatus);
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus) || held;
-  if (RUN_CLOSING_STATUSES.has(toStatus) || held) {
+  if (ISSUE_TERMINAL_STATUSES.includes(toStatus) || held) {
     await closeOpenRunForIssue(issue.id, 'completed');
   }
 

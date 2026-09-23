@@ -149,27 +149,19 @@ export function originOf(citation) {
 }
 
 /**
- * Where a citation points. Two scopes and no third: the document's own directory, and
- * the package the document sits in. A path written from the repository root is already
- * exact and is resolved there or nowhere. NOTHING falls back to the whole tree, and
- * none of this reads whether the target is present — which is the property that matters,
- * because a resolution that widens at the moment a file disappears is a resolution that
- * cannot report the disappearance. More than one match inside those scopes is ambiguous
- * rather than resolved. The cost is that a document at the repository root writes the
- * full path or is told it cites nothing.
+ * Where a citation points. Two scopes and no third: the document's own directory, and the
+ * package it sits in. A root-written path resolves there or nowhere; nothing falls back to
+ * the whole tree, and none of this reads whether the target is present — a resolution that
+ * widens when a file disappears cannot report the disappearance. More than one match is
+ * ambiguous rather than resolved.
  *
- * ONE RESIDUAL, stated rather than left to be found: a document inside a scope can cite a
- * root-level file whose NAME is also taken inside that scope — `scripts/README.md` naming
- * a root `eslint.config.mjs` while a `scripts/eslint.config.mjs` exists. The exact match
- * wins while the root file is there; delete it and the scoped namesake answers instead,
- * silently. Closing it takes a syntactic root notation and a rewrite of every rooted
- * citation in the repository, which is a larger change than the one this checker is, and
- * it is priced on ISS-1112 with the condition that ends it. Nothing here detects the
- * collision while both files exist either — the exact match returns before any scoped
- * candidate is looked for, so the pair is never seen as two answers. What bounds it is
- * only that it needs one name taken twice, at the root and inside the citing document's
- * own scope, which this repository does not do today. A green over such a pair means
- * less than a green everywhere else, and that is what this paragraph is for.
+ * ONE RESIDUAL, priced on ISS-1112 with the condition that ends it: a document in a scope
+ * citing a root file whose name is also taken in that scope — `scripts/README.md` naming a
+ * root `eslint.config.mjs` beside a `scripts/eslint.config.mjs`. The exact match wins while
+ * the root file exists and returns before any scoped candidate, so deleting it hands the
+ * citation to the namesake and the pair is never seen as two answers. Closing it needs a
+ * root notation and a rewrite of every rooted citation. It needs one name taken twice, at
+ * the root and in the citing document's scope, which this repository does not do today.
  */
 export function resolveCitation(citation, home, world) {
   const isDir = citation.target.endsWith('/');

@@ -1,21 +1,88 @@
-import { sql } from 'drizzle-orm';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { terminalAgentSessionStatuses } from '../db/schema.js';
+import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
+import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 
-/** How long a master session may go silent before its holds are given back. */
-export const MASTER_HOLD_TIMEOUT_MS = 3 * 60 * 1000;
+/**
+ * Close the master sessions whose box has stopped answering, and say how many.
+ *
+ * Flipping the row terminal invokes the descent in `applyKernelTransition`,
+ * which returns the children's issue leases.
+ *
+ * A master is silent only if the sessions it OWNS are: a child that beat inside
+ * the window means a live box with a broken master heartbeat. "Owns" is the
+ * immediate edge, and a child counts only once it has REPORTED — `created_at`
+ * is not a fall back, because `prepareClaimedJob` mints a queued child the
+ * instant a job is prepared.
+ */
+export async function reapSilentMasters(): Promise<number> {
+  const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
+  const silent = (await db.execute(sql`
+    SELECT s.id, s.device_id, s.project_id
+    FROM agent_sessions s
+    WHERE s.kind = ${MASTER_SESSION_KIND}
+      AND s.status NOT IN (${TERMINAL})
+      AND COALESCE(s.last_heartbeat_at, s.started_at, s.created_at)
+          < now() - make_interval(secs => ${staleSeconds})
+      AND NOT EXISTS (
+        SELECT 1 FROM agent_sessions c
+        WHERE c.parent_session_id = s.id
+          AND c.status NOT IN (${TERMINAL})
+          AND COALESCE(c.last_heartbeat_at, c.started_at)
+              >= now() - make_interval(secs => ${staleSeconds})
+      )
+  `)) as unknown as Array<Record<string, unknown>>;
+
+  let closed = 0;
+  for (const row of silent) {
+    const sessionId = String(row.id);
+    const flipped = await applyKernelTransition(db, {
+      entity: 'session',
+      to: 'failed',
+      set: {
+        failureReason: 'runner_unreachable',
+        failureDetail: 'master-reaper: heartbeat stopped',
+        updatedAt: new Date(),
+      },
+      where: and(
+        eq(agentSessions.id, sessionId),
+        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+      ),
+      returning: ['id'],
+      reason: 'master_session_box_silent',
+      actor: { type: 'system' },
+      source: 'master-reaper',
+    });
+    if (flipped.length === 0) continue;
+    closed += 1;
+    await releaseHoldsForSession(sessionId);
+    logger.warn(
+      {
+        masterSessionId: sessionId,
+        deviceId: row.device_id ? String(row.device_id) : null,
+        projectId: row.project_id ? String(row.project_id) : null,
+      },
+      'master-reaper: a master and everything it owned went silent, so it was closed',
+    );
+  }
+  return closed;
+}
 
 /**
- * Release holds belonging to master sessions that are terminal or silent.
+ * Release holds belonging to master sessions that are terminal or silent, and
+ * log each holder so the pool tells "nobody wanted this" from "its holder died".
  *
- * Returns the number of jobs handed back, and logs each holder so an operator
- * reading the pool can tell "nobody wanted this" from "its holder died".
+ * The silence arm carries the SAME child-liveness guard as
+ * {@link reapSilentMasters}: without it the box that function spares loses every
+ * job it held one statement later. A TERMINAL master is not guarded.
  */
 export async function reapDeadMasterHolds(): Promise<number> {
-  const staleSeconds = Math.floor(MASTER_HOLD_TIMEOUT_MS / 1000);
+  const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
 
   const rows = (await db.execute(sql`
     WITH doomed AS (
@@ -26,8 +93,17 @@ export async function reapDeadMasterHolds(): Promise<number> {
       WHERE j.held_by IS NOT NULL
         AND (
           s.status IN (${TERMINAL})
-          OR COALESCE(s.last_heartbeat_at, s.started_at)
-             < now() - make_interval(secs => ${staleSeconds})
+          OR (
+            COALESCE(s.last_heartbeat_at, s.started_at)
+              < now() - make_interval(secs => ${staleSeconds})
+            AND NOT EXISTS (
+              SELECT 1 FROM agent_sessions c
+              WHERE c.parent_session_id = s.id
+                AND c.status NOT IN (${TERMINAL})
+                AND COALESCE(c.last_heartbeat_at, c.started_at)
+                    >= now() - make_interval(secs => ${staleSeconds})
+            )
+          )
           OR (s.id IS NULL AND j.held_at < now() - make_interval(secs => ${staleSeconds}))
         )
     )
@@ -62,6 +138,12 @@ export async function registerMasterReaper(): Promise<void> {
   await (boss as any).createQueue(MASTER_REAPER_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(MASTER_REAPER_QUEUE, async () => {
+    // Masters first: closing one returns its own holds and, through the
+    // descent, its children's leases. The hold sweep that follows catches what
+    // no transition can reach — a hold whose session row is gone entirely, and
+    // one whose master this pass declined to close.
+    const closed = await reapSilentMasters();
+    if (closed > 0) logger.info({ closed }, 'master-reaper: sweep closed silent masters');
     const released = await reapDeadMasterHolds();
     if (released > 0) logger.info({ released }, 'master-reaper: sweep returned holds to the pool');
   });

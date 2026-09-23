@@ -238,17 +238,17 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
     expect(sweepWhereArgs.length).toBe(4);
     const [pass1, pass2, pass3, pass4] = sweepWhereArgs.map(sqlText);
 
-    expect(pass1).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass2).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass3).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass4).toMatch(/COALESCE/i);
+    expect(pass1).toMatch(/\bin\s+pipeline\s+pm\b/i);
+    expect(pass2).toMatch(/\bin\s+pipeline\s+pm\b/i);
+    expect(pass3).toMatch(/\bin\s+pipeline\s+pm\b/i);
     expect(
       pass4,
-      "the no-client hop must exclude every session type that never reports a `claude_session_id`. A master is a tmux pane and matches this hop's every predicate; it survives only on the daemon re-registering it, and a rate-limited box stretches that to 5 minutes against a 3-minute heartbeat — core then fails a healthy master, mints it a second session row, and the pane goes on claiming under an id core calls dead (ISS-933 criterion 21)",
-    ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'master'\s*,\s*'run_session'\s*\)/);
+      "the no-client hop must see ONLY the kind that reports a `claude_session_id`. It used to say so by excluding the other four; it now names the one. A master is a tmux pane and matches this hop's every other predicate; it survives only on the daemon re-registering it, and a rate-limited box stretches that to 5 minutes against a 3-minute heartbeat — core then fails a healthy master, mints it a second session row, and the pane goes on claiming under an id core calls dead (ISS-933 criterion 21)",
+    ).toMatch(/\bin\s+chat\b/i);
+    expect(pass4).not.toMatch(/\bmaster\b|\brun_session\b/);
     expect(pass4).toMatch(/IS\s+NULL/i);
-    expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
-    expect(pass3).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+    expect(pass1).not.toMatch(/\bchat\b/);
+    expect(pass3).not.toMatch(/\bchat\b/);
     expect(pass3).toMatch(/->\s*'escalation'\s+IS\s+NOT\s+NULL/);
     expect(pass3).toMatch(/->\s*'agentChat'\s+IS\s+NOT\s+NULL/);
     expect(pass4).toMatch(/->>\s*'acked'\s*=\s*'true'/);

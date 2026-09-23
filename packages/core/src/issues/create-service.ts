@@ -173,7 +173,6 @@ export async function createIssue(
         assigneeId: input.assigneeId ?? null,
         createdById: writer.createdById,
         createdVia: writer.createdVia,
-        creatorAgency: writer.actor.agency,
         detectorKey,
         plan: input.plan ?? null,
         acceptanceCriteria: input.acceptanceCriteria ?? null,

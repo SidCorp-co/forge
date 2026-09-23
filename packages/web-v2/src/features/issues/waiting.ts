@@ -12,9 +12,13 @@ export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 const SETTLED = new Set<IssueStatus>(statusesForLabels("done", "dropped"));
 
-/** How long this row has sat where it is, graded against a caller-held instant
- *  so every row in one render is comparable to the others. */
-export function waitedFor(
+/**
+ * How long since the issue ROW itself was last written, graded against a caller-held instant so
+ * every row in one render is comparable. It is NOT how long the issue has been at this status, and
+ * NOT how long since anything happened to it; each surface showing it says which of the three it
+ * is, because the three differ by hours on live rows.
+ */
+export function sinceLastWrite(
 	row: { status: IssueStatus; updatedAt: string },
 	now: number,
 ): { label: string; stale: boolean } | null {

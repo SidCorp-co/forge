@@ -35,10 +35,14 @@ pub trait RunCloser: Send + Sync {
 }
 
 /// Returns a lease, and separately reads back whether it is actually returned.
+///
+/// Both carry the project the run belongs to: a lease is keyed by project and
+/// issue, and a box serving two projects holds two rows under one key, so a
+/// call naming only the key is a question core cannot answer (ISS-1139).
 #[async_trait::async_trait]
 pub trait LeaseKeeper: Send + Sync {
-    async fn release(&self, issue_key: &str) -> Result<()>;
-    async fn is_returned(&self, issue_key: &str) -> Result<bool>;
+    async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()>;
+    async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool>;
 }
 
 /// What the ledger says, with no process inspected.
@@ -95,14 +99,31 @@ pub async fn close(
         ledger.mark_worktree_gone_observed(run_id)?;
     }
 
+    let project = run.project_id.clone();
     for m in ledger.issues(run_id)? {
         if m.lease_returned_at.is_some() {
             continue;
         }
-        if !matches!(leases.is_returned(&m.issue_key).await, Ok(true)) {
-            let _ = leases.release(&m.issue_key).await;
+        if !matches!(
+            leases.is_returned(project.as_deref(), &m.issue_key).await,
+            Ok(true)
+        ) {
+            // The mark answers to the read-back below and never to this
+            // response, so the outcome decides nothing here. What it carries
+            // does: a refusal names the way out — the project to send, the key
+            // that reaches no lease — and a run whose release is refused says
+            // so rather than passing in silence (ISS-1139).
+            if let Err(e) = leases.release(project.as_deref(), &m.issue_key).await {
+                tracing::warn!(
+                    "[close] run={run_id} {}: lease release refused: {e}",
+                    m.issue_key
+                );
+            }
         }
-        if matches!(leases.is_returned(&m.issue_key).await, Ok(true)) {
+        if matches!(
+            leases.is_returned(project.as_deref(), &m.issue_key).await,
+            Ok(true)
+        ) {
             ledger.mark_lease_returned_observed(run_id, &m.issue_key)?;
         }
     }
@@ -138,6 +159,10 @@ mod tests {
         lands: HashSet<String>,
         returned: Mutex<HashSet<String>>,
         releases: Mutex<usize>,
+        /// Every (project, issue) the loop asked to release, in order.
+        asked_for: Mutex<Vec<(Option<String>, String)>>,
+        /// Every (project, issue) the loop read back, in order.
+        read_for: Mutex<Vec<(Option<String>, String)>>,
     }
 
     impl Leases {
@@ -147,6 +172,8 @@ mod tests {
                 lands: lands.iter().map(|s| (*s).to_string()).collect(),
                 returned: Mutex::new(HashSet::new()),
                 releases: Mutex::new(0),
+                asked_for: Mutex::new(Vec::new()),
+                read_for: Mutex::new(Vec::new()),
             }
         }
 
@@ -158,7 +185,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl LeaseKeeper for Leases {
-        async fn release(&self, issue_key: &str) -> Result<()> {
+        async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()> {
+            self.asked_for
+                .lock()
+                .unwrap()
+                .push((project_id.map(str::to_string), issue_key.to_string()));
             *self.releases.lock().unwrap() += 1;
             if self.lands.contains(issue_key) {
                 self.returned.lock().unwrap().insert(issue_key.to_string());
@@ -169,7 +200,11 @@ mod tests {
                 Ok(())
             }
         }
-        async fn is_returned(&self, issue_key: &str) -> Result<bool> {
+        async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool> {
+            self.read_for
+                .lock()
+                .unwrap()
+                .push((project_id.map(str::to_string), issue_key.to_string()));
             Ok(self.returned.lock().unwrap().contains(issue_key))
         }
     }
@@ -398,6 +433,119 @@ mod tests {
             led.issues("run-1").unwrap()[0].lease_returned_at,
             at,
             "and its timestamp is not rewritten"
+        );
+    }
+
+    /// A refusal core sends back over a release, as the transport reports it.
+    struct RefusingRelease(&'static str);
+
+    #[async_trait::async_trait]
+    impl LeaseKeeper for RefusingRelease {
+        async fn release(&self, _: Option<&str>, _: &str) -> Result<()> {
+            Err(crate::error::Error::Other(self.0.to_string()))
+        }
+        async fn is_returned(&self, _: Option<&str>, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+    }
+
+    /// A scoped subscriber over one call, so a claim about the log is read back
+    /// rather than trusted. Siblings in `master.rs` and `session_tokens.rs`
+    /// carry their own; each is local to the module whose log it reads.
+    fn logged_while(f: impl FnOnce()) -> String {
+        use std::sync::Arc;
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        // Why a capture needs this: `crate::daemon::keep_tracing_capturable`.
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    /// ISS-1139 — a release core refused names its refusal where a person reads.
+    ///
+    /// The mark answers to the read-back and never to this response, so the run
+    /// correctly stays open. What must not happen is the message going nowhere:
+    /// a box sending no project meets the `409` that names `?projectId=` as the
+    /// way out, and an operator left with a run that will not close and no
+    /// reason has nothing to act on.
+    #[test]
+    fn a_release_core_refuses_names_its_refusal_in_the_log() {
+        let out = logged_while(|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async {
+                let mut led = seeded(&["ISS-880"], gone());
+                let st = close(
+                    &mut led,
+                    "run-1",
+                    &Sessions(true),
+                    &RefusingRelease(
+                        "issue-lease release: 409: this box holds 2 leases on ISS-880; send `?projectId=<id>`",
+                    ),
+                )
+                .await
+                .unwrap();
+                assert!(
+                    !st.is_closed(),
+                    "the lease is not back, so the run is not closed — the log is what this test is about"
+                );
+            });
+        });
+
+        assert!(
+            out.contains("ISS-880"),
+            "a refusal discarded reaches no log, and the operator is left with a run that will not close and no reason: {out}"
+        );
+        assert!(
+            out.contains("projectId"),
+            "the refusal carries the way out, which is the whole of what makes it worth printing: {out}"
+        );
+    }
+
+    /// ISS-1139 — a lease is keyed by project and issue, so both calls carry the
+    /// run's project. Without it core cannot tell which of two projects sharing
+    /// a key this box means, and answers about neither.
+    #[tokio::test]
+    async fn both_lease_calls_name_the_run_project() {
+        let mut led = seeded(&["ISS-880"], gone());
+        let leases = Leases::new(false, &["ISS-880"]);
+
+        close(&mut led, "run-1", &Sessions(true), &leases)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            leases.asked_for.lock().unwrap().as_slice(),
+            [(Some("proj-1".to_string()), "ISS-880".to_string())],
+            "a release that names no project is refused by core, and the run never closes"
+        );
+        assert!(
+            leases
+                .read_for
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(p, _)| p.as_deref() == Some("proj-1")),
+            "a read-back against another project answers about a lease this run never held"
         );
     }
 }

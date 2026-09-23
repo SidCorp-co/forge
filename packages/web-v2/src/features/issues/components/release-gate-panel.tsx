@@ -118,7 +118,8 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
           </span>
           {data.releaseRunnerLabel ? (
             <span>
-              Only runners labelled <MonoTag>{data.releaseRunnerLabel}</MonoTag> may ship it
+              Prefers runners labelled <MonoTag>{data.releaseRunnerLabel}</MonoTag>, and ships on
+              another box when none is available
             </span>
           ) : null}
         </div>

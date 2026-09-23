@@ -212,11 +212,11 @@ mod tests {
     struct Leases(Mutex<HashSet<String>>);
     #[async_trait::async_trait]
     impl LeaseKeeper for Leases {
-        async fn release(&self, issue_key: &str) -> Result<()> {
+        async fn release(&self, _project_id: Option<&str>, issue_key: &str) -> Result<()> {
             self.0.lock().unwrap().insert(issue_key.to_string());
             Ok(())
         }
-        async fn is_returned(&self, issue_key: &str) -> Result<bool> {
+        async fn is_returned(&self, _project_id: Option<&str>, issue_key: &str) -> Result<bool> {
             Ok(self.0.lock().unwrap().contains(issue_key))
         }
     }

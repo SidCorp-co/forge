@@ -93,7 +93,6 @@ export async function steerIssue(
     issueId,
     authorId: opts.actorUserId,
     authorDeviceId: null,
-    authorAgency: opts.actorAgency,
     body,
     parentId: null,
   });

@@ -93,9 +93,9 @@ async function idleSession(metadata: unknown = { type: 'chat' }): Promise<string
   const id = randomUUID();
   const long = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
   await harness.db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, messages, metadata,
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, messages, metadata,
                                 started_at, last_heartbeat_at, updated_at, created_at)
-    VALUES (${id}, ${projectId}, ${runId}, 'running',
+    VALUES (${id}, ${projectId}, ${runId}, 'chat', 'running',
             ${JSON.stringify([{ role: 'assistant', content: 'z'.repeat(5000) }])}::jsonb,
             ${JSON.stringify(metadata)}::jsonb,
             ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz)
@@ -265,9 +265,10 @@ describe('ISS-1014 · the zombie sweep keeps its broadcast and its wedge', () =>
     const id = randomUUID();
     const long = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata,
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata,
                                   dispatched_at, updated_at, created_at)
-      VALUES (${id}, ${projectId}, ${runId}, 'queued', ${JSON.stringify({ type: 'pipeline' })}::jsonb,
+      VALUES (${id}, ${projectId}, ${runId}, 'pipeline', 'queued',
+              ${JSON.stringify({ type: 'pipeline' })}::jsonb,
               ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz)
     `);
 

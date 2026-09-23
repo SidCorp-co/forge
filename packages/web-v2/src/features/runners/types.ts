@@ -56,12 +56,29 @@ export type ProvisionStatus =
 	| "failed";
 
 /** One row of `GET /api/projects/:id/runners` (project-centric, member-scoped). */
+/**
+ * The resident master session core holds for one (device, project), or `null`.
+ *
+ * A registration and not a pane, so `lastHeartbeatAt` is the only thing that
+ * separates a master working now from a box that went quiet (ISS-1118).
+ */
+export interface ResidentMaster {
+	sessionId: string;
+	/** The terminal session name, so a reader can match it on the box. */
+	name: string;
+	lastHeartbeatAt: string | null;
+}
+
 export interface ProjectRunner {
 	runnerId: string;
 	deviceId: string | null;
 	deviceName: string | null;
 	platform: "macos" | "linux" | "windows" | null;
 	deviceStatus: "online" | "offline" | "revoked" | null;
+	/** The version this runner's device last reported, or null where it has
+	 *  reported none. Read from the joined device — a runner is one binding of
+	 *  the agent binary that device runs (ISS-1119). */
+	agentVersion: string | null;
 	deviceDisabledAt: string | null;
 	runnerStatus: string;
 	lastError: string | null;
@@ -73,12 +90,32 @@ export interface ProjectRunner {
 	limitDetail: string | null;
 	repoPath: string | null;
 	branch: string | null;
-	/** Pool tags; a production binding's `releaseRunnerLabel` must match one exactly. */
+	/** Pool tags; a production binding's `releaseRunnerLabel` names one to prefer. */
 	labels: string[];
 	lastSeenAt: string | null;
 	provisionStatus: ProvisionStatus | null;
 	provisionDetail: string | null;
 	provisionedAt: string | null;
+	/** `undefined` on a core that does not serve the field; `null` is "none". */
+	residentMaster?: ResidentMaster | null;
+}
+
+/** What every surface says for a version nobody reported. Blank would read as a
+ *  device with nothing to say, and the newest published version would be a guess
+ *  presented as a fact. */
+export const VERSION_NOT_REPORTED = "version not reported";
+
+/** The version chip on a project runner row, labelled as the runner's so it is
+ *  never taken for Forge's own. */
+export function runnerVersionLabel(agentVersion: string | null | undefined): string {
+	const reported = agentVersion?.trim();
+	return reported ? `Runner v${reported}` : VERSION_NOT_REPORTED;
+}
+
+/** The version line under a device's name in the fleet list. */
+export function deviceVersionLabel(agentVersion: string | null | undefined): string {
+	const reported = agentVersion?.trim();
+	return reported ? `v${reported}` : VERSION_NOT_REPORTED;
 }
 
 /** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */

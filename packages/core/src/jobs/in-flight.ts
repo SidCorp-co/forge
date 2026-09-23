@@ -1,8 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 
-export const OCCUPYING_JOB_STATUSES = ['dispatched', 'running'] as const;
-
 const OCCUPYING_JOBS_FOR = (runnerFilter: ReturnType<typeof sql>) => sql`
   SELECT j.runner_id, COUNT(*)::int AS n
   FROM jobs j

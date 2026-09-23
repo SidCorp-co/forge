@@ -1,5 +1,4 @@
-import type { SQL } from 'drizzle-orm';
-import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
@@ -20,8 +19,9 @@ import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
 import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './queue-hop.js';
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
-import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
+import { CLIENT_SESSION_KINDS, PIPELINE_SESSION_KINDS } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
+import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
 
 type RedispatchFn = (
   sessionId: string,
@@ -362,7 +362,7 @@ export async function reapZombieSessions(
         ),
       ),
       or(
-        sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+        inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
         sql`${agentSessions.metadata} -> 'escalation' IS NOT NULL`,
         sql`${agentSessions.metadata} -> 'agentChat' IS NOT NULL`,
       ),
@@ -390,8 +390,8 @@ export async function reapZombieSessions(
 
   // No-client hop (ISS-420): a chat/schedule/agent session created `running`
   // that never got a working client — claudeSessionId still NULL and the
-  // heartbeat never advanced past creation. COALESCE so a NULL/absent
-  // metadata.type (plain chat, schedule.run) counts as "not pipeline/pm".
+  // heartbeat never advanced past creation. The arm is `kind IN
+  // CLIENT_SESSION_KINDS`, so a species a pipeline step drives is outside it.
   const noClientFailed = await applyKernelTransition(db, {
     entity: 'session',
     returning: SWEEP_SESSION_COLUMNS,
@@ -400,7 +400,7 @@ export async function reapZombieSessions(
     where: and(
       eq(agentSessions.status, 'running'),
       sql`${agentSessions.claudeSessionId} IS NULL`,
-      sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}`,
+      inArray(agentSessions.kind, CLIENT_SESSION_KINDS),
       or(
         and(
           sql`${agentSessions.metadata}->>'acked' = 'true'`,
@@ -512,7 +512,7 @@ export async function reapSessionLostJobs(
     try {
       const cfg: KillGateReapConfig = {
         hop: 'heartbeat',
-        where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
+        where: and(eq(jobs.id, row.id), inArray(jobs.status, OCCUPYING_JOB_STATUSES)),
         fromStatus: 'active',
         ...sessionLostCause(row.failure_reason),
       };
@@ -568,7 +568,7 @@ export async function reapResultMisses(
     try {
       const cfg: KillGateReapConfig = {
         hop: 'result',
-        where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
+        where: and(eq(jobs.id, row.id), inArray(jobs.status, OCCUPYING_JOB_STATUSES)),
         fromStatus: 'active',
         error: 'stale',
         finalizeError: STALE_REASON,

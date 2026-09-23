@@ -21,23 +21,14 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, terminalAgentSessionStatuses } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { ASSERTS_WORK_IN_PROGRESS, HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
-  RUN_SESSION_TYPE,
+  RUN_SESSION_KIND,
 } from './run-session.js';
-
-/**
- * Statuses a person parks an issue at, which outrank an automatic restore.
- */
-export const HUMAN_PARK_STATUSES: readonly IssueStatus[] = ['needs_info', 'waiting', 'on_hold'];
-
-/**
- * The only statuses a dead run's issue is taken back from.
- */
-export const RETURNABLE_FROM: readonly IssueStatus[] = ['in_progress', 'testing', 'releasing'];
 
 export interface ReturnedIssue {
   issueKey: string;
@@ -87,7 +78,7 @@ async function keysHeldByAnotherLiveRun(runId: string, projectId: string): Promi
              COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb)) AS k
      WHERE r.project_id = ${projectId}
        AND r.id <> ${runId}
-       AND s.metadata->>'type' = ${RUN_SESSION_TYPE}
+       AND s.kind = ${RUN_SESSION_KIND}
        AND s.status NOT IN (${sql.join(
          terminalAgentSessionStatuses.map((v) => sql`${v}`),
          sql`, `,
@@ -144,7 +135,7 @@ export async function returnIssuesForRun(
       continue;
     }
     if (issue.status === target) {
-      if (RETURNABLE_FROM.includes(issue.status as IssueStatus)) {
+      if (ASSERTS_WORK_IN_PROGRESS.includes(issue.status as IssueStatus)) {
         logger.warn(
           { runId, issueKey: key, status: issue.status },
           'run-issue-return: the run opened over an in-flight status, so the floor is the stuck rung and no return can move it',
@@ -159,7 +150,7 @@ export async function returnIssuesForRun(
       );
       continue;
     }
-    if (!RETURNABLE_FROM.includes(issue.status as IssueStatus)) {
+    if (!ASSERTS_WORK_IN_PROGRESS.includes(issue.status as IssueStatus)) {
       logger.info(
         { runId, issueKey: key, status: issue.status },
         'run-issue-return: left a status the run had already reached',

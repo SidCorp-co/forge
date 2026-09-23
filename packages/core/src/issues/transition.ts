@@ -46,14 +46,18 @@ const _forbidden = (message: string, code = 'FORBIDDEN') =>
   new HTTPException(403, { message, cause: { code } });
 
 /**
- * Map a core `TransitionError` onto the REST error contract. Status codes and
- * messages are part of the public API — keep them stable.
+ * Map a core `TransitionError` onto the REST error contract. Status codes are
+ * part of the public API — keep them stable.
+ *
+ * Every arm answers with `err.detail`, the sentence the thrower built, because
+ * a `NO_OP` is two different facts: the issue is at the status asked for, or
+ * the release gate rewrote that status to where it already stands. Only
+ * `noOpSentence` can tell them apart, and it names the endpoints that reach
+ * `closed`. A fixed message here reports the first when it means the second.
  */
 function transitionErrorToHttp(err: TransitionError): HTTPException {
   const cause = { code: err.code, details: err.details };
   switch (err.code) {
-    case 'NO_OP':
-      return new HTTPException(409, { message: 'issue already in toStatus', cause });
     case 'TRANSITION_REASON_REQUIRED':
     case 'WAITING_KIND_REQUIRED':
     case 'WAITING_KIND_NOT_APPLICABLE':

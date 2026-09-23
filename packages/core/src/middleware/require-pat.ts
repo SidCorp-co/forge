@@ -4,6 +4,7 @@ import { writeMcpAudit } from '../auth/mcp-audit.js';
 import { touchPatUsage, verifyPat } from '../auth/pat.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { type PatRequestClass, patRuleFor } from '../config/rate-limits.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { parseBearerHeader } from './bearer.js';
@@ -11,7 +12,11 @@ import { getClientIp } from './rate-limit.js';
 
 export type PatPrincipal = {
   kind: 'pat';
-  agency: 'agent' | null;
+  /**
+   * The `users.kind` of the account this token belongs to — the agency of every
+   * write made with it, with no third answer (ISS-1137).
+   */
+  agency: ActorAgency;
   agentUserId: string | null;
   userId: string;
   tokenId: string;
@@ -211,7 +216,7 @@ export async function authenticatePat(
   maybeEmitPatUsed(row.id, row.userId);
   return {
     kind: 'pat',
-    agency: ownerKind === 'agent' ? 'agent' : null,
+    agency: ownerKind,
     agentUserId: ownerKind === 'agent' ? row.userId : null,
     userId: row.userId,
     tokenId: row.id,

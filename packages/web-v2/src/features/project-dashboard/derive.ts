@@ -11,6 +11,7 @@ import {
   type RunnerLimitDisplay,
   runnerLimitDisplay,
 } from "@/features/runners/types";
+import { NON_OPEN_ISSUE_STATUSES } from "@forge/contracts/status-sets";
 import type { ScheduleRow } from "@/features/schedules/types";
 import type { QueueStats } from "@/features/sessions/types";
 
@@ -20,7 +21,7 @@ import type { QueueStats } from "@/features/sessions/types";
 
 export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "ready";
 
-const NON_OPEN_STATUSES = new Set(["awaiting_release", "closed", "draft"]);
+const NON_OPEN_STATUSES = new Set<string>(NON_OPEN_ISSUE_STATUSES);
 
 const STATUS_BUCKETS: ReadonlyArray<{
   key: StatusBucketKey;

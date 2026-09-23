@@ -215,8 +215,10 @@ describe('the master session', () => {
   it('is not confused by a pipeline session on the same device and project', async () => {
     const { device, project, run } = await seed();
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, device_id, pipeline_run_id, status, metadata)
-      VALUES (${randomUUID()}, ${project.id}, ${device.id}, ${run}, 'running', '{"type":"pipeline"}')
+      INSERT INTO agent_sessions (id, project_id, device_id, pipeline_run_id, kind, status,
+                                  metadata)
+      VALUES (${randomUUID()}, ${project.id}, ${device.id}, ${run}, 'pipeline', 'running',
+              '{"type":"pipeline"}')
     `);
     const a = await mods.ensureMasterSession({
       deviceId: device.id,

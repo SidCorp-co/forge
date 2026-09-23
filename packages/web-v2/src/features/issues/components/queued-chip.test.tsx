@@ -51,9 +51,9 @@ const row = (
     complexity: null,
     assigneeId: null,
     createdById: "u",
-    creatorEmail: null,
+    creatorEmail: "master@agents.local",
     creatorIsAgent: true,
-    creatorLabel: "Forge Agent",
+    creatorLabel: "master",
     reopenCount: 0,
     mergedAt: null,
     createdAt: QUEUED_AT,
@@ -91,13 +91,15 @@ describe("issue list row · queued chip", () => {
   it("adds no session chip while a step is only queued", () => {
     const { container } = render(<StatusCell row={row(health("runner_stale"))} />);
     expect(screen.getByText("No runner online")).toBeInTheDocument();
-    expect(screen.getAllByText("Running")).toHaveLength(1);
+    expect(screen.getByText("In progress")).toBeInTheDocument();
+    expect(screen.queryAllByText("Running")).toHaveLength(0);
     expect(container.querySelector(".forge-indeterminate")).toBeNull();
   });
 
   it("adds the session chip on a row that IS being worked", () => {
     render(<StatusCell row={row(undefined, "running")} />);
-    expect(screen.getAllByText("Running")).toHaveLength(2);
+    expect(screen.getByText("In progress")).toBeInTheDocument();
+    expect(screen.getAllByText("Running")).toHaveLength(1);
     expect(screen.queryByText("Queued")).not.toBeInTheDocument();
   });
 

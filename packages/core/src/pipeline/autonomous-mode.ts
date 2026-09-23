@@ -1,4 +1,5 @@
 import { type IssueStatus, issueStatuses, type JobType } from '../db/schema.js';
+import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import type { PipelineConfig } from './pipeline-config-schema.js';
 
 /** The status at which the driver is handed the issue. */
@@ -36,15 +37,12 @@ export function isAutonomous(cfg: PipelineConfig | null): boolean {
   return cfg !== null;
 }
 
-/** Where the driver's work ends and the issue run closes with it. */
-export const AUTONOMOUS_TERMINAL_STATUSES: readonly IssueStatus[] = ['closed', 'dropped'] as const;
-
 export const AUTONOMOUS_INFLIGHT_STATUSES: readonly IssueStatus[] =
   AUTONOMOUS_DRIVER_STATUSES.filter(
     (s) =>
       s !== AUTONOMOUS_ENTRY_STATUS &&
       s !== AUTONOMOUS_QUESTION_STATUS &&
-      !AUTONOMOUS_TERMINAL_STATUSES.includes(s),
+      !ISSUE_TERMINAL_STATUSES.includes(s),
   );
 
 /** Whether a human, not a master, decides when this project's work starts. */

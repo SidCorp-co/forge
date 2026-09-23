@@ -2,6 +2,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
@@ -111,11 +112,16 @@ orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
 
 guideRoutes.route('/orgs', orgGuideRoutes);
 
+/** The readable rendering of this same corpus, on the web host. */
+function humanGuidesUrl(): string {
+  return `${env.APP_BASE_URL.replace(/\/+$/, '')}/guides`;
+}
+
 function validSlugsMessage(): string {
   const slugs = listGuides()
     .map((g) => g.slug)
     .join(', ');
-  return `guide not found. Valid slugs: ${slugs}`;
+  return `guide not found. Valid slugs: ${slugs}. Readable pages: ${humanGuidesUrl()}`;
 }
 
 guideRoutes.get('/guides', (c) => {
@@ -135,6 +141,8 @@ guideRoutes.get('/llms.txt', (c) => {
     '> pipeline that drives Claude end to end (triage → clarify → plan → code → review → test →',
     '> release). These guides are the same bytes the `forge_guide` MCP tool serves. Every URL below',
     '> is unauthenticated and returns raw markdown — fetch what you need, when you need it.',
+    '>',
+    `> A person reads the same corpus as web pages at ${humanGuidesUrl()} — also no credential.`,
     '',
     '## Guides',
     '',
@@ -143,6 +151,7 @@ guideRoutes.get('/llms.txt', (c) => {
     '## Index',
     '',
     `- [Guide index (JSON)](${base}/guides): slug, title, summary and version for every guide.`,
+    `- [Guide index (web pages)](${humanGuidesUrl()}): the same corpus a person can read.`,
     '',
   ];
   c.header('Cache-Control', 'public, max-age=300');

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, JobType } from '../db/schema.js';
 import { issues, type jobs } from '../db/schema.js';
+import { ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -26,10 +27,6 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   reconcile: [],
   verify_skill: [],
 };
-
-/** Statuses the issue has nothing left to do on; any failed job lands here as
- * `advanced` — the retry no longer matters. */
-const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set(['awaiting_release', 'closed']);
 
 export const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
   triage: 'open',
@@ -76,7 +73,7 @@ export function classifyVerdict(currentStatus: IssueStatus, jobType: JobType): R
   const exits = JOB_TYPE_EXPECTED_EXIT_STATUS[jobType] ?? [];
   if (exits.includes(currentStatus)) return 'advanced';
 
-  if (TERMINAL_STATUSES.has(currentStatus)) return 'advanced';
+  if (ISSUE_RESOLVED_STATUSES.includes(currentStatus)) return 'advanced';
 
   // No entry mapping (e.g. `custom` / `pm`) and not in any exit set —
   // verifier cannot decide; default to pending so the retry path proceeds.

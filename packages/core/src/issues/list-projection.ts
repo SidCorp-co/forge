@@ -24,7 +24,6 @@ export const REST_ISSUE_LIST_COLUMNS = {
   assigneeId: issues.assigneeId,
   createdById: issues.createdById,
   createdVia: issues.createdVia,
-  creatorAgency: issues.creatorAgency,
   reportedBy: issues.reportedBy,
   detectorKey: issues.detectorKey,
   source: issues.source,
@@ -52,7 +51,6 @@ export type RestIssueListRow = {
   assigneeId: string | null;
   createdById: string;
   createdVia: (typeof issues.$inferSelect)['createdVia'];
-  creatorAgency: (typeof issues.$inferSelect)['creatorAgency'];
   reportedBy: string | null;
   detectorKey: string | null;
   source: (typeof issues.$inferSelect)['source'];

@@ -26,7 +26,7 @@ import { logger } from '../logger.js';
 import {
   BOX_RUN_ID_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
-  RUN_SESSION_TYPE,
+  RUN_SESSION_KIND,
 } from './run-session.js';
 
 /**
@@ -228,7 +228,7 @@ async function runSessionForDevice(
       and(
         eq(agentSessions.id, sessionId),
         eq(agentSessions.deviceId, deviceId),
-        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        eq(agentSessions.kind, RUN_SESSION_KIND),
       ),
     )
     .limit(1);
@@ -279,7 +279,6 @@ async function insertCommentOnce(args: {
       issueId: args.issueId,
       authorId: args.authorId,
       authorDeviceId: args.deviceId,
-      authorAgency: 'agent',
       body: args.body,
     });
     return true;

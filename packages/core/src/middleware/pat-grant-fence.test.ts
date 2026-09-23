@@ -33,7 +33,7 @@ type Principal = Awaited<ReturnType<typeof beginPatRequest>>['principal'];
 function principal(permissions: readonly string[] | null | undefined): Principal {
   return {
     kind: 'pat',
-    agency: null,
+    agency: 'human',
     agentUserId: null,
     userId: 'u1',
     tokenId: 't1',

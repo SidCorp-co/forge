@@ -1,4 +1,4 @@
-// The project half of the skill lock: reads `agentConfig.pipelineConfig` and hands `lock.ts` the declaration it evaluates. It lives beside the resolver rather than in `service.ts` so the pure rules stay unit-testable with no database in scope. Design: docs/proposals/agent-driven-pipeline.md
+// The project half of the skill lock: reads `agentConfig.pipelineConfig` and hands `lock.ts` the declaration it evaluates. It lives beside the resolver rather than in `service.ts` so the pure rules stay unit-testable with no database in scope.
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

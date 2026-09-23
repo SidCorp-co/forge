@@ -82,6 +82,7 @@ export async function redispatchConversationAgentTurn(
       projectId: session.projectId,
       userId: session.userId,
       title: session.title ?? `Chat: ${meta.question.slice(0, TITLE_MAX)}`,
+      parentSessionId: session.id,
       runKind: 'system',
       runMetadata: { source: 'conversation.agentTurn', conversationId: meta.conversationId },
       metadata: {

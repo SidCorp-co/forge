@@ -1,4 +1,9 @@
-import { isIgnoredComment, isWaiver, RESTATEMENT_WAIVER } from "../line-metrics.js";
+import {
+  directiveMatcher,
+  isIgnoredComment,
+  isWaiver,
+  RESTATEMENT_WAIVER,
+} from "../line-metrics.js";
 import {
   DEFAULT_MIN_SENTENCE_LENGTH,
   DEFAULT_OVERLAP_FLOOR,
@@ -21,16 +26,16 @@ import {
  * inside one sharing a topic and therefore a vocabulary that scores high on nothing.
  */
 
-const isDirective = (comment) => isIgnoredComment(comment) || isWaiver(comment);
+const isDirective = (comment, matcher) => isIgnoredComment(comment, matcher) || isWaiver(comment);
 
 /** A run of `//` lines is one comment to a reader, N nodes to ESLint, and a sentence spans two of
  *  them often enough that grouping first is what makes the compared text the written text. */
-function blocksOf(sourceCode) {
+function blocksOf(sourceCode, matcher) {
   const blocks = [];
   let open = null;
   let waivedLine = 0;
   for (const comment of sourceCode.getAllComments()) {
-    if (comment.type === "Shebang" || isDirective(comment)) {
+    if (comment.type === "Shebang" || isDirective(comment, matcher)) {
       // Reaches the block under it: a directive ends its own run, so alone it waives nothing.
       if (RESTATEMENT_WAIVER.test(comment.value)) waivedLine = comment.loc.end.line + 1;
       open = null;
@@ -82,6 +87,7 @@ export default {
           threshold: { type: "number", minimum: 0, maximum: 1 },
           floor: { type: "integer", minimum: 1 },
           minLength: { type: "integer", minimum: 1 },
+          additionalDirectives: { type: "array", items: { type: "string" } },
         },
         additionalProperties: false,
       },
@@ -96,12 +102,14 @@ export default {
       threshold = DEFAULT_OVERLAP_THRESHOLD,
       floor = DEFAULT_OVERLAP_FLOOR,
       minLength = DEFAULT_MIN_SENTENCE_LENGTH,
+      additionalDirectives = [],
     } = context.options[0] ?? {};
+    const matcher = directiveMatcher(additionalDirectives);
 
     return {
       "Program:exit"() {
         const units = [];
-        for (const block of blocksOf(context.sourceCode)) {
+        for (const block of blocksOf(context.sourceCode, matcher)) {
           for (const sentence of splitSentences(textOf(block), minLength)) {
             units.push([block, sentence]);
           }

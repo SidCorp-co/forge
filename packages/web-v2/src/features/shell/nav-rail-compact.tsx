@@ -62,6 +62,10 @@ export interface NavRailCompactProps {
   whatsNewBadge?: number;
   /** Footer: jump to the Docs hub. */
   onDocs?: () => void;
+  /** The product's own version, pinned to the footer. Presentational slot; the
+   *  layout supplies the wired node, and only one rail is on screen at a time
+   *  so it is never rendered twice (ISS-1119). */
+  version?: React.ReactNode;
 }
 
 /** Tiny centered tier label for the 76px rail (ISS-359). The faint hairline
@@ -150,6 +154,7 @@ export function NavRailCompact({
   onWhatsNew,
   whatsNewBadge,
   onDocs,
+  version,
 }: NavRailCompactProps) {
   const [flyOpen, setFlyOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -208,168 +213,182 @@ export function NavRailCompact({
       {orgSwitcher && <div className="mb-3">{orgSwitcher}</div>}
 
       {projectItems && projectItems.length > 0 && activeProject && (
-        <>
-          <div className="relative" onMouseEnter={show} onMouseLeave={hide}>
-            <button
-              type="button"
-              onClick={show}
-              aria-haspopup="dialog"
-              aria-expanded={flyOpen}
-              aria-label={`Switch project — current ${activeProject.name}`}
-              className={cn(
-                'flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors',
-                flyOpen ? 'bg-hover' : 'hover:bg-hover',
-              )}
-            >
-              <span className="relative">
-                <ProjectMark
-                  tint={activeProject.tint}
-                  ink={activeProject.ink}
-                  initials={activeProject.initials}
-                  size={30}
-                  radius="var(--r-md)"
-                />
-                <span
-                  className="absolute -bottom-[3px] -right-1 inline-flex size-[15px] items-center justify-center rounded-pill text-subtle"
-                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
-                >
-                  <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
-                </span>
-              </span>
-              {activeProject.liveRuns > 0 && (
-                <span className="font-mono text-9-5 font-semibold text-accent-text">
-                  {activeProject.liveRuns} live
-                </span>
-              )}
-            </button>
-
-            {flyOpen && (
-              <div
-                role="dialog"
-                aria-label="Switch project"
-                className="absolute left-[calc(100%+10px)] top-[-6px] z-20 w-64 rounded-lg border border-line bg-surface p-[7px] shadow-[var(--shadow-lg)]"
-              >
-                {/* Diamond arrow on the left edge. */}
-                <span
-                  aria-hidden
-                  className="absolute left-[-6px] top-[22px] size-[11px] rotate-45"
-                  style={{
-                    background: 'var(--bg-surface)',
-                    borderLeft: '1px solid var(--border-default)',
-                    borderBottom: '1px solid var(--border-default)',
-                  }}
-                />
-                <div className="mb-1 flex items-center gap-[7px] border-b border-line-subtle px-2 py-1.5">
-                  <Icon name="search" size={14} className="text-subtle" />
-                  <input
-                    autoFocus
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Find a project…"
-                    className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
-                  />
-                </div>
-                <div className="max-h-[300px] overflow-y-auto">
-                  {rows.map((p) => (
-                    <div
-                      key={p.id}
-                      className={cn(
-                        'flex w-full items-center gap-[9px] rounded-sm px-2 py-[7px]',
-                        p.slug === activeSlug ? 'bg-accent-tint' : 'hover:bg-hover',
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => selectProject(p.slug)}
-                        className="flex min-w-0 flex-1 items-center gap-[9px] text-left focus-visible:outline-none"
-                      >
-                        <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={20} radius="var(--r-sm)" />
-                        <span className="min-w-0 flex-1 truncate text-13 font-medium text-fg">{p.name}</span>
-                        {p.liveRuns > 0 && (
-                          <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onTogglePin(p.id)}
-                        aria-label={p.pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
-                        aria-pressed={p.pinned}
-                        className={cn(
-                          'flex flex-none rounded-xs p-3px transition-colors hover:bg-active',
-                          p.pinned ? 'text-accent' : 'text-disabled hover:text-fg',
-                        )}
-                      >
-                        <Icon name="pin" size={14} strokeWidth={p.pinned ? 2.4 : 1.75} />
-                      </button>
-                    </div>
-                  ))}
-                  {rows.length === 0 && (
-                    <p className="px-2 py-3 text-13 text-muted">No projects match.</p>
-                  )}
-                </div>
-                <div className="my-1.5 mx-1 h-px bg-[color:var(--border-subtle)]" />
-                <button
-                  type="button"
-                  onClick={() => { setFlyOpen(false); onAllProjects(); }}
-                  className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
-                >
-                  <Icon name="folder" size={16} className="text-subtle" />
-                  View all
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFlyOpen(false); onNewProject(); }}
-                  className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
-                >
-                  <Icon name="plus" size={16} className="text-subtle" />
-                  New project
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Project tier. */}
-          <RailKicker label="Project" className="mt-1.5" />
-          <div className="mt-1 flex flex-col items-center gap-3px">
-            {projectItems.map((it) => (
-              <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-            ))}
-          </div>
-
-          <div className="my-[9px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
-        </>
-      )}
-
-      {!activeProject && switcherProjects.length === 0 && (
-        <>
+        <div className="relative" onMouseEnter={show} onMouseLeave={hide}>
           <button
             type="button"
-            onClick={onNewProject}
-            aria-label="Add project"
-            className="flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle transition-colors hover:bg-hover"
+            onClick={show}
+            aria-haspopup="dialog"
+            aria-expanded={flyOpen}
+            aria-label={`Switch project — current ${activeProject.name}`}
+            className={cn(
+              'flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors',
+              flyOpen ? 'bg-hover' : 'hover:bg-hover',
+            )}
           >
-            <span
-              className="inline-flex size-[30px] items-center justify-center rounded-md border border-dashed"
-              style={{ borderColor: 'var(--border-default)' }}
-            >
-              <Icon name="plus" size={16} className="text-subtle" />
+            <span className="relative">
+              <ProjectMark
+                tint={activeProject.tint}
+                ink={activeProject.ink}
+                initials={activeProject.initials}
+                size={30}
+                radius="var(--r-md)"
+              />
+              <span
+                className="absolute -bottom-[3px] -right-1 inline-flex size-[15px] items-center justify-center rounded-pill text-subtle"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
+              >
+                <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
+              </span>
             </span>
-            <span className="text-9-5 font-semibold tracking-[-0.01em] text-muted">Add</span>
+            {activeProject.liveRuns > 0 && (
+              <span className="font-mono text-9-5 font-semibold text-accent-text">
+                {activeProject.liveRuns} live
+              </span>
+            )}
           </button>
 
-          <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
-        </>
+          {flyOpen && (
+            <div
+              role="dialog"
+              aria-label="Switch project"
+              className="absolute left-[calc(100%+10px)] top-[-6px] z-20 w-64 rounded-lg border border-line bg-surface p-[7px] shadow-[var(--shadow-lg)]"
+            >
+              {/* Diamond arrow on the left edge. */}
+              <span
+                aria-hidden
+                className="absolute left-[-6px] top-[22px] size-[11px] rotate-45"
+                style={{
+                  background: 'var(--bg-surface)',
+                  borderLeft: '1px solid var(--border-default)',
+                  borderBottom: '1px solid var(--border-default)',
+                }}
+              />
+              <div className="mb-1 flex items-center gap-[7px] border-b border-line-subtle px-2 py-1.5">
+                <Icon name="search" size={14} className="text-subtle" />
+                <input
+                  autoFocus
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Find a project…"
+                  className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
+                />
+              </div>
+              <div className="max-h-[300px] overflow-y-auto">
+                {rows.map((p) => (
+                  <div
+                    key={p.id}
+                    className={cn(
+                      'flex w-full items-center gap-[9px] rounded-sm px-2 py-[7px]',
+                      p.slug === activeSlug ? 'bg-accent-tint' : 'hover:bg-hover',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectProject(p.slug)}
+                      className="flex min-w-0 flex-1 items-center gap-[9px] text-left focus-visible:outline-none"
+                    >
+                      <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={20} radius="var(--r-sm)" />
+                      <span className="min-w-0 flex-1 truncate text-13 font-medium text-fg">{p.name}</span>
+                      {p.liveRuns > 0 && (
+                        <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onTogglePin(p.id)}
+                      aria-label={p.pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
+                      aria-pressed={p.pinned}
+                      className={cn(
+                        'flex flex-none rounded-xs p-3px transition-colors hover:bg-active',
+                        p.pinned ? 'text-accent' : 'text-disabled hover:text-fg',
+                      )}
+                    >
+                      <Icon name="pin" size={14} strokeWidth={p.pinned ? 2.4 : 1.75} />
+                    </button>
+                  </div>
+                ))}
+                {rows.length === 0 && (
+                  <p className="px-2 py-3 text-13 text-muted">No projects match.</p>
+                )}
+              </div>
+              <div className="my-1.5 mx-1 h-px bg-[color:var(--border-subtle)]" />
+              <button
+                type="button"
+                onClick={() => { setFlyOpen(false); onAllProjects(); }}
+                className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
+              >
+                <Icon name="folder" size={16} className="text-subtle" />
+                View all
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFlyOpen(false); onNewProject(); }}
+                className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
+              >
+                <Icon name="plus" size={16} className="text-subtle" />
+                New project
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Workspace tier — demoted below the project tier (project-first). */}
-      <RailKicker label="Space" />
-      <div className="mt-1 flex flex-col items-center gap-3px">
-        {workspaceItems.map((it) => (
-          <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-        ))}
+      {/* The tiers are the only part of the rail that may outgrow it, so they
+          are the only part that scrolls: the brand, the switcher and the footer
+          stay pinned to the rail's own box (ISS-1119 — the rail's content runs
+          to 999px, and with no scroll region here the footer was laid out past
+          the shell's `overflow-hidden` and painted nowhere at 1366x768). The
+          switcher is above it rather than in it because `overflow-y-auto`
+          computes `overflow-x` to `auto` and would clip its flyout. */}
+      <div
+        data-testid="rail-tiers"
+        className="flex w-full min-h-0 flex-1 flex-col items-center overflow-y-auto"
+      >
+        {projectItems && projectItems.length > 0 && activeProject && (
+          <>
+            {/* Project tier. */}
+            <RailKicker label="Project" className="mt-1.5" />
+            <div className="mt-1 flex flex-col items-center gap-3px">
+              {projectItems.map((it) => (
+                <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+              ))}
+            </div>
+
+            <div className="my-[9px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
+          </>
+        )}
+
+        {!activeProject && switcherProjects.length === 0 && (
+          <>
+            <button
+              type="button"
+              onClick={onNewProject}
+              aria-label="Add project"
+              className="flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle transition-colors hover:bg-hover"
+            >
+              <span
+                className="inline-flex size-[30px] items-center justify-center rounded-md border border-dashed"
+                style={{ borderColor: 'var(--border-default)' }}
+              >
+                <Icon name="plus" size={16} className="text-subtle" />
+              </span>
+              <span className="text-9-5 font-semibold tracking-[-0.01em] text-muted">Add</span>
+            </button>
+
+            <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
+          </>
+        )}
+
+        {/* Workspace tier — demoted below the project tier (project-first). */}
+        <RailKicker label="Space" />
+        <div className="mt-1 flex flex-col items-center gap-3px">
+          {workspaceItems.map((it) => (
+            <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+          ))}
+        </div>
       </div>
 
-      {/* Footer — What's New + Docs, then the account menu. */}
+      {/* Footer — What's New + Docs, then the account menu, then the version. */}
       <div className="mt-auto flex flex-col items-center gap-1.5">
         {onWhatsNew && (
           <button
@@ -418,6 +437,7 @@ export function NavRailCompact({
           align="left"
           triggerClassName="rounded-pill p-1 hover:bg-hover transition-colors"
         />
+        {version && <div className="w-full px-0.5 text-center">{version}</div>}
       </div>
     </nav>
   );

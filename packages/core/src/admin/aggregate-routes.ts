@@ -25,6 +25,8 @@ import {
   usageRecords,
   users,
 } from '../db/schema.js';
+import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { listResponse } from '../lib/pagination.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -54,8 +56,6 @@ import {
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const NON_OPEN_STATUSES = new Set(['awaiting_release', 'closed', 'draft']);
 
 const overviewQuerySchema = z.object({ window: z.enum(GLANCE_WINDOWS).default('24h') });
 
@@ -103,7 +103,7 @@ adminAggregateRoutes.get(
       db
         .select({ n: count() })
         .from(jobs)
-        .where(inArray(jobs.status, ['queued', 'dispatched', 'running'])),
+        .where(inArray(jobs.status, [...UNHELD_LIVE_JOB_STATUSES])),
       db
         .select({ v: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)::float` })
         .from(usageRecords)

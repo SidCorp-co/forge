@@ -264,17 +264,17 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
     expect(dbExecute).toHaveBeenCalledTimes(4);
     const [pass1, pass2, pass3, pass4] = dbExecute.mock.calls.map((c) => sqlText(c[0]));
 
-    expect(pass1).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass2).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass3).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass4).toMatch(/COALESCE/i);
+    expect(pass1).toMatch(/\bs\.kind\s+IN\s*\(\s*pipeline\s*,\s*pm\s*\)/);
+    expect(pass2).toMatch(/\bs\.kind\s+IN\s*\(\s*pipeline\s*,\s*pm\s*\)/);
+    expect(pass3).toMatch(/\bs\.kind\s+IN\s*\(\s*pipeline\s*,\s*pm\s*\)/);
     expect(
       pass4,
-      'this arm and the no-client hop it alarms for are ONE predicate, and both must exclude every type that never reports a `claude_session_id`: a run session (reaped by `devices/run-session-reaper.ts` — two sweeps over one row is two writers on one fact) and a master (a tmux pane, which matches every term of this arm and survives only on the daemon re-registering it) (ISS-933 criteria 21 and 25a)',
-    ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'master'\s*,\s*'run_session'\s*\)/);
+      'this arm and the no-client hop it alarms for are ONE predicate, and both must see ONLY the kind that reports a `claude_session_id`. It used to say so by excluding the other four; it now names the one, which is the same rule written the way round that cannot silently admit a sixth kind. A run session is reaped by `devices/run-session-reaper.ts` — two sweeps over one row is two writers on one fact — and a master is a tmux pane that matches every other term of this arm and survives only on the daemon re-registering it (ISS-933 criteria 21 and 25a)',
+    ).toMatch(/\bs\.kind\s+IN\s*\(\s*chat\s*\)/);
+    expect(pass4).not.toMatch(/\bmaster\b|\brun_session\b/);
     expect(pass4).toMatch(/claude_session_id\s+IS\s+NULL/i);
-    expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
-    expect(pass3).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+    expect(pass1).not.toMatch(/\bchat\b/);
+    expect(pass3).not.toMatch(/\bchat\b/);
   });
 
   it("mirrors the loop's two queue arms, split on last_heartbeat_at in opposite senses", async () => {
