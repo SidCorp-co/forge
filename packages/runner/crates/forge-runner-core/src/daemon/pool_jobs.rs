@@ -759,9 +759,15 @@ impl Records for FileRecords {
         if let Some(seen) = live.seen {
             obj.insert("seen".into(), seen.to_json());
         }
-        if let Err(e) = std::fs::write(&path, body.to_string()) {
+        // Never in place. A sweep replaces this file every minute now that it
+        // carries the snapshot a restart is judged on, and `std::fs::write`
+        // truncates before it writes: a daemon that dies mid-write would leave
+        // half a record, which reads back as a pane nothing is known about and
+        // so is kept for the rest of its life — the very hole the snapshot
+        // closes. `session_tokens` learned this on the same disk (ISS-1099).
+        if let Err(e) = replace(&self.dir, &path, &body.to_string()) {
             tracing::warn!(
-                "[pool] could not record job {} at {}: {e} — a restart will leave it to core",
+                "[pool] could not record job {} at {}: {e} — the record standing there is the one a restart will read",
                 live.job_id,
                 path.display()
             );
@@ -808,6 +814,21 @@ impl Records for FileRecords {
         out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
         out
     }
+}
+
+/// Put `body` at `path` whole or not at all, leaving whatever stood there if
+/// the replacement cannot be completed.
+fn replace(dir: &Path, path: &Path, body: &str) -> std::io::Result<()> {
+    let tmp = dir.join(format!(
+        ".pool-job.{}.{}.tmp",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    let done = std::fs::write(&tmp, body).and_then(|()| std::fs::rename(&tmp, path));
+    if done.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    done
 }
 
 pub struct NoRecords;
@@ -858,6 +879,8 @@ impl Panes for TmuxPanes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const THIS_SOURCE: &str = include_str!("pool_jobs.rs");
     use crate::transport::pool::Refusal;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
@@ -2293,6 +2316,106 @@ mod tests {
         assert_eq!(w.rec.failed.lock().unwrap().len(), 1);
         assert_eq!(w.registry.count(), 0);
         assert!(w.records.all().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_job_record_carries_the_session_and_the_snapshot_across_a_restart() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        let home = TempHome::new("filerecords");
+        let r = FileRecords {
+            dir: home.path().to_path_buf(),
+        };
+        let seen = job_exit::Reported {
+            doing: Doing::Idle,
+            last_event: Event::Stopped,
+            at: now_ms(),
+            prompts: 2,
+        };
+        r.note(&Live {
+            job_id: "j1".into(),
+            pane: "forge-job-j1".into(),
+            watch: Watch::Hooked {
+                session_id: "sess-1".into(),
+                delivered_at: now_ms(),
+            },
+            seen: Some(seen),
+        })
+        .await;
+
+        assert_eq!(
+            r.all().await,
+            vec![Live {
+                job_id: "j1".into(),
+                pane: "forge-job-j1".into(),
+                watch: Watch::Adopted {
+                    session_id: "sess-1".into()
+                },
+                seen: Some(seen)
+            }],
+            "what a restart reads back is what decides whether the pane is still work in flight"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_record_that_cannot_be_replaced_leaves_the_one_standing_there() {
+        #[cfg(unix)]
+        {
+            use crate::daemon::agent_activity::{Doing, Event};
+            use std::os::unix::fs::PermissionsExt;
+            let home = TempHome::new("filerecords-torn");
+            let dir = home.path().join("pool-jobs");
+            let r = FileRecords { dir: dir.clone() };
+            let first = job_exit::Reported {
+                doing: Doing::Working,
+                last_event: Event::PromptSubmitted,
+                at: now_ms(),
+                prompts: 1,
+            };
+            let live = |seen| Live {
+                job_id: "j1".into(),
+                pane: "forge-job-j1".into(),
+                watch: Watch::Adopted {
+                    session_id: "sess-1".into(),
+                },
+                seen: Some(seen),
+            };
+            r.note(&live(first)).await;
+
+            // No temp file can be created here, so the rename can never happen.
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+            r.note(&live(job_exit::Reported {
+                prompts: 9,
+                ..first
+            }))
+            .await;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+            assert_eq!(
+                r.all().await[0].seen,
+                Some(first),
+                "a write that could not be completed must leave the previous record whole — half a record reads back as a pane nothing is known about, kept for the rest of its life"
+            );
+            assert!(
+                std::fs::read_dir(&dir)
+                    .unwrap()
+                    .flatten()
+                    .all(|e| !e.file_name().to_string_lossy().ends_with(".tmp")),
+                "a failed replacement leaves no scratch behind"
+            );
+        }
+    }
+
+    #[test]
+    fn no_job_record_is_ever_written_in_place() {
+        let body = THIS_SOURCE
+            .split("impl Records for FileRecords {")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .unwrap_or_default();
+        assert!(
+            !body.contains("fs::write(&path"),
+            "a sweep replaces this file every minute now that it carries the snapshot a restart is judged on, and an in-place write truncates first (ISS-1099 on the same disk): {body}"
+        );
     }
 
     #[test]
