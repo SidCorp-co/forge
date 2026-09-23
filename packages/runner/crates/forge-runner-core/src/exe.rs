@@ -70,12 +70,23 @@ pub fn is_runnable(path: &Path) -> bool {
     meta.is_file() && may_execute(path)
 }
 
-/// The first runnable `name` on `PATH`, as a shell would resolve it.
+/// The first runnable `name` on `PATH`, as an absolute path.
+///
+/// Absolute because what this feeds is written into files other processes read
+/// from other directories — a checkout's credential helper, a service unit — and
+/// `PATH` may hold a relative or empty entry, which resolves against whoever is
+/// running rather than against the daemon that wrote it. A path that names one
+/// file here and another there is this issue over again (consult ae035c F1).
 pub fn on_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|dir| dir.join(name))
-        .find(|candidate| is_runnable(candidate))
+    on_path_in(std::env::split_paths(&std::env::var_os("PATH")?), name)
+}
+
+/// The same over directories handed in, so a relative entry can be exercised
+/// without this test process rewriting its own environment.
+fn on_path_in(dirs: impl Iterator<Item = PathBuf>, name: &str) -> Option<PathBuf> {
+    dirs.map(|dir| dir.join(name))
+        .filter(|candidate| is_runnable(candidate))
+        .find_map(|candidate| std::fs::canonicalize(candidate).ok())
 }
 
 /// Whether THIS process may execute the file, which is not the same question as
@@ -256,6 +267,49 @@ mod tests {
     fn the_process_running_this_test_can_name_itself() {
         let got = own().expect("the test binary is on disk while it runs");
         assert!(is_runnable(&got.path));
+    }
+
+    /// A relative `PATH` entry names a different file from a different
+    /// directory, and what this feeds is written into a checkout and read from
+    /// wherever git happens to run (consult ae035c F1).
+    #[cfg(unix)]
+    #[test]
+    fn a_match_under_a_relative_path_entry_comes_back_absolute() {
+        use std::os::unix::fs::PermissionsExt;
+
+        struct UnderCwd(PathBuf);
+        impl Drop for UnderCwd {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+
+        let cwd = std::env::current_dir().expect("cwd");
+        let leaf = format!("forge-relative-path-{}", uuid::Uuid::new_v4().simple());
+        let here = UnderCwd(cwd.join(&leaf));
+        std::fs::create_dir_all(&here.0).expect("dir under cwd");
+        let exe = here.0.join("forge-runner");
+        std::fs::write(&exe, "#!/bin/sh\nexit 0\n").expect("write");
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+
+        let relative = PathBuf::from(&leaf);
+        assert!(
+            relative.is_relative(),
+            "the entry under test must be relative"
+        );
+
+        let found = on_path_in(std::iter::once(relative), "forge-runner")
+            .expect("a runnable file stands under that entry");
+        assert!(
+            found.is_absolute(),
+            "a relative path was handed on to a file another process reads from another directory: {}",
+            found.display()
+        );
+        assert_eq!(
+            std::fs::canonicalize(&exe).expect("canonical"),
+            found,
+            "it came back absolute but naming something else"
+        );
     }
 
     /// `PATH` is process-wide, so this reads it rather than setting it: a test
