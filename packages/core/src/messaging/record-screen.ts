@@ -14,12 +14,14 @@ import {
   type ForgeRecordField,
 } from './forge-record.js';
 import { screenMessage } from './screen.js';
+import { verdictIdentityRefusals } from './verdict-identity.js';
 
 /** The rules this module owns, for the document that has to name them all. */
 export const RECORD_RULE_IDS: readonly string[] = [
   'field-budget',
   'record-in-comment',
   'record-fence-shape',
+  'verdict-identity',
 ];
 
 /** The guide that holds the whole table, named by every record-in-comment message. */
@@ -177,7 +179,8 @@ export function screenLead(lead: string, audience: Audience): MessageVerdict {
 }
 
 /**
- * Everything the record itself is refused for: the budget, then the lead.
+ * Everything the record itself is refused for: the budget, the identities a verdict names, then
+ * the lead.
  */
 export async function recordRefusals(
   projectId: string,
@@ -185,7 +188,7 @@ export async function recordRefusals(
   executor?: Tx,
 ): Promise<MessageRefusal[]> {
   if (!record) return [];
-  const refusals = budgetRefusals(record);
+  const refusals = [...budgetRefusals(record), ...verdictIdentityRefusals(record)];
   if (record.lead === null) return refusals;
   const verdict = screenLead(record.lead, await projectLeadAudience(projectId, executor));
   return verdict.ok ? refusals : [...refusals, ...verdict.refusals];

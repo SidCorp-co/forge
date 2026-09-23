@@ -72,10 +72,34 @@ vi.mock('../release-batch/queries.js', () => ({
   loadReleaseRoster: (projectId: string) => loadReleaseRosterMock(projectId),
 }));
 
-const issuesWithUnearnedCriteriaMock = vi.fn(async (_ids: string[]) => [] as string[]);
+interface UnearnedCriterion {
+  criterion: number;
+  verdict: string | null;
+  standing: string | null;
+  why: string;
+}
+interface CriteriaReport {
+  issueId: string;
+  unearned: UnearnedCriterion[];
+}
+const unearnedCriteriaReportsMock = vi.fn(
+  async (ids: string[]): Promise<CriteriaReport[]> =>
+    ids.map((id) => ({ issueId: id, unearned: [] })),
+);
 vi.mock('../issues/criteria-verdicts.js', () => ({
-  issuesWithUnearnedCriteria: (ids: string[]) => issuesWithUnearnedCriteriaMock(ids),
+  unearnedCriteriaReports: (ids: string[]) => unearnedCriteriaReportsMock(ids),
 }));
+
+/** The report a sweep reads for a roster where `held` are the ones still owing a criterion. */
+const reportsHolding = (all: string[], held: Record<string, UnearnedCriterion[]>) =>
+  all.map((id) => ({ issueId: id, unearned: held[id] ?? [] }));
+
+const SUPERSEDED: UnearnedCriterion = {
+  criterion: 13,
+  verdict: 'pass',
+  standing: 'superseded',
+  why: 'judged at dce6f354c727baa81c681f144cbadf30050eabfc, and this issue now stands at 06fa37c6dfbc841bd75c3898034a53a1529a9c74',
+};
 
 const loadCreatedByMock = vi.fn(async (_projectId: string) => 'owner-1' as string | undefined);
 vi.mock('../schedules/release-batch-dispatch.js', () => ({
@@ -102,8 +126,9 @@ vi.mock('../schedules/release-batch-run.js', () => ({
     cutWaitingReleaseMock(args),
 }));
 
+const loggerInfo = vi.fn();
 vi.mock('../logger.js', () => ({
-  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+  logger: { error: vi.fn(), warn: vi.fn(), info: (...args: unknown[]) => loggerInfo(...args) },
 }));
 
 const { sweepAutomaticReleases } = await import('./release-sweep.js');
@@ -128,8 +153,11 @@ beforeEach(() => {
   resolveReleaseGateMock.mockResolvedValue('awaiting_release');
   loadReleaseRosterMock.mockReset();
   loadReleaseRosterMock.mockResolvedValue({ issues: [] });
-  issuesWithUnearnedCriteriaMock.mockReset();
-  issuesWithUnearnedCriteriaMock.mockResolvedValue([]);
+  unearnedCriteriaReportsMock.mockReset();
+  unearnedCriteriaReportsMock.mockImplementation(async (ids: string[]) =>
+    ids.map((id) => ({ issueId: id, unearned: [] })),
+  );
+  loggerInfo.mockReset();
   loadCreatedByMock.mockReset();
   loadCreatedByMock.mockResolvedValue('owner-1');
   cutWaitingReleaseMock.mockReset();
@@ -177,13 +205,65 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
     loadReleaseRosterMock.mockResolvedValueOnce({
       issues: [{ id: 'iss-1139', claimedByRunId: null }],
     });
-    issuesWithUnearnedCriteriaMock.mockResolvedValueOnce(['iss-1139']);
+    unearnedCriteriaReportsMock.mockResolvedValueOnce(
+      reportsHolding(['iss-1139'], { 'iss-1139': [SUPERSEDED] }),
+    );
 
     const result = await sweepAutomaticReleases();
 
     expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
     expect(insertedComments).toEqual([]);
     expect(result).toEqual({ projectsCut: 0, issuesCut: 0, issuesExcluded: 1 });
+  });
+
+  it('names the issue, the criterion and why it was not earned, rather than a count alone', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-1139', '2026-09-22T00:00:00Z')];
+    loadReleaseRosterMock.mockResolvedValueOnce({
+      issues: [{ id: 'iss-1139', claimedByRunId: null }],
+    });
+    unearnedCriteriaReportsMock.mockResolvedValueOnce(
+      reportsHolding(['iss-1139'], {
+        'iss-1139': [
+          SUPERSEDED,
+          { criterion: 4, verdict: null, standing: null, why: 'no verdict was recorded for it' },
+        ],
+      }),
+    );
+
+    await sweepAutomaticReleases();
+
+    const held = loggerInfo.mock.calls.find(([, line]) =>
+      String(line).includes('is held back on criterion'),
+    );
+    expect(held?.[1]).toContain('iss-1139');
+    expect(held?.[1]).toContain('13, 4');
+    expect(held?.[1]).toContain('this issue now stands at');
+    expect(held?.[1]).toContain('no verdict was recorded for it');
+    expect(held?.[0]).toMatchObject({
+      issueId: 'iss-1139',
+      criteria: [
+        { criterion: 13, verdict: 'pass', standing: 'superseded' },
+        { criterion: 4, verdict: null, standing: null },
+      ],
+    });
+  });
+
+  it('names nothing held back on a tick where every waiting issue is earned', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-earned', '2026-09-22T00:00:00Z')];
+    loadReleaseRosterMock.mockResolvedValueOnce({
+      issues: [{ id: 'iss-earned', claimedByRunId: null }],
+    });
+
+    await sweepAutomaticReleases();
+
+    expect(
+      loggerInfo.mock.calls.some(([, line]) => String(line).includes('is held back on criterion')),
+    ).toBe(false);
+    expect(cutWaitingReleaseMock).toHaveBeenCalledWith({
+      projectId: 'proj-1',
+      userId: 'owner-1',
+      issueIds: ['iss-earned'],
+    });
   });
 
   it('cuts only the earned issue in a mixed roster, leaving the unearned one out of the call', async () => {
@@ -197,7 +277,9 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
         { id: 'iss-earned', claimedByRunId: null },
       ],
     });
-    issuesWithUnearnedCriteriaMock.mockResolvedValueOnce(['iss-1139']);
+    unearnedCriteriaReportsMock.mockResolvedValueOnce(
+      reportsHolding(['iss-1139', 'iss-earned'], { 'iss-1139': [SUPERSEDED] }),
+    );
 
     const result = await sweepAutomaticReleases();
 

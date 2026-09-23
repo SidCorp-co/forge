@@ -8,7 +8,7 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
-import { issuesWithUnearnedCriteria } from '../issues/criteria-verdicts.js';
+import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
 import { resolveReleaseGate } from '../release-batch/gate.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
@@ -120,6 +120,32 @@ async function reportSweepFailure(
   }
 }
 
+/**
+ * Every criterion holding an issue back, by number and by reason.
+ *
+ * A count says how many issues were left alone and names neither them nor what they owe, so an
+ * issue that drops back a rung with no reason named is the same silence read from the other side.
+ */
+function reportHeldBack(projectId: string, held: readonly IssueCriteriaReport[]): void {
+  for (const report of held) {
+    logger.info(
+      {
+        projectId,
+        issueId: report.issueId,
+        criteria: report.unearned.map((c) => ({
+          criterion: c.criterion,
+          verdict: c.verdict,
+          standing: c.standing,
+          why: c.why,
+        })),
+      },
+      `release-sweep: ${report.issueId} is held back on criterion ${report.unearned
+        .map((c) => c.criterion)
+        .join(', ')} — ${report.unearned.map((c) => `${c.criterion}: ${c.why}`).join('; ')}`,
+    );
+  }
+}
+
 async function sweepProject(projectId: string, result: AutomaticReleaseSweepResult): Promise<void> {
   if (!(await projectAutoProdDeploy(projectId))) return;
 
@@ -130,16 +156,18 @@ async function sweepProject(projectId: string, result: AutomaticReleaseSweepResu
   const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
   if (waiting.length === 0) return;
 
-  const unearned = await issuesWithUnearnedCriteria(waiting);
-  const unearnedSet = new Set(unearned);
-  const eligible = waiting.filter((id) => !unearnedSet.has(id));
-  result.issuesExcluded += unearned.length;
+  const reports = await unearnedCriteriaReports(waiting);
+  const held = reports.filter((r) => r.unearned.length > 0);
+  const heldSet = new Set(held.map((r) => r.issueId));
+  const eligible = waiting.filter((id) => !heldSet.has(id));
+  result.issuesExcluded += held.length;
+  if (held.length > 0) reportHeldBack(projectId, held);
 
   if (eligible.length === 0) {
     logger.info(
-      { projectId, excluded: unearned.length },
+      { projectId, excluded: held.length },
       'release-sweep: nothing eligible this tick — every waiting issue still owes a judging run ' +
-        'on a skipped, failed or unjudged criterion',
+        'on a criterion named above',
     );
     return;
   }
@@ -158,7 +186,7 @@ async function sweepProject(projectId: string, result: AutomaticReleaseSweepResu
     result.projectsCut += 1;
     result.issuesCut += eligible.length;
     logger.info(
-      { projectId, cut: eligible.length, excluded: unearned.length },
+      { projectId, cut: eligible.length, excluded: held.length },
       `release-sweep: ${outcome.output}`,
     );
     return;
