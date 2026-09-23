@@ -139,6 +139,16 @@ export function registerIdleFixture(seqFrom: number): IdleFixture {
   };
 }
 
+/**
+ * What a holder promises about how often it will report.
+ *
+ * `at` is twenty minutes before the suites' `NOW` and the period is a minute, so a case taking this
+ * unaltered gets a holder that has missed twenty of the beats it undertook to send.
+ */
+export function testHeartbeat(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return { at: '2026-09-20T15:40:00.000Z', everySeconds: 60, ...over };
+}
+
 /** The lease shape the CLI writes, with whatever a case needs changed. */
 export function testLease(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
