@@ -272,6 +272,25 @@ async fn answer(ctx: Ctx, a: AnswerArgs) -> anyhow::Result<()> {
     }
 }
 
+/// Single-quoted for a POSIX shell where it needs to be.
+///
+/// The line below is printed to be pasted, and a run identity is free text: one
+/// carrying a space or an `&` pasted unquoted is a different command — two
+/// arguments, or half of it backgrounded — and one carrying `$(…)` is a
+/// substitution this verb printed and the shell then ran. Anything outside the
+/// unreserved set is quoted, and an embedded quote is closed and reopened the
+/// way a shell takes it.
+fn shell_quoted(value: &str) -> String {
+    let plain = !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./:@".contains(c));
+    if plain {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
 /// What the caller is left holding: the id core minted, the run identity the
 /// read-back is served under, and the command that reads it. An ask made with
 /// no `--run` mints one, so a caller that ran only this command can still come
@@ -281,9 +300,10 @@ fn asked(question_id: &str, run_id: &str, issue_id: Option<&str>) -> String {
         Some(issue) => format!("It is on issue {issue}, under Decisions.\n"),
         None => "It carries no issue, so it is on the Agents screen's Questions tab.\n".to_string(),
     };
+    let (q, r) = (shell_quoted(question_id), shell_quoted(run_id));
     format!(
         "question {question_id}\nrun      {run_id}\n{where_answered}\
-         Read the answer back with:\n  forge-runner question answer {question_id} --run {run_id}\n"
+         Read the answer back with:\n  forge-runner question answer {q} --run {r}\n"
     )
 }
 
@@ -495,6 +515,84 @@ mod tests {
             out.contains("Questions tab"),
             "a question carrying no issue is answered there: {out}"
         );
+    }
+
+    /// The printed line is meant to be pasted, so the test reads it the way a
+    /// shell does rather than trusting the quoting by eye.
+    fn shell_words(line: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut cur = String::new();
+        let mut quoted = false;
+        let mut started = false;
+        let mut chars = line.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' if !quoted => {
+                    if let Some(next) = chars.next() {
+                        cur.push(next);
+                        started = true;
+                    }
+                }
+                '\'' => {
+                    quoted = !quoted;
+                    started = true;
+                }
+                c if c.is_whitespace() && !quoted => {
+                    if started || !cur.is_empty() {
+                        out.push(std::mem::take(&mut cur));
+                        started = false;
+                    }
+                }
+                c => {
+                    cur.push(c);
+                    started = true;
+                }
+            }
+        }
+        if started || !cur.is_empty() {
+            out.push(cur);
+        }
+        out
+    }
+
+    #[test]
+    fn a_plain_identity_is_printed_plainly() {
+        assert_eq!(
+            shell_quoted("7f3c1e2a-0b44-4a8f-9e11-2b6d5c9a7e10"),
+            "7f3c1e2a-0b44-4a8f-9e11-2b6d5c9a7e10"
+        );
+        assert_eq!(shell_quoted("run-7"), "run-7");
+    }
+
+    /// A run identity is free text and core stores it as typed, so the printed
+    /// invocation has to survive being pasted — an `&` backgrounds half the
+    /// line, a space splits the identity in two, and `$(…)` runs.
+    #[test]
+    fn an_identity_the_shell_would_read_as_syntax_is_printed_quoted_and_reads_back_whole() {
+        for run in [
+            "run&7", "run 7", "run;7", "run$(id)", "run'\''7", "run|7", "",
+        ] {
+            let out = asked("q-1", run, None);
+            let line = out
+                .lines()
+                .find(|l| l.contains("question answer"))
+                .expect("the read-back invocation is printed");
+            let words = shell_words(line.trim());
+            let at = words
+                .iter()
+                .position(|w| w == "--run")
+                .expect("the invocation names --run");
+            assert_eq!(
+                words.get(at + 1).map(String::as_str),
+                Some(run),
+                "`{run}` did not survive the paste: {line}"
+            );
+            assert_eq!(
+                words.len(),
+                at + 2,
+                "the identity added arguments of its own: {line}"
+            );
+        }
     }
 
     #[test]
