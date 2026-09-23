@@ -140,9 +140,8 @@ beforeEach(() => {
 
 /**
  * One box registered, reporting, and taken out of the pool by an operator.
- * Typed, so a rename of the field the way ISS-1127's criterion 17 renamed it
- * is caught by the compiler rather than passing silently on an untyped
- * literal.
+ * Typed, because an untyped literal here let `name` survive a rename that the
+ * compiler would otherwise have caught (ISS-1127, criterion 17).
  */
 const RETIRED: RunnerHold = {
   deviceName: 'dev1',

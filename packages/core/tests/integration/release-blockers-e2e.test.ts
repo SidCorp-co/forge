@@ -45,7 +45,7 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
 
-  const [batch, jwt, err, registry, runnersTab, auth] = await Promise.all([
+  const [batch, jwt, err, registry, tab, auth] = await Promise.all([
     import('../../src/release-batch/routes.js'),
     import('../../src/auth/jwt.js'),
     import('../../src/middleware/error.js'),
@@ -57,14 +57,13 @@ beforeAll(async () => {
   signUserToken = jwt.signUserToken;
   app = new Hono();
   app.route('/api/projects', batch.releaseBatchRoutes);
-  // The Runners tab's own route, behind the auth it actually runs behind
-  // (see the NOTE atop `projectRunnerRoutes`) — a criterion-17 test reads a
-  // box's name through this route rather than trusting a literal, so the two
-  // surfaces cannot drift apart unnoticed.
-  const runnersTabApp = new Hono<{ Variables: import('../../src/middleware/auth.js').AuthVars }>();
-  runnersTabApp.use('*', auth.requireAuth(), auth.assertEmailVerified());
-  runnersTabApp.route('/', runnersTab.projectRunnerRoutes);
-  app.route('/api/projects', runnersTabApp);
+  // The Runners tab's own route, under the middleware `projectRoutes` gives it.
+  // A blocker that names a box is asserted against what this answers rather
+  // than against a literal, so the two cannot drift apart unnoticed.
+  const runnersTab = new Hono();
+  runnersTab.use('*', auth.requireAuth(), auth.assertEmailVerified());
+  runnersTab.route('/', tab.projectRunnerRoutes);
+  app.route('/api/projects', runnersTab);
   app.onError(err.errorHandler);
 
   probe = createServer((_req, res) => res.end('commit-live'));
@@ -334,7 +333,10 @@ describe('a reason names the state it was read from and the act that clears it',
   // operator to bring one up or wait for one to reconnect.
   it('names the box an operator retired, and the switch that returns it', async () => {
     const w = await seed();
-    const device = await createTestDevice(harness.db, w.userId, { status: 'online', name: 'dev1' });
+    const device = await createTestDevice(harness.db, w.userId, {
+      status: 'online',
+      name: 'dev1',
+    });
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
       VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device.id}, 'dev1', 'draining',
@@ -352,12 +354,11 @@ describe('a reason names the state it was read from and the act that clears it',
     expect(held?.message).not.toContain('Bring one up');
   });
 
-  // forge-dev's own fleet: `runners.name` = `dev1`, `devices.name` = `dev1 · CLI
-  // runner` — the Runners tab shows the second, the blocker (before this fix)
-  // read the first. The two names are deliberately unrelated substrings here:
-  // one containing the other would let a `toContain` assertion pass on either
-  // column and never catch a read of the wrong one.
-  it("names the box under the name the Runners tab shows it under, not the runner row's own name", async () => {
+  // The forge-dev fleet carried `devices.name` = 'dev1 CLI runner' against
+  // `runners.name` = 'dev1', so the blocker named a box under a string no
+  // screen shows. The two names are deliberately disjoint here: with one a
+  // substring of the other, a message carrying the wrong one still passes.
+  it('names the box under the name the Runners tab shows, not the runner row name', async () => {
     const w = await seed();
     const device = await createTestDevice(harness.db, w.userId, {
       status: 'online',

@@ -27,7 +27,7 @@ export type RunnerHoldReason =
 
 /** The columns the dispatch filter reads, plus the one name a screen shows. */
 export interface RunnerLivenessRow {
-  /** `devices.name` — what the Runners tab shows; `runners.name` can be stale. */
+  /** `devices.name` — what the Runners tab names a box; `runners.name` is on no screen. */
   deviceName: string;
   status: RunnerStatus;
   lastSeenAt: Date | null;
