@@ -118,7 +118,13 @@ export function isNetworkCall(call: ts.CallExpression, checker: ts.TypeChecker):
   return checker
     .getTypeAtLocation(call.expression)
     .getCallSignatures()
-    .some((s) => checker.typeToString(s.getReturnType()) === 'Promise<Response>');
+    .some((s) => checker.getAwaitedType(s.getReturnType())?.getSymbol()?.getName() === 'Response');
+}
+
+/** Whether every value of this type is a string, the literal unions a method parameter takes included. */
+export function isStringLike(type: ts.Type): boolean {
+  const string = (t: ts.Type) => (t.flags & ts.TypeFlags.StringLike) !== 0;
+  return type.isUnion() ? type.types.every(string) : string(type);
 }
 
 // ---- resolving an expression to a path pattern -------------------------------------------------
@@ -144,9 +150,14 @@ export function bodyExpression(decl: ts.Declaration): ts.Expression | null {
 
 /** The string this expression evaluates to, interpolations kept as `:p`, or null where it cannot be read. */
 export function evaluate(node: ts.Node, checker: ts.TypeChecker, depth = 0): string | null {
+  const read = readValue(node, checker, depth);
+  // The declared value is what the source does not carry, so it answers only where reading failed:
+  // a spelling that DOES have a value in the tree resolves to that value and is judged on it.
+  return read ?? HOLE_VALUES[node.getText()] ?? null;
+}
+
+function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): string | null {
   if (depth > MAX_DEPTH) return null;
-  const declared = HOLE_VALUES[node.getText()];
-  if (declared !== undefined) return declared;
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
   if (ts.isParenthesizedExpression(node) || ts.isAwaitExpression(node) || ts.isAsExpression(node))
     return evaluate(node.expression, checker, depth + 1);
@@ -163,11 +174,12 @@ export function evaluate(node: ts.Node, checker: ts.TypeChecker, depth = 0): str
     const right = evaluate(node.right, checker, depth + 1);
     return left === null || right === null ? null : left + right;
   }
-  if (ts.isIdentifier(node)) {
+  if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) {
     const decl = declarationOf(node, checker);
-    if (decl && ts.isVariableDeclaration(decl) && decl.initializer)
-      return evaluate(decl.initializer, checker, depth + 1);
-    if (decl && ts.isShorthandPropertyAssignment(decl)) {
+    if (!decl) return null;
+    if (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl))
+      return decl.initializer ? evaluate(decl.initializer, checker, depth + 1) : null;
+    if (ts.isShorthandPropertyAssignment(decl)) {
       const value = checker.getShorthandAssignmentValueSymbol(decl);
       const from = value?.valueDeclaration ?? value?.declarations?.[0];
       if (from && ts.isVariableDeclaration(from) && from.initializer)

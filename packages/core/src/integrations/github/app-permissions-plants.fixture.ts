@@ -209,3 +209,97 @@ export const TRANSPORT_PROPERTY = transportFile('planted-transport-property.ts',
   'computedGitHubUrl',
   'base + path',
 ]);
+
+/** A transport extracted into a name, and one destructured out: consult 1d3280 F1. */
+export const EXTRACTED_MEMBER = plant(
+  'planted-extracted-member.ts',
+  AS_FILE([
+    'declare function queuePath(client: GitHubRepoClient): string;',
+    'export async function f(client: GitHubRepoClient) {',
+    '  const publish = client.publish;',
+    "  await publish({ op: 'lookup', method: 'GET', path: queuePath(client) });",
+    '}',
+  ]),
+);
+
+export const DESTRUCTURED_MEMBER = plant(
+  'planted-destructured-member.ts',
+  AS_FILE([
+    'declare function queuePath(client: GitHubRepoClient): string;',
+    'export async function f(client: GitHubRepoClient) {',
+    '  const { publish } = client;',
+    "  await publish({ op: 'lookup', method: 'GET', path: queuePath(client) });",
+    '}',
+  ]),
+);
+
+/** A transport written as an arrow property rather than a method: consult 1d3280 F2. */
+export const ARROW_TRANSPORT = plant(
+  'planted-arrow-transport.ts',
+  [
+    'declare const unreadableUrl: string;',
+    'declare function queuePath(): string;',
+    'export interface Conduit {',
+    "  send(args: { method: 'GET'; path: string }): Promise<unknown>;",
+    '}',
+    'export function make(): Conduit {',
+    '  return { send: async (args) => fetch(unreadableUrl, { method: args.method }) };',
+    '}',
+    'export async function use(conduit: Conduit) {',
+    "  await conduit.send({ method: 'GET', path: queuePath() });",
+    '}',
+  ].join('\n'),
+);
+
+/** A network boundary whose return type is spelled through an alias: consult 1d3280 F3. */
+export const ALIASED_RESPONSE = plant(
+  'planted-aliased-response.ts',
+  [
+    'type ResponsePromise = Promise<Response>;',
+    'declare const doSend: (url: string) => ResponsePromise;',
+    'declare function queuePath(): string;',
+    'export async function conduit(url: string) {',
+    '  return doSend(url);',
+    '}',
+    'export async function use() {',
+    '  return conduit(queuePath());',
+    '}',
+  ].join('\n'),
+);
+
+/** A transport carrying its method in a parameter of its own: consult 1d3280 F4. */
+export const SCALAR_METHOD = plant(
+  'planted-scalar-method.ts',
+  [
+    'declare const unreadableUrl: string;',
+    "export async function send(path: string, method: 'GET' | 'POST') {",
+    '  return fetch(unreadableUrl, { method });',
+    '}',
+    'export async function use() {',
+    "  return send('/repos/a/b/merge-queue', 'POST');",
+    '}',
+  ].join('\n'),
+);
+
+/** A value wearing a declared hole's spelling and carrying its own: consult 1d3280 F5. */
+export const SHADOWED_HOLE = plant(
+  'planted-shadowed-hole.ts',
+  [
+    'declare const doFetch: typeof fetch;',
+    "const client = { fullName: 'a/b/c' };",
+    'export async function f() {',
+    `  return doFetch(\`/repos/${interp('client.fullName')}/pulls\`);`,
+    '}',
+  ].join('\n'),
+);
+
+/** The untyped residual reached by an element access: consult 1d3280 F6. */
+export const UNTYPED_ELEMENT_ACCESS = plant(
+  'planted-untyped-element-access.ts',
+  [
+    'declare const anything: any;',
+    'export async function f() {',
+    "  await anything['publish']({ op: 'lookup', method: 'GET', path: '/repos/a/b' });",
+    '}',
+  ].join('\n'),
+);

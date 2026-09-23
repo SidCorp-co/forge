@@ -16,6 +16,7 @@ import {
   evaluate,
   GITHUB_DIR,
   isNetworkCall,
+  isStringLike,
   lineOf,
   MAX_DEPTH,
   program,
@@ -39,7 +40,7 @@ interface Position {
 interface Transport {
   symbol: ts.Symbol;
   path: Position;
-  method: { index: number; property: string } | null;
+  method: Position | null;
 }
 
 function carrierOf(node: ts.Node): ts.Node | null {
@@ -55,19 +56,26 @@ function carrierOf(node: ts.Node): ts.Node | null {
   return null;
 }
 
+/** The member of the object's own declared type, whichever side of an async factory's union holds it. */
+function contextualMember(
+  object: ts.ObjectLiteralExpression,
+  name: string,
+  checker: ts.TypeChecker,
+): ts.Symbol | null {
+  const contextual = checker.getContextualType(object);
+  if (!contextual) return null;
+  const parts = contextual.isUnion() ? contextual.types : [contextual];
+  return parts.map((t) => checker.getPropertyOfType(t, name)).find((s) => s) ?? null;
+}
+
 /** The symbol a caller would reach this transport by: the interface member, or the function. */
 function transportSymbol(carrier: ts.Node, checker: ts.TypeChecker): ts.Symbol | null {
-  if (ts.isMethodDeclaration(carrier) && ts.isObjectLiteralExpression(carrier.parent)) {
-    const contextual = checker.getContextualType(carrier.parent);
-    if (!contextual) return null;
-    const name = carrier.name.getText();
-    // An async factory contextually types its object as `T | PromiseLike<T>`, and only one side has
-    // the member.
-    const parts = contextual.isUnion() ? contextual.types : [contextual];
-    return parts.map((t) => checker.getPropertyOfType(t, name)).find((s) => s) ?? null;
-  }
+  if (ts.isMethodDeclaration(carrier) && ts.isObjectLiteralExpression(carrier.parent))
+    return contextualMember(carrier.parent, carrier.name.getText(), checker);
   if (ts.isFunctionDeclaration(carrier) && carrier.name) return symbolOf(carrier.name, checker);
   const owner = carrier.parent;
+  if (owner && ts.isPropertyAssignment(owner) && ts.isObjectLiteralExpression(owner.parent))
+    return contextualMember(owner.parent, owner.name.getText(), checker);
   if (owner && ts.isVariableDeclaration(owner) && ts.isIdentifier(owner.name))
     return symbolOf(owner.name, checker);
   return null;
@@ -79,25 +87,22 @@ function positionsOf(symbol: ts.Symbol, checker: ts.TypeChecker): Omit<Transport
   if (!decl) return null;
   const signature = checker.getTypeOfSymbolAtLocation(symbol, decl).getCallSignatures()[0];
   if (!signature) return null;
+  let path: Position | null = null;
+  let method: Position | null = null;
   const parameters = signature.getParameters();
   for (let index = 0; index < parameters.length; index += 1) {
     const parameter = parameters[index] as ts.Symbol;
-    const at = parameter.valueDeclaration ?? decl;
-    const type = checker.getTypeOfSymbolAtLocation(parameter, at);
-    if (
-      (parameter.name === 'path' || parameter.name === 'url') &&
-      checker.typeToString(type) === 'string'
-    )
-      return { path: { index, property: null }, method: null };
-    if (checker.getPropertyOfType(type, 'path')) {
-      const method = checker.getPropertyOfType(type, 'method');
-      return {
-        path: { index, property: 'path' },
-        method: method ? { index, property: 'method' } : null,
-      };
+    const type = checker.getTypeOfSymbolAtLocation(parameter, parameter.valueDeclaration ?? decl);
+    const scalar = isStringLike(type);
+    if (!path && scalar && (parameter.name === 'path' || parameter.name === 'url'))
+      path = { index, property: null };
+    else if (!method && scalar && parameter.name === 'method') method = { index, property: null };
+    else if (!path && checker.getPropertyOfType(type, 'path')) {
+      path = { index, property: 'path' };
+      if (checker.getPropertyOfType(type, 'method')) method = { index, property: 'method' };
     }
   }
-  return null;
+  return path ? { path, method } : null;
 }
 
 let TRANSPORTS: Transport[] | null = null;
@@ -232,6 +237,19 @@ function record(args: {
   };
 }
 
+/** What this call names as its method: the argument, the property, or GET where the transport sends one. */
+function methodOf(
+  call: ts.CallExpression,
+  transport: Transport,
+  object: ts.ObjectLiteralExpression | null,
+  checker: ts.TypeChecker,
+): string | null {
+  const where = transport.method;
+  if (where === null) return 'GET';
+  if (where.property === null) return literalMethod(call.arguments[where.index] ?? null, checker);
+  return object ? literalMethod(propertyOf(object, where.property, checker), checker) : null;
+}
+
 function transportCall(
   call: ts.CallExpression,
   transport: Transport,
@@ -252,12 +270,7 @@ function transportCall(
         ? `the call's arguments cannot be read: ${argument?.getText() ?? call.getText()}`
         : `the call names no path: ${argument?.getText() ?? call.getText()}`
       : null;
-  const method =
-    transport.method === null
-      ? 'GET'
-      : object
-        ? literalMethod(propertyOf(object, transport.method.property, checker), checker)
-        : null;
+  const method = methodOf(call, transport, object, checker);
   return record({
     file,
     at: pathNode ?? argument ?? call,
@@ -287,12 +300,20 @@ function networkCall(call: ts.CallExpression, file: string, checker: ts.TypeChec
 /**
  * Nothing in this directory writes one, and the day something does it is refused by name rather
  * than passed over.
+ *
+ * Matching on the member name alone will refuse an unrelated untyped `.publish(` too. That is the
+ * side to be wrong on: the refusal names the receiver and is cleared by typing it, while requiring
+ * a resolved receiver here would put the silence back that this whole checker exists to remove.
  */
 function untypedTransportCall(call: ts.CallExpression, file: string): FoundCall[] {
   const callee = call.expression;
-  if (!ts.isPropertyAccessExpression(callee)) return [];
-  const named = transports().some((t) => t.symbol.getName() === callee.name.text);
-  if (!named) return [];
+  const member = ts.isPropertyAccessExpression(callee)
+    ? callee.name.text
+    : ts.isElementAccessExpression(callee) && ts.isStringLiteralLike(callee.argumentExpression)
+      ? callee.argumentExpression.text
+      : null;
+  if (member === null || !transports().some((t) => t.symbol.getName() === member)) return [];
+  const receiver = (callee as ts.PropertyAccessExpression).expression.getText();
   return [
     record({
       file,
@@ -301,9 +322,39 @@ function untypedTransportCall(call: ts.CallExpression, file: string): FoundCall[
       path: null,
       method: null,
       kind: 'path',
-      why: `${callee.name.text} is a transport and the type of ${callee.expression.getText()} cannot be read, so this call cannot be priced`,
+      why: `${member} is a transport and the type of ${receiver} cannot be read, so this call cannot be priced`,
     }),
   ];
+}
+
+/**
+ * The transport this callee reaches, through a name it was bound to first where it was.
+ *
+ * `const publish = client.publish` and `const { publish } = client` each put a local symbol between
+ * the call and the transport, and a lookup stopping at that symbol loses the call altogether.
+ */
+function transportFor(
+  symbol: ts.Symbol | null,
+  known: ReadonlyMap<ts.Symbol, Transport>,
+  checker: ts.TypeChecker,
+): Transport | undefined {
+  if (!symbol) return undefined;
+  const direct = known.get(symbol);
+  if (direct) return direct;
+  const decl = symbol.valueDeclaration;
+  if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+    const inner = symbolOf(decl.initializer, checker);
+    return inner ? known.get(inner) : undefined;
+  }
+  if (decl && ts.isBindingElement(decl) && ts.isIdentifier(decl.name)) {
+    const owner = decl.parent.parent;
+    const from = ts.isVariableDeclaration(owner) ? owner.initializer : undefined;
+    if (!from) return undefined;
+    const name = (decl.propertyName ?? decl.name).getText();
+    const member = checker.getPropertyOfType(checker.getTypeAtLocation(from), name);
+    return member ? known.get(member) : undefined;
+  }
+  return undefined;
 }
 
 /** Every GitHub call one source makes, as `METHOD /path`, or the reason one could not be read. */
@@ -314,7 +365,7 @@ export function collectGitHubCalls(file: string): FoundCall[] {
   walk(sourceFile(file), (node) => {
     if (!ts.isCallExpression(node)) return;
     const symbol = symbolOf(node.expression, checker);
-    const transport = symbol ? known.get(symbol) : undefined;
+    const transport = transportFor(symbol, known, checker);
     // A transport that answers with the `Response` itself wears both shapes; its callers carry the
     // path, so the transport reading is the one that prices the call.
     if (transport) out.push(transportCall(node, transport, file, checker));

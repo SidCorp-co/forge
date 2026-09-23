@@ -41,22 +41,29 @@ import {
   requiredAppPermissions,
 } from './app-permissions.js';
 import {
+  ALIASED_RESPONSE,
+  ARROW_TRANSPORT,
   ASSIGNED_ARGS,
   BARE_GET,
   CLIENT_TRANSPORTS,
   CONCATENATED,
   DECLARATIONS_ONLY,
+  DESTRUCTURED_MEMBER,
+  EXTRACTED_MEMBER,
   GITHUB_JSON,
   NO_METHOD,
   READABLE_GET,
   REAL_UNDECLARED_PATH,
   RETURNED_ARGS,
+  SCALAR_METHOD,
+  SHADOWED_HOLE,
   SHORTHAND,
   TRAILING_COMMA,
   TRANSPORT_ADDED,
   TRANSPORT_PROPERTY,
   TRANSPORT_SWAPPED,
   UNRESOLVED,
+  UNTYPED_ELEMENT_ACCESS,
   UNTYPED_RECEIVER,
   VARIABLE_PATH,
 } from './app-permissions-plants.fixture.js';
@@ -323,6 +330,40 @@ describe('a call is found by what it calls, however it is written (ISS-1153)', (
     const found = only(collectGitHubCalls(UNTYPED_RECEIVER));
     expect(found.unresolved).toContain('publish is a transport');
     expect(found.unresolved).toContain('anything');
+  });
+
+  it('names a transport extracted into a name before the call that uses it', () => {
+    expect(only(collectGitHubCalls(EXTRACTED_MEMBER)).unresolved).toContain('queuePath(client)');
+  });
+
+  it('names a transport destructured out of the client it belongs to', () => {
+    expect(only(collectGitHubCalls(DESTRUCTURED_MEMBER)).unresolved).toContain('queuePath(client)');
+  });
+
+  it('derives a transport written as an arrow property, not only as a method', () => {
+    const found = only(collectGitHubCalls(ARROW_TRANSPORT).filter((c) => c.kind === 'path'));
+    expect(found.unresolved).toContain('queuePath()');
+  });
+
+  it('derives a transport whose Response promise is spelled through an alias', () => {
+    const found = only(collectGitHubCalls(ALIASED_RESPONSE).filter((c) => c.kind === 'path'));
+    expect(found.unresolved).toContain('queuePath()');
+  });
+
+  it('reads a method the transport takes as an argument of its own, never defaulting to GET', () => {
+    const found = only(collectGitHubCalls(SCALAR_METHOD).filter((c) => c.kind === 'path'));
+    expect(key(found.method, found.path)).toBe('POST /repos/a/b/merge-queue');
+  });
+
+  it('reads a value that WEARS a declared hole’s spelling rather than substituting the hole', () => {
+    const found = only(collectGitHubCalls(SHADOWED_HOLE));
+    expect(found.path).toBe('/repos/a/b/c/pulls');
+  });
+
+  it('refuses the untyped residual reached by an element access too', () => {
+    expect(only(collectGitHubCalls(UNTYPED_ELEMENT_ACCESS)).unresolved).toContain(
+      'publish is a transport',
+    );
   });
 
   it('names that same path in the sweep over what is written, not only at the call', () => {
