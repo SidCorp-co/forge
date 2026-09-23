@@ -10,8 +10,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { RunnerStatus } from '../db/schema.js';
-import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from './device-cap.js';
+import { livenessSeconds } from './liveness-sql.js';
 
 export type RunnerHoldReason =
   | 'device-disabled'
@@ -111,10 +111,14 @@ function reasonFor(
 export function classifyRunnerHold(
   row: RunnerLivenessRow,
   now: Date = new Date(),
-  livenessMs: number = dispatchLivenessMs(),
+  // Strict, and in the seconds the SQL is given: `runnerFresh` reads
+  // `last_seen_at > now() - (livenessSeconds())`, so a heartbeat exactly one
+  // window old is stale there. Reading it fresh here drops the box from the
+  // holds and leaves `NO_RUNNER_ONLINE` with nothing to name.
+  livenessMs: number = livenessSeconds() * 1000,
 ): RunnerHold | null {
   const lastSeenSeconds = row.lastSeenAt === null ? null : secondsSince(row.lastSeenAt, now);
-  const fresh = row.lastSeenAt !== null && now.getTime() - row.lastSeenAt.getTime() <= livenessMs;
+  const fresh = row.lastSeenAt !== null && now.getTime() - row.lastSeenAt.getTime() < livenessMs;
   const found = reasonFor(row, now, fresh);
   if (!found) return null;
   return {

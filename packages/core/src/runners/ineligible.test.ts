@@ -64,8 +64,12 @@ describe('classifyRunnerHold', () => {
     expect(hold?.reporting).toBe(false);
   });
 
-  it('takes the edge of the window as still reporting', () => {
-    expect(classifyRunnerHold(row({ lastSeenAt: ago(30) }), NOW, WINDOW)).toBeNull();
+  // `runnerFresh` is `last_seen_at > now() - window`, strictly, so a heartbeat
+  // exactly one window old is stale to the dispatch query. Reading it fresh
+  // here dropped the box from the holds and left the blocker naming nobody.
+  it('reads the edge of the window as the dispatch query reads it', () => {
+    expect(classifyRunnerHold(row({ lastSeenAt: ago(30) }), NOW, WINDOW)?.reason).toBe('stale');
+    expect(classifyRunnerHold(row({ lastSeenAt: ago(29) }), NOW, WINDOW)).toBeNull();
   });
 
   it('tells a box that has never reported from one that has disconnected', () => {
