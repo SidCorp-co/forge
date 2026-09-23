@@ -47,7 +47,7 @@ same commit.
 
 ## Why the entry criterion accepts a claim
 
-`entry-criteria-merge-mark.ts` gates `merged_mark` on membership of
+`packages/core/src/issues/entry-criteria-merge-mark.ts` gates `merged_mark` on membership of
 `MARKS_ACCEPTED_AS_LANDED`, today `['asserted', 'observed']`.
 
 That is an amnesty and this is its price. `observedMergeForIssue` needs a
@@ -68,9 +68,10 @@ ISS-1126's criterion 14 names the surfaces of criteria 3 to 7: `POST|DELETE
 called `applyMergeMarker` or a serializer directly proves those helpers and nothing about
 the runtime the criterion names — a route that dropped `mark` from its `c.json`, or a
 handler that mapped every row through one reading, would stay green through it. So
-`merge-mark-route.test.ts` mounts the Hono routes and `forge-issues-merge-mark.test.ts`
-calls the tool factory's own handler. `merge-mark-surfaces.test.ts` keeps the helpers'
-own property, which is a different claim.
+`packages/core/src/issues/merge-mark-route.test.ts` mounts the Hono routes and
+`packages/core/src/mcp/tools/forge-issues-merge-mark.test.ts` calls the tool factory's own
+handler. `packages/core/src/issues/merge-mark-surfaces.test.ts` keeps the helpers' own
+property, which is a different claim.
 
 The observed branch is only ever exercised under a mocked projection: on any database
 here `repo_pull_requests` is empty, so the branch is unreachable in the field.

@@ -19,9 +19,10 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` four (honest
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` five (honest
 costs · the mode-qualification of injected docs · the PAT permission surface · whether one question
-in the source has more than one answer). `comment` is gated once, by `check-comment-budget`.
+in the source has more than one answer · whether a document's citations of this repo's own files
+are still true). `comment` is gated once, by `check-comment-budget`.
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -39,7 +40,8 @@ passed, because the external record of what shipped belonged to none of them.
 | declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
 | PAT surface | `check-pat-surface` — `injected-docs` | whether every route a project-scoped token can reach is covered by the permission menu that claims to fence it | whether a given fence is correct — that is review's |
-| status tuples | `check-status-tuples` — `lang-check` | whether one question has more than one answer: two declarations holding the same status tuple, or a status-literal array written inline where a named constant for that tuple already exists. Compares by VALUE, not by name, in either quote style, and reads the three vocabularies out of `db/schema.ts` rather than carrying a copy. It scans `packages/core/src`, `packages/core/tests`, `packages/contracts/src` and `packages/web-v2/src`: a browser file answering a question core already answers is the same defect as a core file doing it. A declaration reaches it by three routes — an array literal, a `new Set(...)` of one, and a `Record<…Status, boolean>`, whose `true` keys are a tuple written as a classification. A `status-tuple: differs` marker excuses a declaration only against a peer it NAMES, because a reason written about one neighbour is no excuse against a different one. And one NAME answers one question: a name holding two different tuples is refused whatever the markers say, because two answers under one name never collide by value — which is exactly how `pipeline/runs-rollup.ts` held a three-member `LIVE_JOB_STATUSES` beside the four-member one with this gate green | whether a tuple's MEMBERSHIP is right; SQL string literals including `ARRAY[…]`, type unions, a tuple written as an object-literal value, which is a table row rather than a named question, and a `Record<…Status, T>` for any `T` but boolean, which is a lookup table rather than a yes/no question. In a test file it reads `.each` case lists ONLY: that list is the domain the test claims to cover, while every other tuple there is the assertion itself, which importing the constant would make vacuous. **Nor a copy that has already drifted**: two answers to one question whose members no longer match do not collide, so this catches a second declaration before it rots and never after — `packages/core/src/db/status-sets-parity.test.ts` is what holds an existing pair together |
+| status tuples | `check-status-tuples` — `lang-check` | whether one question has more than one answer: two declarations holding the same status tuple, or a status-literal array written inline where a named constant for that tuple already exists. Compares by VALUE, not by name, in either quote style, and reads the three vocabularies out of `packages/core/src/db/schema.ts` rather than carrying a copy. It scans `packages/core/src`, `packages/core/tests`, `packages/contracts/src` and `packages/web-v2/src`: a browser file answering a question core already answers is the same defect as a core file doing it. A declaration reaches it by three routes — an array literal, a `new Set(...)` of one, and a `Record<…Status, boolean>`, whose `true` keys are a tuple written as a classification. A `status-tuple: differs` marker excuses a declaration only against a peer it NAMES, because a reason written about one neighbour is no excuse against a different one. And one NAME answers one question: a name holding two different tuples is refused whatever the markers say, because two answers under one name never collide by value — which is exactly how `packages/core/src/pipeline/runs-rollup.ts` held a three-member `LIVE_JOB_STATUSES` beside the four-member one with this gate green | whether a tuple's MEMBERSHIP is right; SQL string literals including `ARRAY[…]`, type unions, a tuple written as an object-literal value, which is a table row rather than a named question, and a `Record<…Status, T>` for any `T` but boolean, which is a lookup table rather than a yes/no question. In a test file it reads `.each` case lists ONLY: that list is the domain the test claims to cover, while every other tuple there is the assertion itself, which importing the constant would make vacuous. **Nor a copy that has already drifted**: two answers to one question whose members no longer match do not collide, so this catches a second declaration before it rots and never after — `packages/core/src/db/status-sets-parity.test.ts` is what holds an existing pair together |
+| doc citations | `check-doc-citations` — `lang-check` | whether a document's citation of a file in this repo is still true: a path no tracked file carries and an anchor whose file does not hold that symbol each fail, a line-number citation fails because `CLAUDE.md` already forbids one, and a live citation whose target was changed after the document was comes back on the worklist without failing. Resolves in two scopes and no third — the document's own directory and its package — with a root-written path resolved exactly or not at all, so no namesake can stand in for a deleted file and no part of resolution reads whether the target is present. An excusal names the tokens it excuses | a document's PROSE, which no machine can check; a count or a number in a document; whether a symbol that still exists still means what the sentence says; `CHANGELOG.md` and `docs/proposals/`, each excluded with its reason in `.forge/conformance.json` |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
@@ -54,9 +56,9 @@ passed, because the external record of what shipped belonged to none of them.
 `--max-diagnostics=none` is not verbosity, it is the difference between a gate that names its
 failure and one that names a bystander. biome truncates at 20 by default and orders by path, not by
 severity, so with 399 baselined warnings in `packages/core` the one ERROR that fails the build is
-simply not printed. Measured 2026-08-31: a planted format error in `src/ws/server.ts` produced
+simply not printed. Measured 2026-08-31: a planted format error in `packages/core/src/ws/server.ts` produced
 `Found 2 errors.` and **zero** mentions of that file, while the visible diagnostics all pointed at
-`src/agent-sessions/chat-turn.test.ts`, which was clean and untouched.
+`packages/core/src/agent-sessions/chat-turn.test.ts`, which was clean and untouched.
 
 `check-lint-budget` already defended against exactly this — it invokes biome with
 `--max-diagnostics=5000` because truncation would silently empty its input. The blocking lint step
@@ -257,7 +259,9 @@ once that sentence exists nothing downstream can unsay it.
 
 **A prerequisite is only as good as the thing it resolves.** Measured 2026-09-18: `deps` resolves
 three `node_modules` directories, all three were present, and `archmap` still printed `scope matched
-no files (.)` and exited 2 in 0.117s. dependency-cruiser 18.3.0 had renamed the CLI entry point
+no files (.)` and exited 2 in 0.117s.
+<!-- doc-citation: unchecked `bin/dependency-cruise.mjs` `bin/dependency-cruiser.mjs` — both are inside the dependency-cruiser package, not in this repo; the whole point of the sentence is that one of them stopped existing THERE. -->
+dependency-cruiser 18.3.0 had renamed the CLI entry point
 `bin/dependency-cruise.mjs` to `bin/dependency-cruiser.mjs`, and the vendored archmap walks
 `node_modules` for the old name alone — so the package was installed, complete and runnable, and the
 resolver was missing. `^18` in `packages/core/package.json` admits 18.3.x, so every npm
@@ -525,6 +529,7 @@ assertion is that the head `when` clears the maximum in that same file. Every br
 passes alone, while the SET of open branches — the thing that actually has to be applicable — is
 measured by nothing.
 
+<!-- doc-citation: unchecked `drizzle-orm/pg-core/dialect.js` — a file inside the drizzle-orm dependency, not this tree. -->
 Drizzle's migrator reads the single highest `created_at` in `drizzle.__drizzle_migrations` once and
 then applies only entries whose `when` exceeds it
 (`drizzle-orm/pg-core/dialect.js`, the `Number(lastDbMigration.created_at) < migration.folderMillis`
@@ -741,6 +746,7 @@ Fails if any `.ts`/`.tsx`/`.md` file under `packages/web-v2/src/` or `packages/c
 ### Modes
 
 - `--staged` (default): scans STAGED content of files in `git diff --cached --diff-filter=ACM`. Used by `.githooks/pre-commit`.
+<!-- doc-citation: unchecked `src/` — the plural: each package's own source tree, not one directory. -->
 - `--all`: walks the working tree across all three `src/` trees. Used by CI (`.github/workflows/ci.yml` `lang-check` job).
 
 Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
@@ -762,10 +768,13 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 to do it at module scope, so importing anything whose graph reached either did that work — and on a
 missing variable, threw inside the import.
 
-That failure has no test in it. CI on PR #457 reported `1 file failed` with the file itself reading
+That failure has no test in it.
+<!-- doc-citation: unchecked `env.ts:137` `db/client.ts:3` `knowledge/service.ts:3` — quoted verbatim from a CI log. A stack frame records where a process was at one moment; it is evidence, not a citation, and rewriting it would falsify the quote. -->
+CI on PR #457 reported `1 file failed` with the file itself reading
 `3 tests | 3 skipped`, no assertion anywhere in the job, and a three-frame stack: `env.ts:137` →
-`db/client.ts:3` → `knowledge/service.ts:3`. The unit suite is floored by `vitest.setup.ts`;
-`vitest.integration.config.ts` carries no `setupFiles`, which is where it bit.
+`db/client.ts:3` → `knowledge/service.ts:3`. The unit suite is floored by
+`packages/core/vitest.setup.ts`; `packages/core/vitest.integration.config.ts` carries no
+`setupFiles`, which is where it bit.
 
 This checker is what keeps the two lazy, because the property is invisible in a green run: one new
 module-scope read puts the side effect back for every module downstream of the file that does it,
@@ -788,7 +797,7 @@ function".** Three consequences, each with its own fixture in
 | a read in the THEN branch of `if (isMain) { … }` | no | the entrypoint guard is false precisely when another module is importing the file |
 | a read in that guard's ELSE branch | yes | the else branch runs on every import, which is the case the guard is meant to be about not doing |
 | `if (import.meta.url === import.meta.url) { … }` | yes | the comparison must name `process.argv` on its other side, or an always-true test would be a two-token way of silencing the gate |
-| a read in `index.ts` OUTSIDE that guard | yes | the guard is a block, never a whole-file exemption |
+| a read outside that guard in a module's index file | yes | the guard is a block, never a whole-file exemption |
 
 The last four rows were holes this checker had on its first version, found by the whole-set review
 of the change that added it and each now carrying a fixture that goes red when its fix is removed.
@@ -874,7 +883,7 @@ sources marked `authoritative` in `.forge/conformance.json` (today: the integrat
 step.
 
 The step list and the step **count** both come from one `git grep -n -I -- cm:flow` over the
-checkout (`check-flow-coverage.mjs:collectSteps`). There is no second source, and so no
+checkout (`check-flow-coverage.mjs:stepSites`). There is no second source, and so no
 disagreement to detect — what `.forge/conformance.json` declares for a flow is a name and a
 description, never a count. This paragraph claimed the count came from `cm flow <name>` and that a
 disagreement between the two exits `2`, which described a cross-check the file does not perform.
