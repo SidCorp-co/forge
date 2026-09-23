@@ -179,16 +179,16 @@ function propertyOf(
       blockedBy = null;
     } else if (ts.isSpreadAssignment(property)) {
       const spread = depth < MAX_DEPTH ? objectOf(property.expression, checker) : null;
-      const inner = spread ? propertyOf(spread, name, checker, depth + 1).value : null;
-      if (inner) {
-        held = inner;
+      const inner = spread ? propertyOf(spread, name, checker, depth + 1) : null;
+      if (inner?.value) {
+        held = inner.value;
         blockedBy = null;
-      } else if (
+      } else if (inner?.blockedBy) blockedBy = inner.blockedBy;
+      else if (
         !spread &&
         checker.getPropertyOfType(checker.getTypeAtLocation(property.expression), name)
-      ) {
+      )
         blockedBy = property.expression;
-      }
     }
   }
   return blockedBy ? { value: null, blockedBy } : { value: held, blockedBy: null };
@@ -300,14 +300,32 @@ function transportCall(
   });
 }
 
+function methodRefusal(
+  method: string | null,
+  named: { value: ts.Node | null; blockedBy: ts.Node | null } | null,
+  second: ts.Expression | undefined,
+): string | null {
+  if (method !== null) return null;
+  if (named?.blockedBy)
+    return `a spread this checker cannot read may set the method: ${named.blockedBy.getText()}`;
+  if (named?.value)
+    return `the call names a method this checker cannot read: ${named.value.getText()}`;
+  return `the call's options cannot be read, so its method is unknown: ${second?.getText() ?? ''}`;
+}
+
 function networkCall(call: ts.CallExpression, file: string, checker: ts.TypeChecker): FoundCall {
   const argument = call.arguments[0];
   const second = call.arguments[1];
   const options = second ? objectOf(second, checker) : null;
-  const named = options ? propertyOf(options, 'method', checker).value : null;
+  const named = options ? propertyOf(options, 'method', checker) : null;
   // GET only where the call is READ to send no method. An options object the checker cannot open,
-  // or a method expression it cannot evaluate, is a call whose row nobody knows.
-  const method = named ? literalMethod(named, checker) : options || !second ? 'GET' : null;
+  // a spread that may carry one, or a method expression it cannot evaluate, is a call whose row
+  // nobody knows.
+  const method = named?.value
+    ? literalMethod(named.value, checker)
+    : named?.blockedBy || (second && !options)
+      ? null
+      : 'GET';
   return record({
     file,
     at: argument ?? call,
@@ -315,12 +333,7 @@ function networkCall(call: ts.CallExpression, file: string, checker: ts.TypeChec
     path: argument ? resolvePathOf(argument, checker) : null,
     method,
     kind: 'fetch',
-    why:
-      method === null && named
-        ? `the call names a method this checker cannot read: ${named.getText()}`
-        : method === null
-          ? `the call's options cannot be read, so its method is unknown: ${second?.getText() ?? ''}`
-          : null,
+    why: methodRefusal(method, named, second),
   });
 }
 

@@ -219,13 +219,32 @@ function readValue(node: ts.Node, checker: ts.TypeChecker, depth: number): strin
  * `:p` where this expression cannot carry a `/`, else null: a number has no separator to carry and
  * `encodeURIComponent` escapes the one that would make a value two segments.
  */
-function oneSegment(node: ts.Expression, checker: ts.TypeChecker): string | null {
+function oneSegment(node: ts.Expression, checker: ts.TypeChecker, depth = 0): string | null {
+  if (depth > MAX_DEPTH) return null;
   const type = checker.getTypeAtLocation(node);
   const numeric = (t: ts.Type) => (t.flags & ts.TypeFlags.NumberLike) !== 0;
   if (type.isUnion() ? type.types.every(numeric) : numeric(type)) return ':p';
-  if (ts.isCallExpression(node) && /^encodeURI(Component)?$/.test(node.expression.getText()))
-    return ':p';
+  if (isComponentEncoder(node, checker)) return ':p';
+  if (ts.isIdentifier(node)) {
+    const decl = declarationOf(node, checker);
+    const held =
+      decl && ts.isVariableDeclaration(decl) && (decl.parent.flags & ts.NodeFlags.Const) !== 0
+        ? decl.initializer
+        : undefined;
+    if (held) return oneSegment(held, checker, depth + 1);
+  }
   return null;
+}
+
+/**
+ * The global `encodeURIComponent` and nothing else: `encodeURI` leaves `/` alone, and a local
+ * function of either name escapes whatever its own body escapes.
+ */
+function isComponentEncoder(node: ts.Expression, checker: ts.TypeChecker): boolean {
+  if (!ts.isCallExpression(node)) return false;
+  const symbol = symbolOf(node.expression, checker);
+  if (symbol?.getName() !== 'encodeURIComponent') return false;
+  return (symbol.declarations ?? []).every((d) => d.getSourceFile().isDeclarationFile);
 }
 
 /** The pattern a resolved value names, or null where it is no GitHub path. */

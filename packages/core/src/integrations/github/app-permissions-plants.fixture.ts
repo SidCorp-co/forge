@@ -368,3 +368,56 @@ export const DYNAMIC_METHOD = plant(
     '}',
   ].join('\n'),
 );
+
+/** `encodeURI` leaves the separator alone, whatever its name suggests: consult 088b75 F1. */
+export const ENCODE_URI_HOLE = plant(
+  'planted-encode-uri-hole.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, tail: string) {',
+    `  return client.get(\`${REPO}/pulls/${interp('encodeURI(tail)')}\`);`,
+    '}',
+  ]),
+);
+
+/** The encoder pulled out into a name of its own, which is still one segment. */
+export const EXTRACTED_ENCODING = plant(
+  'planted-extracted-encoding.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, ref: string) {',
+    '  const segment = encodeURIComponent(ref);',
+    `  return client.get(\`${REPO}/pulls/${interp('segment')}\`);`,
+    '}',
+  ]),
+);
+
+/** A spread inside a spread, whose own refusal the recursion must carry out: consult 088b75 F2. */
+export const NESTED_SPREAD_OVERRIDE = plant(
+  'planted-nested-spread-override.ts',
+  AS_FILE([
+    'export async function f(client: GitHubRepoClient, override: { path?: string }) {',
+    `  await client.publish({ op: 'lookup', method: 'GET', path: \`${REPO}\`, ...{ ...override } });`,
+    '}',
+  ]),
+);
+
+/** A spread that may carry the METHOD of a direct request the checker otherwise reads. */
+export const SPREAD_METHOD = plant(
+  'planted-spread-method.ts',
+  [
+    'declare const doFetch: typeof fetch;',
+    "export async function f(override: { method?: 'GET' | 'DELETE' }) {",
+    "  return doFetch('/repos/a/b/branches/main/protection', { method: 'GET', ...override });",
+    '}',
+  ].join('\n'),
+);
+
+/** The same request with the method written after that spread, as the runtime would keep it. */
+export const SPREAD_THEN_METHOD = plant(
+  'planted-spread-then-method.ts',
+  [
+    'declare const doFetch: typeof fetch;',
+    "export async function f(override: { method?: 'GET' | 'DELETE' }) {",
+    "  return doFetch('/repos/a/b/branches/main/protection', { ...override, method: 'GET' });",
+    '}',
+  ].join('\n'),
+);

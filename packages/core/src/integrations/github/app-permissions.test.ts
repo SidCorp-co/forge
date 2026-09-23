@@ -50,10 +50,13 @@ import {
   DECLARATIONS_ONLY,
   DESTRUCTURED_MEMBER,
   DYNAMIC_METHOD,
+  ENCODE_URI_HOLE,
   ENCODED_SEGMENT,
+  EXTRACTED_ENCODING,
   EXTRACTED_MEMBER,
   GITHUB_JSON,
   MULTI_SEGMENT_HOLE,
+  NESTED_SPREAD_OVERRIDE,
   NO_METHOD,
   READABLE_GET,
   REAL_UNDECLARED_PATH,
@@ -61,7 +64,9 @@ import {
   SCALAR_METHOD,
   SHADOWED_HOLE,
   SHORTHAND,
+  SPREAD_METHOD,
   SPREAD_OVERRIDE,
+  SPREAD_THEN_METHOD,
   SPREAD_THEN_PATH,
   TRAILING_COMMA,
   TRANSPORT_ADDED,
@@ -402,6 +407,30 @@ describe('a call is found by what it calls, however it is written (ISS-1153)', (
     const found = only(collectGitHubCalls(DYNAMIC_METHOD));
     expect(found.unresolved).toContain('cannot read');
     expect(found.unresolved).toContain('method');
+  });
+
+  it('refuses encodeURI, which leaves the separator it is named for alone', () => {
+    expect(only(collectGitHubCalls(ENCODE_URI_HOLE)).unresolved).toContain('encodeURI(tail)');
+  });
+
+  it('follows an encoder pulled out into a name of its own', () => {
+    const found = only(collectGitHubCalls(EXTRACTED_ENCODING));
+    expect(found.unresolved).toBeNull();
+    expect(found.path).toBe('/repos/:p/:p/pulls/:p');
+  });
+
+  it('gives back a path a spread INSIDE a spread could overwrite unread', () => {
+    expect(only(collectGitHubCalls(NESTED_SPREAD_OVERRIDE)).unresolved).toContain('overwrite');
+  });
+
+  it('refuses a request whose method a spread could set unread', () => {
+    expect(only(collectGitHubCalls(SPREAD_METHOD)).unresolved).toContain('may set the method');
+  });
+
+  it('keeps a method written after that spread, which the runtime would keep too', () => {
+    const found = only(collectGitHubCalls(SPREAD_THEN_METHOD));
+    expect(found.unresolved).toBeNull();
+    expect(key(found.method, found.path)).toBe('GET /repos/a/b/branches/main/protection');
   });
 
   it('names that same path in the sweep over what is written, not only at the call', () => {
