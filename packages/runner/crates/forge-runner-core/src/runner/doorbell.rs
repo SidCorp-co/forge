@@ -690,15 +690,23 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let door = p.clone();
         let ringer = std::thread::spawn(move || {
-            let ear = listen(&door, "run-1").unwrap();
-            for _ in 0..200_000 {
-                let _ = ring(&door, "run-1").unwrap();
-            }
-            drop(ear);
-            let _ = tx.send(());
+            // The ringer reports its own Result rather than unwrapping on its
+            // thread: a panic over there reaches the test only as a dropped
+            // sender, which reads as the hang this deadline is about and
+            // buries the error that actually happened.
+            let outcome = (|| -> Result<()> {
+                let ear = listen(&door, "run-1")?;
+                for _ in 0..200_000 {
+                    ring(&door, "run-1")?;
+                }
+                drop(ear);
+                Ok(())
+            })();
+            let _ = tx.send(outcome);
         });
         rx.recv_timeout(Duration::from_secs(120))
-            .expect("a blocking open or write would never report back at all");
+            .expect("a blocking open or write would never report back at all")
+            .expect("every ring on a door this test armed itself must succeed");
         ringer.join().expect("the ringer ran to completion");
     }
 
