@@ -1,5 +1,5 @@
-/** A release blocker is authored once for API callers and this screen alike, so
- *  its code spans are markdown; plain text put the backticks on screen (ISS-1127). */
+/** A release blocker's code spans are markdown, authored once for API callers and this screen.
+ *  `fg-code` is the design system's span; `bg-subtle` named a FOREGROUND token (ISS-1127). */
 
 import type { ReactNode } from "react";
 
@@ -11,7 +11,7 @@ export function inlineCode(text: string): ReactNode[] {
 		const paired = i % 2 === 1 && i < parts.length - 1;
 		out.push(
 			paired ? (
-				<code key={`c${i}`} className="rounded bg-subtle px-1 font-mono text-[0.92em]">
+				<code key={`c${i}`} className="fg-code">
 					{part}
 				</code>
 			) : (
