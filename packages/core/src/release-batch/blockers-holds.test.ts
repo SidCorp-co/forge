@@ -171,6 +171,20 @@ describe('what NO_RUNNER_ONLINE says about the fleet', () => {
     expect(held?.message).toContain('Takes jobs from the pool');
   });
 
+  // The file's own promise: a reason that cannot be READ is not the same as a
+  // reason that is absent, so a failed per-box read must not take the reason
+  // the operator can act on with it.
+  it('keeps the reason standing when the per-box read itself fails', async () => {
+    ready();
+    onlineIds.mockResolvedValue([]);
+    runnerHolds.mockRejectedValue(new Error('runners table unreadable'));
+
+    const codes = (await collectReleaseBlockers(PROJECT_ID)).blockers.map((b) => b.code);
+
+    expect(codes).toContain('NO_RUNNER_ONLINE');
+    expect(codes).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+
   it('does not read the fleet at all where a box is eligible', async () => {
     ready();
 

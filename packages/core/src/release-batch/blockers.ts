@@ -204,20 +204,14 @@ async function poolBlockers(
         preferenceMet: preferred.length > 0,
         eligible,
         fleet: await projectRunnerDeviceIds(projectId),
-        // Only where nothing is eligible: the read that turns `NO_RUNNER_ONLINE`
-        // from a guess into a per-box answer (ISS-1127).
-        holds: eligible.length === 0 ? await releaseIneligibleRunners(projectId) : [],
       };
     },
     out,
   );
   if (!pool) return;
   if (pool.eligible.length === 0) {
-    out.push(
-      pool.fleet.length === 0
-        ? blocker('RELEASE_POOL_EMPTY')
-        : blocker('NO_RUNNER_ONLINE', { runners: pool.holds }),
-    );
+    if (pool.fleet.length === 0) out.push(blocker('RELEASE_POOL_EMPTY'));
+    else await heldFleetBlocker(projectId, out);
   }
   // ISS-1128 made the label rank the pool rather than filter it, so an unmet
   // preference is no longer a reason a release will not start. It is still a
@@ -232,6 +226,20 @@ async function poolBlockers(
       details: { label, eligible: pool.eligible.length },
     });
   }
+}
+
+/**
+ * Which boxes are held, and by what. Read in an `attempt` of its own so a
+ * failure here leaves `NO_RUNNER_ONLINE` standing beside the unevaluated entry
+ * rather than replacing a reason the operator can act on with one they cannot.
+ */
+async function heldFleetBlocker(projectId: string, out: ReleaseBlocker[]): Promise<void> {
+  const holds = await attempt(
+    'runner-holds',
+    async () => await releaseIneligibleRunners(projectId),
+  );
+  out.push(blocker('NO_RUNNER_ONLINE', { runners: holds.value ?? [] }));
+  if (holds.failure) out.push(holds.failure);
 }
 
 /**
