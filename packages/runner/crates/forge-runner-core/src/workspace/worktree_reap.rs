@@ -33,6 +33,70 @@ pub const MIN_AGE: Duration = Duration::from_secs(14 * 24 * 3600);
 
 const WORKTREE_ROOTS: [&str; 2] = [".claude/worktrees", ".worktrees"];
 
+/// How long the sweep waits after a tick that read the ledger.
+pub const SWEEP_PERIOD: Duration = Duration::from_secs(6 * 3600);
+
+/// How long it waits after the first tick that could not.
+pub const FIRST_RETRY: Duration = Duration::from_secs(60);
+
+/// The sweep's clock, and what a tick that could not read the ledger does to it.
+///
+/// This sweep is the only thing that removes a finished run's checkout, so a
+/// tick it cannot take is disk that nothing reclaims until the next one — and
+/// the next one is six hours away. A ledger that was unreadable for the length
+/// of one `ALTER` therefore cost a whole period, in a warning nobody reads
+/// (ISS-1201).
+///
+/// So an outage is said once, at error, and retried a minute later rather than
+/// a period later; and while it lasts the wait doubles up to the period, which
+/// is what keeps a ledger that is broken rather than busy from printing the
+/// same line every minute for ever. The end of one is said too, with how long
+/// the sweep was off, because that is the number the disk answers to.
+#[derive(Debug, Default)]
+pub struct SweepClock {
+    outage: Option<Outage>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Outage {
+    began_at: std::time::Instant,
+    ticks: u32,
+}
+
+/// What a tick that could not read the ledger leaves the caller to do.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Unreadable {
+    /// Whether this tick is the one that opens the outage, and so the one that
+    /// reports it.
+    pub announce: bool,
+    /// What to wait before trying the ledger again.
+    pub retry_in: Duration,
+}
+
+impl SweepClock {
+    /// A tick that could not open the ledger.
+    pub fn unreadable(&mut self, now: std::time::Instant) -> Unreadable {
+        let outage = self.outage.get_or_insert(Outage {
+            began_at: now,
+            ticks: 0,
+        });
+        outage.ticks = outage.ticks.saturating_add(1);
+        Unreadable {
+            announce: outage.ticks == 1,
+            retry_in: FIRST_RETRY
+                .saturating_mul(2u32.saturating_pow(outage.ticks.saturating_sub(1)))
+                .min(SWEEP_PERIOD),
+        }
+    }
+
+    /// A tick that opened it. `Some` is an outage that has just ended, and how
+    /// long the sweep was off.
+    pub fn readable(&mut self, now: std::time::Instant) -> Option<Duration> {
+        let outage = self.outage.take()?;
+        Some(now.duration_since(outage.began_at))
+    }
+}
+
 async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
     Command::new("git")
         .args(args)
@@ -162,6 +226,124 @@ mod tests {
     use super::*;
 
     use crate::runner::ledger::NewRun;
+
+    /// The tick itself is a tokio task inside `daemon::run` with no seam a test
+    /// can reach, and the thing ISS-1201 was about is exactly what that task
+    /// says and at what level: the sweep went off and reported it in a `warn!`
+    /// among thousands. So the source is the subject here — a level quietly put
+    /// back, or a sentence that stops naming what the outage costs, goes red.
+    #[test]
+    fn the_tick_reports_an_unreadable_ledger_at_error_and_names_what_it_costs() {
+        const DAEMON: &str = include_str!("../daemon/mod.rs");
+        const SAID: &str = "[worktree-reap] the ledger will not open";
+
+        assert!(
+            !DAEMON.contains("[worktree-reap] skipped: the ledger could not be read"),
+            "the line that swallowed the outage is still in the tick"
+        );
+        let at = DAEMON.find(SAID).expect(
+            "the tick reports an unreadable ledger in words an operator can search the journal for",
+        );
+        let before = &DAEMON[at.saturating_sub(300)..at];
+        assert!(
+            before.contains("tracing::error!"),
+            "a sweep that cannot run is not a warning: {before}"
+        );
+        assert!(
+            before.contains("outage.announce"),
+            "an outage is reported by the tick that opens it and not by every tick it lasts: \
+             {before}"
+        );
+        let said = &DAEMON[at..DAEMON[at..].find(");").map_or(DAEMON.len(), |e| at + e)];
+        assert!(
+            said.contains("removes a finished run's checkout"),
+            "the line says what the outage costs, which is the whole reason it is not a warning: \
+             {said}"
+        );
+    }
+
+    /// Criterion 6 and 7 together, because they are one behaviour: the outage
+    /// is announced by the tick that opens it, and the wait after it is short
+    /// enough that a ledger busy for a moment costs a minute rather than the
+    /// six hours it cost on sid-xeon-1.
+    #[test]
+    fn an_outage_is_announced_once_and_retried_far_sooner_than_the_period() {
+        let mut clock = SweepClock::default();
+        let t0 = std::time::Instant::now();
+
+        let first = clock.unreadable(t0);
+        assert!(first.announce, "the tick that opens an outage reports it");
+        assert_eq!(first.retry_in, FIRST_RETRY);
+        assert!(
+            first.retry_in < SWEEP_PERIOD,
+            "a ledger that could not be read for a moment must not cost a whole period"
+        );
+
+        let second = clock.unreadable(t0 + FIRST_RETRY);
+        assert!(
+            !second.announce,
+            "the same outage reported on every tick is the line among thousands this replaced"
+        );
+        assert_eq!(
+            second.retry_in,
+            FIRST_RETRY * 2,
+            "and the wait grows, so a ledger that is broken rather than busy is not retried every \
+             minute for ever"
+        );
+    }
+
+    /// The other end of that growth: it stops at the period the sweep would
+    /// have waited anyway, so an outage nobody fixes costs no more attention
+    /// than the sweep did before it.
+    #[test]
+    fn the_wait_grows_to_the_period_and_no_further() {
+        let mut clock = SweepClock::default();
+        let t0 = std::time::Instant::now();
+        let mut previous = Duration::ZERO;
+        for tick in 0..64 {
+            let waited = clock.unreadable(t0).retry_in;
+            assert!(
+                waited >= previous,
+                "the wait may not shrink as an outage goes on: tick {tick} waited {waited:?} \
+                 after {previous:?}"
+            );
+            assert!(
+                waited <= SWEEP_PERIOD,
+                "and never grows past the period: tick {tick} waited {waited:?}"
+            );
+            previous = waited;
+        }
+        assert_eq!(
+            previous, SWEEP_PERIOD,
+            "an outage that lasts settles on the period rather than on some larger number"
+        );
+    }
+
+    /// An outage that ends says so, once, with the number the disk answers to.
+    #[test]
+    fn the_end_of_an_outage_carries_how_long_the_sweep_was_off() {
+        let mut clock = SweepClock::default();
+        let t0 = std::time::Instant::now();
+
+        assert_eq!(
+            clock.readable(t0),
+            None,
+            "a tick that worked after a tick that worked is not the end of anything"
+        );
+
+        clock.unreadable(t0);
+        clock.unreadable(t0 + FIRST_RETRY);
+        assert_eq!(
+            clock.readable(t0 + Duration::from_secs(900)),
+            Some(Duration::from_secs(900)),
+            "the sweep was off from the first tick that failed, not from the last"
+        );
+        assert_eq!(
+            clock.readable(t0 + Duration::from_secs(1000)),
+            None,
+            "and the outage that ended is not reported a second time"
+        );
+    }
 
     /// A ledger holding nothing, for the cases about the git and age predicates.
     fn led() -> HeldTrees {

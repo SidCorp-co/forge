@@ -511,20 +511,36 @@ pub async fn run(
         let cfg = cfg.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
-            let mut tick = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
+            use crate::workspace::worktree_reap::{SweepClock, SWEEP_PERIOD};
+            let mut clock = SweepClock::default();
+            let mut wait = std::time::Duration::ZERO;
             loop {
                 tokio::select! {
-                    _ = tick.tick() => {
+                    _ = tokio::time::sleep(wait) => {
                         let held_by = crate::runner::ledger::Ledger::default_path()
                             .and_then(|p| crate::runner::ledger::Ledger::open(&p))
                             .and_then(|l| crate::workspace::worktree_reap::HeldTrees::from_ledger(&l));
                         let held_by = match held_by {
                             Ok(h) => h,
                             Err(err) => {
-                                tracing::warn!("[worktree-reap] skipped: the ledger could not be read ({err})");
+                                let outage = clock.unreadable(std::time::Instant::now());
+                                if outage.announce {
+                                    tracing::error!(
+                                        "[worktree-reap] the ledger will not open ({err}) — this sweep is the only thing that removes a finished run's checkout, so none is reclaimed while that holds; retrying in {}s",
+                                        outage.retry_in.as_secs()
+                                    );
+                                }
+                                wait = outage.retry_in;
                                 continue;
                             }
                         };
+                        wait = SWEEP_PERIOD;
+                        if let Some(off_for) = clock.readable(std::time::Instant::now()) {
+                            tracing::warn!(
+                                "[worktree-reap] the ledger opens again — the sweep was off for {}s, and any checkout that fell due in that time is reclaimed by this one",
+                                off_for.as_secs()
+                            );
+                        }
                         for (slug, b) in &cfg.bindings {
                             let swept = crate::workspace::worktree_reap::reap_repo(
                                 &b.repo_path,
