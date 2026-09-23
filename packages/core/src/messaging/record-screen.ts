@@ -7,6 +7,7 @@ import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
 /** Which reading a project's own members are screened and drawn under. */
 export type RecordLens = 'product' | 'technical';
 
+import { verdictEvidenceRefusals } from './evidence-citation.js';
 import {
   FORGE_RECORD_FIELD_BUDGET,
   type ForgeRecord,
@@ -22,6 +23,7 @@ export const RECORD_RULE_IDS: readonly string[] = [
   'record-in-comment',
   'record-fence-shape',
   'verdict-identity',
+  'verdict-evidence',
 ];
 
 /** The guide that holds the whole table, named by every record-in-comment message. */
@@ -81,6 +83,7 @@ const FENCE_EXAMPLE = [
   '```forge-record: verdict · contract 1',
   'criterion: 13',
   'verdict: skipped',
+  'runtime: 33637c612ef15be6f924520c0d201a0889d8ed7e',
   '```',
 ].join('\n');
 
@@ -188,7 +191,11 @@ export async function recordRefusals(
   executor?: Tx,
 ): Promise<MessageRefusal[]> {
   if (!record) return [];
-  const refusals = [...budgetRefusals(record), ...verdictIdentityRefusals(record)];
+  const refusals = [
+    ...budgetRefusals(record),
+    ...verdictIdentityRefusals(record),
+    ...verdictEvidenceRefusals(record),
+  ];
   if (record.lead === null) return refusals;
   const verdict = screenLead(record.lead, await projectLeadAudience(projectId, executor));
   return verdict.ok ? refusals : [...refusals, ...verdict.refusals];
