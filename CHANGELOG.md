@@ -172,6 +172,9 @@
   it waits for and who owes the next move. Each status has its own clock.
 - **A claim left behind by a run that stopped is let go once it expires.** One still inside its
   time, or one that cannot be read, is left alone and reported instead.
+- **A document that names a file in this repo is now checked against it.** A path the tree no
+  longer carries fails the build, and a citation whose file changed after the document did comes
+  back on the doc-review worklist.
 - **A device assigned in the web UI needs nothing typed on the box.** Provisioning now carries a
   credential core mints for that one checkout, writes its `.mcp.json`, and records the local
   binding — no pasted token, no `bind` by hand.

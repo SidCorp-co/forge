@@ -79,6 +79,14 @@ const CHECKS = [
   },
   {
     axis: 'knowledge',
+    label: 'doc-citations',
+    cmd: ['node', 'scripts/check-doc-citations.mjs', '--all'],
+    scanned: /^doc-citations: (\d+) document\(s\) scanned/m,
+    carries: /^doc-citations worklist: (.+)$/m,
+    unit: 'documents',
+  },
+  {
+    axis: 'knowledge',
     label: 'honest-costs',
     cmd: ['node', 'scripts/check-honest-costs.mjs'],
     scanned: /^honest-costs: (\d+) document/m,
@@ -207,6 +215,7 @@ const CHECKS = [
 const CI_COVERAGE = {
   'node scripts/check-honest-costs.mjs': 'verify',
   'node scripts/check-status-tuples.mjs --all': 'verify',
+  'node scripts/check-doc-citations.mjs --all': 'verify',
   'node scripts/check-release-record.mjs': 'verify',
   'node scripts/check-injected-doc-modes.mjs': 'verify',
   'node scripts/check-retired-model.mjs': 'verify',
@@ -322,7 +331,11 @@ function verdict(check, status, out) {
     if (n === 0 && !check.scopeMayBeEmpty) {
       return { ...check, code: 2, out, why: 'scanned 0 files — a scope nobody could compute' };
     }
-    const note = n === 0 ? 'no diff against origin/main — nothing to scope' : undefined;
+    // What a PASSING check still has to say. `out` is printed only for a non-zero exit,
+    // so a checker whose job is partly to report — a worklist, a scope it could not
+    // measure — is silent on exactly the runs that are meant to carry it onward.
+    const carried = check.carries ? out.match(check.carries)?.[1] : undefined;
+    const note = n === 0 ? 'no diff against origin/main — nothing to scope' : carried;
     return { ...check, code: status ?? 1, out, files: n, note };
   }
   return { ...check, code: status ?? 1, out };

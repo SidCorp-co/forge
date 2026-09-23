@@ -15,7 +15,7 @@
     },
     "@forge/contracts#build": {
       "dependsOn": [],
-      "outputs": []
+      "outputs": ["dist/**"]
     },
     "dev": {
       "cache": false,
