@@ -76,6 +76,12 @@ vi.mock('./agent-sessions-hydrator.js', () => ({
       ]),
   ),
 }));
+vi.mock('./held-hydrator.js', () => ({
+  hydrateHeldForIssues: vi.fn(
+    async (ids: string[]) =>
+      new Map(ids.map((id) => [id, id === '33333333-3333-4333-8333-333333333333'])),
+  ),
+}));
 
 const hydrateCreatorsForIssues = vi.fn(async () => new Map());
 vi.mock('./creator.js', async (importOriginal) => {
@@ -255,8 +261,11 @@ describe('withCost (ISS-437)', () => {
     const res = await req('?withCost=1&withAgentSessions=1', t);
     expect(res.status).toBe(200);
     const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
-    expect(body[0]).toMatchObject({ id: ISSUE_A, estimatedCost: 0.5, agentStatus: 'running' });
-    expect(body[1]).toMatchObject({ id: ISSUE_B, estimatedCost: 0, agentStatus: null });
+    const [a, b] = body.map((r) => [r.id, r.estimatedCost, r.agentStatus, r.held]);
+    expect([a, b]).toEqual([
+      [ISSUE_A, 0.5, 'running', true],
+      [ISSUE_B, 0, null, false],
+    ]);
   });
 });
 

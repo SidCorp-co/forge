@@ -50,6 +50,12 @@ vi.mock('./agent-sessions-hydrator.js', () => ({
       ]),
   ),
 }));
+vi.mock('./held-hydrator.js', () => ({
+  hydrateHeldForIssues: vi.fn(
+    async (ids: string[]) =>
+      new Map(ids.map((id) => [id, id === '33333333-3333-4333-8333-333333333333'])),
+  ),
+}));
 
 vi.mock('./creator.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./creator.js')>();

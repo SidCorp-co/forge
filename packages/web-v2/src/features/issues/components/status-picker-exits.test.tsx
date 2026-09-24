@@ -110,27 +110,23 @@ describe("StatusEdit, once the exits have answered", () => {
   it("puts the forward rung first and the discards last", async () => {
     get.mockResolvedValue(ANSWERED);
     openPicker("in_progress");
-    await screen.findByRole("menuitem", { name: "Paused" });
-    expect(labels()).toEqual(["Running", "Needs a human", "Paused", "Done", "Dropped"]);
+    await screen.findByRole("menuitem", { name: "On hold" });
+    expect(labels()).toEqual(["Developed", "Needs info", "On hold", "Closed", "Dropped"]);
   });
 
-  it("carries the kernel status where one label would appear twice", async () => {
+  // ISS-1213: a target has no holder, so the lane word "Running" would name a move nobody is behind.
+  it("names each target by its own status word, never by a lane word", async () => {
     get.mockResolvedValue(ANSWERED);
     openPicker("open");
-    await screen.findByText("Running (confirmed)");
-    expect(labels()).toEqual([
-      "Running (confirmed)",
-      "Running (in progress)",
-      "Needs a human",
-      "Paused",
-      "Dropped",
-    ]);
+    await screen.findByText("Confirmed");
+    expect(labels()).toEqual(["Confirmed", "In progress", "Needs info", "On hold", "Dropped"]);
+    expect(labels().some((l) => /Running|Stalled/u.test(l))).toBe(false);
   });
 
   it("offers no retired status", async () => {
     get.mockResolvedValue(ANSWERED);
     openPicker("open");
-    await screen.findByText("Running (confirmed)");
+    await screen.findByText("Confirmed");
     for (const retired of ["Clarified", "Waiting", "Tested"]) {
       expect(screen.queryByText(retired)).toBeNull();
     }
@@ -200,7 +196,7 @@ describe("BulkActionBar", () => {
     const btn = bulk([row({ status: "open" }), row({ id: "i2", status: "in_progress" })]);
     await vi.waitFor(() => expect(btn()).not.toBeDisabled());
     fireEvent.click(btn());
-    expect(labels()).toEqual(["Paused", "Dropped"]);
+    expect(labels()).toEqual(["On hold", "Dropped"]);
   });
 });
 
@@ -344,14 +340,14 @@ describe("row overflow menu, while an agent is working the row", () => {
   it("locks nothing on a row no agent holds", async () => {
     get.mockResolvedValue(ANSWERED);
     openRowMenu("in_progress", null);
-    await screen.findByText("Status: Running");
+    await screen.findByText("Status: Developed");
     expect(labels()).not.toContain(held);
   });
 
   it("locks nothing on a row whose last session failed", async () => {
     get.mockResolvedValue(ANSWERED);
     openRowMenu("in_progress", "failed");
-    await screen.findByText("Status: Running");
+    await screen.findByText("Status: Developed");
     expect(labels()).not.toContain(held);
   });
 });

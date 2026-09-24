@@ -22,7 +22,7 @@ import type { IssueStatus } from "@/features/issues/types";
 import { boardColumns, groupIssuesByLabel, labelTone } from "./derive";
 import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow } from "./types";
 
-function issue(id: string, status: string): PipelineIssueRow {
+function issue(id: string, status: string, held = true): PipelineIssueRow {
   return {
     id,
     projectId: "p1",
@@ -31,8 +31,15 @@ function issue(id: string, status: string): PipelineIssueRow {
     status,
     priority: "medium",
     assigneeId: null,
+    held,
   } as PipelineIssueRow;
 }
+
+/** Every label a returnable status can read, held or not. */
+const readable = (status: (typeof RETURNABLE)[number]): AutonomousLabel[] => [
+  toAutonomousLabel(status, true),
+  toAutonomousLabel(status, false),
+];
 
 /** Every status the board's own query can return — the same set `boardColumns` derives from. */
 const RETURNABLE = REGISTRY_ISSUE_STATUSES.filter(
@@ -42,7 +49,7 @@ const RETURNABLE = REGISTRY_ISSUE_STATUSES.filter(
 describe("boardColumns", () => {
   it("draws a column for exactly the labels a returnable status maps to", () => {
     expect([...boardColumns()].sort()).toEqual(
-      [...new Set(RETURNABLE.map(toAutonomousLabel))].sort(),
+      [...new Set(RETURNABLE.flatMap(readable))].sort(),
     );
   });
 
@@ -57,13 +64,13 @@ describe("boardColumns", () => {
     expect(boardColumns()).not.toContain("draft");
     expect(boardColumns()).not.toContain("done");
     for (const label of AUTONOMOUS_LABELS) {
-      const reachedByALiveStatus = RETURNABLE.some((s) => toAutonomousLabel(s) === label);
+      const reachedByALiveStatus = RETURNABLE.some((s) => readable(s).includes(label));
       expect(boardColumns().includes(label)).toBe(reachedByALiveStatus);
     }
   });
 
   it("keeps a label whose other statuses are still returnable, where subtraction would drop it", () => {
-    expect(toAutonomousLabel("waiting")).toBe(toAutonomousLabel("needs_info"));
+    expect(toAutonomousLabel("waiting", true)).toBe(toAutonomousLabel("needs_info", true));
     expect(boardColumns(["waiting"])).toContain("needs_human");
   });
 
@@ -94,8 +101,8 @@ describe("groupIssuesByLabel", () => {
   it("gives `releasing` and `dropped` the column their own status chip names", () => {
     const groups = groupIssuesByLabel([issue("r", "releasing"), issue("d", "dropped")]);
     const columnOf = (id: string) => groups.find((g) => g.issues.some((i) => i.id === id))?.label;
-    expect(columnOf("r")).toBe(toAutonomousLabel("releasing"));
-    expect(columnOf("d")).toBe(toAutonomousLabel("dropped"));
+    expect(columnOf("r")).toBe(toAutonomousLabel("releasing", true));
+    expect(columnOf("d")).toBe(toAutonomousLabel("dropped", true));
     expect(columnOf("r")).toBe("running");
     expect(columnOf("d")).toBe("dropped");
   });
@@ -104,6 +111,25 @@ describe("groupIssuesByLabel", () => {
     const groups = groupIssuesByLabel([issue("a", "in_progress"), issue("b", "needs_info")]);
     expect(groups.find((g) => g.label === "running")?.title).toBe("Running");
     expect(groups.find((g) => g.label === "needs_human")?.title).toBe("Needs a human");
+  });
+
+  // ISS-1213: eleven rows stood at `testing` 5–12h with nothing on ten of them, all under Running.
+  it("files a row nothing holds under Stalled and a held one under Running", () => {
+    const groups = groupIssuesByLabel([issue("idle", "testing", false), issue("busy", "testing")]);
+    const columnOf = (id: string) => groups.find((g) => g.issues.some((i) => i.id === id));
+    expect([columnOf("idle")?.label, columnOf("idle")?.title]).toEqual(["stalled", "Stalled"]);
+    expect([columnOf("busy")?.label, columnOf("busy")?.title]).toEqual(["running", "Running"]);
+  });
+
+  it("draws the Stalled column beside Running, and keeps it when it is empty", () => {
+    const cols = boardColumns();
+    expect(cols.indexOf("stalled")).toBe(cols.indexOf("running") + 1);
+    expect(groupIssuesByLabel([]).find((g) => g.label === "stalled")?.issues).toEqual([]);
+  });
+
+  it("leaves a party's column alone whether or not the row is held", () => {
+    const groups = groupIssuesByLabel([issue("q", "needs_info", false)]);
+    expect(groups.find((g) => g.issues.some((i) => i.id === "q"))?.label).toBe("needs_human");
   });
 
   it("never names a column after one of the seven deleted stages", () => {
@@ -129,7 +155,7 @@ describe("groupIssuesByLabel", () => {
 describe("a column is coloured by the statuses it holds", () => {
   /** The kernel statuses a label buckets, among the ones the board's query can return. */
   const bucket = (label: AutonomousLabel): string[] =>
-    RETURNABLE.filter((s) => toAutonomousLabel(s) === label);
+    RETURNABLE.filter((s) => readable(s).includes(label));
 
   it("gives a label with ONE status exactly that status's chip colour", () => {
     const single = boardColumns().filter((l) => bucket(l).length === 1);
@@ -141,10 +167,16 @@ describe("a column is coloured by the statuses it holds", () => {
   });
 
   it("never colours a label with a tone no status in its bucket wears", () => {
-    for (const label of boardColumns()) {
+    for (const label of boardColumns().filter((l) => l !== "stalled")) {
       const tones = bucket(label).map((s) => statusToTone(s as IssueStatus));
       expect([label, tones.includes(labelTone(label))]).toEqual([label, true]);
     }
+  });
+
+  // `stalled` is read off the holder, not the status, so no status in its bucket carries its colour.
+  it("colours `stalled` as stopped work, never as the work in motion `running` is coloured", () => {
+    expect(labelTone("stalled")).toBe(statusToTone("on_hold"));
+    expect(labelTone("stalled")).not.toBe(labelTone("running"));
   });
 
   it("colours `reopened` and `done` as their own status is coloured, not as a bucket word suggests", () => {
