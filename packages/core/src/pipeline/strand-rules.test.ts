@@ -4,6 +4,7 @@ import type { LeaseReading } from './session-claim.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import {
   AT_REST_STATUSES,
+  heldReleaseWait,
   SHORTEST_GRACE_MS,
   STRAND_RULES,
   type StrandEvidence,
@@ -279,5 +280,51 @@ describe('strandReason answers an abandoned lease before it answers the status (
     expect(reason).toContain('stopped reporting');
     expect(reason).not.toContain('job pool');
     expect(reason).not.toContain('dispatch did not happen');
+  });
+});
+
+describe('an automatic release hold outranks the person-owned awaiting_release reading (ISS-1215)', () => {
+  const HOLD = {
+    code: 'RELEASE_CRITERIA_UNEARNED',
+    reason: 'criterion 2: no verdict was recorded for it',
+    owes: 'agent',
+    waitingFor: 'a verdict on each criterion named, at the runtime serving it',
+  } as const;
+  const RULE = STRAND_RULES.awaiting_release;
+
+  it('takes the owner and the reason from the hold', () => {
+    const out = strandReason({
+      status: 'awaiting_release',
+      rule: RULE,
+      evidence: evidence({ merged: true, releaseHold: HOLD }),
+    });
+    expect(out.owes).toBe('agent');
+    expect(out.reason).toContain('RELEASE_CRITERIA_UNEARNED');
+    expect(out.reason).toContain('criterion 2: no verdict was recorded for it');
+  });
+
+  it('takes what the row waits for from the hold', () => {
+    expect(heldReleaseWait('awaiting_release', HOLD)?.waitingFor).toBe(HOLD.waitingFor);
+  });
+
+  it('keeps the person-owned reading on a row carrying no hold', () => {
+    const out = strandReason({
+      status: 'awaiting_release',
+      rule: RULE,
+      evidence: evidence({ merged: true, releaseHold: null }),
+    });
+    expect(out.owes).toBe('human');
+    expect(heldReleaseWait('awaiting_release', null)).toBeNull();
+    expect(RULE.watch && RULE.waitingFor).toBe('a person to release it');
+  });
+
+  it('reads a hold on no other status', () => {
+    expect(heldReleaseWait('releasing', HOLD)).toBeNull();
+    const out = strandReason({
+      status: 'testing',
+      rule: STRAND_RULES.testing,
+      evidence: evidence({ releaseHold: HOLD }),
+    });
+    expect(out.reason).not.toContain('RELEASE_CRITERIA_UNEARNED');
   });
 });

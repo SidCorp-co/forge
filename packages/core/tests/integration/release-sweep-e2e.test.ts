@@ -116,6 +116,13 @@ describe('release sweep E2E (ISS-1117)', () => {
     `);
   }
 
+  async function holdOf(issueId: string): Promise<Record<string, unknown> | null> {
+    const rows = (await harness.db.execute(sql`
+      SELECT session_context -> 'releaseHold' AS hold FROM issues WHERE id = ${issueId}
+    `)) as unknown as Array<{ hold: Record<string, unknown> | null }>;
+    return rows[0]?.hold ?? null;
+  }
+
   beforeEach(async () => {
     await truncateAll(harness.db);
     const owner = await createTestUser(harness.db);
@@ -165,7 +172,10 @@ describe('release sweep E2E (ISS-1117)', () => {
     const unearned = await stored(unearnedId);
     expect(unearned.status).toBe(beforeUnearned.status);
     expect(unearned.claim).toBeNull();
-    expect(await commentCount(unearnedId)).toBe(unearnedCommentsBefore);
+    // ISS-1215: not released is not the same as not annotated — the one new comment is the hold.
+    expect(await commentCount(unearnedId)).toBe(unearnedCommentsBefore + 1);
+    expect((await holdOf(unearnedId))?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(await holdOf(earnedId)).toBeNull();
   }, 30_000);
 
   it('touches nothing when every waiting issue is unearned', async () => {
@@ -221,6 +231,11 @@ describe('release sweep E2E (ISS-1117)', () => {
     expect(result.issuesCut).toBe(0);
     expect(result.issuesExcluded).toBe(1);
     expect(await stored(id)).toEqual(before);
+    // The forge-dev and sid-desk shape: a `commit:`-only pass is held, and the row now says why.
+    const hold = await holdOf(id);
+    expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(String(hold?.reason)).toContain('criterion 1');
+    expect(String(hold?.reason)).toContain('no runtime witnessed it');
   }, 30_000);
 
   it('does nothing for a project that has not opted into autoProdDeploy', async () => {

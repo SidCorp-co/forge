@@ -3,18 +3,38 @@
 // gate) and whose waiting issue has every numbered acceptance criterion earned
 // (`criteria-verdicts.ts`). Precedent: `runs-concluded.ts`'s own-tick noticing. The manual
 // doors (`collectReleaseBlockers`, `forge advance`) are untouched; this only filters the
-// unattended path.
+// unattended path. ISS-1215: every way it declines a waiting row is written on that row
+// (`release-hold.ts`), never on the log alone.
 
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
-import { resolveReleaseGate } from '../release-batch/gate.js';
-import { loadReleaseRoster } from '../release-batch/queries.js';
+import {
+  RELEASE_GATE_STATUS,
+  ReleaseTargetUndeclaredError,
+  resolveReleaseGate,
+} from '../release-batch/gate.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
+import {
+  clearProjectReleaseHolds,
+  clearReleaseHolds,
+  clearStaleReleaseHolds,
+  criteriaHold,
+  criteriaUnreadableHold,
+  cutFailedHold,
+  gateUnreadableHold,
+  NO_ACTOR_HOLD,
+  NO_RELEASE_GATE_HOLD,
+  queuedBehindHold,
+  type ReleaseHold,
+  refusalHold,
+  targetUndeclaredHold,
+  writeReleaseHolds,
+} from './release-hold.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
@@ -27,6 +47,8 @@ export interface AutomaticReleaseSweepResult {
   issuesCut: number;
   /** How many waiting issues were left alone this tick for an unearned criterion. */
   issuesExcluded: number;
+  /** How many waiting issues had a hold written or replaced this tick, for any reason. */
+  holdsWritten: number;
 }
 
 interface CandidateRow {
@@ -71,42 +93,36 @@ async function candidateProjectIds(now: Date): Promise<string[]> {
 
 // `createReleaseBatch` claims issues and moves them to `releasing` in separate statements
 // AFTER its own transaction, so a failure past that point (an enqueue error, say) can leave an
-// issue claimed even though the attempt overall threw — the comment must say which happened,
-// never assume the untouched case.
-function sweepFailureBody(
-  message: string,
-  issue: { status: string; releaseBatchRunId: string | null },
-): string {
-  const untouched = issue.status === 'awaiting_release' && issue.releaseBatchRunId === null;
-  const state = untouched
-    ? 'This issue is unchanged: not claimed, not moved, no half-release. The next tick tries ' +
-      'again on its own — nothing here needs a retry command.'
-    : `This issue was already claimed into run ${issue.releaseBatchRunId ?? '(unknown)'} before ` +
-      'the attempt failed, so it will not be picked up again by this sweep — its status and ' +
-      'claim need a person to look at them.';
+// issue claimed even though the attempt overall threw. An untouched row gets a hold
+// (`cutFailedHold`); a claimed one is off the gate, so it is told here instead.
+function claimedFailureBody(message: string, releaseBatchRunId: string | null): string {
   return [
     '**An automatic release attempt failed.**',
     '',
     `This issue was named in an automatic release sweep (ISS-1117) and the attempt did not go ` +
       `through: ${message}`,
     '',
-    state,
+    `This issue was already claimed into run ${releaseBatchRunId ?? '(unknown)'} before ` +
+      'the attempt failed, so it will not be picked up again by this sweep — its status and ' +
+      'claim need a person to look at them.',
   ].join('\n');
 }
 
-// Names a genuine failed attempt on every issue it would have released, once per distinct
-// message — an identical comment already there is not repeated.
-async function reportSweepFailure(
+/** The rows a failed attempt claimed anyway, each told once per distinct message. */
+async function reportClaimedFailure(
   issueIds: string[],
   authorId: string,
   message: string,
-): Promise<void> {
+): Promise<string[]> {
   const rows = await db
     .select({ id: issues.id, status: issues.status, releaseBatchRunId: issues.releaseBatchRunId })
     .from(issues)
     .where(inArray(issues.id, issueIds));
-  for (const row of rows) {
-    const body = sweepFailureBody(message, row);
+  const claimed = rows.filter(
+    (r) => !(r.status === RELEASE_GATE_STATUS && r.releaseBatchRunId === null),
+  );
+  for (const row of claimed) {
+    const body = claimedFailureBody(message, row.releaseBatchRunId);
     try {
       const existing = await db
         .select({ body: comments.body })
@@ -118,6 +134,7 @@ async function reportSweepFailure(
       logger.error({ err, issueId: row.id }, 'release-sweep: failed to post the failure comment');
     }
   }
+  return claimed.map((r) => r.id);
 }
 
 /**
@@ -146,22 +163,115 @@ function reportHeldBack(projectId: string, held: readonly IssueCriteriaReport[])
   }
 }
 
-async function sweepProject(projectId: string, result: AutomaticReleaseSweepResult): Promise<void> {
-  if (!(await projectAutoProdDeploy(projectId))) return;
+/** Every issue waiting unclaimed at the gate on this project, oldest merge first. */
+async function waitingIssueIds(projectId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: issues.id })
+    .from(issues)
+    .where(
+      and(
+        eq(issues.projectId, projectId),
+        eq(issues.status, RELEASE_GATE_STATUS),
+        isNull(issues.releaseBatchRunId),
+      ),
+    )
+    .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id));
+  return rows.map((r) => r.id);
+}
 
-  const gate = await resolveReleaseGate(projectId).catch(() => null);
-  if (!gate) return;
+interface HoldWrite {
+  projectId: string;
+  issueIds: string[];
+  holdFor: (issueId: string) => ReleaseHold;
+  authorId: string | null;
+  now: Date;
+  result: AutomaticReleaseSweepResult;
+}
 
-  const roster = await loadReleaseRoster(projectId);
-  const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
+async function hold(write: HoldWrite): Promise<void> {
+  const tally = await writeReleaseHolds(write);
+  write.result.holdsWritten += tally.written;
+  if (tally.written > 0) {
+    logger.info(
+      { projectId: write.projectId, written: tally.written, unchanged: tally.unchanged },
+      'release-sweep: the reason these issues are held is written on each of them',
+    );
+  }
+}
+
+/** The gate, or the hold every waiting row gets because there is none to read. */
+async function readGate(
+  projectId: string,
+): Promise<{ ok: true } | { ok: false; hold: ReleaseHold }> {
+  try {
+    const gate = await resolveReleaseGate(projectId);
+    return gate ? { ok: true } : { ok: false, hold: NO_RELEASE_GATE_HOLD };
+  } catch (err) {
+    if (err instanceof ReleaseTargetUndeclaredError) {
+      return { ok: false, hold: targetUndeclaredHold(err.message) };
+    }
+    logger.error({ err, projectId }, 'release-sweep: the release gate could not be read');
+    return {
+      ok: false,
+      hold: gateUnreadableHold(err instanceof Error ? err.message : String(err)),
+    };
+  }
+}
+
+/** The criteria reports, or a hold naming why the verdicts could not be read. */
+async function readCriteria(
+  projectId: string,
+  waiting: string[],
+): Promise<{ ok: true; value: IssueCriteriaReport[] } | { ok: false; hold: ReleaseHold }> {
+  try {
+    return { ok: true, value: await unearnedCriteriaReports(waiting) };
+  } catch (err) {
+    logger.error({ err, projectId }, 'release-sweep: the criteria could not be read');
+    return {
+      ok: false,
+      hold: criteriaUnreadableHold(err instanceof Error ? err.message : String(err)),
+    };
+  }
+}
+
+async function sweepProject(
+  projectId: string,
+  result: AutomaticReleaseSweepResult,
+  now: Date,
+): Promise<void> {
+  if (!(await projectAutoProdDeploy(projectId))) {
+    await clearProjectReleaseHolds(projectId);
+    return;
+  }
+
+  const waiting = await waitingIssueIds(projectId);
   if (waiting.length === 0) return;
+  const owner = (await loadCreatedBy(projectId)) ?? null;
+  const base = { projectId, authorId: owner, now, result };
 
-  const reports = await unearnedCriteriaReports(waiting);
-  const held = reports.filter((r) => r.unearned.length > 0);
-  const heldSet = new Set(held.map((r) => r.issueId));
-  const eligible = waiting.filter((id) => !heldSet.has(id));
+  const gate = await readGate(projectId);
+  if (!gate.ok) {
+    await hold({ ...base, issueIds: waiting, holdFor: () => gate.hold });
+    return;
+  }
+
+  const reports = await readCriteria(projectId, waiting);
+  if (!reports.ok) {
+    await hold({ ...base, issueIds: waiting, holdFor: () => reports.hold });
+    return;
+  }
+  const held = reports.value.filter((r) => r.unearned.length > 0);
+  const heldById = new Map(held.map((r) => [r.issueId, r]));
+  const eligible = waiting.filter((id) => !heldById.has(id));
   result.issuesExcluded += held.length;
-  if (held.length > 0) reportHeldBack(projectId, held);
+  if (held.length > 0) {
+    reportHeldBack(projectId, held);
+    await hold({
+      ...base,
+      issueIds: held.map((r) => r.issueId),
+      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport),
+    });
+  }
 
   if (eligible.length === 0) {
     logger.info(
@@ -172,41 +282,58 @@ async function sweepProject(projectId: string, result: AutomaticReleaseSweepResu
     return;
   }
 
-  const userId = await loadCreatedBy(projectId);
-  if (!userId) {
+  if (!owner) {
     logger.error(
       { projectId },
       'release-sweep: no project owner to act as this tick — skipping, will try again next tick',
     );
+    await hold({ ...base, issueIds: eligible, holdFor: () => NO_ACTOR_HOLD });
     return;
   }
 
-  const outcome = await cutWaitingRelease({ projectId, userId, issueIds: eligible });
+  const outcome = await cutWaitingRelease({ projectId, userId: owner, issueIds: eligible });
+  // One release carries at most the oldest RELEASE_ROSTER_LIMIT; the rest were never sent.
+  const named = new Set(outcome.named);
+  const behind = eligible.filter((id) => !named.has(id));
+  await hold({ ...base, issueIds: behind, holdFor: () => queuedBehindHold(outcome.named.length) });
   if (outcome.status === 'success') {
     result.projectsCut += 1;
     result.issuesCut += outcome.named.length;
+    await clearReleaseHolds(outcome.named);
     logger.info(
-      { projectId, cut: outcome.named.length, excluded: held.length },
+      { projectId, cut: outcome.named.length, behind: behind.length, excluded: held.length },
       `release-sweep: ${outcome.output}`,
     );
     return;
   }
+  const reasons = outcome.reasons ?? [outcome.error ?? outcome.output];
   if (outcome.status === 'failed') {
     logger.error({ projectId, err: outcome.error }, `release-sweep: ${outcome.output}`);
-    await reportSweepFailure(outcome.named, userId, outcome.error ?? outcome.output);
+    const message = outcome.error ?? outcome.output;
+    const claimed = await reportClaimedFailure(outcome.named, owner, message);
+    const untouched = outcome.named.filter((id) => !claimed.includes(id));
+    await hold({ ...base, issueIds: untouched, holdFor: () => cutFailedHold(reasons) });
     return;
   }
   logger.info({ projectId }, `release-sweep: ${outcome.output}`);
+  const refused = refusalHold(outcome.code ?? 'RELEASE_CUT_REFUSED', reasons);
+  await hold({ ...base, issueIds: outcome.named, holdFor: () => refused });
 }
 
 export async function sweepAutomaticReleases(
   now: Date = new Date(),
 ): Promise<AutomaticReleaseSweepResult> {
-  const result: AutomaticReleaseSweepResult = { projectsCut: 0, issuesCut: 0, issuesExcluded: 0 };
+  const result: AutomaticReleaseSweepResult = {
+    projectsCut: 0,
+    issuesCut: 0,
+    issuesExcluded: 0,
+    holdsWritten: 0,
+  };
+  await clearStaleReleaseHolds();
   const projectIds = await candidateProjectIds(now);
   for (const projectId of projectIds) {
     try {
-      await sweepProject(projectId, result);
+      await sweepProject(projectId, result, now);
     } catch (err) {
       logger.error(
         { err, projectId },

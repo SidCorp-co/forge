@@ -3093,6 +3093,9 @@
   after an hour of silence.
 - **A box refusing work says how long each job has held its slot, even after a restart.** It
   used to count from the restart and read `0m`; every duration it states is now in minutes.
+- **An issue waiting for an automatic release now says why it has not gone.** Each reason, such as
+  an unjudged criterion or no runner, is written on the issue with one comment, and cleared once it
+  stops holding.
 - **A box no longer stops taking work because of a job pane nothing can account for.** One the box
   has heard nothing from since the daemon began watching gives its slot back after an hour.
 - **A box whose masters were left unreachable now puts itself right.** Each is restarted where work
