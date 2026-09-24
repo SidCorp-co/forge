@@ -15,6 +15,7 @@ const useDevices = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/runners/hooks", () => ({ useDevices }));
+vi.mock("@/features/pipeline/hooks", () => ({ useRun: () => ({ data: undefined }) }));
 vi.mock("@/features/sessions/hooks", () => ({
 	useSessionCost: () => ({ data: undefined }),
 	useSessions: () => ({ data: { items: [] } }),

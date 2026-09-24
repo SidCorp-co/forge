@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aggregateStepCosts, cardStatus, median, runGateNote } from "./derive";
-import type { PipelineIssueRow, RunGateCondition, StepDurationRow } from "./types";
+import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
+import { PIPELINE_RUN_STATUSES, type PipelineIssueRow, type RunGateCondition, type StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
   return {
@@ -81,7 +82,6 @@ describe("aggregateStepCosts — the job types that actually ran (ISS-999)", () 
 });
 
 describe("cardStatus", () => {
-  const label = (s: string) => `label:${s}`;
   const issue = (over: Partial<PipelineIssueRow> = {}): PipelineIssueRow =>
     ({
       id: "i",
@@ -92,6 +92,7 @@ describe("cardStatus", () => {
       priority: "high",
       assigneeId: null,
       agentStatus: null,
+      held: true,
       ...over,
     }) as PipelineIssueRow;
   const queuedHealth = (reason?: string) =>
@@ -113,7 +114,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale") }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("waiting");
     expect(card.label).toBe("No runner online");
@@ -125,7 +125,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth() }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("queued");
     expect(card.label).toBe("Queued");
@@ -136,7 +135,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "running" }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("running");
     expect(card.label).toBeUndefined();
@@ -146,15 +144,33 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "failed" }),
       { status: "running" },
-      label as never,
     );
     expect(card.label).toBe("No runner online");
   });
 
-  it("falls back to the issue's own lifecycle label with no run and nothing queued", () => {
-    const card = cardStatus(issue(), undefined, label as never);
+  it("falls back to the lane word a held row reads with no run and nothing queued", () => {
+    const card = cardStatus(issue(), undefined);
     expect(card.domain).toBe("issue");
-    expect(card.label).toBe("label:in_progress");
+    expect(card.label).toBe("Running");
+    expect(card.status).toBe(statusToChip("in_progress"));
+  });
+
+  // ISS-1213: rows stood at `testing` for hours with nothing on them, their cards reading Running.
+  it("reads Stalled, in the stalled chip, on a row nothing holds", () => {
+    const card = cardStatus(issue({ status: "testing", held: false }), undefined);
+    expect([card.label, card.status]).toEqual(["Stalled", LABEL_VIEW.stalled.status]);
+    expect(card.status).not.toBe(statusToChip("testing"));
+  });
+
+  // A live run would have made the row held, so every run the board kept for an unheld row is history.
+  it.each(PIPELINE_RUN_STATUSES)("reads Stalled on a row nothing holds whatever its kept run (%s)", (status) => {
+    const card = cardStatus(issue({ status: "testing", held: false }), { status });
+    expect([card.label, card.status, card.domain]).toEqual(["Stalled", LABEL_VIEW.stalled.status, "issue"]);
+  });
+
+  it("keeps a party's word on a row nothing holds, since no run was owed there", () => {
+    const card = cardStatus(issue({ status: "needs_info", held: false }), undefined);
+    expect(card.label).toBe("Needs a human");
   });
 });
 
@@ -180,7 +196,7 @@ describe("runGateNote", () => {
 		);
 	});
 
-	it("names only the commonest reason where the count is a mixture", () => {
+	it("names the commonest reason with its share where the count is a mixture", () => {
 		const note = runGateNote({
 			read: "ok",
 			condition: runGate({
@@ -190,7 +206,7 @@ describe("runGateNote", () => {
 				],
 			}),
 		});
-		expect(note?.reason).toBe("no control capability");
+		expect(note?.reason).toBe("20 of 30: no control capability");
 	});
 
 	it("still states a gate that had marked without reaching failing open", () => {
@@ -202,12 +218,19 @@ describe("runGateNote", () => {
 		expect(note?.headline).toContain("admitted undecided dispatches");
 	});
 
-	it("says nothing for a run whose box reported no condition, or a gate that was deciding", () => {
-		expect(runGateNote(null)).toBeNull();
+	it("says nothing where the response did not carry the field", () => {
 		expect(runGateNote(undefined)).toBeNull();
-		expect(
-			runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) }),
-		).toBeNull();
+	});
+
+	it("says a box reported no condition, and says it differently from a gate that was deciding", () => {
+		const none = runGateNote(null);
+		const clear = runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) });
+		expect(none?.verdict).toBe("none");
+		expect(none?.headline).toContain("reported no gate condition");
+		expect(clear?.verdict).toBe("clear");
+		expect(clear?.headline).toContain("was deciding");
+		expect(none?.headline).not.toBe(clear?.headline);
+		expect(none?.detail).not.toBe(clear?.detail);
 	});
 
 	// A condition core holds but cannot read is evidence, and rendering nothing

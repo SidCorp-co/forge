@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { memoryOfLiveIssue } from '../issues/archive.js';
 import { canonicalIssueKey, issueRefFormatter } from '../issues/issue-prefix-read.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
 import { searchKnowledge } from '../knowledge/search.js';
@@ -22,9 +23,7 @@ import { foreignScriptChars } from './script-guard.js';
 import { type MemoryHit, searchMemories } from './search.js';
 
 /**
- * memory-v2 phase 4 — nightly consolidation, the adapted port of
- * forge-agents' "dream" (`services/memory-dream/`). Differences, per the
- * proposal's deliberate non-goals:
+ * Nightly consolidation, adapted from forge-agents' "dream" (`services/memory-dream/`). Differences:
  *
  *  - ARCHIVE replaces PRUNE: the LLM can hide rows (`archived_at`), never
  *    hard-delete them. A later write to the same key revives the row, and
@@ -33,9 +32,8 @@ import { type MemoryHit, searchMemories } from './search.js';
  *  - pg-boss schedule instead of a setInterval poller. Runs at 03:00, before
  *    the 03:30 decay sweep, so freshly-merged rows are not double-processed.
  *
- * Signal (last 24h, per project): pipeline comments, status changes, and
- * reopen cycles — the highest-value learning signal (a reopen means the fix
- * or review was wrong). Same caps as the predecessor.
+ * Signal (last 24h, per project): pipeline comments, status changes and reopen cycles, a reopen
+ * meaning the fix or review was wrong. Nothing of an archived issue is read, signal or memory.
  */
 
 export const MEMORY_CONSOLIDATION_QUEUE = 'memory-consolidation';
@@ -224,13 +222,18 @@ async function applyCreates(
   return { created, skipped };
 }
 
+/** One `- ` line per row, or `None` — the shape every prompt section takes. */
+function bullets<T>(rows: readonly T[], line: (row: T) => string): string {
+  return rows.length > 0 ? rows.map((r) => `- ${line(r)}`).join('\n') : 'None';
+}
+
 async function consolidate(projectId: string): Promise<ConsolidationResult> {
   const since = new Date(Date.now() - SIGNAL_WINDOW_MS);
 
   const recentComments = await db
     .select({ body: comments.body, issueTitle: issues.title })
     .from(comments)
-    .innerJoin(issues, eq(comments.issueId, issues.id))
+    .innerJoin(issues, and(eq(comments.issueId, issues.id), isNull(issues.archivedAt)))
     .where(and(eq(issues.projectId, projectId), gte(comments.createdAt, since)))
     .orderBy(desc(comments.createdAt))
     .limit(MAX_SIGNAL_COMMENTS);
@@ -238,7 +241,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
   const statusChanges = await db
     .select({ payload: activityLog.payload, issueTitle: issues.title })
     .from(activityLog)
-    .innerJoin(issues, eq(activityLog.issueId, issues.id))
+    .innerJoin(issues, and(eq(activityLog.issueId, issues.id), isNull(issues.archivedAt)))
     .where(
       and(
         eq(issues.projectId, projectId),
@@ -274,31 +277,21 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
         eq(memories.projectId, projectId),
         inArray(memories.source, [...CONSOLIDATABLE_SOURCES]),
         isNull(memories.archivedAt),
+        memoryOfLiveIssue(projectId),
       ),
     )
     .orderBy(desc(memories.updatedAt))
     .limit(MAX_MEMORIES_FOR_PROMPT);
   const byId = new Map(memoryRows.map((m) => [m.id, m]));
 
-  const memoriesStr =
-    memoryRows.length > 0
-      ? memoryRows
-          .map(
-            (m) =>
-              `- [${m.id}] [${m.source}] ${m.textContent.slice(0, 300)} (retrievals: ${m.retrievalCount})`,
-          )
-          .join('\n')
-      : 'None';
-  const commentsStr =
-    recentComments.length > 0
-      ? recentComments.map((c) => `- ${c.issueTitle}: ${c.body.slice(0, 400)}`).join('\n')
-      : 'None';
-  const statusStr =
-    changes.length > 0
-      ? changes.map((c) => `- ${c.issueTitle}: ${c.from} -> ${c.to}`).join('\n')
-      : 'None';
-  const reopenStr =
-    reopens.length > 0 ? reopens.map((r) => `- ${r.issueTitle}`).join('\n') : 'None';
+  const memoriesStr = bullets(
+    memoryRows,
+    (m) =>
+      `[${m.id}] [${m.source}] ${m.textContent.slice(0, 300)} (retrievals: ${m.retrievalCount})`,
+  );
+  const commentsStr = bullets(recentComments, (c) => `${c.issueTitle}: ${c.body.slice(0, 400)}`);
+  const statusStr = bullets(changes, (c) => `${c.issueTitle}: ${c.from} -> ${c.to}`);
+  const reopenStr = bullets(reopens, (r) => r.issueTitle);
 
   const prompt = CONSOLIDATION_PROMPT.replace('{memories}', memoriesStr)
     .replace('{recent_comments}', commentsStr)
@@ -569,9 +562,11 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
       mergedAt: issues.mergedAt,
     })
     .from(issues)
-    .where(eq(issues.id, issueId))
+    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId), isNull(issues.archivedAt)))
     .limit(1);
-  if (!issueRow) return emptyReconcileResult('issue-not-found', 'issue not found');
+  if (!issueRow) {
+    return emptyReconcileResult('issue-not-found', 'issue not found in this project, or archived');
+  }
 
   const issRef = (await issueRefFormatter(projectId))(issueRow.issSeq);
   const decisionRef = `reconcile:${canonicalIssueKey(issueRow.issSeq)}`;

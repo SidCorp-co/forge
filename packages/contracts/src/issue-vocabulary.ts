@@ -6,6 +6,7 @@ export const AUTONOMOUS_LABELS = [
   'draft',
   'open',
   'running',
+  'stalled',
   'needs_human',
   'paused',
   'awaiting_release',
@@ -16,8 +17,11 @@ export const AUTONOMOUS_LABELS = [
 
 export type AutonomousLabel = (typeof AUTONOMOUS_LABELS)[number];
 
+/** Every label but `stalled`, which is read off a row that nothing holds and is never written. */
+export type WritableLabel = Exclude<AutonomousLabel, 'stalled'>;
+
 /** The kernel status a label is written as. */
-export const LABEL_TO_KERNEL: Record<AutonomousLabel, KernelIssueStatus> = {
+export const LABEL_TO_KERNEL: Record<WritableLabel, KernelIssueStatus> = {
   draft: 'draft',
   open: 'open',
   running: 'in_progress',
@@ -29,7 +33,8 @@ export const LABEL_TO_KERNEL: Record<AutonomousLabel, KernelIssueStatus> = {
   dropped: 'dropped',
 };
 
-const KERNEL_TO_LABEL: Record<KernelIssueStatus, AutonomousLabel> = {
+/** `running` is only a held row's word; `toAutonomousLabel` reads the same status `stalled` unheld. */
+const KERNEL_TO_LABEL: Record<KernelIssueStatus, WritableLabel> = {
   draft: 'draft',
   open: 'open',
   confirmed: 'running',
@@ -49,16 +54,18 @@ const KERNEL_TO_LABEL: Record<KernelIssueStatus, AutonomousLabel> = {
   dropped: 'dropped',
 };
 
-export function toAutonomousLabel(status: KernelIssueStatus): AutonomousLabel {
-  return KERNEL_TO_LABEL[status];
+/** `held` (the search row's own) is required: a status alone cannot say whether a run is behind it. */
+export function toAutonomousLabel(status: KernelIssueStatus, held: boolean): AutonomousLabel {
+  const label = KERNEL_TO_LABEL[status];
+  return label === 'running' && !held ? 'stalled' : label;
 }
 
 /**
- * How to render an issue's status. There is one lane and therefore one
- * vocabulary — a project does not choose it.
+ * The statuses that can read one of these labels, held or not: a status filter cannot see the
+ * holder. There is one lane and therefore one vocabulary — a project does not choose it.
  */
 export function statusesForLabels(...labels: AutonomousLabel[]): KernelIssueStatus[] {
-  return (Object.keys(KERNEL_TO_LABEL) as KernelIssueStatus[]).filter((s) =>
-    labels.includes(toAutonomousLabel(s)),
+  return (Object.keys(KERNEL_TO_LABEL) as KernelIssueStatus[]).filter(
+    (s) => labels.includes(toAutonomousLabel(s, true)) || labels.includes(toAutonomousLabel(s, false)),
   );
 }

@@ -115,6 +115,16 @@ condition the successful operation creates is not a loud failure; it is a wedge.
 box's own close loop needs, because a box that never sees its own release land
 never marks the run closed. A caller has to say which it is asking.
 
+## Two questions about work on an issue
+
+`issueWorkInFlightSql` asks whether anything is owed on the issue: any
+non-terminal job, including one `held` for a person, and a `paused` run count.
+The strand pass reads it, because a row carrying either does not need escalating.
+`issueWorkMovingSql` asks whether a box is moving the issue now: only
+`UNHELD_LIVE_JOB_STATUSES` jobs and a `running` run count. The board's `held` reads
+it (ISS-1213), because a row whose only job waits on a person is not Running.
+Both count a held lease.
+
 ## What a refusal carries
 
 Holders, not a count: an operator told only that something is held has to open

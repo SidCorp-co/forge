@@ -6,6 +6,7 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
+import { memoryOfLiveIssue } from '../issues/archive.js';
 import {
   type IssueRelationDigest,
   loadIssueRelationsForIssues,
@@ -91,6 +92,7 @@ export async function expandIssueRelations(input: ExpandRelationsInput): Promise
           chosen.map((n) => n.issueId),
         ),
         isNull(memories.archivedAt),
+        memoryOfLiveIssue(input.projectId),
       ),
     );
   const bySourceRef = new Map(rows.map((r) => [r.sourceRef, r]));

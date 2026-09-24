@@ -1,10 +1,9 @@
 
 import {
-	AUTONOMOUS_LABELS,
 	type AutonomousLabel,
 	LABEL_TO_KERNEL,
 	statusesForLabels,
-	toAutonomousLabel,
+	type WritableLabel,
 } from "@forge/contracts/issue-vocabulary";
 import {
 	REGISTRY_ISSUE_STATUSES,
@@ -67,6 +66,7 @@ const LABEL_WORDS: Record<AutonomousLabel, string> = {
 	draft: "Draft",
 	open: "Open",
 	running: "Running",
+	stalled: "Stalled",
 	needs_human: "Needs a human",
 	reopened: "Reopened",
 	paused: "Paused",
@@ -75,25 +75,27 @@ const LABEL_WORDS: Record<AutonomousLabel, string> = {
 	dropped: "Dropped",
 };
 
+const PAUSED_CHIP = statusToChip(LABEL_TO_KERNEL.paused);
+
 /**
- * How each lane label is shown: its word, its `StatusKey` and its colour, in one entry.
- *
- * The map from kernel status to label lives in `@forge/contracts` so every client relabels the
- * same way; this is the presentation of the label and nothing else. It carries no order — the
- * order is `AUTONOMOUS_LABELS`' own, in contracts — and no position.
+ * How each lane label is shown: its word, `StatusKey` and colour. The status→label map and the
+ * order live in `@forge/contracts`. `stalled` is written as no status, so it takes paused's colour.
  */
 export const LABEL_VIEW: Record<
 	AutonomousLabel,
 	{ label: string; status: StatusKey; tone: SemanticTone }
-> = Object.fromEntries(
-	AUTONOMOUS_LABELS.map((label) => {
-		const status = statusToChip(LABEL_TO_KERNEL[label]);
-		return [
-			label,
-			{ label: LABEL_WORDS[label], status, tone: STATUS_KEY_TONE[status] },
-		];
-	}),
-) as Record<AutonomousLabel, { label: string; status: StatusKey; tone: SemanticTone }>;
+> = {
+	...(Object.fromEntries(
+		(Object.keys(LABEL_TO_KERNEL) as WritableLabel[]).map((label) => {
+			const status = statusToChip(LABEL_TO_KERNEL[label]);
+			return [
+				label,
+				{ label: LABEL_WORDS[label], status, tone: STATUS_KEY_TONE[status] },
+			];
+		}),
+	) as Record<WritableLabel, { label: string; status: StatusKey; tone: SemanticTone }>),
+	stalled: { label: LABEL_WORDS.stalled, status: PAUSED_CHIP, tone: STATUS_KEY_TONE[PAUSED_CHIP] },
+};
 
 export const PRIORITY_LABELS: Record<IssuePriority, string> = {
 	critical: "Critical",
@@ -113,10 +115,6 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 
 /** The issue's own status, written out: one word per kernel status, all 17 distinct. Every surface that REPORTS a status takes this one. */
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
-
-/** The nine-bucket LANE word, for the board's column heads, the tabs, the grouping and the status-move menus. Lossy, so never for a surface that reports the status. */
-export const laneLabel = (s: IssueStatus): string =>
-	LABEL_VIEW[toAutonomousLabel(s)]?.label ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;
 export const complexityLabel = (
@@ -237,27 +235,9 @@ export function groupedTransitions(
 	return out;
 }
 
-/**
- * The label each target is offered under, disambiguated WITHIN one menu.
- *
- * The autonomous vocabulary is many-to-one — `confirmed`, `in_progress`,
- * `developed` and `testing` all read "Running" — which the fifteen-item menu
- * hid in its own noise. A rung's real exits are few enough that two identical
- * rows are the whole list, so a repeated label carries its kernel status.
- */
-export function transitionLabels(
-	targets: IssueStatus[],
-	label: (s: IssueStatus) => string,
-): string[] {
-	const seen = new Map<string, number>();
-	for (const t of targets) {
-		const l = label(t);
-		seen.set(l, (seen.get(l) ?? 0) + 1);
-	}
-	return targets.map((t) => {
-		const l = label(t);
-		return (seen.get(l) ?? 0) > 1 ? `${l} (${STATUS_LABELS[t].toLowerCase()})` : l;
-	});
+/** A move target has no holder, so it is named by its own status word, never "Running" (ISS-1213). */
+export function transitionLabels(targets: IssueStatus[]): string[] {
+	return targets.map(statusLabel);
 }
 
 export function bulkAllowedStatuses(
@@ -322,7 +302,7 @@ export function filterToQueryParams(filter: IssueFilter): {
 				),
 			};
 		case "agent":
-			return { status: statusesForLabels("open", "running") };
+			return { status: statusesForLabels("open", "running", "stalled") };
 		case "done":
 			return { status: statusesForLabels("done", "dropped") };
 		default:

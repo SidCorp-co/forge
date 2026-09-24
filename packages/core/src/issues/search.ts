@@ -30,12 +30,14 @@ import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import { issueArchiveSide } from './archive.js';
 import {
   buildCreatedByCondition,
   buildOriginCondition,
   hydrateCreatorsForIssues,
 } from './creator.js';
 import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
+import { hydrateHeldForIssues } from './held-hydrator.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
@@ -117,6 +119,8 @@ const searchQuerySchema = z
     withBuckets: z.coerce.boolean().optional().default(false),
     withDependencies: z.coerce.boolean().optional().default(false),
     withModules: z.coerce.boolean().optional().default(false),
+    /** ISS-1237 — archived issues are out of search unless asked for, in the page, total and buckets alike. */
+    includeArchived: z.stringbool().optional(),
   })
   .strict();
 
@@ -243,6 +247,7 @@ searchRoutes.get(
       axisFree.push(c);
     };
 
+    for (const side of issueArchiveSide(q.includeArchived)) both(side);
     if (q.q) {
       both(buildIssueSearchCondition(q.q));
     }
@@ -379,10 +384,11 @@ searchRoutes.get(
       return c.json(withBuckets(listResponse(c, serialized, total, q)));
     }
 
-    const map = await hydrateAgentSessionsForIssues(
-      projectId,
-      serialized.map((r) => r.id as string),
-    );
+    const ids = serialized.map((r) => r.id as string);
+    const [map, heldMap] = await Promise.all([
+      hydrateAgentSessionsForIssues(projectId, ids),
+      hydrateHeldForIssues(ids),
+    ]);
     return c.json(
       withBuckets(
         listResponse(
@@ -393,6 +399,7 @@ searchRoutes.get(
               ...r,
               agentSessions: bucket?.agentSessions ?? [],
               agentStatus: bucket?.agentStatus ?? null,
+              held: heldMap.get(r.id as string),
             };
           }),
           total,

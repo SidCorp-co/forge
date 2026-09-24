@@ -18,7 +18,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { TERMINAL_JOB_STATUSES } from '../jobs/status-sets.js';
+import { TERMINAL_JOB_STATUSES, UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import {
   canonicalIssueKey,
   issueRefPrefixOf,
@@ -35,6 +35,11 @@ const terminalSessionList = sql.join(
 
 const terminalJobList = sql.join(
   TERMINAL_JOB_STATUSES.map((s) => sql`${s}`),
+  sql`, `,
+);
+
+const unheldLiveJobList = sql.join(
+  UNHELD_LIVE_JOB_STATUSES.map((s) => sql`${s}`),
   sql`, `,
 );
 
@@ -71,6 +76,30 @@ export function issueWorkInFlightSql(args: {
       SELECT 1 FROM pipeline_runs wr
        WHERE wr.issue_id = ${args.issueId}
          AND wr.status IN (${livePipelineRunList})
+    )
+    OR ${issueLeaseHeldSql(args.projectId, args.issueKey)}
+  )`;
+}
+
+/**
+ * Whether a box is moving the issue now (ISS-1213), narrower than {@link issueWorkInFlightSql}: a
+ * `held` job waits on a person and a `paused` run on a resume, so neither puts a box on it.
+ */
+export function issueWorkMovingSql(args: {
+  issueId: SQL | string;
+  projectId: SQL | string;
+  issueKey: SQL | string;
+}): SQL {
+  return sql`(
+    EXISTS (
+      SELECT 1 FROM jobs mj
+       WHERE mj.issue_id = ${args.issueId}
+         AND mj.status IN (${unheldLiveJobList})
+    )
+    OR EXISTS (
+      SELECT 1 FROM pipeline_runs mr
+       WHERE mr.issue_id = ${args.issueId}
+         AND mr.status = 'running'
     )
     OR ${issueLeaseHeldSql(args.projectId, args.issueKey)}
   )`;

@@ -241,6 +241,17 @@ function commonestReason(by: ReasonCount[]): ReasonCount | undefined {
 	}, undefined);
 }
 
+/**
+ * The commonest reason with its share of the count. Bare, a reason standing for
+ * 141 of 149 reads as the reason for all of them (ISS-1192).
+ */
+export function gateReasonLine(by: ReasonCount[], count: number): string | null {
+	const top = commonestReason(by);
+	if (top === undefined) return null;
+	if (top.count === count) return `every one of them: ${top.reason}`;
+	return `${top.count} of ${count}: ${top.reason}`;
+}
+
 /** The banner, or `null` for a box whose gate is deciding. */
 export function deviceGateBanner(
 	gate: DeviceGate | null,
@@ -248,15 +259,11 @@ export function deviceGateBanner(
 ): DeviceGateBanner | null {
 	if (gate?.verdict !== "failing_open") return null;
 	const age = now - Date.parse(gate.receivedAt);
-	const commonest = commonestReason(gate.byReason);
 	return {
 		count: gate.count,
 		rate: gate.perDay === null ? "at an unstated rate" : `${Math.round(gate.perDay)}/day`,
 		window: asSpan(gate.windowMs),
-		reason:
-			commonest?.count === gate.count
-				? `every one of them: ${commonest.reason}`
-				: (commonest?.reason ?? null),
+		reason: gateReasonLine(gate.byReason, gate.count),
 		stale:
 			Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS
 				? null

@@ -2,6 +2,7 @@ import { and, asc, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
+import { memoryOfLiveIssue } from '../issues/archive.js';
 
 /**
  * Direct (non-semantic) memory query. Used by REST `GET /api/memory` and
@@ -22,6 +23,7 @@ export const getMemoryInputSchema = z.object({
    * lookup: `{ run_id: "<uuid>", step: "plan", attempt: 1 }`.
    */
   metadataFilter: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  /** Also answers rows decay archived and the rows of archived issues (ISS-1237). */
   includeArchived: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
@@ -52,7 +54,9 @@ export interface GetMemoryResult {
 
 export async function runMemoryGet(input: GetMemoryInput): Promise<GetMemoryResult> {
   const conditions: SQL[] = [eq(memories.projectId, input.projectId)];
-  if (!input.includeArchived) conditions.push(isNull(memories.archivedAt));
+  if (!input.includeArchived) {
+    conditions.push(isNull(memories.archivedAt), memoryOfLiveIssue(input.projectId));
+  }
   if (input.source) conditions.push(eq(memories.source, input.source));
   if (input.sourceRef) conditions.push(eq(memories.sourceRef, input.sourceRef));
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {

@@ -11,6 +11,20 @@ import type {
   ThroughputRow,
 } from "./types";
 
+/**
+ * Refuses a page whose rows do not say whether a box is on them (ISS-1213): read as absent, every
+ * such row would sit under Stalled, which is a guess. A core older than this web build is the cause.
+ */
+export function requireHeld<P extends { items: PipelineIssueRow[] }>(page: P): P {
+  const missing = page.items.filter((i) => typeof i.held !== "boolean").map((i) => i.displayId);
+  if (missing.length > 0) {
+    throw new Error(
+      `The issue search did not say whether anything is working ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ` and ${missing.length - 3} more` : ""}, so the board cannot tell Running from Stalled. The server is older than this page; it needs the release that serves \`held\` (ISS-1213).`,
+    );
+  }
+  return page;
+}
+
 /** Issues fetched for the kanban (one page is enough for a board view). */
 export const PIPELINE_ISSUES_PAGE_SIZE = 200;
 
@@ -66,6 +80,8 @@ export const pipelineApi = {
       sort: "updatedAt:desc",
     });
     for (const s of BOARD_EXCLUDED_STATUSES) params.append("statusNot", s);
-    return apiClientList<PipelineIssueRow>(`/projects/${projectId}/issues/search?${params}`);
+    return apiClientList<PipelineIssueRow>(`/projects/${projectId}/issues/search?${params}`).then(
+      requireHeld,
+    );
   },
 };
