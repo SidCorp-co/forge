@@ -293,11 +293,22 @@ describe('refuses on every action', () => {
   });
 
   it('a runId that is not a release-batch run of this project, as not found', async () => {
+    const other = (await createTestProject(harness.db, ownerId)).id;
+    const foreign = '66666666-6666-4666-8666-666666666666';
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, metadata)
+      VALUES (${foreign}, ${other}, 'system', 'running', '{"source":"release-batch"}'::jsonb)
+    `);
     const unknown = '55555555-5555-4555-8555-555555555555';
-    for (const args of actions) {
-      const answer = await call(workspaceToken, { ...args, runId: unknown });
-      expect(answer.isError, args.action).toBe(true);
-      expect(answer.text, args.action).toMatch(/release batch not found in this project/);
+    for (const runId of [unknown, foreign]) {
+      for (const args of actions) {
+        const answer = await call(workspaceToken, { ...args, runId });
+        expect(answer.isError, `${args.action} ${runId}`).toBe(true);
+        expect(answer.text, `${args.action} ${runId}`).toMatch(
+          /release batch not found in this project/,
+        );
+      }
     }
+    expect(await fx.runStatus(foreign)).toBe('running');
   });
 });

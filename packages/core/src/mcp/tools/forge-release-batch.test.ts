@@ -83,12 +83,19 @@ describe('forge_release_batch refusals', () => {
   });
 
   it('refuses a read-only token on every action before the service is reached', async () => {
-    for (const action of ['get', 'state', 'finish', 'abort']) {
-      await expect(tool(['read']).handler({ action, runId: RUN_ID })).rejects.toThrow(
+    for (const args of [
+      { action: 'get' },
+      { action: 'state' },
+      { action: 'method', skill: 'release-flow', loaded: true },
+      { action: 'finish' },
+      { action: 'abort' },
+    ]) {
+      await expect(tool(['read']).handler({ ...args, runId: RUN_ID })).rejects.toThrow(
         /^RELEASE_CREDENTIAL_CANNOT_RECORD: /,
       );
     }
     expect(finishReleaseBatch).not.toHaveBeenCalled();
+    expect(announceMethod).not.toHaveBeenCalled();
   });
 
   it('refuses an argument the tool does not take, rather than ignoring it', async () => {
