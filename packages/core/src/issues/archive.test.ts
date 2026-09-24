@@ -6,6 +6,7 @@ import {
   issueArchiveRequestSchema,
   issueArchiveSide,
   memoryOfLiveIssueAs,
+  withDeadlockRetry,
 } from './archive.js';
 
 const PROJECT = '22222222-2222-4222-8222-222222222222';
@@ -68,5 +69,43 @@ describe('the refusal a write naming an archived issue gets', () => {
     expect(sentence).toContain('ISS-45 is archived');
     expect(sentence).toContain(`POST /api/projects/${PROJECT}/issues/unarchive`);
     expect(sentence).toContain('{"filter":{"keys":["ISS-45"]}}');
+  });
+});
+
+describe('an archive aborted by a deadlock', () => {
+  const deadlock = () => Object.assign(new Error('deadlock detected'), { code: '40P01' });
+
+  it('runs again, and answers what the retry answered', async () => {
+    let calls = 0;
+    const answer = await withDeadlockRetry(async () => {
+      calls += 1;
+      if (calls === 1) throw deadlock();
+      return 'done';
+    });
+    expect({ answer, calls }).toEqual({ answer: 'done', calls: 2 });
+  });
+
+  it('reads the code off a wrapped error too, and gives up after the third deadlock', async () => {
+    let calls = 0;
+    const wrapped = () => Object.assign(new Error('query failed'), { cause: deadlock() });
+    await expect(
+      withDeadlockRetry(async () => {
+        calls += 1;
+        throw wrapped();
+      }),
+    ).rejects.toThrow('query failed');
+    expect(calls).toBe(3);
+  });
+
+  it('never retries anything that is not a deadlock', async () => {
+    let calls = 0;
+    const refusal = Object.assign(new Error('unique'), { code: '23505' });
+    await expect(
+      withDeadlockRetry(async () => {
+        calls += 1;
+        throw refusal;
+      }),
+    ).rejects.toBe(refusal);
+    expect(calls).toBe(1);
   });
 });

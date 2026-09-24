@@ -557,6 +557,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             documentId: full.documentId,
             issueId: full.issueId,
             ...mergeMarkFields(issue),
+            archivedAt: issue.archivedAt,
           };
           for (const field of input.fields) {
             projected[field] = full[field] ?? null;

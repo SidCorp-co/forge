@@ -420,8 +420,10 @@ describe('an archived issue still answers by key, and refuses becoming load-bear
     const byDisplay = await api(`/api/projects/${projectId}/issues/by-display/ISS-1`);
     const byId = await api(`/api/issues/${id.old}`);
     for (const body of [byDisplay.body, byId.body]) expect(body.archivedAt).not.toBeNull();
-    const got = await mcp(adminPat, { action: 'get', documentId: id.old });
-    expect(got.value?.archivedAt).not.toBeNull();
+    for (const fields of [undefined, ['plan']]) {
+      const got = await mcp(adminPat, { action: 'get', documentId: id.old, fields });
+      expect(got.value?.archivedAt).toEqual(expect.any(String));
+    }
   });
 
   it('refuses a transition with ISSUE_ARCHIVED naming the unarchive route, and the status stays', async () => {

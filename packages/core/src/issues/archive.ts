@@ -307,40 +307,64 @@ export async function runIssueArchive(input: {
   }
   const keyOf = await issueRefFormatter(projectId);
 
-  return db.transaction(async (tx) => {
-    const rows: Row[] = await tx
-      .select({
-        id: issues.id,
-        issSeq: issues.issSeq,
-        status: issues.status,
-        archivedAt: issues.archivedAt,
-      })
-      .from(issues)
-      .where(matchedWhere(projectId, filter, [...keySeqs.keys()], [...excludeSeqs.keys()]))
-      .orderBy(issues.issSeq)
-      .for('update');
+  return withDeadlockRetry(() =>
+    db.transaction(async (tx) => {
+      const rows: Row[] = await tx
+        .select({
+          id: issues.id,
+          issSeq: issues.issSeq,
+          status: issues.status,
+          archivedAt: issues.archivedAt,
+        })
+        .from(issues)
+        .where(matchedWhere(projectId, filter, [...keySeqs.keys()], [...excludeSeqs.keys()]))
+        .orderBy(issues.issSeq)
+        .for('update');
 
-    if (direction === 'archive' && rows.length > 0) {
-      refusals.push(...refuseForArchive(rows, keyOf));
-      refusals.push(...(await loadBearingEdges(tx, projectId, rows, keyOf)));
+      if (direction === 'archive' && rows.length > 0) {
+        refusals.push(...refuseForArchive(rows, keyOf));
+        refusals.push(...(await loadBearingEdges(tx, projectId, rows, keyOf)));
+      }
+
+      const matchedSeqs = new Set(rows.map((r) => r.issSeq));
+      const toMove = rows.filter((r) => (direction === 'archive') === (r.archivedAt === null));
+      const report: IssueArchiveReport = {
+        direction,
+        dryRun,
+        matched: rows.map((r) => keyOf(r.issSeq)),
+        unmatchedKeys: [...keySeqs.keys()].filter((s) => !matchedSeqs.has(s)).map(keyOf),
+        changed: toMove.map((r) => keyOf(r.issSeq)),
+        unchanged: rows.filter((r) => !toMove.includes(r)).map((r) => keyOf(r.issSeq)),
+        refusals,
+      };
+      if (dryRun) return report;
+      if (refusals.length > 0) throw new IssueArchiveRefusedError(report);
+      await writeSide(tx, { direction, projectId, filter, actor }, toMove);
+      return report;
+    }),
+  );
+}
+
+const DEADLOCK_ATTEMPTS = 3;
+
+function isDeadlock(err: unknown): boolean {
+  const code = (e: unknown) => (e && typeof e === 'object' ? (e as { code?: unknown }).code : null);
+  return code(err) === '40P01' || code((err as { cause?: unknown } | null)?.cause) === '40P01';
+}
+
+/**
+ * Two archives of issues one edge joins each hold their own rows and wait on the other's, and
+ * Postgres aborts one. The aborted one wrote nothing, so it runs again, now behind the winner.
+ * Anything else, and a third deadlock, is thrown as it came.
+ */
+export async function withDeadlockRetry<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      if (!isDeadlock(err) || attempt >= DEADLOCK_ATTEMPTS) throw err;
     }
-
-    const matchedSeqs = new Set(rows.map((r) => r.issSeq));
-    const toMove = rows.filter((r) => (direction === 'archive') === (r.archivedAt === null));
-    const report: IssueArchiveReport = {
-      direction,
-      dryRun,
-      matched: rows.map((r) => keyOf(r.issSeq)),
-      unmatchedKeys: [...keySeqs.keys()].filter((s) => !matchedSeqs.has(s)).map(keyOf),
-      changed: toMove.map((r) => keyOf(r.issSeq)),
-      unchanged: rows.filter((r) => !toMove.includes(r)).map((r) => keyOf(r.issSeq)),
-      refusals,
-    };
-    if (dryRun) return report;
-    if (refusals.length > 0) throw new IssueArchiveRefusedError(report);
-    await writeSide(tx, { direction, projectId, filter, actor }, toMove);
-    return report;
-  });
+  }
 }
 
 /** The refusal an edge write or a transition gets when it names an archived issue. */
