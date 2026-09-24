@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The archived-issue guard reads the row itself; these tests script every select, so it answers none.
+vi.mock('./archive.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./archive.js')>()),
+  archivedAmong: vi.fn(async () => []),
+  archiveRefusalForTransition: vi.fn(async () => null),
+}));
+
 vi.mock('../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',

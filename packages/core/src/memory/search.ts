@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemoryModel, type MemorySource, memories } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
+import { memoryOfLiveIssue, memoryOfLiveIssueAs } from '../issues/archive.js';
 
 interface BaseSearchInput {
   projectId: string;
@@ -74,6 +75,7 @@ function baseWhereClauses(input: BaseSearchInput) {
     eq(memories.projectId, input.projectId),
     // Archived rows are soft-deleted by decay/consolidation.
     isNull(memories.archivedAt),
+    memoryOfLiveIssue(input.projectId),
   ];
   if (input.sourceFilter && input.sourceFilter.length > 0) {
     whereClauses.push(inArray(memories.source, input.sourceFilter));
@@ -187,7 +189,7 @@ type ChunkedRow = {
 };
 
 function literalFilters(input: BaseSearchInput) {
-  const parts = [];
+  const parts = [sql`AND ${memoryOfLiveIssueAs('m', input.projectId)}`];
   if (input.sourceFilter && input.sourceFilter.length > 0) {
     parts.push(
       sql`AND m.source IN (${sql.join(
@@ -199,7 +201,7 @@ function literalFilters(input: BaseSearchInput) {
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
     parts.push(sql`AND m.metadata @> ${JSON.stringify(input.metadataFilter)}::jsonb`);
   }
-  return parts.length ? sql.join(parts, sql` `) : sql``;
+  return sql.join(parts, sql` `);
 }
 
 async function chunkedSearch(
