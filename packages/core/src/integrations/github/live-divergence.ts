@@ -24,8 +24,8 @@ export type LiveDivergence =
     }
   | { ok: false; reason: string };
 
-interface RefRead {
-  object?: { sha?: string };
+interface BranchRead {
+  commit?: { sha?: string };
 }
 
 interface CompareRead {
@@ -34,14 +34,11 @@ interface CompareRead {
   commits?: Array<{ sha?: string; commit?: { message?: string } }>;
 }
 
-function refPath(client: GitHubRepoClient, branch: string): string {
-  const segments = branch.split('/').map(encodeURIComponent).join('/');
-  return `/repos/${client.fullName}/git/ref/heads/${segments}`;
-}
-
 async function headOf(client: GitHubRepoClient, branch: string): Promise<string> {
-  const ref = await client.get<RefRead>(refPath(client, branch));
-  const sha = ref.object?.sha;
+  const read = await client.get<BranchRead>(
+    `/repos/${client.fullName}/branches/${encodeURIComponent(branch)}`,
+  );
+  const sha = read.commit?.sha;
   if (!sha) throw new GitHubReadError(200, `${client.fullName} answered no commit for ${branch}`);
   return sha;
 }
@@ -65,7 +62,7 @@ export async function readLiveDivergence(
     let aheadBy = 0;
     for (let page = 1; page <= COMPARE_MAX_PAGES; page += 1) {
       const cmp = await client.get<CompareRead>(
-        `/repos/${client.fullName}/compare/${liveSha}...${baseSha}?per_page=${COMPARE_PAGE_SIZE}&page=${page}`,
+        `/repos/${client.fullName}/compare/${encodeURIComponent(liveSha)}...${encodeURIComponent(baseSha)}?per_page=${COMPARE_PAGE_SIZE}&page=${page}`,
       );
       aheadBy = typeof cmp.ahead_by === 'number' ? cmp.ahead_by : (cmp.total_commits ?? 0);
       const got = cmp.commits ?? [];

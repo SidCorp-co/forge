@@ -53,8 +53,8 @@ vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
         repo: 'sid-desk',
         fullName: 'SidCorp-co/sid-desk',
         get: async (path: string) => {
-          if (path.endsWith('/heads/staging')) return { object: { sha: STAGING } };
-          if (path.endsWith('/heads/master')) return { object: { sha: MASTER } };
+          if (path.endsWith('/branches/staging')) return { commit: { sha: STAGING } };
+          if (path.endsWith('/branches/master')) return { commit: { sha: MASTER } };
           compares += 1;
           return { ahead_by: waiting.length, commits: waiting };
         },

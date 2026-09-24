@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import {
@@ -7,9 +7,8 @@ import {
   githubRepoClient,
 } from '../integrations/github/client.js';
 import { readLiveDivergence } from '../integrations/github/live-divergence.js';
-import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { logger } from '../logger.js';
-import { issueRefPattern, type LiveReach, type LiveReading, liveReachOf } from './live-reach.js';
+import type { LiveReading } from './live-reach.js';
 import { readableLiveBranch } from './release-model.js';
 
 /** How long one reading answers for a project before the next read takes another. */
@@ -163,7 +162,7 @@ export async function liveReadingForRow(
   return waitAtMost(start(promote, deps), fallback);
 }
 
-const releaseColumns = {
+export const releaseColumns = {
   id: projects.id,
   releaseModel: projects.releaseModel,
   releaseStrategy: projects.releaseStrategy,
@@ -174,27 +173,4 @@ const releaseColumns = {
 export async function projectReleaseRows(projectIds: string[]): Promise<ProjectReleaseRow[]> {
   if (projectIds.length === 0) return [];
   return db.select(releaseColumns).from(projects).where(inArray(projects.id, projectIds));
-}
-
-/** One merged issue's place against its project's live branch; `null` where there is none to give. */
-export async function liveReachForIssue(
-  issue: {
-    projectId: string;
-    issSeq: number;
-    mergedAt: Date | string | null;
-    mergedCommitSha: string | null;
-  },
-  deps: LiveReadingDeps = defaultDeps,
-): Promise<LiveReach | null> {
-  if (issue.mergedAt == null) return null;
-  const [row] = await db
-    .select(releaseColumns)
-    .from(projects)
-    .where(eq(projects.id, issue.projectId))
-    .limit(1);
-  if (!row) return null;
-  const reading = await liveReadingForRow(row, deps);
-  if (!reading) return null;
-  const prefixes = await heldIssuePrefixes(issue.projectId);
-  return liveReachOf(issue, reading, issueRefPattern(prefixes));
 }

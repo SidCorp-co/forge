@@ -30,8 +30,8 @@ function fakeClient(delayMs = 0): GitHubRepoClient {
     fullName: 'o/r',
     get: (async (path: string) => {
       if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
-      if (path.includes('/heads/'))
-        return { object: { sha: path.endsWith('staging') ? 'b1' : 'l1' } };
+      if (path.includes('/branches/'))
+        return { commit: { sha: path.endsWith('staging') ? 'b1' : 'l1' } };
       compares += 1;
       return { ahead_by: 0, commits: [] };
     }) as GitHubRepoClient['get'],

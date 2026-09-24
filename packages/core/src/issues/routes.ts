@@ -24,7 +24,6 @@ import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
-import { liveReachForIssue } from '../projects/live-reading.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
@@ -46,6 +45,7 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
+import { liveReachForIssue } from './live-reach-read.js';
 import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';

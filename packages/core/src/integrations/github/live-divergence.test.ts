@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { formatIssueRef } from '../../lib/issue-ref.js';
 import { GitHubReadError, type GitHubRepoClient } from './client.js';
 import { COMPARE_MAX_PAGES, COMPARE_PAGE_SIZE, readLiveDivergence } from './live-divergence.js';
 
@@ -22,13 +23,13 @@ function client(get: (path: string) => unknown): GitHubRepoClient {
 function commits(from: number, n: number) {
   return Array.from({ length: n }, (_, i) => ({
     sha: `c${String(from + i).padStart(39, '0')}`,
-    commit: { message: `feat: change ${from + i} (ISS-${from + i})` },
+    commit: { message: `feat: change ${from + i} (${formatIssueRef(null, from + i)})` },
   }));
 }
 
 function heads(path: string): unknown {
-  if (path.endsWith('/git/ref/heads/staging')) return { object: { sha: BASE } };
-  if (path.endsWith('/git/ref/heads/master')) return { object: { sha: LIVE } };
+  if (path.endsWith('/branches/staging')) return { commit: { sha: BASE } };
+  if (path.endsWith('/branches/master')) return { commit: { sha: LIVE } };
   return undefined;
 }
 
@@ -86,18 +87,18 @@ describe('readLiveDivergence', () => {
 
   it('answers a refusal carrying GitHub status when a branch cannot be read', async () => {
     const c = client((path) => {
-      if (path.endsWith('/heads/master')) {
+      if (path.endsWith('/branches/master')) {
         throw new GitHubReadError(404, `GET ${path} on SidCorp-co/sid-desk returned HTTP 404`);
       }
       return heads(path);
     });
     const d = await readLiveDivergence(c, refs);
     expect(d.ok).toBe(false);
-    expect(!d.ok && d.reason).toMatch(/heads\/master on SidCorp-co\/sid-desk returned HTTP 404/);
+    expect(!d.ok && d.reason).toMatch(/branches\/master on SidCorp-co\/sid-desk returned HTTP 404/);
   });
 
   it('refuses rather than comparing against an empty head', async () => {
-    const c = client((path) => (path.includes('/heads/') ? { object: {} } : { ahead_by: 0 }));
+    const c = client((path) => (path.includes('/branches/') ? { commit: {} } : { ahead_by: 0 }));
     const d = await readLiveDivergence(c, refs);
     expect(d).toEqual({
       ok: false,
@@ -105,13 +106,13 @@ describe('readLiveDivergence', () => {
     });
   });
 
-  it('encodes each segment of a branch name that holds a slash', async () => {
+  it('sends a branch name holding a slash as one encoded segment', async () => {
     const seen: string[] = [];
     const c = client((path) => {
       seen.push(path);
-      return path.includes('/heads/') ? { object: { sha: BASE } } : { ahead_by: 0, commits: [] };
+      return path.includes('/branches/') ? { commit: { sha: BASE } } : { ahead_by: 0, commits: [] };
     });
     await readLiveDivergence(c, { baseRef: 'release/next', liveRef: 'prod' });
-    expect(seen).toContain('/repos/SidCorp-co/sid-desk/git/ref/heads/release/next');
+    expect(seen).toContain('/repos/SidCorp-co/sid-desk/branches/release%2Fnext');
   });
 });
