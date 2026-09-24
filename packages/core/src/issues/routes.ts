@@ -24,6 +24,7 @@ import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { liveReachForIssue } from '../projects/live-reading.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
@@ -285,6 +286,7 @@ issueProjectRoutes.get(
       ...serialized,
       ...creatorMap.get(issue.id),
       pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },
+      liveReach: await liveReachForIssue(issue),
       labels: labelRows,
       comments: [],
       activity: [],
@@ -425,6 +427,7 @@ issueRoutes.get(
       agentSessions: agentBucket?.agentSessions ?? [],
       agentStatus: agentBucket?.agentStatus ?? null,
       pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },
+      liveReach: await liveReachForIssue(issue),
       labels: labelRows,
       comments: [],
       activity: [],

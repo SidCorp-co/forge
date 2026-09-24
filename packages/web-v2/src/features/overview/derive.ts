@@ -4,6 +4,7 @@ import {
   PULSE_BUCKET_LABELS,
   PULSE_BUCKET_STATUSES,
   type PulseIssueIdentity,
+  type PulseNotOnLiveIdentity,
   type PulseProjectIdentity,
   type PulseQuality,
   type PulseResponse,
@@ -87,6 +88,8 @@ export type ActionKey =
   | "stuckRuns"
   | "abandonedIssues"
   | "releaseWaiting"
+  | "notOnLive"
+  | "liveUnmeasured"
   | "neverRanProjects"
   | "silentProjects";
 
@@ -99,6 +102,8 @@ export const ACTION_ORDER: ActionKey[] = [
   "stuckRuns",
   "abandonedIssues",
   "releaseWaiting",
+  "notOnLive",
+  "liveUnmeasured",
   "neverRanProjects",
   "silentProjects",
 ];
@@ -118,6 +123,16 @@ const ACTION_META: Record<ActionKey, { label: string; owner: ActionOwner; hint: 
     label: "Waiting to be released",
     owner: "person",
     hint: "Merged and waiting on a release nobody has run.",
+  },
+  notOnLive: {
+    label: "Closed, not on production",
+    owner: "person",
+    hint: "Closed on a promotion that has not happened: a commit of each is on the base branch and not the live one.",
+  },
+  liveUnmeasured: {
+    label: "Promote projects Forge cannot compare",
+    owner: "person",
+    hint: "Forge could not read the base branch against the live one, so a closed issue here may not be live.",
   },
   neverRanProjects: {
     label: "Projects holding a backlog with no pipeline",
@@ -159,6 +174,14 @@ const issueRecord = (i: PulseIssueIdentity): ActionRecord => ({
   ageSeconds: i.ageSeconds,
 });
 
+const notOnLiveRecord = (i: PulseNotOnLiveIdentity): ActionRecord => {
+  const first = i.evidence[0];
+  return {
+    ...issueRecord(i),
+    detail: first ? `${i.title} · ${first.sha.slice(0, 8)} not on ${i.liveBranch}` : i.title,
+  };
+};
+
 const projectRecord = (p: PulseProjectIdentity, now: number): ActionRecord => ({
   key: p.id,
   label: p.name,
@@ -194,6 +217,20 @@ export function actionQueue(pulse: PulseResponse, nowMs: number): ActionRow[] {
     releaseWaiting: {
       count: work.releaseWaiting.total,
       records: work.releaseWaiting.shown.map(issueRecord),
+    },
+    notOnLive: {
+      count: work.notOnLive.total,
+      records: work.notOnLive.shown.map(notOnLiveRecord),
+    },
+    liveUnmeasured: {
+      count: work.liveUnmeasured.total,
+      records: work.liveUnmeasured.shown.map((p) => ({
+        key: p.id,
+        label: p.name,
+        detail: p.reason,
+        href: `/projects/${p.slug}`,
+        ageSeconds: 0,
+      })),
     },
     neverRanProjects: {
       count: work.neverRanProjects.total,

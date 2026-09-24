@@ -92,6 +92,8 @@ export interface IssueRow {
   mergedCommitSha?: string | null;
   /** ISS-1126 — which kind of record `mergedAt` is. Derived by core, never here. */
   mergeMark?: "unmarked" | "asserted" | "observed";
+  /** ISS-1217 — whether the merged work is on the live branch. Core's reading; null where none. */
+  liveReach?: LiveReach | null;
   createdAt: string;
   updatedAt: string;
   agentSessions?: IssueAgentSession[];
@@ -424,3 +426,28 @@ export type CommentKind =
   | "comment";
 
 export type { StageKey, StatusKey };
+
+export interface LiveReachEvidence {
+  sha: string;
+  subject: string;
+  via: "merged_commit" | "names_issue";
+}
+
+interface LiveReachMeasured {
+  baseBranch: string;
+  liveBranch: string;
+  measuredAt: string;
+  baseSha: string;
+  liveSha: string;
+}
+
+export type LiveReach =
+  | (LiveReachMeasured & { state: "not_on_live"; evidence: LiveReachEvidence[] })
+  | (LiveReachMeasured & { state: "none_waiting" })
+  | {
+      state: "unmeasured";
+      baseBranch: string | null;
+      liveBranch: string;
+      measuredAt: string | null;
+      reason: string;
+    };
