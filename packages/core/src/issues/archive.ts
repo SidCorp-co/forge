@@ -124,7 +124,7 @@ export type IssueArchiveReport = {
   matched: string[];
   /** Keys named in `keys` that the other fields of the filter left out. */
   unmatchedKeys: string[];
-  /** The rows this call changed, or on a dry run the rows it would change. */
+  /** The rows this call changed, or on a dry run the rows it would change: empty on any refusal. */
   changed: string[];
   /** Matched rows already on the side this call moves them to. */
   unchanged: string[];
@@ -351,7 +351,7 @@ export async function runIssueArchive(input: {
         dryRun,
         matched: rows.map((r) => keyOf(r.issSeq)),
         unmatchedKeys: [...keySeqs.keys()].filter((s) => !matchedSeqs.has(s)).map(keyOf),
-        changed: toMove.map((r) => keyOf(r.issSeq)),
+        changed: refusals.length > 0 ? [] : toMove.map((r) => keyOf(r.issSeq)),
         unchanged: rows.filter((r) => !toMove.includes(r)).map((r) => keyOf(r.issSeq)),
         refusals,
       };
