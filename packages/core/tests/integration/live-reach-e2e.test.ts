@@ -1,10 +1,15 @@
 /**
  * ISS-1217 — the sid-desk reproduction against real rows: eight closed issues whose commits sit
- * on `staging` and not on `master` at `52c66950`. GitHub is stubbed at the repository client, the
- * one door every reading takes; the projects, issues, prefixes and membership are Postgres.
+ * on `staging` and not on `master` at `52c66950`. A GitHub-bound project is stubbed at the
+ * repository client; a GitLab-hosted one is read by real git from a local repository, with only
+ * the ssh hop replaced. The projects, keys, issues, prefixes and membership are Postgres.
  */
 
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,6 +39,32 @@ const waiting = [
   })),
   { sha: OBSERVED, commit: { message: 'a squash whose message names no issue' } },
 ];
+
+process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
+const GITLAB = 'git@gitlab.com:thanhnguyen21/sid-desk.git';
+const DEPLOY_KEY = '-----BEGIN OPENSSH PRIVATE KEY-----\nsid-desk deploy key\n';
+const gitReads: Array<{ repoUrl: string; privateKey: string }> = [];
+let gitRemote = '';
+
+vi.mock('../../src/git/remote-divergence.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/git/remote-divergence.js')>();
+  return {
+    ...real,
+    readRemoteDivergence: async (
+      source: { repoUrl: string; privateKey: string },
+      refs: { baseRef: string; liveRef: string },
+    ) => {
+      gitReads.push(source);
+      const dir = mkdtempSync(join(tmpdir(), 'forge-live-reach-e2e-'));
+      try {
+        const env = { ...process.env, GIT_ALLOW_PROTOCOL: 'file' };
+        return await real.fetchDivergence(`file://${gitRemote}`, env, refs, dir);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  };
+});
 
 const unbound = new Set<string>();
 let compares = 0;
@@ -70,8 +101,59 @@ vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
 let harness: TestDatabase;
 let app: Hono<{ Variables: RequestIdVars }>;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-let forgetAllLiveReadings: () => void;
 let applyProjectedEvent: typeof import('../../src/integrations/github/projection-events.js').applyProjectedEvent;
+let encryptSecret: typeof import('../../src/integrations/vault.js').encryptSecret;
+let fixtureRoot = '';
+/** The commit on the fixture's staging whose message names no issue: ISS-442's observed merge. */
+let gitObserved = '';
+
+/** sid-desk's shape as a real repository: seven commits naming their keys and one naming none. */
+function buildSidDeskRepository(): void {
+  fixtureRoot = mkdtempSync(join(tmpdir(), 'forge-sid-desk-'));
+  const env = {
+    ...process.env,
+    GIT_AUTHOR_NAME: 't',
+    GIT_AUTHOR_EMAIL: 't@example.com',
+    GIT_COMMITTER_NAME: 't',
+    GIT_COMMITTER_EMAIL: 't@example.com',
+  };
+  const git = (...args: string[]) =>
+    execFileSync('git', args, { cwd: gitRemote, env }).toString().trim();
+  gitRemote = join(fixtureRoot, 'sid-desk');
+  execFileSync('git', ['init', '--quiet', '--initial-branch=master', gitRemote], { env });
+  git('config', 'uploadpack.allowFilter', 'true');
+  git(
+    'commit',
+    '--quiet',
+    '--allow-empty',
+    '-m',
+    'docs(changelog): batch release a74eb6aa (ISS-400)',
+  );
+  const tree = git('rev-parse', 'HEAD^{tree}');
+  let head = git('rev-parse', 'HEAD');
+  for (const c of waiting) {
+    head = git('commit-tree', tree, '-p', head, '-m', c.commit.message);
+  }
+  gitObserved = head;
+  git('update-ref', 'refs/heads/staging', head);
+}
+
+async function gitlabDesk(userId: string, withKey = true) {
+  const p = await project(userId, 'promote');
+  unbound.add(p.id);
+  await harness.db.execute(sql`UPDATE projects SET repo_url = ${GITLAB} WHERE id = ${p.id}`);
+  if (!withKey) return p;
+  const keyId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO workspace_ssh_keys (id, org_id, name, source, public_key, private_key_enc)
+    VALUES (${keyId}, ${p.orgId}, 'Forge x Gitlab', 'forge_generated',
+            'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 forge-x-gitlab', ${encryptSecret(DEPLOY_KEY)})
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO project_git_credentials (project_id, ssh_key_id) VALUES (${p.id}, ${keyId})
+  `);
+  return p;
+}
 
 async function project(userId: string, release: 'promote' | 'publish') {
   const p = await createTestProject(harness.db, userId);
@@ -136,8 +218,9 @@ beforeAll(async () => {
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
-  ({ forgetAllLiveReadings } = await import('../../src/projects/live-reading.js'));
   ({ applyProjectedEvent } = await import('../../src/integrations/github/projection-events.js'));
+  ({ encryptSecret } = await import('../../src/integrations/vault.js'));
+  buildSidDeskRepository();
 
   app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', requestId());
@@ -149,12 +232,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (harness) await harness.cleanup();
+  if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
 beforeEach(async () => {
   await truncateAll(harness.db);
-  forgetAllLiveReadings();
   unbound.clear();
+  gitReads.length = 0;
   compares = 0;
   aheadOverride = null;
 });
@@ -238,24 +322,19 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
 
   it('names a promote project Forge cannot compare, and says why on its rows', async () => {
     const { user, token } = await signedIn();
-    const desk = await project(user.id, 'promote');
-    unbound.add(desk.id);
+    const desk = await gitlabDesk(user.id, false);
     const row = await issue({ projectId: desk.id, userId: user.id, seq: 419 });
+    const reason =
+      "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key under the project's Settings → Runners → Git access";
 
     const reach = (await get<{ liveReach: Reach }>(`/api/issues/${row}`, token)).liveReach;
-    expect(reach).toMatchObject({
-      state: 'unmeasured',
-      reason: 'this project has no active GitHub binding',
-    });
+    expect(reach).toMatchObject({ state: 'unmeasured', reason });
     const pulse = await get<PulseResponse>('/api/me/pulse', token);
     expect(pulse.work.liveUnmeasured.shown).toEqual([
-      expect.objectContaining({
-        id: desk.id,
-        liveBranch: 'master',
-        reason: 'this project has no active GitHub binding',
-      }),
+      expect.objectContaining({ id: desk.id, liveBranch: 'master', reason }),
     ]);
     expect(pulse.work.notOnLive.total).toBe(0);
+    expect(gitReads).toEqual([]);
   });
 
   it('compares again after a push delivery for the project, and not after a review delivery', async () => {
@@ -294,7 +373,16 @@ describe('a reading that cannot place every closed issue (ISS-1217)', () => {
     );
 
     aheadOverride = null;
-    forgetAllLiveReadings();
+    await applyProjectedEvent(
+      {
+        projectId: desk.id,
+        bindingId: randomUUID(),
+        config: { owner: 'SidCorp-co', repo: 'sid-desk' },
+        secrets: {},
+      },
+      'push',
+      { ref: 'refs/heads/staging' },
+    );
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
       VALUES (${randomUUID()}, ${desk.id}, 900, 'merged later', 'closed', ${user.id}, now() + interval '1 hour')
@@ -303,5 +391,45 @@ describe('a reading that cannot place every closed issue (ISS-1217)', () => {
     expect(pulse.work.liveUnmeasured.shown[0]?.reason).toMatch(
       /^1 closed issue merged after the reading/,
     );
+  });
+});
+
+describe('a GitLab-hosted promote project read through its deploy key (ISS-1217 reopen 1)', () => {
+  it('places the eight rows off master with no GitHub binding, and counts them in the pulse', async () => {
+    const { user, token } = await signedIn();
+    const desk = await gitlabDesk(user.id);
+    const ids = new Map<number, string>();
+    for (const n of NOT_LIVE) {
+      ids.set(
+        n,
+        await issue({
+          projectId: desk.id,
+          userId: user.id,
+          seq: n,
+          sha: n === 442 ? gitObserved : undefined,
+        }),
+      );
+    }
+    const shipped = await issue({ projectId: desk.id, userId: user.id, seq: 400 });
+
+    for (const n of NOT_LIVE) {
+      const byId = await get<{ liveReach: Reach }>(`/api/issues/${ids.get(n)}`, token);
+      expect(byId.liveReach?.state, `ISS-${n}`).toBe('not_on_live');
+    }
+    const observed = await get<{ liveReach: Reach }>(`/api/issues/${ids.get(442)}`, token);
+    expect(observed.liveReach?.evidence).toEqual([
+      expect.objectContaining({ sha: gitObserved, via: 'merged_commit' }),
+    ]);
+    expect(
+      (await get<{ liveReach: Reach }>(`/api/issues/${shipped}`, token)).liveReach,
+    ).toMatchObject({ state: 'none_waiting', baseBranch: 'staging', liveBranch: 'master' });
+
+    const pulse = await get<PulseResponse>('/api/me/pulse', token);
+    expect(pulse.work.notOnLive.total).toBe(8);
+    expect(pulse.work.liveUnmeasured.total).toBe(0);
+    expect(gitReads).toEqual([
+      expect.objectContaining({ repoUrl: GITLAB, privateKey: DEPLOY_KEY }),
+    ]);
+    expect(compares).toBe(0);
   });
 });

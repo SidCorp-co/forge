@@ -42,12 +42,14 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 # Runtime deps for the per-project git deploy-key flow
-# (packages/core/src/git/ssh-keys.ts shells out to these). Alpine's base image
-# has none of them:
+# (packages/core/src/git/ssh-keys.ts and git/remote-divergence.ts shell out to
+# these). Alpine's base image has none of them:
 #   openssh-keygen — `ssh-keygen` for generate/derive/fingerprint (without it
 #                    the git-credential endpoints fail with KEYPAIR_FAILED).
-#   openssh-client — `ssh`, used by git for SSH remotes in the connection test.
-#   git            — `git ls-remote` for the deploy-key connection test.
+#   openssh-client — `ssh`, used by git for SSH remotes with the deploy key.
+#   git            — `git ls-remote` for the deploy-key connection test, and a
+#                    commits-only fetch comparing a promote project's base
+#                    branch with its live branch where it has no GitHub binding.
 RUN apk add --no-cache openssh-keygen openssh-client git
 
 COPY --from=build /prod/core ./
