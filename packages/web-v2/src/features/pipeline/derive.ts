@@ -282,6 +282,18 @@ export function cardStatus(
   run: { status: PipelineRunStatus } | undefined,
   now: number = Date.now(),
 ): CardStatusView {
+  const label = rowLabel(issue);
+  // Nothing holds the row, so a run or a queued step the board kept for it is history, not what
+  // the card is now: a queued job would have made the row held.
+  if (label === "unheld") {
+    return {
+      status: LABEL_VIEW.unheld.status,
+      label: LABEL_VIEW.unheld.label,
+      domain: "issue",
+      waitingReason: "",
+      note: checkInLine(issue.lastCheckInAt, now),
+    };
+  }
   const queued = deriveQueuedStep(issue.pipelineHealth, hasLiveAgentSession(issue.agentStatus));
   if (queued) {
     return {
@@ -290,17 +302,6 @@ export function cardStatus(
       domain: "session",
       waitingReason: queued.gate?.detail ?? "",
       note: "",
-    };
-  }
-  const label = rowLabel(issue);
-  // Nothing holds the row, so any run the board kept for it is history, not what the card is now.
-  if (label === "unheld") {
-    return {
-      status: LABEL_VIEW.unheld.status,
-      label: LABEL_VIEW.unheld.label,
-      domain: "issue",
-      waitingReason: "",
-      note: checkInLine(issue.lastCheckInAt, now),
     };
   }
   if (run) {

@@ -183,6 +183,19 @@ describe("cardStatus", () => {
     expect(card.note).toBe("No check-in on record");
   });
 
+  // A queued job would have made the row held, so a queued step on an unheld row is history too.
+  it("reads No check-in with its time on an unheld row whose health still says queued", () => {
+    const at = new Date(2026, 8, 24, 18, 50, 58);
+    const row = issue({ held: false, lastCheckInAt: at.toISOString(), pipelineHealth: queuedHealth() });
+    const card = cardStatus(row, undefined, at.getTime() + 9 * 60_000);
+    expect([card.label, card.note]).toEqual(["No check-in", "Last check-in 18:50 · 9m ago"]);
+  });
+
+  it("reads No check-in on record on an unheld queued row core has no time for", () => {
+    const card = cardStatus(issue({ held: false, pipelineHealth: queuedHealth("runner_stale") }), undefined);
+    expect([card.label, card.note]).toEqual(["No check-in", "No check-in on record"]);
+  });
+
   it("gives a held card no check-in line, whatever time it carries", () => {
     const card = cardStatus(issue({ held: true, lastCheckInAt: new Date().toISOString() }), undefined);
     expect(card.note).toBe("");
