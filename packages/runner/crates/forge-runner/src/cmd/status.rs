@@ -2,6 +2,7 @@ use clap::Args as ClapArgs;
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
 use forge_runner_core::daemon::degraded::{Condition, Last, Verdict, RECENT_WITHIN_MS};
+use forge_runner_core::daemon::pool_reads;
 
 use super::Ctx;
 
@@ -42,6 +43,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     );
     print_gate(&cfg);
+    print_pool(&cfg);
     if cfg.bindings.is_empty() {
         println!("bindings   —");
     } else {
@@ -67,6 +69,67 @@ fn print_gate(cfg: &Config) {
     for line in gate_lines(&report.degraded, &report.undeclared) {
         println!("{line}");
     }
+}
+
+fn print_pool(cfg: &Config) {
+    let Some(dir) = forge_runner_core::daemon::control::config_dir() else {
+        return;
+    };
+    let now = forge_runner_core::daemon::agent_activity::now_ms();
+    for line in pool_lines(&pool_reads::report(&dir, now), cfg, now) {
+        println!("{line}");
+    }
+}
+
+/// The name an operator knows a project by where this box binds it, else its id.
+fn project_label(cfg: &Config, project_id: &str) -> String {
+    cfg.bindings
+        .iter()
+        .find(|(_, b)| b.project_id.as_deref() == Some(project_id))
+        .map(|(slug, _)| slug.clone())
+        .unwrap_or_else(|| project_id.to_string())
+}
+
+/// What `status` and `doctor` both print about this box's pool reads. An empty
+/// record says no failure is recorded and claims nothing more: a box that never
+/// read a pool has no failures either (ISS-1234).
+pub fn pool_lines(conditions: &[pool_reads::Condition], cfg: &Config, now: i64) -> Vec<String> {
+    if conditions.is_empty() {
+        return vec![format!(
+            "pool       no failed pool read recorded in the last {}",
+            span(pool_reads::WINDOW_MS)
+        )];
+    }
+    let mut out = vec!["pool".to_string()];
+    for c in conditions {
+        let who = project_label(cfg, &c.project_id);
+        let newest = format!(
+            "newest {} ago: {}",
+            span((now - c.last_failure.at).max(0)),
+            c.last_failure.what
+        );
+        let count = if c.count_is_floor {
+            format!("at least {}", c.failures)
+        } else {
+            c.failures.to_string()
+        };
+        out.push(match c.verdict {
+            pool_reads::Verdict::Blind => format!(
+                "  {who}  BLIND — cannot read the pool for {} ({} consecutive failed read(s), {count} in the last {}); {newest}",
+                span((now - c.unread_since.unwrap_or(c.last_failure.at)).max(0)),
+                c.consecutive,
+                span(c.window_ms)
+            ),
+            pool_reads::Verdict::Intermittent => format!(
+                "  {who}  intermittent — {count} failed read(s) in the last {}; {newest}; reading again for {}",
+                span(c.window_ms),
+                c.recovered_at
+                    .map(|r| span((now - r).max(0)))
+                    .unwrap_or_else(|| "an unrecorded time".into())
+            ),
+        });
+    }
+    out
 }
 
 /// The lines, separated from the printing so what is claimed can be asserted.
@@ -205,6 +268,111 @@ fn span(ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- ISS-1234: the pool lines ----
+
+    const NOW: i64 = 1_790_236_800_000;
+
+    fn cfg_binding(slug: &str, project: &str) -> Config {
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            slug.into(),
+            forge_runner_core::config::Binding {
+                repo_path: "/tmp/x".into(),
+                branch: None,
+                project_id: Some(project.into()),
+            },
+        );
+        cfg
+    }
+
+    fn cond(
+        verdict: pool_reads::Verdict,
+        failures: usize,
+        floor: bool,
+        status: Option<u16>,
+        what: &str,
+    ) -> pool_reads::Condition {
+        let blind = verdict == pool_reads::Verdict::Blind;
+        pool_reads::Condition {
+            project_id: "p-1".into(),
+            verdict,
+            failures,
+            count_is_floor: floor,
+            window_ms: pool_reads::WINDOW_MS,
+            unread_since: blind.then_some(NOW - 5 * 60_000),
+            consecutive: if blind { 30 } else { 0 },
+            recovered_at: (!blind).then_some(NOW - 60 * 60_000),
+            last_failure: pool_reads::WireFailure {
+                at: NOW - 10_000,
+                status,
+                what: what.into(),
+                reason: format!("pool {what}"),
+            },
+        }
+    }
+
+    /// Criterion 10.
+    #[test]
+    fn a_blind_project_is_named_with_its_streak_and_its_newest_status() {
+        let c = cond(
+            pool_reads::Verdict::Blind,
+            30,
+            false,
+            Some(520),
+            "520 (gateway: the origin returned an unknown error)",
+        );
+        let out = pool_lines(&[c], &cfg_binding("sid-desk", "p-1"), NOW).join("\n");
+        assert!(out.contains("sid-desk  BLIND"), "{out}");
+        assert!(out.contains("for 5m"), "{out}");
+        assert!(out.contains("30 consecutive"), "{out}");
+        assert!(out.contains("30 in the last 24h"), "{out}");
+        assert!(
+            out.contains("newest 10s ago: 520 (gateway: the origin returned an unknown error)"),
+            "{out}"
+        );
+    }
+
+    /// Criterion 10, the floor and the missing status.
+    #[test]
+    fn a_floor_says_at_least_and_a_failure_with_no_status_says_the_transports_reason() {
+        let c = cond(
+            pool_reads::Verdict::Intermittent,
+            200,
+            true,
+            None,
+            "pool request: operation timed out",
+        );
+        let out = pool_lines(&[c], &Config::default(), NOW).join("\n");
+        assert!(
+            out.contains("p-1  intermittent"),
+            "an unbound project is named by id: {out}"
+        );
+        assert!(
+            out.contains("at least 200 failed read(s) in the last 24h"),
+            "{out}"
+        );
+        assert!(out.contains("pool request: operation timed out"), "{out}");
+        assert!(out.contains("reading again for 1h"), "{out}");
+        assert!(!out.contains("None"), "{out}");
+    }
+
+    /// Criterion 11. Nothing recorded is said as that and no more.
+    #[test]
+    fn an_empty_record_claims_no_successful_read() {
+        let out = pool_lines(&[], &Config::default(), NOW);
+        assert_eq!(
+            out,
+            vec!["pool       no failed pool read recorded in the last 24h".to_string()]
+        );
+        let line = &out[0];
+        for claim in ["clean", "succeeded", "ok", "healthy", "every project"] {
+            assert!(
+                !line.contains(claim),
+                "`{claim}` claims a read nobody saw: {line}"
+            );
+        }
+    }
 
     const DAY: i64 = 24 * 60 * 60 * 1000;
 

@@ -427,7 +427,7 @@ fn by_reason(t: &Tally) -> Vec<ReasonCount> {
 /// A string at its wire width, saying how much of it did not fit. Cut on a char
 /// boundary, so a surrogate pair is never halved and the clipped string is still
 /// text rather than a shape the consumer has to guess at.
-fn clip(s: &str) -> String {
+pub(crate) fn clip(s: &str) -> String {
     let whole = units(s);
     if whole <= WIRE_UNITS {
         return s.to_string();

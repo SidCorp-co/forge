@@ -33,6 +33,7 @@ use crate::daemon::job_unheard;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::master_limit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
+use crate::daemon::pool_reads;
 use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::daemon::run_exit;
@@ -1397,6 +1398,11 @@ async fn take_pool_job(
         tokens,
     )
     .await;
+    // What this pass learned about the read itself, on disk where `status`, the
+    // heartbeat and a restart all find it (ISS-1234).
+    if let Some(dir) = crate::daemon::control::config_dir() {
+        pool_reads::note(&dir, &runner.project_id, &took, agent_activity::now_ms());
+    }
     if let pool_jobs::Took::AtBound = took {
         // Per project and per pass, which is eight projects times six passes a
         // minute on the box this was measured on. What an operator reads is
@@ -3229,6 +3235,28 @@ mod tests {
     /// running, as two snapshots. A claim landing between them looks to it like
     /// a job whose pane did not survive, so a box that claimed first would make
     /// a fresh release the likeliest thing it reports dead.
+    /// ISS-1234 criteria 5 and 25. Every pass that took one is recorded, and
+    /// recorded off what `take_one` answered: a claim whose outcome went nowhere
+    /// but the log is the silence this ends.
+    #[test]
+    fn every_pool_read_outcome_is_recorded_off_what_take_one_answered() {
+        let body = THIS_SOURCE
+            .split("async fn take_pool_job(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let claim = body
+            .find("let took = pool_jobs::take_one(")
+            .expect("the claim is here");
+        let noted = body
+            .find("pool_reads::note(&dir, &runner.project_id, &took,")
+            .expect("the outcome of the read is recorded for this project");
+        assert!(
+            claim < noted,
+            "the record reads the answer, so it follows it"
+        );
+    }
+
     #[test]
     fn no_pool_job_is_claimed_before_adoption_has_run() {
         let body = THIS_SOURCE

@@ -33,6 +33,7 @@ pub mod run_sessions;
 pub mod runners;
 pub mod session_ledger;
 pub mod skills;
+pub mod status;
 pub mod ws;
 
 /// Shared HTTP client + auth context for the REST surface.

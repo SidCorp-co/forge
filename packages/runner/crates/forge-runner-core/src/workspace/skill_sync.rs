@@ -413,6 +413,7 @@ pub async fn report_sync_failure(client: &CoreClient, project_id: &str, error: &
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
     use crate::transport::skills::SkillFile;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -426,6 +427,20 @@ mod tests {
             skill_md: md.into(),
             files,
         }
+    }
+
+    /// The lock path is derived from `XDG_CONFIG_HOME`, which other tests in
+    /// this crate set process-wide under `ENV_TEST_LOCK`. A test that takes the
+    /// skill lock from several threads holds that lock too and points the
+    /// variable at its own root: otherwise a thread deriving the path while
+    /// another test has moved the variable locks a different file, and two
+    /// threads enter the critical section together (seen as `DirectoryNotEmpty`
+    /// on ISS-1234's gate, and reproduced by flipping the variable).
+    fn own_config_home() -> (std::sync::MutexGuard<'static, ()>, ScopedVar) {
+        let env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let xdg = tmp_root("xdg");
+        std::fs::create_dir_all(&xdg).unwrap();
+        (env, ScopedVar::set("XDG_CONFIG_HOME", &xdg))
     }
 
     fn tmp_root(tag: &str) -> PathBuf {
@@ -602,6 +617,7 @@ mod tests {
         let cache = root.join("cache");
         let dest = root.join("dest");
         let _ = std::fs::remove_dir_all(&root);
+        let _env = own_config_home();
 
         write_skill_tree(&cache, &content("# Concurrent", vec![]), "hash-1").unwrap();
         std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
@@ -694,6 +710,7 @@ mod tests {
         let dest_a = root.join("dest-a");
         let dest_b = root.join("dest-b");
         let _ = std::fs::remove_dir_all(&root);
+        let _env = own_config_home();
 
         let project_id = "proj-cache-refresh";
         let skill_id = format!("skill-{}", Uuid::new_v4());
