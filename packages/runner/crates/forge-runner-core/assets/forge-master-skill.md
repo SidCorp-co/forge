@@ -69,8 +69,13 @@ is fine and is not what this bounds; two of them answering to one row is, becaus
 say which of them is carrying what.
 
 **A declaration you decide not to use is closed, not abandoned** — `forge-runner run close` — and
-until you close it the next dispatch is refused, naming it. A run whose subagent finishes normally
-closes itself and needs nothing from you.
+until you close it the next dispatch is refused, naming it.
+
+**Close a run once you will not resume its subagent** — `forge-runner run close <run-id>`, when its
+report is in and you are sending it nothing more. That is what gives its tree and its issues back.
+Until you do, the box keeps both, because a subagent that ended a turn may be waiting on work of its
+own, and one that finished can still be resumed. Only your close, or your pane's end, ends it; a
+subagent quiet for an hour is named in the journal, and nothing more.
 
 **A refused declaration has written nothing**, so there is nothing to undo: read what the refusal
 says, because it names what to do next — which issue collided, which tree is held, which row is

@@ -36,6 +36,7 @@ pub mod run_record;
 pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
+pub mod subagent_end;
 pub mod terminal;
 pub mod transcript_age;
 pub mod turn_evidence;
@@ -182,6 +183,25 @@ fn live_run_sessions() -> usize {
     live_sessions_from(runs, &boot, pid_alive)
 }
 
+/// Whether a subagent run reads quiet on its own evidence: its last turn ended
+/// an hour or more ago and nothing was written after it. A restart touches
+/// neither the subagent, which lives in its master's process, nor its tree, so
+/// a quiet run does not hold one. One still working, or one whose transcript
+/// this box cannot read, still does (ISS-1246).
+fn reads_quiet(run: &crate::runner::ledger::Run, now: i64) -> bool {
+    if run.agent_id.is_none() || run.pid.is_some() {
+        return false;
+    }
+    let written = run
+        .agent_transcript
+        .as_deref()
+        .and_then(|p| transcript_age::written_at(std::path::Path::new(p)));
+    matches!(
+        subagent_end::read(run.turn_ended_at_ms, written, now),
+        subagent_end::Evidence::Quiet { .. }
+    )
+}
+
 /// How many run sessions the drain must assume are live.
 ///
 /// A ledger this cannot read is not an empty one. Answering nought there told
@@ -201,7 +221,9 @@ fn live_sessions_from(
     alive: impl Fn(u32) -> bool,
 ) -> usize {
     match runs {
-        Ok(runs) => count_live_runs(&runs, this_boot, alive),
+        Ok(runs) => count_live_runs(&runs, this_boot, alive, |r| {
+            reads_quiet(r, agent_activity::now_ms())
+        }),
         Err(err) => {
             tracing::error!(
                 "[drain] the run ledger will not answer ({err}) — this box counts as busy rather than idle, so a restart is deferred instead of taken over work nothing can see"
@@ -215,11 +237,13 @@ fn count_live_runs(
     runs: &[crate::runner::ledger::Run],
     this_boot: &str,
     alive: impl Fn(u32) -> bool,
+    quiet: impl Fn(&crate::runner::ledger::Run) -> bool,
 ) -> usize {
     use crate::runner::ledger::{Ledger, Liveness};
     runs.iter()
         .filter(|r| !r.is_parked_on_human())
         .filter(|r| r.boot_id == this_boot)
+        .filter(|r| !quiet(r))
         .filter(|r| {
             let pid_refuted = r.pid.is_some_and(|p| !alive(p));
             !matches!(Ledger::liveness(r, this_boot, pid_refuted), Liveness::Dead)
@@ -1295,7 +1319,7 @@ mod tests {
         seeded_run(&mut led, "run-2", "boot-a", Some(4243));
         let runs = led.unclosed_runs().unwrap();
         assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true),
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, 0)),
             2,
             "a run session holds no `InflightGuard`, so the ledger is the only thing that can report the box is busy — reading zero here is what restarts through live work"
         );
@@ -1310,7 +1334,7 @@ mod tests {
             .unwrap();
         let runs = led.unclosed_runs().unwrap();
         assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true),
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, 0)),
             0,
             "a park releases its process and waits on a person; holding the restart for it pins the box on a stale binary indefinitely"
         );
@@ -1321,7 +1345,10 @@ mod tests {
         let mut led = Ledger::open_in_memory().unwrap();
         seeded_run(&mut led, "run-1", "boot-old", Some(4242));
         let runs = led.unclosed_runs().unwrap();
-        assert_eq!(count_live_runs(&runs, "boot-new", |_| true), 0);
+        assert_eq!(
+            count_live_runs(&runs, "boot-new", |_| true, |r| reads_quiet(r, 0)),
+            0
+        );
     }
 
     #[test]
@@ -1331,7 +1358,7 @@ mod tests {
         seeded_run(&mut led, "run-2", "boot-a", Some(4243));
         let runs = led.unclosed_runs().unwrap();
         assert_eq!(
-            count_live_runs(&runs, "boot-a", |pid| pid == 4243),
+            count_live_runs(&runs, "boot-a", |pid| pid == 4243, |r| reads_quiet(r, 0)),
             1,
             "only the pid the process table still answers for is work in flight"
         );
@@ -1343,24 +1370,113 @@ mod tests {
         seeded_run(&mut led, "run-1", "boot-a", None);
         let runs = led.unclosed_runs().unwrap();
         assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true),
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, 0)),
             1,
             "a subagent has no pid of its own, so a counter that requires one reads an occupied box as idle and restarts through it"
         );
     }
 
-    #[test]
-    fn a_subagent_that_stopped_does_not_hold_the_restart() {
+    /// A subagent run bound to its child, with that child's transcript last
+    /// written at `written_ms` (`None`: no file at all) and its turn ended at
+    /// `stop_ms`.
+    fn a_stopped_subagent(stop_ms: i64, written_ms: Option<i64>) -> (Ledger, std::path::PathBuf) {
         let mut led = Ledger::open_in_memory().unwrap();
         seeded_run(&mut led, "run-1", "boot-a", None);
-        led.end_run("run-1", "subagent", "the subagent finished")
-            .unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "forge-drain-transcript-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let transcript = dir.join("agent-child-run-1.jsonl");
+        if let Some(at) = written_ms {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&transcript, "{}\n").unwrap();
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&transcript)
+                .unwrap()
+                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(at as u64))
+                .unwrap();
+        }
+        let path = transcript.to_string_lossy().into_owned();
+        assert!(led.note_turn_end("run-1", stop_ms, Some(&path)).unwrap());
+        (led, dir)
+    }
+
+    const HOUR_MS: i64 = 60 * 60_000;
+    const NOW_MS: i64 = 1_800_000_000_000;
+
+    #[test]
+    fn a_subagent_that_ended_a_turn_still_holds_the_restart() {
+        let (led, dir) = a_stopped_subagent(NOW_MS - 60_000, Some(NOW_MS - 60_000));
         let runs = led.unclosed_runs().unwrap();
         assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true),
-            0,
-            "`SubagentStop` writes `exited`, and that is what says this run is over — without it a pid-less count never falls back to zero"
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
+            1,
+            "a turn-end is not a finish — a subagent ends one to wait on its own background work (ISS-1246)"
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_quiet_subagent_does_not_hold_the_restart() {
+        let (led, dir) = a_stopped_subagent(NOW_MS - HOUR_MS, Some(NOW_MS - HOUR_MS));
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
+            0,
+            "an hour silent since its last turn-end: a restart touches neither it nor its tree, and a run nobody closes must not defer every restart for ever"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_subagent_that_wrote_after_its_stop_holds_the_restart_however_long_ago() {
+        let (led, dir) = a_stopped_subagent(NOW_MS - 2 * HOUR_MS, Some(NOW_MS - HOUR_MS - 60_000));
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
+            1,
+            "a write after the stop is a resumed turn whose own end has not been heard"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_subagent_whose_transcript_cannot_be_read_holds_the_restart() {
+        let (led, dir) = a_stopped_subagent(NOW_MS - 10 * HOUR_MS, None);
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
+            1,
+            "no transcript to read is no evidence, and never silence"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_subagent_its_master_closed_does_not_hold_the_restart() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", None);
+        led.end_run("run-1", "master", "its report is in").unwrap();
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
+            0,
+            "its master's close writes `exited`, and that is what says this run is over"
+        );
+    }
+
+    #[test]
+    fn a_run_with_a_pid_is_never_read_as_a_quiet_subagent() {
+        let (led, dir) = a_stopped_subagent(NOW_MS - 10 * HOUR_MS, Some(NOW_MS - 10 * HOUR_MS));
+        led.attach_pid("run-1", 4242).unwrap();
+        let runs = led.unclosed_runs().unwrap();
+        assert_eq!(
+            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
+            1,
+            "a run pane has a process the drain can ask; the subagent reading is not its rule"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test(start_paused = true)]

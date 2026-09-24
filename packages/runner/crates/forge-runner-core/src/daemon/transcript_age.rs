@@ -11,7 +11,7 @@
 //! This is the evidence and nothing else. How long a reader waits on its
 //! silence is that reader's policy (`job_exit`, `run_exit`).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 /// The newest write, in wall-clock ms, to the transcript at `path` or to any
@@ -32,6 +32,32 @@ pub fn last_written(path: &Path) -> Option<i64> {
         .filter_map(|p| modified_ms(&p))
         .max();
     lead.max(children)
+}
+
+/// Where the subagent `agent_id` of the conversation written at `lead` keeps
+/// its own transcript: the `<conversation>/subagents/` directory
+/// [`last_written`] reads children from. `None` for a lead with no stem, or an
+/// id that is not a plain name, since it becomes part of a path.
+pub fn child_transcript(lead: &Path, agent_id: &str) -> Option<PathBuf> {
+    let plain = !agent_id.is_empty()
+        && agent_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !plain {
+        return None;
+    }
+    let (stem, dir) = lead.file_stem().zip(lead.parent())?;
+    Some(
+        dir.join(stem)
+            .join("subagents")
+            .join(format!("agent-{agent_id}.jsonl")),
+    )
+}
+
+/// The newest write, in wall-clock ms, to the one file at `path`. `None` where
+/// it cannot be read, which is no evidence and never silence.
+pub fn written_at(path: &Path) -> Option<i64> {
+    modified_ms(path)
 }
 
 fn modified_ms(path: &Path) -> Option<i64> {
@@ -176,6 +202,63 @@ mod tests {
         assert_eq!(
             last_written(&dir.path().join("conv.jsonl")),
             Some(1_800_000_000_000)
+        );
+    }
+
+    #[test]
+    fn a_subagent_transcript_sits_where_last_written_reads_children_from() {
+        let dir = Scratch::new();
+        let lead = dir.path().join("conv.jsonl");
+        let child = child_transcript(&lead, "a13e68aaf656d6502").expect("a plain id");
+        assert_eq!(
+            child,
+            dir.path()
+                .join("conv")
+                .join("subagents")
+                .join("agent-a13e68aaf656d6502.jsonl")
+        );
+        file(&lead, 1_800_000_000);
+        file(&child, 1_800_003_600);
+        assert_eq!(
+            last_written(&lead),
+            written_at(&child),
+            "the one file named for a child is the one the lead's reader already counts"
+        );
+    }
+
+    #[test]
+    fn an_id_that_is_not_a_plain_name_names_no_file() {
+        let lead = Path::new("/h/p/conv.jsonl");
+        for id in ["", "../escape", "a/b", "a b", "a.jsonl"] {
+            assert_eq!(child_transcript(lead, id), None, "{id:?}");
+        }
+    }
+
+    #[test]
+    fn one_file_answers_for_itself_and_not_for_its_siblings() {
+        let dir = Scratch::new();
+        let mine = dir
+            .path()
+            .join("conv")
+            .join("subagents")
+            .join("agent-a.jsonl");
+        let sibling = dir
+            .path()
+            .join("conv")
+            .join("subagents")
+            .join("agent-b.jsonl");
+        file(&mine, 1_800_000_000);
+        file(&sibling, 1_900_000_000);
+        assert_eq!(written_at(&mine), Some(1_800_000_000_000));
+        assert_eq!(
+            written_at(
+                &dir.path()
+                    .join("conv")
+                    .join("subagents")
+                    .join("agent-c.jsonl")
+            ),
+            None,
+            "a file that is not there is no evidence rather than silence"
         );
     }
 

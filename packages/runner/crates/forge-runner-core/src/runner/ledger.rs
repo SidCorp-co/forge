@@ -184,6 +184,15 @@ pub struct Run {
     /// How many times the release has been attempted since that refusal was
     /// first seen.
     pub release_attempts: i64,
+    /// When this run's subagent last ended a turn, in wall-clock ms. A turn-end
+    /// is not a finish: a subagent ends one to wait on its own background work,
+    /// and one that finished can still be resumed by its dispatcher (ISS-1246).
+    pub turn_ended_at_ms: Option<i64>,
+    /// Where this run's subagent writes its own transcript.
+    pub agent_transcript: Option<String>,
+    /// What the box last said about keeping this run open: `quiet` or
+    /// `unreadable`. Cleared by the next turn-end, so each silence is said once.
+    pub kept_notice: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -329,6 +338,9 @@ const RUN_COLUMNS: &[&str] = &[
     "release_refusal",
     "release_terminal_at",
     "release_attempts",
+    "turn_ended_at_ms",
+    "agent_transcript",
+    "kept_notice",
 ];
 
 #[cfg(test)]
@@ -394,7 +406,10 @@ CREATE TABLE IF NOT EXISTS runs (
   release_refused_at  INTEGER,
   release_refusal     TEXT,
   release_terminal_at INTEGER,
-  release_attempts    INTEGER NOT NULL DEFAULT 0
+  release_attempts    INTEGER NOT NULL DEFAULT 0,
+  turn_ended_at_ms    INTEGER,
+  agent_transcript    TEXT,
+  kept_notice         TEXT
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -464,6 +479,9 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "release_terminal_at", "INTEGER"),
     ("runs", "release_attempts", "INTEGER NOT NULL DEFAULT 0"),
     ("runs", "released_as", "TEXT"),
+    ("runs", "turn_ended_at_ms", "INTEGER"),
+    ("runs", "agent_transcript", "TEXT"),
+    ("runs", "kept_notice", "TEXT"),
     ("masters", "session_id", "TEXT"),
 ];
 
@@ -492,7 +510,8 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
         released_as, claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
         ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
-        release_refused_at, release_refusal, release_terminal_at, release_attempts
+        release_refused_at, release_refusal, release_terminal_at, release_attempts,
+        turn_ended_at_ms, agent_transcript, kept_notice
  FROM runs";
 
 fn map_standing(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterStanding> {
@@ -579,6 +598,9 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         release_refusal: row.get(27)?,
         release_terminal_at: row.get(28)?,
         release_attempts: row.get(29)?,
+        turn_ended_at_ms: row.get(30)?,
+        agent_transcript: row.get(31)?,
+        kept_notice: row.get(32)?,
     })
 }
 
@@ -1757,6 +1779,46 @@ impl Ledger {
             )
             .map_err(sql_err)?;
         tx.commit().map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// A subagent run's subagent ended a turn. The run stays open: only its
+    /// master's close or its master's death ends a subagent run (ISS-1246).
+    ///
+    /// The newest stop wins, so a replayed or reordered hook cannot move the
+    /// time back; `transcript` is kept where a frame names none; and any notice
+    /// already given is cleared, because the silence it was about has ended.
+    pub fn note_turn_end(
+        &self,
+        run_id: &str,
+        at_ms: i64,
+        transcript: Option<&str>,
+    ) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET turn_ended_at_ms = MAX(COALESCE(turn_ended_at_ms, ?2), ?2),
+                        agent_transcript = COALESCE(?3, agent_transcript),
+                        kept_notice = NULL
+                  WHERE run_id = ?1 AND ended_by IS NULL",
+                params![run_id, at_ms, transcript],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// Record what the box said about keeping a subagent run open. True only
+    /// where this notice was not already the one standing, which is what lets
+    /// the caller say it once rather than on every sweep.
+    pub fn note_kept(&self, run_id: &str, notice: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET kept_notice = ?2
+                  WHERE run_id = ?1 AND ended_by IS NULL AND kept_notice IS NOT ?2",
+                params![run_id, notice],
+            )
+            .map_err(sql_err)?;
         Ok(n == 1)
     }
 
@@ -3239,6 +3301,88 @@ mod tests {
              them must migrate it or find it migrated: {refused:?}"
         );
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// ISS-1246: a box that ran the build before this one has a ledger with
+    /// none of the turn-end columns and rows already in it. It opens, gains
+    /// them, and the rows it held read as never having ended a turn.
+    #[test]
+    fn a_ledger_from_before_the_turn_end_columns_opens_and_gains_them() {
+        let path = a_ledger_path("turn-end");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(SCHEMA).unwrap();
+            for column in ["turn_ended_at_ms", "agent_transcript", "kept_notice"] {
+                conn.execute_batch(&format!("ALTER TABLE runs DROP COLUMN {column};"))
+                    .unwrap();
+            }
+        }
+        {
+            let mut led = Ledger::open(&path).unwrap();
+            led.create_run_group(seed(&["ISS-1"])).unwrap();
+        }
+        let led = Ledger::open(&path).unwrap();
+        let have = columns(&led, "runs");
+        for column in ["turn_ended_at_ms", "agent_transcript", "kept_notice"] {
+            assert!(
+                have.iter().any(|c| c == column),
+                "{column} missing: {have:?}"
+            );
+        }
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.turn_ended_at_ms, run.agent_transcript, run.kept_notice),
+            (None, None, None)
+        );
+        drop(led);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_turn_end_keeps_the_run_open_and_the_newest_stop_wins() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert!(led
+            .note_turn_end("run-1", 2_000, Some("/t/a.jsonl"))
+            .unwrap());
+        assert!(led.note_turn_end("run-1", 1_000, None).unwrap());
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            run.turn_ended_at_ms,
+            Some(2_000),
+            "a replayed older stop moves nothing back"
+        );
+        assert_eq!(run.agent_transcript.as_deref(), Some("/t/a.jsonl"));
+        assert_eq!(run.ended_by, None);
+        assert_eq!(run.work, Work::Runnable, "the run is still work");
+        assert_ne!(run.incarnation, Incarnation::Exited);
+    }
+
+    #[test]
+    fn a_notice_is_written_once_and_a_turn_end_clears_it() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert!(led.note_kept("run-1", "quiet").unwrap());
+        assert!(!led.note_kept("run-1", "quiet").unwrap(), "said once");
+        assert!(
+            led.note_kept("run-1", "unreadable").unwrap(),
+            "a different thing to say"
+        );
+        led.note_turn_end("run-1", 5_000, None).unwrap();
+        assert_eq!(led.run("run-1").unwrap().unwrap().kept_notice, None);
+        assert!(
+            led.note_kept("run-1", "quiet").unwrap(),
+            "the next silence is said again"
+        );
+    }
+
+    #[test]
+    fn a_run_that_ended_takes_no_turn_end_and_no_notice() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.end_run("run-1", "master", "closed").unwrap();
+        assert!(!led.note_turn_end("run-1", 5_000, None).unwrap());
+        assert!(!led.note_kept("run-1", "quiet").unwrap());
     }
 
     /// The property the case above rests on, asserted directly: the exclusion
