@@ -36,6 +36,7 @@ let m: {
   releaseHeldJobs: typeof import('../../src/jobs/hold.js').releaseHeldJobs;
   scheduleAutoRetryWithVerify: typeof import('../../src/jobs/retry.js').scheduleAutoRetryWithVerify;
   reapConcludedRuns: typeof import('../../src/pipeline/runs-concluded.js').reapConcludedRuns;
+  settleNoPromptJob: typeof import('../../src/jobs/pool-served.js').settleNoPromptJob;
 };
 
 beforeAll(async () => {
@@ -50,6 +51,7 @@ beforeAll(async () => {
   const hold = await import('../../src/jobs/hold.js');
   const retry = await import('../../src/jobs/retry.js');
   const concluded = await import('../../src/pipeline/runs-concluded.js');
+  const served = await import('../../src/jobs/pool-served.js');
   m = {
     readPool: pool.readPool,
     prepare: claim.prepareJobForMaster,
@@ -58,6 +60,7 @@ beforeAll(async () => {
     releaseHeldJobs: hold.releaseHeldJobs,
     scheduleAutoRetryWithVerify: retry.scheduleAutoRetryWithVerify,
     reapConcludedRuns: concluded.reapConcludedRuns,
+    settleNoPromptJob: served.settleNoPromptJob,
   };
   const { jobLifecycleDeviceRoutes } = await import('../../src/jobs/lifecycle-routes.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
@@ -199,5 +202,44 @@ describe('a prompt-less row that reached the pool is refused and settled at prep
     const next = await m.readPool({ deviceId, projectId, limit: 50 });
     expect(next[0]?.jobId, 'the prompted job now heads the pool').toBe(behind.jobId);
     await walk(behind.jobId, 'the work behind');
+  });
+
+  it('fails the reconcile run a refused reconcile job belonged to', async () => {
+    const packetId = randomUUID();
+    const skillId = randomUUID();
+    const reconcileRunId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO update_packets (id, change, story, intent_class, applies_to)
+      VALUES (${packetId}, 'tighten the rule', 'a person asked for it', 'procedure', 'forge-code')
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO skills (id, name, description, scope, project_id, prompt, source, content_hash)
+      VALUES (${skillId}, 'forge-code', 'the code step', 'project', ${projectId}, 'body', 'user', 'h')
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO reconcile_runs (id, project_id, packet_id, skill_id, status)
+      VALUES (${reconcileRunId}, ${projectId}, ${packetId}, ${skillId}, 'pending')
+    `);
+    const { jobId } = await plantJob({ payload: { reconcileRunId } });
+    await harness.db.execute(sql`UPDATE jobs SET type = 'reconcile' WHERE id = ${jobId}`);
+
+    expect(await m.prepare({ jobId, deviceId, sessionId: randomUUID() })).toEqual({
+      ok: false,
+      reason: 'no_prompt',
+    });
+    const rows = (await harness.db.execute(
+      sql`SELECT status FROM reconcile_runs WHERE id = ${reconcileRunId}`,
+    )) as unknown as Array<{ status: string }>;
+    expect(rows[0]?.status, 'a failed reconcile job must not strand its run active').toBe('failed');
+  });
+
+  it('leaves a job that gained a prompt after it was read runnable', async () => {
+    const { jobId } = await plantJob({ payload: {} });
+    await harness.db.execute(sql`
+      UPDATE jobs SET payload = '{"promptString":"arrived late"}'::jsonb WHERE id = ${jobId}
+    `);
+    expect(await m.settleNoPromptJob({ id: jobId, type: 'custom' })).toBe(false);
+    expect((await jobRow(jobId)).status).toBe('queued');
+    await walk(jobId, 'arrived late');
   });
 });

@@ -6,12 +6,13 @@
  * pool anyway is refused and settled at the claim.
  */
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
+import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 
 export const POOL_JOB_NO_PROMPT = 'POOL_JOB_NO_PROMPT';
 
@@ -29,7 +30,17 @@ export function noPromptMessage(jobType: string): string {
   );
 }
 
-/** Settled terminal, not through `finalizeFailedJob`: a retry or hold would re-mint the same payload. */
+/** A payload with no usable prompt, in SQL — the CAS below re-checks the diagnosis it acts on. */
+const NO_PROMPT_SQL = sql`NOT COALESCE(
+  jsonb_typeof(${jobs.payload} -> 'promptString') = 'string'
+    AND (${jobs.payload} ->> 'promptString') ~ '[^[:space:]]',
+  false
+)`;
+
+/**
+ * Settled terminal, not through `finalizeFailedJob`: a retry or hold would re-mint the same
+ * payload. `false` when the row moved or gained a prompt since it was read.
+ */
 export async function settleNoPromptJob(job: { id: string; type: string }): Promise<boolean> {
   const [settled] = await applyKernelTransition(db, {
     entity: 'job',
@@ -42,18 +53,18 @@ export async function settleNoPromptJob(job: { id: string; type: string }): Prom
       failureReason: POOL_JOB_NO_PROMPT,
       classifierVersion: CLASSIFIER_VERSION,
     },
-    where: and(eq(jobs.id, job.id), eq(jobs.status, 'queued'), isNull(jobs.heldBy)),
+    where: and(eq(jobs.id, job.id), eq(jobs.status, 'queued'), isNull(jobs.heldBy), NO_PROMPT_SQL),
     fromStatus: 'queued',
     reason: POOL_JOB_NO_PROMPT,
     actor: { type: 'system' },
     source: 'claim',
-    returning: ['id'],
+    returning: ['id', 'type', 'payload'],
   });
-  if (settled) {
-    logger.error(
-      { jobId: job.id, jobType: job.type, code: POOL_JOB_NO_PROMPT },
-      'pool: a job with no prompt was refused at the claim and settled failed',
-    );
-  }
-  return Boolean(settled);
+  if (!settled) return false;
+  logger.error(
+    { jobId: job.id, jobType: job.type, code: POOL_JOB_NO_PROMPT },
+    'pool: a job with no prompt was refused at the claim and settled failed',
+  );
+  await failReconcileRunForFailedJob(settled);
+  return true;
 }

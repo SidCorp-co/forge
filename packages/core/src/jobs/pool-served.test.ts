@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
 vi.mock('../lifecycle/transition.js', () => ({ applyKernelTransition: vi.fn() }));
+vi.mock('../skills/reconcile-service.js', () => ({ failReconcileRunForFailedJob: vi.fn() }));
 
 const { noPromptMessage, poolPrompt, POOL_JOB_NO_PROMPT } = await import('./pool-served.js');
 

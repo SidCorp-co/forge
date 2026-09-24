@@ -199,8 +199,7 @@ async function refusedForNoPrompt(jobId: string): Promise<boolean> {
     .where(and(eq(jobs.id, jobId), eq(jobs.status, 'queued'), isNull(jobs.heldBy)))
     .limit(1);
   if (!job || poolPrompt(job.payload) !== null) return false;
-  await settleNoPromptJob(job);
-  return true;
+  return settleNoPromptJob(job);
 }
 
 /**
