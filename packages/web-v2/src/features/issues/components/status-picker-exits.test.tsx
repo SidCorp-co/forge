@@ -120,7 +120,7 @@ describe("StatusEdit, once the exits have answered", () => {
     openPicker("open");
     await screen.findByText("Confirmed");
     expect(labels()).toEqual(["Confirmed", "In progress", "Needs info", "On hold", "Dropped"]);
-    expect(labels().some((l) => /Running|Stalled/u.test(l))).toBe(false);
+    expect(labels().some((l) => /Running|Stalled|No check-in/u.test(l))).toBe(false);
   });
 
   it("offers no retired status", async () => {

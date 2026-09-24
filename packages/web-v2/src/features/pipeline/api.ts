@@ -12,17 +12,24 @@ import type {
 } from "./types";
 
 /**
- * Refuses a page whose rows do not say whether a box is on them (ISS-1213): read as absent, every
- * such row would sit under Stalled, which is a guess. A core older than this web build is the cause.
+ * Refuses a page whose rows do not say whether a box is on them, or when anything last checked in
+ * (ISS-1213): read as absent, either would put a guess on the board. A core older than this web
+ * build is the cause.
  */
 export function requireHeld<P extends { items: PipelineIssueRow[] }>(page: P): P {
-  const missing = page.items.filter((i) => typeof i.held !== "boolean").map((i) => i.displayId);
+  const missing = page.items
+    .filter((i) => typeof i.held !== "boolean" || !isCheckIn(i.lastCheckInAt))
+    .map((i) => i.displayId);
   if (missing.length > 0) {
     throw new Error(
-      `The issue search did not say whether anything is working ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ` and ${missing.length - 3} more` : ""}, so the board cannot tell Running from Stalled. The server is older than this page; it needs the release that serves \`held\` (ISS-1213).`,
+      `The issue search did not say whether anything is working ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ` and ${missing.length - 3} more` : ""}, or when it last checked in, so the board cannot place those rows. The server is older than this page and needs the release that reports both.`,
     );
   }
   return page;
+}
+
+function isCheckIn(value: unknown): boolean {
+  return value === null || (typeof value === "string" && !Number.isNaN(Date.parse(value)));
 }
 
 /** Issues fetched for the kanban (one page is enough for a board view). */

@@ -395,11 +395,13 @@ searchRoutes.get(
           c,
           serialized.map((r) => {
             const bucket = map.get(r.id as string);
+            const hold = heldMap.get(r.id as string);
             return {
               ...r,
               agentSessions: bucket?.agentSessions ?? [],
               agentStatus: bucket?.agentStatus ?? null,
-              held: heldMap.get(r.id as string),
+              held: hold?.held,
+              lastCheckInAt: hold?.lastCheckInAt,
             };
           }),
           total,

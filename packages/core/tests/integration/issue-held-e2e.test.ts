@@ -2,8 +2,8 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { RequestIdVars } from '../../src/middleware/request-id.js';
-import { createTestProjectMember } from '../helpers/factories.js';
-import { registerIdleFixture, testLease } from '../helpers/idle-fixture.js';
+import { createTestDevice, createTestProjectMember } from '../helpers/factories.js';
+import { registerIdleFixture, testHeartbeat, testLease } from '../helpers/idle-fixture.js';
 
 /**
  * ISS-1213 — whether anything is on an issue, against a live database.
@@ -16,10 +16,13 @@ import { registerIdleFixture, testLease } from '../helpers/idle-fixture.js';
 const fx = registerIdleFixture(1600);
 const NOW = new Date('2026-09-20T16:00:00.000Z');
 
-async function held(issueId: string): Promise<boolean | undefined> {
+async function hold(issueId: string) {
   const { hydrateHeldForIssues } = await import('../../src/issues/held-hydrator.js');
   return (await hydrateHeldForIssues([issueId], NOW)).get(issueId);
 }
+
+const held = async (issueId: string) => (await hold(issueId))?.held;
+const checkIn = async (issueId: string) => (await hold(issueId))?.lastCheckInAt;
 
 const claimed = (over: Record<string, unknown> = {}) =>
   fx.seedIssue({ status: 'testing', sessionContext: { lease: testLease(over) } });
@@ -94,7 +97,7 @@ describe('hydrateHeldForIssues — what does not (ISS-1213)', () => {
     const asked = await fx.seedIssue({ status: 'testing' });
     const other = await fx.seedIssue({ status: 'testing' });
     await fx.seedRun(other, 'running');
-    expect([...(await hydrateHeldForIssues([asked], NOW))]).toEqual([[asked, false]]);
+    expect([...(await hydrateHeldForIssues([asked], NOW)).keys()]).toEqual([asked]);
   });
 
   it('refuses by name an id no issue row answers for, rather than reading it as not held', async () => {
@@ -116,6 +119,75 @@ describe('hydrateHeldForIssues — a lapsed claim does not unhold live work (ISS
     await claimed({ holder: 'shared-holder' });
     await fx.seedRun(id, 'running');
     expect(await held(id)).toBe(true);
+  });
+});
+
+// The reopen's triage asked for this: a run the runner declared, working past its claim.
+describe('hydrateHeldForIssues — a declared run holds its row past its claim (ISS-1213 reopen 1)', () => {
+  it('holds a row whose run was opened through openRunSession after its claim expired', async () => {
+    const { openRunSession } = await import('../../src/devices/run-session.js');
+    const id = await claimed({ renewedAt: '2026-09-20T14:00:00.000Z' });
+    const device = await createTestDevice(fx.db, fx.ownerId);
+    await openRunSession({
+      deviceId: device.id,
+      projectId: fx.projectId,
+      issueKeys: [`ISS-${fx.lastSeq}`],
+      name: 'declared',
+    });
+    expect(await held(id)).toBe(true);
+  });
+});
+
+describe('hydrateHeldForIssues — when anything last spoke for the row (ISS-1213 reopen 1)', () => {
+  it('reads null on a row nothing ever checked in for', async () => {
+    expect(await checkIn(await fx.seedIssue({ status: 'testing' }))).toBeNull();
+  });
+
+  it("reads the claim's renewal", async () => {
+    expect(await checkIn(await claimed({ renewedAt: '2026-09-20T14:00:00.000Z' }))).toBe(
+      '2026-09-20T14:00:00.000Z',
+    );
+  });
+
+  it("reads the claim's release when it is the later time", async () => {
+    const id = await claimed({ stopped: '2026-09-20T15:50:00.000Z' });
+    expect(await checkIn(id)).toBe('2026-09-20T15:50:00.000Z');
+  });
+
+  it("reads the claim's heartbeat when it is the later time", async () => {
+    const id = await claimed({ heartbeat: testHeartbeat({ at: '2026-09-20T15:55:00.000Z' }) });
+    expect(await checkIn(id)).toBe('2026-09-20T15:55:00.000Z');
+  });
+
+  it('reads the heartbeat of a session behind an issue lease on the row', async () => {
+    const id = await fx.seedIssue({ status: 'in_progress' });
+    await fx.seedIssueLease(fx.lastSeq, 'completed', '2026-09-20T13:30:00.000Z');
+    expect(await checkIn(id)).toBe('2026-09-20T13:30:00.000Z');
+  });
+
+  it('reads the heartbeat of a session under one of the row’s pipeline runs', async () => {
+    const id = await fx.seedIssue({ status: 'developed' });
+    const runId = await fx.seedRun(id, 'completed');
+    await fx.seedRunSession(runId, '2026-09-20T12:15:00.000Z');
+    expect(await checkIn(id)).toBe('2026-09-20T12:15:00.000Z');
+  });
+
+  it('takes the latest of every source', async () => {
+    const id = await claimed({ renewedAt: '2026-09-20T14:00:00.000Z' });
+    await fx.seedIssueLease(fx.lastSeq, 'completed', '2026-09-20T15:10:00.000Z');
+    const runId = await fx.seedRun(id, 'completed');
+    await fx.seedRunSession(runId, '2026-09-20T12:15:00.000Z');
+    expect(await checkIn(id)).toBe('2026-09-20T15:10:00.000Z');
+  });
+
+  it('takes no time from a claim whose renewal does not parse', async () => {
+    expect(await checkIn(await claimed({ renewedAt: 'not a time' }))).toBeNull();
+  });
+
+  it('still reads the other sources beside a claim whose renewal does not parse', async () => {
+    const id = await claimed({ renewedAt: 'not a time' });
+    await fx.seedIssueLease(fx.lastSeq, 'completed', '2026-09-20T13:30:00.000Z');
+    expect(await checkIn(id)).toBe('2026-09-20T13:30:00.000Z');
   });
 });
 
@@ -147,8 +219,11 @@ describe('GET /issues/search?withAgentSessions returns `held` on every row (ISS-
       { headers: { Authorization: `Bearer ${await signUserToken(fx.ownerId)}` } },
     );
     expect(res.status).toBe(200);
-    const items = ((await res.json()) as { items: { id: string; held?: unknown }[] }).items;
+    const items = (
+      (await res.json()) as { items: { id: string; held?: unknown; lastCheckInAt?: unknown }[] }
+    ).items;
     expect(items.map((i) => typeof i.held)).toEqual(['boolean', 'boolean']);
+    expect(items.map((i) => i.lastCheckInAt)).toEqual([null, null]);
     const byId = new Map(items.map((i) => [i.id, i.held]));
     expect([byId.get(heldId), byId.get(idleId)]).toEqual([true, false]);
   });

@@ -66,7 +66,7 @@ const LABEL_WORDS: Record<AutonomousLabel, string> = {
 	draft: "Draft",
 	open: "Open",
 	running: "Running",
-	stalled: "Stalled",
+	unheld: "No check-in",
 	needs_human: "Needs a human",
 	reopened: "Reopened",
 	paused: "Paused",
@@ -79,7 +79,7 @@ const PAUSED_CHIP = statusToChip(LABEL_TO_KERNEL.paused);
 
 /**
  * How each lane label is shown: its word, `StatusKey` and colour. The status→label map and the
- * order live in `@forge/contracts`. `stalled` is written as no status, so it takes paused's colour.
+ * order live in `@forge/contracts`. `unheld` is written as no status, so it takes paused's colour.
  */
 export const LABEL_VIEW: Record<
 	AutonomousLabel,
@@ -94,7 +94,7 @@ export const LABEL_VIEW: Record<
 			];
 		}),
 	) as Record<WritableLabel, { label: string; status: StatusKey; tone: SemanticTone }>),
-	stalled: { label: LABEL_WORDS.stalled, status: PAUSED_CHIP, tone: STATUS_KEY_TONE[PAUSED_CHIP] },
+	unheld: { label: LABEL_WORDS.unheld, status: PAUSED_CHIP, tone: STATUS_KEY_TONE[PAUSED_CHIP] },
 };
 
 export const PRIORITY_LABELS: Record<IssuePriority, string> = {
@@ -302,7 +302,7 @@ export function filterToQueryParams(filter: IssueFilter): {
 				),
 			};
 		case "agent":
-			return { status: statusesForLabels("open", "running", "stalled") };
+			return { status: statusesForLabels("open", "running", "unheld") };
 		case "done":
 			return { status: statusesForLabels("done", "dropped") };
 		default:

@@ -114,17 +114,17 @@ describe("groupIssuesByLabel", () => {
   });
 
   // ISS-1213: eleven rows stood at `testing` 5–12h with nothing on ten of them, all under Running.
-  it("files a row nothing holds under Stalled and a held one under Running", () => {
+  it("files a row nothing holds under No check-in and a held one under Running", () => {
     const groups = groupIssuesByLabel([issue("idle", "testing", false), issue("busy", "testing")]);
     const columnOf = (id: string) => groups.find((g) => g.issues.some((i) => i.id === id));
-    expect([columnOf("idle")?.label, columnOf("idle")?.title]).toEqual(["stalled", "Stalled"]);
+    expect([columnOf("idle")?.label, columnOf("idle")?.title]).toEqual(["unheld", "No check-in"]);
     expect([columnOf("busy")?.label, columnOf("busy")?.title]).toEqual(["running", "Running"]);
   });
 
-  it("draws the Stalled column beside Running, and keeps it when it is empty", () => {
+  it("draws the No check-in column beside Running, and keeps it when it is empty", () => {
     const cols = boardColumns();
-    expect(cols.indexOf("stalled")).toBe(cols.indexOf("running") + 1);
-    expect(groupIssuesByLabel([]).find((g) => g.label === "stalled")?.issues).toEqual([]);
+    expect(cols.indexOf("unheld")).toBe(cols.indexOf("running") + 1);
+    expect(groupIssuesByLabel([]).find((g) => g.label === "unheld")?.issues).toEqual([]);
   });
 
   it("leaves a party's column alone whether or not the row is held", () => {
@@ -167,16 +167,16 @@ describe("a column is coloured by the statuses it holds", () => {
   });
 
   it("never colours a label with a tone no status in its bucket wears", () => {
-    for (const label of boardColumns().filter((l) => l !== "stalled")) {
+    for (const label of boardColumns().filter((l) => l !== "unheld")) {
       const tones = bucket(label).map((s) => statusToTone(s as IssueStatus));
       expect([label, tones.includes(labelTone(label))]).toEqual([label, true]);
     }
   });
 
-  // `stalled` is read off the holder, not the status, so no status in its bucket carries its colour.
-  it("colours `stalled` as stopped work, never as the work in motion `running` is coloured", () => {
-    expect(labelTone("stalled")).toBe(statusToTone("on_hold"));
-    expect(labelTone("stalled")).not.toBe(labelTone("running"));
+  // `unheld` is read off the holder, not the status, so no status in its bucket carries its colour.
+  it("colours `unheld` as work nothing is moving, never as the work in motion `running` is coloured", () => {
+    expect(labelTone("unheld")).toBe(statusToTone("on_hold"));
+    expect(labelTone("unheld")).not.toBe(labelTone("running"));
   });
 
   it("colours `reopened` and `done` as their own status is coloured, not as a bucket word suggests", () => {
