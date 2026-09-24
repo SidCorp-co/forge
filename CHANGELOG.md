@@ -3088,6 +3088,8 @@
 - **A finished job pane no longer reads as working forever because one subagent's end was lost.**
   A pane whose agent ended its turn waiting on one now says so, and gives its slot back
   after an hour of silence.
+- **A box refusing work says how long each job has held its slot, even after a restart.** It
+  used to count from the restart and read `0m`; every duration it states is now in minutes.
 - **A box no longer stops taking work because of a job pane nothing can account for.** One the box
   has heard nothing from since the daemon began watching gives its slot back after an hour.
 - **A box whose masters were left unreachable now puts itself right.** Each is restarted where work

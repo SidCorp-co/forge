@@ -88,8 +88,8 @@ impl Verdict {
             return None;
         };
         Some(format!(
-            "the job's pane `{pane}` has told this box nothing whatever in the {}s since this daemon began watching it — no turn reported, no boundary, and no snapshot from the daemon before it — so no reading this box has could ever have concluded it, and the slot it held was accounted for by nothing",
-            unheard_for / 1000
+            "the job's pane `{pane}` has told this box nothing whatever in the {} since this daemon began watching it — no turn reported, no boundary, and no snapshot from the daemon before it — so no reading this box has could ever have concluded it, and the slot it held was accounted for by nothing",
+            job_exit::minutes(unheard_for)
         ))
     }
 }
@@ -175,7 +175,10 @@ mod tests {
             .reason("forge-job-abc")
             .expect("a conclusion names itself");
         assert!(reason.contains("forge-job-abc"), "{reason}");
-        assert!(reason.contains("3600s"), "{reason}");
+        assert!(
+            reason.contains("60m"),
+            "the unit the at-bound line states: {reason}"
+        );
         assert!(reason.contains("no snapshot"), "{reason}");
         assert!(
             reason.contains("could ever have concluded it"),

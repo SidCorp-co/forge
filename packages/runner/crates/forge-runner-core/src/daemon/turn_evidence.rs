@@ -105,8 +105,8 @@ pub fn read(watch: &Watch, reported: Option<Reported>, now: i64) -> Evidence {
 
 pub fn never_started_reason(pane: &str, silent_for: i64) -> String {
     format!(
-        "the job's pane `{pane}` was opened and its prompt delivered, but the agent never reported submitting it, or anything else, in {}s — tmux accepted the keystroke and no turn ever began, so this box never had work in flight to report",
-        silent_for / 1000
+        "the job's pane `{pane}` was opened and its prompt delivered, but the agent never reported submitting it, or anything else, in {} — tmux accepted the keystroke and no turn ever began, so this box never had work in flight to report",
+        crate::daemon::job_exit::minutes(silent_for)
     )
 }
 
@@ -244,6 +244,9 @@ mod tests {
         let reason = never_started_reason("forge-job-abc", 125_000);
         assert!(reason.contains("forge-job-abc"), "{reason}");
         assert!(reason.contains("never reported submitting"), "{reason}");
-        assert!(reason.contains("125s"), "{reason}");
+        assert!(
+            reason.contains("2m"),
+            "the unit the at-bound line states: {reason}"
+        );
     }
 }
