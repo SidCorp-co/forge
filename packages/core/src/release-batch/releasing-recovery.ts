@@ -43,6 +43,12 @@ export interface RecoverStrandedReleasingOptions {
   actorUserId?: string | undefined;
   /** Post a comment naming the reason. Off for a sweep nobody asked for. */
   comment?: boolean;
+  /**
+   * Settle a roster whose run promoted instead of holding it. A person's word and never a
+   * sweep's: the code IS on production, and what this buys is a batch that promoted and cannot
+   * verify reaching a status some door can close from (ISS-1199).
+   */
+  settlePromotedRoster?: boolean;
   /** Run inside each write's own transaction before it writes; throws to stop the recovery. */
   fence?: ((tx: Tx) => Promise<void>) | undefined;
 }
@@ -70,7 +76,7 @@ export async function recoverStrandedReleasing(
     .where(eq(issues.releaseBatchRunId, runId));
 
   const promoted = await runRecordedPromotion(runId);
-  if (promoted) {
+  if (promoted && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },
       'release-batch: this run promoted, so its roster stays at `releasing` for a person to settle',
@@ -97,7 +103,9 @@ export async function recoverStrandedReleasing(
         await db.insert(comments).values({
           issueId: issue.id,
           authorId: options.actorUserId,
-          body: `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
+          body: promoted
+            ? `${options.reason}. ${settledNote(destination)}`
+            : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
         });
       } catch (err) {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
@@ -158,12 +166,27 @@ export async function recoverStrandedReleasing(
     );
   }
 
+  // `promoted` and not `false`: a settled roster still came off a run that put
+  // code on production, and a result saying otherwise would be the one fact
+  // this whole path exists to keep true. On every other route it IS false, the
+  // early return above owning the only case where it is not.
   return {
     claimsCleared: claimed.map((r) => r.id),
     recovered,
     destination: recovered.length > 0 ? destination : null,
-    promoted: false,
+    promoted,
   };
+}
+
+/** What a roster is told when an operator settles it although this run promoted. */
+function settledNote(destination: IssueStatus): string {
+  return (
+    `This batch recorded a promotion, so the code it carried is on production, and an operator ` +
+    `settled the roster rather than leave it at \`releasing\` — the issue is back at ` +
+    `\`${destination}\`. Record the release that happened with ` +
+    `POST /api/projects/{projectId}/release-records, naming the commit production is serving and ` +
+    `how it was released; that closes it against evidence instead of by hand.`
+  );
 }
 
 const PROMOTED_NOTE =

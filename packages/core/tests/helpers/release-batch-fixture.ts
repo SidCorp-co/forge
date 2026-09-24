@@ -31,6 +31,12 @@ export interface ReleaseBatchFixture {
   declareProduction(config?: Record<string, unknown>): Promise<void>;
   /** What the default probe server is serving right now. */
   serving(): string;
+  /**
+   * Say what the probe server answers. A batch opened onto a commit that is
+   * ALREADY live is the shape ISS-1199 was found in, and `claim` moving the
+   * value for you is what makes every other case a deploy the batch watched.
+   */
+  serve(commit: string): void;
   /** Announce the method a run loaded, as an agent would. */
   announceMethod(runId: string, over?: { skill?: string; loaded?: boolean }): Promise<void>;
   seedReleaseRunner(): Promise<void>;
@@ -45,7 +51,7 @@ export interface ReleaseBatchFixture {
    * Whatever `createReleaseBatch` returns, named by its own type rather than copied. The copy
    * this replaced went stale the moment ISS-1120 put `version` on the result.
    */
-  claim(ids: string[]): Promise<CreateReleaseBatchResult>;
+  claim(ids: string[], opts?: { deploy?: boolean }): Promise<CreateReleaseBatchResult>;
   waitFor(cond: () => Promise<boolean>): Promise<void>;
 }
 
@@ -162,11 +168,11 @@ export function releaseBatchFixture(
     return Number(rows[0]?.n ?? 0);
   }
 
-  async function claim(idList: string[]) {
+  async function claim(idList: string[], opts: { deploy?: boolean } = {}) {
     const { projectId, ownerId } = ids();
     const { createReleaseBatch } = await import('../../src/release-batch/service.js');
     const result = await createReleaseBatch({ projectId, issueIds: idList, userId: ownerId });
-    served = `commit-pushed-by-run-${result.runId}`;
+    if (opts.deploy !== false) served = `commit-pushed-by-run-${result.runId}`;
     await announceMethodFor(result.runId);
     return result;
   }
@@ -197,6 +203,9 @@ export function releaseBatchFixture(
   return {
     declareProduction,
     serving: () => served,
+    serve: (commit: string) => {
+      served = commit;
+    },
     announceMethod: announceMethodFor,
     seedReleaseRunner,
     insertIssue,
