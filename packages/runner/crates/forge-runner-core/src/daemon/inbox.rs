@@ -65,7 +65,17 @@ pub async fn handle_session_send(
     match frame.kind.as_str() {
         "cancel" => {
             if let Some(pane) = masters.pane_for_session(&sid) {
-                let _ = terminal::kill(&pane).await;
+                // Said rather than swallowed. `terminal::kill` answers for the
+                // session being gone (ISS-1208), and `Ack` has only
+                // `delivered` and `gone` — neither of which is true of a pane
+                // that is still running — so core is told `gone` and the box
+                // says here that it is not. A third ack kind is core's half and
+                // is not this daemon's to invent.
+                if let Err(e) = terminal::kill(&pane).await {
+                    tracing::error!(
+                        "[inbox] cancel for session {sid}: {pane} would not end ({e}) — core is being told `gone` because the ack has no other answer, and that pane is still running whatever it was running. `forge-runner master kill` on its project is what ends it"
+                    );
+                }
             } else {
                 runner.close(&key).await;
             }

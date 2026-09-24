@@ -2621,6 +2621,36 @@ pub(crate) fn replacement_of(ended_a_deaf_pane: bool, started: bool) -> Replacem
     }
 }
 
+/// Take back a capability minted for a pane that was never started, and answer
+/// for it having gone.
+///
+/// `retire` cannot answer for itself: it logs and returns on both a map it
+/// could not read and a map it could not write, which is the right shape for a
+/// caller that is tidying up after a session that has already ended. Here it is
+/// a rollback, and a rollback nobody checked is what leaves the session core now
+/// serves sitting in the map as proof of a replacement this box did not make —
+/// `capability_of` then answers `Current` about a deaf pane for ever (ISS-1208).
+///
+/// So the map is read back. `Err` carries what stopped it in words a caller can
+/// put in front of a person.
+fn withdraw_unplaced_mint(
+    tokens: Option<&session_tokens::SessionTokens>,
+    session_id: &str,
+) -> std::result::Result<(), String> {
+    let Some(store) = tokens else {
+        // Not reachable from the placement path, which returns `Absent` rather
+        // than reaching a pane with no map to mint from. Stated rather than
+        // assumed, because what it would mean is a mint nothing can take back.
+        return Err("this box has no capability map to withdraw from".to_string());
+    };
+    store.retire(session_id);
+    match store.holds_session(session_id) {
+        Ok(false) => Ok(()),
+        Ok(true) => Err("the map still names that session after the withdrawal, so the map could not be written".to_string()),
+        Err(e) => Err(format!("the map could not be read back, so whether the withdrawal took is unknown: {e}")),
+    }
+}
+
 /// A pane this box ended, that is still there — and the capability it minted on
 /// the way, withdrawn.
 ///
@@ -2637,6 +2667,13 @@ pub(crate) fn replacement_of(ended_a_deaf_pane: bool, started: bool) -> Replacem
 ///
 /// Nothing holds the retired token: `ensure` started no pane, so it was never
 /// handed to one.
+///
+/// And the withdrawal is READ BACK, by the same rule the rest of this change
+/// is: `retire` is best-effort by design — it declines to rewrite a map it
+/// could not read, and a map it could not write leaves the entry live — so
+/// taking it as done is the assumption this whole issue is about. Where it
+/// cannot be established, the box says which of the two it got and what an
+/// operator has to do, rather than reporting a rollback it did not make.
 async fn deaf_pane_outlived_its_kill(
     masters: &Arc<Masters>,
     project_id: &str,
@@ -2645,18 +2682,24 @@ async fn deaf_pane_outlived_its_kill(
     session_id: &str,
     ports: &CapabilityPorts<'_>,
 ) -> PaneState {
-    if let Some(store) = ports.tokens {
-        store.retire(session_id);
+    let withdrawn = withdraw_unplaced_mint(ports.tokens, session_id);
+    match &withdrawn {
+        Ok(()) => tracing::error!(
+            "[master] {slug}: {name} was ended as a deaf pane and tmux still holds a session of that name, so nothing was replaced — the capability minted for {session_id} has been withdrawn rather than left standing as proof of a replacement this box did not make. The pane is still deaf and every declaration it makes is refused: `forge-runner master kill {slug}` is the same act by hand."
+        ),
+        Err(why) => tracing::error!(
+            "[master] {slug}: {name} was ended as a deaf pane and is still running, and the capability minted for {session_id} could NOT be withdrawn: {why}. This box will read {name} as current from the next sweep on, stop reporting it deaf, and go on nudging a pane that refuses every declaration it makes — no later sweep repairs that. `forge-runner master kill {slug}` is the only thing that does."
+        ),
     }
-    tracing::error!(
-        "[master] {slug}: {name} was ended as a deaf pane and tmux still holds a session of that name, so nothing was replaced — the capability minted for {session_id} has been withdrawn rather than left standing as proof of a replacement this box did not make. The pane is still deaf and every declaration it makes is refused: `forge-runner master kill {slug}` is the same act by hand."
-    );
     ports.deaf.set(
         slug,
         name,
-        DeafAct::LeftStanding(
-            "this box ended it and tmux still holds a session of that name".to_string(),
-        ),
+        DeafAct::LeftStanding(match &withdrawn {
+            Ok(()) => "this box ended it and tmux still holds a session of that name".to_string(),
+            Err(why) => format!(
+                "this box ended it, tmux still holds a session of that name, and the capability minted for the replacement could not be withdrawn ({why}) — no later sweep will report this project again"
+            ),
+        }),
     );
     // As in the stale arm of the adopt branch, and for the same reason: the
     // project has no working master, so the registry may not be cleared.
@@ -6749,6 +6792,79 @@ mod unplaced_tests {
         let _ = std::fs::remove_dir_all(path.parent().expect("temp dir"));
     }
 
+    /// The rollback answers for itself, or it is not a rollback.
+    ///
+    /// `retire` logs and returns on a map it could not read and on a map it
+    /// could not write, which is right for tidying up after a session that has
+    /// already ended and wrong for this, where the entry left behind is the
+    /// session core now serves — sitting in the map as proof of a replacement
+    /// this box did not make. Raised as F1 on the review of `b15ff428b`.
+    #[test]
+    fn a_withdrawal_that_did_not_take_is_never_reported_as_one_that_did() {
+        let path = temp_map("withdrawn");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        store.mint("sess-core-serves-now").expect("mint");
+        assert_eq!(
+            withdraw_unplaced_mint(Some(&store), "sess-core-serves-now"),
+            Ok(()),
+            "a map this box can write is the ordinary case, and the withdrawal has to be reported as taken there or the recovery is refused on every box"
+        );
+
+        // The map made unwritable under the entry, which is what `retire`
+        // meets when the disk fills between the mint and the rollback.
+        store.mint("sess-core-serves-now").expect("re-mint");
+        let dir = path.parent().expect("temp dir");
+        let mut locked = std::fs::metadata(dir).expect("dir mode").permissions();
+        #[cfg(unix)]
+        std::os::unix::fs::PermissionsExt::set_mode(&mut locked, 0o500);
+        std::fs::set_permissions(dir, locked).expect("lock the dir");
+        let said = withdraw_unplaced_mint(Some(&store), "sess-core-serves-now");
+        let mut open = std::fs::metadata(dir).expect("dir mode").permissions();
+        #[cfg(unix)]
+        std::os::unix::fs::PermissionsExt::set_mode(&mut open, 0o700);
+        std::fs::set_permissions(dir, open).expect("unlock the dir");
+
+        assert!(
+            said.is_err(),
+            "the entry is still in the map, so the next sweep reads this pane as current and stops recovering it — a box that reports that as a withdrawal has removed its own alarm and told nobody"
+        );
+        assert!(
+            matches!(
+                capability_of(Some(&store), "sess-core-serves-now"),
+                Capability::Current
+            ),
+            "this is the state the message has to be about: the verdict really does read current from here on, and only an operator breaks it"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_cancel_that_could_not_end_its_pane_says_so_before_it_answers_gone() {
+        let body = include_str!("inbox.rs");
+        let start = body
+            .find("\"cancel\" => {")
+            .expect("the inbox still handles a cancel frame");
+        let arm = &body[start
+            ..start
+                + body[start..]
+                    .find("\"checkpoint\" => {")
+                    .expect("the cancel arm is followed by the next one")];
+        assert!(
+            !arm.contains("let _ = terminal::kill("),
+            "`Ack::Gone` is sent unconditionally here because the ack has no third answer, so a kill that did not take has to be reported by the box or core is told a running pane is gone and nothing anywhere says otherwise (ISS-1208)"
+        );
+        let refused = arm
+            .find("if let Err(e) = terminal::kill(")
+            .expect("the cancel path reads what the kill answered");
+        let acked = arm
+            .find("Ack::Gone")
+            .expect("the cancel path still answers the frame");
+        assert!(
+            refused < acked,
+            "the report comes before the ack, so a reader of the log sees why the `gone` it is about to read is not the whole truth"
+        );
+    }
+
     #[test]
     fn what_ensure_answered_is_read_before_the_pass_calls_itself_a_replacement() {
         let body = ensure_master_body();
@@ -6799,8 +6915,17 @@ async fn deaf_pane_outlived_its_kill(",
             .expect("deaf_pane_outlived_its_kill must be findable");
         let f = &rest[..block_end(rest, 0).expect("it must close")];
         assert!(
-            f.contains("store.retire(session_id)"),
-            "the withdrawal belongs to this path and names the session the mint named"
+            f.contains("withdraw_unplaced_mint(ports.tokens, session_id)"),
+            "the withdrawal belongs to this path, and goes through the one function that reads the map back afterwards"
+        );
+        let taking = body
+            .split("\nfn withdraw_unplaced_mint(")
+            .nth(1)
+            .expect("withdraw_unplaced_mint must be findable");
+        let w = &taking[..block_end(taking, 0).expect("it must close")];
+        assert!(
+            w.contains("store.retire(session_id)") && w.contains("store.holds_session(session_id)"),
+            "it names the session the mint named and then reads the map back: `retire` logs and returns on a map it could not write, so a caller that did not look has reported a rollback it may not have made"
         );
         for banned in ["ports.deaf.placed(", "MasterAuthority::CURRENT"] {
             assert!(
