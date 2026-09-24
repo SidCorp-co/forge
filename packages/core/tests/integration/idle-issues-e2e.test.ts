@@ -547,3 +547,30 @@ describe('The finding does not outlive what it claims', () => {
     expect(await strandOf(issueId)).toEqual(first);
   });
 });
+
+describe('An automatic release hold decides what an awaiting_release strand says (ISS-1215)', () => {
+  it('takes owner, wait and reason from the hold, and keeps the person-owned reading without one', async () => {
+    const waitingFor = 'a verdict on each criterion named, at the runtime serving it';
+    const releaseHold = {
+      code: 'RELEASE_CRITERIA_UNEARNED',
+      reason: 'criterion 3: unjudged',
+      owes: 'agent',
+      waitingFor,
+    };
+    const merged = '2026-09-14T00:00:00.000Z';
+    const held = await seedIssue({
+      status: 'awaiting_release',
+      mergedAt: merged,
+      sessionContext: { releaseHold },
+    });
+    const unheld = await seedIssue({ status: 'awaiting_release', mergedAt: merged });
+
+    await mods.reconcileIdleIssues(NOW);
+
+    const strand = await strandOf(held);
+    expect([strand?.owes, strand?.waitingFor]).toEqual(['agent', waitingFor]);
+    expect(String(strand?.reason)).toContain('(RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged');
+    const plain = await strandOf(unheld);
+    expect([plain?.owes, plain?.waitingFor]).toEqual(['human', 'a person to release it']);
+  });
+});

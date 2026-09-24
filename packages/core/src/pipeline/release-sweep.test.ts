@@ -24,24 +24,21 @@ interface IssueState {
 /** Defaults every issue to untouched; a test overrides one entry to prove the claimed-already case. */
 let issueStateByIssue: Record<string, IssueState> = {};
 
-// `inArray` is read back as the ids it was handed, so a report aimed at the
-// wrong issues answers with the wrong rows rather than with every row.
-vi.mock('drizzle-orm', async (importActual) => ({
-  ...(await importActual<typeof import('drizzle-orm')>()),
-  inArray: (_column: unknown, ids: string[]) => ({ ids }),
-}));
+/** The unclaimed `awaiting_release` rows a project's waiting read returns. */
+let waitingIds: string[] = [];
 
 const selectFrom = vi.fn((columns: Record<string, unknown>) => ({
   from: (_table: unknown) => ({
-    where: async (cond?: { ids?: string[] }) => {
-      if ('status' in columns) {
-        return Object.entries(issueStateByIssue)
-          .filter(([id]) => !cond?.ids || cond.ids.includes(id))
-          .map(([id, s]) => ({ id, ...s }));
-      }
-      return Object.entries(existingCommentsByIssue).flatMap(([, bodies]) =>
-        bodies.map((body) => ({ body })),
-      );
+    where: () => {
+      const rows =
+        'status' in columns
+          ? Object.entries(issueStateByIssue).map(([id, s]) => ({ id, ...s }))
+          : Object.entries(existingCommentsByIssue).flatMap(([, bodies]) =>
+              bodies.map((body) => ({ body })),
+            );
+      return Object.assign(Promise.resolve(rows), {
+        orderBy: async () => waitingIds.map((id) => ({ id })),
+      });
     },
   }),
 }));
@@ -58,6 +55,36 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../db/schema.js', () => ({ comments: {}, issues: {} }));
 
+type Hold = { code: string; reason: string; owes: string; waitingFor: string };
+/** Every hold written this tick, keyed by issue, with the author it was written as. */
+let holds: Record<string, Hold & { authorId: string | null }> = {};
+const clearedHolds: string[][] = [];
+const clearedProjects: string[] = [];
+const staleClears = vi.fn(async () => 0);
+vi.mock('./release-hold.js', async () => {
+  const actual = await vi.importActual<typeof import('./release-hold.js')>('./release-hold.js');
+  return {
+    ...actual,
+    writeReleaseHolds: async (args: {
+      issueIds: string[];
+      holdFor: (id: string) => Hold;
+      authorId: string | null;
+    }) => {
+      for (const id of args.issueIds) holds[id] = { ...args.holdFor(id), authorId: args.authorId };
+      return { written: args.issueIds.length, unchanged: 0, skipped: 0 };
+    },
+    clearReleaseHolds: async (ids: string[]) => {
+      clearedHolds.push([...ids]);
+      return ids.length;
+    },
+    clearProjectReleaseHolds: async (projectId: string) => {
+      clearedProjects.push(projectId);
+      return 0;
+    },
+    clearStaleReleaseHolds: () => staleClears(),
+  };
+});
+
 const projectAutoProdDeployMock = vi.fn(async (_projectId: string) => true);
 vi.mock('./release-coolify.js', () => ({
   projectAutoProdDeploy: (projectId: string) => projectAutoProdDeployMock(projectId),
@@ -66,19 +93,11 @@ vi.mock('./release-coolify.js', () => ({
 const resolveReleaseGateMock = vi.fn(
   async (_projectId: string) => 'awaiting_release' as string | null,
 );
+class ReleaseTargetUndeclaredError extends Error {}
 vi.mock('../release-batch/gate.js', () => ({
+  RELEASE_GATE_STATUS: 'awaiting_release',
+  ReleaseTargetUndeclaredError,
   resolveReleaseGate: (projectId: string) => resolveReleaseGateMock(projectId),
-}));
-
-interface RosterIssue {
-  id: string;
-  claimedByRunId: string | null;
-}
-const loadReleaseRosterMock = vi.fn(async (_projectId: string) => ({
-  issues: [] as RosterIssue[],
-}));
-vi.mock('../release-batch/queries.js', () => ({
-  loadReleaseRoster: (projectId: string) => loadReleaseRosterMock(projectId),
 }));
 
 interface UnearnedCriterion {
@@ -119,7 +138,9 @@ interface CutOutcome {
   status: 'success' | 'skipped' | 'failed';
   output: string;
   error?: string;
-  named: string[];
+  code?: string;
+  reasons?: string[];
+  named?: string[];
 }
 const cutWaitingReleaseMock = vi.fn(
   async (_args: {
@@ -129,17 +150,24 @@ const cutWaitingReleaseMock = vi.fn(
   }): Promise<CutOutcome> => ({
     status: 'success',
     output: 'cut 1 issue(s) as run run-1',
-    named: ['iss-1'],
   }),
 );
+// `named` defaults to what the real cut names: the oldest fifty it was handed (ISS-1127).
 vi.mock('../schedules/release-batch-run.js', () => ({
-  cutWaitingRelease: (args: { projectId: string; userId: string; issueIds: string[] }) =>
-    cutWaitingReleaseMock(args),
+  cutWaitingRelease: async (args: { projectId: string; userId: string; issueIds: string[] }) => ({
+    named: args.issueIds.slice(0, 50),
+    ...(await cutWaitingReleaseMock(args)),
+  }),
 }));
 
 const loggerInfo = vi.fn();
+const loggerError = vi.fn();
 vi.mock('../logger.js', () => ({
-  logger: { error: vi.fn(), warn: vi.fn(), info: (...args: unknown[]) => loggerInfo(...args) },
+  logger: {
+    error: (...args: unknown[]) => loggerError(...args),
+    warn: vi.fn(),
+    info: (...args: unknown[]) => loggerInfo(...args),
+  },
 }));
 
 const { sweepAutomaticReleases } = await import('./release-sweep.js');
@@ -162,8 +190,12 @@ beforeEach(() => {
   projectAutoProdDeployMock.mockResolvedValue(true);
   resolveReleaseGateMock.mockReset();
   resolveReleaseGateMock.mockResolvedValue('awaiting_release');
-  loadReleaseRosterMock.mockReset();
-  loadReleaseRosterMock.mockResolvedValue({ issues: [] });
+  waitingIds = [];
+  holds = {};
+  clearedHolds.length = 0;
+  clearedProjects.length = 0;
+  staleClears.mockClear();
+  loggerError.mockReset();
   unearnedCriteriaReportsMock.mockReset();
   unearnedCriteriaReportsMock.mockImplementation(async (ids: string[]) =>
     ids.map((id) => ({ issueId: id, unearned: [] })),
@@ -175,48 +207,88 @@ beforeEach(() => {
   cutWaitingReleaseMock.mockResolvedValue({
     status: 'success',
     output: 'cut 1 issue(s) as run run-1',
-    named: ['iss-1'],
   });
 });
 
+const NO_HOLDS = { projectsCut: 0, issuesCut: 0, issuesExcluded: 0, holdsWritten: 0 };
+
 describe('sweepAutomaticReleases — policy gate', () => {
-  it('touches nothing on a project whose autoProdDeploy is not true', async () => {
+  it('cuts nothing, writes no hold and clears the project on a project that is not automatic', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
+    waitingIds = ['iss-1'];
     projectAutoProdDeployMock.mockResolvedValueOnce(false);
 
     const result = await sweepAutomaticReleases();
 
-    expect(loadReleaseRosterMock).not.toHaveBeenCalled();
+    expect(staleClears).toHaveBeenCalledTimes(1);
     expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
-    expect(result).toEqual({ projectsCut: 0, issuesCut: 0, issuesExcluded: 0 });
+    expect(holds).toEqual({});
+    expect(clearedProjects).toEqual(['proj-1']);
+    expect(result).toEqual(NO_HOLDS);
   });
 
-  it('touches nothing on a project whose release gate does not resolve', async () => {
+  it('writes NO_RELEASE_GATE on every waiting row of a project that declares no release', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
+    waitingIds = ['iss-1', 'iss-2'];
     resolveReleaseGateMock.mockResolvedValueOnce(null);
 
+    const result = await sweepAutomaticReleases();
+
+    expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
+    expect(holds['iss-1']?.code).toBe('NO_RELEASE_GATE');
+    expect(holds['iss-2']?.code).toBe('NO_RELEASE_GATE');
+    expect(result.holdsWritten).toBe(2);
+  });
+
+  it('writes RELEASE_TARGET_UNDECLARED, carrying the refusal, when there is nowhere to release onto', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
+    waitingIds = ['iss-1'];
+    resolveReleaseGateMock.mockRejectedValueOnce(
+      new ReleaseTargetUndeclaredError('RELEASE_TARGET_UNDECLARED: no live binding'),
+    );
+
     await sweepAutomaticReleases();
 
-    expect(loadReleaseRosterMock).not.toHaveBeenCalled();
+    expect(holds['iss-1']).toMatchObject({
+      code: 'RELEASE_TARGET_UNDECLARED',
+      reason: 'RELEASE_TARGET_UNDECLARED: no live binding',
+      owes: 'human',
+    });
     expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
   });
 
-  it('touches nothing when the release gate lookup throws', async () => {
+  it('writes RELEASE_GATE_UNREADABLE and logs the error when the gate read fails otherwise', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    resolveReleaseGateMock.mockRejectedValueOnce(new Error('RELEASE_TARGET_UNDECLARED'));
+    waitingIds = ['iss-1'];
+    resolveReleaseGateMock.mockRejectedValueOnce(new Error('connection terminated'));
 
     await sweepAutomaticReleases();
 
-    expect(loadReleaseRosterMock).not.toHaveBeenCalled();
+    expect(holds['iss-1']?.code).toBe('RELEASE_GATE_UNREADABLE');
+    expect(holds['iss-1']?.reason).toContain('connection terminated');
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'proj-1' }),
+      'release-sweep: the release gate could not be read',
+    );
+  });
+
+  it('writes RELEASE_CRITERIA_UNREADABLE on every waiting row when the verdicts cannot be read', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
+    waitingIds = ['iss-1', 'iss-2'];
+    unearnedCriteriaReportsMock.mockRejectedValueOnce(new Error('comments read timed out'));
+
+    await sweepAutomaticReleases();
+
+    expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
+    expect(holds['iss-2']?.code).toBe('RELEASE_CRITERIA_UNREADABLE');
+    expect(holds['iss-1']?.reason).toContain('comments read timed out');
   });
 });
 
 describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => {
-  it('leaves an issue with an unearned criterion untouched — no cut, no comment', async () => {
+  it('does not cut an issue with an unearned criterion, and writes why on it', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1139', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: [{ id: 'iss-1139', claimedByRunId: null }],
-    });
+    waitingIds = ['iss-1139'];
     unearnedCriteriaReportsMock.mockResolvedValueOnce(
       reportsHolding(['iss-1139'], { 'iss-1139': [SUPERSEDED] }),
     );
@@ -225,14 +297,18 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
 
     expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
     expect(insertedComments).toEqual([]);
-    expect(result).toEqual({ projectsCut: 0, issuesCut: 0, issuesExcluded: 1 });
+    const held = holds['iss-1139'];
+    expect(held?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(held?.reason).toContain('criterion 13');
+    expect(held?.reason).toContain('this issue now stands at');
+    expect(held?.owes).toBe('agent');
+    expect(holds['iss-1139']?.authorId).toBe('owner-1');
+    expect(result).toEqual({ ...NO_HOLDS, issuesExcluded: 1, holdsWritten: 1 });
   });
 
-  it('names the issue, the criterion and why it was not earned, rather than a count alone', async () => {
+  it('names the issue, the criterion and why it was not earned in the log as well', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1139', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: [{ id: 'iss-1139', claimedByRunId: null }],
-    });
+    waitingIds = ['iss-1139'];
     unearnedCriteriaReportsMock.mockResolvedValueOnce(
       reportsHolding(['iss-1139'], {
         'iss-1139': [
@@ -249,8 +325,6 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
     );
     expect(held?.[1]).toContain('iss-1139');
     expect(held?.[1]).toContain('13, 4');
-    expect(held?.[1]).toContain('this issue now stands at');
-    expect(held?.[1]).toContain('no verdict was recorded for it');
     expect(held?.[0]).toMatchObject({
       issueId: 'iss-1139',
       criteria: [
@@ -258,37 +332,28 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
         { criterion: 4, verdict: null, standing: null },
       ],
     });
+    expect(holds['iss-1139']?.reason).toContain('criterion 4: no verdict was recorded for it');
   });
 
-  it('names nothing held back on a tick where every waiting issue is earned', async () => {
+  it('cuts the earned issue, holds nothing and clears its hold', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-earned', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: [{ id: 'iss-earned', claimedByRunId: null }],
-    });
+    waitingIds = ['iss-earned'];
 
-    await sweepAutomaticReleases();
+    const result = await sweepAutomaticReleases();
 
-    expect(
-      loggerInfo.mock.calls.some(([, line]) => String(line).includes('is held back on criterion')),
-    ).toBe(false);
     expect(cutWaitingReleaseMock).toHaveBeenCalledWith({
       projectId: 'proj-1',
       userId: 'owner-1',
       issueIds: ['iss-earned'],
     });
+    expect(holds).toEqual({});
+    expect(clearedHolds).toEqual([['iss-earned']]);
+    expect(result).toEqual({ ...NO_HOLDS, projectsCut: 1, issuesCut: 1 });
   });
 
-  it('cuts only the earned issue in a mixed roster, leaving the unearned one out of the call', async () => {
-    candidateRows = [
-      candidateRow('proj-1', 'iss-1139', '2026-09-22T00:00:00Z'),
-      candidateRow('proj-1', 'iss-earned', '2026-09-22T00:00:01Z'),
-    ];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: [
-        { id: 'iss-1139', claimedByRunId: null },
-        { id: 'iss-earned', claimedByRunId: null },
-      ],
-    });
+  it('cuts only the earned issue in a mixed roster and holds the other', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-1139', '2026-09-22T00:00:00Z')];
+    waitingIds = ['iss-1139', 'iss-earned'];
     unearnedCriteriaReportsMock.mockResolvedValueOnce(
       reportsHolding(['iss-1139', 'iss-earned'], { 'iss-1139': [SUPERSEDED] }),
     );
@@ -300,142 +365,105 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
       userId: 'owner-1',
       issueIds: ['iss-earned'],
     });
-    expect(result).toEqual({ projectsCut: 1, issuesCut: 1, issuesExcluded: 1 });
+    expect(Object.keys(holds)).toEqual(['iss-1139']);
+    expect(result).toEqual({ projectsCut: 1, issuesCut: 1, issuesExcluded: 1, holdsWritten: 1 });
   });
 
-  it('cuts nothing and calls cutWaitingRelease not at all when the roster is empty of unclaimed issues', async () => {
+  it('does nothing for a project with no unclaimed waiting issue', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: [{ id: 'iss-1', claimedByRunId: 'already-running' }],
-    });
+    await sweepAutomaticReleases();
+    expect([cutWaitingReleaseMock.mock.calls.length, Object.keys(holds).length]).toEqual([0, 0]);
+  });
+});
+
+describe('sweepAutomaticReleases — declined cuts', () => {
+  it('writes RELEASE_NO_ACTOR with no author when the project has no owner', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
+    waitingIds = ['iss-1'];
+    loadCreatedByMock.mockResolvedValueOnce(undefined);
 
     await sweepAutomaticReleases();
 
     expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
+    expect(holds['iss-1']?.code).toBe('RELEASE_NO_ACTOR');
+    expect(holds['iss-1']?.authorId).toBeNull();
   });
-});
 
-describe('sweepAutomaticReleases — failure reporting', () => {
-  it('names a genuine failure on every issue it would have released, once', async () => {
+  it.each([
+    ['NO_RUNNER_ONLINE', 'human'],
+    ['BATCH_IN_FLIGHT', 'agent'],
+  ])('writes a %s refusal with every reason standing, owed by %s', async (code, owes) => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: [{ id: 'iss-1', claimedByRunId: null }],
-    });
-    cutWaitingReleaseMock.mockResolvedValueOnce({
-      status: 'failed',
-      output: 'the cut failed',
-      named: ['iss-1'],
-      error: 'advisory lock timeout',
-    });
-
+    waitingIds = ['iss-1'];
+    const reasons = ['The first reason.', 'Also: the probes are undeclared.'];
+    cutWaitingReleaseMock.mockResolvedValueOnce({ status: 'skipped', output: 'x', code, reasons });
     await sweepAutomaticReleases();
-
-    expect(insertedComments).toHaveLength(1);
-    expect(insertedComments[0]?.issueId).toBe('iss-1');
-    expect(insertedComments[0]?.body).toContain('advisory lock timeout');
-    expect(insertedComments[0]?.body).toContain('not claimed, not moved');
+    expect(insertedComments).toEqual([]);
+    expect(holds['iss-1']).toMatchObject({ code, owes });
+    expect(holds['iss-1']?.reason).toContain('The first reason. Also: the probes are undeclared.');
   });
 
-  it('names a failure only on the issues the cut named, not on the tail it left waiting', async () => {
-    const waiting = Array.from({ length: 75 }, (_, i) => `iss-${i}`);
-    candidateRows = [candidateRow('proj-1', 'iss-0', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: waiting.map((id) => ({ id, claimedByRunId: null })),
-    });
-    issueStateByIssue = Object.fromEntries(
-      waiting.map((id) => [id, { status: 'awaiting_release', releaseBatchRunId: null }]),
-    );
+  it('writes RELEASE_CUT_FAILED on an untouched row when the cut fails, with no second comment', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
+    waitingIds = ['iss-1'];
     cutWaitingReleaseMock.mockResolvedValueOnce({
       status: 'failed',
       output: 'the cut failed',
       error: 'advisory lock timeout',
-      named: waiting.slice(0, 50),
+      reasons: ['advisory lock timeout'],
     });
 
     await sweepAutomaticReleases();
 
-    expect(new Set(insertedComments.map((c) => c.issueId))).toEqual(new Set(waiting.slice(0, 50)));
+    expect(insertedComments).toEqual([]);
+    expect(holds['iss-1']?.code).toBe('RELEASE_CUT_FAILED');
+    expect(holds['iss-1']?.reason).toContain('advisory lock timeout');
+    expect(holds['iss-1']?.reason).toContain('not claimed, not moved');
   });
 
-  it('never claims the issue is untouched when createReleaseBatch failed after claiming it', async () => {
+  it('never claims a claimed issue is untouched, and does not repeat that comment', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: [{ id: 'iss-1', claimedByRunId: null }],
-    });
+    waitingIds = ['iss-1'];
     issueStateByIssue = { 'iss-1': { status: 'releasing', releaseBatchRunId: 'run-9' } };
-    cutWaitingReleaseMock.mockResolvedValueOnce({
-      status: 'failed',
-      output: 'the cut failed',
-      named: ['iss-1'],
-      error: 'enqueue failed after claiming issues',
-    });
+    const error = 'enqueue failed after claiming issues';
+    cutWaitingReleaseMock.mockResolvedValue({ status: 'failed', output: 'x', error });
 
     await sweepAutomaticReleases();
-
     expect(insertedComments).toHaveLength(1);
     expect(insertedComments[0]?.body).not.toContain('not claimed, not moved');
     expect(insertedComments[0]?.body).toContain('run-9');
-  });
+    expect(holds['iss-1']).toBeUndefined();
 
-  it('does not repeat an identical failure comment on a later tick', async () => {
-    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValue({ issues: [{ id: 'iss-1', claimedByRunId: null }] });
-    cutWaitingReleaseMock.mockResolvedValue({
-      status: 'failed',
-      output: 'the cut failed',
-      named: ['iss-1'],
-      error: 'advisory lock timeout',
-    });
-
-    await sweepAutomaticReleases();
-    const firstBody = insertedComments[0]?.body ?? '';
-    existingCommentsByIssue = { 'iss-1': [firstBody] };
-    insertedComments.length = 0;
-
-    await sweepAutomaticReleases();
-
-    expect(insertedComments).toEqual([]);
-  });
-
-  it('posts a new comment when the failure message changes', async () => {
-    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValue({ issues: [{ id: 'iss-1', claimedByRunId: null }] });
-    cutWaitingReleaseMock.mockResolvedValueOnce({
-      status: 'failed',
-      output: 'the cut failed',
-      named: ['iss-1'],
-      error: 'advisory lock timeout',
-    });
-    await sweepAutomaticReleases();
     existingCommentsByIssue = { 'iss-1': [insertedComments[0]?.body ?? ''] };
     insertedComments.length = 0;
-
-    cutWaitingReleaseMock.mockResolvedValueOnce({
-      status: 'failed',
-      output: 'the cut failed',
-      named: ['iss-1'],
-      error: 'a completely different failure',
-    });
     await sweepAutomaticReleases();
+    expect(insertedComments).toEqual([]);
+  });
+});
 
-    expect(insertedComments).toHaveLength(1);
-    expect(insertedComments[0]?.body).toContain('a completely different failure');
+describe('sweepAutomaticReleases — one release carries the oldest fifty (ISS-1127)', () => {
+  const waiting = Array.from({ length: 75 }, (_, i) => `iss-${i}`);
+  beforeEach(() => {
+    candidateRows = [candidateRow('proj-1', 'iss-0', '2026-09-22T00:00:00Z')];
+    waitingIds = waiting;
+    issueStateByIssue = Object.fromEntries(
+      waiting.map((id) => [id, { status: 'awaiting_release', releaseBatchRunId: null }]),
+    );
   });
 
-  it('does not report a known operational blocker as a failure', async () => {
-    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    loadReleaseRosterMock.mockResolvedValueOnce({
-      issues: [{ id: 'iss-1', claimedByRunId: null }],
-    });
-    cutWaitingReleaseMock.mockResolvedValueOnce({
-      status: 'skipped',
-      output: 'no cut this tick: no runner is online',
-      named: ['iss-1'],
-    });
+  it('counts and clears only the fifty cut, and queues the tail behind them', async () => {
+    const result = await sweepAutomaticReleases();
+    expect(result.issuesCut).toBe(50);
+    expect(clearedHolds).toEqual([waiting.slice(0, 50)]);
+    expect(Object.keys(holds).sort()).toEqual(waiting.slice(50).sort());
+    expect(holds['iss-74']).toMatchObject({ code: 'RELEASE_QUEUED_BEHIND', owes: 'agent' });
+  });
 
+  it('writes a failure only on the fifty the cut named, and the tail stays queued', async () => {
+    cutWaitingReleaseMock.mockResolvedValueOnce({ status: 'failed', output: 'x', error: 'lock' });
     await sweepAutomaticReleases();
-
-    expect(insertedComments).toEqual([]);
+    expect(holds['iss-49']?.code).toBe('RELEASE_CUT_FAILED');
+    expect(holds['iss-50']?.code).toBe('RELEASE_QUEUED_BEHIND');
   });
 });
 
@@ -445,9 +473,10 @@ describe('sweepAutomaticReleases — per-project fault isolation', () => {
       candidateRow('proj-bad', 'iss-bad', '2026-09-22T00:00:00Z'),
       candidateRow('proj-good', 'iss-good', '2026-09-22T00:00:01Z'),
     ];
-    loadReleaseRosterMock.mockImplementation(async (projectId: string) => {
+    waitingIds = ['iss-good'];
+    projectAutoProdDeployMock.mockImplementation(async (projectId: string) => {
       if (projectId === 'proj-bad') throw new Error('boom');
-      return { issues: [{ id: 'iss-good', claimedByRunId: null }] };
+      return true;
     });
 
     const result = await sweepAutomaticReleases();

@@ -103,18 +103,42 @@ describe('cutWaitingRelease', () => {
   });
 
   it.each([
-    ['BatchInFlightError', new BatchInFlightError('in flight')],
-    ['ClaimConflictError', new ClaimConflictError('claimed')],
-    ['NoRunnerOnlineError', new NoRunnerOnlineError('no runner')],
-    ['ReleasePoolEmptyError', new ReleasePoolEmptyError('empty pool')],
-    ['NoReleaseGateError', new NoReleaseGateError('no gate')],
-    ['ReleaseBranchesUndeclaredError', new ReleaseBranchesUndeclaredError('no branches')],
-    ['ReleaseRecordMissingError', new ReleaseRecordMissingError('no note')],
-  ])('classifies %s as skipped, not failed', async (_name, err) => {
+    ['BatchInFlightError', new BatchInFlightError('in flight'), 'BATCH_IN_FLIGHT'],
+    ['ClaimConflictError', new ClaimConflictError('claimed'), 'CLAIM_CONFLICT'],
+    ['NoRunnerOnlineError', new NoRunnerOnlineError('no runner'), 'NO_RUNNER_ONLINE'],
+    ['ReleasePoolEmptyError', new ReleasePoolEmptyError('empty pool'), 'RELEASE_POOL_EMPTY'],
+    ['NoReleaseGateError', new NoReleaseGateError('no gate'), 'NO_RELEASE_GATE'],
+    [
+      'ReleaseBranchesUndeclaredError',
+      new ReleaseBranchesUndeclaredError('no branches'),
+      'RELEASE_BRANCHES_UNDECLARED',
+    ],
+    [
+      'ReleaseRecordMissingError',
+      new ReleaseRecordMissingError('no note'),
+      'RELEASE_RECORD_MISSING',
+    ],
+  ])('classifies %s as skipped under its code, not failed', async (_name, err, code) => {
     createReleaseBatchMock.mockRejectedValueOnce(err);
     const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
     expect(outcome.status).toBe('skipped');
     expect(outcome.output).toContain('no cut this tick');
+    expect(outcome.code).toBe(code);
+    expect(outcome.reasons).toEqual([err.message]);
+    expect(outcome.named).toEqual(['iss-1']);
+  });
+
+  it('prefers the code and every reason the refusal carries over the class', async () => {
+    const err = Object.assign(new NoRunnerOnlineError('no runner'), {
+      releaseBlockers: [
+        { code: 'NO_RUNNER_ONLINE', message: 'No runner is online.' },
+        { code: 'RELEASE_PROBES_UNDECLARED', message: 'The probes are undeclared.' },
+      ],
+    });
+    createReleaseBatchMock.mockRejectedValueOnce(err);
+    const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
+    expect(outcome.code).toBe('NO_RUNNER_ONLINE');
+    expect(outcome.reasons).toEqual(['No runner is online.', 'The probes are undeclared.']);
   });
 
   // The enumerator refuses more than one release may carry, so the cut takes the
@@ -227,6 +251,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       output: 'the scheduled cut failed',
       error: 'boom',
       named: ['iss-1'],
+      reasons: ['boom'],
     });
   });
 });

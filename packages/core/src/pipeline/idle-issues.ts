@@ -22,6 +22,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { readReleaseHold } from './release-hold.js';
 import {
   classifyLease,
   type LeaseReading,
@@ -33,6 +34,7 @@ import {
 } from './session-claim.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import {
+  heldReleaseWait,
   SHORTEST_GRACE_MS,
   STRAND_RULES,
   type StrandEvidence,
@@ -96,6 +98,7 @@ interface CandidateRow {
   merged_at: string | null;
   lease: unknown;
   strand: unknown;
+  release_hold: unknown;
   ever_ran: boolean;
   cursor_ts: string;
 }
@@ -218,8 +221,11 @@ function judge(
     everRan: row.ever_ran,
     poolHasRunner: pooled.has(row.project_id),
     lease,
+    releaseHold: readReleaseHold(row.release_hold),
   };
   const { reason, owes } = strandReason({ status: row.status, rule, evidence });
+  const waitingFor =
+    heldReleaseWait(row.status, evidence.releaseHold)?.waitingFor ?? rule.waitingFor;
   return {
     lease,
     unclassified: false,
@@ -227,7 +233,7 @@ function judge(
       at: now.toISOString(),
       status: row.status,
       since: row.updated_at,
-      waitingFor: rule.waitingFor,
+      waitingFor,
       owes,
       reason,
       lease: lease.verdict,
@@ -281,6 +287,7 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
            p.issue_prefix, p.name AS project_name,
            i.session_context -> 'lease'  AS lease,
            i.session_context -> 'strand' AS strand,
+           i.session_context -> 'releaseHold' AS release_hold,
            i.updated_at::text AS cursor_ts,
            EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = i.id) AS ever_ran
       FROM issues i

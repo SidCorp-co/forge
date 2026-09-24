@@ -6,6 +6,7 @@
  */
 
 import type { IssueStatus } from '../db/schema.js';
+import type { ReleaseHold } from './release-hold.js';
 import type { LeaseReading } from './session-claim.js';
 
 /** Whose move it is for a stranded row to leave the status it is stuck at. */
@@ -112,6 +113,21 @@ export interface StrandEvidence {
   /** Whether this project has a runner admitted to the job pool. */
   poolHasRunner: boolean;
   lease: LeaseReading;
+  /** What the automatic release wrote on the row about why it is not taking it (ISS-1215). */
+  releaseHold?: ReleaseHold | null;
+}
+
+/** Who a held `awaiting_release` row waits on: the automatic release's hold outranks the rule. */
+export function heldReleaseWait(
+  status: string,
+  hold: ReleaseHold | null | undefined,
+): { waitingFor: string; owes: StrandOwner; reason: string } | null {
+  if (status !== 'awaiting_release' || !hold) return null;
+  return {
+    waitingFor: hold.waitingFor,
+    owes: hold.owes,
+    reason: `the automatic release is holding it (${hold.code}): ${hold.reason}`,
+  };
 }
 
 /**
@@ -130,6 +146,9 @@ export function strandReason(args: {
   const { status, rule, evidence } = args;
   const fallbackOwner: StrandOwner = rule.watch ? rule.owes : 'human';
   const lease = evidence.lease;
+
+  const held = heldReleaseWait(status, evidence.releaseHold);
+  if (held) return { reason: held.reason, owes: held.owes };
 
   // Ahead of the status-keyed answers below, alone among the readings: it measures the holder.
   if (lease.verdict === 'abandoned') {

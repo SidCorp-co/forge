@@ -665,7 +665,7 @@ it('releaseSweep (ISS-1117) runs after reapStaleReleaseBatchClaims and reports i
   const scan = calls.findIndex((s) => s.includes('awaiting_release'));
   expect(claims).toBeGreaterThanOrEqual(0);
   expect(scan).toBeGreaterThan(claims);
-  expect(result.releaseSweep).toEqual({ projectsCut: 0, issuesCut: 0, issuesExcluded: 0 });
+  expect(Object.values(result.releaseSweep ?? {})).toEqual([0, 0, 0, 0]);
 });
 
 describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {
