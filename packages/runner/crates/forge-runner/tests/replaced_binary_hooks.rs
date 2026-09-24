@@ -282,3 +282,58 @@ fn a_settings_file_already_standing_is_left_byte_for_byte_on_that_refusal() {
         "the refusal rewrote a settings file that was already correct"
     );
 }
+
+/// Criterion 8, driven against the annotation a live kernel wrote rather than
+/// one spelled out here.
+///
+/// A checkout carrying this daemon's own marker under an event no build in
+/// this tree installs is the shape that was counted as unrunnable, reported as
+/// repaired, and never rewritten — at every boot and after every update. The
+/// repair either leaves nothing naming the replaced binary behind, or it says
+/// so; what it may not do is answer with a list it did not earn.
+#[test]
+fn a_hook_for_an_event_this_build_does_not_install_is_repaired_from_a_replaced_binary() {
+    let live = replaced_under_a_live_process("outside-all");
+    let repo = repo_under(&live);
+    let settings = hook_install::settings_path(&repo);
+    std::fs::create_dir_all(settings.parent().expect("parent")).expect("dot claude");
+
+    let dead = live.raw.to_str().expect("utf-8");
+    assert!(
+        dead.ends_with(exe::DELETED_SUFFIX),
+        "the kernel did not annotate the path, so this case is about a string that does not occur"
+    );
+    let poisoned = serde_json::json!({
+        "hooks": {
+            "SessionStart": [{
+                "hooks": [{ "type": "command", "command": format!("'{dead}' hook --event SessionStart") }]
+            }]
+        }
+    });
+    std::fs::write(
+        &settings,
+        serde_json::to_string_pretty(&poisoned).expect("serialize"),
+    )
+    .expect("write");
+
+    let resolved = exe::resolve(&live.raw).expect("a build stands at that path, annotation aside");
+    let reported = hook_install::repair(&repo, &resolved.path).expect("repair");
+
+    assert_eq!(
+        reported,
+        vec![dead.to_string()],
+        "the repair must name the program that could not be run"
+    );
+    for command in commands_in(&settings) {
+        assert!(
+            !command.contains(exe::DELETED_SUFFIX),
+            "reported repaired and still holds a command nothing can run: {command}"
+        );
+    }
+    assert!(
+        hook_install::repair(&repo, &resolved.path)
+            .expect("second pass")
+            .is_empty(),
+        "the repair reports the same checkout forever instead of settling"
+    );
+}

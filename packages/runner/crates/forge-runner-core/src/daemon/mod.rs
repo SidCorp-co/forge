@@ -256,7 +256,7 @@ fn repair_installed_hooks(cfg: &Config, when: &str) {
         match crate::daemon::hook_install::repair(&binding.repo_path, &exe.path) {
             Ok(unrunnable) if unrunnable.is_empty() => {}
             Ok(unrunnable) => tracing::warn!(
-                "[hooks] {when}: {slug}'s hooks named {}, which nothing can run — every hook in a session there was dying at every call, and they now name {}",
+                "[hooks] {when}: {slug}'s settings named {}, which nothing can run — that file's hook commands now name {}, and a session already open in that checkout keeps the dead ones until it is restarted, Claude Code having read the file at startup",
                 unrunnable.join(", "),
                 exe.path.display()
             ),
@@ -1283,6 +1283,91 @@ mod hook_repair_tests {
         )
         .expect("write");
         repo
+    }
+
+    /// The same, plus a managed hook command for an event this build does not
+    /// install. The daemon's own marker is what makes an entry ours, and the
+    /// scan that decides what is unrunnable reads every event in the file, so
+    /// this entry is counted — and until ISS-1200's second round the rewrite
+    /// did not cover it, which is how a project was reported repaired at every
+    /// boot and stayed dead.
+    fn poisoned_checkout_with_an_event_this_build_does_not_install(
+        root: &std::path::Path,
+        slug: &str,
+        event: &str,
+    ) -> std::path::PathBuf {
+        let repo = poisoned_checkout(root, slug);
+        let settings = crate::daemon::hook_install::settings_path(&repo);
+        let gone = root.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        let mut doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).expect("read")).expect("json");
+        doc["hooks"][event] = serde_json::json!([{
+            "hooks": [{
+                "type": "command",
+                "command": format!("'{}' hook --event {event}", gone.display()),
+            }]
+        }]);
+        std::fs::write(
+            &settings,
+            serde_json::to_string_pretty(&doc).expect("serialize"),
+        )
+        .expect("write");
+        repo
+    }
+
+    /// Criterion 8, at the shape the judging run failed it on: the sweep's two
+    /// halves derived their answers separately, so a project could be named in
+    /// the journal as repaired at every boot and still hold, afterwards, the
+    /// very commands that line said had been rewritten.
+    #[test]
+    fn a_managed_hook_for_an_event_this_build_does_not_install_is_repaired_too() {
+        let root = scratch("event-outside-all");
+        let _installed = runnable(&root, "forge-runner");
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "gamma".into(),
+            crate::config::Binding {
+                repo_path: poisoned_checkout_with_an_event_this_build_does_not_install(
+                    &root,
+                    "gamma",
+                    "SessionStart",
+                ),
+                branch: None,
+                project_id: None,
+            },
+        );
+
+        repair_installed_hooks(&cfg, "a test");
+
+        let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(
+            &root.join("gamma"),
+        ))
+        .expect("read back");
+        assert!(
+            !text.contains(crate::exe::DELETED_SUFFIX),
+            "the sweep reported gamma repaired and left commands nothing can run: {text}"
+        );
+    }
+
+    /// And it settles: a second sweep over a file the first one repaired finds
+    /// nothing owed, rather than reporting the same repair forever.
+    #[test]
+    fn the_sweep_over_an_event_this_build_does_not_install_settles_after_one_pass() {
+        let root = scratch("event-outside-all-settles");
+        let installed = runnable(&root, "forge-runner");
+        let repo = poisoned_checkout_with_an_event_this_build_does_not_install(
+            &root,
+            "gamma",
+            "Notification",
+        );
+
+        let first = crate::daemon::hook_install::repair(&repo, &installed).expect("first pass");
+        assert!(!first.is_empty(), "nothing was owed on a poisoned checkout");
+        let second = crate::daemon::hook_install::repair(&repo, &installed).expect("second pass");
+        assert!(
+            second.is_empty(),
+            "the sweep reported the same repair a second time: {second:?}"
+        );
     }
 
     #[test]
