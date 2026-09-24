@@ -18,7 +18,7 @@ import {
   type SentryAgentListRequest,
 } from '../../integrations/sentry/agent-read.js';
 import { SENTRY_LIST_MAX_LIMIT } from '../../integrations/sentry/listing.js';
-import { isSentryRefusal } from '../../integrations/sentry/refusals.js';
+import { isSentryRefusal, SentryRefusal } from '../../integrations/sentry/refusals.js';
 import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
@@ -91,7 +91,9 @@ export const forgeSentryTool: ContextScopedMcpToolFactory = (ctx) => ({
     'on under Settings → Integrations), no_credential, credential_rejected, scope_missing, ' +
     'sentry_http_error, sentry_unreachable, no_targets, target_ambiguous (the binding declares ' +
     'several — pass `target`, the message lists them), target_unknown, target_no_org, confined_out, ' +
-    'bad_argument. ' +
+    'bad_argument. A call the input schema itself rejects — a wrong type, an unknown key — is an ' +
+    'MCP error rather than this envelope, because a malformed call is the caller breaking the ' +
+    'contract and the loudest refusal is the right one. ' +
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
     'Authorization: project membership, plus the binding granted to agents.',
   inputSchema: zodToMcpSchema(inputSchema),
@@ -118,10 +120,12 @@ export const forgeSentryTool: ContextScopedMcpToolFactory = (ctx) => ({
 
 async function dispatchAction(input: Input, ctx: McpContext): Promise<Record<string, unknown>> {
   // The call's own shape first: a `get` naming nothing to get is malformed whichever project it
-  // was aimed at, and refusing it here names what is missing without looking anything up.
+  // was aimed at, and refusing it here names what is missing without looking anything up. A
+  // `SentryRefusal` rather than a throw, so `bad_argument` means one thing on this door.
   if (input.action === 'get' && !input.issueId) {
-    throw new Error(
-      'BAD_REQUEST: get needs `issueId` — the Sentry issue id or short id `list` gave',
+    throw new SentryRefusal(
+      'bad_argument',
+      'get needs `issueId` — the Sentry issue id or short id `list` gave',
     );
   }
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);

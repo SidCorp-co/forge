@@ -274,6 +274,18 @@ describe('a read that reaches Sentry', () => {
     expect(serialized).not.toContain(previous);
   });
 
+  it('scrubs every string it hands back, the confinement list included', async () => {
+    answerWith({
+      body: [
+        sentryIssue(),
+        sentryIssue({ id: `5002-${TOKEN}`, shortId: null, project: { slug: 'forge-web' } }),
+      ],
+    });
+    const listing = await readProjectSentryIssues({ projectId: PROJECT });
+    expect(listing.issues).toHaveLength(1);
+    expect(JSON.stringify(listing.refused)).not.toContain(TOKEN);
+  });
+
   it('takes the tokens out of one issue read by id too', async () => {
     answerWith({ body: sentryIssue({ title: `Bearer ${TOKEN} was rejected` }) });
     const issue = await readProjectSentryIssue({ projectId: PROJECT, issueId: '5001' });

@@ -151,16 +151,20 @@ function scrubberFor(ctx: SentryAdapterContext): (text: string) => string {
   return (text: string) => scrubLogText(text, secrets);
 }
 
-/** The free text Sentry filled, with this binding's credentials taken out of it. */
-function scrubIssue(issue: SentryIssueDetail, clean: (text: string) => string): SentryIssueDetail {
-  const text = (value: string | null) => (value === null ? null : clean(value));
-  return {
-    ...issue,
-    title: text(issue.title),
-    culprit: text(issue.culprit),
-    metadataValue: text(issue.metadataValue),
-    permalink: text(issue.permalink),
-  };
+/**
+ * Every string Sentry filled, with this binding's credentials taken out of it.
+ *
+ * All of them rather than the free-text four: a field-by-field list is a list that goes stale the
+ * next time the projection gains a field, and the guarantee is about the whole answer.
+ */
+function scrubbed<T>(value: T, clean: (text: string) => string): T {
+  if (typeof value === 'string') return clean(value) as T;
+  if (Array.isArray(value)) return value.map((one) => scrubbed(one, clean)) as T;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value).map(([key, one]) => [key, scrubbed(one, clean)]);
+    return Object.fromEntries(entries) as T;
+  }
+  return value;
 }
 
 function rethrowScrubbed(err: unknown, ctx: SentryAdapterContext, bindingId: string): never {
@@ -239,8 +243,8 @@ export async function readProjectSentryIssues(
       projectSlug: listing.target.projectSlug ?? null,
       query: listing.query,
       window: input.window ?? null,
-      issues: listing.issues.map((issue) => scrubIssue(issue, clean)),
-      refused: listing.refused.map((one) => ({ ...one, reason: clean(one.reason) })),
+      issues: scrubbed(listing.issues, clean),
+      refused: scrubbed(listing.refused, clean),
       pages: listing.pages,
       truncated: listing.truncated,
     };
@@ -260,7 +264,7 @@ export async function readProjectSentryIssue(
       issueId: input.issueId,
       ...(input.target ? { targetLabel: input.target } : {}),
     });
-    return scrubIssue(call.issue, scrubberFor(ctx));
+    return scrubbed(call.issue, scrubberFor(ctx));
   } catch (err) {
     rethrowScrubbed(err, ctx, pair.binding.id);
   }

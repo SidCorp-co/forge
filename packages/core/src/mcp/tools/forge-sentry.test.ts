@@ -59,11 +59,18 @@ describe('the door forge_sentry opens', () => {
     }
   });
 
-  it('refuses a `get` that names no issue', async () => {
-    await expect(tool.handler({ action: 'get' })).rejects.toThrow(/issueId/);
+  it('refuses a `get` that names no issue, in the envelope every refusal uses', async () => {
+    const answer = (await tool.handler({ action: 'get' })) as {
+      ok: boolean;
+      refusal: { reason: string; message: string };
+    };
+    expect(answer.ok).toBe(false);
+    expect(answer.refusal.reason).toBe('bad_argument');
+    expect(answer.refusal.message).toContain('issueId');
+    expect(answer).not.toHaveProperty('issue');
   });
 
-  it('refuses an argument the schema does not hold', async () => {
+  it('breaks loudly on an argument the schema does not hold', async () => {
     await expect(tool.handler({ action: 'list', sentryToken: 'sntryu_x' })).rejects.toThrow();
   });
 });
