@@ -6,6 +6,7 @@ import {
   type runners,
   runnerTypes,
 } from '../../db/schema.js';
+import { readRunnerPoolRead } from '../../devices/pool-read-report.js';
 import { countInFlightByRunner, countInFlightForOneRunner } from '../../jobs/in-flight.js';
 import { setRunnerStatus as auditedSetRunnerStatus } from '../../runners/runner-events.js';
 import {
@@ -71,6 +72,7 @@ function publicRunnerRow(r: typeof runners.$inferSelect) {
     limitDetail: r.limitDetail,
     quarantinedUntil: r.quarantinedUntil,
     quarantineReason: r.quarantineReason,
+    poolRead: readRunnerPoolRead(r.poolRead),
   };
 }
 

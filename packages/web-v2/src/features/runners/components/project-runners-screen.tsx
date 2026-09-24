@@ -41,6 +41,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
 import { PoolAdmission } from "./pool-admission";
+import { PoolReadBanner } from "./pool-read";
 import { ResidentMaster } from "./resident-master";
 import { RunnerLabels } from "./runner-labels";
 import {
@@ -738,6 +739,8 @@ function RunnerRow({
 					</Banner>
 				)
 			)}
+
+			<PoolReadBanner poolRead={runner.poolRead} />
 
 			<div className="flex items-center justify-between gap-2 text-subtle">
 				<span className="fg-caption truncate">

@@ -1996,6 +1996,13 @@
       "when": 1809561600000,
       "tag": "0306_a_box_reports_its_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1809648000000,
+      "tag": "0307_a_box_reports_its_pool_reads",
+      "breakpoints": true
     }
   ]
 }
