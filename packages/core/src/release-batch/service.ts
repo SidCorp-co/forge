@@ -250,6 +250,8 @@ export interface FinishReleaseBatchOptions {
   alreadyVerified?: boolean | undefined;
   /** Called once verification is green, before the first issue closes. */
   onVerified?: (() => Promise<void>) | undefined;
+  /** Called before every closing mutation; throws to stop the close where it stands. */
+  fence?: (() => Promise<void>) | undefined;
   /**
    * Called with the outcome before the run goes terminal. The run's close cascade ends the
    * release job's own session, so anything that must be written about this finish is written here.
@@ -353,6 +355,7 @@ export async function finishReleaseBatch(
   const failed: Array<{ id: string; reason: string }> = [];
 
   for (const issue of claimed) {
+    await options.fence?.();
     try {
       await transitionIssueStatus(
         {
@@ -376,6 +379,7 @@ export async function finishReleaseBatch(
     }
   }
 
+  await options.fence?.();
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
     actorUserId: actor.type === 'user' ? actor.id : undefined,
@@ -385,6 +389,7 @@ export async function finishReleaseBatch(
   // The ship, stamped on the release row itself. It is not read back off the run's status because
   // `cancelConcludedRun` flips a `completed` run to `cancelled`, and a release that shipped and was
   // aborted afterwards is still the one whose bytes are live.
+  await options.fence?.();
   await markReleaseShipped(runId);
 
   const result = { closed, failed };

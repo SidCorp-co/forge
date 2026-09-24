@@ -269,8 +269,27 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord) {
     return step;
   }
 
+  /** Read the record back and stop the hold if anybody else wrote it since this worker did. */
+  function assertHeld(): Promise<void> {
+    const step = chain.then(async () => {
+      if (lost) throw new LostOwnershipError();
+      const run = await readReleaseRun(runId);
+      const now = run ? readFinishRecord(run.metadata) : null;
+      if (!now || now.version !== current.version || now.owner !== current.owner) {
+        lost = true;
+        throw new LostOwnershipError();
+      }
+    });
+    chain = step.catch(() => {});
+    return step;
+  }
+
   return {
     commit,
+    assertHeld,
+    get state() {
+      return current.state;
+    },
     renew: () =>
       IN_FLIGHT.has(current.state)
         ? commit(() => ({ leaseUntil: new Date(Date.now() + FINISH_LEASE_MS).toISOString() }))
@@ -306,7 +325,15 @@ function refusalOf(err: unknown): FinishRefusal {
  * Do the work of the attempt the run carries, if no live worker holds it.
  * Always ends with the record terminal, unless its lease was taken over.
  */
-export async function runReleaseBatchFinish(runId: string): Promise<void> {
+export interface FinishWorkerHooks {
+  /** Test seam: runs after the green verdict is committed and before the first close. */
+  afterVerified?: () => Promise<void>;
+}
+
+export async function runReleaseBatchFinish(
+  runId: string,
+  hooks: FinishWorkerHooks = {},
+): Promise<void> {
   const run = await readReleaseRun(runId);
   const record = run ? readFinishRecord(run.metadata) : null;
   if (!run || !record) return;
@@ -344,7 +371,9 @@ export async function runReleaseBatchFinish(runId: string): Promise<void> {
       alreadyVerified: record.state === 'closing',
       onVerified: async () => {
         await hold.commit(() => ({ state: 'closing' }));
+        await hooks.afterVerified?.();
       },
+      fence: () => hold.assertHeld(),
       onClosed: async (result) => {
         await hold.commit(() => ({
           state: 'finished',
@@ -358,6 +387,11 @@ export async function runReleaseBatchFinish(runId: string): Promise<void> {
     });
   } catch (err) {
     if (err instanceof LostOwnershipError || hold.lost) return;
+    if (hold.state === 'finished') {
+      // The roster is closed and recorded; only the run's close failed, which the sweep retries.
+      logger.error({ err, runId }, 'release-batch: a finished release could not close its run');
+      return;
+    }
     const refusal = refusalOf(err);
     if (refusal.code === 'RELEASE_FINISH_ERRORED') {
       logger.error({ err, runId }, 'release-batch: a finish stopped on an unexpected error');

@@ -11,7 +11,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -21,6 +21,21 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+
+const closeRun = vi.hoisted(() => ({ failNext: false }));
+vi.mock('../../src/pipeline/runs.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/pipeline/runs.js')>();
+  return {
+    ...real,
+    closeRunIfOneShot: async (...args: Parameters<typeof real.closeRunIfOneShot>) => {
+      if (closeRun.failNext) {
+        closeRun.failNext = false;
+        throw new Error('planted: the run close failed');
+      }
+      return real.closeRunIfOneShot(...args);
+    },
+  };
+});
 
 const BEFORE = '1111111111111111111111111111111111111111';
 const PUSHED = '2222222222222222222222222222222222222222';
@@ -215,5 +230,58 @@ describe('a live worker keeps its attempt', () => {
     expect((await fx.stored(issueId)).status).toBe('releasing');
     expect(await closesOf(issueId)).toBe(0);
     expect(await fx.runStatus(runId)).toBe('running');
+  }, 30_000);
+});
+
+describe('a worker that loses its hold mid-close, and a run close that fails', () => {
+  async function shipped(runId: string): Promise<unknown> {
+    const rows = await harness.db.execute(sql`
+      SELECT release_released_at FROM pipeline_runs WHERE id = ${runId}
+    `);
+    return rows[0]?.release_released_at ?? null;
+  }
+
+  it('closes nothing more once its lease is taken over after the green verdict', async () => {
+    const { runId, issueId } = await batch();
+    await plant(runId, { state: 'closing', owner: 'dead-worker', leaseUntil: iso(-1_000) });
+    let thief: Record<string, unknown> | null = null;
+
+    await job.runReleaseBatchFinish(runId, {
+      afterVerified: async () => {
+        const taken = (await stored(runId)) as Record<string, unknown>;
+        thief = await plant(runId, {
+          ...taken,
+          owner: 'thief',
+          leaseUntil: iso(60_000),
+          version: (taken.version as number) + 10,
+        });
+      },
+    });
+
+    expect(await stored(runId)).toEqual(thief);
+    expect((await fx.stored(issueId)).status).toBe('releasing');
+    expect(await closesOf(issueId)).toBe(0);
+    expect(await shipped(runId)).toBeNull();
+    expect(await fx.runStatus(runId)).toBe('running');
+  }, 30_000);
+
+  it('keeps a finished record finished when only the run close failed, and the sweep closes the run', async () => {
+    const { runId, issueId } = await batch();
+    serving = PUSHED;
+    await plant(runId, { state: 'verifying', owner: 'dead-worker', leaseUntil: iso(-1_000) });
+    closeRun.failNext = true;
+
+    await job.runReleaseBatchFinish(runId);
+
+    expect(await stored(runId)).toMatchObject({
+      state: 'finished',
+      closed: [issueId],
+      refusal: null,
+    });
+    expect(await fx.runStatus(runId)).toBe('running');
+
+    expect(await sweep()).toEqual([runId]);
+    expect(await fx.runStatus(runId)).toBe('completed');
+    expect(await closesOf(issueId)).toBe(1);
   }, 30_000);
 });
