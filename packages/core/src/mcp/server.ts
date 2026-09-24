@@ -58,6 +58,7 @@ import {
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
 import { forgeReconcileTool } from './tools/forge-reconcile.js';
+import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSchedulesTool } from './tools/forge-schedules.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
@@ -142,6 +143,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),
     forgeCoolifyDeployTool(ctx),
+    forgeReleaseBatchTool(ctx),
     forgeGoogleSheetsTool(ctx),
     forgeStorefrontTargetTool(ctx),
     forgeJobsListTool(ctx),
