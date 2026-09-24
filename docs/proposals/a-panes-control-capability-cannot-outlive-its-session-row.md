@@ -89,6 +89,26 @@ third row of the table below**, which it pays every time it acts: the subagents 
 running die with its pane, exactly as they do under `forge-runner master kill`. Shape 1 is what stops
 that bill arriving at all, because a pane that keeps its authority is never ended for having lost it.
 
+**Two residuals ISS-1208 leaves standing, neither of them shape 1's.**
+
+The first is a surface. ISS-1208's own Rules say a fleet in which every master is deaf "is a
+condition of the box, not of four projects, and is surfaced as one" — and the one record the sweep
+writes is a daemon log line. The per-project condition also reaches `forge-runner master status`,
+which is the surface ISS-1099 added *because a log is not one*. An operator standing at
+`master status` still assembles the box-level condition from four project rows. The record exists
+and is correct; what is missing is a home for it beside `master_authority`, which is a store and a
+command's output rather than a line of policy, and so is a deliverable rather than a defect in the
+recovery. Whoever takes it decides whether a box-level row belongs in that table at all or is
+derived from the per-project rows at print time.
+
+The second is the one the recovery cannot see. The box now establishes that a pane is gone —
+`terminal::kill` answers for the session, and `terminal::ensure`'s `Ok(false)` is read as a second
+reading — and where neither holds, the capability minted on the way is withdrawn again so the stale
+verdict comes back rather than being buried under it. What none of that reaches is a pane that ends
+and is replaced under the same name by something this box did not start, between the kill and the
+`new-session`. It is narrow, nothing observed has hit it, and the reading that would close it is a
+pane identity carried through the placement — which is shape 1 again, from the other side.
+
 ## Honest costs
 
 What adopting shape 1 takes from whoever builds it. These are the prices of the choice, not the
