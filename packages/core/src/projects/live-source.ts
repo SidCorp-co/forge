@@ -17,7 +17,7 @@ const GIT_ACCESS = "the project's Settings → Runners → Git access";
 
 /** Where a project's branches are read from, or why they cannot be. */
 export type LiveSource =
-  | { kind: 'github'; client: GitHubRepoClient }
+  | { kind: 'binding'; client: GitHubRepoClient }
   | { kind: 'deploy_key'; repoUrl: string; privateKey: string }
   | { kind: 'refused'; reason: string };
 
@@ -79,7 +79,7 @@ export async function resolveLiveSource(
   deps: LiveSourceDeps = defaultDeps,
 ): Promise<LiveSource> {
   try {
-    return { kind: 'github', client: await deps.githubClient(projectId) };
+    return { kind: 'binding', client: await deps.githubClient(projectId) };
   } catch (err) {
     if (!(err instanceof GitHubClientError)) throw err;
     if (err.reason !== 'no_binding') return { kind: 'refused', reason: err.message };
@@ -138,6 +138,6 @@ export async function readProjectDivergence(
 ): Promise<LiveDivergence> {
   const source = await deps.source(projectId);
   if (source.kind === 'refused') return { ok: false, reason: source.reason };
-  if (source.kind === 'github') return deps.github(source.client, refs);
+  if (source.kind === 'binding') return deps.github(source.client, refs);
   return deps.deployKey(source, refs);
 }

@@ -101,10 +101,8 @@ vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
 let harness: TestDatabase;
 let app: Hono<{ Variables: RequestIdVars }>;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-let forgetAllLiveReadings: () => void;
 let applyProjectedEvent: typeof import('../../src/integrations/github/projection-events.js').applyProjectedEvent;
 let encryptSecret: typeof import('../../src/integrations/vault.js').encryptSecret;
-let schema: typeof import('../../src/db/schema.js');
 let fixtureRoot = '';
 /** The commit on the fixture's staging whose message names no issue: ISS-442's observed merge. */
 let gitObserved = '';
@@ -145,19 +143,15 @@ async function gitlabDesk(userId: string, withKey = true) {
   unbound.add(p.id);
   await harness.db.execute(sql`UPDATE projects SET repo_url = ${GITLAB} WHERE id = ${p.id}`);
   if (!withKey) return p;
-  const [key] = await harness.db
-    .insert(schema.workspaceSshKeys)
-    .values({
-      orgId: p.orgId,
-      name: 'Forge x Gitlab',
-      source: 'forge_generated',
-      publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 forge-x-gitlab',
-      privateKeyEnc: encryptSecret(DEPLOY_KEY),
-    })
-    .returning({ id: schema.workspaceSshKeys.id });
-  await harness.db
-    .insert(schema.projectGitCredentials)
-    .values({ projectId: p.id, sshKeyId: key?.id as string });
+  const keyId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO workspace_ssh_keys (id, org_id, name, source, public_key, private_key_enc)
+    VALUES (${keyId}, ${p.orgId}, 'Forge x Gitlab', 'forge_generated',
+            'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 forge-x-gitlab', ${encryptSecret(DEPLOY_KEY)})
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO project_git_credentials (project_id, ssh_key_id) VALUES (${p.id}, ${keyId})
+  `);
   return p;
 }
 
@@ -224,10 +218,8 @@ beforeAll(async () => {
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
-  ({ forgetAllLiveReadings } = await import('../../src/projects/live-reading.js'));
   ({ applyProjectedEvent } = await import('../../src/integrations/github/projection-events.js'));
   ({ encryptSecret } = await import('../../src/integrations/vault.js'));
-  schema = await import('../../src/db/schema.js');
   buildSidDeskRepository();
 
   app = new Hono<{ Variables: RequestIdVars }>();
@@ -245,7 +237,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(harness.db);
-  forgetAllLiveReadings();
   unbound.clear();
   gitReads.length = 0;
   compares = 0;
@@ -382,7 +373,16 @@ describe('a reading that cannot place every closed issue (ISS-1217)', () => {
     );
 
     aheadOverride = null;
-    forgetAllLiveReadings();
+    await applyProjectedEvent(
+      {
+        projectId: desk.id,
+        bindingId: randomUUID(),
+        config: { owner: 'SidCorp-co', repo: 'sid-desk' },
+        secrets: {},
+      },
+      'push',
+      { ref: 'refs/heads/staging' },
+    );
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
       VALUES (${randomUUID()}, ${desk.id}, 900, 'merged later', 'closed', ${user.id}, now() + interval '1 hour')

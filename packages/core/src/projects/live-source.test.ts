@@ -41,7 +41,7 @@ describe('resolveLiveSource', () => {
   it('reads through the GitHub App where the project has an active binding', async () => {
     const deployKey = vi.fn();
     const s = await resolveLiveSource('p', deps({ githubClient: async () => client, deployKey }));
-    expect(s).toEqual({ kind: 'github', client });
+    expect(s).toEqual({ kind: 'binding', client });
     expect(deployKey).not.toHaveBeenCalled();
   });
 
@@ -168,7 +168,7 @@ describe('readProjectDivergence', () => {
     expect(github).not.toHaveBeenCalled();
 
     const viaApp = await readProjectDivergence('p', refs, {
-      source: async () => ({ kind: 'github', client }),
+      source: async () => ({ kind: 'binding', client }),
       github,
       deployKey,
     });
