@@ -73,4 +73,8 @@ describe('the door forge_sentry opens', () => {
   it('breaks loudly on an argument the schema does not hold', async () => {
     await expect(tool.handler({ action: 'list', sentryToken: 'sntryu_x' })).rejects.toThrow();
   });
+
+  it('breaks loudly on a call naming no project, rather than dressing it as a Sentry condition', async () => {
+    await expect(tool.handler({ action: 'list' })).rejects.toThrow(/project context missing/);
+  });
 });

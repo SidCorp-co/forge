@@ -7,7 +7,11 @@
  *
  * The refusals are values, not sentences: `ok: false` with a `refusal.reason` a caller switches on,
  * because "no binding" and "the credential was rejected" send whoever met them somewhere different
- * and an answer that cannot be told apart from an empty error stream is worse than none.
+ * and an answer that cannot be told apart from an empty error stream is worse than none. That
+ * envelope covers reaching Sentry for a project the caller may ask about, and nothing before it:
+ * a malformed call, a call naming no project and a caller holding no role throw as they do on
+ * every neighbouring tool, because dressing an authorization refusal as a Sentry condition is how
+ * one gets read as the other.
  */
 
 import { z } from 'zod';
@@ -91,9 +95,11 @@ export const forgeSentryTool: ContextScopedMcpToolFactory = (ctx) => ({
     'on under Settings → Integrations), no_credential, credential_rejected, scope_missing, ' +
     'sentry_http_error, sentry_unreachable, no_targets, target_ambiguous (the binding declares ' +
     'several — pass `target`, the message lists them), target_unknown, target_no_org, confined_out, ' +
-    'bad_argument. A call the input schema itself rejects — a wrong type, an unknown key — is an ' +
-    'MCP error rather than this envelope, because a malformed call is the caller breaking the ' +
-    'contract and the loudest refusal is the right one. ' +
+    'bad_argument. The envelope covers reaching Sentry for a project you may ask about; everything ' +
+    'BEFORE that is an ordinary MCP error and not this shape — a call the input schema rejects (a ' +
+    'wrong type, an unknown key), a call naming no project, and a caller who holds no role on the ' +
+    'project named. Those are the caller breaking the contract rather than Sentry being ' +
+    'unreadable, and the loudest refusal is the right one for them. ' +
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
     'Authorization: project membership, plus the binding granted to agents.',
   inputSchema: zodToMcpSchema(inputSchema),
