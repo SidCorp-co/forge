@@ -306,6 +306,7 @@ mod tests {
         Reports(Reported {
             doing: crate::daemon::agent_activity::Doing::Idle,
             at: now_ms() - run_exit::RUN_IDLE_BEFORE_EXIT.as_millis() as i64 - 1,
+            written_at: None,
         })
     }
 

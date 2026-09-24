@@ -1252,19 +1252,18 @@ fn report_job_capacity(
         .map(|h| {
             // The same precedence the sweep itself reads on: what this daemon
             // has heard, and otherwise what the last one recorded.
-            let seen = h
-                .watch
-                .session_id()
-                .and_then(|s| activity.get(s))
-                .map(|a| job_exit::Reported::of(&a))
-                .or(h.seen);
+            let said = h.watch.session_id().and_then(|s| activity.get(s));
+            let seen = said.as_ref().map(job_exit::Reported::of).or(h.seen);
+            let written_at = pool_jobs::written_at(said.as_ref(), h.transcript.as_deref());
             // A pane the next sweep is about to let go for having said nothing
             // at all must not read here as one merely waiting to be heard from:
             // that is the second answer to one question this line exists to
             // avoid giving.
             let phrase = match job_unheard::verdict(seen, h.noted_at, now) {
                 job_unheard::Verdict::Unheard { .. } => job_unheard::HOLDING_PHRASE,
-                job_unheard::Verdict::Keep => job_exit::holding_phrase(&h.watch, seen, now),
+                job_unheard::Verdict::Keep => {
+                    job_exit::holding_phrase(&h.watch, seen, written_at, now)
+                }
             };
             // How long the slot has been held, from the pane's opening on its
             // record. A record with none was written by an older daemon, and
@@ -1581,6 +1580,7 @@ impl recovery::RunActivity for PaneActivity<'_> {
         Some(run_exit::Reported {
             doing: a.doing(),
             at: a.last_event_at,
+            written_at: pool_jobs::written_at(Some(&a), None),
         })
     }
 }
@@ -3311,6 +3311,7 @@ mod tests {
                             - 1,
                         subject: None,
                         conversation: None,
+                        transcript: None,
                     },
                 );
             }
@@ -3361,6 +3362,7 @@ mod tests {
                 prompts: 1,
             }),
             None,
+            None,
         );
 
         // Nothing has been heard in THIS daemon: the pane went quiet before the
@@ -3395,6 +3397,7 @@ mod tests {
                 at: now - 3 * 60 * 60 * 1000,
                 prompts: 1,
             }),
+            None,
             Some(now - 3 * 60 * 60 * 1000 - 30_000),
         );
 
@@ -3422,6 +3425,7 @@ mod tests {
             },
             None,
             None,
+            None,
         );
         panes.backdate("j1", agent_activity::now_ms() - 5 * 60_000 - 1_000);
 
@@ -3446,6 +3450,7 @@ mod tests {
             Watch::Adopted {
                 session_id: "sess-1".into(),
             },
+            None,
             None,
             None,
         );
@@ -4552,6 +4557,7 @@ mod give_back_tests {
             Some(run_exit::Reported {
                 doing: crate::daemon::agent_activity::Doing::Idle,
                 at: self.0,
+                written_at: None,
             })
         }
     }
@@ -5303,6 +5309,7 @@ mod give_back_tests {
                     at: 0,
                     subject: *subject,
                     conversation: Some("c1"),
+                    transcript: None,
                 },
             ));
         }

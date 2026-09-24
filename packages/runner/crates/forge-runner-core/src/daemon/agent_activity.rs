@@ -91,6 +91,9 @@ pub struct Report<'a> {
     pub subject: Option<&'a str>,
     /// Claude Code's own `session_id` — the conversation, not Forge's session.
     pub conversation: Option<&'a str>,
+    /// Claude Code's own `transcript_path`: where this conversation is written
+    /// as it runs, which `transcript_age` reads the last write of.
+    pub transcript: Option<&'a str>,
 }
 
 /// What a session is doing, as the session itself last reported.
@@ -122,6 +125,10 @@ pub struct Activity {
     pub children: std::collections::BTreeSet<String>,
     /// The conversation these claims belong to (Claude Code's `session_id`).
     pub conversation: Option<String>,
+    /// Where that conversation is written, as its hooks last named it. The one
+    /// thing here a reader can age while a turn runs, since nothing this
+    /// daemon registers fires between a turn's start and its end (ISS-1244).
+    pub transcript: Option<String>,
     awaiting_permission: bool,
     /// That the lead's last boundary this daemon saw ENDED its turn. Children
     /// this daemon holds without having seen that are still `Working`: after a
@@ -189,6 +196,7 @@ impl Activities {
             turn_started_at: None,
             children: std::collections::BTreeSet::new(),
             conversation: None,
+            transcript: None,
             awaiting_permission: false,
             lead_ended: false,
             sequence: 0,
@@ -203,6 +211,14 @@ impl Activities {
                 a.lead_ended = false;
             }
             a.conversation = Some(seen.to_string());
+        }
+        // Absolute or not at all: a relative path would be read against the
+        // daemon's own cwd, which is nothing to do with the pane.
+        if let Some(path) = r
+            .transcript
+            .filter(|p| std::path::Path::new(p).is_absolute())
+        {
+            a.transcript = Some(path.to_string());
         }
         a.last_event = event;
         a.last_event_at = at;
@@ -279,6 +295,7 @@ mod tests {
             at,
             subject: None,
             conversation: None,
+            transcript: None,
         }
     }
 
@@ -289,6 +306,7 @@ mod tests {
             at,
             subject: Some(id),
             conversation: None,
+            transcript: None,
         }
     }
 
@@ -411,6 +429,7 @@ mod tests {
             at: 0,
             subject,
             conversation: Some(conversation),
+            transcript: None,
         };
         a.record("s1", r(Event::PromptSubmitted, None, "conv-a"));
         a.record("s1", r(Event::Stopped, None, "conv-a"));
@@ -539,6 +558,7 @@ mod tests {
                 at: 10,
                 subject: None,
                 conversation: Some("conv-a"),
+                transcript: None,
             },
         );
         a.record(
@@ -548,6 +568,7 @@ mod tests {
                 at: 11,
                 subject: Some("c1"),
                 conversation: Some("conv-a"),
+                transcript: None,
             },
         );
         assert_eq!(a.get("s1").unwrap().children.len(), 1);
@@ -558,6 +579,7 @@ mod tests {
                 at: 20,
                 subject: None,
                 conversation: Some("conv-b"),
+                transcript: None,
             },
         );
         assert!(
@@ -575,6 +597,7 @@ mod tests {
             at,
             subject: Some("c1"),
             conversation: Some("conv-a"),
+            transcript: None,
         };
         a.record("s1", r(Event::SubagentStarted, 10));
         a.record("s1", r(Event::TeammateWentIdle, 11));
@@ -699,6 +722,7 @@ mod tests {
                     at: 0,
                     subject,
                     conversation: Some("c1"),
+                    transcript: None,
                 },
             )
         };
@@ -722,6 +746,7 @@ mod tests {
                     at: 0,
                     subject: None,
                     conversation: Some(conversation),
+                    transcript: None,
                 },
             )
         };
@@ -738,6 +763,60 @@ mod tests {
             "the claims the old conversation held are still voided"
         );
         assert_eq!(say(Event::PromptSubmitted, "c2").prompts, 2);
+    }
+
+    #[test]
+    fn the_transcript_a_hook_names_is_kept_and_a_later_one_replaces_it() {
+        let acts = Activities::new();
+        let say = |event, transcript| {
+            acts.record(
+                "s1",
+                Report {
+                    event,
+                    at: 0,
+                    subject: None,
+                    conversation: None,
+                    transcript,
+                },
+            )
+        };
+        assert_eq!(say(Event::PromptSubmitted, None).transcript, None);
+        assert_eq!(
+            say(Event::PromptSubmitted, Some("/h/p/a.jsonl"))
+                .transcript
+                .as_deref(),
+            Some("/h/p/a.jsonl")
+        );
+        assert_eq!(
+            say(Event::Stopped, None).transcript.as_deref(),
+            Some("/h/p/a.jsonl"),
+            "an event that names none does not unlearn the one known"
+        );
+        assert_eq!(
+            say(Event::PromptSubmitted, Some("/h/p/b.jsonl"))
+                .transcript
+                .as_deref(),
+            Some("/h/p/b.jsonl")
+        );
+    }
+
+    #[test]
+    fn a_relative_transcript_path_is_not_taken() {
+        let acts = Activities::new();
+        let after = acts.record(
+            "s1",
+            Report {
+                event: Event::PromptSubmitted,
+                at: 0,
+                subject: None,
+                conversation: None,
+                transcript: Some("conv.jsonl"),
+            },
+        );
+        assert_eq!(
+            after.transcript, None,
+            "read against the daemon's own cwd, it would age some other file"
+        );
     }
 
     #[test]

@@ -17,9 +17,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::daemon::agent_activity::{now_ms, Activities};
+use crate::daemon::agent_activity::{now_ms, Activities, Activity};
 use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
+use crate::daemon::transcript_age;
 use crate::daemon::turn_evidence::{self, Evidence, Watch};
 use crate::daemon::{control, hook_install, session_tokens, terminal};
 use crate::error::{Error, Result};
@@ -90,6 +91,11 @@ pub struct Live {
     pub pane: String,
     pub watch: Watch,
     pub seen: Option<job_exit::Reported>,
+    /// Where the pane's conversation is written, as its hooks last named it.
+    /// On the record for the same reason `seen` is: a pane whose `Stop` was
+    /// lost across a restart never speaks to the next daemon, and this path is
+    /// the only thing that daemon can age it by (ISS-1244).
+    pub transcript: Option<String>,
     /// When this box opened the pane, which is when the slot was taken. On the
     /// record so the age a person reads survives the daemon that counted it;
     /// `None` on a record a daemon before this field wrote.
@@ -102,6 +108,7 @@ struct Held {
     pane: String,
     watch: Watch,
     seen: Option<job_exit::Reported>,
+    transcript: Option<String>,
     /// When this daemon began counting the pane — the adoption, for one it
     /// adopted, and never the pane's own start. It is the only instant this
     /// box's own silence can be measured from, which is what `job_unheard`
@@ -128,6 +135,9 @@ pub struct Holding {
     /// told a pane has reported nothing, while the next sweep is about to
     /// conclude it finished, has been handed two answers to one question.
     pub seen: Option<job_exit::Reported>,
+    /// Where the pane's conversation is written, which the line reads the
+    /// last write of exactly as the sweep does.
+    pub transcript: Option<String>,
     /// When this daemon began counting the pane, which for one it adopted is
     /// the adoption and not the pane's own start.
     pub noted_at: i64,
@@ -169,17 +179,20 @@ impl JobPanes {
 
     /// A pane this daemon opened just now.
     pub fn note(&self, job_id: &str, pane: &str, watch: Watch) {
-        self.hold(job_id, pane, watch, None, Some(now_ms()));
+        self.hold(job_id, pane, watch, None, None, Some(now_ms()));
     }
 
-    /// The same, carrying what a previous daemon's sweep read of this agent and
-    /// when the pane was opened, where anything knows.
+    /// The same, carrying what a previous daemon's sweep read of this agent,
+    /// where its conversation is written and when the pane was opened, where
+    /// anything knows. A transcript path once known is not unlearned by a
+    /// caller that knows none.
     pub fn hold(
         &self,
         job_id: &str,
         pane: &str,
         watch: Watch,
         seen: Option<job_exit::Reported>,
+        transcript: Option<String>,
         opened_at: Option<i64>,
     ) {
         let Ok(mut map) = self.inner.lock() else {
@@ -191,12 +204,16 @@ impl JobPanes {
                 h.pane = pane.to_string();
                 h.watch = watch.clone();
                 h.seen = seen;
+                if transcript.is_some() {
+                    h.transcript = transcript.clone();
+                }
                 h.opened_at = h.opened_at.or(opened_at);
             })
             .or_insert_with(|| Held {
                 pane: pane.to_string(),
                 watch,
                 seen,
+                transcript,
                 noted_at: now,
                 opened_at,
             });
@@ -236,6 +253,7 @@ impl JobPanes {
                 pane: h.pane.clone(),
                 watch: h.watch.clone(),
                 seen: h.seen,
+                transcript: h.transcript.clone(),
                 noted_at: h.noted_at,
                 opened_at: h.opened_at,
             })
@@ -261,6 +279,7 @@ impl JobPanes {
                 pane: h.pane.clone(),
                 watch: h.watch.clone(),
                 seen: h.seen,
+                transcript: h.transcript.clone(),
                 opened_at: h.opened_at,
             })
             .collect();
@@ -289,6 +308,14 @@ impl JobPanes {
             }
         }
     }
+}
+
+/// The newest write to a session's own transcript: the path this daemon heard
+/// its hooks name, and otherwise the one a record carries. `None` where there
+/// is no path or nothing under it can be read — no evidence, never silence.
+pub fn written_at(said: Option<&Activity>, recorded: Option<&str>) -> Option<i64> {
+    let path = said.and_then(|a| a.transcript.as_deref()).or(recorded)?;
+    transcript_age::last_written(Path::new(path))
 }
 
 /// The pane name a job runs under, and the only shape `adopt` can read back.
@@ -339,7 +366,14 @@ pub async fn adopt(
                 );
             }
             Err(e) => {
-                registry.hold(&rec.job_id, &rec.pane, Watch::Unhooked, None, rec.opened_at);
+                registry.hold(
+                    &rec.job_id,
+                    &rec.pane,
+                    Watch::Unhooked,
+                    None,
+                    None,
+                    rec.opened_at,
+                );
                 tracing::warn!(
                     "[pool] job {} did not survive the restart and core could not be told: {e} — the supervisor will keep sending it",
                     rec.job_id
@@ -368,6 +402,7 @@ pub async fn adopt(
             pane: name,
             watch,
             seen,
+            transcript: held.and_then(|r| r.transcript.clone()),
             opened_at: held.and_then(|r| r.opened_at),
         };
         registry.hold(
@@ -375,6 +410,7 @@ pub async fn adopt(
             &adopted.pane,
             adopted.watch.clone(),
             adopted.seen,
+            adopted.transcript.clone(),
             adopted.opened_at,
         );
         records.note(&adopted).await;
@@ -514,6 +550,7 @@ pub async fn take_one(
         pane: pane.clone(),
         watch: watch.clone(),
         seen: None,
+        transcript: None,
         opened_at: Some(opened_at),
     };
     records.note(&opened).await;
@@ -531,7 +568,7 @@ pub async fn take_one(
             return Took::Refused(r.as_str().to_string());
         }
         Err(e) => {
-            registry.hold(&prepared.job_id, &pane, watch, None, opened.opened_at);
+            registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
             tracing::error!(
                 "[pool] {project_id}: start for job {} did not answer ({e}) — pane {pane} kept, and the next tick asks core whose job it is",
                 prepared.job_id
@@ -540,7 +577,7 @@ pub async fn take_one(
         }
     }
 
-    registry.hold(&prepared.job_id, &pane, watch, None, opened.opened_at);
+    registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
     if let Err(e) = report.ack(&prepared.job_id).await {
         tracing::warn!("[pool] ack for job {} failed: {e}", prepared.job_id);
     }
@@ -682,10 +719,15 @@ pub async fn supervise(
         // restart and will never speak again. A pane with neither is a session
         // this box knows nothing about, and `job_exit` keeps it.
         let seen = said.as_ref().map(job_exit::Reported::of).or(live.seen);
-        if seen != live.seen {
+        let transcript = said
+            .as_ref()
+            .and_then(|a| a.transcript.clone())
+            .or_else(|| live.transcript.clone());
+        if seen != live.seen || transcript != live.transcript {
             records
                 .note(&Live {
                     seen,
+                    transcript: transcript.clone(),
                     ..live.clone()
                 })
                 .await;
@@ -694,10 +736,14 @@ pub async fn supervise(
                 &live.pane,
                 live.watch.clone(),
                 seen,
+                transcript.clone(),
                 live.opened_at,
             );
         }
-        if let Some(reason) = job_exit::verdict(&live.watch, seen, now).reason(&live.pane) {
+        let written_at = written_at(said.as_ref(), transcript.as_deref());
+        if let Some(reason) =
+            job_exit::verdict(&live.watch, seen, written_at, now).reason(&live.pane)
+        {
             if conclude(panes, report, records, registry, &live, reason).await {
                 continue;
             }
@@ -869,6 +915,9 @@ impl Records for FileRecords {
         if let Some(seen) = live.seen {
             obj.insert("seen".into(), seen.to_json());
         }
+        if let Some(path) = &live.transcript {
+            obj.insert("transcript".into(), path.as_str().into());
+        }
         if let Some(at) = live.opened_at {
             obj.insert("openedAt".into(), at.into());
         }
@@ -922,6 +971,7 @@ impl Records for FileRecords {
                     .as_ref()
                     .map(|v| &v["seen"])
                     .and_then(job_exit::Reported::from_json),
+                transcript: field("transcript"),
                 opened_at: held.as_ref().and_then(|v| v["openedAt"].as_i64()),
             });
         }
@@ -1189,6 +1239,7 @@ mod tests {
             watch,
             seen,
             opened_at: None,
+            transcript: None,
         }
     }
 
@@ -1731,6 +1782,7 @@ mod tests {
                 at: now_ms(),
                 subject: None,
                 conversation: None,
+                transcript: None,
             },
         );
 
@@ -1766,6 +1818,7 @@ mod tests {
                     at: now_ms(),
                     subject: None,
                     conversation: None,
+                    transcript: None,
                 },
             );
         }
@@ -1932,6 +1985,7 @@ mod tests {
                     at,
                     subject: None,
                     conversation: None,
+                    transcript: None,
                 },
             );
         }
@@ -2096,6 +2150,7 @@ mod tests {
                     at,
                     subject,
                     conversation: None,
+                    transcript: None,
                 },
             );
         }
@@ -2135,6 +2190,182 @@ mod tests {
         );
         assert!(
             failed[0].1.contains("forge-job-j1") && failed[0].1.contains("never reported an end"),
+            "{}",
+            failed[0].1
+        );
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    /// A conversation transcript under `home`, last written `ago` ms before now.
+    fn transcript_written(home: &TempHome, ago: i64) -> String {
+        let path = home.path().join("conv.jsonl");
+        stamp(&path, ago);
+        path.to_string_lossy().into_owned()
+    }
+
+    fn stamp(path: &Path, ago: i64) {
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(path, "{}\n").expect("write");
+        let at = std::time::UNIX_EPOCH
+            + std::time::Duration::from_millis((now_ms() - ago).max(0) as u64);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .expect("open")
+            .set_modified(at)
+            .expect("set mtime");
+    }
+
+    /// A lead that submitted `ago` ms ago, naming `transcript`, whose `Stop`
+    /// never arrived.
+    fn began_and_lost_its_end(acts: &Activities, session: &str, ago: i64, transcript: &str) {
+        use crate::daemon::agent_activity::{Event, Report};
+        acts.record(
+            session,
+            Report {
+                event: Event::PromptSubmitted,
+                at: now_ms() - ago,
+                subject: None,
+                conversation: Some("conv"),
+                transcript: Some(transcript),
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pane_whose_lead_end_was_lost_gives_the_slot_back_once_its_transcript_is_still() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let home = TempHome::new("lead-lost");
+        let transcript = transcript_written(&home, PAST_SILENT);
+        let acts = Activities::new();
+        began_and_lost_its_end(&acts, "sess-1", PAST_SILENT * 72, &transcript);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(
+            failed.len(),
+            1,
+            "a lost Stop must not hold the slot for the life of the pane (ISS-1244)"
+        );
+        assert!(
+            failed[0].1.contains("forge-job-j1")
+                && failed[0].1.contains("60m")
+                && failed[0].1.contains("a hook that can be lost"),
+            "{}",
+            failed[0].1
+        );
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_pane_whose_transcript_is_still_being_written_keeps_its_slot_through_a_long_turn() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let home = TempHome::new("lead-writing");
+        let transcript = transcript_written(&home, 30_000);
+        let acts = Activities::new();
+        began_and_lost_its_end(&acts, "sess-1", PAST_SILENT * 72, &transcript);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_pane_whose_foreground_child_is_writing_keeps_its_slot_while_the_leads_file_is_still()
+    {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let home = TempHome::new("child-writing");
+        let transcript = transcript_written(&home, PAST_SILENT * 3);
+        stamp(
+            &home
+                .path()
+                .join("conv")
+                .join("subagents")
+                .join("agent-c1.jsonl"),
+            30_000,
+        );
+        let acts = Activities::new();
+        began_and_lost_its_end(&acts, "sess-1", PAST_SILENT * 3, &transcript);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "a child working in its own file is the turn still running"
+        );
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_sweep_leaves_the_transcript_path_on_the_job_record() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let home = TempHome::new("record-path");
+        let transcript = transcript_written(&home, 1_000);
+        let acts = Activities::new();
+        began_and_lost_its_end(&acts, "sess-1", 1_000, &transcript);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert_eq!(
+            w.records.all().await[0].transcript.as_deref(),
+            Some(transcript.as_str()),
+            "a restart reads the path off the record, since the pane may never speak again"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_adopted_pane_whose_lead_end_was_lost_is_concluded_off_the_recorded_transcript() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        let home = TempHome::new("adopted-lost");
+        let transcript = transcript_written(&home, PAST_SILENT);
+        w.records
+            .note(&Live {
+                transcript: Some(transcript),
+                ..recorded(
+                    "j1",
+                    Watch::Adopted {
+                        session_id: "sess-1".into(),
+                    },
+                    snapshot(Doing::Working, Event::PromptSubmitted, PAST_SILENT * 5),
+                )
+            })
+            .await;
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+        supervise(
+            &w.panes,
+            &w.report,
+            &w.records,
+            &w.registry,
+            &Activities::new(),
+        )
+        .await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(
+            failed.len(),
+            1,
+            "a Stop lost across the restart must not hold the slot for the life of the pane"
+        );
+        assert!(
+            failed[0].1.contains("never reported it ending"),
             "{}",
             failed[0].1
         );
@@ -2274,6 +2505,7 @@ mod tests {
             },
             snapshot(Doing::Idle, Event::Stopped, PAST_IDLE),
             None,
+            None,
         );
         let acts = Activities::new();
         said(&acts, "sess-1", Event::PromptSubmitted, 0);
@@ -2355,6 +2587,7 @@ mod tests {
                     watch: Watch::Unhooked,
                     seen: None,
                     opened_at: None,
+                    transcript: None,
                 },
                 Live {
                     job_id: "j2".into(),
@@ -2362,6 +2595,7 @@ mod tests {
                     watch: Watch::Unhooked,
                     seen: None,
                     opened_at: None,
+                    transcript: None,
                 },
             ]
         );
@@ -2576,6 +2810,7 @@ mod tests {
                 watch: Watch::Unhooked,
                 seen: None,
                 opened_at: None,
+                transcript: None,
             }]
         );
     }
@@ -2691,6 +2926,7 @@ mod tests {
             },
             seen: Some(seen),
             opened_at: Some(1_700_000_000_000),
+            transcript: Some("/h/.claude/projects/-w/conv.jsonl".into()),
         })
         .await;
 
@@ -2704,6 +2940,7 @@ mod tests {
                 },
                 seen: Some(seen),
                 opened_at: Some(1_700_000_000_000),
+                transcript: Some("/h/.claude/projects/-w/conv.jsonl".into()),
             }],
             "what a restart reads back is what decides whether the pane is still work in flight"
         );
@@ -2732,6 +2969,7 @@ mod tests {
                 },
                 seen: Some(seen),
                 opened_at: None,
+                transcript: None,
             };
             r.note(&live(first)).await;
 
@@ -2868,6 +3106,7 @@ mod tests {
                 at: now_ms() - ago,
                 subject: None,
                 conversation: None,
+                transcript: None,
             },
         );
     }
@@ -3032,6 +3271,7 @@ mod tests {
             "j1",
             "forge-job-j1",
             hooked("sess-1", PAST_THE_WINDOW),
+            None,
             None,
             Some(opened),
         );
