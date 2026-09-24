@@ -3808,6 +3808,18 @@ mod tests {
         );
     }
 
+    /// ISS-1246. A subagent's stop is not its end and nothing on the box ends
+    /// it for being quiet, so the skill may not tell a master its runs close
+    /// themselves: that is the sentence that left every tree to recovery.
+    #[test]
+    fn the_skill_says_the_master_closes_a_finished_run() {
+        assert!(
+            !MASTER_SKILL.contains("closes itself"),
+            "a subagent run is ended by its master's close or its master's end, and by nothing it does itself"
+        );
+        assert!(MASTER_SKILL.contains("Close a run once you will not resume its subagent"));
+    }
+
     #[test]
     fn the_skill_carries_no_flags_and_points_at_the_surface_that_cannot_go_stale() {
         for flag in [

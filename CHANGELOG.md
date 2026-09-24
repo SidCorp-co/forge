@@ -3087,6 +3087,8 @@
   set is now 59.
 
 ### Fixed
+- **A subagent's worktree is no longer removed while it can still resume.** Its run ends when its
+  master closes it or the master's pane ends. A subagent silent for an hour is named, and kept.
 - **A job no runner can brief no longer blocks every job queued behind it.** PM runs and issue
   enrichment are refused by name until they have a prompt; a queued job without one fails, saying so.
 - **A machine whose record of failed queue reads is damaged no longer clears them from the
