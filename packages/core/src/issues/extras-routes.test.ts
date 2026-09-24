@@ -48,11 +48,6 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
-const enqueueJobMock = vi.fn();
-vi.mock('../jobs/enqueue.js', () => ({
-  enqueueJob: (...args: unknown[]) => enqueueJobMock(...args),
-}));
-
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
@@ -94,7 +89,6 @@ beforeEach(() => {
   selectLimit.mockImplementation(() => Promise.resolve([] as unknown[]));
   selectOrderByLimit.mockReset();
   projectAccess.mockReset();
-  enqueueJobMock.mockReset();
   insertReturning.mockReset();
   txUpdate.mockClear();
   txUpdateSet.mockClear();
@@ -144,7 +138,7 @@ describe('POST /api/issues/:id/enrich', () => {
     expect(res.status).toBe(403);
   });
 
-  it('202 enqueues custom job and returns ids', async () => {
+  it('422 POOL_JOB_NO_PROMPT: no enrich prompt exists, so nothing is minted', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
@@ -153,17 +147,14 @@ describe('POST /api/issues/:id/enrich', () => {
       role: 'member',
       orgRole: null,
     });
-    insertReturning.mockResolvedValueOnce([{ id: JOB_ID, status: 'queued' }]);
-    enqueueJobMock.mockResolvedValueOnce(undefined);
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/enrich`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await token()}` },
     });
-    expect(res.status).toBe(202);
-    const body = (await res.json()) as { issueId: string; jobId: string; status: string };
-    expect(body).toEqual({ issueId: ISSUE_ID, jobId: JOB_ID, status: 'queued' });
-    expect(enqueueJobMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: JOB_ID }));
+    expect(res.status).toBe(422);
+    expect(await res.text()).toContain('POOL_JOB_NO_PROMPT');
+    expect(insertReturning).not.toHaveBeenCalled();
   });
 });
 
@@ -182,7 +173,6 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     selectLimit.mockResolvedValueOnce([{ agentConfig: opts.agentConfig ?? {}, ownerId: USER_ID }]);
     selectLimit.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
-    enqueueJobMock.mockResolvedValueOnce(undefined);
   }
 
   async function post(body = '{}') {
@@ -200,7 +190,6 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
 
     expect(res.status).toBe(202);
     expect(await res.json()).toEqual({ issueId: ISSUE_ID, status: 'awaiting_release' });
-    expect(enqueueJobMock).not.toHaveBeenCalled();
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
   });
 
@@ -221,7 +210,6 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     const res = await post(JSON.stringify({ stage: 'review' }));
 
     expect(res.status).toBe(400);
-    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
   it('409 when the issue is not at the entry status', async () => {
@@ -240,7 +228,6 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     const res = await post();
 
     expect(res.status).toBe(409);
-    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 });
 

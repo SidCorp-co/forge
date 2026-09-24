@@ -25,7 +25,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, jobs, pmDecisions, projects } from '../db/schema.js';
-import { enqueueJob } from '../jobs/enqueue.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
@@ -217,15 +216,6 @@ async function executeDispatchFallback(
     throw err;
   }
   if (!insertedId) return { status: 'skipped', reason: 'insert_returned_no_row' };
-
-  try {
-    await enqueueJob({ jobId: insertedId, issueId, type: jobType as JobType });
-  } catch (err) {
-    logger.error(
-      { err, jobId: insertedId },
-      'pm-escalation-sweeper: pg-boss enqueue failed; row persisted',
-    );
-  }
   return { status: 'executed' };
 }
 

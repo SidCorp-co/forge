@@ -13,15 +13,12 @@ import {
   jobs,
   usageRecords,
 } from '../db/schema.js';
-import { enqueueJob } from '../jobs/enqueue.js';
+import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
-import { openIssueRun } from '../pipeline/runs.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -285,42 +282,12 @@ issueExtrasRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'member');
 
-    // ISS-101 — enrich jobs run alongside the issue pipeline; attach to its open run.
-    const run = await openIssueRun({ projectId: issue.projectId, issueId: issue.id });
-
-    let job: { id: string; status: string } | undefined;
-    try {
-      const [row] = await db
-        .insert(jobs)
-        .values({
-          projectId: issue.projectId,
-          issueId: issue.id,
-          pipelineRunId: run.id,
-          createdBy: userId,
-          type: 'custom',
-          payload: { kind: 'enrich', issueId: issue.id },
-          status: 'queued',
-        })
-        .returning({ id: jobs.id, status: jobs.status });
-      job = row;
-    } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw new HTTPException(409, {
-          message: 'enrich already queued for this issue',
-          cause: { code: 'ENRICH_ALREADY_QUEUED' },
-        });
-      }
-      throw err;
-    }
-    if (!job) throw new Error('jobs: insert returned no row');
-
-    try {
-      await enqueueJob({ jobId: job.id, issueId: issue.id, type: 'custom' });
-    } catch (err) {
-      logger.error({ err, jobId: job.id }, 'enrich: enqueueJob failed; row persisted');
-    }
-
-    return c.json({ issueId: issue.id, jobId: job.id, status: job.status }, 202);
+    // No enrich prompt is built anywhere, and the job pool runs only the prompt a
+    // job is minted with (ISS-1135).
+    throw new HTTPException(422, {
+      message: noPromptMessage('custom'),
+      cause: { code: POOL_JOB_NO_PROMPT, lane: 'enrich' },
+    });
   },
 );
 

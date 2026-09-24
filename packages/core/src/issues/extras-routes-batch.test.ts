@@ -105,8 +105,6 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
-vi.mock('../jobs/enqueue.js', () => ({ enqueueJob: vi.fn() }));
-
 const transitionEmit = vi.fn();
 const issueUpdatedEmit = vi.fn();
 vi.mock('../pipeline/hooks.js', () => ({

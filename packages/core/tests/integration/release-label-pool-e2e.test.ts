@@ -120,8 +120,8 @@ async function seed(opts: {
     VALUES (${run}, ${project.id}, 'system', 'running')
   `);
   await harness.db.execute(sql`
-    INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by, queued_at)
-    VALUES (${job}, ${project.id}, ${run}, ${opts.type}, 'queued', ${owner.id}, now())
+    INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by, queued_at, payload)
+    VALUES (${job}, ${project.id}, ${run}, ${opts.type}, 'queued', ${owner.id}, now(), '{"promptString":"do the step"}'::jsonb)
   `);
   return { projectId: project.id, deviceId: device.id, jobId: job };
 }
