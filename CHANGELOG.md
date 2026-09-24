@@ -3090,6 +3090,8 @@
 - **The Pipeline board says Running only when something is working the issue.** An issue that
   nothing is working now sits in a new Stalled column instead, and status menus name the status
   you would move to.
+- **A job no runner can brief no longer blocks every job queued behind it.** PM runs and issue
+  enrichment are refused by name until they have a prompt; a queued job without one fails, saying so.
 - **A machine whose record of failed queue reads is damaged no longer clears them from the
   Runners page.** The page keeps what it last showed, and `forge-runner status` and `doctor` name
   the damaged file.
