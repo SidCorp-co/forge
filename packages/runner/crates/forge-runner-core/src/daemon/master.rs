@@ -127,6 +127,14 @@ struct Registry {
     /// (ISS-1099; it is why ISS-1118's contradiction error fired only on the
     /// daemon that placed the pane).
     said: HashMap<String, &'static str>,
+    /// The last box-level account of deaf masters this daemon gave, as the
+    /// digest of the whole set and what was done about each.
+    ///
+    /// A digest of the set rather than a count, because four projects deaf and
+    /// four others deaf in their place is not the same condition and reads
+    /// identically by number. `None` once a sweep finds none, so a fleet that
+    /// goes deaf a second time is news again.
+    deaf_said: Option<String>,
 }
 
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -554,6 +562,21 @@ impl Masters {
         changed
     }
 
+    /// Whether the box-level account of deaf masters this sweep reached is
+    /// news, and remember it either way.
+    ///
+    /// `None` is a sweep that found none: it clears the latch and answers
+    /// `false`, because a fleet that is well is not a thing to announce. The
+    /// latch is the same rule `note_capability` holds for one project, moved up
+    /// to the box — a condition that persists is stated on the sweep that
+    /// reaches it and not on all forty-five after it.
+    fn claim_deaf_report(&self, digest: Option<String>) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let news = digest.is_some() && reg.deaf_said != digest;
+        reg.deaf_said = digest;
+        news
+    }
+
     fn claim_nudge(
         &self,
         project_id: &str,
@@ -771,6 +794,7 @@ async fn sweep(
 ) -> Duration {
     let now_unix = master_limit::now_unix();
     let mut account_said: Vec<master_limit::Decisive> = Vec::new();
+    let mut deaf_found: Vec<Deaf> = Vec::new();
     let served = match runners::list_me(client).await {
         Ok(rs) => rs,
         Err(e) => {
@@ -925,6 +949,7 @@ async fn sweep(
             .unwrap_or_default();
         let told = std::sync::atomic::AtomicBool::new(false);
         let authority = AuthoritySink::default();
+        let deaf = DeafSink::default();
         let pane = ensure_master(
             client,
             masters,
@@ -940,6 +965,7 @@ async fn sweep(
             &CapabilityPorts {
                 tokens,
                 authority: &authority,
+                deaf: &deaf,
             },
         )
         .await;
@@ -948,6 +974,12 @@ async fn sweep(
         // learns a pane is refused is the only one that knows it.
         if let Some(said) = authority.take() {
             write_authority(ledger.as_ref(), &runner.project_id, &resolved.slug, &said);
+        }
+        // Gathered here rather than reported here: one project's deaf pane is a
+        // line, and a box whose whole fleet went deaf at once is a condition
+        // nobody reads four quarters of (ISS-1208).
+        if let Some(found) = deaf.take() {
+            deaf_found.push(found);
         }
         if pane == PaneState::Absent {
             continue;
@@ -965,9 +997,12 @@ async fn sweep(
         // A stand-down can be written while this sweep is starting a pane. The
         // owner's act was already on the record when the placement finished, so
         // this sweep withdraws the pane IT placed rather than leaving one
-        // running until the next pass. A pane it merely adopted is never ended
+        // running until the next pass. A pane it merely adopted is not ended
         // here: that one is somebody else's and ISS-933 took this daemon out of
-        // the business of killing panes it did not start.
+        // the business of killing panes it did not start. The single condition
+        // under which it does end an adopted pane is in the adopt branch of
+        // `ensure_master` — a capability this box can prove it never minted,
+        // which no later sweep can repair.
         let mut standing_unknown = false;
         if matches!(pane, PaneState::ColdStarted | PaneState::Resumed) {
             // An unreadable standing withholds a placement but never withdraws
@@ -1077,6 +1112,7 @@ async fn sweep(
         }
     }
 
+    report_deaf_fleet(masters, &deaf_found);
     report_account_limit(client, &served, &account_said, account_limit_said, now_unix).await;
     report_job_capacity(cfg, job_panes, activity);
 
@@ -2019,14 +2055,96 @@ impl AuthoritySink {
     }
 }
 
-/// What `ensure_master` is given to consult and to answer into: this box's own
-/// capability map, and the sink the verdict about it goes to.
+/// What the box did about one pane it found deaf, for the single record the
+/// sweep makes about the fleet.
 ///
-/// One struct rather than two parameters because `ensure_master` sits at
+/// Separate from `Authority`: that one says what a pane's capability IS and
+/// goes to the ledger for every project on every sweep, while this says what
+/// was DONE about it and exists only for the projects where there was
+/// something to do. A pane replaced ends the sweep recorded `current`, so the
+/// authority row alone cannot afterwards say the box found it deaf at all.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct Deaf {
+    slug: String,
+    pane: String,
+    acted: DeafAct,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum DeafAct {
+    /// Ended, and its replacement placed in the same pass.
+    Replaced,
+    /// Left running, with the reason the box did not end it.
+    LeftStanding(String),
+}
+
+/// Where `ensure_master` leaves that, for the sweep to gather across projects.
+#[derive(Default)]
+pub(crate) struct DeafSink(Mutex<Option<Deaf>>);
+
+impl DeafSink {
+    fn set(&self, slug: &str, pane: &str, acted: DeafAct) {
+        *self.0.lock().expect("deaf sink poisoned") = Some(Deaf {
+            slug: slug.to_string(),
+            pane: pane.to_string(),
+            acted,
+        });
+    }
+
+    fn take(&self) -> Option<Deaf> {
+        self.0.lock().expect("deaf sink poisoned").take()
+    }
+}
+
+/// What the box does about the capability a resident pane turned out to hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CapabilityAct {
+    /// Nothing: the pane can be heard, or this box cannot say that it cannot.
+    Keep,
+    /// End it and place one that carries a capability for the session core
+    /// serves now.
+    Replace,
+    /// It cannot be heard and the box still leaves it running, for this reason.
+    LeaveDeaf(&'static str),
+}
+
+/// The three conditions ISS-1208 puts on acting, read off the two facts that
+/// carry them.
+///
+/// **The condition is precise.** Only `Stale` is evidence about a pane.
+/// `Unknown` is evidence about this box's own capability map and says nothing
+/// about any pane, so a map that could not be read never ends one — which is
+/// the whole reason `capability_of` keeps three answers rather than two.
+///
+/// **A replacement would be placed.** `AdoptOrStart` is the sweep's own reading
+/// that this project has admissible work; under `AdoptOnly` the placement path
+/// below the adopt branch refuses to start anything, so ending the pane would
+/// buy an empty project instead of a working master.
+///
+/// The other two of the three are already true wherever this is reached:
+/// `ensure_master` returned early if tmux is absent, the sweep's stand-down
+/// gate ran before it, and the command that resolves the condition is the one
+/// the daemon has been printing for an operator to type since ISS-1099.
+pub(crate) fn capability_act(verdict: &Capability, placement: Placement) -> CapabilityAct {
+    match (verdict, placement) {
+        (Capability::Stale, Placement::AdoptOrStart) => CapabilityAct::Replace,
+        (Capability::Stale, Placement::AdoptOnly) => CapabilityAct::LeaveDeaf(
+            "this project has no admissible work, so no replacement would be placed in its stead",
+        ),
+        (Capability::Current | Capability::Unknown(_), _) => CapabilityAct::Keep,
+    }
+}
+
+/// What `ensure_master` is given to consult and to answer into: this box's own
+/// capability map, the sink the verdict about it goes to, and the sink for what
+/// was done where the verdict earned an act.
+///
+/// One struct rather than three parameters because `ensure_master` sits at
 /// exactly the argument count `clippy::too_many_arguments` allows.
 pub(crate) struct CapabilityPorts<'a> {
     tokens: Option<&'a session_tokens::SessionTokens>,
     authority: &'a AuthoritySink,
+    deaf: &'a DeafSink,
 }
 
 async fn ensure_master(
@@ -2090,61 +2208,86 @@ async fn ensure_master(
             remember(masters, project_id, &session);
         }
         let pane_now = terminal::incarnation(&name).await;
-        return match capability_of(tokens, &session.session_id) {
-            Capability::Current => {
-                masters.clear_unplaced(project_id);
-                masters.note_capability(project_id, MasterAuthority::CURRENT);
-                ports
-                    .authority
-                    .set(&name, pane_now, MasterAuthority::CURRENT, None);
-                PaneState::Adopted
-            }
-            Capability::Stale => {
-                // NOT `clear_unplaced`. The pane is up and this box cannot hear
-                // it, so the project has no working master and the registry has
-                // to say so — clearing it here erased the one record of why, at
-                // the moment the daemon learned it.
-                //
-                // `note_unplaced` and not `say_unplaced`, because the error
-                // below already carries this state to the journal and says more
-                // about it than the generic line would. Recording it twice is
-                // two entries for one event and a reader who cannot tell
-                // whether it happened once.
-                masters.note_unplaced(
-                    project_id,
-                    Unplaced::StaleCapability {
-                        session: session.session_id.clone(),
-                        pane: name.clone(),
-                    },
-                );
-                ports
-                    .authority
-                    .set(&name, pane_now, MasterAuthority::STALE, None);
-                if masters.note_capability(project_id, MasterAuthority::STALE) {
-                    tracing::error!(
-                        "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `forge-runner master kill {}`, which reaches the tmux server masters actually run on where a bare `tmux kill-session` does not, and which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other. It is not being nudged while it stands like this. `forge-runner master status {}` says the same thing without this log.",
-                        resolved.slug,
-                        session.session_id,
-                        resolved.slug,
-                        resolved.slug
-                    );
+        let verdict = capability_of(tokens, &session.session_id);
+        let act = capability_act(&verdict, placement);
+        if let CapabilityAct::LeaveDeaf(why) = act {
+            ports.deaf.set(
+                &resolved.slug,
+                &name,
+                DeafAct::LeftStanding(why.to_string()),
+            );
+        }
+        // A pane this box has proved it can never hear again is ended here and
+        // this function does NOT return: everything below the adopt branch is
+        // the placement path, and falling into it is how the replacement comes
+        // to hold a capability minted for the session registered moments ago.
+        //
+        // This is the one carve-out from the rule stated at the stand-down
+        // withdrawal, where a pane this daemon merely adopted is left for
+        // whoever owns it. ISS-933 took this daemon out of killing masters on a
+        // timer; it did not decide this case, which ISS-1099 left open by name
+        // and ISS-1208 closes — a master that cannot be heard is not a master,
+        // and the operator who ends it adds no judgement this box does not
+        // already hold.
+        let replaced = act == CapabilityAct::Replace
+            && end_deaf_pane(&name, &resolved.slug, &session.session_id, ports.deaf).await;
+        if !replaced {
+            return match verdict {
+                Capability::Current => {
+                    masters.clear_unplaced(project_id);
+                    masters.note_capability(project_id, MasterAuthority::CURRENT);
+                    ports
+                        .authority
+                        .set(&name, pane_now, MasterAuthority::CURRENT, None);
+                    PaneState::Adopted
                 }
-                PaneState::StaleCapability
-            }
-            Capability::Unknown(why) => {
-                masters.clear_unplaced(project_id);
-                ports
-                    .authority
-                    .set(&name, pane_now, MasterAuthority::UNKNOWN, Some(&why));
-                if masters.note_capability(project_id, MasterAuthority::UNKNOWN) {
-                    tracing::warn!(
-                        "[master] {}: cannot tell whether {name}'s capability is current: {why}. Saying nothing about it rather than calling it stale — an unreadable map is not evidence about any pane.",
-                        resolved.slug
+                Capability::Stale => {
+                    // NOT `clear_unplaced`. The pane is up and this box cannot hear
+                    // it, so the project has no working master and the registry has
+                    // to say so — clearing it here erased the one record of why, at
+                    // the moment the daemon learned it.
+                    //
+                    // `note_unplaced` and not `say_unplaced`, because the error
+                    // below already carries this state to the journal and says more
+                    // about it than the generic line would. Recording it twice is
+                    // two entries for one event and a reader who cannot tell
+                    // whether it happened once.
+                    masters.note_unplaced(
+                        project_id,
+                        Unplaced::StaleCapability {
+                            session: session.session_id.clone(),
+                            pane: name.clone(),
+                        },
                     );
+                    ports
+                        .authority
+                        .set(&name, pane_now, MasterAuthority::STALE, None);
+                    if masters.note_capability(project_id, MasterAuthority::STALE) {
+                        tracing::error!(
+                            "[master] {}: the resident session {name} holds a capability for a session this box no longer has — core's session for it is {}, nothing here ever minted a capability for that session, and a running pane cannot be handed one. Every declaration {name} makes is refused and nothing this daemon does changes that: `forge-runner master kill {}`, which reaches the tmux server masters actually run on where a bare `tmux kill-session` does not, and which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other. It is not being nudged while it stands like this. `forge-runner master status {}` says the same thing without this log.",
+                            resolved.slug,
+                            session.session_id,
+                            resolved.slug,
+                            resolved.slug
+                        );
+                    }
+                    PaneState::StaleCapability
                 }
-                PaneState::Adopted
-            }
-        };
+                Capability::Unknown(why) => {
+                    masters.clear_unplaced(project_id);
+                    ports
+                        .authority
+                        .set(&name, pane_now, MasterAuthority::UNKNOWN, Some(&why));
+                    if masters.note_capability(project_id, MasterAuthority::UNKNOWN) {
+                        tracing::warn!(
+                            "[master] {}: cannot tell whether {name}'s capability is current: {why}. Saying nothing about it rather than calling it stale — an unreadable map is not evidence about any pane.",
+                            resolved.slug
+                        );
+                    }
+                    PaneState::Adopted
+                }
+            };
+        }
     }
 
     if placement == Placement::AdoptOnly {
@@ -2353,6 +2496,106 @@ fn capability_of(tokens: Option<&session_tokens::SessionTokens>, session_id: &st
         Ok(true) => Capability::Current,
         Ok(false) => Capability::Stale,
         Err(e) => Capability::Unknown(e.to_string()),
+    }
+}
+
+/// End a pane this box has proved it can never hear again, and say so.
+///
+/// `false` where tmux refused: the caller then takes the branch that leaves the
+/// pane standing and records `stale` about it, so a kill that did not happen is
+/// never written down as one that did.
+///
+/// The report is an error rather than a warning, and says what ends with the
+/// pane. Whatever that master had running is a subagent of its own session and
+/// dies with it; the box is choosing that over a project that can never take
+/// work again, and a reader who is not told which of the two they got cannot
+/// tell this line from a crash.
+async fn end_deaf_pane(name: &str, slug: &str, session_id: &str, deaf: &DeafSink) -> bool {
+    if let Err(e) = terminal::kill(name).await {
+        tracing::error!(
+            "[master] {slug}: {name} holds a capability for a session this box no longer has and could not be ended: {e}. It stays up and stays deaf — every declaration it makes is refused — and `forge-runner master kill {slug}` is the same act by hand."
+        );
+        deaf.set(
+            slug,
+            name,
+            DeafAct::LeftStanding(format!("this box could not end it: {e}")),
+        );
+        return false;
+    }
+    tracing::error!(
+        "[master] {slug}: ended the resident session {name} — it held a capability for a session this box no longer has, core's session for it is {session_id}, and a running pane cannot be handed a new one, so every declaration it made was refused. This is `forge-runner master kill {slug}` taken by the box instead of by a person, and it is taken only where a replacement would be placed in its stead, which this pass is about to do. Whatever that pane was running ended with it; the replacement resumes the same conversation."
+    );
+    deaf.set(slug, name, DeafAct::Replaced);
+    true
+}
+
+/// The one record a sweep makes about deaf masters on this box.
+///
+/// A fleet whose panes were all minted against sessions one event replaced is a
+/// condition of the BOX, and four per-project lines is four readers each
+/// finding a quarter of it (ISS-1208). `None` where this sweep found none, or
+/// where it found the same ones it found last time.
+fn deaf_fleet_report(found: &[Deaf]) -> Option<(bool, String)> {
+    if found.is_empty() {
+        return None;
+    }
+    let mut replaced: Vec<&str> = Vec::new();
+    let mut standing: Vec<String> = Vec::new();
+    for d in found {
+        match &d.acted {
+            DeafAct::Replaced => replaced.push(&d.slug),
+            DeafAct::LeftStanding(why) => standing.push(format!("{} ({why})", d.slug)),
+        }
+    }
+    let mut out = format!(
+        "[master] {} master pane(s) on this box hold a capability for a session core has replaced, which is what one event under a live fleet does to every pane at once: {}.",
+        found.len(),
+        found.iter().map(|d| d.pane.as_str()).collect::<Vec<_>>().join(", ")
+    );
+    if !replaced.is_empty() {
+        out.push_str(&format!(
+            " Ended and replaced by this box, carrying the capability core serves now: {}.",
+            replaced.join(", ")
+        ));
+    }
+    if !standing.is_empty() {
+        out.push_str(&format!(
+            " Still running and still deaf, which no sweep will change: {}. `forge-runner master kill <slug>` is what ends each, and `forge-runner master status` says the same without this log.",
+            standing.join("; ")
+        ));
+    }
+    Some((!standing.is_empty(), out))
+}
+
+/// What the latch is keyed on: which panes, and what was done about each.
+fn deaf_digest(found: &[Deaf]) -> String {
+    let mut parts: Vec<String> = found
+        .iter()
+        .map(|d| {
+            let act = match &d.acted {
+                DeafAct::Replaced => "replaced".to_string(),
+                DeafAct::LeftStanding(why) => format!("standing:{why}"),
+            };
+            format!("{}={act}", d.pane)
+        })
+        .collect();
+    parts.sort();
+    parts.join("|")
+}
+
+/// Say it, once per change of the set.
+fn report_deaf_fleet(masters: &Arc<Masters>, found: &[Deaf]) {
+    let digest = (!found.is_empty()).then(|| deaf_digest(found));
+    if !masters.claim_deaf_report(digest) {
+        return;
+    }
+    let Some((needs_a_person, said)) = deaf_fleet_report(found) else {
+        return;
+    };
+    if needs_a_person {
+        tracing::error!("{said}");
+    } else {
+        tracing::warn!("{said}");
     }
 }
 
@@ -5151,7 +5394,7 @@ mod unplaced_tests {
             .find("Capability::Stale => {")
             .expect("the adopt branch must have an arm for a stale capability");
         let rest = &body[start..];
-        let end = block_end(rest, 12).expect("the stale-capability arm must close");
+        let end = block_end(rest, 16).expect("the stale-capability arm must close");
         &rest[..end]
     }
 
@@ -5689,12 +5932,16 @@ mod unplaced_tests {
     fn adopt_only_cannot_fall_through_to_the_spawn_when_the_pane_dies_mid_registration() {
         let body = ensure_master_body();
         let adopted = body
-            .find("return match capability_of(")
-            .expect("the adopt branch must return on the capability verdict");
+            .find("let verdict = capability_of(")
+            .expect("the adopt branch must judge the capability the pane holds");
         let spawn = body
             .find("install_skill(&resolved.repo_path)")
             .expect("the spawn path must start with the skill install");
         let between = &body[adopted..spawn];
+        assert!(
+            between.contains("return match verdict {"),
+            "the adopt branch falls through to the spawn for one reason only — it ended a deaf pane — and returns on the verdict in every other case (ISS-1208)"
+        );
         assert!(
             between.contains("if placement == Placement::AdoptOnly {"),
             "a pane that exits while `register` is awaited must not turn `AdoptOnly` into a spawn"
@@ -5825,6 +6072,288 @@ mod unplaced_tests {
             changed.contains("WARN") && changed.contains("checkout"),
             "a DIFFERENT reason is a different thing for an operator to do, so it is reported \
              again; log was: {changed}"
+        );
+    }
+
+    fn deaf(slug: &str, acted: DeafAct) -> Deaf {
+        Deaf {
+            slug: slug.to_string(),
+            pane: format!("forge-master-{slug}"),
+            acted,
+        }
+    }
+
+    #[test]
+    fn a_pane_this_box_can_never_hear_again_is_ended_where_one_would_replace_it() {
+        assert_eq!(
+            capability_act(&Capability::Stale, Placement::AdoptOrStart),
+            CapabilityAct::Replace,
+            "a master that cannot be heard is not a master, and the operator who ends it adds no judgement this box does not already hold (ISS-1208)"
+        );
+    }
+
+    #[test]
+    fn a_map_this_box_could_not_read_never_ends_a_pane() {
+        for placement in [Placement::AdoptOrStart, Placement::AdoptOnly] {
+            assert_eq!(
+                capability_act(
+                    &Capability::Unknown("the map is a directory".to_string()),
+                    placement
+                ),
+                CapabilityAct::Keep,
+                "an unreadable capability map is evidence about the map and not about any pane; acting on it would end every master on the box at once, which is the reason `capability_of` keeps three answers and not two"
+            );
+        }
+    }
+
+    #[test]
+    fn a_pane_that_can_be_heard_is_never_touched() {
+        for placement in [Placement::AdoptOrStart, Placement::AdoptOnly] {
+            assert_eq!(
+                capability_act(&Capability::Current, placement),
+                CapabilityAct::Keep,
+                "the capability resolves, so there is nothing here to recover from"
+            );
+        }
+    }
+
+    #[test]
+    fn a_deaf_pane_that_no_replacement_would_follow_is_left_standing() {
+        match capability_act(&Capability::Stale, Placement::AdoptOnly) {
+            CapabilityAct::LeaveDeaf(why) => assert!(
+                why.contains("no admissible work"),
+                "the reason has to say why the box stopped short, or a reader cannot tell it from a box that did not look: {why}"
+            ),
+            other => panic!(
+                "ending a pane no replacement would follow buys an empty project instead of a working master, and ISS-1208 conditions the act on a replacement being placed: got {other:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn one_record_names_every_project_the_box_found_deaf() {
+        let found = vec![
+            deaf("mowment", DeafAct::Replaced),
+            deaf("sidpeak", DeafAct::Replaced),
+            deaf("sid-desk", DeafAct::Replaced),
+            deaf(
+                "pixelight",
+                DeafAct::LeftStanding("this box could not end it: no server".to_string()),
+            ),
+        ];
+        let (needs_a_person, said) =
+            deaf_fleet_report(&found).expect("a box holding deaf masters has something to say");
+        for slug in ["mowment", "sidpeak", "sid-desk", "pixelight"] {
+            assert!(
+                said.contains(slug),
+                "a fleet that went deaf at once is a condition of the BOX, and a record naming three of four leaves the fourth to whoever reads the per-project lines: {said}"
+            );
+        }
+        assert!(
+            needs_a_person,
+            "one pane still standing is an act somebody owes, and a warning is what a reader scrolls past"
+        );
+    }
+
+    #[test]
+    fn a_box_with_no_deaf_master_says_nothing_about_the_fleet() {
+        assert!(
+            deaf_fleet_report(&[]).is_none(),
+            "a fleet that is well is not a thing to announce"
+        );
+    }
+
+    #[test]
+    fn a_fleet_that_put_itself_right_is_told_without_asking_for_anybody() {
+        let (needs_a_person, said) = deaf_fleet_report(&[deaf("mowment", DeafAct::Replaced)])
+            .expect("a pane replaced is still a thing that happened");
+        assert!(
+            !needs_a_person,
+            "nothing is owed: the box ended the pane and placed its replacement in the same pass"
+        );
+        assert!(
+            said.contains("replaced"),
+            "the record has to say what was DONE, not only what was found: {said}"
+        );
+    }
+
+    #[test]
+    fn the_box_level_record_is_not_restated_until_the_set_moves() {
+        let masters = Masters::new();
+        let one = vec![deaf(
+            "mowment",
+            DeafAct::LeftStanding("nothing".to_string()),
+        )];
+        assert!(
+            masters.claim_deaf_report(Some(deaf_digest(&one))),
+            "the sweep that reaches the condition is the one that says it"
+        );
+        assert!(
+            !masters.claim_deaf_report(Some(deaf_digest(&one))),
+            "this box sweeps every thirty seconds; a standing condition restated on each is the line a reader learns to scroll past"
+        );
+        let two = vec![
+            deaf("mowment", DeafAct::LeftStanding("nothing".to_string())),
+            deaf("sidpeak", DeafAct::Replaced),
+        ];
+        assert!(
+            masters.claim_deaf_report(Some(deaf_digest(&two))),
+            "a second project going deaf is a different condition of the box and is news again"
+        );
+        assert!(
+            !masters.claim_deaf_report(None),
+            "a sweep that found none announces nothing"
+        );
+        assert!(
+            masters.claim_deaf_report(Some(deaf_digest(&two))),
+            "the latch cleared with the condition, so a fleet that goes deaf a second time is news again"
+        );
+    }
+
+    #[test]
+    fn what_was_done_is_part_of_the_condition_and_not_only_which_panes() {
+        let standing = vec![deaf(
+            "mowment",
+            DeafAct::LeftStanding("nothing admissible".to_string()),
+        )];
+        let replaced = vec![deaf("mowment", DeafAct::Replaced)];
+        assert_ne!(
+            deaf_digest(&standing),
+            deaf_digest(&replaced),
+            "the same pane left standing and then ended are two different things to tell a reader, and a latch keyed on the panes alone would tell them only the first"
+        );
+    }
+
+    #[test]
+    fn the_box_ends_a_deaf_pane_before_it_falls_through_to_the_placement() {
+        let body = ensure_master_body();
+        let judged = body
+            .find("capability_act(&verdict, placement)")
+            .expect("the adopt branch decides what to do through the named rule");
+        let ended = body
+            .find("end_deaf_pane(")
+            .expect("the adopt branch ends the pane itself; nothing else on this box will");
+        let returned = body
+            .find("return match verdict {")
+            .expect("every other verdict still returns from the adopt branch");
+        assert!(
+            judged < ended && ended < returned,
+            "the pane is ended only after the rule says so, and the fall-through to the placement path is what puts a capability the box can hear onto its replacement (ISS-1208)"
+        );
+    }
+
+    #[test]
+    fn a_kill_that_did_not_happen_is_never_written_down_as_one_that_did() {
+        let body = production();
+        let rest = body
+            .split("\nasync fn end_deaf_pane(")
+            .nth(1)
+            .expect("end_deaf_pane must be findable");
+        let f = &rest[..block_end(rest, 0).expect("end_deaf_pane must close")];
+        let refused = f
+            .find("if let Err(e) = terminal::kill(name).await {")
+            .expect("tmux can refuse, and a daemon that assumed it did not would record a kill that never happened");
+        let done = f
+            .find("DeafAct::Replaced")
+            .expect("a pane that WAS ended is recorded as replaced");
+        assert!(
+            refused < done && f[refused..done].contains("return false"),
+            "a failed kill leaves the pane up, so the caller has to take the branch that records `stale` about a pane that is still running"
+        );
+        assert!(
+            f[refused..done].contains("DeafAct::LeftStanding"),
+            "a kill this box could not take is exactly the case the box-level record exists to put in front of a person"
+        );
+    }
+
+    /// Criterion 2's whole chain, as far as a crate with no core and no tmux
+    /// can reach it: the replacement's capability is minted for the session
+    /// this very call registered.
+    ///
+    /// The executable half is `a_capability_minted_for_the_session_this_box_
+    /// holds_reads_current`, which proves `mint` then `holds_session` answers
+    /// `Current`. What that cannot see is WHICH session id `ensure_master`
+    /// hands the mint, and a mint for any other one places a pane as deaf as
+    /// the one it replaced. So this reads the two expressions and requires
+    /// them to be the same one, and requires there to be only one mint to
+    /// read.
+    #[test]
+    fn the_replacement_is_minted_for_the_very_session_this_call_registered() {
+        let body = ensure_master_body();
+        assert_eq!(
+            body.matches(".mint(").count(),
+            1,
+            "a second mint in this function is a second session a pane could be placed against, and this assertion could no longer say which one it read"
+        );
+        assert!(
+            body.contains("store.mint(&session.session_id)"),
+            "the capability the replacement carries has to name the session core serves now, which is the one `master_api::register` answered with in this same call"
+        );
+        assert!(
+            body.contains("capability_of(tokens, &session.session_id)"),
+            "the judgement and the mint have to be about one session, or a pane can be judged stale against one and placed against another"
+        );
+        let minted = body.find("store.mint(").expect("the mint must be findable");
+        // `rfind`: the adopt branch records `current` about a pane it did not
+        // place, further up. The one this is about is the placement path's,
+        // which is the last in the function.
+        let recorded = body
+            .rfind("MasterAuthority::CURRENT,")
+            .expect("a pane this sweep placed is recorded current");
+        assert!(
+            minted < recorded,
+            "`current` is written about a capability that exists, not ahead of one"
+        );
+    }
+
+    /// The rule reads two facts, and the other conditions ISS-1208 puts on
+    /// acting are upstream of its one call site rather than arguments to it.
+    ///
+    /// That is only safe while there IS one call site: a second caller reaching
+    /// it before the stand-down gate, the repo-path resolution or the tmux
+    /// check would end a pane on gates nobody ran. Threading those results in
+    /// as a value would be a second copy of them, which is the shape that goes
+    /// quietly wrong; this goes loudly wrong instead.
+    #[test]
+    fn the_rule_that_ends_a_pane_has_exactly_one_caller_and_it_is_past_the_gates() {
+        let body = production();
+        assert_eq!(
+            body.matches("capability_act(").count(),
+            2,
+            "one definition and one call: a second caller is one this assertion has never read, reached on gates it cannot see"
+        );
+        let inner = ensure_master_body();
+        let registered = inner
+            .find("master_api::register(")
+            .expect("ensure_master registers with core");
+        let alive = inner
+            .find("if terminal::alive(&name).await {")
+            .expect("the adopt branch opens on the pane being there");
+        let judged = inner
+            .find("capability_act(&verdict, placement)")
+            .expect("the call has to be inside ensure_master");
+        assert!(
+            registered < judged && alive < judged,
+            "the rule is asked only about a pane that is up, and only once core has said which session it serves — asked earlier it answers about nothing"
+        );
+    }
+
+    #[test]
+    fn the_sweep_gathers_the_fleet_and_reports_it_once_outside_the_loop() {
+        let body = sweep_body();
+        let gathered = body
+            .find("deaf_found.push(")
+            .expect("the sweep collects what each project turned out to be");
+        let reported = body
+            .find("report_deaf_fleet(")
+            .expect("the sweep says what the box is");
+        assert!(
+            gathered < reported,
+            "a report written before the set is gathered names whatever had been reached by then"
+        );
+        assert!(
+            body.contains("\n    report_deaf_fleet("),
+            "the record is the BOX's, so it is written once at the sweep's own level; called from inside the per-project loop it is the per-project line again under another name (ISS-1208)"
         );
     }
 }
