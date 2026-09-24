@@ -251,6 +251,25 @@ mod tests {
             .unwrap()
     }
 
+    /// Every hook command in a settings file, decoded.
+    ///
+    /// A path is not what the file says it is: `C:\\Users\\...` on disk is
+    /// `C:\Users\...` once JSON is done with it, so a case that asks whether
+    /// the raw text holds a path is asking about a different string on Windows
+    /// than on unix — which is how this module's repair case failed there while
+    /// being green everywhere else.
+    fn commands_of(text: &str) -> Vec<String> {
+        hooks_of(text)
+            .values()
+            .filter_map(Value::as_array)
+            .flatten()
+            .filter_map(|e| e["hooks"].as_array())
+            .flatten()
+            .filter_map(|h| h["command"].as_str())
+            .map(str::to_string)
+            .collect()
+    }
+
     /// Which of this module's cases are hidden from a platform, and why.
     ///
     /// `#[cfg(unix)]` on a case whose subject has no platform in it does not
@@ -800,6 +819,32 @@ mod tests {
         );
     }
 
+    /// What a settings file SAYS a command is, and what the command IS, are two
+    /// different strings wherever a path holds a backslash.
+    ///
+    /// A case that asks the raw text whether it holds a path is asking about
+    /// the unescaped one, which JSON never wrote. On unix nothing is escaped
+    /// and the two readings agree, so such a case is green here forever and
+    /// red on Windows — which is how the repair case above was found, by the
+    /// Windows job, after this module had already been made to compile there.
+    #[test]
+    fn a_path_in_a_hook_command_is_read_back_decoded_and_not_off_the_raw_text() {
+        let windows_shaped = r"C:\Program Files\forge\forge-runner";
+        let text = merged(None, windows_shaped).unwrap();
+
+        assert!(
+            !text.contains(windows_shaped),
+            "this case rests on JSON escaping the path, and it did not — it proves nothing here"
+        );
+        assert!(
+            commands_of(&text)
+                .iter()
+                .all(|c| c.contains(windows_shaped)),
+            "the decoded command lost the path the file was written with: {:?}",
+            commands_of(&text)
+        );
+    }
+
     #[test]
     fn a_file_poisoned_by_an_earlier_daemon_is_rewritten_by_the_repair() {
         let dir = scratch_dir("repair");
@@ -820,11 +865,21 @@ mod tests {
         );
 
         let back = std::fs::read_to_string(settings_path(&dir)).unwrap();
+        let commands = commands_of(&back);
         assert!(
-            !back.contains(crate::exe::DELETED_SUFFIX),
-            "the dead path is still in the file: {back}"
+            !commands.is_empty(),
+            "the repair wrote no hook at all: {back}"
         );
-        assert!(back.contains(good.to_str().unwrap()), "{back}");
+        for command in &commands {
+            assert!(
+                !command.contains(crate::exe::DELETED_SUFFIX),
+                "the dead path is still in the file: {command}"
+            );
+            assert!(
+                command.contains(good.to_str().unwrap()),
+                "a command names something other than the build on disk: {command}"
+            );
+        }
     }
 
     #[test]

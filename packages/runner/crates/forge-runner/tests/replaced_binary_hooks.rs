@@ -18,6 +18,7 @@
 
 #![cfg(target_os = "linux")]
 
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
@@ -95,6 +96,12 @@ fn replaced_under_a_live_process(label: &str) -> Replaced {
             child.id()
         )
     });
+    assert_ne!(
+        Some(raw.as_path()),
+        std::env::current_exe().ok().as_deref(),
+        "/proc/<pid>/exe answered with this test binary, so the process measured is a fork of \
+         the harness that had not exec'd yet and every assertion below is about the wrong file"
+    );
     Replaced {
         child,
         raw,
@@ -103,36 +110,68 @@ fn replaced_under_a_live_process(label: &str) -> Replaced {
     }
 }
 
-/// Start the copy so that it blocks: `read` waits on a pipe whose write end
-/// this process holds open, so the child outlives every assertion and `Drop` is
-/// what ends it.
+/// Start the copy so that it blocks, and do not return until it has actually
+/// become that program: it announces itself on stdout, then `read` waits on a
+/// pipe whose write end this process holds open, so the child outlives every
+/// assertion and `Drop` is what ends it.
 ///
-/// Retried on `ETXTBSY`. A sibling test thread forking for its own spawn
-/// inherits the write descriptor this one just used to copy the file, and until
-/// that fork's `exec` closes it the kernel refuses to run the file. It is a race
-/// between test threads and not a property of the subject, so a case that met it
-/// measured nothing rather than failing.
+/// **Waiting for the announcement is the whole of this function.** On Linux
+/// `Command::spawn` goes through `posix_spawn`, which returns as soon as the
+/// pid exists — before the child has `exec`ed. Until it does, the child is a
+/// fork of this test binary, and `/proc/<pid>/exe` answers with the test binary
+/// rather than the file under test. That is not a failure: it is the fixture
+/// measuring the wrong process and every assertion after it reading as though
+/// the resolver were wrong. It lost that race on CI while winning it on every
+/// developer box (CI 35939399040).
+///
+/// The same wait replaces the old `ETXTBSY` retry, which could not work for the
+/// same reason: through `posix_spawn` a refused exec is not an error here at
+/// all, it is the child exiting 127. A sibling test thread forking for its own
+/// spawn inherits the write descriptor this one used to copy the file, and
+/// until that fork execs the kernel refuses to run it — so the child dies, the
+/// pipe reaches EOF with nothing on it, and this tries again.
 fn spawn_blocking(program: &Path) -> Child {
     for _ in 0..50 {
-        match Command::new(program)
+        let mut child = match Command::new(program)
             .arg("-c")
-            .arg("read line")
+            .arg("echo running; read line")
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
         {
-            Ok(child) => return child,
+            Ok(child) => child,
             Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
                 std::thread::sleep(std::time::Duration::from_millis(20));
+                continue;
             }
             Err(e) => panic!("start the daemon under test: {e}"),
+        };
+
+        if announced(&mut child) {
+            return child;
         }
+        let _ = child.kill();
+        let _ = child.wait();
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
     panic!(
-        "{} stayed busy for a second: nothing was measured",
+        "{} never got as far as running: nothing was measured",
         program.display()
     )
+}
+
+/// Whether the child reached the program's own code. EOF with nothing on it
+/// means the exec was refused and the fork died instead.
+fn announced(child: &mut Child) -> bool {
+    let Some(out) = child.stdout.take() else {
+        return false;
+    };
+    let mut line = String::new();
+    let read = std::io::BufReader::new(out)
+        .read_line(&mut line)
+        .unwrap_or(0);
+    read > 0 && line.trim() == "running"
 }
 
 fn commands_in(settings: &Path) -> Vec<String> {
