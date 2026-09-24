@@ -539,11 +539,54 @@ pub async fn send_line(name: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
-/// End a session by name. Absent is success — the caller wanted it gone.
+/// End a session by name, and answer for the session being gone.
+///
+/// Absent is success — the caller wanted it gone, and tmux exits non-zero for
+/// a name it cannot find just as it does for a kill that did not take. Only
+/// the server can tell those two apart, so where tmux refuses, this asks it.
+///
+/// The status used to be discarded, which made every caller's failure branch
+/// dead code. `daemon/master.rs` then read the `Ok` as proof a deaf master was
+/// gone: it recorded a replacement, minted a capability for the session core
+/// now serves, and so destroyed the stale verdict that was the only sign the
+/// pane was still there and still refusing every declaration it made
+/// (ISS-1208). A kill this box did not manage is a thing the box has to be
+/// able to say.
 pub async fn kill(name: &str) -> Result<()> {
     let target = session_target(name);
-    let _ = tmux(&["kill-session", "-t", &target]).await;
-    Ok(())
+    let refused = match tmux(&["kill-session", "-t", &target]).await {
+        Ok(out) if out.status.success() => return Ok(()),
+        Ok(out) => String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        Err(e) => e.to_string(),
+    };
+    match still_there(name).await {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(Error::Other(format!("tmux kill-session {name}: {refused}"))),
+        Err(e) => Err(Error::Other(format!(
+            "tmux kill-session {name}: {refused}, and whether it is still there could not be established: {e}"
+        ))),
+    }
+}
+
+/// Whether tmux holds a session by this name, with `could not ask` kept apart
+/// from `no`.
+///
+/// [`alive`] answers a `bool` and collapses the two, which is right for the
+/// callers asking whether to bother doing something. It is wrong for a
+/// postcondition: a probe that could not run, read as `absent`, is a kill this
+/// box reports as taken on the strength of a question nobody answered — the
+/// same shape as the discarded status this whole path exists to stop
+/// (ISS-1208).
+///
+/// A server that is not running is `Ok(false)`, not an error: no server holds
+/// no sessions, which is the outcome the caller wanted. `Err` is this box
+/// failing to run tmux at all.
+async fn still_there(name: &str) -> Result<bool> {
+    let target = session_target(name);
+    Ok(tmux(&["has-session", "-t", &target])
+        .await?
+        .status
+        .success())
 }
 
 pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> Vec<String> {
@@ -570,8 +613,162 @@ pub fn pane_env() -> Vec<(String, String)> {
     }
 }
 
+/// What another module's tests need from this one: the tmux boundary, driven
+/// to states a passing box does not reach on its own.
+///
+/// Here rather than inside `mod tests` because the states below belong to this
+/// module's transport and the rules they break are `daemon/master.rs`'s. A
+/// second copy over there would be a second thing to keep true.
+#[cfg(test)]
+pub(crate) mod testing {
+    use super::*;
+    use crate::auth::cred_store::ScopedVar;
+
+    /// Every test that reaches a tmux server takes this first.
+    ///
+    /// They share one server per config dir and they move process-wide
+    /// environment to choose it, so two at once are one test watching another
+    /// one's pane.
+    pub(crate) static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// A tmux server of this test's own, addressed the way production
+    /// addresses the box's: through the config dir.
+    ///
+    /// The socket is `<XDG_CONFIG_HOME>/forge-runner/tmux.sock`, so pointing
+    /// that variable somewhere empty is the whole isolation — and it is what
+    /// keeps a test off the server this box's live masters are running on.
+    pub(crate) struct IsolatedServer {
+        _xdg: ScopedVar,
+        dir: std::path::PathBuf,
+    }
+
+    impl IsolatedServer {
+        pub(crate) fn new(label: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "forge-iso-{label}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            std::fs::create_dir_all(dir.join("forge-runner")).expect("isolated config dir");
+            let xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
+            Self { _xdg: xdg, dir }
+        }
+
+        /// Whether the isolation took.
+        ///
+        /// `XDG_CONFIG_HOME` steers the config dir, and so the socket, only
+        /// where this box resolves one from it. Where it does not, the server
+        /// a test would reach is the box's own — which on this machine is the
+        /// one four live masters are running on — so a caller that gets
+        /// `false` runs nothing rather than running it there.
+        pub(crate) fn took(&self) -> bool {
+            socket_path().is_some_and(|sock| sock.starts_with(&self.dir))
+        }
+    }
+
+    impl Drop for IsolatedServer {
+        fn drop(&mut self) {
+            if let Some(sock) = socket_path() {
+                if sock.starts_with(&self.dir) {
+                    let _ = std::process::Command::new("tmux")
+                        .args(["-S", &sock.to_string_lossy(), "kill-server"])
+                        .stdin(std::process::Stdio::null())
+                        .output();
+                }
+            }
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// A tmux this box cannot run at all: every call comes back as a spawn
+    /// error rather than as an answer.
+    ///
+    /// The state `alive` cannot represent. It answers `false` here, and a
+    /// postcondition reading that as `the session is gone` reports a kill on
+    /// the strength of a question nobody answered.
+    pub(crate) struct UnaskableTmux {
+        _path: ScopedVar,
+        dir: std::path::PathBuf,
+    }
+
+    impl UnaskableTmux {
+        pub(crate) fn installed() -> Self {
+            let dir = std::env::temp_dir().join(format!("forge-unaskable-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).expect("shim dir");
+            // An empty PATH, so the spawn fails rather than the command
+            // answering something. `available()` was resolved at startup and
+            // is cached, which is the production shape of this: tmux was there
+            // when the daemon started and cannot be run now.
+            Self {
+                _path: ScopedVar::set("PATH", &dir),
+                dir,
+            }
+        }
+    }
+
+    impl Drop for UnaskableTmux {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// A tmux that refuses `kill-session` and answers every other verb from the
+    /// real server, for the one window `kill`'s postcondition is about.
+    ///
+    /// A shim rather than a stub of our own code: what `kill` reads is a tmux
+    /// process's exit status and, after it, a real `has-session`. Driving those
+    /// two to the pair tmux itself produces — `kill-session` exits 1, the
+    /// session is still there — is the fault, not a model of it.
+    pub(crate) struct RefusingKill {
+        _path: ScopedVar,
+        dir: std::path::PathBuf,
+    }
+
+    impl RefusingKill {
+        pub(crate) fn installed() -> Self {
+            let real = which::which("tmux").expect("a real tmux to pass everything else to");
+            let dir = std::env::temp_dir().join(format!("forge-refuse-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).expect("shim dir");
+            let shim = dir.join("tmux");
+            std::fs::write(
+            &shim,
+            format!(
+                "#!/bin/sh\nfor a in \"$@\"; do\n  case \"$a\" in\n    -*) ;;\n    kill-session) echo 'refused' >&2; exit 1 ;;\n    *) ;;\n  esac\ndone\nexec {} \"$@\"\n",
+                shim_quote(&real.to_string_lossy())
+            ),
+        )
+        .expect("shim");
+            #[cfg(unix)]
+            {
+                let mut perms = std::fs::metadata(&shim).expect("shim mode").permissions();
+                std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+                std::fs::set_permissions(&shim, perms).expect("shim executable");
+            }
+            let ahead = match std::env::var_os("PATH") {
+                Some(p) => format!("{}:{}", dir.to_string_lossy(), p.to_string_lossy()),
+                None => dir.to_string_lossy().into_owned(),
+            };
+            Self {
+                _path: ScopedVar::set("PATH", ahead),
+                dir,
+            }
+        }
+    }
+
+    impl Drop for RefusingKill {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    pub(crate) fn shim_quote(s: &str) -> String {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::testing::{RefusingKill, UnaskableTmux, ONE_AT_A_TIME};
     use super::*;
     use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
 
@@ -585,8 +782,6 @@ mod tests {
             .map(|id| id.unit)
             .unwrap_or_else(|| SESSION_UNIT.to_string())
     }
-
-    static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     struct ConfigHome(std::path::PathBuf);
 
@@ -800,6 +995,79 @@ mod tests {
             None,
             "and a pane that has been ended stops answering, rather than keeping what it had"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The window everything above `kill` rests on, forced rather than argued.
+    ///
+    /// `kill` was `let _ = tmux(["kill-session", ..]).await; Ok(())`, so a kill
+    /// that did not take answered exactly as one that did. `end_deaf_pane` then
+    /// read that `Ok` as proof the pane was gone, the box wrote a replacement
+    /// down, minted a capability for the session core now serves, and the stale
+    /// verdict that was the only sign of the fault never fired again — the
+    /// alarm removed by the change that exists to make it louder (ISS-1208,
+    /// criterion 7).
+    ///
+    /// tmux does report it: `kill-session` exits 1 while `has-session` on the
+    /// same name still exits 0. That status was the one being discarded.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_kill_tmux_refused_is_never_answered_as_one_that_took() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _sandbox = Sandbox::new("kill-refused");
+        if !available() {
+            eprintln!("tmux is not installed here — the transport test cannot run");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("forge-terminal-kr-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let name = session_name("forge-test", &format!("kr{}", std::process::id()));
+        let sleep = ["sleep".to_string(), "60".to_string()];
+        let _ = kill(&name).await;
+        ensure(&name, &dir, &sleep, &[], None)
+            .await
+            .expect("the session must start");
+
+        {
+            let _refusing = RefusingKill::installed();
+            let said = kill(&name).await;
+            assert!(
+                alive(&name).await,
+                "the plant is only the plant while the session is still there: a kill that actually took proves nothing about a kill that did not"
+            );
+            assert!(
+                said.is_err(),
+                "tmux refused the kill and the session is still running; answering Ok here is what lets the box write down a replacement it never made, and then mint over the only evidence that it had not"
+            );
+        }
+
+        {
+            // And the state a `bool` cannot hold: not `the session is gone`,
+            // but `this box could not ask`. Raised as F1 on the review of
+            // ba415f04f.
+            let _unaskable = UnaskableTmux::installed();
+            assert!(
+                !alive(&name).await,
+                "this is the collapse the postcondition may not rest on: `alive` answers false for a probe that never ran, exactly as it does for a session that is gone"
+            );
+            assert!(
+                kill(&name).await.is_err(),
+                "a kill whose outcome could not be established is not a kill that took, and answering Ok here reports one on the strength of a question nobody answered"
+            );
+        }
+
+        // And the two answers that must stay success, or a box that cannot end
+        // a pane it has proved deaf stops ending the ones it can.
+        kill(&name).await.expect("a kill tmux took is success");
+        assert!(
+            !alive(&name).await,
+            "the session is gone once the kill took"
+        );
+        kill(&name)
+            .await
+            .expect("a session that is already absent is the outcome the caller asked for");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

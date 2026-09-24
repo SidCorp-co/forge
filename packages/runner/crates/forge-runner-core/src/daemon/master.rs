@@ -136,6 +136,21 @@ struct Registry {
     /// identically by number. `None` once a sweep finds none, so a fleet that
     /// goes deaf a second time is news again.
     deaf_said: Option<String>,
+    /// Per project, a session whose capability this box minted for a pane it
+    /// then failed to place AND failed to withdraw.
+    ///
+    /// The map on disk is the detector, and a mint that could not be taken back
+    /// out of it says `current` about a pane that was never replaced. Nothing
+    /// on disk can correct that — the correction IS the write that failed — so
+    /// the box holds what it knows here and refuses to read that entry as
+    /// evidence until the withdrawal takes. The retry is the ordinary sweep:
+    /// the verdict stays `stale`, the pane is ended again, and a placement that
+    /// works clears this (ISS-1208, criterion 7).
+    ///
+    /// In this process only. A daemon restarted with an entry still unwithdrawn
+    /// reads the map at face value again, which is the residual named in
+    /// `docs/proposals/a-panes-control-capability-cannot-outlive-its-session-row.md`.
+    unwithdrawn: HashMap<String, String>,
 }
 
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -556,6 +571,27 @@ impl Masters {
     /// and the report was lost. ISS-1118's two reports route through
     /// `note_unplaced` for a reason of their own — they are about a project
     /// that reaches no pane at all — and that stands whichever way this answers.
+    /// Hold, or release, the knowledge that this project's capability map
+    /// names a session for a pane that was never placed.
+    fn note_unwithdrawn(&self, project_id: &str, session_id: Option<&str>) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match session_id {
+            Some(id) => reg
+                .unwithdrawn
+                .insert(project_id.to_string(), id.to_string()),
+            None => reg.unwithdrawn.remove(project_id),
+        };
+    }
+
+    fn unwithdrawn_for(&self, project_id: &str) -> Option<String> {
+        self.0
+            .lock()
+            .expect("masters poisoned")
+            .unwithdrawn
+            .get(project_id)
+            .cloned()
+    }
+
     fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let changed = reg.said.get(project_id) != Some(&said);
@@ -609,6 +645,12 @@ impl Masters {
 
     fn forget(&self, project_id: &str) -> Option<String> {
         let mut reg = self.0.lock().expect("masters poisoned");
+        // The unwithdrawn marker goes with it. It says one thing — this
+        // project's capability map names a session no pane holds — and a
+        // project this box is no longer tracking has no pane for it to be
+        // about. Left behind, it is a session id waiting to be matched by
+        // whatever core hands out next (ISS-1208).
+        reg.unwithdrawn.remove(project_id);
         reg.live.remove(project_id).map(|m| m.session_id)
     }
 
@@ -2169,6 +2211,32 @@ pub(crate) fn capability_act(verdict: &Capability, placement: Placement) -> Capa
     }
 }
 
+/// The capability map's answer, overruled where this box knows that answer came
+/// from a mint it could not take back.
+///
+/// `capability_of` reads the map, and the map is the only durable evidence
+/// there is. Where a placement minted an entry and then placed no pane, the
+/// withdrawal is what puts the map right — and a withdrawal that could not be
+/// written leaves `Current` standing about a pane that was never replaced. The
+/// box would then stop reporting the project deaf and go on nudging a pane that
+/// refuses every declaration it makes, which is this issue's own incident with
+/// the alarm taken out. Criterion 7 asks that the verdict STAY stale, which is
+/// a claim about every later sweep and not only the one that found it.
+///
+/// `Unknown` is never overruled. A map this box could not read is not evidence
+/// about any pane in either direction, and the rule that an unreadable map ends
+/// nothing is older than this one.
+pub(crate) fn verdict_over_unwithdrawn(
+    verdict: Capability,
+    unwithdrawn: Option<&str>,
+    session_id: &str,
+) -> Capability {
+    match (&verdict, unwithdrawn) {
+        (Capability::Current, Some(held)) if held == session_id => Capability::Stale,
+        _ => verdict,
+    }
+}
+
 /// What `ensure_master` is given to consult and to answer into: this box's own
 /// capability map, the sink the verdict about it goes to, and the sink for what
 /// was done where the verdict earned an act.
@@ -2232,6 +2300,11 @@ async fn ensure_master(
     let asked = project_mcp_servers(client, project_id, &resolved.slug).await;
     let declared = asked.clone().unwrap_or_default();
 
+    // Whether the placement path below is a REPLACEMENT or an ordinary cold
+    // start, which is the difference between `terminal::ensure` starting
+    // nothing because the box is already served and starting nothing because
+    // the pane this call ended is still standing (ISS-1208, criterion 7).
+    let mut ended_a_deaf_pane = false;
     if terminal::alive(&name).await {
         report_stale_pane_config(masters, project_id, &name, &resolved.slug, asked.as_ref());
         if masters.get(project_id).is_none() {
@@ -2242,7 +2315,11 @@ async fn ensure_master(
             remember(masters, project_id, &session);
         }
         let pane_now = terminal::incarnation(&name).await;
-        let verdict = capability_of(tokens, &session.session_id);
+        let verdict = verdict_over_unwithdrawn(
+            capability_of(tokens, &session.session_id),
+            masters.unwithdrawn_for(project_id).as_deref(),
+            &session.session_id,
+        );
         let act = capability_act(&verdict, placement);
         if let CapabilityAct::LeaveDeaf(why) = act {
             ports.deaf.set(
@@ -2263,9 +2340,9 @@ async fn ensure_master(
         // and ISS-1208 closes — a master that cannot be heard is not a master,
         // and the operator who ends it adds no judgement this box does not
         // already hold.
-        let replaced = act == CapabilityAct::Replace
+        ended_a_deaf_pane = act == CapabilityAct::Replace
             && end_deaf_pane(&name, &resolved.slug, &session.session_id, ports.deaf).await;
-        if !replaced {
+        if !ended_a_deaf_pane {
             return match verdict {
                 Capability::Current => {
                     masters.clear_unplaced(project_id);
@@ -2415,7 +2492,7 @@ async fn ensure_master(
         );
     }
     let resume = resume_for(&resolved.slug, &resolved.repo_path, stored_conversation);
-    match terminal::ensure(
+    let started = match terminal::ensure(
         &name,
         &resolved.repo_path,
         &terminal::pane_argv(mcp_config.as_deref(), resume.as_deref()),
@@ -2424,18 +2501,30 @@ async fn ensure_master(
     )
     .await
     {
-        Ok(_) => {}
+        Ok(started) => started,
         Err(e) => {
             tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
             return PaneState::Absent;
         }
+    };
+    if replacement_of(ended_a_deaf_pane, started) == Replacement::DeafPaneSurvived {
+        return deaf_pane_outlived_its_kill(
+            masters,
+            project_id,
+            &resolved.slug,
+            &name,
+            &session.session_id,
+            ports,
+        )
+        .await;
     }
     tracing::info!(
         "[master] {}: resident session {name} {} in {} — `tmux attach -t {name}` to watch it",
         resolved.slug,
-        match resume.as_deref() {
-            Some(id) => format!("resumed from conversation {id}"),
-            None => "cold-started".to_string(),
+        match (started, resume.as_deref()) {
+            (false, _) => "was already up, and this pass started nothing".to_string(),
+            (true, Some(id)) => format!("resumed from conversation {id}"),
+            (true, None) => "cold-started".to_string(),
         },
         resolved.repo_path.display()
     );
@@ -2446,6 +2535,11 @@ async fn ensure_master(
     // return between the kill and this line leaves it reading `ended`, which is
     // what was true (ISS-1208).
     ports.deaf.placed();
+    // And a pane is up carrying this session's capability, so the entry in the
+    // map is one a live pane holds rather than the residue of a placement that
+    // placed nothing. Held only while that is in doubt, or one failed
+    // withdrawal refuses this project for ever.
+    masters.note_unwithdrawn(project_id, None);
     // A pane this sweep started carries a capability minted for this very
     // session moments ago, so the verdict is not in doubt. It is written all the
     // same: the record has to say `current` for a replaced pane, or an operator
@@ -2570,6 +2664,141 @@ async fn end_deaf_pane(name: &str, slug: &str, session_id: &str, deaf: &DeafSink
     // `replaced` here would be telling a reader a pane is up that is not.
     deaf.set(slug, name, DeafAct::EndedUnplaced);
     true
+}
+
+/// What a pass that ended a deaf pane may conclude from what `terminal::ensure`
+/// then answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Replacement {
+    /// A pane was started where the deaf one had been.
+    Placed,
+    /// `ensure` started nothing, because a session of that name was ALREADY
+    /// alive. On a pass that ended a pane moments earlier, that session is the
+    /// pane this box thought it had ended.
+    DeafPaneSurvived,
+    /// This pass ended nothing, so a pane already up is the ordinary case and
+    /// says nothing about any deaf one.
+    NoDeafPane,
+}
+
+/// The second reading of whether a deaf pane is gone, taken from the one thing
+/// that looked afterwards.
+///
+/// `terminal::kill` now answers for the session being gone, so this is a
+/// guard and not the detector. It costs nothing: `terminal::ensure` already
+/// asks whether a session of that name is alive, and `Ok(false)` IS that
+/// answer — it was being discarded at the call (ISS-1208). The two readings
+/// fail independently, and the one that is left is what decides whether the
+/// box writes down a replacement.
+pub(crate) fn replacement_of(ended_a_deaf_pane: bool, started: bool) -> Replacement {
+    match (ended_a_deaf_pane, started) {
+        (false, _) => Replacement::NoDeafPane,
+        (true, true) => Replacement::Placed,
+        (true, false) => Replacement::DeafPaneSurvived,
+    }
+}
+
+/// Take back a capability minted for a pane that was never started, and answer
+/// for it having gone.
+///
+/// `retire` cannot answer for itself: it logs and returns on both a map it
+/// could not read and a map it could not write, which is the right shape for a
+/// caller that is tidying up after a session that has already ended. Here it is
+/// a rollback, and a rollback nobody checked is what leaves the session core now
+/// serves sitting in the map as proof of a replacement this box did not make —
+/// `capability_of` then answers `Current` about a deaf pane for ever (ISS-1208).
+///
+/// So the map is read back. `Err` carries what stopped it in words a caller can
+/// put in front of a person.
+fn withdraw_unplaced_mint(
+    tokens: Option<&session_tokens::SessionTokens>,
+    session_id: &str,
+) -> std::result::Result<(), String> {
+    let Some(store) = tokens else {
+        // Not reachable from the placement path, which returns `Absent` rather
+        // than reaching a pane with no map to mint from. Stated rather than
+        // assumed, because what it would mean is a mint nothing can take back.
+        return Err("this box has no capability map to withdraw from".to_string());
+    };
+    store.retire(session_id);
+    match store.holds_session(session_id) {
+        Ok(false) => Ok(()),
+        Ok(true) => Err("the map still names that session after the withdrawal, so the map could not be written".to_string()),
+        Err(e) => Err(format!("the map could not be read back, so whether the withdrawal took is unknown: {e}")),
+    }
+}
+
+/// A pane this box ended, that is still there — and the capability it minted on
+/// the way, withdrawn.
+///
+/// The mint is the part that cannot be left. It runs before anything looks at
+/// whether a pane was replaced, because the token has to be in the environment
+/// the pane is started with; so by the time this is known, the session core now
+/// serves is already in this box's capability map. Leave it there and
+/// `capability_of` answers `Current` on every later sweep about a pane still
+/// holding the old token: the stale arm never fires again, the operator is
+/// never told, and the box nudges a master that refuses every declaration it
+/// makes — this issue's own incident with the alarm taken out. Retiring it puts
+/// the verdict back to `stale`, which is what is true, and the next sweep tries
+/// the kill again.
+///
+/// Nothing holds the retired token: `ensure` started no pane, so it was never
+/// handed to one.
+///
+/// And the withdrawal is READ BACK, by the same rule the rest of this change
+/// is: `retire` is best-effort by design — it declines to rewrite a map it
+/// could not read, and a map it could not write leaves the entry live — so
+/// taking it as done is the assumption this whole issue is about. Where it
+/// cannot be established, the box says which of the two it got and what an
+/// operator has to do, rather than reporting a rollback it did not make.
+async fn deaf_pane_outlived_its_kill(
+    masters: &Arc<Masters>,
+    project_id: &str,
+    slug: &str,
+    name: &str,
+    session_id: &str,
+    ports: &CapabilityPorts<'_>,
+) -> PaneState {
+    let withdrawn = withdraw_unplaced_mint(ports.tokens, session_id);
+    // Held across sweeps where it failed, released where it took. This is what
+    // makes the verdict STAY stale: the map still says `current`, and nothing
+    // that could correct the map is available to a box that could not write it.
+    masters.note_unwithdrawn(project_id, withdrawn.as_ref().err().map(|_| session_id));
+    match &withdrawn {
+        Ok(()) => tracing::error!(
+            "[master] {slug}: {name} was ended as a deaf pane and tmux still holds a session of that name, so nothing was replaced — the capability minted for {session_id} has been withdrawn rather than left standing as proof of a replacement this box did not make. The pane is still deaf and every declaration it makes is refused: `forge-runner master kill {slug}` is the same act by hand."
+        ),
+        Err(why) => tracing::error!(
+            "[master] {slug}: {name} was ended as a deaf pane and is still running, and the capability minted for {session_id} could NOT be withdrawn: {why}. The map on disk now names a session no pane holds, so this daemon holds that fact itself and goes on reading {slug} as stale — it will report this and try the pane again every sweep, and a placement that works clears it. What it cannot survive is its own restart, which would read the map at face value again: fix whatever stopped this box writing its capability map, or `forge-runner master kill {slug}` and let the replacement mint cleanly."
+        ),
+    }
+    ports.deaf.set(
+        slug,
+        name,
+        DeafAct::LeftStanding(match &withdrawn {
+            Ok(()) => "this box ended it and tmux still holds a session of that name".to_string(),
+            Err(why) => format!(
+                "this box ended it, tmux still holds a session of that name, and the capability minted for the replacement could not be withdrawn ({why}) — held in this daemon and retried every sweep, but not across a restart of it"
+            ),
+        }),
+    );
+    // As in the stale arm of the adopt branch, and for the same reason: the
+    // project has no working master, so the registry may not be cleared.
+    masters.note_unplaced(
+        project_id,
+        Unplaced::StaleCapability {
+            session: session_id.to_string(),
+            pane: name.to_string(),
+        },
+    );
+    masters.note_capability(project_id, MasterAuthority::STALE);
+    ports.authority.set(
+        name,
+        terminal::incarnation(name).await,
+        MasterAuthority::STALE,
+        None,
+    );
+    PaneState::StaleCapability
 }
 
 /// The one record a sweep makes about deaf masters on this box.
@@ -2840,7 +3069,16 @@ async fn retire_if_idle(
                 "[master] {slug}: nothing for {}m and every child run closed — retiring {name}",
                 idle.as_secs() / 60
             );
-            let _ = terminal::kill(&name).await;
+            // Said, not swallowed. `terminal::kill` answers for the session
+            // being gone (ISS-1208), and the row is closed either way — so a
+            // pane that outlived its retirement is adopted again on the next
+            // sweep, and a reader who is not told that reads this line as the
+            // pane having ended.
+            if let Err(e) = terminal::kill(&name).await {
+                tracing::warn!(
+                    "[master] {slug}: {name} was retired as idle and tmux would not end it: {e} — its row is closed all the same and the next sweep adopts whatever is still running under that name"
+                );
+            }
             end_master(
                 client,
                 masters,
@@ -5493,6 +5731,49 @@ mod unplaced_tests {
         &rest[..end]
     }
 
+    /// Make a directory unwritable, and say whether it took.
+    ///
+    /// A process with `CAP_DAC_OVERRIDE` — root in a container, which some CI
+    /// is — writes into a directory whose mode forbids it, so the mode alone
+    /// is not the plant. The probe is what establishes it, and a caller told
+    /// `false` runs nothing rather than asserting against a map that is still
+    /// perfectly writable.
+    fn seal(dir: &std::path::Path) -> bool {
+        #[cfg(unix)]
+        {
+            let mut locked = std::fs::metadata(dir).expect("dir mode").permissions();
+            std::os::unix::fs::PermissionsExt::set_mode(&mut locked, 0o500);
+            if std::fs::set_permissions(dir, locked).is_err() {
+                return false;
+            }
+            let probe = dir.join(".seal-probe");
+            if std::fs::write(&probe, b"x").is_ok() {
+                let _ = std::fs::remove_file(&probe);
+                unseal(dir);
+                return false;
+            }
+            true
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = dir;
+            false
+        }
+    }
+
+    fn unseal(dir: &std::path::Path) {
+        #[cfg(unix)]
+        {
+            if let Ok(meta) = std::fs::metadata(dir) {
+                let mut open = meta.permissions();
+                std::os::unix::fs::PermissionsExt::set_mode(&mut open, 0o700);
+                let _ = std::fs::set_permissions(dir, open);
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = dir;
+    }
+
     /// A capability map of this run's own, never this box's.
     fn temp_map(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -6027,7 +6308,7 @@ mod unplaced_tests {
     fn adopt_only_cannot_fall_through_to_the_spawn_when_the_pane_dies_mid_registration() {
         let body = ensure_master_body();
         let adopted = body
-            .find("let verdict = capability_of(")
+            .find("let verdict = verdict_over_unwithdrawn(")
             .expect("the adopt branch must judge the capability the pane holds");
         let spawn = body
             .find("install_skill(&resolved.repo_path)")
@@ -6391,6 +6672,94 @@ mod unplaced_tests {
         );
     }
 
+    /// The chain criterion 7 governs, walked against a real pane this box
+    /// could not end, rather than read off the source.
+    ///
+    /// What stood here before was an assertion over `end_deaf_pane`'s TEXT. It
+    /// went red when the text changed and it could not go red for the
+    /// proposition its name made, because the branch it was about was dead
+    /// code: `terminal::kill` answered `Ok` whatever tmux did, so the box read
+    /// every kill as one that took. A refused kill was then written down as a
+    /// replacement, `current` was recorded about a pane still holding the old
+    /// token, and the mint taken on the way silenced the stale verdict for
+    /// good — the alarm removed by the change that exists to make it louder
+    /// (ISS-1208).
+    ///
+    /// Here tmux genuinely refuses and the session genuinely survives, which is
+    /// the pair tmux itself produces and which this test asserts before it
+    /// asserts anything about us.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_deaf_pane_tmux_would_not_end_is_left_standing_on_the_record() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("deafkill");
+        if !terminal::available() {
+            eprintln!("tmux is not installed here — the transport this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("forge-deafkill-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "deafkill");
+        terminal::ensure(
+            &name,
+            &dir,
+            &["sleep".to_string(), "60".to_string()],
+            &[],
+            None,
+        )
+        .await
+        .expect("the pane standing in for the deaf master must start");
+
+        let sink = DeafSink::default();
+        let ended = {
+            let _refusing = terminal::testing::RefusingKill::installed();
+            end_deaf_pane(&name, "deafkill", "sess-core-serves-now", &sink).await
+        };
+
+        assert!(
+            terminal::alive(&name).await,
+            "the plant is only the plant while the pane is still there: a kill that took proves nothing about one that did not"
+        );
+        assert!(
+            !ended,
+            "the pane is still running, so the caller must fall to the branch that leaves it standing and records `stale` — answering true here is how the sweep goes on nudging a master that refuses every declaration it makes"
+        );
+        let held = sink.take().expect("a deaf pane the box met is recorded");
+        match held.acted {
+            DeafAct::LeftStanding(why) => assert!(
+                why.contains("could not end it"),
+                "the reason is what tells a reader the box tried and failed rather than chose not to: {why}"
+            ),
+            other => panic!(
+                "a pane that is still running was recorded as {other:?} — the box-level record then tells an operator this project was put right, and nothing ever says otherwise again"
+            ),
+        }
+
+        // And the same call against the same pane, with tmux no longer
+        // refusing, still ends it: the guard above may not cost the box the
+        // recovery it exists for.
+        let took = DeafSink::default();
+        assert!(
+            end_deaf_pane(&name, "deafkill", "sess-core-serves-now", &took).await,
+            "with tmux taking the kill this is the act ISS-1208 was filed for"
+        );
+        assert!(!terminal::alive(&name).await, "the pane is gone");
+        assert_eq!(
+            took.take().expect("the sink held a pane").acted,
+            DeafAct::EndedUnplaced,
+            "ending is all this function did; the placement below it is what upgrades the answer"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_upgrade_is_taken_only_after_the_pane_is_actually_running() {
         let body = ensure_master_body();
@@ -6424,8 +6793,18 @@ mod unplaced_tests {
         );
     }
 
+    /// The SHAPE of `end_deaf_pane`, which is all an assertion over text can
+    /// answer for.
+    ///
+    /// It used to be named for the proposition that a kill which did not
+    /// happen is never written down as one that did, and it could not go red
+    /// for it: the branch it read was dead code while `terminal::kill` answered
+    /// `Ok` whatever tmux did. That proposition is now
+    /// `a_deaf_pane_tmux_would_not_end_is_left_standing_on_the_record`, which
+    /// walks a real pane tmux refuses to end. This keeps the three structural
+    /// guards and claims nothing more.
     #[test]
-    fn a_kill_that_did_not_happen_is_never_written_down_as_one_that_did() {
+    fn end_deaf_pane_keeps_ending_and_placing_apart_in_its_text() {
         let body = production();
         let rest = body
             .split("\nasync fn end_deaf_pane(")
@@ -6450,6 +6829,447 @@ mod unplaced_tests {
             f[refused..done].contains("DeafAct::LeftStanding"),
             "a kill this box could not take is exactly the case the box-level record exists to put in front of a person"
         );
+    }
+
+    #[test]
+    fn only_a_pass_that_ended_a_pane_can_find_one_that_survived_its_kill() {
+        assert_eq!(
+            replacement_of(true, true),
+            Replacement::Placed,
+            "a pane was started where the deaf one had been, which is the act ISS-1208 asks for"
+        );
+        assert_eq!(
+            replacement_of(true, false),
+            Replacement::DeafPaneSurvived,
+            "the kill answered Ok and a session of that name is still alive — the one reading left that says the box replaced nothing"
+        );
+        for started in [true, false] {
+            assert_eq!(
+                replacement_of(false, started),
+                Replacement::NoDeafPane,
+                "a cold start that ended nothing says nothing about any deaf pane, and a pass that read one here would refuse every ordinary placement on this box"
+            );
+        }
+    }
+
+    /// The repair, walked rather than read: what the box does with the
+    /// capability it minted for a replacement it turns out not to have made.
+    ///
+    /// The mint has to run before the pane starts, because the token goes into
+    /// that pane's environment. So by the time the box learns nothing was
+    /// replaced, the session core now serves is already in its capability map —
+    /// and `capability_of` answers `Current` about a pane still holding the old
+    /// token from then on, for ever. That is this issue's own incident with the
+    /// alarm taken out, and it is why the withdrawal below is the part that
+    /// matters (ISS-1208, criterion 7).
+    #[tokio::test]
+    async fn a_pane_that_outlived_its_kill_takes_the_minted_capability_back_down_with_it() {
+        let path = temp_map("outlived");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        store.mint("sess-core-serves-now").expect("mint");
+        assert!(
+            matches!(
+                capability_of(Some(&store), "sess-core-serves-now"),
+                Capability::Current
+            ),
+            "the mint is what the placement path takes before it starts anything, and it is what makes the verdict read current"
+        );
+
+        let masters = Arc::new(Masters::new());
+        let authority = AuthoritySink::default();
+        let deaf = DeafSink::default();
+        let state = deaf_pane_outlived_its_kill(
+            &masters,
+            "proj-1",
+            "mowment",
+            "forge-master-mowment",
+            "sess-core-serves-now",
+            &CapabilityPorts {
+                tokens: Some(&store),
+                authority: &authority,
+                deaf: &deaf,
+            },
+        )
+        .await;
+
+        assert_eq!(
+            state,
+            PaneState::StaleCapability,
+            "the pane is still deaf, so the sweep must go on skipping the nudge rather than talking to it"
+        );
+        assert!(
+            matches!(
+                capability_of(Some(&store), "sess-core-serves-now"),
+                Capability::Stale
+            ),
+            "leaving the mint standing is what silences the stale arm on every later sweep — the operator is never told again, and the box nudges a master that refuses every declaration it makes"
+        );
+        let said = authority
+            .take()
+            .expect("a verdict was reached about this pane");
+        assert_eq!(
+            said.verdict,
+            MasterAuthority::STALE,
+            "`forge-runner master status` reads this row, and `current` there tells an operator the box put the project right"
+        );
+        match deaf.take().expect("the box met a deaf pane").acted {
+            DeafAct::LeftStanding(_) => {}
+            other => panic!(
+                "a pane still running was recorded as {other:?}, which is what the one box-level record then tells a person"
+            ),
+        }
+        let _ = std::fs::remove_dir_all(path.parent().expect("temp dir"));
+    }
+
+    /// The rollback answers for itself, or it is not a rollback.
+    ///
+    /// `retire` logs and returns on a map it could not read and on a map it
+    /// could not write, which is right for tidying up after a session that has
+    /// already ended and wrong for this, where the entry left behind is the
+    /// session core now serves — sitting in the map as proof of a replacement
+    /// this box did not make. Raised as F1 on the review of `b15ff428b`.
+    #[test]
+    fn a_withdrawal_that_did_not_take_is_never_reported_as_one_that_did() {
+        let path = temp_map("withdrawn");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        store.mint("sess-core-serves-now").expect("mint");
+        assert_eq!(
+            withdraw_unplaced_mint(Some(&store), "sess-core-serves-now"),
+            Ok(()),
+            "a map this box can write is the ordinary case, and the withdrawal has to be reported as taken there or the recovery is refused on every box"
+        );
+
+        // The map made unwritable under the entry, which is what `retire`
+        // meets when the disk fills between the mint and the rollback.
+        store.mint("sess-core-serves-now").expect("re-mint");
+        let dir = path.parent().expect("temp dir");
+        if !seal(dir) {
+            eprintln!("this box writes into a directory it has no write bit on — root, most likely — so the map cannot be made unwritable here and the plant is not the plant");
+            let _ = std::fs::remove_dir_all(dir);
+            return;
+        }
+        let said = withdraw_unplaced_mint(Some(&store), "sess-core-serves-now");
+        unseal(dir);
+
+        assert!(
+            said.is_err(),
+            "the entry is still in the map, so the next sweep reads this pane as current and stops recovering it — a box that reports that as a withdrawal has removed its own alarm and told nobody"
+        );
+        assert!(
+            matches!(
+                capability_of(Some(&store), "sess-core-serves-now"),
+                Capability::Current
+            ),
+            "this is the state the message has to be about: the verdict really does read current from here on, and only an operator breaks it"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_cancel_that_could_not_end_its_pane_says_so_before_it_answers_gone() {
+        let body = include_str!("inbox.rs");
+        let start = body
+            .find("\"cancel\" => {")
+            .expect("the inbox still handles a cancel frame");
+        let arm = &body[start
+            ..start
+                + body[start..]
+                    .find("\"checkpoint\" => {")
+                    .expect("the cancel arm is followed by the next one")];
+        assert!(
+            !arm.contains("let _ = terminal::kill("),
+            "`Ack::Gone` is sent unconditionally here because the ack has no third answer, so a kill that did not take has to be reported by the box or core is told a running pane is gone and nothing anywhere says otherwise (ISS-1208)"
+        );
+        let refused = arm
+            .find("if let Err(e) = terminal::kill(")
+            .expect("the cancel path reads what the kill answered");
+        let acked = arm
+            .find("Ack::Gone")
+            .expect("the cancel path still answers the frame");
+        assert!(
+            refused < acked,
+            "the report comes before the ack, so a reader of the log sees why the `gone` it is about to read is not the whole truth"
+        );
+    }
+
+    /// Criterion 7 says the verdict STAYS stale, which is a claim about every
+    /// later sweep.
+    ///
+    /// A read-back that only tells the truth once leaves the map saying
+    /// `current` about a pane that was never replaced, and the sweep after it
+    /// believes the map. Raised on the recheck of F1.
+    #[test]
+    fn a_mint_this_box_could_not_take_back_is_never_read_as_evidence_again() {
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(Capability::Current, Some("sess-A"), "sess-A"),
+                Capability::Stale
+            ),
+            "the entry in the map is a mint for a pane that was never placed, so reading it as current is how the box stops recovering a project it has already reported deaf"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(Capability::Current, Some("sess-OLD"), "sess-A"),
+                Capability::Current
+            ),
+            "what this box could not withdraw was some other session's, and holding it against this one would refuse a pane that is perfectly reachable"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(Capability::Current, None, "sess-A"),
+                Capability::Current
+            ),
+            "every ordinary sweep on this box comes through here, and one that read a stale verdict would end a healthy master"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(Capability::Stale, Some("sess-A"), "sess-A"),
+                Capability::Stale
+            ),
+            "stale stays stale"
+        );
+        match verdict_over_unwithdrawn(
+            Capability::Unknown("no map".to_string()),
+            Some("sess-A"),
+            "sess-A",
+        ) {
+            Capability::Unknown(_) => {}
+            other => panic!(
+                "an unreadable map is not evidence about any pane in either direction, and {other:?} here would end one on the strength of a map nobody could read"
+            ),
+        }
+    }
+
+    /// The whole of criterion 7 over two sweeps, which is the unit the
+    /// criterion is actually about.
+    #[tokio::test]
+    async fn a_withdrawal_that_failed_keeps_the_verdict_stale_on_the_sweep_after_it() {
+        let path = temp_map("stays-stale");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        let masters = Arc::new(Masters::new());
+        let dir = path.parent().expect("temp dir").to_path_buf();
+
+        store.mint("sess-core-serves-now").expect("mint");
+        if !seal(&dir) {
+            eprintln!("this box writes into a directory it has no write bit on — root, most likely — so the map cannot be made unwritable here and the plant is not the plant");
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        let authority = AuthoritySink::default();
+        let deaf = DeafSink::default();
+        deaf_pane_outlived_its_kill(
+            &masters,
+            "proj-1",
+            "mowment",
+            "forge-master-mowment",
+            "sess-core-serves-now",
+            &CapabilityPorts {
+                tokens: Some(&store),
+                authority: &authority,
+                deaf: &deaf,
+            },
+        )
+        .await;
+        unseal(&dir);
+
+        // The sweep after it, reading the same map.
+        assert!(
+            matches!(
+                capability_of(Some(&store), "sess-core-serves-now"),
+                Capability::Current
+            ),
+            "the map really does say current — the withdrawal could not be written, and nothing that could correct the map is available to a box that could not write it"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(
+                    capability_of(Some(&store), "sess-core-serves-now"),
+                    masters.unwithdrawn_for("proj-1").as_deref(),
+                    "sess-core-serves-now",
+                ),
+                Capability::Stale
+            ),
+            "and the box refuses to read it, so the project goes on being reported deaf and the pane goes on being ended — which is what `stays stale` means"
+        );
+        assert_eq!(
+            capability_act(&Capability::Stale, Placement::AdoptOrStart),
+            CapabilityAct::Replace,
+            "the retry is the ordinary sweep: a stale verdict with admissible work ends the pane again, and a placement that works clears what is held here"
+        );
+        // And what the box SAYS about it has to be that, or an operator is told
+        // to intervene by hand on a state the daemon is in fact retrying every
+        // sweep. Raised as F3 on the review of ba415f04f.
+        match deaf.take().expect("the box met a deaf pane").acted {
+            DeafAct::LeftStanding(why) => {
+                assert!(
+                    why.contains("retried every sweep"),
+                    "the one box-level record is where a person reads this, and it has to say the daemon is still trying: {why}"
+                );
+                assert!(
+                    !why.contains("no later sweep"),
+                    "that was true before this box held the fact itself, and saying it now contradicts what the next sweep does: {why}"
+                );
+            }
+            other => panic!("a pane still running was recorded as {other:?}"),
+        }
+
+        // A withdrawal that DID take releases it, or the box refuses a project
+        // for ever over a mint it successfully took back.
+        let took = Arc::new(Masters::new());
+        let store2 = session_tokens::SessionTokens::at(temp_map("released"));
+        store2.mint("sess-B").expect("mint");
+        deaf_pane_outlived_its_kill(
+            &took,
+            "proj-2",
+            "sidpeak",
+            "forge-master-sidpeak",
+            "sess-B",
+            &CapabilityPorts {
+                tokens: Some(&store2),
+                authority: &AuthoritySink::default(),
+                deaf: &DeafSink::default(),
+            },
+        )
+        .await;
+        assert_eq!(
+            took.unwithdrawn_for("proj-2"),
+            None,
+            "the map was written, so there is nothing left to hold against this project"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The marker says one thing — this project's capability map names a
+    /// session no pane holds — so it may not outlive the project it is about.
+    ///
+    /// Left behind, it is a session id sitting in wait for whatever core hands
+    /// out next, and a healthy master matched by it would be ended for being
+    /// healthy. Raised as F2 on the review of ba415f04f, where the worry was
+    /// that a session id alone is not an identity; this is the window it was
+    /// worried about, closed.
+    #[test]
+    fn a_project_this_box_stops_tracking_holds_nothing_against_its_next_session() {
+        let masters = Masters::new();
+        masters.remember_for_test("proj-1", "sess-A", "forge-master-mowment");
+        masters.note_unwithdrawn("proj-1", Some("sess-A"));
+        assert_eq!(
+            masters.unwithdrawn_for("proj-1"),
+            Some("sess-A".to_string())
+        );
+
+        masters.forget("proj-1");
+        assert_eq!(
+            masters.unwithdrawn_for("proj-1"),
+            None,
+            "the project is no longer this box's, so there is no pane for the marker to be about — and a later session that happened to carry the same id would be refused on the strength of it"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(
+                    Capability::Current,
+                    masters.unwithdrawn_for("proj-1").as_deref(),
+                    "sess-A",
+                ),
+                Capability::Current
+            ),
+            "which is what stops a healthy master being ended for holding an id this box once could not withdraw"
+        );
+    }
+
+    #[test]
+    fn the_map_is_never_read_without_what_this_box_knows_about_its_own_mints() {
+        let body = ensure_master_body();
+        assert!(
+            !body.contains("let verdict = capability_of(tokens, &session.session_id);"),
+            "the adopt branch reads the map through `verdict_over_unwithdrawn`, or a mint this box could not take back is read back as proof the pane it never placed is reachable (ISS-1208)"
+        );
+        let read = body
+            .find("verdict_over_unwithdrawn(")
+            .expect("the adopt branch consults what this box knows about its own mints");
+        let judged = body
+            .find("capability_act(&verdict, placement)")
+            .expect("the adopt branch decides what to do through the named rule");
+        assert!(
+            read < judged,
+            "the overrule has to happen before the act is chosen, or the box acts on the map's answer and records the overruled one"
+        );
+        let placed = body
+            .find("masters.note_unwithdrawn(project_id, None)")
+            .expect("the placement path releases what was held, or one failed withdrawal refuses the project for ever — including after a pane carrying that very capability is up and answering");
+        assert!(
+            body[..placed].contains("ports.deaf.placed()"),
+            "it is released where a pane is actually up, not on the way to one"
+        );
+    }
+
+    #[test]
+    fn what_ensure_answered_is_read_before_the_pass_calls_itself_a_replacement() {
+        let body = ensure_master_body();
+        let started = body
+            .find("let started = match terminal::ensure(")
+            .expect("the placement path must keep what `ensure` answered; discarding it is the second half of ISS-1208's fault");
+        let guarded = body
+            .find("replacement_of(ended_a_deaf_pane, started)")
+            .expect("the answer is ruled on by the named rule");
+        let upgraded = body
+            .find("ports.deaf.placed()")
+            .expect("the account is upgraded to a replacement somewhere in this function");
+        // From `started`, because the adopt branch above writes
+        // `MasterAuthority::CURRENT` too, for a pane it never touched.
+        let current = started
+            + body[started..]
+                .find("MasterAuthority::CURRENT,")
+                .expect("the placement path writes the verdict it earned");
+        assert!(
+            started < guarded && guarded < upgraded && guarded < current,
+            "the guard has to sit between what tmux answered and both of the things that claim a replacement, or the box writes `replaced` and `current` about a pane it never ended"
+        );
+    }
+
+    #[test]
+    fn a_capability_is_withdrawn_only_where_the_pane_it_was_minted_for_never_started() {
+        let body = production();
+        assert_eq!(
+            body.matches("store.retire(session_id)").count(),
+            2,
+            "exactly two withdrawals in this file, and each is entitled to one: `end_master` has just closed the session row, and `deaf_pane_outlived_its_kill` knows the pane its mint was for was never started. A third caller is a live master losing the capability it is holding"
+        );
+        let ending = body
+            .split("\nasync fn end_master(")
+            .nth(1)
+            .expect("end_master must be findable");
+        assert!(
+            ending[..block_end(ending, 0).expect("end_master must close")]
+                .contains("store.retire(session_id)"),
+            "the other withdrawal is end_master's, which retires a capability for a session it has just closed"
+        );
+        let rest = body
+            .split(
+                "
+async fn deaf_pane_outlived_its_kill(",
+            )
+            .nth(1)
+            .expect("deaf_pane_outlived_its_kill must be findable");
+        let f = &rest[..block_end(rest, 0).expect("it must close")];
+        assert!(
+            f.contains("withdraw_unplaced_mint(ports.tokens, session_id)"),
+            "the withdrawal belongs to this path, and goes through the one function that reads the map back afterwards"
+        );
+        let taking = body
+            .split("\nfn withdraw_unplaced_mint(")
+            .nth(1)
+            .expect("withdraw_unplaced_mint must be findable");
+        let w = &taking[..block_end(taking, 0).expect("it must close")];
+        assert!(
+            w.contains("store.retire(session_id)") && w.contains("store.holds_session(session_id)"),
+            "it names the session the mint named and then reads the map back: `retire` logs and returns on a map it could not write, so a caller that did not look has reported a rollback it may not have made"
+        );
+        for banned in ["ports.deaf.placed(", "MasterAuthority::CURRENT"] {
+            assert!(
+                !f.contains(banned),
+                "`{banned}` here would say the box replaced a pane that is still standing, which is the state this whole path exists to refuse"
+            );
+        }
     }
 
     /// Criterion 2's whole chain, as far as a crate with no core and no tmux

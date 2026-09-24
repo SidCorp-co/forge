@@ -89,6 +89,45 @@ third row of the table below**, which it pays every time it acts: the subagents 
 running die with its pane, exactly as they do under `forge-runner master kill`. Shape 1 is what stops
 that bill arriving at all, because a pane that keeps its authority is never ended for having lost it.
 
+**Two residuals ISS-1208 leaves standing, neither of them shape 1's.**
+
+The first is a surface. ISS-1208's own Rules say a fleet in which every master is deaf "is a
+condition of the box, not of four projects, and is surfaced as one" — and the one record the sweep
+writes is a daemon log line. The per-project condition also reaches `forge-runner master status`,
+which is the surface ISS-1099 added *because a log is not one*. An operator standing at
+`master status` still assembles the box-level condition from four project rows. The record exists
+and is correct; what is missing is a home for it beside `master_authority`, which is a store and a
+command's output rather than a line of policy, and so is a deliverable rather than a defect in the
+recovery. Whoever takes it decides whether a box-level row belongs in that table at all or is
+derived from the per-project rows at print time.
+
+The second is a daemon restart. Where a placement mints a capability and then places no pane, the
+box withdraws the mint again — and a withdrawal that could not be written leaves the map saying
+`current` about a pane that was never replaced. The box holds that fact in the `Masters` registry
+and refuses to read that entry as evidence, so the verdict stays `stale` and the sweep goes on
+ending the pane until a placement works. That knowledge is in the process and nowhere else: a daemon
+restarted while an entry is still unwithdrawn reads the map at face value again and stops reporting
+the project deaf. The durable form of it is a capability whose entry can say what it is for, which
+is shape 1 from the same side as everything else on this page. What stops it being reached today is
+that the write that would record it is the write that just failed.
+
+The third is a capability the box mints and then abandons. Between the mint and `terminal::ensure`
+sit the MCP-config write and tmux itself, and an exit there leaves the entry in the map with no pane
+holding it. It corrects itself where the next placement mints for the same session — `mint` retains
+and reinserts by session id, so the old entry goes — and where core hands out a different one it
+becomes exactly the `s1` residue this page already names as unswept. Nothing is confused by it in
+the meantime, because the exits it can be reached through follow a kill that TOOK, leaving no pane
+for the entry to be about. Routing those exits through the withdrawal would close it; whoever does
+should do it with the `s1` sweep rather than as a fourth caller of the same rollback.
+
+The fourth is the one the recovery cannot see. The box now establishes that a pane is gone —
+`terminal::kill` answers for the session, and `terminal::ensure`'s `Ok(false)` is read as a second
+reading — and where neither holds, the capability minted on the way is withdrawn again so the stale
+verdict comes back rather than being buried under it. What none of that reaches is a pane that ends
+and is replaced under the same name by something this box did not start, between the kill and the
+`new-session`. It is narrow, nothing observed has hit it, and the reading that would close it is a
+pane identity carried through the placement — which is shape 1 again, from the other side.
+
 ## Honest costs
 
 What adopting shape 1 takes from whoever builds it. These are the prices of the choice, not the
