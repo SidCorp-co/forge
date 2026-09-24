@@ -9,10 +9,11 @@
 
 use crate::daemon::agent_activity::now_ms;
 use crate::daemon::run_exit::{self, Reported, Verdict};
+use crate::daemon::{subagent_end, transcript_age};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
-use crate::runner::ledger::{Ledger, Liveness};
-use std::path::PathBuf;
+use crate::runner::ledger::{Ledger, Liveness, Run};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MasterPresence {
@@ -123,6 +124,18 @@ pub async fn reconcile(
         let orphaned =
             run.boot_id != boot_id || dead_in_the_ledger || master != MasterPresence::Alive;
         if !orphaned {
+            // A subagent run under a live master is only ever kept here: its
+            // turn-ends and its silence end nothing, because a subagent that
+            // stopped may be waiting on its own work and one that finished can
+            // still be resumed. Its master's close or its master's death ends
+            // it, and both reach the branch below (ISS-1246).
+            if run.agent_id.is_some() && run.pid.is_none() {
+                say_why_kept(ledger, &run, now_ms());
+                if let Some(id) = run.session_id.as_deref() {
+                    let _ = watch.beat.beat(id).await;
+                }
+                continue;
+            }
             let Some(id) = run.session_id.as_deref() else {
                 continue;
             };
@@ -181,6 +194,52 @@ pub async fn reconcile(
         });
     }
     Ok(out)
+}
+
+/// Say once, in the journal and on the row, why a subagent run that looks
+/// finished or cannot be read is still being kept, and what ends it.
+fn say_why_kept(ledger: &mut Ledger, run: &Run, now: i64) {
+    let path = run.agent_transcript.as_deref();
+    let written = path.and_then(|p| transcript_age::written_at(Path::new(p)));
+    let evidence = subagent_end::read(run.turn_ended_at_ms, written, now);
+    let Some(notice) = subagent_end::notice(evidence) else {
+        return;
+    };
+    match ledger.note_kept(&run.run_id, notice) {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(e) => {
+            tracing::warn!(
+                "[recovery] run {}: cannot record why it is kept: {e}",
+                run.run_id
+            );
+            return;
+        }
+    }
+    let issues = ledger
+        .issues(&run.run_id)
+        .map(|m| {
+            m.iter()
+                .map(|i| i.issue_key.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    let observed = match evidence {
+        subagent_end::Evidence::Quiet { silent_ms } => format!(
+            "its subagent ended a turn {}m ago and has written nothing since",
+            silent_ms / 60_000
+        ),
+        _ => format!(
+            "its subagent ended a turn and this box cannot read its transcript ({}), so it cannot tell whether it resumed",
+            path.unwrap_or("no path was recorded")
+        ),
+    };
+    tracing::warn!(
+        "[recovery] run {} ({issues}): {observed}. Its tree and leases are kept, because a finished subagent can still be resumed. Once it will not be, `forge-runner run close {}` gives them back",
+        run.run_id,
+        run.run_id
+    );
 }
 
 #[cfg(test)]
@@ -495,7 +554,7 @@ mod tests {
     #[tokio::test]
     async fn a_finished_run_under_a_live_master_is_still_owed_its_checkout_back() {
         let (mut led, wt) = seeded_holding_a_tree(0, "boot-a");
-        led.end_run("run-1", "subagent", "the subagent finished")
+        led.end_run("run-1", "master", "its master closed it")
             .unwrap();
         let done = reconcile(
             &mut led,
@@ -1205,6 +1264,416 @@ mod tests {
             done.len(),
             1,
             "the boot term must still fire on its own: a pid recorded before a reboot names whatever the kernel has since handed it to, so an answer of `alive` about it is an answer about a stranger"
+        );
+    }
+
+    // ISS-1246: a subagent run under a live master. Its turn-ends and its
+    // silence end nothing; only its master's close or its master's death does.
+
+    const MASTER: &str = "master-live";
+    const MIN_MS: i64 = 60_000;
+
+    /// A directory of this test's own, removed when it drops.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(what: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "forge-recovery-{what}-{}",
+                uuid::Uuid::new_v4().simple()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Write the subagent's transcript and stamp its last write at `at_ms`.
+    fn transcript_written_at(path: &Path, at_ms: i64) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "{}\n").unwrap();
+        let f = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(at_ms as u64))
+            .unwrap();
+    }
+
+    /// A bound subagent run whose tree is really on the disk, as the incident
+    /// runs were, with its transcript under `scratch`.
+    fn a_subagent_run(scratch: &Scratch) -> (Ledger, PathBuf, PathBuf) {
+        let wt = scratch.0.join("tree");
+        std::fs::create_dir_all(&wt).unwrap();
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: MASTER.into(),
+            worktree_path: wt.clone(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1135".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        assert!(led.bind_agent("run-1", "a13e68aaf656d6502").unwrap());
+        let lead = scratch.0.join("conv.jsonl");
+        let transcript =
+            crate::daemon::transcript_age::child_transcript(&lead, "a13e68aaf656d6502").unwrap();
+        (led, wt, transcript)
+    }
+
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    /// A repository with a remote, and the subagent's checkout a real git
+    /// worktree of it with its branch pushed, as the incident trees were. The
+    /// ISS-1217 tree kept its directory and lost its `.git/worktrees` entry, so
+    /// a plain directory cannot show the harm.
+    fn a_subagent_run_in_a_worktree(scratch: &Scratch) -> (Ledger, PathBuf, PathBuf, PathBuf) {
+        let root = scratch.0.join("repo");
+        std::fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q", "-b", "main"]);
+        git(&root, &["config", "user.email", "t@t"]);
+        git(&root, &["config", "user.name", "t"]);
+        std::fs::write(root.join("f.txt"), "base").unwrap();
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-q", "-m", "base"]);
+        let remote = scratch.0.join("remote.git");
+        std::fs::create_dir_all(&remote).unwrap();
+        git(&remote, &["init", "-q", "--bare", "-b", "main"]);
+        git(
+            &root,
+            &["remote", "add", "origin", &remote.to_string_lossy()],
+        );
+        git(&root, &["push", "-q", "-u", "origin", "main"]);
+        let wt = root
+            .join(".claude")
+            .join("worktrees")
+            .join("iss-1217-judge");
+        git(
+            &root,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                &wt.to_string_lossy(),
+                "-b",
+                "ISS-1217",
+            ],
+        );
+        std::fs::write(wt.join("verdict.md"), "judged").unwrap();
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "judge"]);
+        git(&wt, &["push", "-q", "-u", "origin", "ISS-1217"]);
+
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: MASTER.into(),
+            worktree_path: wt.clone(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1217".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        assert!(led.bind_agent("run-1", "a1217judge").unwrap());
+        let transcript = crate::daemon::transcript_age::child_transcript(
+            &scratch.0.join("conv.jsonl"),
+            "a1217judge",
+        )
+        .unwrap();
+        (led, root, wt, transcript)
+    }
+
+    /// Git still registers `wt` as a worktree of `root`: the half of a tree
+    /// the ISS-1217 judge found gone while its directory stood.
+    fn registered(root: &Path, wt: &Path) -> bool {
+        let Ok(want) = std::fs::canonicalize(wt) else {
+            return false;
+        };
+        git(root, &["worktree", "list", "--porcelain"])
+            .lines()
+            .filter_map(|l| l.strip_prefix("worktree "))
+            .any(|p| std::fs::canonicalize(p).ok().as_ref() == Some(&want))
+    }
+
+    struct NoProcess;
+    #[async_trait::async_trait]
+    impl crate::runner::terminate::ProcessGroup for NoProcess {
+        async fn kill(&self, _pid: u32) -> crate::runner::inflight::Reaped {
+            crate::runner::inflight::Reaped::NotFound
+        }
+    }
+
+    fn stop_at(led: &Ledger, at_ms: i64, transcript: Option<&Path>) {
+        let path = transcript.map(|p| p.to_string_lossy().into_owned());
+        assert!(led.note_turn_end("run-1", at_ms, path.as_deref()).unwrap());
+    }
+
+    /// One sweep's answer for the one run: `None` where it was kept and owed nothing.
+    async fn sweep(
+        led: &mut Ledger,
+        masters: &dyn MasterLiveness,
+        beats: &Beats,
+    ) -> Option<Recovered> {
+        let done = reconcile(
+            led,
+            "boot-a",
+            masters,
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: beats,
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(done.len() <= 1, "one run, at most one answer: {done:?}");
+        done.into_iter().next()
+    }
+
+    fn master_alive() -> Masters {
+        Masters(HashSet::from([MASTER.to_string()]))
+    }
+
+    fn kept(led: &Ledger) -> Option<String> {
+        led.run("run-1").unwrap().unwrap().kept_notice
+    }
+
+    fn assert_still_held(led: &Ledger, r: &Option<Recovered>, wt: &Path, why: &str) {
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.ended_by, None, "{why}: the run was ended");
+        assert!(r.is_none(), "{why}: recovery owed it something: {r:?}");
+        assert!(wt.is_dir(), "{why}: the tree left the disk");
+        assert!(
+            led.ended_with_open_session("boot-a").unwrap().is_empty(),
+            "{why}: its core session would be closed, handing its leases back"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_iss_1135_run_that_stopped_to_wait_on_its_monitor_keeps_its_tree_across_sweeps() {
+        let scratch = Scratch::new("iss-1135");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let beats = Beats::default();
+        let stop = now_ms() - 2 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        stop_at(&led, stop, Some(&transcript));
+        let r = sweep(&mut led, &master_alive(), &beats).await;
+        assert_still_held(&led, &r, &wt, "the sweep right after the stop");
+        transcript_written_at(&transcript, stop + MIN_MS);
+        for n in 0..3 {
+            let r = sweep(&mut led, &master_alive(), &beats).await;
+            assert_still_held(&led, &r, &wt, &format!("resumed sweep {n}"));
+        }
+        assert!(
+            registered(&root, &wt),
+            "git still knows the tree it is writing in"
+        );
+        assert_eq!(
+            kept(&led),
+            None,
+            "a subagent writing after its stop is working, and nothing is said about it"
+        );
+        assert_eq!(
+            beats.0.lock().unwrap().len(),
+            4,
+            "the box still holds the run, so every sweep beats it and core's reaper leaves it alone"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_iss_1217_judge_that_finished_keeps_its_tree_until_its_master_closes_it() {
+        let scratch = Scratch::new("iss-1217");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let beats = Beats::default();
+        let stop = now_ms() - 3 * 60 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        stop_at(&led, stop, Some(&transcript));
+        for n in 0..3 {
+            let r = sweep(&mut led, &master_alive(), &beats).await;
+            assert_still_held(&led, &r, &wt, &format!("three hours quiet, sweep {n}"));
+        }
+        assert!(
+            registered(&root, &wt),
+            "a dispatcher resuming it now finds a worktree git still knows, not a bare directory"
+        );
+        assert_eq!(kept(&led).as_deref(), Some("quiet"), "and the box says so");
+
+        led.end_run("run-1", "master", "its report is in").unwrap();
+        let r = sweep(&mut led, &master_alive(), &beats)
+            .await
+            .expect("owed");
+        assert!(
+            r.owed_release,
+            "its master's close is the one act that disowns a resume, so the tree goes back now: {r:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_iss_1217_judge_is_released_once_its_master_closes_it() {
+        let scratch = Scratch::new("iss-1217-release");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let stop = now_ms() - 3 * 60 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        stop_at(&led, stop, Some(&transcript));
+        sweep(&mut led, &master_alive(), &Beats::default()).await;
+        led.end_run("run-1", "master", "its report is in").unwrap();
+        let r = sweep(&mut led, &master_alive(), &Beats::default())
+            .await
+            .expect("owed");
+        assert!(r.owed_release, "{r:?}");
+
+        let leases = Leases(Mutex::new(HashSet::new()));
+        let released = crate::runner::terminate::release(
+            &mut led,
+            "run-1",
+            crate::runner::terminate::Forcing {
+                this_boot: "boot-a",
+                repo_root: &root,
+                base_branch: Some("main"),
+                by: "recovery",
+                reason: "its master closed it",
+            },
+            crate::runner::terminate::Ports {
+                procs: &NoProcess,
+                sessions: &Sessions,
+                leases: &leases,
+            },
+            now_ms() / 1000,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(released, crate::runner::terminate::Release::Done(_)),
+            "the release the close licensed is taken, not only owed: {released:?}"
+        );
+        assert!(!wt.exists(), "the tree is off the disk");
+        assert!(!registered(&root, &wt), "and out of git's registry");
+        assert!(
+            git(&root, &["branch", "--list", "ISS-1217"]).contains("ISS-1217"),
+            "the judge's branch, pushed before the close, is kept"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_length_of_silence_ends_a_subagent_run_whose_master_lives() {
+        let scratch = Scratch::new("silence");
+        let (mut led, wt, transcript) = a_subagent_run(&scratch);
+        let beats = Beats::default();
+        let stop = now_ms() - 30 * 24 * 60 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        stop_at(&led, stop, Some(&transcript));
+        let r = sweep(&mut led, &master_alive(), &beats).await;
+        assert_still_held(&led, &r, &wt, "thirty days quiet");
+    }
+
+    #[tokio::test]
+    async fn a_quiet_run_is_said_once_and_a_later_stop_lets_it_be_said_again() {
+        let scratch = Scratch::new("once");
+        let (mut led, _wt, transcript) = a_subagent_run(&scratch);
+        let beats = Beats::default();
+        let stop = now_ms() - 61 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        stop_at(&led, stop, Some(&transcript));
+        sweep(&mut led, &master_alive(), &beats).await;
+        assert_eq!(kept(&led).as_deref(), Some("quiet"));
+        assert!(
+            !led.note_kept("run-1", "quiet").unwrap(),
+            "the notice is standing, so the next sweep has nothing new to say"
+        );
+        let resumed = now_ms() - MIN_MS;
+        transcript_written_at(&transcript, resumed);
+        stop_at(&led, resumed, None);
+        assert_eq!(
+            kept(&led),
+            None,
+            "a new turn-end ends the silence the notice was about"
+        );
+        sweep(&mut led, &master_alive(), &beats).await;
+        assert_eq!(
+            kept(&led),
+            None,
+            "and a minute of quiet is not yet worth a word"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_run_whose_transcript_cannot_be_read_is_kept_and_said_once() {
+        let scratch = Scratch::new("unreadable");
+        let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+        let beats = Beats::default();
+        stop_at(&led, now_ms() - 5 * 60 * MIN_MS, None);
+        let r = sweep(&mut led, &master_alive(), &beats).await;
+        assert_still_held(&led, &r, &wt, "no transcript path recorded");
+        assert_eq!(kept(&led).as_deref(), Some("unreadable"));
+
+        let missing = scratch.0.join("nowhere").join("agent-x.jsonl");
+        stop_at(&led, now_ms() - 5 * 60 * MIN_MS, Some(&missing));
+        let r = sweep(&mut led, &master_alive(), &beats).await;
+        assert_still_held(&led, &r, &wt, "a path that reads nothing");
+        assert_eq!(kept(&led).as_deref(), Some("unreadable"));
+    }
+
+    #[tokio::test]
+    async fn a_run_that_never_ended_a_turn_is_kept_and_nothing_is_said() {
+        let scratch = Scratch::new("never");
+        let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+        let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+        assert_still_held(&led, &r, &wt, "no stop heard yet");
+        assert_eq!(kept(&led), None);
+    }
+
+    #[tokio::test]
+    async fn a_quiet_subagent_run_whose_master_pane_is_gone_is_still_owed_its_release() {
+        let scratch = Scratch::new("master-gone");
+        let (mut led, _wt, transcript) = a_subagent_run(&scratch);
+        let stop = now_ms() - 61 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        stop_at(&led, stop, Some(&transcript));
+        let r = sweep(&mut led, &Masters(HashSet::new()), &Beats::default())
+            .await
+            .expect("owed");
+        assert!(
+            r.owed_release,
+            "a subagent runs inside its master's process and cannot outlive the pane: {r:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_subagent_run_whose_master_pane_is_gone_is_still_owed_its_release() {
+        let scratch = Scratch::new("master-gone-unread");
+        let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        stop_at(&led, now_ms() - 61 * MIN_MS, None);
+        let r = sweep(&mut led, &Masters(HashSet::new()), &Beats::default())
+            .await
+            .expect("owed");
+        assert!(r.owed_release, "{r:?}");
+        assert_eq!(
+            kept(&led),
+            None,
+            "nothing is said about keeping a run the box is giving back"
         );
     }
 }

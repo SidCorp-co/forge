@@ -18,7 +18,7 @@ import {
 } from '../middleware/auth.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { hooks } from '../pipeline/hooks.js';
-import { type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
+import { PM_NO_PROMPT_MESSAGE, type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 
 const projectIdParam = z.object({ projectId: z.uuid() });
 
@@ -87,11 +87,12 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
-
-const tooManyRequests = (message: string, code: string) =>
-  new HTTPException(429, { message, cause: { code } });
+/** A refused operator spawn: rate limit 429, no pool prompt 422, every other guard 409. */
+function spawnRefusal(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reason']) {
+  const status = reason === 'rate-limited' ? 429 : reason === 'pool-job-no-prompt' ? 422 : 409;
+  const message = reason === 'pool-job-no-prompt' ? PM_NO_PROMPT_MESSAGE : reason;
+  return new HTTPException(status, { message, cause: { code: reasonToCode(reason) } });
+}
 
 function reasonToCode(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reason']): string {
   return reason.toUpperCase().replace(/-/g, '_');
@@ -132,11 +133,7 @@ pmRoutes.post(
       actorUserId: userId,
     });
     if (!result.ok) {
-      const code = reasonToCode(result.reason);
-      if (result.reason === 'rate-limited') {
-        throw tooManyRequests(result.reason, code);
-      }
-      throw conflict(result.reason, code);
+      throw spawnRefusal(result.reason);
     }
     return c.json({ ok: true, jobId: result.jobId });
   },

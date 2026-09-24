@@ -32,7 +32,6 @@ import {
   skills,
   updatePackets,
 } from '../db/schema.js';
-import { enqueueReconcileJob } from '../jobs/enqueue.js';
 import { selectKnowledgeBodies } from '../knowledge/service.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
@@ -611,7 +610,6 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
         },
         status: 'queued',
       });
-      await enqueueReconcileJob(jobId);
     } catch (err) {
       logger.error({ err, runId, projectId, i }, 'reconcile.verify.dispatch.error');
       await Promise.all(
@@ -797,38 +795,6 @@ export async function spawnReconcileRun(input: {
     }
     logger.error({ err, projectId: input.projectId }, 'reconcile.spawn.error');
     return { ok: false, reason: 'error', detail: String(err) };
-  }
-
-  try {
-    await enqueueReconcileJob(jobId);
-  } catch (err) {
-    logger.error(
-      { err, projectId: input.projectId, runId, jobId },
-      'reconcile.spawn.enqueue.error',
-    );
-    await db
-      .transaction(async (tx) => {
-        await tx
-          .update(reconcileRuns)
-          .set({ status: 'failed', error: String(err), updatedAt: new Date() })
-          .where(and(eq(reconcileRuns.id, runId), eq(reconcileRuns.status, 'pending')));
-        await logActivity(tx, {
-          eventType: 'reconcile.failed',
-          actor: 'system:dispatcher',
-          trigger: 'manual',
-          projectId: input.projectId,
-          skillId: input.skillId,
-          packetId: input.packetId,
-          reason: `enqueue failed: ${String(err)}`.slice(0, 500),
-        });
-      })
-      .catch((txErr) =>
-        logger.error({ txErr, runId, jobId }, 'reconcile.spawn.enqueue.containment.error'),
-      );
-    await closeRun(pipelineRun.id, 'failed').catch((closeErr) =>
-      logger.error({ closeErr, runId: pipelineRun.id }, 'reconcile.spawn.closeOrphanedRun.error'),
-    );
-    return { ok: false, reason: 'error', detail: `enqueue failed: ${String(err)}` };
   }
 
   logger.info({ projectId: input.projectId, runId, jobId }, 'reconcile.spawned');

@@ -16,12 +16,11 @@ import {
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
-import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
 import { canonicalSessionId, usageSessionMatch } from '../usage-records/rollup.js';
-import { enqueueJob } from './enqueue.js';
 import { readJob } from './job-queries.js';
+import { noPromptMessage, POOL_JOB_NO_PROMPT, poolPrompt } from './pool-served.js';
 import {
   type ActualUsage,
   extractPayloadExtras,
@@ -131,6 +130,12 @@ jobProjectRoutes.post(
     assertProjectRole(access, 'member', 'not a project member');
 
     if (input.issueId) await assertIssueInProject(projectId, input.issueId);
+    if (poolPrompt(input.payload) === null) {
+      throw new HTTPException(422, {
+        message: noPromptMessage(input.type),
+        cause: { code: POOL_JOB_NO_PROMPT },
+      });
+    }
 
     // ISS-101 — every job needs a pipeline_run. Issue-bound jobs attach to
     // the issue's open run; project-only jobs get a one-shot 'system' run.
@@ -156,17 +161,6 @@ jobProjectRoutes.post(
       })
       .returning();
     if (!inserted) throw new Error('jobs: insert returned no row');
-
-    // pg-boss publish failure does not roll back the job row — the stale-detector (F3) catches stuck queues.
-    try {
-      await enqueueJob({
-        jobId: inserted.id,
-        issueId: inserted.issueId,
-        type: inserted.type,
-      });
-    } catch (err) {
-      logger.error({ err, jobId: inserted.id }, 'enqueueJob failed; job row persisted');
-    }
 
     return c.json(inserted, 201);
   },
