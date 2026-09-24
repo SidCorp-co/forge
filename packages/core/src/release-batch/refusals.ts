@@ -23,8 +23,11 @@ import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   ClaimConflictError,
   NoReleaseGateError,
+  ReleaseBatchAbortedError,
+  ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
+  ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
 import { MethodMismatchError, MethodNotAnnouncedError } from './method.js';
@@ -217,4 +220,35 @@ export function recordRefusal(err: unknown): HTTPException {
     return releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
   }
   throw err;
+}
+
+/**
+ * Every refusal a finish can meet, at the door or inside the job that does the work, under one
+ * set of names. The job writes the code and the sentence onto the batch; the door answers them.
+ */
+export function finishRefusal(err: unknown): HTTPException | null {
+  if (err instanceof ReleaseNotVerifiedError) {
+    return new HTTPException(409, {
+      message: err.reason,
+      cause: { code: 'RELEASE_NOT_VERIFIED', details: { live: err.live } },
+    });
+  }
+  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes(err);
+  if (err instanceof ReleaseVersionMissingError) {
+    return conflict('RELEASE_VERSION_MISSING', err.message);
+  }
+  if (err instanceof ReleaseBatchAbortedError) {
+    return conflict(
+      'RELEASE_BATCH_ABORTED',
+      'This batch was aborted, so there is nothing left to finish: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.',
+    );
+  }
+  if (err instanceof ReleaseFinishInFlightError) {
+    return conflict(
+      'RELEASE_FINISH_IN_FLIGHT',
+      `A finish for ${err.inFlightCommit ?? 'no named commit'} is already running on this batch, and this call names ${err.askedCommit ?? 'no commit'}. Read its outcome with GET /api/projects/{projectId}/release-batches/{runId}/state (\`finish\`); a new finish is taken once that one has failed.`,
+      { requestId: err.requestId, inFlightCommit: err.inFlightCommit },
+    );
+  }
+  return methodRefusal(err);
 }

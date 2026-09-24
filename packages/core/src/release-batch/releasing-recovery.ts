@@ -1,10 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { comments, type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
+import { ReleaseFinishFenceLostError } from './errors.js';
 import { resolveReleaseGate } from './gate.js';
 
 export interface RecoverStrandedReleasingResult {
@@ -42,6 +43,8 @@ export interface RecoverStrandedReleasingOptions {
   actorUserId?: string | undefined;
   /** Post a comment naming the reason. Off for a sweep nobody asked for. */
   comment?: boolean;
+  /** Run inside each write's own transaction before it writes; throws to stop the recovery. */
+  fence?: ((tx: Tx) => Promise<void>) | undefined;
 }
 
 /**
@@ -116,10 +119,15 @@ export async function recoverStrandedReleasing(
         },
         destination,
         actor,
-        { transitionReason: options.reason, viaReleasePath: true },
+        {
+          transitionReason: options.reason,
+          viaReleasePath: true,
+          ...(options.fence ? { beforeStatusWrite: options.fence } : {}),
+        },
       );
       recovered.push(issue.id);
     } catch (err) {
+      if (err instanceof ReleaseFinishFenceLostError) throw err;
       if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
         logger.warn(
           { err, issueId: issue.id, runId },
@@ -129,10 +137,19 @@ export async function recoverStrandedReleasing(
     }
   }
 
-  await db.execute(sql`
+  const clearClaims = sql`
     UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
     WHERE release_batch_run_id = ${runId}
-  `);
+  `;
+  const { fence } = options;
+  if (fence) {
+    await db.transaction(async (tx) => {
+      await fence(tx);
+      await tx.execute(clearClaims);
+    });
+  } else {
+    await db.execute(clearClaims);
+  }
 
   if (recovered.length > 0) {
     logger.warn(

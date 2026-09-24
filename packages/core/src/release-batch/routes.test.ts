@@ -29,6 +29,8 @@ vi.mock('../db/client.js', () => ({
 
 const createReleaseBatchMock = vi.fn();
 const loadReleaseRosterMock = vi.fn();
+const acceptFinishMock = vi.fn();
+const findRunMock = vi.fn();
 
 // The error CLASSES stay real: the handler discriminates with `instanceof`, so a stub
 // class would make this test pass against a handler that maps nothing.
@@ -36,6 +38,11 @@ vi.mock('./service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./service.js')>()),
   createReleaseBatch: (a: unknown) => createReleaseBatchMock(a),
   loadReleaseRoster: (a: unknown) => loadReleaseRosterMock(a),
+  findReleaseBatchRun: (a: unknown) => findRunMock(a),
+}));
+
+vi.mock('./finish-job.js', () => ({
+  acceptReleaseBatchFinish: (...a: unknown[]) => acceptFinishMock(...a),
 }));
 
 // `loadProjectAccess` is what the handler calls; stubbing the resolver underneath it
@@ -347,5 +354,88 @@ describe('POST /:projectId/release-batches — the refusals that go through thei
     const body = (await res.json()) as { details?: { alsoBlocking?: Array<{ code: string }> } };
 
     expect(body.details?.alsoBlocking?.map((b) => b.code)).toEqual(['RELEASE_ROSTER_EMPTY']);
+  });
+});
+
+describe('POST /:projectId/release-batches/:runId/finish — the door answers the attempt (ISS-1190)', () => {
+  const RUN_ID = '44444444-4444-4444-8444-444444444444';
+  const record = (state: string) => ({ requestId: 'r-1', state, commit: null });
+
+  async function finishReq(body: unknown = {}) {
+    mockAdmin();
+    findRunMock.mockResolvedValueOnce({ id: RUN_ID, projectId: PROJECT_ID });
+    return await buildApp().request(
+      `/api/projects/${PROJECT_ID}/release-batches/${RUN_ID}/finish`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
+  }
+
+  it('answers 202 with the record while the attempt is working', async () => {
+    acceptFinishMock.mockResolvedValueOnce({
+      runId: RUN_ID,
+      finish: record('accepted'),
+      started: true,
+    });
+
+    const res = await finishReq({ commit: 'a'.repeat(40) });
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ runId: RUN_ID, finish: record('accepted') });
+    expect(acceptFinishMock).toHaveBeenCalledWith(
+      RUN_ID,
+      { type: 'user', id: USER_ID },
+      { commit: 'a'.repeat(40) },
+    );
+  });
+
+  it('answers 200 with the recorded outcome once the batch has finished', async () => {
+    acceptFinishMock.mockResolvedValueOnce({
+      runId: RUN_ID,
+      finish: record('finished'),
+      started: false,
+    });
+
+    const res = await finishReq();
+
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { finish: { state: string } }).finish.state).toBe('finished');
+  });
+
+  it('refuses a second commit while one is in flight, naming the one in flight', async () => {
+    const { ReleaseFinishInFlightError } = await import('./errors.js');
+    const inFlight = 'a'.repeat(40);
+    acceptFinishMock.mockRejectedValueOnce(
+      new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40)),
+    );
+
+    const res = await finishReq({ commit: 'b'.repeat(40) });
+    const body = (await res.json()) as { code?: string; message?: string; details?: unknown };
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('RELEASE_FINISH_IN_FLIGHT');
+    expect(body.message).toContain(inFlight);
+    expect(body.details).toEqual({ requestId: 'r-1', inFlightCommit: inFlight });
+  });
+
+  it('answers a refusal the door decided under its existing code', async () => {
+    const { ReleaseBatchAbortedError, ReleaseNotVerifiedError } = await import('./errors.js');
+    acceptFinishMock.mockRejectedValueOnce(new ReleaseBatchAbortedError());
+    const aborted = await finishReq();
+    expect(aborted.status).toBe(409);
+    expect(((await aborted.json()) as { code?: string }).code).toBe('RELEASE_BATCH_ABORTED');
+
+    acceptFinishMock.mockRejectedValueOnce(
+      new ReleaseNotVerifiedError('`abc` is not a whole commit', null),
+    );
+    const partial = await finishReq({ commit: 'abc' });
+    expect(partial.status).toBe(409);
+    expect(await partial.json()).toMatchObject({
+      code: 'RELEASE_NOT_VERIFIED',
+      message: '`abc` is not a whole commit',
+    });
   });
 });
