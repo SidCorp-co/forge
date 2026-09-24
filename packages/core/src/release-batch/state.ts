@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type BoundsReading, readBounds } from './bounds.js';
 import { resolveReleaseChannels } from './channel.js';
+import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
@@ -23,6 +24,8 @@ export interface ReleaseRunState {
   method: ReleaseMethod | null;
   /** True when the agent announced that it could not load its method. */
   methodUnloaded: boolean;
+  /** The last finish attempt, `null` before the first `finish` call. */
+  finish: ReleaseFinishRecord | null;
 }
 
 /**
@@ -64,6 +67,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     bounds: readBounds(attempts),
     method,
     methodUnloaded: method !== null && !method.loaded,
+    finish: readFinishRecord(meta),
   };
 }
 

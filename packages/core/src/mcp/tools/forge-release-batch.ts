@@ -10,12 +10,14 @@
  * the door for a person's own token.
  *
  * `finish` and `abort` call the same service functions the REST routes call.
- * This is a second door onto one close, not a second close.
+ * This is a second door onto one close, not a second close: `finish` takes the
+ * attempt and answers, and the verdict is read with `state`.
  */
 
 import type { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
+import { acceptReleaseBatchFinish } from '../../release-batch/finish-job.js';
 import {
   announceMethod,
   MethodMismatchError,
@@ -26,13 +28,17 @@ import {
   RELEASE_BATCH_TOOL,
   ReleaseBranchesUndeclaredError,
 } from '../../release-batch/plan.js';
-import { recordRefusal, undeclaredBranches } from '../../release-batch/refusals.js';
+import {
+  finishRefusal as finishHttpRefusal,
+  recordRefusal,
+  undeclaredBranches,
+} from '../../release-batch/refusals.js';
 import {
   abortReleaseBatch,
   findReleaseBatchRun,
-  finishReleaseBatch,
   loadReleaseBatchContext,
   ReleaseBatchAbortedError,
+  ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
   ReleaseVersionMissingError,
@@ -128,6 +134,10 @@ function finishRefusal(err: unknown): Error {
   if (err instanceof ReleaseVersionMissingError) {
     return refusal('RELEASE_VERSION_MISSING', err.message);
   }
+  if (err instanceof ReleaseFinishInFlightError) {
+    const http = finishHttpRefusal(err);
+    if (http) return fromHttp(http);
+  }
   if (err instanceof ReleaseBatchAbortedError) {
     return refusal(
       'RELEASE_BATCH_ABORTED',
@@ -176,7 +186,10 @@ async function run(principal: McpPrincipal, input: Input, projectId: string): Pr
     }
     case 'finish': {
       try {
-        return await finishReleaseBatch(runId, principalActor(principal), { commit: input.commit });
+        const accepted = await acceptReleaseBatchFinish(runId, principalActor(principal), {
+          commit: input.commit,
+        });
+        return { runId, finish: accepted.finish };
       } catch (err) {
         throw finishRefusal(err);
       }
@@ -199,7 +212,8 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'on the credential the job already holds. Actions: `get` (the batch context: roster, release notes, branches, deploy plan; ' +
     'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
     '`skill` + `loaded`, optional `detail`; finish refuses a run that announced none), `finish` (`commit` = the SHA pushed to ' +
-    'production; closes every claimed issue once the server-read probes agree), `abort` (`reason`; releases every claim, closes nothing). ' +
+    'production; answers at once with the attempt at `accepted`, and the server then reads the probes and closes every claimed issue ' +
+    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why), `abort` (`reason`; releases every claim, closes nothing). ' +
     'Every action needs `runId`, and a token with the write scope: a credential that could read the batch but not record it is ' +
     'refused at `get`, before anything changes.',
   inputSchema: zodToMcpSchema(inputSchema),

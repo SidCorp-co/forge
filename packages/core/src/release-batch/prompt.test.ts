@@ -258,3 +258,25 @@ describe('the route a release run reaches Forge by (ISS-1211)', () => {
     }
   });
 });
+
+describe('where a release run reads its verdict (ISS-1190)', () => {
+  const probed = plan({
+    channels: [
+      channel({
+        verify: { probes: [{ url: 'https://example.test/version' }] },
+        verifySource: 'binding',
+      }),
+    ],
+  });
+
+  it('says finish answers `accepted` and the verdict is `state`’s `finish`', () => {
+    for (const text of [
+      buildReleaseBatchPrompt({ ...BASE, plan: probed }),
+      releaseBatchStatePrompt,
+    ]) {
+      expect(text).toMatch(/`finish`[^\n]*answers at once with the attempt at\s+`accepted`/);
+      expect(text).toMatch(new RegExp(`${RELEASE_BATCH_TOOL}\\\` action \\\`state\\\``));
+      expect(text).toMatch(/`finish\.state`[^\n]*`finished`/);
+    }
+  });
+});

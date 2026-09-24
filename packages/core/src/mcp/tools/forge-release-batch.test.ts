@@ -7,7 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const finishReleaseBatch = vi.fn();
+const acceptFinish = vi.fn();
 const announceMethod = vi.fn(async (a: unknown) => a);
 
 vi.mock('../../db/client.js', () => ({ db: {} }));
@@ -21,13 +21,15 @@ vi.mock('../../release-batch/method.js', async (importActual) => ({
   ...(await importActual<typeof import('../../release-batch/method.js')>()),
   announceMethod: (a: unknown) => announceMethod(a),
 }));
+vi.mock('../../release-batch/finish-job.js', () => ({
+  acceptReleaseBatchFinish: (...a: unknown[]) => acceptFinish(...a),
+}));
 vi.mock('../../release-batch/service.js', async () => {
   const errors = await import('../../release-batch/errors.js');
   return {
     ...errors,
     abortReleaseBatch: vi.fn(),
     findReleaseBatchRun: vi.fn(async () => ({ id: RUN_ID, projectId: 'p-1' })),
-    finishReleaseBatch: (...a: unknown[]) => finishReleaseBatch(...a),
     loadReleaseBatchContext: vi.fn(),
   };
 });
@@ -37,9 +39,8 @@ const RUN_ID = '44444444-4444-4444-8444-444444444444';
 const { forgeReleaseBatchTool } = await import('./forge-release-batch.js');
 const { makeFakePrincipal } = await import('../fake-principal.fixture.js');
 const { MethodMismatchError } = await import('../../release-batch/method.js');
-const { ReleaseBatchAbortedError, ReleaseVersionMissingError } = await import(
-  '../../release-batch/errors.js'
-);
+const { ReleaseBatchAbortedError, ReleaseFinishInFlightError, ReleaseVersionMissingError } =
+  await import('../../release-batch/errors.js');
 
 function tool(scopes: string[] = ['read', 'write']) {
   return forgeReleaseBatchTool({
@@ -52,7 +53,7 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('forge_release_batch refusals', () => {
   it('names the method the job expects when the run announced another', async () => {
-    finishReleaseBatch.mockRejectedValue(new MethodMismatchError('improvised', 'release-flow'));
+    acceptFinish.mockRejectedValue(new MethodMismatchError('improvised', 'release-flow'));
 
     await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
       /^RELEASE_METHOD_MISMATCH: .*`improvised`.*Announce `release-flow` with action=method/,
@@ -60,7 +61,7 @@ describe('forge_release_batch refusals', () => {
   });
 
   it('says an aborted batch has nothing left to finish', async () => {
-    finishReleaseBatch.mockRejectedValue(new ReleaseBatchAbortedError());
+    acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError());
 
     await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
       /^RELEASE_BATCH_ABORTED: this batch was aborted/,
@@ -68,7 +69,7 @@ describe('forge_release_batch refusals', () => {
   });
 
   it('carries a missing version under its own code', async () => {
-    finishReleaseBatch.mockRejectedValue(new ReleaseVersionMissingError(RUN_ID));
+    acceptFinish.mockRejectedValue(new ReleaseVersionMissingError(RUN_ID));
 
     await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
       /^RELEASE_VERSION_MISSING: /,
@@ -94,7 +95,7 @@ describe('forge_release_batch refusals', () => {
         /^RELEASE_CREDENTIAL_CANNOT_RECORD: /,
       );
     }
-    expect(finishReleaseBatch).not.toHaveBeenCalled();
+    expect(acceptFinish).not.toHaveBeenCalled();
     expect(announceMethod).not.toHaveBeenCalled();
   });
 
@@ -102,6 +103,27 @@ describe('forge_release_batch refusals', () => {
     await expect(tool().handler({ action: 'finish', runId: RUN_ID, force: true })).rejects.toThrow(
       /force/,
     );
-    expect(finishReleaseBatch).not.toHaveBeenCalled();
+    expect(acceptFinish).not.toHaveBeenCalled();
+  });
+});
+
+describe('forge_release_batch finish answers the attempt, not the outcome (ISS-1190)', () => {
+  it('returns the finish record the door took', async () => {
+    const finish = { requestId: 'r-1', state: 'accepted', commit: null };
+    acceptFinish.mockResolvedValue({ runId: RUN_ID, finish, started: true });
+
+    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).resolves.toEqual({
+      runId: RUN_ID,
+      finish,
+    });
+  });
+
+  it('names the commit already in flight when another is claimed', async () => {
+    const inFlight = 'a'.repeat(40);
+    acceptFinish.mockRejectedValue(new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40)));
+
+    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
+      new RegExp(`^RELEASE_FINISH_IN_FLIGHT: A finish for ${inFlight} is already running`),
+    );
   });
 });
