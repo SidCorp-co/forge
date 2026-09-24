@@ -56,10 +56,18 @@ pub fn verdict(seen: Option<job_exit::Reported>, watching_since: i64, now: i64) 
     if seen.is_some() {
         return Verdict::Keep;
     }
+    // A stamp at or before the epoch is not one `agent_activity::now_ms` could
+    // have produced, so it is not a measurement of anything and no pane is
+    // concluded on it. That leaves a box whose clock cannot be read holding its
+    // slots, which is the honest answer: with no clock this reading cannot
+    // measure silence, and guessing at the age of one is how a pane that was
+    // working gets ended.
+    if watching_since <= 0 {
+        return Verdict::Keep;
+    }
     // Saturating, so a stamp from a clock that ran ahead reads as no time
-    // having passed and keeps the pane, and one no clock could have produced
-    // does not panic the supervision task and take every other job pane's
-    // accounting down with it.
+    // having passed and keeps the pane, rather than overflowing inside the
+    // supervision task and taking every other job pane's accounting with it.
     let unheard_for = now.saturating_sub(watching_since);
     if unheard_for >= UNHEARD_BEFORE_ABANDONED.as_millis() as i64 {
         Verdict::Unheard { unheard_for }
@@ -150,11 +158,14 @@ mod tests {
     }
 
     #[test]
-    fn a_time_no_clock_could_have_produced_does_not_panic_the_sweep() {
-        assert!(matches!(
-            verdict(None, i64::MIN, NOW),
-            Verdict::Unheard { .. }
-        ));
+    fn a_time_no_clock_could_have_produced_keeps_the_pane_rather_than_ending_it() {
+        for absurd in [i64::MIN, -1, 0] {
+            assert_eq!(
+                verdict(None, absurd, NOW),
+                Verdict::Keep,
+                "a stamp no clock on this box could have written is not evidence a pane has been silent: {absurd}"
+            );
+        }
         assert_eq!(verdict(None, i64::MAX, NOW), Verdict::Keep);
     }
 

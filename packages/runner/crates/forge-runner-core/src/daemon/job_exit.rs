@@ -397,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn a_time_no_clock_could_have_produced_keeps_the_pane_rather_than_panicking() {
+    fn a_time_no_clock_could_have_produced_does_not_panic_the_sweep() {
         // A record this box wrote is still a file on a disk somebody else can
         // reach, and `now - i64::MIN` is an overflow panic in a debug build —
         // inside the supervision task, which would take every other job pane's
