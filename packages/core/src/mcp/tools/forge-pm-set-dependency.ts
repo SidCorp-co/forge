@@ -54,6 +54,8 @@ function toMcpDependencyError(err: unknown): unknown {
       return new Error('CYCLE_DETECTED: adding this blocks edge would form a loop');
     case 'CYCLE_DEPTH_EXCEEDED':
       return new Error('CYCLE_DEPTH_EXCEEDED: dependency graph exceeds detection depth');
+    case 'ISSUE_ARCHIVED':
+      return new Error(err.message);
     default:
       return new Error(`forge_pm.set_dependency: ${err.code}`);
   }

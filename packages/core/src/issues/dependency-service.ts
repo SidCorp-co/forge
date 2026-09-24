@@ -19,6 +19,7 @@ import { db } from '../db/client.js';
 import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
+import { archivedAmong } from './archive.js';
 import { detectCycle } from './cycle-detect.js';
 import { type DependencyKindEffect, describeDependencyKind } from './dependency-effects.js';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
@@ -32,11 +33,15 @@ export type IssueDependencyErrorCode =
   | 'CROSS_PROJECT'
   | 'CYCLE_DETECTED'
   | 'CYCLE_DEPTH_EXCEEDED'
+  | 'ISSUE_ARCHIVED'
   | 'INTERNAL';
 
 export class IssueDependencyError extends Error {
-  constructor(readonly code: IssueDependencyErrorCode) {
-    super(code);
+  constructor(
+    readonly code: IssueDependencyErrorCode,
+    readonly detail?: string,
+  ) {
+    super(detail ? `${code}: ${detail}` : code);
     this.name = 'IssueDependencyError';
   }
 }
@@ -118,6 +123,12 @@ export async function writeIssueDependency(
   if (sides.length !== 2) throw new IssueDependencyError('NOT_FOUND');
   for (const s of sides) {
     if (s.projectId !== input.projectId) throw new IssueDependencyError('CROSS_PROJECT');
+  }
+  // ISS-1237 — an edge naming an archived issue would point at a row no reader can find. The
+  // `FOR SHARE` read waits on an archive holding either side, then reads what it committed.
+  if (!expiresEdge(input.validUntil)) {
+    const archived = await archivedAmong(ex, [input.fromIssueId, input.toIssueId], 'share');
+    if (archived[0]) throw new IssueDependencyError('ISSUE_ARCHIVED', archived[0].message);
   }
 
   if (input.kind === 'blocks' && !expiresEdge(input.validUntil)) {

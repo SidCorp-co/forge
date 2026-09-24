@@ -1035,9 +1035,6 @@ export const issues = pgTable(
     waitingKind: text('waiting_kind', { enum: waitingKinds }),
     source: text('source', { enum: issueSources }).notNull().default('manual'),
     externalId: text('external_id'),
-    // ISS-293: extension fields used by the autonomous /forge-* skill pipeline
-    // (forge-plan writes plan, forge-clarify reads acceptanceCriteria, etc.).
-    // Migration 0031.
     plan: text('plan'),
     acceptanceCriteria: text('acceptance_criteria'),
     sessionContext: jsonb('session_context'),
@@ -1063,6 +1060,8 @@ export const issues = pgTable(
       (): SQL =>
         sql`left(${issues.title} || ' ' || coalesce(${issues.description}, '') || ' ' || coalesce(${issues.plan}, '') || ' ' || coalesce(${issues.acceptanceCriteria}, ''), 100000)`,
     ),
+    // ISS-1237 — set = archived: out of every discovery read, still answered by key.
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1093,6 +1092,7 @@ export const issues = pgTable(
     releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
       .on(t.releaseBatchRunId)
       .where(sql`release_batch_run_id IS NOT NULL`),
+    archivedAtIdx: index('issues_archived_at_idx').on(t.archivedAt),
   }),
 );
 

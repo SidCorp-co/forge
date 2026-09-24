@@ -17,6 +17,7 @@ import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipelin
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
+import { archivedAmong } from './archive.js';
 import { resolveAutonomousParkTarget } from './autonomous-park.js';
 import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
@@ -56,7 +57,8 @@ export type TransitionErrorCode =
   | 'RELEASE_RECORD_REQUIRED'
   | 'ENTRY_CRITERIA_UNMET'
   | 'CLOSE_REQUIRES_SHIPPED'
-  | 'WAITING_KIND_NOT_APPLICABLE';
+  | 'WAITING_KIND_NOT_APPLICABLE'
+  | 'ISSUE_ARCHIVED';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -264,6 +266,8 @@ export async function transitionIssueStatus(
   options: ApplyStatusTransitionOptions = {},
 ): Promise<StatusTransitionResult> {
   const fromStatus = issue.status;
+  const [archived] = await archivedAmong(db, [issue.id]);
+  if (archived) throw new TransitionError('ISSUE_ARCHIVED', archived.message, { from: fromStatus });
   if (fromStatus === requestedStatus) {
     throw new TransitionError('NO_OP', `issue already in status ${requestedStatus}`, {
       status: fromStatus,
@@ -439,6 +443,10 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       // ISS-1107 — stamped before any write, so the trigger reads this transaction's marker
       // whichever statement moves the status.
       await stampKernelTxn(tx);
+      const [archivedNow] = await archivedAmong(tx, [issue.id], 'update');
+      if (archivedNow) {
+        throw new TransitionError('ISSUE_ARCHIVED', archivedNow.message, { to: toStatus });
+      }
       await options.beforeStatusWrite?.(tx);
       if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
         await postTransitionReasonComment(

@@ -30,6 +30,7 @@ import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import { issueArchiveSide } from './archive.js';
 import {
   buildCreatedByCondition,
   buildOriginCondition,
@@ -117,6 +118,8 @@ const searchQuerySchema = z
     withBuckets: z.coerce.boolean().optional().default(false),
     withDependencies: z.coerce.boolean().optional().default(false),
     withModules: z.coerce.boolean().optional().default(false),
+    /** ISS-1237 — archived issues are out of search unless asked for, in the page, total and buckets alike. */
+    includeArchived: z.stringbool().optional(),
   })
   .strict();
 
@@ -243,6 +246,7 @@ searchRoutes.get(
       axisFree.push(c);
     };
 
+    for (const side of issueArchiveSide(q.includeArchived)) both(side);
     if (q.q) {
       both(buildIssueSearchCondition(q.q));
     }

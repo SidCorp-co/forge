@@ -141,9 +141,16 @@ issueDependencyRoutes.post(
   },
 );
 
-function toHttpDependencyError(err: unknown, input: SetIssueDependencyInput): unknown {
+/**
+ * The REST refusal for an edge write. The create route's `relations` shares it and passes no
+ * `input`: the new issue has no id to name until the write it is refusing commits.
+ */
+export function toHttpDependencyError(
+  err: unknown,
+  input?: Pick<SetIssueDependencyInput, 'fromIssueId' | 'toIssueId'>,
+): unknown {
   if (!(err instanceof IssueDependencyError)) return err;
-  const { fromIssueId, toIssueId } = input;
+  const edge = input ? { fromIssueId: input.fromIssueId, toIssueId: input.toIssueId } : undefined;
   switch (err.code) {
     case 'SELF_DEP':
       return badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
@@ -155,12 +162,15 @@ function toHttpDependencyError(err: unknown, input: SetIssueDependencyInput): un
         'CROSS_PROJECT',
       );
     case 'CYCLE_DETECTED':
-      return conflict('cycle detected — adding this edge would form a loop', 'CYCLE_DETECTED', {
-        fromIssueId,
-        toIssueId,
-      });
+      return conflict(
+        'cycle detected — adding this edge would form a loop',
+        'CYCLE_DETECTED',
+        edge,
+      );
     case 'CYCLE_DEPTH_EXCEEDED':
       return conflict('cycle detection depth exceeded', 'CYCLE_DEPTH_EXCEEDED');
+    case 'ISSUE_ARCHIVED':
+      return conflict(err.detail ?? 'an issue this edge names is archived', 'ISSUE_ARCHIVED', edge);
     default:
       return new HTTPException(500, { message: err.code });
   }

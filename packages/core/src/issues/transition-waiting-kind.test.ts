@@ -10,6 +10,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+// The archived-issue guard reads the row itself; these tests script every select, so it answers none.
+vi.mock('./archive.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./archive.js')>()),
+  archivedAmong: vi.fn(async () => []),
+}));
+
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));

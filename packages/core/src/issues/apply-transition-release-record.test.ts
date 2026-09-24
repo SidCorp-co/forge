@@ -28,6 +28,12 @@ const dbSelect = vi.fn(() => ({
   })),
 }));
 
+// The archived-issue guard reads the row itself; these tests script every select, so it answers none.
+vi.mock('./archive.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./archive.js')>()),
+  archivedAmong: vi.fn(async () => []),
+}));
+
 vi.mock('../db/client.js', () => {
   const txStub = {
     select: vi.fn(() => ({ from: txSelectFrom })),

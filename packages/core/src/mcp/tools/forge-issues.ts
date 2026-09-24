@@ -11,6 +11,7 @@ import {
 } from '../../db/schema.js';
 import { actorAgency } from '../../issues/actor-agency.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
+import { issueArchiveFilterSchema } from '../../issues/archive.js';
 import { listIssueAttachments } from '../../issues/attachment-service.js';
 import { loadIssueAttributes } from '../../issues/attributes/read.js';
 import { setIssueAttributes } from '../../issues/attributes/service.js';
@@ -49,6 +50,7 @@ import {
   type TaskRow,
   updateTask as updateTaskRow,
 } from '../../tasks/task-service.js';
+import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
@@ -91,6 +93,8 @@ const filtersSchema = z
     module: z
       .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
       .optional(),
+    /** ISS-1237 — archived issues are out of the browse unless this is true. */
+    includeArchived: z.boolean().optional(),
   })
   .strict()
   .optional();
@@ -191,6 +195,8 @@ const inputSchema = z
       'mark_merged',
       'unmark',
       'setAttributes',
+      'archive',
+      'unarchive',
     ]),
     projectId: z.uuid().optional(),
     documentId: issueRefSchema.optional(),
@@ -218,6 +224,9 @@ const inputSchema = z
      * backwards-compatible (returns full body with attachments[]).
      */
     fields: z.array(z.enum(GET_SELECTABLE_FIELDS)).min(1).max(20).optional(),
+    /** For action=archive/unarchive only: which issues, read back first with `dryRun: true`. */
+    archiveFilter: issueArchiveFilterSchema.optional(),
+    dryRun: z.boolean().optional(),
   })
   .strict();
 
@@ -270,6 +279,7 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
     releaseNotes: row.releaseNotes,
     mergedAt: row.mergedAt,
     ...mergeMarkFields(row),
+    archivedAt: row.archivedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -301,6 +311,7 @@ export function serializeListRow(
     reopenCount: row.reopenCount,
     mergedAt: row.mergedAt,
     ...mergeMarkFields(row),
+    archivedAt: row.archivedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     ...(row.matchedFields ? { matchedFields: row.matchedFields } : {}),
@@ -462,6 +473,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     const input = inputSchema.parse(args);
     const { principal } = ctx;
     const refs = refsFor(input, ctx, principal);
+    refuseStrayArchiveFields(input);
 
     if (
       input.data?.relations !== undefined &&
@@ -474,6 +486,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     switch (input.action) {
+      case 'archive':
+      case 'unarchive': {
+        const projectId = await resolveProjectId(input, ctx);
+        const { archiveFilter: filter, dryRun } = input;
+        return runArchiveAction({ direction: input.action, projectId, filter, dryRun, principal });
+      }
       case 'list': {
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
@@ -501,6 +519,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               : undefined,
             updatedAfter: f?.updatedAfter ? parseDate(f.updatedAfter, 'updatedAfter') : undefined,
             search: f?.search,
+            includeArchived: f?.includeArchived,
             label:
               f?.label === undefined || f.label === null
                 ? undefined

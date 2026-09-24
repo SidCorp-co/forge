@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **An issue can be archived, and unarchived.** An archived issue leaves every list, search, recall
+  and duplicate check, but still opens by its key. Archiving refuses unfinished work, and anything
+  unfinished work still depends on, by name.
 - **A machine that cannot read a project's work queue now says so on the Runners page** — since
   when, how often, and the exact error — instead of looking the same as a queue with nothing in it.
 - **A machine whose work-declaration check has stopped deciding now says so on the Runners page** —
