@@ -1,0 +1,28 @@
+{
+  "wire": {
+    "maxReasons": 24,
+    "units": 420
+  },
+  "degraded": {
+    "verdict": "failing_open",
+    "count": 24,
+    "trimmed": false,
+    "firstAt": 1790222160000,
+    "lastAt": 1790236560000,
+    "windowMs": 14400000,
+    "perDay": 144.0,
+    "sinceLastMs": 240000,
+    "last": {
+      "detail": "the daemon's control socket is not there",
+      "source": "hook",
+      "runUnknown": "the hook holds no registry of declared runs",
+      "role": "forge:runner"
+    },
+    "byReason": [
+      {
+        "reason": "the daemon's control socket is not there",
+        "count": 24
+      }
+    ]
+  }
+}

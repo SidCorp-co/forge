@@ -21,6 +21,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
+import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
 import {
   agentSessionFailureReasons,
   agentSessionKinds,
@@ -453,11 +454,7 @@ export const projectInvitationsRelations = relations(projectInvitations, ({ one 
   }),
 }));
 
-export const devicePlatforms = ['macos', 'linux', 'windows'] as const;
-export type DevicePlatform = (typeof devicePlatforms)[number];
-
-export const deviceStatuses = ['online', 'offline', 'revoked'] as const;
-export type DeviceStatus = (typeof deviceStatuses)[number];
+export * from './device-vocabulary.js';
 
 export const devices = pgTable(
   'devices',
@@ -475,6 +472,12 @@ export const devices = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pairedAt: timestamp('paired_at', { withTimezone: true }).notNull().defaultNow(),
     capabilities: jsonb('capabilities'),
+    /**
+     * The last declaration-gate condition this box reported, with the time core
+     * heard it. Not `capabilities`: that is what a box declares it CAN do, this
+     * is the condition it is IN (ISS-1192).
+     */
+    gateReport: jsonb('gate_report'),
     maxConcurrent: integer('max_concurrent').notNull().default(1),
     gitCredentialRef: text('git_credential_ref'),
     machineId: text('machine_id'),

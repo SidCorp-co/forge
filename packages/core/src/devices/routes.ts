@@ -23,6 +23,7 @@ import { readPluginDesignations, unionPluginDesignations } from '../plugins/desi
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { revokeDeviceCredentials } from './credential.js';
+import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
 import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
@@ -74,6 +75,9 @@ const heartbeatBodySchema = z
     // is not a published build, and is reported as such rather than as current.
     agentCommit: z.string().max(80).optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
+    // Read by `heartbeatGate`, not here: a malformed gate field must not 400 a
+    // heartbeat and take the box offline with it (ISS-1192).
+    gate: z.unknown().optional(),
   })
   .strict();
 
@@ -142,6 +146,7 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
     lastSeenAt: devices.lastSeenAt,
     pairedAt: devices.pairedAt,
     capabilities: devices.capabilities,
+    gateReport: devices.gateReport,
     gitCredentialRef: devices.gitCredentialRef,
     createdAt: devices.createdAt,
   };
@@ -163,7 +168,7 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
   // release AND the runner head on the default branch. The second is what catches
   // a release that was never cut, where every box reports the number the last one
   // carried and nothing reads as behind.
-  return c.json(await annotateDeviceBuilds(rows));
+  return c.json(withDeviceGate(await annotateDeviceBuilds(rows)));
 });
 
 const deviceIdParamSchema = z.object({ id: z.uuid() });
@@ -396,9 +401,11 @@ deviceAuthRoutes.post(
 
     const wasOffline = device.status !== 'online';
 
+    const gate = heartbeatGate(input.gate, device.id);
+
     const [updated] = await db
       .update(devices)
-      .set(heartbeatPatch(input, new Date()))
+      .set(heartbeatPatch({ ...input, gate: gate.report }, new Date()))
       .where(eq(devices.id, device.id))
       .returning({ id: devices.id });
 
@@ -424,7 +431,7 @@ deviceAuthRoutes.post(
       });
     }
 
-    return c.json({ ok: true, serverTime: new Date().toISOString() });
+    return c.json({ ok: true, serverTime: new Date().toISOString(), ...gate.ack });
   },
 );
 

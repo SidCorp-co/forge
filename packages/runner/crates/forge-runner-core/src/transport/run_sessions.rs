@@ -21,14 +21,21 @@ pub async fn open(
     run_id: &str,
     issue_keys: &[String],
     name: &str,
+    gate: Option<&crate::daemon::degraded::Condition>,
 ) -> Result<(String, String)> {
     let url = client.url("/api/devices/me/run-sessions");
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "projectId": project_id,
         "runId": run_id,
         "issueKeys": issue_keys,
         "name": name,
     });
+    // What was true THEN. The device's own report says what is true now, and a
+    // window that has rolled over cannot answer "was the gate deciding while
+    // this ran" for a run that ended weeks ago (ISS-1192).
+    if let Some(gate) = gate {
+        body["gate"] = serde_json::to_value(gate).unwrap_or(serde_json::Value::Null);
+    }
     let resp = client
         .http()
         .post(&url)

@@ -260,16 +260,27 @@ fn an_ordinary_tool_call_costs_the_master_no_round_trip() {
 fn status_prints_what_the_gate_could_not_do() {
     let scratch = Scratch::new("status");
     let config_dir = config_dir_at(scratch.path());
-    forge_runner_core::daemon::degraded::mark(
-        &config_dir,
-        forge_runner_core::daemon::degraded::Kind::Undeclared,
-        "subagent child-9 started as `runner` with nothing declared for it",
-    );
-    forge_runner_core::daemon::degraded::mark(
-        &config_dir,
-        forge_runner_core::daemon::degraded::Kind::Degraded,
-        "the daemon did not answer within the bound",
-    );
+    use forge_runner_core::daemon::degraded::{Kind, Mark, Run, Source};
+    for _ in 0..40 {
+        forge_runner_core::daemon::degraded::mark(
+            &config_dir,
+            &Mark::new(
+                Kind::Undeclared,
+                Source::Daemon,
+                "subagent child-9 started as `runner` with nothing declared for it",
+                Run::Unknown("nothing was declared for it"),
+            ),
+        );
+        forge_runner_core::daemon::degraded::mark(
+            &config_dir,
+            &Mark::new(
+                Kind::Degraded,
+                Source::Hook,
+                "the daemon did not answer within the bound",
+                Run::Unknown("the hook holds no registry of declared runs"),
+            ),
+        );
+    }
 
     let out = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
         .arg("status")
@@ -278,14 +289,22 @@ fn status_prints_what_the_gate_could_not_do() {
         .expect("status runs");
     let printed = String::from_utf8_lossy(&out.stdout);
     assert!(
-        printed.contains("undeclared 1"),
+        printed.contains("undeclared 40"),
         "a hand-off nothing declared must reach an operator: {printed}"
     );
     assert!(
-        printed.contains("degraded   1"),
+        printed.contains("degraded   40"),
         "a gate that could not decide must reach an operator: {printed}"
     );
     assert!(printed.contains("child-9"), "{printed}");
+    assert!(
+        printed.contains("/day over"),
+        "the count has to arrive as a rate over a window or it reads as history: {printed}"
+    );
+    assert!(
+        !printed.contains("epoch+"),
+        "a window stated in epoch seconds is one nobody reads: {printed}"
+    );
 }
 
 /// Review F2. Malformed stdin is an uncertain allowance and is marked; an

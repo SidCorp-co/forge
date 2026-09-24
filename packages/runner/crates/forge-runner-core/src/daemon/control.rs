@@ -461,8 +461,13 @@ fn dispatch_gate_reply(
                 if let Some(dir) = dir.as_deref() {
                     crate::daemon::degraded::mark(
                         dir,
-                        crate::daemon::degraded::Kind::Degraded,
-                        why,
+                        &crate::daemon::degraded::Mark::new(
+                            crate::daemon::degraded::Kind::Degraded,
+                            crate::daemon::degraded::Source::Daemon,
+                            why,
+                            crate::daemon::degraded::Run::Unknown(why),
+                        )
+                        .about(&d),
                     );
                 }
                 return gate_allows(Some(why));
@@ -471,7 +476,16 @@ fn dispatch_gate_reply(
         None => {
             let why = "this box holds no registry of declared runs";
             if let Some(dir) = dir.as_deref() {
-                crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, why);
+                crate::daemon::degraded::mark(
+                    dir,
+                    &crate::daemon::degraded::Mark::new(
+                        crate::daemon::degraded::Kind::Degraded,
+                        crate::daemon::degraded::Source::Daemon,
+                        why,
+                        crate::daemon::degraded::Run::Unknown(why),
+                    )
+                    .about(&d),
+                );
             }
             return gate_allows(Some(why));
         }
@@ -518,7 +532,24 @@ fn dispatch_gate_reply(
         }
         Verdict::Unknown(why) => {
             if let Some(dir) = dir.as_deref() {
-                crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, why);
+                // The registry answered here, so the run this dispatch belonged
+                // to is known even though the verdict is not.
+                let run = match pending.as_deref() {
+                    Some(run) => crate::daemon::degraded::Run::Declared(run),
+                    None => crate::daemon::degraded::Run::Unknown(
+                        "this master had declared no run for the gate to bind",
+                    ),
+                };
+                crate::daemon::degraded::mark(
+                    dir,
+                    &crate::daemon::degraded::Mark::new(
+                        crate::daemon::degraded::Kind::Degraded,
+                        crate::daemon::degraded::Source::Daemon,
+                        why,
+                        run,
+                    )
+                    .about(&d),
+                );
             }
             tracing::error!("[control] the dispatch gate could not decide: {why}");
             gate_allows(Some(why))
@@ -623,7 +654,18 @@ fn unreadable_ledger(ctl: &Arc<Control>, child: &str, e: &str) {
     let detail = format!("could not read the declared runs when subagent {child} started: {e}");
     tracing::warn!("[control] {detail} — this box knows neither that the work was declared nor that it was not");
     if let Some(dir) = ctl.config_dir.as_deref() {
-        crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, &detail);
+        crate::daemon::degraded::mark(
+            dir,
+            &crate::daemon::degraded::Mark::new(
+                crate::daemon::degraded::Kind::Degraded,
+                crate::daemon::degraded::Source::Daemon,
+                &detail,
+                crate::daemon::degraded::Run::Unknown(
+                    "the declared runs could not be read, so this box knows of none",
+                ),
+            )
+            .by_child(child, None),
+        );
     }
 }
 
@@ -649,7 +691,16 @@ fn undeclared_child(ctl: &Arc<Control>, child: &str, agent_type: Option<&str>) {
          master was required to run `forge-runner run declare` first."
     );
     if let Some(dir) = dir.as_deref() {
-        crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Undeclared, &detail);
+        crate::daemon::degraded::mark(
+            dir,
+            &crate::daemon::degraded::Mark::new(
+                crate::daemon::degraded::Kind::Undeclared,
+                crate::daemon::degraded::Source::Daemon,
+                &detail,
+                crate::daemon::degraded::Run::Unknown("nothing was declared for it"),
+            )
+            .by_child(child, Some(role)),
+        );
     }
 }
 
@@ -858,6 +909,20 @@ pub async fn request_agent_event(
     .await
 }
 
+/// The frame the pane's hook puts on the socket, built where a test can decode it
+/// into `Request` without a socket — a hand-written copy of it is a second wire
+/// contract that parts from this one in silence.
+pub fn dispatch_gate_frame(
+    token: &str,
+    d: &crate::daemon::dispatch_gate::Dispatch,
+) -> serde_json::Value {
+    serde_json::json!({
+        "op": "dispatch_gate", "token": token,
+        "agentId": d.agent_id, "subagentType": d.subagent_type,
+        "toolUseId": d.tool_use_id
+    })
+}
+
 /// Ask whether the work about to be handed out has been declared.
 #[cfg(unix)]
 pub async fn request_dispatch_gate(
@@ -865,15 +930,7 @@ pub async fn request_dispatch_gate(
     token: &str,
     d: &crate::daemon::dispatch_gate::Dispatch,
 ) -> std::io::Result<ClaimReply> {
-    ask(
-        path,
-        serde_json::json!({
-            "op": "dispatch_gate", "token": token,
-            "agentId": d.agent_id, "subagentType": d.subagent_type,
-            "toolUseId": d.tool_use_id
-        }),
-    )
-    .await
+    ask(path, dispatch_gate_frame(token, d)).await
 }
 
 #[cfg(unix)]
@@ -1150,7 +1207,9 @@ mod tests {
             undeclared.count, 1,
             "the child with no row left to bind is the one that must break loudly: {undeclared:?}"
         );
-        assert!(undeclared.last.unwrap_or_default().contains("child-2"));
+        let said = undeclared.last.unwrap_or_default();
+        assert!(said.detail.contains("child-2"), "{said:?}");
+        assert_eq!(said.agent.as_deref(), Some("child-2"));
     }
 
     #[cfg(unix)]
@@ -1243,10 +1302,16 @@ mod tests {
         let (_, undeclared) = crate::daemon::degraded::tally(&dir);
         assert_eq!(undeclared.count, 1, "the count an operator reads must move");
         let said = undeclared.last.unwrap_or_default();
-        assert!(said.contains("child-nobody-declared"), "{said}");
+        assert!(said.detail.contains("child-nobody-declared"), "{said:?}");
         assert!(
-            said.contains("runner"),
-            "which role it was dispatched through is half of what makes it actionable: {said}"
+            said.detail.contains("runner"),
+            "which role it was dispatched through is half of what makes it actionable: {said:?}"
+        );
+        assert_eq!(said.agent.as_deref(), Some("child-nobody-declared"));
+        assert_eq!(
+            said.role.as_deref(),
+            Some("runner"),
+            "the role is a field a reader can filter on, not only a phrase in a sentence"
         );
     }
 
@@ -1354,10 +1419,21 @@ mod tests {
         );
     }
 
+    /// The frame under test is the one `request_dispatch_gate` actually sends,
+    /// not a literal beside it: a copied wire contract parts from its original
+    /// without either side going red (ISS-1192, consult 5c9471 F1).
     #[test]
     fn the_frame_the_gate_sends_decodes_as_the_daemon_reads_it() {
-        let frame = r#"{"op":"dispatch_gate","token":"t1","agentId":null,"subagentType":"runner","toolUseId":"toolu_1"}"#;
-        let req: Request = serde_json::from_str(frame).expect("the gate frame must decode");
+        let frame = dispatch_gate_frame(
+            "t1",
+            &crate::daemon::dispatch_gate::Dispatch {
+                agent_id: None,
+                subagent_type: Some("runner".into()),
+                tool_use_id: Some("toolu_1".into()),
+            },
+        )
+        .to_string();
+        let req: Request = serde_json::from_str(&frame).expect("the gate frame must decode");
         let Request::DispatchGate {
             agent_id,
             subagent_type,

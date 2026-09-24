@@ -46,4 +46,29 @@ describe('heartbeatPatch', () => {
     const capabilities = { skills: ['a'] };
     expect(heartbeatPatch({ capabilities }, NOW).capabilities).toBe(capabilities);
   });
+
+  // A box that goes quiet about its gate has not told us the gate recovered.
+  it('leaves the stored gate alone where the heartbeat carried none', () => {
+    const patch = heartbeatPatch({ agentVersion: '0.17.1' }, NOW);
+    expect(patch).not.toHaveProperty('gateReport');
+  });
+
+  it('stores what the box sent together with the time core heard it', () => {
+    const degraded = {
+      verdict: 'failing_open' as const,
+      count: 279,
+      trimmed: true,
+      firstAt: 1,
+      lastAt: 2,
+      windowMs: 1,
+      perDay: 73.8,
+      sinceLastMs: 3,
+      last: null,
+      byReason: [{ reason: 'no control capability', count: 279 }],
+    };
+    expect(heartbeatPatch({ gate: { degraded } }, NOW).gateReport).toEqual({
+      degraded,
+      receivedAt: NOW.toISOString(),
+    });
+  });
 });

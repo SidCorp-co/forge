@@ -123,9 +123,14 @@ describe('migration 0305 removes the landing-deploy key (ISS-1186)', () => {
     ) as { entries: { idx: number; tag: string; when: number }[] };
     const entry = journal.entries.find((e) => e.tag === '0305_no_code_fires_a_deploy');
     expect(entry).toBeDefined();
-    expect(entry?.when).toBeGreaterThan(
-      Math.max(...journal.entries.filter((e) => e.tag !== entry?.tag).map((e) => e.when)),
-    );
+    // Every entry BEFORE this one, not every other entry: drizzle reads the single
+    // highest `created_at` it has already applied and skips anything at or below it
+    // silently, forever (ISS-807). Asserting this is the highest in the file instead
+    // makes the test one no successor can satisfy — 0306 was the first, and every
+    // migration after it would have been the next (ISS-1192).
+    const earlier = journal.entries.filter((e) => e.idx < (entry?.idx ?? 0));
+    expect(earlier.length).toBeGreaterThan(0);
+    expect(entry?.when).toBeGreaterThan(Math.max(...earlier.map((e) => e.when)));
   });
 
   it('removes the key from a project that had it on', () => {

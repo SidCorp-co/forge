@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Args as ClapArgs;
 use forge_runner_core::config::Config;
-use forge_runner_core::daemon::degraded::{mark, Kind};
+use forge_runner_core::daemon::degraded::{mark, Kind, Mark, Run, Source};
 use forge_runner_core::daemon::dispatch_gate::Dispatch;
 use forge_runner_core::daemon::{control, session_tokens};
 
@@ -98,15 +98,29 @@ fn config_dir() -> Option<PathBuf> {
         .and_then(|p| p.parent().map(Path::to_path_buf))
 }
 
+/// Why a mark this process writes never names a run: the registry of declared
+/// runs is the daemon's, and every path through here is one where the daemon
+/// was not reached or did not decide.
+const NO_RUN_HERE: &str = "the hook holds no registry of declared runs, so none was resolved here";
+
 async fn answer(dir: Option<&Path>, token: Option<&str>, d: &Dispatch) -> String {
     let open_because = |why: &str| -> String {
         if let Some(dir) = dir {
-            mark(dir, Kind::Degraded, why);
+            mark(
+                dir,
+                &Mark::new(Kind::Degraded, Source::Hook, why, Run::Unknown(NO_RUN_HERE)).about(d),
+            );
         }
         ALLOW.to_string()
     };
     let Some(token) = token else {
-        return open_because("this pane carries no control capability, so nothing could be asked");
+        // Said of the process this hook ran in, which is the only thing it can
+        // see. Worded as a claim about "this pane" it was read on ISS-1192 as a
+        // statement about the master, from a master whose own token was set.
+        return open_because(
+            "the process this hook ran in carries no control capability (FORGE_CONTROL_TOKEN is \
+             unset), so nothing could be asked",
+        );
     };
     let Some(sock) = dir.map(|d| d.join("control.sock")) else {
         return open_because("the control socket path could not be resolved");
@@ -149,8 +163,15 @@ pub async fn run(args: Args) {
             if let Some(dir) = config_dir().as_deref() {
                 mark(
                     dir,
-                    Kind::Degraded,
-                    "a PreToolUse payload this box could not read at all",
+                    &Mark::new(
+                        Kind::Degraded,
+                        Source::Hook,
+                        "a PreToolUse payload this box could not read at all",
+                        Run::Unknown(
+                            "the payload named no dispatch this box could read, so nothing was \
+                             resolved",
+                        ),
+                    ),
                 );
             }
             println!("{ALLOW}");
@@ -420,15 +441,17 @@ mod tests {
         );
         let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
         assert_eq!(degraded.count, 1, "the box says the gate was not operating");
+        let said = degraded.last.clone().unwrap_or_default();
         assert!(
-            degraded
-                .last
-                .as_deref()
-                .unwrap_or_default()
-                .contains("no control capability"),
+            said.detail.contains("no control capability"),
             "the mark must name the CAPABILITY as what was missing, or it cannot be told from \
-             the socket simply not being there: {:?}",
-            degraded.last
+             the socket simply not being there: {said:?}"
+        );
+        assert_eq!(
+            said.source.as_deref(),
+            Some("hook"),
+            "the message is about the process that wrote it, and a mark that does not say which \
+             process that was gets read as a statement about the master pane (ISS-1192): {said:?}"
         );
     }
 
@@ -466,7 +489,7 @@ mod tests {
             degraded.count, 1,
             "an allowance the gate did not decide leaves a mark"
         );
-        let why = degraded.last.clone().unwrap_or_default();
+        let why = degraded.last.clone().unwrap_or_default().detail;
         assert!(
             why.contains("refused the question itself"),
             "the daemon ANSWERED and its answer was a refusal of the question; a mark that does \

@@ -7,6 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { type DeviceGate, readDeviceGate } from './gate-report.js';
 
 export type DeviceLoad = {
   deviceId: string;
@@ -21,6 +22,12 @@ export type DeviceLoad = {
    * quarantine after repeated box-scoped failures.
    */
   runnerFaults: Array<{ runnerId: string; limitReason: string; until: string | null }>;
+  /**
+   * This box's declaration gate, `null` where it has never reported one. A
+   * master deciding how much work to take reads this surface, which is why the
+   * gate's condition belongs on it rather than only on the box (ISS-1192).
+   */
+  gate: DeviceGate | null;
 };
 
 export type ProjectLoad = {
@@ -40,6 +47,7 @@ export type FleetEntry = {
   agentVersion: string | null;
   lastSeenMinutes: number | null;
   runnerFaults: DeviceLoad['runnerFaults'];
+  gate: DeviceGate | null;
 };
 
 const RUNNER_FAULTS = sql`COALESCE((
@@ -60,6 +68,7 @@ export async function readDeviceLoad(deviceId: string): Promise<DeviceLoad | nul
            EXTRACT(EPOCH FROM (now() - d.last_seen_at)) / 60 AS last_seen_minutes,
            COALESCE(l.n, 0)::int AS jobs_running,
            COALESCE(l.repos, ARRAY[]::text[]) AS repos_locked,
+           d.gate_report,
            ${RUNNER_FAULTS}
     FROM devices d
     LEFT JOIN (
@@ -86,6 +95,7 @@ export async function readDeviceLoad(deviceId: string): Promise<DeviceLoad | nul
     agentVersion: (row.agent_version as string | null) ?? null,
     lastSeenMinutes: row.last_seen_minutes === null ? null : Number(row.last_seen_minutes),
     runnerFaults: (row.runner_faults as DeviceLoad['runnerFaults'] | null) ?? [],
+    gate: readDeviceGate(row.gate_report),
   };
 }
 
@@ -142,6 +152,7 @@ export async function readFleetLoad(
            d.last_seen_at > now() - make_interval(secs => ${livenessSeconds}) AS online,
            EXTRACT(EPOCH FROM (now() - d.last_seen_at)) / 60 AS last_seen_minutes,
            COALESCE(l.n, 0)::int AS jobs_running,
+           d.gate_report,
            ${RUNNER_FAULTS}
     FROM runners r
     JOIN devices d ON d.id = r.device_id
@@ -164,5 +175,6 @@ export async function readFleetLoad(
     agentVersion: (row.agent_version as string | null) ?? null,
     lastSeenMinutes: row.last_seen_minutes === null ? null : Number(row.last_seen_minutes),
     runnerFaults: (row.runner_faults as DeviceLoad['runnerFaults'] | null) ?? [],
+    gate: readDeviceGate(row.gate_report),
   }));
 }

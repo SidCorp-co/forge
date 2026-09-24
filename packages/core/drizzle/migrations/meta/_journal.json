@@ -1989,6 +1989,13 @@
       "when": 1809475200000,
       "tag": "0305_no_code_fires_a_deploy",
       "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1809561600000,
+      "tag": "0306_a_box_reports_its_gate",
+      "breakpoints": true
     }
   ]
 }

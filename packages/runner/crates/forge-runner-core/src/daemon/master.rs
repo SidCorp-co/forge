@@ -1161,7 +1161,13 @@ async fn sweep(
 
     let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
     let sessions = run_record::CoreSessions(client);
-    let opened = run_record::open_declared_runs(&sessions, ledger, &boot).await;
+    // The condition the gate is in as this run is told to core, stamped on the
+    // run itself. `None` where the box cannot read its own config directory,
+    // which records none rather than a gate that was clear.
+    let gate = crate::daemon::control::config_dir().map(|dir| {
+        crate::daemon::degraded::report(&dir, crate::daemon::agent_activity::now_ms()).degraded
+    });
+    let opened = run_record::open_declared_runs(&sessions, ledger, &boot, gate.as_ref()).await;
     let closed = run_record::close_ended_runs(&sessions, ledger, &boot).await;
     let choices_said = say_resume_choices(&CoreChoice(client), ledger, &boot).await;
     if choices_said > 0 {

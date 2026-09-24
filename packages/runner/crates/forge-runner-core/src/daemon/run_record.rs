@@ -25,6 +25,7 @@ pub trait SessionOpener {
         run_id: &str,
         issue_keys: &[String],
         name: &str,
+        gate: Option<&crate::daemon::degraded::Condition>,
     ) -> crate::error::Result<(String, String)>;
 }
 
@@ -37,8 +38,9 @@ impl SessionOpener for CoreSessions<'_> {
         run_id: &str,
         issue_keys: &[String],
         name: &str,
+        gate: Option<&crate::daemon::degraded::Condition>,
     ) -> crate::error::Result<(String, String)> {
-        run_sessions::open(self.0, project_id, run_id, issue_keys, name).await
+        run_sessions::open(self.0, project_id, run_id, issue_keys, name, gate).await
     }
 }
 
@@ -46,6 +48,7 @@ pub async fn open_declared_runs(
     opener: &impl SessionOpener,
     ledger: &mut Option<Ledger>,
     boot_id: &str,
+    gate: Option<&crate::daemon::degraded::Condition>,
 ) -> usize {
     if boot_id.is_empty() {
         return 0;
@@ -84,7 +87,10 @@ pub async fn open_declared_runs(
             continue;
         }
         let name = keys.join("+");
-        match opener.open(&project_id, &run.run_id, &keys, &name).await {
+        match opener
+            .open(&project_id, &run.run_id, &keys, &name, gate)
+            .await
+        {
             Ok((session_id, _)) => match led.attach_session(&run.run_id, &session_id) {
                 Ok(()) => {
                     tracing::info!(
@@ -190,6 +196,7 @@ mod tests {
     struct Spy {
         answer: Result<(String, String), &'static str>,
         seen: RefCell<Vec<(String, String, Vec<String>)>>,
+        gates: RefCell<Vec<Option<crate::daemon::degraded::Verdict>>>,
     }
 
     impl SessionOpener for Spy {
@@ -199,12 +206,14 @@ mod tests {
             run_id: &str,
             issue_keys: &[String],
             _name: &str,
+            gate: Option<&crate::daemon::degraded::Condition>,
         ) -> crate::error::Result<(String, String)> {
             self.seen.borrow_mut().push((
                 project_id.to_string(),
                 run_id.to_string(),
                 issue_keys.to_vec(),
             ));
+            self.gates.borrow_mut().push(gate.map(|g| g.verdict));
             self.answer
                 .clone()
                 .map_err(|e| crate::error::Error::Other(e.into()))
@@ -215,7 +224,47 @@ mod tests {
         Spy {
             answer,
             seen: RefCell::new(Vec::new()),
+            gates: RefCell::new(Vec::new()),
         }
+    }
+
+    fn failing_open() -> crate::daemon::degraded::Condition {
+        crate::daemon::degraded::Condition {
+            verdict: crate::daemon::degraded::Verdict::FailingOpen,
+            count: 278,
+            per_day: Some(75.0),
+            ..crate::daemon::degraded::Condition::none()
+        }
+    }
+
+    /// Criterion 18. The run carries what was true THEN. The device's own
+    /// report says what is true now, and a window that has rolled over answers
+    /// nothing about a run that ended weeks ago.
+    #[tokio::test]
+    async fn a_run_is_opened_carrying_the_gate_condition_of_the_box_that_declared_it() {
+        let mut led = Some(Ledger::open_in_memory().unwrap());
+        declared(led.as_mut().unwrap(), "run-1", "boot-a", &["ISS-1"]);
+        let s = spy(Ok(("sess-9".into(), "core-run-9".into())));
+        let gate = failing_open();
+        assert_eq!(
+            open_declared_runs(&s, &mut led, "boot-a", Some(&gate)).await,
+            1
+        );
+        assert_eq!(
+            s.gates.borrow().as_slice(),
+            [Some(crate::daemon::degraded::Verdict::FailingOpen)]
+        );
+    }
+
+    /// Criterion 19. A box that sent none records none. A run stamped `clear`
+    /// by default would be the state lying about itself.
+    #[tokio::test]
+    async fn a_box_that_could_not_read_its_own_gate_stamps_none_rather_than_clear() {
+        let mut led = Some(Ledger::open_in_memory().unwrap());
+        declared(led.as_mut().unwrap(), "run-1", "boot-a", &["ISS-1"]);
+        let s = spy(Ok(("sess-9".into(), "core-run-9".into())));
+        assert_eq!(open_declared_runs(&s, &mut led, "boot-a", None).await, 1);
+        assert_eq!(s.gates.borrow().as_slice(), [None]);
     }
 
     fn declared(led: &mut Ledger, run_id: &str, boot: &str, issues: &[&str]) {
@@ -240,7 +289,7 @@ mod tests {
             &["ISS-1", "ISS-2"],
         );
         let s = spy(Ok(("sess-9".into(), "core-run-9".into())));
-        assert_eq!(open_declared_runs(&s, &mut led, "boot-a").await, 1);
+        assert_eq!(open_declared_runs(&s, &mut led, "boot-a", None).await, 1);
         assert_eq!(
             s.seen.borrow().as_slice(),
             [(
@@ -267,7 +316,7 @@ mod tests {
         let mut led = Some(Ledger::open_in_memory().unwrap());
         declared(led.as_mut().unwrap(), "run-1", "boot-a", &["ISS-1"]);
         let s = spy(Err("503"));
-        assert_eq!(open_declared_runs(&s, &mut led, "boot-a").await, 0);
+        assert_eq!(open_declared_runs(&s, &mut led, "boot-a", None).await, 0);
         assert!(led
             .as_ref()
             .unwrap()
@@ -277,7 +326,7 @@ mod tests {
             .session_id
             .is_none());
         let s2 = spy(Ok(("sess-9".into(), "core-run-9".into())));
-        assert_eq!(open_declared_runs(&s2, &mut led, "boot-a").await, 1);
+        assert_eq!(open_declared_runs(&s2, &mut led, "boot-a", None).await, 1);
     }
 
     #[tokio::test]
@@ -285,9 +334,9 @@ mod tests {
         let mut led = Some(Ledger::open_in_memory().unwrap());
         declared(led.as_mut().unwrap(), "run-1", "boot-a", &["ISS-1"]);
         let s = spy(Ok(("sess-9".into(), "core-run-9".into())));
-        assert_eq!(open_declared_runs(&s, &mut led, "boot-a").await, 1);
+        assert_eq!(open_declared_runs(&s, &mut led, "boot-a", None).await, 1);
         let s2 = spy(Ok(("sess-other".into(), "core-other".into())));
-        assert_eq!(open_declared_runs(&s2, &mut led, "boot-a").await, 0);
+        assert_eq!(open_declared_runs(&s2, &mut led, "boot-a", None).await, 0);
         assert!(s2.seen.borrow().is_empty());
     }
 
@@ -300,7 +349,7 @@ mod tests {
             .end_run("run-1", "master", "the subagent never started")
             .unwrap();
         let s = spy(Ok(("sess-9".into(), "core-run-9".into())));
-        assert_eq!(open_declared_runs(&s, &mut led, "boot-a").await, 0);
+        assert_eq!(open_declared_runs(&s, &mut led, "boot-a", None).await, 0);
         assert!(s.seen.borrow().is_empty());
     }
 
@@ -309,7 +358,7 @@ mod tests {
         let mut led = Some(Ledger::open_in_memory().unwrap());
         declared(led.as_mut().unwrap(), "run-1", "boot-old", &["ISS-1"]);
         let s = spy(Ok(("sess-9".into(), "core-run-9".into())));
-        assert_eq!(open_declared_runs(&s, &mut led, "boot-a").await, 0);
+        assert_eq!(open_declared_runs(&s, &mut led, "boot-a", None).await, 0);
         assert!(s.seen.borrow().is_empty());
     }
 
@@ -346,7 +395,7 @@ mod tests {
     async fn declared_and_opened(led: &mut Option<Ledger>, run_id: &str, issues: &[&str]) {
         declared(led.as_mut().unwrap(), run_id, "boot-a", issues);
         let s = spy(Ok((format!("sess-{run_id}"), "core-run".into())));
-        assert_eq!(open_declared_runs(&s, led, "boot-a").await, 1);
+        assert_eq!(open_declared_runs(&s, led, "boot-a", None).await, 1);
     }
 
     #[tokio::test]
@@ -425,7 +474,7 @@ mod tests {
         let mut led = Some(Ledger::open_in_memory().unwrap());
         declared(led.as_mut().unwrap(), "run-1", "", &["ISS-1"]);
         let s = spy(Ok(("sess-9".into(), "core-run-9".into())));
-        assert_eq!(open_declared_runs(&s, &mut led, "").await, 0);
+        assert_eq!(open_declared_runs(&s, &mut led, "", None).await, 0);
         assert!(s.seen.borrow().is_empty());
     }
 }

@@ -97,6 +97,34 @@ use dispatch::resolve_repo;
 
 pub(crate) const POOL_SUPERVISE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// Say once, at a level somebody watches, that this box's declaration gate has
+/// started admitting work it never judged.
+///
+/// The hook that writes most of these marks is a short-lived process whose
+/// output reaches nobody, so before this the journal was silent through 278 of
+/// them (ISS-1192). `shouted` is what stops it being said every thirty seconds.
+///
+/// Returns whether it spoke, so the rule can be asserted rather than read off a
+/// log somebody has to capture.
+fn announce_gate(gate: &degraded::Condition, shouted: &mut Option<degraded::Verdict>) -> bool {
+    let speak = gate.verdict == degraded::Verdict::FailingOpen && *shouted != Some(gate.verdict);
+    if speak {
+        tracing::warn!(
+            "[gate] this box's declaration gate is FAILING OPEN: {} dispatch(es) admitted without \
+             a decision at {}/day, newest {}s ago. Every one of them ran with the declaration \
+             instruction as advice. Last reason: {}",
+            gate.count,
+            gate.per_day.unwrap_or_default().round(),
+            gate.since_last_ms.unwrap_or_default() / 1000,
+            gate.last
+                .as_ref()
+                .map_or("none recorded", |l| l.detail.as_str()),
+        );
+    }
+    *shouted = Some(gate.verdict);
+    speak
+}
+
 /// RAII counter for in-flight work (pipeline jobs + interactive chat turns).
 /// Incremented when a unit of work is spawned, decremented on drop — so the
 /// auto-update loop can drain to idle before restarting the service (ISS-392),
@@ -621,11 +649,30 @@ pub async fn run(
         tokio::spawn(async move {
             let mut tick =
                 tokio::time::interval(std::time::Duration::from_secs(heartbeat::INTERVAL_SECS));
+            // The verdict this loop last shouted about, so a gate that is
+            // failing open says so once rather than every thirty seconds. It is
+            // held here and not on disk: a daemon that starts into a gate
+            // already failing open states the condition it inherited, which is
+            // what a new process owes an operator, and a second state file
+            // beside the marks would buy one suppressed line at the cost of
+            // another thing that can be unreadable exactly when it is owed.
+            let mut shouted: Option<degraded::Verdict> = None;
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
-                        if let Err(e) = heartbeat::beat(&client).await {
-                            tracing::warn!("[heartbeat] {e}");
+                        let gate = control::config_dir()
+                            .map(|dir| degraded::report(&dir, agent_activity::now_ms()).degraded);
+                        if let Some(g) = gate.as_ref() {
+                            let _ = announce_gate(g, &mut shouted);
+                        }
+                        match heartbeat::beat(&client, gate.as_ref()).await {
+                            Err(e) => tracing::warn!("[heartbeat] {e}"),
+                            Ok(Some(refused)) => tracing::warn!(
+                                "[gate] core refused this box's gate condition: {refused} — the \
+                                 gate's state is reaching nobody but this box, which is the \
+                                 silence the report exists to end"
+                            ),
+                            Ok(None) => {}
                         }
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
@@ -1051,6 +1098,70 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn gate_at(verdict: degraded::Verdict) -> degraded::Condition {
+        degraded::Condition {
+            verdict,
+            count: 278,
+            per_day: Some(75.0),
+            since_last_ms: Some(240_000),
+            ..degraded::Condition::none()
+        }
+    }
+
+    /// Criterion 23. A gate failing open is said once, and the ticks behind it
+    /// are silent: a warning every thirty seconds is a warning nobody reads.
+    #[test]
+    fn a_gate_failing_open_is_announced_once_and_not_every_tick() {
+        let mut shouted = None;
+        let failing = gate_at(degraded::Verdict::FailingOpen);
+        assert!(announce_gate(&failing, &mut shouted));
+        assert!(!announce_gate(&failing, &mut shouted));
+        assert!(!announce_gate(&failing, &mut shouted));
+    }
+
+    /// A gate that recovers and fails open again is a second incident, and is
+    /// said again — the rule is one line per transition, not one per lifetime.
+    #[test]
+    fn a_gate_that_recovers_and_fails_again_is_announced_again() {
+        let mut shouted = None;
+        assert!(announce_gate(
+            &gate_at(degraded::Verdict::FailingOpen),
+            &mut shouted
+        ));
+        assert!(!announce_gate(
+            &gate_at(degraded::Verdict::Marked),
+            &mut shouted
+        ));
+        assert!(announce_gate(
+            &gate_at(degraded::Verdict::FailingOpen),
+            &mut shouted
+        ));
+    }
+
+    /// A daemon starting into a gate already failing open has no prior verdict,
+    /// and states the condition it inherited rather than inheriting a silence.
+    #[test]
+    fn a_fresh_process_states_the_condition_it_inherited() {
+        let mut shouted = None;
+        assert!(announce_gate(
+            &gate_at(degraded::Verdict::FailingOpen),
+            &mut shouted
+        ));
+    }
+
+    #[test]
+    fn a_gate_that_is_merely_marked_is_not_announced_as_a_fault() {
+        let mut shouted = None;
+        assert!(!announce_gate(
+            &gate_at(degraded::Verdict::Marked),
+            &mut shouted
+        ));
+        assert!(!announce_gate(
+            &gate_at(degraded::Verdict::Clear),
+            &mut shouted
+        ));
+    }
 
     /// A supervision tick has to fit inside core's result hop, with room to spare.
     ///
