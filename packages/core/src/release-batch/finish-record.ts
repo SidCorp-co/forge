@@ -1,7 +1,7 @@
 // The finish record a release run carries (`pipeline_runs.metadata.finish`): its
 // shape, how it is read off the run, and the compare-and-set that writes it.
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
@@ -103,17 +103,20 @@ export function isInFlight(record: ReleaseFinishRecord | null): boolean {
 
 /**
  * Write `next` over the record whose version was `expected` (`null` = the run
- * carries no record). `false` when somebody else wrote in between.
+ * carries no record). `false` when somebody else wrote in between, or, with
+ * `runOpen`, when the run was cancelled in between.
  */
 export async function compareAndSet(
   runId: string,
   expected: number | null,
   next: ReleaseFinishRecord,
+  { runOpen = false }: { runOpen?: boolean } = {},
 ): Promise<boolean> {
-  const guard =
+  const version =
     expected === null
       ? sql`${pipelineRuns.metadata} -> 'finish' IS NULL`
       : sql`(${pipelineRuns.metadata} -> 'finish' ->> 'version')::int = ${expected}`;
+  const guard = runOpen ? and(version, ne(pipelineRuns.status, 'cancelled')) : version;
   const rows = await db
     .update(pipelineRuns)
     .set({

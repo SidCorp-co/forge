@@ -224,6 +224,34 @@ describe('a batch aborted after its verification went green', () => {
   }, 30_000);
 });
 
+describe('a batch aborted while the door is taking its finish', () => {
+  it('refuses the finish and writes no record when the abort lands between the read and the write', async () => {
+    const { runId } = await twoIssueBatch();
+    serving = PUSHED;
+    let answer: Promise<string | null> | null = null;
+
+    // The run row is held while the door reads, so its write waits behind the lock; the
+    // cancel then commits first, as an abort landing between the door's read and write does.
+    await harness.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM pipeline_runs WHERE id = ${runId} FOR UPDATE`);
+      answer = refusalCode(() => accept(runId, PUSHED));
+      for (let i = 0; i < 100; i += 1) {
+        const waiting = await harness.db.execute(sql`
+          SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query ILIKE 'update "pipeline_runs"%'
+        `);
+        if (Number(waiting[0]?.n ?? 0) > 0) break;
+        await new Promise((d) => setTimeout(d, 20));
+      }
+      await tx.execute(sql`UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${runId}`);
+    });
+
+    expect(await (answer as unknown as Promise<string | null>)).toBe('RELEASE_BATCH_ABORTED');
+    expect(await stored(runId)).toBeNull();
+  }, 30_000);
+});
+
 describe('a batch that finished and was aborted afterwards', () => {
   it('keeps its finished record and answers a later finish as aborted', async () => {
     const { runId, issueIds } = await twoIssueBatch();

@@ -130,7 +130,8 @@ export async function acceptReleaseBatchFinish(
       refusal: null,
       finishedAt: null,
     };
-    if (await compareAndSet(runId, current?.version ?? null, record)) {
+    // Conditioned on the run too: an abort landing after the read above refuses on the next round.
+    if (await compareAndSet(runId, current?.version ?? null, record, { runOpen: true })) {
       await enqueue(runId);
       return { runId, finish: record, started: true };
     }
