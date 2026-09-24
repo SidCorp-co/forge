@@ -1,6 +1,6 @@
 "use client";
 
-import { Banner } from "@/design";
+import { Banner, useNow } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { RunnerPoolRead } from "../types";
 
@@ -30,11 +30,14 @@ function windowLabel(ms: number): string {
  */
 export function PoolReadBanner({
 	poolRead,
-	now = Date.now(),
+	now: given,
 }: {
 	poolRead: RunnerPoolRead | null | undefined;
 	now?: number;
 }) {
+	// An open page must see a report go stale without a re-render from above.
+	const ticking = useNow(30_000, Boolean(poolRead) && given === undefined);
+	const now = given ?? ticking;
 	if (!poolRead) return null;
 	const { lastFailure } = poolRead;
 	const heard = Date.parse(poolRead.receivedAt);

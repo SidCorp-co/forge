@@ -92,8 +92,23 @@ fn project_label(cfg: &Config, project_id: &str) -> String {
 
 /// What `status` and `doctor` both print about this box's pool reads. An empty
 /// record says no failure is recorded and claims nothing more: a box that never
-/// read a pool has no failures either (ISS-1234).
-pub fn pool_lines(conditions: &[pool_reads::Condition], cfg: &Config, now: i64) -> Vec<String> {
+/// read a pool has no failures either (ISS-1234). An unreadable one says so,
+/// and what it costs while it stands.
+pub fn pool_lines(
+    record: &Result<Vec<pool_reads::Condition>, pool_reads::Unreadable>,
+    cfg: &Config,
+    now: i64,
+) -> Vec<String> {
+    let conditions = match record {
+        Ok(conditions) => conditions,
+        Err(e) => {
+            return vec![format!(
+            "pool       UNREADABLE — {e}. The heartbeat carries no pool report while it stands, \
+                 so core keeps the last one it stored, and no failed read is recorded; \
+                 remove the file to start a fresh record"
+        )]
+        }
+    };
     if conditions.is_empty() {
         return vec![format!(
             "pool       no failed pool read recorded in the last {}",
@@ -322,7 +337,7 @@ mod tests {
             Some(520),
             "520 (gateway: the origin returned an unknown error)",
         );
-        let out = pool_lines(&[c], &cfg_binding("sid-desk", "p-1"), NOW).join("\n");
+        let out = pool_lines(&Ok(vec![c]), &cfg_binding("sid-desk", "p-1"), NOW).join("\n");
         assert!(out.contains("sid-desk  BLIND"), "{out}");
         assert!(out.contains("for 5m"), "{out}");
         assert!(out.contains("30 consecutive"), "{out}");
@@ -343,7 +358,7 @@ mod tests {
             None,
             "pool request: operation timed out",
         );
-        let out = pool_lines(&[c], &Config::default(), NOW).join("\n");
+        let out = pool_lines(&Ok(vec![c]), &Config::default(), NOW).join("\n");
         assert!(
             out.contains("p-1  intermittent"),
             "an unbound project is named by id: {out}"
@@ -360,7 +375,7 @@ mod tests {
     /// Criterion 11. Nothing recorded is said as that and no more.
     #[test]
     fn an_empty_record_claims_no_successful_read() {
-        let out = pool_lines(&[], &Config::default(), NOW);
+        let out = pool_lines(&Ok(vec![]), &Config::default(), NOW);
         assert_eq!(
             out,
             vec!["pool       no failed pool read recorded in the last 24h".to_string()]
@@ -372,6 +387,22 @@ mod tests {
                 "`{claim}` claims a read nobody saw: {line}"
             );
         }
+    }
+
+    /// An unreadable record is named with its path and reason, and is never
+    /// the "nothing recorded" line an absent one earns.
+    #[test]
+    fn an_unreadable_record_says_so_and_what_it_costs() {
+        let e = pool_reads::Unreadable {
+            path: "/etc/forge-runner/pool-reads.json".into(),
+            reason: "does not parse: EOF while parsing an object at line 1 column 9".into(),
+        };
+        let out = pool_lines(&Err(e), &Config::default(), NOW).join("\n");
+        assert!(out.contains("UNREADABLE"), "{out}");
+        assert!(out.contains("/etc/forge-runner/pool-reads.json"), "{out}");
+        assert!(out.contains("does not parse: EOF"), "{out}");
+        assert!(out.contains("core keeps the last one it stored"), "{out}");
+        assert!(!out.contains("no failed pool read recorded"), "{out}");
     }
 
     const DAY: i64 = 24 * 60 * 60 * 1000;

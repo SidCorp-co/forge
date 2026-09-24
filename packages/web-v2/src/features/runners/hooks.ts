@@ -235,13 +235,16 @@ export function useUnbindRunner(deviceId: string) {
 /**
  * Device pools serving a project. Keyed `['projects', id, 'runners']`. The WS
  * event-router invalidates this on `runner.provision` so the live provision
- * stepper advances without manual refetch.
+ * stepper advances without manual refetch. Each row's pool report is renewed by
+ * its box's heartbeat and no event announces that, so the list is read again on
+ * the heartbeat's cadence: a report stays as current as core's copy of it.
  */
 export function useProjectRunners(projectId: string | null) {
 	return useQuery({
 		queryKey: ["projects", projectId, "runners"],
 		queryFn: () => runnersApi.listProjectRunners(projectId as string),
 		enabled: !!projectId,
+		refetchInterval: 30_000,
 	});
 }
 

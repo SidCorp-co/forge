@@ -3090,6 +3090,11 @@
 - **The Pipeline board says Running only when something is working the issue.** An issue that
   nothing is working now sits in a new Stalled column instead, and status menus name the status
   you would move to.
+- **A machine whose record of failed queue reads is damaged no longer clears them from the
+  Runners page.** The page keeps what it last showed, and `forge-runner status` and `doctor` name
+  the damaged file.
+- **The Runners page keeps queue-read failures current while it stays open.** It rereads them
+  every 30 seconds, and a report the machine stopped renewing is dated instead of stated as now.
 - **Release refusals from the issue list match Release settings.** They blamed a check that never
   failed rather than the runner that is down, and over fifty issues got "Invalid input". Automatic
   releases carry the oldest fifty at a time.
