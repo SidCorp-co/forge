@@ -186,6 +186,21 @@ describe('the nightly consolidation', () => {
   });
 });
 
+describe('the release reconcile', () => {
+  it("reads no issue of another project into this project's prompt", async () => {
+    const other = (await createTestProject(harness.db, userId)).id;
+    const foreign = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
+      VALUES (${foreign}, ${other}, 1, 'another project', 'closed', ${userId}, now())`);
+    llm.prompts.length = 0;
+    const { reconcileForReleasedIssue } = await import('../../src/memory/consolidation.js');
+    const result = await reconcileForReleasedIssue(projectId, foreign);
+    expect(result.skipped).toBe('issue-not-found');
+    expect(llm.prompts).toEqual([]);
+  });
+});
+
 describe('a Sentry regression on an archived closed issue', () => {
   it('is refused by name, and the issue stays closed and archived', async () => {
     const id = await seed(1, 'closed', { externalId: 'PROJ-1' });
