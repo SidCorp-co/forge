@@ -1569,11 +1569,33 @@ fn install_skill(repo: &std::path::Path) -> std::io::Result<()> {
 }
 
 fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
-    let Ok(exe) = std::env::current_exe() else {
-        tracing::warn!("[master] {slug}: cannot name this binary — starting without hooks, so this session reports no turn boundaries");
-        return;
+    install_hooks_from(repo, slug, crate::exe::own());
+}
+
+/// The same with the resolution handed in, because both of its arms have to be
+/// reachable from a test and this process's own binary is there while one runs.
+fn install_hooks_from(
+    repo: &std::path::Path,
+    slug: &str,
+    own: crate::error::Result<crate::exe::OwnExe>,
+) {
+    let exe = match own {
+        Ok(exe) => exe,
+        Err(e) => {
+            tracing::warn!(
+                "[master] {slug}: {e} — starting without hooks rather than installing commands that die at every call, so this session reports no turn boundaries and its dispatches reach no gate"
+            );
+            return;
+        }
     };
-    match crate::daemon::hook_install::install(repo, &exe) {
+    if let Some(was) = &exe.replaced_from {
+        tracing::warn!(
+            "[master] {slug}: the binary this daemon started on ({}) was replaced while it ran — its hooks name {}, the build standing there now",
+            was.display(),
+            exe.path.display()
+        );
+    }
+    match crate::daemon::hook_install::install(repo, &exe.path) {
         Ok(path) => tracing::info!("[master] {slug}: hooks registered in {}", path.display()),
         Err(e) => tracing::warn!(
             "[master] {slug}: could not register hooks in {}: {e} — starting anyway, blind to this session's turn boundaries",
@@ -6357,6 +6379,142 @@ mod stand_down_tests {
         assert!(
             bare.contains("stand-up forge-dev") && !bare.contains("()"),
             "a stand-down with no reason given still names the way back, and does not print an empty one: {bare}"
+        );
+    }
+}
+
+/// What a master pane's preparation says when this daemon's own binary has been
+/// replaced under it, or is gone (ISS-1200).
+#[cfg(test)]
+mod own_exe_reporting_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    fn logged_while(f: impl FnOnce()) -> String {
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        // Why a capture needs this: `crate::daemon::keep_tracing_capturable`.
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn scratch(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-master-exe-{label}-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).expect("scratch");
+        dir
+    }
+
+    /// A file `is_runnable` accepts, on every platform this crate builds for:
+    /// what these cases are about is a journal line and a settings file, and
+    /// neither has a shell in it.
+    fn runnable(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
+        p
+    }
+
+    #[test]
+    fn a_replaced_binary_is_named_in_the_journal_with_the_project_and_both_paths() {
+        let dir = scratch("replaced");
+        let installed = runnable(&dir, "forge-runner");
+        let annotated = dir.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+
+        let said = logged_while(|| {
+            install_hooks_from(&repo, "acme-web", crate::exe::resolve(&annotated));
+        });
+
+        assert!(
+            said.contains("acme-web"),
+            "the project is not named: {said}"
+        );
+        assert!(
+            said.contains(annotated.to_str().unwrap()),
+            "the path it started on is not named, so a reader cannot tell what was replaced: {said}"
+        );
+        assert!(
+            said.contains(&format!(
+                "hooks name {}, the build standing there now",
+                installed.display()
+            )),
+            "the destination is not named in its own right — and the annotated path CONTAINS it, so a bare `contains` here passes whatever the line says (consult bec748 F1): {said}"
+        );
+        assert!(
+            crate::daemon::hook_install::settings_path(&repo).exists(),
+            "the pane was left unhooked although a build stands at the path"
+        );
+    }
+
+    #[test]
+    fn a_binary_that_is_gone_leaves_the_pane_unhooked_and_says_why() {
+        let dir = scratch("gone");
+        let annotated = dir.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+
+        let said = logged_while(|| {
+            install_hooks_from(&repo, "acme-web", crate::exe::resolve(&annotated));
+        });
+
+        assert!(
+            said.contains("acme-web"),
+            "the project is not named: {said}"
+        );
+        assert!(
+            said.contains("nothing can invoke it"),
+            "the reason is not in the line, so the journal says only that hooks are missing: {said}"
+        );
+        assert!(
+            !crate::daemon::hook_install::settings_path(&repo).exists(),
+            "commands that die at every call were written anyway"
+        );
+    }
+
+    #[test]
+    fn a_binary_that_is_still_there_is_installed_with_nothing_said_about_a_fallback() {
+        let dir = scratch("present");
+        let installed = runnable(&dir, "forge-runner");
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+
+        let said = logged_while(|| {
+            install_hooks_from(&repo, "acme-web", crate::exe::resolve(&installed));
+        });
+
+        assert!(
+            !said.contains("was replaced while it ran"),
+            "a fallback was reported where nothing fell back: {said}"
+        );
+        assert!(
+            crate::daemon::hook_install::settings_path(&repo).exists(),
+            "the hooks were not written: {said}"
         );
     }
 }

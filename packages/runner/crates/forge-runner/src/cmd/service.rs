@@ -28,6 +28,71 @@ pub struct InstallArgs {
 /// Install the OS service for this platform, the same way `service install`
 /// does. `setup` calls it rather than telling the operator to run a second
 /// command, and rather than growing a second unit writer beside this one.
+/// The path a service unit may name as the program to start.
+///
+/// Not `current_exe()` raw: that is a `/proc` link on Linux and reads
+/// `<path> (deleted)` once the file behind it is gone, and a unit carrying that
+/// string fails at every boot with nothing but `not found` to say why. Returned
+/// as text rather than a path, because `display()` replaces bytes it cannot
+/// render and a unit built from that names a different file — the same refusal
+/// `hook_install::install` already makes (ISS-1200).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn own_exe_text() -> anyhow::Result<String> {
+    let exe = forge_runner_core::exe::own()?.path;
+    exe.to_str().map(str::to_string).ok_or_else(|| {
+        anyhow::anyhow!(
+            "the runner's own path is not valid UTF-8 ({}), so a service naming it would name a different file — install no service rather than one that cannot start",
+            exe.display()
+        )
+    })
+}
+
+/// One `ExecStart` word, written the way systemd reads one.
+///
+/// systemd splits the line on whitespace, takes `\` as an escape inside quotes,
+/// `%` as a specifier and `$` as a variable. A runner at
+/// `/opt/Forge Runner/forge-runner` written bare parses as `/opt/Forge`, and the
+/// unit is accepted, enabled, and never starts (consult 7bbe98 F2).
+#[cfg(target_os = "linux")]
+fn systemd_exec_word(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '\\' | '"' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '%' => out.push_str("%%"),
+            '$' => out.push_str("$$"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// The unit body for a runner at `exe`, separate from writing it so the one
+/// thing that has to be right about it can be read back.
+#[cfg(target_os = "linux")]
+fn systemd_unit(exe: &str) -> String {
+    format!(
+        "[Unit]\n\
+         Description=Forge Runner\n\
+         After=network-online.target\n\
+         Wants=network-online.target\n\n\
+         [Service]\n\
+         Type=simple\n\
+         ExecStart={} start\n\
+         Restart=always\n\
+         RestartSec=5\n\
+         Environment=RUST_LOG=info\n\n\
+         [Install]\n\
+         WantedBy=default.target\n",
+        systemd_exec_word(exe)
+    )
+}
+
 pub fn install_now() -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     {
@@ -88,7 +153,7 @@ fn plist_path() -> anyhow::Result<std::path::PathBuf> {
 
 #[cfg(target_os = "macos")]
 fn install_launchd() -> anyhow::Result<()> {
-    let exe = std::env::current_exe()?;
+    let exe = own_exe_text()?;
     let home = dirs_next::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
     let log = home.join("Library").join("Logs").join("forge-runner.log");
     let plist = format!(
@@ -111,7 +176,7 @@ fn install_launchd() -> anyhow::Result<()> {
          </dict>\n\
          </plist>\n",
         label = LAUNCHD_LABEL,
-        exe = xml_escape(&exe.to_string_lossy()),
+        exe = xml_escape(&exe),
         log = xml_escape(&log.to_string_lossy()),
     );
     let path = plist_path()?;
@@ -193,22 +258,7 @@ fn unit_path() -> anyhow::Result<std::path::PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn install_systemd(no_linger: bool) -> anyhow::Result<()> {
-    let exe = std::env::current_exe()?;
-    let unit = format!(
-        "[Unit]\n\
-         Description=Forge Runner\n\
-         After=network-online.target\n\
-         Wants=network-online.target\n\n\
-         [Service]\n\
-         Type=simple\n\
-         ExecStart={} start\n\
-         Restart=always\n\
-         RestartSec=5\n\
-         Environment=RUST_LOG=info\n\n\
-         [Install]\n\
-         WantedBy=default.target\n",
-        exe.display()
-    );
+    let unit = systemd_unit(&own_exe_text()?);
     let path = unit_path()?;
     std::fs::create_dir_all(path.parent().unwrap())?;
     std::fs::write(&path, unit)?;
@@ -290,4 +340,58 @@ fn enable_linger() -> anyhow::Result<()> {
         anyhow::bail!("loginctl enable-linger failed");
     }
     Ok(())
+}
+
+/// What a service unit may name as the program to start (ISS-1200).
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    fn exec_start(unit: &str) -> &str {
+        unit.lines()
+            .find_map(|l| l.strip_prefix("ExecStart="))
+            .expect("the unit names no program to start")
+    }
+
+    #[test]
+    fn a_runner_under_a_path_with_a_space_is_one_word_to_systemd() {
+        let line = systemd_unit("/opt/Forge Runner/forge-runner");
+        assert_eq!(
+            exec_start(&line),
+            "\"/opt/Forge Runner/forge-runner\" start",
+            "systemd splits an ExecStart line on whitespace, so a bare path here is two words and the unit starts /opt/Forge"
+        );
+    }
+
+    #[test]
+    fn the_three_characters_systemd_reads_as_syntax_are_written_back() {
+        // A quote and a backslash are escaped inside the quoting; `%` is a
+        // specifier and `$` a variable, and both are doubled to mean themselves.
+        assert_eq!(
+            systemd_exec_word(r#"/opt/a"b\c%d$e/forge-runner"#),
+            r#""/opt/a\"b\\c%%d$$e/forge-runner""#
+        );
+    }
+
+    #[test]
+    fn an_ordinary_path_still_names_itself() {
+        assert_eq!(
+            exec_start(&systemd_unit("/home/dev/.local/bin/forge-runner")),
+            "\"/home/dev/.local/bin/forge-runner\" start"
+        );
+    }
+
+    #[test]
+    fn the_unit_still_carries_what_makes_it_a_service() {
+        let unit = systemd_unit("/bin/forge-runner");
+        for line in [
+            "Type=simple",
+            "Restart=always",
+            "RestartSec=5",
+            "Environment=RUST_LOG=info",
+            "WantedBy=default.target",
+        ] {
+            assert!(unit.contains(line), "the unit lost {line}:\n{unit}");
+        }
+    }
 }

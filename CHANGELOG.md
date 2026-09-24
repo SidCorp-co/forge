@@ -3080,6 +3080,9 @@
   set is now 59.
 
 ### Fixed
+- **A runner that has replaced its own binary no longer installs hooks that cannot run.** Its
+  safety gate and its turn reports name a file that is really there, and settings already written
+  with a dead one are repaired.
 - **The Release settings messages are legible again.** What stops a release, and what changes how
   it runs, both printed their setting names grey on grey — the part naming what to change was the
   hardest to read.

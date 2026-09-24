@@ -154,7 +154,21 @@ pub async fn apply(manifest: &Manifest) -> Result<Option<UpdateOutcome>> {
     // Write next to the current exe, chmod, then rename over it. On Unix you can
     // replace a running binary's path — the live process keeps the old inode,
     // and the next start picks up the new file.
-    let exe = std::env::current_exe().map_err(|e| Error::Other(format!("current_exe: {e}")))?;
+    //
+    // Resolved rather than taken raw, because this is the second update in a
+    // process that never restarted after the first: `/proc/self/exe` then reads
+    // `<path> (deleted)`, and renaming over THAT writes a file called
+    // `forge-runner (deleted)` while the binary everything invokes stays at the
+    // build it was (ISS-1200).
+    let own = crate::exe::own()?;
+    if let Some(was) = &own.replaced_from {
+        tracing::warn!(
+            "[update] this process started on {} which was replaced while it ran — installing over {}, the build standing there now",
+            was.display(),
+            own.path.display()
+        );
+    }
+    let exe = own.path;
     let tmp = exe.with_extension("new");
     std::fs::write(&tmp, &bytes)?;
     #[cfg(unix)]
@@ -211,6 +225,29 @@ mod tests {
         assert!(VERSION_LINE.starts_with(CURRENT_VERSION));
         assert!(VERSION_LINE.contains(BUILD_COMMIT));
         assert!(VERSION_LINE.ends_with(')'));
+    }
+
+    /// `apply` downloads before it renames, so its rename target cannot be
+    /// exercised here without a release server. What CAN be asserted is that it
+    /// no longer takes the raw link: a second update in a process that never
+    /// restarted would otherwise write a file called `forge-runner (deleted)`
+    /// and leave the real binary at the build it was (ISS-1200).
+    #[test]
+    fn the_install_target_is_resolved_rather_than_read_off_proc_self_exe() {
+        const SOURCE: &str = include_str!("mod.rs");
+        let body = SOURCE
+            .split("pub async fn apply(")
+            .nth(1)
+            .and_then(|s| s.split("\n#[cfg(test)]").next())
+            .expect("apply's body");
+        assert!(
+            !body.contains("current_exe()"),
+            "apply renames over whatever /proc/self/exe says, annotation and all"
+        );
+        assert!(
+            body.contains("crate::exe::own()"),
+            "apply must resolve the path it installs over"
+        );
     }
 
     #[test]

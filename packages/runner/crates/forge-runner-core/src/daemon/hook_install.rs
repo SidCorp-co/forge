@@ -111,12 +111,18 @@ pub fn settings_path(cwd: &Path) -> PathBuf {
 
 /// Install the hooks into `cwd`, returning the file written.
 pub fn install(cwd: &Path, exe: &Path) -> Result<PathBuf> {
-    let Some(exe) = exe.to_str() else {
+    let Some(exe_text) = exe.to_str() else {
         return Err(Error::Other(format!(
             "the runner's own path is not valid UTF-8 ({}), so a hook command naming it would name a different file",
             exe.display()
         )));
     };
+    if !crate::exe::is_runnable(exe) {
+        return Err(Error::Other(format!(
+            "no runnable file stands at {exe_text}, so every hook naming it would die at every call — installing none"
+        )));
+    }
+    let exe = exe_text;
     let path = settings_path(cwd);
     let existing = std::fs::read_to_string(&path).ok();
     let next = merged(existing.as_deref(), exe)?;
@@ -129,6 +135,111 @@ pub fn install(cwd: &Path, exe: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// The program a managed hook command invokes, unquoted, and `None` for a
+/// command that is not one of ours.
+///
+/// The program comes off the FRONT rather than out of a search for the marker:
+/// a runner installed at `/opt/runner hook --event tools/forge-runner` carries
+/// the marker inside its own quoted name, and a search would cut the path in
+/// half and call a healthy hook dead.
+fn program_of(command: &str) -> Option<String> {
+    let (program, rest) = split_program(command)?;
+    MANAGED_MARKERS
+        .iter()
+        .any(|m| rest.starts_with(m))
+        .then_some(program)
+}
+
+/// The program and what follows it, with the quoting taken off the way the
+/// shell `shell_quoted` wrote for would take it off.
+fn split_program(command: &str) -> Option<(String, &str)> {
+    let command = command.trim_start();
+    if let Some(after) = command.strip_prefix('\'') {
+        return posix_quoted(after);
+    }
+    if let Some(after) = command.strip_prefix('"') {
+        let end = after.find('"')?;
+        return Some((after[..end].to_string(), &after[end + 1..]));
+    }
+    let end = command.find(' ').unwrap_or(command.len());
+    Some((command[..end].to_string(), &command[end..]))
+}
+
+/// Inside a single-quoted word: a literal quote is written `'\''`, which closes,
+/// escapes and reopens, so the real close is the first `'` not followed by `\''`.
+fn posix_quoted(after_open: &str) -> Option<(String, &str)> {
+    let mut program = String::new();
+    let mut rest = after_open;
+    loop {
+        let close = rest.find('\'')?;
+        program.push_str(&rest[..close]);
+        rest = &rest[close + 1..];
+        match rest.strip_prefix(r"\''") {
+            Some(reopened) => {
+                program.push('\'');
+                rest = reopened;
+            }
+            None => return Some((program, rest)),
+        }
+    }
+}
+
+/// The programs this daemon's own hook commands in `text` name that nothing can
+/// run. An operator's own hooks are not read: they are theirs to keep working.
+pub fn unrunnable_in(text: &str) -> Result<Vec<String>> {
+    let doc: Value = serde_json::from_str(text)
+        .map_err(|e| Error::Other(format!("{SETTINGS} is not readable JSON: {e}")))?;
+    let Some(hooks) = doc.get("hooks").and_then(Value::as_object) else {
+        return Ok(Vec::new());
+    };
+    let mut found: Vec<String> = hooks
+        .values()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter(|e| is_managed(e))
+        .filter_map(|e| e.get("hooks").and_then(Value::as_array))
+        .flatten()
+        .filter_map(|h| h.get("command").and_then(Value::as_str))
+        .filter_map(program_of)
+        .filter(|p| !crate::exe::is_runnable(Path::new(p)))
+        .collect();
+    found.sort();
+    found.dedup();
+    Ok(found)
+}
+
+/// Rewrite a settings file this daemon already wrote whose own hook commands
+/// name a program nothing can run, and leave one whose commands all run exactly
+/// as it stands.
+///
+/// Fixing where the path comes from does not unpoison a file written yesterday.
+/// A pane is prepared per project, so a project nobody dispatches to keeps a
+/// dead gate until somebody opens a session in it by hand. Returns the programs
+/// that could not be run, empty when nothing was owed.
+pub fn repair(cwd: &Path, exe: &Path) -> Result<Vec<String>> {
+    let path = settings_path(cwd);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        // Absent is the answer for a project no pane was ever prepared for.
+        // Anything else — unreadable bytes, a permission this daemon lost — is
+        // not knowing, and reporting it as nothing to do is the silence this
+        // whole issue is about.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => {
+            return Err(Error::Other(format!(
+            "cannot read {} ({e}), so whether the hooks in it can run is unknown rather than fine",
+            path.display()
+        )))
+        }
+    };
+    let unrunnable = unrunnable_in(&text)?;
+    if unrunnable.is_empty() {
+        return Ok(Vec::new());
+    }
+    install(cwd, exe)?;
+    Ok(unrunnable)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +249,77 @@ mod tests {
             .as_object()
             .cloned()
             .unwrap()
+    }
+
+    /// Every hook command in a settings file, decoded.
+    ///
+    /// A path is not what the file says it is: `C:\\Users\\...` on disk is
+    /// `C:\Users\...` once JSON is done with it, so a case that asks whether
+    /// the raw text holds a path is asking about a different string on Windows
+    /// than on unix — which is how this module's repair case failed there while
+    /// being green everywhere else.
+    fn commands_of(text: &str) -> Vec<String> {
+        hooks_of(text)
+            .values()
+            .filter_map(Value::as_array)
+            .flatten()
+            .filter_map(|e| e["hooks"].as_array())
+            .flatten()
+            .filter_map(|h| h["command"].as_str())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Which of this module's cases are hidden from a platform, and why.
+    ///
+    /// `#[cfg(unix)]` on a case whose subject has no platform in it does not
+    /// make that platform's job pass — it makes it silent, and a green over a
+    /// case that was never compiled is evidence of nothing. Nine of the cases
+    /// below carried one until the Windows job could not compile the helper
+    /// they shared and said so; that is the only reason anybody found out.
+    ///
+    /// So the exception set is named here rather than left to whoever reads a
+    /// diff. A tenth cannot be added quietly: this fails, and the way past it
+    /// is to say in this list what unix thing the new case needs.
+    #[test]
+    fn every_case_this_module_hides_from_a_platform_says_what_it_needs_unix_for() {
+        const SOURCE: &str = include_str!("hook_install.rs");
+
+        // name => the unix-only thing it cannot be written without.
+        const EARNED: [(&str, &str); 3] = [
+            (
+                "a_runner_under_a_path_with_a_space_is_what_the_hook_actually_invokes",
+                "runs the command through `sh`",
+            ),
+            (
+                "a_runner_under_a_path_holding_a_quote_is_still_invoked",
+                "runs the command through `sh`",
+            ),
+            (
+                "a_runner_under_a_path_that_is_not_utf8_is_refused_by_name",
+                "builds a path from bytes with OsStrExt, which only unix has",
+            ),
+        ];
+
+        let hidden = crate::platform_scope::tests_hidden_off_unix(SOURCE);
+
+        for name in &hidden {
+            assert!(
+                EARNED.iter().any(|(earned, _)| earned == name),
+                "{name} is hidden from every platform that is not unix and nothing says why. If \
+                 it needs a unix shell, a file mode or a non-UTF-8 path, add it to EARNED with \
+                 the reason; otherwise take the cfg off — what this module decides about a path \
+                 has no platform in it, and a case Windows never compiles makes that job's green \
+                 empty."
+            );
+        }
+        for (earned, why) in EARNED {
+            assert!(
+                hidden.iter().any(|name| name == earned),
+                "{earned} is listed as needing unix ({why}) and is not hidden any more — drop it \
+                 from EARNED so the list stays a list of live exceptions"
+            );
+        }
     }
 
     #[test]
@@ -330,17 +512,26 @@ mod tests {
         dir
     }
 
-    /// A directory named `label`, holding a runner that proves it was invoked.
-    #[cfg(unix)]
+    /// A directory named `label`, holding a file `is_runnable` accepts.
+    ///
+    /// Cross-platform on purpose. What `install` and `repair` decide about a
+    /// path is not a property of the shell — `merged_for` takes the shell as an
+    /// argument precisely because this module serves both — so a helper only
+    /// unix could call is what hid nine of this module's own cases from the
+    /// Windows job. On unix it is a real shell script, which is what the two
+    /// cases that actually invoke it need; elsewhere it is a regular file,
+    /// which is the whole of what `is_runnable` asks there.
     fn scratch_runner(label: &str) -> (PathBuf, PathBuf) {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = scratch_dir("run").join(label);
-        std::fs::create_dir_all(&dir).expect("scratch");
-        let exe = dir.join("forge-runner");
+        let home = scratch_dir("run").join(label);
+        std::fs::create_dir_all(&home).expect("scratch");
+        let exe = home.join("forge-runner");
         std::fs::write(&exe, "#!/bin/sh\necho ran > \"$FORGE_HOOK_MARKER\"\n").expect("runner");
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        (dir, exe)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
+        (home, exe)
     }
 
     /// The command this daemon would install for a reporting event.
@@ -482,21 +673,284 @@ mod tests {
 
     #[test]
     fn it_writes_and_rereads_from_a_real_directory() {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-hook-install-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = install(&dir, Path::new("/bin/fr")).unwrap();
+        let dir = scratch_dir("write-reread");
+        let (_home, exe) = scratch_runner("real-binary");
+        let path = install(&dir, &exe).unwrap();
         assert!(path.ends_with(SETTINGS));
         let back = std::fs::read_to_string(&path).unwrap();
         assert!(hooks_of(&back).contains_key("Stop"));
         // A second install over the file it just wrote stays at one entry.
-        install(&dir, Path::new("/bin/fr")).unwrap();
+        install(&dir, &exe).unwrap();
         let back = std::fs::read_to_string(&path).unwrap();
         assert_eq!(hooks_of(&back)["Stop"].as_array().unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_path_no_file_stands_at_is_refused_by_name_and_installs_nothing() {
+        let dir = scratch_dir("absent");
+        let err = install(&dir, &dir.join("forge-runner"))
+            .expect_err("a hook naming a file that is not there dies at every call");
+
+        let said = err.to_string();
+        assert!(
+            said.contains("no runnable file"),
+            "the refusal must name the CLASS, or it reads as a permissions fault: {said:?}"
+        );
+        assert!(
+            !settings_path(&dir).exists(),
+            "nothing may be written for a path that cannot be invoked"
+        );
+    }
+
+    /// The refusal is a refusal to WRITE, which is only visible where something
+    /// was already there to be overwritten.
+    #[test]
+    fn a_settings_file_already_standing_survives_that_refusal_byte_for_byte() {
+        let dir = scratch_dir("absent-over-existing");
+        let (_home, good) = scratch_runner("still-here");
+        let path = install(&dir, &good).expect("the file a working daemon writes");
+        let before = std::fs::read_to_string(&path).unwrap();
+
+        install(&dir, &dir.join("forge-runner")).expect_err("must install nothing");
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            before,
+            "the refusal rewrote a settings file that was already correct"
+        );
+    }
+
+    #[test]
+    fn the_program_a_managed_command_names_is_read_back_out_of_its_quoting() {
+        for exe in [
+            "/opt/forge/forge-runner",
+            "/opt/Forge Runner/forge-runner",
+            "/opt/o'brien/forge-runner",
+        ] {
+            for posix in [true, false] {
+                let command = command_for(exe, Event::PromptSubmitted, posix);
+                assert_eq!(
+                    program_of(&command).as_deref(),
+                    Some(exe),
+                    "posix={posix}, command was {command:?}"
+                );
+            }
+            assert_eq!(
+                program_of(&gate_command_for(exe, true)).as_deref(),
+                Some(exe)
+            );
+        }
+        assert_eq!(
+            program_of("audit-hook --event PreToolUse"),
+            None,
+            "somebody else's command names no program of ours"
+        );
+        assert_eq!(
+            program_of("/bin/forge-runner hook --event Stop").as_deref(),
+            Some("/bin/forge-runner"),
+            "a command nothing quoted still names its program"
+        );
+    }
+
+    /// A path can carry the marker inside its own name, and a parser that goes
+    /// looking for the marker cuts such a path in half and calls a healthy hook
+    /// dead. Raised as F2 on consult 5542c8.
+    #[test]
+    fn a_runner_whose_own_path_holds_the_marker_is_read_back_whole() {
+        let exe = "/opt/runner hook --event tools/forge-runner";
+        let command = command_for(exe, Event::PromptSubmitted, true);
+        assert_eq!(
+            program_of(&command).as_deref(),
+            Some(exe),
+            "the program was cut at the marker inside its own name: {command}"
+        );
+
+        let dir = scratch_dir("marker-in-path");
+        let home = dir.join("opt/runner hook --event tools");
+        std::fs::create_dir_all(&home).expect("home");
+        let installed = {
+            let p = home.join("forge-runner");
+            std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write");
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755))
+                    .expect("chmod");
+            }
+            p
+        };
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).expect("repo");
+        let path = install(&repo, &installed).expect("install");
+        let before = std::fs::read_to_string(&path).expect("read");
+
+        assert!(
+            repair(&repo, &installed).expect("repair").is_empty(),
+            "a healthy runner was called unrunnable because its path holds the marker"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read back"),
+            before,
+            "the sweep rewrote a file whose every command runs"
+        );
+    }
+
+    /// Raised as F3 on consult 5542c8: a read that failed is not a file whose
+    /// hooks are fine, and the caller has nothing to report if this says so.
+    #[test]
+    fn a_settings_file_that_cannot_be_read_is_refused_rather_than_called_healthy() {
+        let dir = scratch_dir("unreadable");
+        let (_home, good) = scratch_runner("ours");
+        let path = settings_path(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let bytes = b"\xff\xfe not utf-8 at all";
+        std::fs::write(&path, bytes).unwrap();
+
+        let err = repair(&dir, &good).expect_err("bytes this cannot read are not a healthy file");
+        assert!(
+            err.to_string().contains("unknown rather than fine"),
+            "{err}"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            bytes,
+            "a file it could not read was rewritten anyway"
+        );
+    }
+
+    /// What a settings file SAYS a command is, and what the command IS, are two
+    /// different strings wherever a path holds a backslash.
+    ///
+    /// A case that asks the raw text whether it holds a path is asking about
+    /// the unescaped one, which JSON never wrote. On unix nothing is escaped
+    /// and the two readings agree, so such a case is green here forever and
+    /// red on Windows — which is how the repair case above was found, by the
+    /// Windows job, after this module had already been made to compile there.
+    #[test]
+    fn a_path_in_a_hook_command_is_read_back_decoded_and_not_off_the_raw_text() {
+        let windows_shaped = r"C:\Program Files\forge\forge-runner";
+        let text = merged(None, windows_shaped).unwrap();
+
+        assert!(
+            !text.contains(windows_shaped),
+            "this case rests on JSON escaping the path, and it did not — it proves nothing here"
+        );
+        assert!(
+            commands_of(&text)
+                .iter()
+                .all(|c| c.contains(windows_shaped)),
+            "the decoded command lost the path the file was written with: {:?}",
+            commands_of(&text)
+        );
+    }
+
+    #[test]
+    fn a_file_poisoned_by_an_earlier_daemon_is_rewritten_by_the_repair() {
+        let dir = scratch_dir("repair");
+        let (_home, good) = scratch_runner("the-build-on-disk");
+        let gone = dir.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        std::fs::create_dir_all(settings_path(&dir).parent().unwrap()).unwrap();
+        std::fs::write(
+            settings_path(&dir),
+            merged(None, gone.to_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+
+        let rewritten = repair(&dir, &good).expect("repair");
+        assert_eq!(
+            rewritten,
+            vec![gone.to_str().unwrap().to_string()],
+            "the repair must name what could not be run, or the journal says only that it did something"
+        );
+
+        let back = std::fs::read_to_string(settings_path(&dir)).unwrap();
+        let commands = commands_of(&back);
+        assert!(
+            !commands.is_empty(),
+            "the repair wrote no hook at all: {back}"
+        );
+        for command in &commands {
+            assert!(
+                !command.contains(crate::exe::DELETED_SUFFIX),
+                "the dead path is still in the file: {command}"
+            );
+            assert!(
+                command.contains(good.to_str().unwrap()),
+                "a command names something other than the build on disk: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_file_whose_commands_all_run_is_left_exactly_as_it_stands() {
+        let dir = scratch_dir("repair-healthy");
+        let (_home, good) = scratch_runner("healthy");
+        let path = install(&dir, &good).unwrap();
+        let before = std::fs::read_to_string(&path).unwrap();
+
+        assert!(
+            repair(&dir, &good).expect("repair").is_empty(),
+            "nothing was owed, so nothing may be reported"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            before,
+            "a sweep rewrote a file it had no business touching"
+        );
+    }
+
+    #[test]
+    fn the_repair_keeps_hooks_the_operator_wrote_themselves() {
+        let dir = scratch_dir("repair-theirs");
+        let (_home, good) = scratch_runner("ours");
+        let gone = dir.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        let poisoned = merged(None, gone.to_str().unwrap()).unwrap();
+        let mut doc: Value = serde_json::from_str(&poisoned).unwrap();
+        doc["hooks"]["Stop"].as_array_mut().unwrap().push(json!({
+            "hooks": [{ "type": "command", "command": "say done" }]
+        }));
+        doc["permissions"] = json!({ "allow": ["Bash"] });
+        std::fs::create_dir_all(settings_path(&dir).parent().unwrap()).unwrap();
+        std::fs::write(settings_path(&dir), doc.to_string()).unwrap();
+
+        assert!(!repair(&dir, &good).expect("repair").is_empty());
+
+        let back: Value =
+            serde_json::from_str(&std::fs::read_to_string(settings_path(&dir)).unwrap()).unwrap();
+        let stop = back["hooks"]["Stop"].as_array().unwrap();
+        assert!(
+            stop.iter().any(|e| e["hooks"][0]["command"] == "say done"),
+            "the repair took an operator's own hook with it: {stop:?}"
+        );
+        assert_eq!(back["permissions"]["allow"][0], "Bash");
+    }
+
+    #[test]
+    fn the_repair_reads_a_file_it_cannot_parse_as_a_refusal_rather_than_a_rewrite() {
+        let dir = scratch_dir("repair-unparseable");
+        let (_home, good) = scratch_runner("ours");
+        std::fs::create_dir_all(settings_path(&dir).parent().unwrap()).unwrap();
+        std::fs::write(settings_path(&dir), "{ not json").unwrap();
+
+        let err =
+            repair(&dir, &good).expect_err("a file this cannot read is not a file to rewrite");
+        assert!(err.to_string().contains("not readable JSON"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(settings_path(&dir)).unwrap(),
+            "{ not json"
+        );
+    }
+
+    #[test]
+    fn a_project_with_no_settings_file_is_not_one_the_repair_creates_one_for() {
+        let dir = scratch_dir("repair-absent");
+        assert!(repair(&dir, Path::new("/bin/fr"))
+            .expect("repair")
+            .is_empty());
+        assert!(
+            !settings_path(&dir).exists(),
+            "the repair wrote hooks into a project no pane has ever been prepared for"
+        );
     }
 }
