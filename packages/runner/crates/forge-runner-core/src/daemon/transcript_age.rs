@@ -48,6 +48,17 @@ fn modified_ms(path: &Path) -> Option<i64> {
     i64::try_from(ms).ok()
 }
 
+/// An absolute transcript path on the platform the test runs on, for a fixture
+/// nothing reads: `/h/p/x.jsonl` has no drive, so Windows calls it relative.
+#[cfg(test)]
+pub(crate) fn absolute_fixture(name: &str) -> String {
+    std::env::temp_dir()
+        .join("forge-transcript-fixture")
+        .join(name)
+        .to_string_lossy()
+        .into_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

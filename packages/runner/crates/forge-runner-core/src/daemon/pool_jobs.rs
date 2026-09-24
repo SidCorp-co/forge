@@ -2955,6 +2955,7 @@ mod tests {
     async fn a_job_record_carries_the_session_and_the_snapshot_across_a_restart() {
         use crate::daemon::agent_activity::{Doing, Event};
         let home = TempHome::new("filerecords");
+        let transcript = crate::daemon::transcript_age::absolute_fixture("conv.jsonl");
         let r = FileRecords {
             dir: home.path().to_path_buf(),
         };
@@ -2973,7 +2974,7 @@ mod tests {
             },
             seen: Some(seen),
             opened_at: Some(1_700_000_000_000),
-            transcript: Some("/h/.claude/projects/-w/conv.jsonl".into()),
+            transcript: Some(transcript.clone()),
         })
         .await;
 
@@ -2987,7 +2988,7 @@ mod tests {
                 },
                 seen: Some(seen),
                 opened_at: Some(1_700_000_000_000),
-                transcript: Some("/h/.claude/projects/-w/conv.jsonl".into()),
+                transcript: Some(transcript),
             }],
             "what a restart reads back is what decides whether the pane is still work in flight"
         );

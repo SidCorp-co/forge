@@ -283,6 +283,7 @@ impl Activities {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::daemon::transcript_age::absolute_fixture;
 
     const SOURCE: &str = include_str!("agent_activity.rs");
 
@@ -782,23 +783,20 @@ mod tests {
                 },
             )
         };
+        let (a, b) = (absolute_fixture("a.jsonl"), absolute_fixture("b.jsonl"));
         assert_eq!(say(Event::PromptSubmitted, None).transcript, None);
         assert_eq!(
-            say(Event::PromptSubmitted, Some("/h/p/a.jsonl"))
-                .transcript
-                .as_deref(),
-            Some("/h/p/a.jsonl")
+            say(Event::PromptSubmitted, Some(&a)).transcript.as_deref(),
+            Some(a.as_str())
         );
         assert_eq!(
             say(Event::Stopped, None).transcript.as_deref(),
-            Some("/h/p/a.jsonl"),
+            Some(a.as_str()),
             "an event that names none does not unlearn the one known"
         );
         assert_eq!(
-            say(Event::PromptSubmitted, Some("/h/p/b.jsonl"))
-                .transcript
-                .as_deref(),
-            Some("/h/p/b.jsonl")
+            say(Event::PromptSubmitted, Some(&b)).transcript.as_deref(),
+            Some(b.as_str())
         );
     }
 
@@ -817,17 +815,19 @@ mod tests {
                 },
             )
         };
-        say("conv-a", Some("/h/p/conv-a.jsonl"));
+        let (a, b) = (
+            absolute_fixture("conv-a.jsonl"),
+            absolute_fixture("conv-b.jsonl"),
+        );
+        say("conv-a", Some(&a));
         assert_eq!(
             say("conv-b", None).transcript,
             None,
             "aging conversation B by A's file would conclude B while it works"
         );
         assert_eq!(
-            say("conv-b", Some("/h/p/conv-b.jsonl"))
-                .transcript
-                .as_deref(),
-            Some("/h/p/conv-b.jsonl")
+            say("conv-b", Some(&b)).transcript.as_deref(),
+            Some(b.as_str())
         );
     }
 
@@ -848,6 +848,44 @@ mod tests {
             after.transcript, None,
             "read against the daemon's own cwd, it would age some other file"
         );
+    }
+
+    fn kept(transcript: &str) -> Option<String> {
+        Activities::new()
+            .record(
+                "s1",
+                Report {
+                    event: Event::PromptSubmitted,
+                    at: 0,
+                    subject: None,
+                    conversation: None,
+                    transcript: Some(transcript),
+                },
+            )
+            .transcript
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_transcript_path_is_kept_and_a_driveless_one_is_not() {
+        let native = r"C:\Users\dev\.claude\projects\C--w\conv.jsonl";
+        assert_eq!(
+            kept(native).as_deref(),
+            Some(native),
+            "the path Claude Code names on Windows is the one this box must age"
+        );
+        assert_eq!(
+            kept(r"\Users\dev\.claude\projects\C--w\conv.jsonl"),
+            None,
+            "a path with no drive is read against the daemon's own drive"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_unix_transcript_path_is_kept() {
+        let native = "/home/dev/.claude/projects/-w/conv.jsonl";
+        assert_eq!(kept(native).as_deref(), Some(native));
     }
 
     #[test]
