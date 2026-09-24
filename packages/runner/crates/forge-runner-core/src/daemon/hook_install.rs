@@ -36,18 +36,32 @@ fn gate_command_for(exe: &str, posix: bool) -> String {
     format!("{} gate --event {GATE_EVENT}", shell_quoted(exe, posix))
 }
 
-/// Whether one entry in an event's hook array is ours.
-fn is_managed(entry: &Value) -> bool {
-    entry
-        .get("hooks")
-        .and_then(Value::as_array)
-        .is_some_and(|hs| {
-            hs.iter().any(|h| {
-                h.get("command")
-                    .and_then(Value::as_str)
-                    .is_some_and(|c| MANAGED_MARKERS.iter().any(|m| c.contains(m)))
-            })
-        })
+/// Take this daemon's own commands out of one event's entries, and drop an
+/// entry the removal leaves holding no command at all.
+///
+/// The unit that is ours is the COMMAND, not the object it sits in. Until
+/// ISS-1200 this removal was per entry, so an operator's own command written
+/// into the same entry as one of ours went out with it — deleted from their
+/// file, with nothing said, every time a pane was prepared and, once the sweep
+/// landed, at every boot and after every update as well. `install` writes its
+/// own commands one to an entry, so nothing of this daemon's is lost by asking
+/// the narrower question.
+fn take_ours_out(entries: &mut Vec<Value>) {
+    for entry in entries.iter_mut() {
+        if let Some(hooks) = entry.get_mut("hooks").and_then(Value::as_array_mut) {
+            hooks.retain(|hook| !is_ours_command(hook));
+        }
+    }
+    entries.retain(
+        |entry| !matches!(entry.get("hooks").and_then(Value::as_array), Some(hs) if hs.is_empty()),
+    );
+}
+
+/// Whether one hook in an entry carries a command this daemon wrote.
+fn is_ours_command(hook: &Value) -> bool {
+    hook.get("command")
+        .and_then(Value::as_str)
+        .is_some_and(|c| program_of(c).is_some())
 }
 
 pub fn merged(existing: Option<&str>, exe: &str) -> Result<String> {
@@ -76,10 +90,8 @@ pub fn merged_for(existing: Option<&str>, exe: &str, posix: bool) -> Result<Stri
             .get(event.wire())
             .and_then(Value::as_array)
             .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|e| !is_managed(e))
-            .collect();
+            .unwrap_or_default();
+        take_ours_out(&mut entries);
         entries.push(json!({
             "hooks": [{ "type": "command", "command": command_for(exe, event, posix) }]
         }));
@@ -90,10 +102,8 @@ pub fn merged_for(existing: Option<&str>, exe: &str, posix: bool) -> Result<Stri
         .get(GATE_EVENT)
         .and_then(Value::as_array)
         .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|e| !is_managed(e))
-        .collect();
+        .unwrap_or_default();
+    take_ours_out(&mut gate);
     gate.push(json!({
         "matcher": "*",
         "hooks": [{ "type": "command", "command": gate_command_for(exe, posix) }]
@@ -141,7 +151,7 @@ fn drop_entries_this_build_cannot_serve(hooks: &mut Map<String, Value>) {
         let Some(entries) = entries.as_array_mut() else {
             continue;
         };
-        entries.retain(|entry| !is_ours(entry));
+        take_ours_out(entries);
         if entries.is_empty() {
             emptied.push(event.clone());
         }
@@ -157,16 +167,14 @@ fn installs(event: &str) -> bool {
 }
 
 /// Whether one entry holds a command this daemon wrote, by the same reading
-/// `unrunnable_in` counts one by.
+/// `unrunnable_in` counts one by. What comes OUT of such an entry is
+/// `take_ours_out`'s narrower question: an entry can hold one of ours and one
+/// of somebody else's.
 fn is_ours(entry: &Value) -> bool {
     entry
         .get("hooks")
         .and_then(Value::as_array)
-        .is_some_and(|hs| {
-            hs.iter()
-                .filter_map(|h| h.get("command").and_then(Value::as_str))
-                .any(|c| program_of(c).is_some())
-        })
+        .is_some_and(|hs| hs.iter().any(is_ours_command))
 }
 
 /// The events outside this build's own set whose entries a rewrite will take
@@ -310,7 +318,6 @@ pub fn unrunnable_in(text: &str) -> Result<Vec<String>> {
         .values()
         .filter_map(Value::as_array)
         .flatten()
-        .filter(|e| is_managed(e))
         .filter_map(|e| e.get("hooks").and_then(Value::as_array))
         .flatten()
         .filter_map(|h| h.get("command").and_then(Value::as_str))
@@ -1154,6 +1161,113 @@ mod tests {
             )
             .is_empty(),
             "a file holding only what this build installs must name nothing"
+        );
+    }
+
+    /// One entry object, two commands: this daemon's and the operator's.
+    /// `install` writes its own one to an entry, but nothing stops a person
+    /// putting theirs beside ours in the same matcher group — and until
+    /// ISS-1200 that entry went out whole, taking their command with it.
+    fn entry_holding_ours_and_theirs(exe: &str, event: &str, theirs: &str) -> Value {
+        json!({
+            "matcher": "*",
+            "hooks": [
+                { "type": "command", "command": format!("'{exe}' hook --event {event}") },
+                { "type": "command", "command": theirs },
+            ]
+        })
+    }
+
+    #[test]
+    fn an_operators_command_in_the_same_entry_as_ours_survives_the_rewrite() {
+        let existing = serde_json::to_string_pretty(&json!({
+            "hooks": {
+                "Stop": [entry_holding_ours_and_theirs("/old/forge-runner", "Stop", "say done")]
+            }
+        }))
+        .unwrap();
+
+        let out = merged_for(Some(&existing), "/new/forge-runner", true).unwrap();
+
+        assert!(
+            commands_of(&out).contains(&"say done".to_string()),
+            "an operator's command was deleted because it shared an entry with ours: {out}"
+        );
+        assert!(
+            !commands_of(&out).iter().any(|c| c.contains("/old/")),
+            "the dead command of ours stayed in that entry: {out}"
+        );
+    }
+
+    #[test]
+    fn an_operators_command_in_the_same_entry_as_the_gate_survives_the_rewrite() {
+        let existing = serde_json::to_string_pretty(&json!({
+            "hooks": {
+                GATE_EVENT: [json!({
+                    "matcher": "*",
+                    "hooks": [
+                        { "type": "command", "command": "'/old/forge-runner' gate --event PreToolUse" },
+                        { "type": "command", "command": "audit-every-tool-call" },
+                    ]
+                })]
+            }
+        }))
+        .unwrap();
+
+        let out = merged_for(Some(&existing), "/new/forge-runner", true).unwrap();
+
+        assert!(
+            commands_of(&out).contains(&"audit-every-tool-call".to_string()),
+            "an operator's command beside the gate was deleted with it: {out}"
+        );
+    }
+
+    #[test]
+    fn an_operators_command_beside_ours_under_an_event_this_build_cannot_serve_survives() {
+        let existing = serde_json::to_string_pretty(&json!({
+            "hooks": {
+                "SessionStart": [entry_holding_ours_and_theirs(
+                    "/old/forge-runner",
+                    "SessionStart",
+                    "git fetch --all",
+                )]
+            }
+        }))
+        .unwrap();
+
+        let out = merged_for(Some(&existing), "/new/forge-runner", true).unwrap();
+
+        assert!(
+            commands_of(&out).contains(&"git fetch --all".to_string()),
+            "removing our own entry for an event this build does not install took the operator's command with it: {out}"
+        );
+        assert!(
+            !commands_of(&out).iter().any(|c| c.contains("/old/")),
+            "our own command for an event this build does not install stayed: {out}"
+        );
+    }
+
+    /// The other side of the same reading: an entry that held nothing but a
+    /// command of ours is dropped, not left behind as an entry with an empty
+    /// `hooks` array for Claude Code to read.
+    #[test]
+    fn an_entry_holding_nothing_but_ours_is_dropped_rather_than_left_empty() {
+        let once = merged_for(None, "/old/forge-runner", true).unwrap();
+
+        let out = merged_for(Some(&once), "/new/forge-runner", true).unwrap();
+
+        let hooks = hooks_of(&out);
+        let empty: Vec<&Value> = hooks
+            .values()
+            .filter_map(Value::as_array)
+            .flatten()
+            .filter(
+                |e| matches!(e.get("hooks").and_then(Value::as_array), Some(hs) if hs.is_empty()),
+            )
+            .collect();
+        assert!(
+            empty.is_empty(),
+            "an entry was left holding no command at all: {empty:?}"
         );
     }
 
