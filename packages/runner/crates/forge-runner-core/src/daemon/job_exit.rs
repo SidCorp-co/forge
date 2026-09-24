@@ -24,6 +24,7 @@
 use std::time::Duration;
 
 use crate::daemon::agent_activity::{Activity, Doing, Event};
+use crate::daemon::turn_evidence::Watch;
 
 /// Nothing reported since a turn ENDED for this long: the agent is done.
 pub const IDLE_BEFORE_FINISHED: Duration = Duration::from_secs(15 * 60);
@@ -114,11 +115,20 @@ pub enum KeepReason {
     Compacting,
 }
 
-pub fn verdict(reported: Option<Reported>, now: i64) -> Verdict {
+pub fn verdict(watch: &Watch, reported: Option<Reported>, now: i64) -> Verdict {
     let Some(r) = reported else {
         return Verdict::Keep(KeepReason::Unreported);
     };
-    if r.prompts == 0 {
+    // The counter is this daemon's. `Activities` starts empty and a submission
+    // is counted where it is REPORTED, so for a pane this box adopted the
+    // prompt was delivered, and any submission reported, to a daemon that is
+    // gone: zero there is the missing delivery `turn_evidence` declines to
+    // read, and not evidence no turn began. Reading it as one held the slot of
+    // every adopted pane that finished its turn after the restart, which is the
+    // defect this module was written for returning by another door (ISS-1230).
+    // So only a pane THIS daemon briefed has its zero believed, and every other
+    // one is judged on the boundary its agent did report.
+    if r.prompts == 0 && matches!(watch, Watch::Hooked { .. }) {
         return Verdict::Keep(KeepReason::NoTurnYet);
     }
     // Saturating, so a boundary reported in the future — clock skew, or a
@@ -171,8 +181,8 @@ impl Verdict {
 
 /// What to say about a pane that is holding a slot, for the one line an
 /// operator reads when this box can take no more work.
-pub fn holding_phrase(reported: Option<Reported>, now: i64) -> &'static str {
-    match verdict(reported, now) {
+pub fn holding_phrase(watch: &Watch, reported: Option<Reported>, now: i64) -> &'static str {
+    match verdict(watch, reported, now) {
         Verdict::Keep(KeepReason::Unreported) => "its agent has reported nothing",
         Verdict::Keep(KeepReason::NoTurnYet) => "its prompt is delivered and no turn has begun",
         Verdict::Keep(KeepReason::Working) => "working",
@@ -193,6 +203,15 @@ mod tests {
     const IDLE: i64 = IDLE_BEFORE_FINISHED.as_millis() as i64;
     const SILENT: i64 = SILENT_BEFORE_ABANDONED.as_millis() as i64;
 
+    /// A pane THIS daemon briefed, which is the watch every case below is
+    /// about unless it says otherwise.
+    fn hooked() -> Watch {
+        Watch::Hooked {
+            session_id: "sess-1".into(),
+            delivered_at: NOW,
+        }
+    }
+
     fn reported(doing: Doing, last_event: Event, at: i64) -> Option<Reported> {
         Some(Reported {
             doing,
@@ -209,7 +228,7 @@ mod tests {
     #[test]
     fn a_pane_whose_turn_ended_past_the_window_is_finished() {
         assert_eq!(
-            verdict(ended(NOW - IDLE - 1), NOW),
+            verdict(&hooked(), ended(NOW - IDLE - 1), NOW),
             Verdict::Finished {
                 quiet_for: IDLE + 1
             }
@@ -219,7 +238,7 @@ mod tests {
     #[test]
     fn the_boundary_instant_itself_concludes_the_pane() {
         assert_eq!(
-            verdict(ended(NOW - IDLE), NOW),
+            verdict(&hooked(), ended(NOW - IDLE), NOW),
             Verdict::Finished { quiet_for: IDLE }
         );
     }
@@ -227,7 +246,7 @@ mod tests {
     #[test]
     fn a_turn_that_ended_a_moment_ago_keeps_its_slot() {
         assert_eq!(
-            verdict(ended(NOW - IDLE + 1), NOW),
+            verdict(&hooked(), ended(NOW - IDLE + 1), NOW),
             Verdict::Keep(KeepReason::RecentlyEnded)
         );
     }
@@ -236,6 +255,7 @@ mod tests {
     fn a_turn_still_running_keeps_its_slot_however_long_it_has_run() {
         assert_eq!(
             verdict(
+                &hooked(),
                 reported(Doing::Working, Event::PromptSubmitted, NOW - SILENT * 10),
                 NOW
             ),
@@ -246,7 +266,11 @@ mod tests {
     #[test]
     fn a_failed_turn_ends_a_turn_as_surely_as_a_clean_one() {
         assert_eq!(
-            verdict(reported(Doing::Idle, Event::StoppedFailed, NOW - IDLE), NOW),
+            verdict(
+                &hooked(),
+                reported(Doing::Idle, Event::StoppedFailed, NOW - IDLE),
+                NOW
+            ),
             Verdict::Finished { quiet_for: IDLE }
         );
     }
@@ -258,12 +282,16 @@ mod tests {
         // one of them is `Working` and is kept by the arm above.
         for event in [Event::SubagentStopped, Event::TeammateWentIdle] {
             assert_eq!(
-                verdict(reported(Doing::Idle, event, NOW - IDLE), NOW),
+                verdict(&hooked(), reported(Doing::Idle, event, NOW - IDLE), NOW),
                 Verdict::Finished { quiet_for: IDLE },
                 "{event:?}"
             );
             assert_eq!(
-                verdict(reported(Doing::Working, event, NOW - IDLE * 10), NOW),
+                verdict(
+                    &hooked(),
+                    reported(Doing::Working, event, NOW - IDLE * 10),
+                    NOW
+                ),
                 Verdict::Keep(KeepReason::Working),
                 "{event:?}"
             );
@@ -273,7 +301,7 @@ mod tests {
     #[test]
     fn a_question_a_human_owes_is_blocked_rather_than_finished() {
         assert_eq!(
-            verdict(
+            verdict(&hooked(),
                 reported(
                     Doing::AwaitingPermission,
                     Event::PermissionRequested,
@@ -290,6 +318,7 @@ mod tests {
     fn a_question_asked_a_moment_ago_keeps_its_slot() {
         assert_eq!(
             verdict(
+                &hooked(),
                 reported(
                     Doing::AwaitingPermission,
                     Event::PermissionRequested,
@@ -305,6 +334,7 @@ mod tests {
     fn a_compaction_is_not_a_turn_that_ended_and_outlives_the_idle_window() {
         assert_eq!(
             verdict(
+                &hooked(),
                 reported(Doing::Idle, Event::Compacted, NOW - SILENT + 1),
                 NOW
             ),
@@ -316,14 +346,21 @@ mod tests {
     #[test]
     fn a_pane_silent_since_it_compacted_is_concluded_on_the_longer_window() {
         assert_eq!(
-            verdict(reported(Doing::Idle, Event::Compacted, NOW - SILENT), NOW),
+            verdict(
+                &hooked(),
+                reported(Doing::Idle, Event::Compacted, NOW - SILENT),
+                NOW
+            ),
             Verdict::Silent { quiet_for: SILENT }
         );
     }
 
     #[test]
     fn a_session_that_has_reported_nothing_is_never_concluded_here() {
-        assert_eq!(verdict(None, NOW), Verdict::Keep(KeepReason::Unreported));
+        assert_eq!(
+            verdict(&hooked(), None, NOW),
+            Verdict::Keep(KeepReason::Unreported)
+        );
     }
 
     #[test]
@@ -335,7 +372,7 @@ mod tests {
             prompts: 0,
         });
         assert_eq!(
-            verdict(no_turn, NOW),
+            verdict(&hooked(), no_turn, NOW),
             Verdict::Keep(KeepReason::NoTurnYet),
             "whether a turn ever began is turn_evidence's question, and only it may conclude a pane on that"
         );
@@ -353,7 +390,7 @@ mod tests {
             reported(Doing::Idle, Event::Compacted, NOW + SILENT),
         ] {
             assert!(
-                matches!(verdict(r, NOW), Verdict::Keep(_)),
+                matches!(verdict(&hooked(), r, NOW), Verdict::Keep(_)),
                 "a clock that ran ahead must not conclude a pane: {r:?}"
             );
         }
@@ -366,11 +403,11 @@ mod tests {
         // inside the supervision task, which would take every other job pane's
         // accounting down with it.
         assert!(matches!(
-            verdict(ended(i64::MIN), NOW),
+            verdict(&hooked(), ended(i64::MIN), NOW),
             Verdict::Finished { .. }
         ));
         assert!(matches!(
-            verdict(ended(i64::MAX), NOW),
+            verdict(&hooked(), ended(i64::MAX), NOW),
             Verdict::Keep(KeepReason::RecentlyEnded)
         ));
     }
@@ -447,12 +484,76 @@ mod tests {
     }
 
     #[test]
+    fn an_adopted_pane_that_ended_a_turn_is_finished_though_this_daemons_counter_reads_zero() {
+        let after_a_restart = Some(Reported {
+            doing: Doing::Idle,
+            last_event: Event::Stopped,
+            at: NOW - IDLE,
+            prompts: 0,
+        });
+        assert_eq!(
+            verdict(
+                &Watch::Adopted {
+                    session_id: "sess-1".into()
+                },
+                after_a_restart,
+                NOW
+            ),
+            Verdict::Finished { quiet_for: IDLE },
+            "the submission was counted by the daemon that briefed this pane, so a zero here says nothing about whether a turn ran"
+        );
+    }
+
+    #[test]
+    fn only_a_pane_this_daemon_briefed_has_its_zero_believed() {
+        let no_turn = Some(Reported {
+            doing: Doing::Idle,
+            last_event: Event::Stopped,
+            at: NOW,
+            prompts: 0,
+        });
+        assert_eq!(
+            verdict(&hooked(), no_turn, NOW),
+            Verdict::Keep(KeepReason::NoTurnYet),
+            "whether a turn ever began is turn_evidence's question, and it can only answer it for a pane this daemon delivered to"
+        );
+        assert_eq!(
+            verdict(&Watch::Unhooked, no_turn, NOW),
+            Verdict::Keep(KeepReason::RecentlyEnded),
+            "a pane this daemon did not brief is judged on the boundary it reported"
+        );
+    }
+
+    #[test]
+    fn an_adopted_pane_still_mid_turn_is_kept_whatever_the_counter_reads() {
+        assert_eq!(
+            verdict(
+                &Watch::Adopted {
+                    session_id: "sess-1".into()
+                },
+                Some(Reported {
+                    doing: Doing::Working,
+                    last_event: Event::SubagentStarted,
+                    at: NOW - SILENT * 10,
+                    prompts: 0,
+                }),
+                NOW
+            ),
+            Verdict::Keep(KeepReason::Working)
+        );
+    }
+
+    #[test]
     fn what_holds_a_slot_reads_differently_in_every_state() {
         let phrases = [
-            holding_phrase(None, NOW),
-            holding_phrase(ended(NOW), NOW),
-            holding_phrase(ended(NOW - IDLE), NOW),
-            holding_phrase(reported(Doing::Working, Event::PromptSubmitted, NOW), NOW),
+            holding_phrase(&hooked(), None, NOW),
+            holding_phrase(&hooked(), ended(NOW), NOW),
+            holding_phrase(&hooked(), ended(NOW - IDLE), NOW),
+            holding_phrase(
+                &hooked(),
+                reported(Doing::Working, Event::PromptSubmitted, NOW),
+                NOW,
+            ),
         ];
         let distinct: std::collections::BTreeSet<&&str> = phrases.iter().collect();
         assert_eq!(distinct.len(), 4, "{phrases:?}");

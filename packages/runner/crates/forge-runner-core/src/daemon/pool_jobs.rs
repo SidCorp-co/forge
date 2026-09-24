@@ -19,6 +19,7 @@ use std::sync::Mutex;
 
 use crate::daemon::agent_activity::{now_ms, Activities};
 use crate::daemon::job_exit;
+use crate::daemon::job_unheard;
 use crate::daemon::turn_evidence::{self, Evidence, Watch};
 use crate::daemon::{control, hook_install, session_tokens, terminal};
 use crate::error::{Error, Result};
@@ -95,6 +96,13 @@ struct Held {
     pane: String,
     watch: Watch,
     seen: Option<job_exit::Reported>,
+    /// When this daemon began counting the pane — the adoption, for one it
+    /// adopted, and never the pane's own start. It is the only instant this
+    /// box's own silence can be measured from, which is what `job_unheard`
+    /// reads it for: a pane's delivery belongs to whichever daemon briefed it
+    /// and is persisted nowhere. A reading that wants the slot's age ACROSS a
+    /// restart wants a second value rather than this one, which carried across
+    /// would conclude an adopted pane the instant it was adopted.
     noted_at: i64,
 }
 
@@ -104,7 +112,9 @@ struct Held {
 pub struct Holding {
     pub job_id: String,
     pub pane: String,
-    pub session: Option<String>,
+    /// What this box may conclude from the pane's silence, which is also where
+    /// the session its hooks report under is read from.
+    pub watch: Watch,
     /// What the last sweep read of this agent, which is what `job_exit` will
     /// answer on where the session has said nothing in THIS daemon. A reader
     /// told a pane has reported nothing, while the next sweep is about to
@@ -202,7 +212,7 @@ impl JobPanes {
             .map(|(job_id, h)| Holding {
                 job_id: job_id.clone(),
                 pane: h.pane.clone(),
-                session: h.watch.session_id().map(str::to_string),
+                watch: h.watch.clone(),
                 seen: h.seen,
                 noted_at: h.noted_at,
             })
@@ -236,6 +246,24 @@ impl JobPanes {
 
     pub fn count(&self) -> usize {
         self.inner.lock().map(|m| m.len()).unwrap_or(0)
+    }
+
+    /// When this daemon began counting one job's pane. `None` once the slot is
+    /// back, which a caller reads as a pane there is nothing left to conclude.
+    pub fn noted_at(&self, job_id: &str) -> Option<i64> {
+        let map = self.inner.lock().ok()?;
+        map.get(job_id).map(|h| h.noted_at)
+    }
+
+    /// Move one pane's count start, so a test can stand where an hour of
+    /// watching would have put it without waiting an hour.
+    #[cfg(test)]
+    pub(crate) fn backdate(&self, job_id: &str, to: i64) {
+        if let Ok(mut map) = self.inner.lock() {
+            if let Some(h) = map.get_mut(job_id) {
+                h.noted_at = to;
+            }
+        }
     }
 }
 
@@ -627,7 +655,16 @@ pub async fn supervise(
                 .await;
             registry.hold(&live.job_id, &live.pane, live.watch.clone(), seen);
         }
-        if let Some(reason) = job_exit::verdict(seen, now).reason(&live.pane) {
+        if let Some(reason) = job_exit::verdict(&live.watch, seen, now).reason(&live.pane) {
+            if conclude(panes, report, records, registry, &live, reason).await {
+                continue;
+            }
+        }
+        // Last, and only for the pane the two readings above have each
+        // correctly declined: one this box knows nothing whatever about, which
+        // neither of them can ever conclude.
+        let watching_since = registry.noted_at(&live.job_id).unwrap_or(now);
+        if let Some(reason) = job_unheard::verdict(seen, watching_since, now).reason(&live.pane) {
             if conclude(panes, report, records, registry, &live, reason).await {
                 continue;
             }
@@ -2519,6 +2556,174 @@ mod tests {
             kind.is_some(),
             "the heartbeat kind is not one core accepts, so every beat is a 400: {req}"
         );
+    }
+
+    /// Longer than this box waits before a pane it has heard nothing from at
+    /// all is one it cannot account for.
+    const PAST_UNHEARD: i64 = job_unheard::UNHEARD_BEFORE_ABANDONED.as_millis() as i64 + 1;
+
+    /// One hook report, WITHOUT the submission before it — the shape a pane
+    /// adopted mid-turn makes, its `UserPromptSubmit` having been counted by a
+    /// daemon that is gone.
+    fn said_since_the_restart(
+        acts: &Activities,
+        session: &str,
+        event: crate::daemon::agent_activity::Event,
+        ago: i64,
+    ) {
+        use crate::daemon::agent_activity::Report;
+        acts.record(
+            session,
+            Report {
+                event,
+                at: now_ms() - ago,
+                subject: None,
+                conversation: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn an_adopted_pane_this_box_never_hears_from_stops_holding_its_slot() {
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.records
+            .note(&recorded(
+                "j1",
+                Watch::Adopted {
+                    session_id: "sess-neverstarted".into(),
+                },
+                None,
+            ))
+            .await;
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+        w.registry.backdate("j1", now_ms() - PAST_UNHEARD);
+        sup(&w).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(
+            failed.len(),
+            1,
+            "turn_evidence declines an adopted watch and job_exit declines an empty snapshot, so without a third reading this pane holds its slot for the rest of its life"
+        );
+        assert!(
+            failed[0].1.contains("nothing whatever"),
+            "the reason must say what was missing: {}",
+            failed[0].1
+        );
+        assert_eq!(w.registry.count(), 0, "the slot did not come back");
+        assert_eq!(
+            w.rec.killed.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()],
+            "a slot given back while its pane runs is a slot this box would hand out twice"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pane_this_box_has_no_channel_to_stops_holding_its_slot_too() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
+
+        w.registry.backdate("j1", now_ms() - PAST_UNHEARD);
+        sup(&w).await;
+
+        assert_eq!(
+            w.rec.failed.lock().unwrap().len(),
+            1,
+            "a pane whose capability could not be minted can never report, so no reading this box has will ever conclude it"
+        );
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_pane_inside_the_window_is_left_alone() {
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.records
+            .note(&recorded(
+                "j1",
+                Watch::Adopted {
+                    session_id: "sess-1".into(),
+                },
+                None,
+            ))
+            .await;
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+        w.registry.backdate("j1", now_ms() - PAST_UNHEARD + 60_000);
+        sup(&w).await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "an agent this box has not yet waited out is one it may still hear from"
+        );
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_window_starts_again_at_the_adoption_and_not_at_the_pane() {
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.records
+            .note(&recorded(
+                "j1",
+                Watch::Adopted {
+                    session_id: "sess-1".into(),
+                },
+                None,
+            ))
+            .await;
+
+        let before = now_ms();
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+
+        let noted = w.registry.noted_at("j1").expect("the slot is held");
+        assert!(
+            noted >= before,
+            "a pane adopted hours into its life must be given the whole window from the adoption, or the first sweep after a restart concludes it"
+        );
+        sup(&w).await;
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_adopted_pane_that_ends_its_turn_gives_the_slot_back_though_this_daemon_counted_no_prompt(
+    ) {
+        use crate::daemon::agent_activity::Event;
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.records
+            .note(&recorded(
+                "j1",
+                Watch::Adopted {
+                    session_id: "sess-1".into(),
+                },
+                None,
+            ))
+            .await;
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+        // The submission was counted by the daemon that briefed this pane, so
+        // this one's counter reads zero however much work the agent did.
+        let acts = Activities::new();
+        said_since_the_restart(&acts, "sess-1", Event::Stopped, PAST_IDLE);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(
+            failed.len(),
+            1,
+            "a zero this daemon never had the chance to increment is not evidence no turn began, and reading it as one holds the slot for the pane's life"
+        );
+        assert!(failed[0].1.contains("ended a turn"), "{}", failed[0].1);
+        assert_eq!(w.registry.count(), 0);
     }
 }
 

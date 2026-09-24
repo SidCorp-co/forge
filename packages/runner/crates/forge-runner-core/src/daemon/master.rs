@@ -29,6 +29,7 @@ use crate::daemon::checkpoint;
 use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::held_report;
 use crate::daemon::job_exit;
+use crate::daemon::job_unheard;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::master_limit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
@@ -1162,17 +1163,25 @@ fn report_job_capacity(
             // The same precedence the sweep itself reads on: what this daemon
             // has heard, and otherwise what the last one recorded.
             let seen = h
-                .session
-                .as_deref()
+                .watch
+                .session_id()
                 .and_then(|s| activity.get(s))
                 .map(|a| job_exit::Reported::of(&a))
                 .or(h.seen);
+            // A pane the next sweep is about to let go for having said nothing
+            // at all must not read here as one merely waiting to be heard from:
+            // that is the second answer to one question this line exists to
+            // avoid giving.
+            let phrase = match job_unheard::verdict(seen, h.noted_at, now) {
+                job_unheard::Verdict::Unheard { .. } => job_unheard::HOLDING_PHRASE,
+                job_unheard::Verdict::Keep => job_exit::holding_phrase(&h.watch, seen, now),
+            };
             format!(
                 "{} in {} for {}m, {}",
                 h.job_id,
                 h.pane,
                 now.saturating_sub(h.noted_at) / 60_000,
-                job_exit::holding_phrase(seen, now)
+                phrase
             )
         })
         .collect::<Vec<_>>()
@@ -2788,6 +2797,40 @@ mod tests {
             "a reader told the pane has reported nothing, while the next sweep is about to conclude it finished, has two answers to one question: {out}"
         );
         assert!(!out.contains("reported nothing"), "{out}");
+    }
+
+    #[test]
+    fn a_pane_the_sweep_is_about_to_let_go_for_saying_nothing_reads_as_that() {
+        use crate::daemon::turn_evidence::Watch;
+        let cfg = box_at(1);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        panes.hold(
+            "j1",
+            "forge-job-j1",
+            Watch::Adopted {
+                session_id: "sess-1".into(),
+            },
+            None,
+        );
+        panes.backdate(
+            "j1",
+            agent_activity::now_ms()
+                - crate::daemon::job_unheard::UNHEARD_BEFORE_ABANDONED.as_millis() as i64
+                - 1,
+        );
+
+        let out = give_back_tests::logged_while(|| {
+            report_job_capacity(&cfg, &panes, &agent_activity::Activities::new())
+        });
+
+        assert!(
+            out.contains("never heard from"),
+            "the person hunting a box that has stopped taking work is told what is holding it: {out}"
+        );
+        assert!(
+            out.contains("has not let it go yet"),
+            "a reader told only that the agent has reported nothing, while the next sweep concludes the pane, has two answers to one question: {out}"
+        );
     }
 
     #[test]
