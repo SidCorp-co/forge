@@ -63,6 +63,14 @@ export function forgeIssuesDescription(refClause: string): string {
     '(ISS-1100) and no dispatch decision reads merged_at. target is an audit label. unmark ' +
     'clears both columns when a merge is rolled back, and is refused on a closed issue: ' +
     'move it off closed first.\n' +
+    'ARCHIVE. An archived issue is out of list, search, memory recall and the alike check, and ' +
+    'still answers get by key with archivedAt set. archive/unarchive (project admin) take ' +
+    'archiveFilter { keys?, statuses?, seqBelow?, exclude? } - the intersection of what is ' +
+    'given, minus exclude, keys or statuses required - and dryRun:true answers what it would ' +
+    'touch and writes nothing. Only a closed or dropped issue with no live edge to unfinished ' +
+    'work can be archived; anything else is refused by name and nothing is written. ' +
+    'filters.includeArchived:true lists archived rows too. A transition or a new edge naming ' +
+    'an archived issue is refused (ISSUE_ARCHIVED) until it is unarchived.\n' +
     'TASKS. createTask needs data.issueId + data.taskTitle; listTasks needs filters.issue and ' +
     'accepts filters.taskStatus; updateTask/deleteTask take the task UUID as documentId. Tasks ' +
     'inherit project membership from their issue.\n' +

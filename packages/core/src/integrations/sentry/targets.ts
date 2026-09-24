@@ -1,3 +1,4 @@
+import { SentryRefusal } from './refusals.js';
 import type { SentryConfig, SentryTarget } from './types.js';
 
 export function resolveSentryTargets(config: SentryConfig | null | undefined): SentryTarget[] {
@@ -58,13 +59,17 @@ export function resolveSentryTarget(
   const targets = resolveSentryTargets(config);
   const declared = targets.map((t) => t.label).join(', ');
   if (targets.length === 0) {
-    throw new Error('sentry: this binding declares no targets, so no Sentry project can be named');
+    throw new SentryRefusal(
+      'no_targets',
+      'sentry: this binding declares no targets, so no Sentry project can be named',
+    );
   }
 
   let chosen: SentryTarget | undefined;
   if (label === undefined || label === '') {
     if (targets.length > 1) {
-      throw new Error(
+      throw new SentryRefusal(
+        'target_ambiguous',
         `sentry: no target label was named and this binding declares ${targets.length}: ${declared}`,
       );
     }
@@ -72,14 +77,21 @@ export function resolveSentryTarget(
   } else {
     chosen = targets.find((t) => t.label === label);
     if (!chosen) {
-      throw new Error(`sentry: no target labelled "${label}" — this binding declares: ${declared}`);
+      throw new SentryRefusal(
+        'target_unknown',
+        `sentry: no target labelled "${label}" — this binding declares: ${declared}`,
+      );
     }
   }
   if (!chosen) {
-    throw new Error(`sentry: no target resolved — this binding declares: ${declared}`);
+    throw new SentryRefusal(
+      'target_unknown',
+      `sentry: no target resolved — this binding declares: ${declared}`,
+    );
   }
   if (!chosen.organizationSlug) {
-    throw new Error(
+    throw new SentryRefusal(
+      'target_no_org',
       `sentry: target "${chosen.label}" declares no organizationSlug, and a Sentry issue is addressed under its organization`,
     );
   }

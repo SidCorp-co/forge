@@ -61,7 +61,11 @@ export async function applyIssueRelations(
   issueId: string,
   relations: readonly IssueRelationInput[] | undefined,
 ): Promise<AppliedIssueRelation[]> {
-  const pending = await writeIssueRelations(writer, projectId, issueId, relations, db);
+  // One transaction for every edge, so each side's `FOR SHARE` read holds until its edge commits
+  // and an archive cannot land between the archived-issue check and the insert (ISS-1237).
+  const pending = await db.transaction((tx) =>
+    writeIssueRelations(writer, projectId, issueId, relations, tx),
+  );
   await flushIssueRelationEffects(writer, projectId, pending);
   return pending.map((p) => p.applied);
 }

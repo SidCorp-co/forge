@@ -146,6 +146,11 @@ export interface PipelineIssueRow {
   assigneeId: string | null;
   /** Derived by the search hydrator with `?withAgentSessions=true`. */
   agentStatus?: "running" | "queued" | "completed" | "failed" | null;
+  /** Whether anything is on the issue now, from the same hydrator — the lane reads "Running" only
+   *  where this is true and "No check-in" where it is not (ISS-1213). */
+  held: boolean;
+  /** When anything last spoke for the issue, from the same hydrator; `null` where core has no time. */
+  lastCheckInAt: string | null;
   pipelineHealth?: PipelineHealth;
   metadata?: ({ branchConfig?: { branch?: string } | null } & Record<string, unknown>) | null;
 }

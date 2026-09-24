@@ -56,11 +56,20 @@ const conditionSchema = z
           : 'only a blind project has an unreadSince',
       });
     }
-    if (blind && c.consecutive < 1) {
+    if (blind ? c.consecutive < 1 : c.consecutive !== 0) {
       ctx.addIssue({
         code: 'custom',
         path: ['consecutive'],
-        message: 'a blind project has at least one consecutive failed read',
+        message: blind
+          ? 'a blind project has at least one consecutive failed read'
+          : 'only a blind project has consecutive failed reads',
+      });
+    }
+    if (blind && c.recoveredAt !== null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['recoveredAt'],
+        message: 'a blind project has not recovered',
       });
     }
   });

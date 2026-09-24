@@ -50,6 +50,13 @@ vi.mock('./agent-sessions-hydrator.js', () => ({
       ]),
   ),
 }));
+vi.mock('./held-hydrator.js', () => ({
+  hydrateHeldForIssues: vi.fn(async (ids: string[]) => {
+    const on = (id: string) => id === '33333333-3333-4333-8333-333333333333';
+    const at = '2026-09-24T18:50:58.000Z';
+    return new Map(ids.map((id) => [id, { held: on(id), lastCheckInAt: on(id) ? null : at }]));
+  }),
+}));
 
 vi.mock('./creator.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./creator.js')>();

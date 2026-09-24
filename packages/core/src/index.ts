@@ -79,6 +79,7 @@ import {
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
+import { issueArchiveRoutes } from './issues/archive-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
 import { backlogStreamRoutes, closeBacklogStreams } from './issues/backlog/routes.js';
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
@@ -323,6 +324,7 @@ app.route('/api/projects', reconcileRoutes);
 app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', searchRoutes);
+app.route('/api/projects', issueArchiveRoutes);
 app.route('/api/projects', backlogStreamRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', moduleDiagramRoutes);

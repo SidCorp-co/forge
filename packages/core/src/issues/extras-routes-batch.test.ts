@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+// The archived-issue guard reads the row itself; these tests script every select, so it answers none.
+vi.mock('./archive.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./archive.js')>()),
+  archivedAmong: vi.fn(async () => []),
+  archiveRefusalForTransition: vi.fn(async () => null),
+}));
+
 vi.mock('./issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -104,8 +111,6 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
-
-vi.mock('../jobs/enqueue.js', () => ({ enqueueJob: vi.fn() }));
 
 const transitionEmit = vi.fn();
 const issueUpdatedEmit = vi.fn();

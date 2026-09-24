@@ -1,16 +1,11 @@
 import { sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
-import { isPreviousCredentialValid } from '../rotation.js';
-import { updateConnection } from '../store.js';
-import type {
-  AdapterContext,
-  HealthStatus,
-  OutboundDispatchInput,
-  OutboundDispatchResult,
-} from '../types.js';
+import type { OutboundDispatchInput, OutboundDispatchResult } from '../types.js';
+import { callSentry, type SentryAdapterContext } from './call.js';
 import { sentryIssueUrl, sentryOrgIssuesUrl } from './endpoints.js';
 import {
   assertListLimit,
+  assertStatsPeriod,
   confinementRefusal,
   listQuery,
   nextSentryCursor,
@@ -20,18 +15,14 @@ import {
   type SentryListRefusal,
   type SentryListRequest,
 } from './listing.js';
+import { SentryRefusal } from './refusals.js';
 import { type ResolvedSentryTarget, resolveSentryTarget } from './targets.js';
-import {
-  SENTRY_ISSUE_STATUSES,
-  type SentryConfig,
-  type SentryIssueDetail,
-  type SentryIssueStatus,
-  type SentrySecrets,
-} from './types.js';
+import { SENTRY_ISSUE_STATUSES, type SentryIssueDetail, type SentryIssueStatus } from './types.js';
 
-const CALL_TIMEOUT_MS = 15_000;
+export type { SentryAdapterContext } from './call.js';
 
 export {
+  assertStatsPeriod,
   nextSentryCursor,
   SENTRY_LIST_DEFAULT_LIMIT,
   SENTRY_LIST_DEFAULT_QUERY,
@@ -54,8 +45,6 @@ export const SENTRY_DISPATCH_EVENTS = [
   SENTRY_ISSUE_LIST,
 ] as const;
 
-export type SentryAdapterContext = AdapterContext<SentryConfig, SentrySecrets>;
-
 /**
  * One dispatch's request, and the SAME shape the delivery row records.
  *
@@ -71,117 +60,6 @@ export interface SentryIssueRequest {
 export interface SentryIssueCall {
   result: OutboundDispatchResult;
   issue: SentryIssueDetail;
-}
-
-type Attempt =
-  | { kind: 'ok'; body: unknown; link: string | null }
-  | { kind: 'refused'; status: number; health: HealthStatus; reason: string };
-
-async function attempt(
-  url: string,
-  token: string,
-  method: 'GET' | 'PUT',
-  body?: Record<string, unknown>,
-): Promise<Attempt> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: controller.signal,
-    });
-    if (res.ok) return { kind: 'ok', body: await res.json(), link: res.headers.get('link') };
-    if (res.status === 401) {
-      return {
-        kind: 'refused',
-        status: 401,
-        health: 'needs_reauth',
-        reason: 'the Sentry auth token was rejected',
-      };
-    }
-    if (res.status === 403) {
-      return {
-        kind: 'refused',
-        status: 403,
-        health: 'needs_scope',
-        reason: 'the Sentry auth token lacks the scope this call needs (issue:read / issue:write)',
-      };
-    }
-    return {
-      kind: 'refused',
-      status: res.status,
-      health: 'error',
-      reason: `Sentry answered HTTP ${res.status}`,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * One call to Sentry, with the ISS-405 previous-token retry and the health verdict it earns.
- *
- * The health write is not bookkeeping: a dispatch that keeps being refused while the connection
- * card stays green is a state that lies about itself, and the healthcheck only runs on its own
- * schedule.
- */
-async function callSentry(
-  ctx: SentryAdapterContext,
-  url: string,
-  method: 'GET' | 'PUT',
-  body?: Record<string, unknown>,
-  /** Filled with the response's `Link` header where the caller cares; the other two do not. */
-  out?: { link: string | null },
-): Promise<unknown> {
-  const authToken = ctx.secrets?.authToken;
-  if (!authToken) {
-    // The same rule the catch below states, at the one refusal that precedes it: a connection left
-    // green through a call that could not be made is a state that lies about itself. `healthcheck`
-    // in `adapter.ts` writes `error` for this exact condition, and a dispatch that stayed silent
-    // here would leave the card disagreeing with the delivery log beside it.
-    await updateConnection(ctx.connectionId, {
-      lastHealthStatus: 'error',
-      lastHealthAt: new Date(),
-    });
-    throw new Error('sentry: this connection holds no auth token, so no call can be made');
-  }
-  let res: Attempt;
-  try {
-    res = await attempt(url, authToken, method, body);
-    if (
-      res.kind === 'refused' &&
-      res.status === 401 &&
-      ctx.secrets.previousAuthToken &&
-      isPreviousCredentialValid(ctx.secrets)
-    ) {
-      res = await attempt(url, ctx.secrets.previousAuthToken, method, body);
-    }
-  } catch (err) {
-    // A timeout, a DNS failure or a body that is not JSON never produced an HTTP status, so it
-    // never reached the verdict below — and a connection left green through a call that could not
-    // be made is the contradiction this function exists to prevent.
-    await updateConnection(ctx.connectionId, {
-      lastHealthStatus: 'error',
-      lastHealthAt: new Date(),
-    });
-    const reason = err instanceof Error ? err.message : 'unknown error';
-    throw new Error(`sentry: ${method} ${url} — ${reason}`);
-  }
-  await updateConnection(ctx.connectionId, {
-    lastHealthStatus: res.kind === 'ok' ? 'ok' : res.health,
-    lastHealthAt: new Date(),
-  });
-  if (res.kind !== 'ok') {
-    throw new Error(`sentry: ${method} ${url} — ${res.reason}`);
-  }
-  if (out) out.link = res.link;
-  return res.body;
 }
 
 async function withDelivery<T>(
@@ -261,7 +139,8 @@ export function projectIssue(body: unknown, fallbackId: string): SentryIssueDeta
 
 function assertIssueId(issueId: unknown): string {
   if (typeof issueId === 'string' && issueId.trim() !== '') return issueId;
-  throw new Error(
+  throw new SentryRefusal(
+    'bad_argument',
     'sentry: this dispatch names no `issueId`, and an issue cannot be addressed without one',
   );
 }
@@ -285,12 +164,14 @@ function assertTargetHoldsIssue(
 ): void {
   if (!target.projectSlug) return;
   if (issue.projectSlug === null) {
-    throw new Error(
+    throw new SentryRefusal(
+      'confined_out',
       `sentry: target "${target.label}" is scoped to project ${target.projectSlug}, and Sentry's answer for issue ${issueId} names no project — this call cannot be confined to that target`,
     );
   }
   if (issue.projectSlug !== target.projectSlug) {
-    throw new Error(
+    throw new SentryRefusal(
+      'confined_out',
       `sentry: issue ${issueId} belongs to project ${issue.projectSlug}, and target "${target.label}" is scoped to ${target.projectSlug}`,
     );
   }
@@ -300,7 +181,8 @@ function assertStatus(status: unknown): SentryIssueStatus {
   if (typeof status === 'string' && (SENTRY_ISSUE_STATUSES as readonly string[]).includes(status)) {
     return status as SentryIssueStatus;
   }
-  throw new Error(
+  throw new SentryRefusal(
+    'bad_argument',
     `sentry: ${JSON.stringify(status)} is not a Sentry issue status — Sentry accepts ${SENTRY_ISSUE_STATUSES.join(', ')}`,
   );
 }
@@ -372,6 +254,7 @@ export async function listSentryIssues(
   requestId?: string,
 ): Promise<SentryIssueListing> {
   let target!: ResolvedSentryTarget;
+  let asked = '';
   let refused: SentryListRefusal[] = [];
   let pages = 0;
   let truncated = false;
@@ -383,7 +266,9 @@ export async function listSentryIssues(
     async () => {
       target = resolveSentryTarget(ctx.config, input.targetLabel);
       const limit = assertListLimit(input.limit);
+      const statsPeriod = assertStatsPeriod(input.statsPeriod);
       const query = listQuery(input.query, target);
+      asked = query;
       const admitted: SentryIssueDetail[] = [];
       const turnedAway: SentryListRefusal[] = [];
       let cursor: string | undefined;
@@ -392,6 +277,7 @@ export async function listSentryIssues(
         const url = sentryOrgIssuesUrl(ctx.config.host, target.organizationSlug, {
           query,
           limit,
+          ...(statsPeriod ? { statsPeriod } : {}),
           ...(cursor ? { cursor } : {}),
         });
         const out: { link: string | null } = { link: null };
@@ -400,16 +286,19 @@ export async function listSentryIssues(
           body = await callSentry(ctx, url, 'GET', undefined, out);
         } catch (err) {
           refused = turnedAway;
-          throw new SentryListingFailed(err instanceof Error ? err.message : 'unknown error', {
-            pages,
-            refused: turnedAway,
-          });
+          throw new SentryListingFailed(
+            err instanceof Error ? err.message : 'unknown error',
+            { pages, refused: turnedAway },
+            err instanceof SentryRefusal ? err : null,
+          );
         }
         if (!Array.isArray(body)) {
           refused = turnedAway;
+          const unreadable = `sentry: could not read Sentry's answer — ${url} answered ${typeof body}, and an issue listing has to be an array`;
           throw new SentryListingFailed(
-            `sentry: ${url} answered ${typeof body}, and an issue listing has to be an array`,
+            unreadable,
             { pages, refused: turnedAway },
+            new SentryRefusal('sentry_unreachable', unreadable),
           );
         }
         pages += 1;
@@ -461,7 +350,7 @@ export async function listSentryIssues(
       };
     },
   );
-  return { result, target, issues: value, refused, pages, truncated };
+  return { result, target, query: asked, issues: value, refused, pages, truncated };
 }
 
 /**

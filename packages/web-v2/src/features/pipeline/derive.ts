@@ -9,13 +9,14 @@ import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
 import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues/types";
 import { type StageKey, stageColor } from "@/design/stages";
+import { gateReasonLine } from "@/features/runners/types";
+import { formatElapsed } from "@/lib/utils/format";
 import {
   BOARD_EXCLUDED_STATUSES,
   type PipelineIssueRow,
   type PipelineRunListItem,
   type PipelineRunStatus,
   type RunGate,
-  type RunGateCondition,
   type StepDurationRow,
 } from "./types";
 
@@ -115,7 +116,8 @@ export function boardColumns(
   const reachable = new Set<AutonomousLabel>();
   for (const status of REGISTRY_ISSUE_STATUSES) {
     if (excluded.includes(status)) continue;
-    reachable.add(toAutonomousLabel(status));
+    reachable.add(toAutonomousLabel(status, true));
+    reachable.add(toAutonomousLabel(status, false));
   }
   return AUTONOMOUS_LABELS.filter((l) => reachable.has(l));
 }
@@ -125,12 +127,17 @@ export function labelTone(label: AutonomousLabel): SemanticTone {
   return LABEL_VIEW[label].tone;
 }
 
-/** Group issues into the board's columns by the label their status reads as. */
+/** The lane label a board row reads: its status, and whether anything is on it now. */
+export function rowLabel(issue: PipelineIssueRow): AutonomousLabel {
+  return toAutonomousLabel(issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number], issue.held);
+}
+
+/** Group issues into the board's columns by the label each row reads as. */
 export function groupIssuesByLabel(issues: PipelineIssueRow[] | undefined): LabelGroup[] {
   const columns = boardColumns();
   const buckets = new Map<AutonomousLabel, PipelineIssueRow[]>(columns.map((l) => [l, []]));
   for (const issue of issues ?? []) {
-    const label = toAutonomousLabel(issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number]);
+    const label = rowLabel(issue);
     const bucket = buckets.get(label);
     if (bucket) bucket.push(issue);
     else buckets.set(label, [issue]);
@@ -195,30 +202,51 @@ export interface CardStatusView {
   domain: "session" | "issue";
   /** The gate sentence, for the card's tooltip + aria-label; "" when none. */
   waitingReason: string;
+  /** A line the card shows under its title; "" when none. */
+  note: string;
 }
 
-/** ISS-1192 — what a reviewer opening this run is told about the box's gate.
- *  `null` where it was deciding, and where the box reported nothing. */
+/**
+ * What the board can say about a row nothing holds: when anything last spoke for it. Core cannot
+ * tell a quiet run from a gone one, so the card gives the time and leaves the gap to the reader.
+ */
+export function checkInLine(lastCheckInAt: string | null, now: number): string {
+  if (lastCheckInAt === null) return "No check-in on record";
+  const at = new Date(lastCheckInAt);
+  const clock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  return `Last check-in ${clock} · ${formatElapsed(now - at.getTime())} ago`;
+}
+
+/** ISS-1192 — what a reviewer opening a run session is told about the box's
+ *  gate. `none` and `clear` are different facts and never share a picture. */
 export interface RunGateNote {
-  verdict: "marked" | "failing_open" | "unreadable";
+  verdict: "none" | "clear" | "marked" | "failing_open" | "unreadable";
   headline: string;
   detail: string;
   reason: string | null;
 }
 
-/** The largest count, taken rather than assumed: nothing between the box and
- *  here declares the breakdown's order, and the wrong cause sends a reader at
- *  the wrong remedy. */
-function commonestReason(by: RunGateCondition["byReason"]) {
-  return by.reduce<RunGateCondition["byReason"][number] | undefined>((best, r) => {
-    if (best === undefined) return r;
-    if (r.count !== best.count) return r.count > best.count ? r : best;
-    return r.reason < best.reason ? r : best;
-  }, undefined);
+/** The run could not be fetched: the condition is unknown, which is not "none". */
+export function runGateUnfetched(message: string): RunGateNote {
+  return {
+    verdict: "unreadable",
+    headline: "This run's record could not be read, so its gate condition is unknown",
+    detail: message,
+    reason: null,
+  };
 }
 
+/** `undefined` is a response that did not carry the field, and says nothing. */
 export function runGateNote(gate: RunGate | null | undefined): RunGateNote | null {
-  if (!gate) return null;
+  if (gate === undefined) return null;
+  if (gate === null) {
+    return {
+      verdict: "none",
+      headline: "The box reported no gate condition when this run opened",
+      detail: "Its runner sent none, so this record cannot say whether the gate was deciding.",
+      reason: null,
+    };
+  }
   if (gate.read === "unreadable") {
     return {
       verdict: "unreadable",
@@ -228,10 +256,16 @@ export function runGateNote(gate: RunGate | null | undefined): RunGateNote | nul
     };
   }
   const c = gate.condition;
-  if (c.verdict === "clear") return null;
+  if (c.verdict === "clear") {
+    return {
+      verdict: "clear",
+      headline: "This box's gate was deciding when this run opened",
+      detail: "No dispatch on record had gone through without a decision.",
+      reason: null,
+    };
+  }
   const rate = c.perDay === null ? "at an unstated rate" : `${Math.round(c.perDay)}/day`;
   const window = c.windowMs === null ? "an unknown span" : formatDurationMs(c.windowMs);
-  const top = commonestReason(c.byReason);
   return {
     verdict: c.verdict,
     headline:
@@ -239,15 +273,27 @@ export function runGateNote(gate: RunGate | null | undefined): RunGateNote | nul
         ? "This box's gate was failing open when this run opened"
         : "This box's gate had admitted undecided dispatches when this run opened",
     detail: `${c.count} dispatch(es) admitted without a decision, ${rate} over ${window}`,
-    reason: top?.count === c.count ? `every one of them: ${top.reason}` : (top?.reason ?? null),
+    reason: gateReasonLine(c.byReason, c.count),
   };
 }
 
 export function cardStatus(
   issue: PipelineIssueRow,
   run: { status: PipelineRunStatus } | undefined,
-  labelStatus: (s: IssueStatus) => string,
+  now: number = Date.now(),
 ): CardStatusView {
+  const label = rowLabel(issue);
+  // Nothing holds the row, so a run or a queued step the board kept for it is history, not what
+  // the card is now: a queued job would have made the row held.
+  if (label === "unheld") {
+    return {
+      status: LABEL_VIEW.unheld.status,
+      label: LABEL_VIEW.unheld.label,
+      domain: "issue",
+      waitingReason: "",
+      note: checkInLine(issue.lastCheckInAt, now),
+    };
+  }
   const queued = deriveQueuedStep(issue.pipelineHealth, hasLiveAgentSession(issue.agentStatus));
   if (queued) {
     return {
@@ -255,6 +301,7 @@ export function cardStatus(
       label: queued.gate?.short ?? "Queued",
       domain: "session",
       waitingReason: queued.gate?.detail ?? "",
+      note: "",
     };
   }
   if (run) {
@@ -263,12 +310,14 @@ export function cardStatus(
       label: undefined,
       domain: "session",
       waitingReason: "",
+      note: "",
     };
   }
   return {
     status: statusToChip(issue.status as IssueStatus),
-    label: labelStatus(issue.status as IssueStatus),
+    label: LABEL_VIEW[label].label,
     domain: "issue",
     waitingReason: "",
+    note: "",
   };
 }

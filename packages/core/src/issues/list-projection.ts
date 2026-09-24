@@ -34,6 +34,7 @@ export const REST_ISSUE_LIST_COLUMNS = {
   mergedCommitSha: issues.mergedCommitSha,
   releaseBatchRunId: issues.releaseBatchRunId,
   metadata: issues.metadata,
+  archivedAt: issues.archivedAt,
   createdAt: issues.createdAt,
   updatedAt: issues.updatedAt,
 } as const;
@@ -61,6 +62,8 @@ export type RestIssueListRow = {
   mergedCommitSha: string | null;
   releaseBatchRunId: string | null;
   metadata: (typeof issues.$inferSelect)['metadata'];
+  /** ISS-1237 — set only on a row a caller asked for with `includeArchived` or by key. */
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   /** ISS-960 — present only when the query carried a search term. */

@@ -27,7 +27,7 @@ describe("deviceGateBanner", () => {
 		);
 	});
 
-	it("names only the commonest reason where the count is a mixture", () => {
+	it("names the commonest reason with its share where the count is a mixture", () => {
 		const banner = deviceGateBanner(
 			gate({
 				byReason: [
@@ -37,7 +37,7 @@ describe("deviceGateBanner", () => {
 			}),
 			NOW,
 		);
-		expect(banner?.reason).toBe("no control capability");
+		expect(banner?.reason).toBe("200 of 279: no control capability");
 	});
 
 	it("shows nothing for a box whose gate has never failed open", () => {
@@ -74,6 +74,6 @@ describe("deviceGateBanner", () => {
 			}),
 			NOW,
 		);
-		expect(banner?.reason).toBe("dominant");
+		expect(banner?.reason).toBe("200 of 279: dominant");
 	});
 });

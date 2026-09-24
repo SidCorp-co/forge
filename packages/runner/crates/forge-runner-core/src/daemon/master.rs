@@ -1385,7 +1385,11 @@ async fn take_pool_job(
         .ok()
         .map(|r| r.repo_path);
     let took = pool_jobs::take_one(
-        &pool_jobs::CorePool { client, limit: 20 },
+        &pool_jobs::CorePool {
+            client,
+            limit: 20,
+            deadline: crate::transport::pool::CALL_DEADLINE,
+        },
         &pool_jobs::TmuxPanes,
         &pool_jobs::CoreReport { client },
         job_records,
@@ -3806,6 +3810,18 @@ mod tests {
             MASTER_SKILL.contains("forge-runner run close"),
             "a master holding a spent declaration needs the way out named where it reads"
         );
+    }
+
+    /// ISS-1246. A subagent's stop is not its end and nothing on the box ends
+    /// it for being quiet, so the skill may not tell a master its runs close
+    /// themselves: that is the sentence that left every tree to recovery.
+    #[test]
+    fn the_skill_says_the_master_closes_a_finished_run() {
+        assert!(
+            !MASTER_SKILL.contains("closes itself"),
+            "a subagent run is ended by its master's close or its master's end, and by nothing it does itself"
+        );
+        assert!(MASTER_SKILL.contains("Close a run once you will not resume its subagent"));
     }
 
     #[test]

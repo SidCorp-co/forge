@@ -112,13 +112,20 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **An issue can be archived, and unarchived.** It leaves search, recall, the duplicate check and
+  every list but the pulse's undeployed work, and opens by key everywhere except the `forge` CLI
+  (forge-plugin ISS-2421). Unfinished work cannot be archived.
+- **An agent can now ask what the product is erroring on, not only whether the server is up.** It
+  reads the project's error stream, narrowed by release, window, route or request id, and changes
+  nothing there.
 - **A machine that cannot read a project's work queue now says so on the Runners page** — since
   when, how often, and the exact error — instead of looking the same as a queue with nothing in it.
 - **A machine whose work-declaration check has stopped deciding now says so on the Runners page** —
   how many runs it let through unchecked, how fast, and over what window — instead of only on the
   machine itself.
-- **A run now says whether that check was deciding when it started.** Open a run and it names how
-  many runs the machine let through unchecked, how fast, over what window, and why.
+- **A run now says whether that check was deciding when it started.** Open the run's
+  session and its side panel names how many runs went through unchecked, how fast, over what
+  window and why, or that the machine reported nothing.
 - **A box can now ask a person, and read the answer back.** `forge-runner question ask` puts the
   question on the screen the person was pointed at; `forge-runner question answer` reads the reply.
 - **Asking about a whole backlog now costs one request, not one per issue.** Two new streamed
@@ -3087,6 +3094,20 @@
   set is now 59.
 
 ### Fixed
+- **The Pipeline board says Running only when something is working the issue.** In-progress work
+  nothing is holding sits under No check-in, showing when it last reported, if ever. Status menus
+  name the status you would move to.
+- **A machine whose queue read hangs now reports it instead of looking healthy.** A read with no
+  answer within 15 seconds counts as failed, and the error names its cause, not the address.
+- **A subagent's worktree is no longer removed while it can still resume.** Its run ends when its
+  master closes it or the master's pane ends. A subagent silent for an hour is named, and kept.
+- **A job no runner can brief no longer blocks every job queued behind it.** PM runs and issue
+  enrichment are refused by name until they have a prompt; a queued job without one fails, saying so.
+- **A machine whose record of failed queue reads is damaged no longer clears them from the
+  Runners page.** The page keeps what it last showed, and `forge-runner status` and `doctor` name
+  the damaged file.
+- **The Runners page keeps queue-read failures current while it stays open.** It rereads them
+  every 30 seconds, and a report the machine stopped renewing is dated instead of stated as now.
 - **Release refusals from the issue list match Release settings.** They blamed a check that never
   failed rather than the runner that is down, and over fifty issues got "Invalid input". Automatic
   releases carry the oldest fifty at a time.

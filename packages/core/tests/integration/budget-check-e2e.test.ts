@@ -236,7 +236,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
       )
       VALUES (
         ${id}, ${projectId}, ${args.issueId}, ${type}, 'queued',
-        ${payload}::jsonb,
+        ${payload}::jsonb || '{"promptString":"go"}'::jsonb,
         (SELECT created_by FROM projects WHERE id = ${projectId}),
         ${runId}, now()
       )
