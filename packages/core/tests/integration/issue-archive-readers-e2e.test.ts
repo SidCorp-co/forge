@@ -199,6 +199,16 @@ describe('the release reconcile', () => {
     expect(result.skipped).toBe('issue-not-found');
     expect(llm.prompts).toEqual([]);
   });
+
+  it('reads nothing of an issue archived after its merge queued the reconcile', async () => {
+    const id = await seed(1, 'closed');
+    await archive(['ISS-1']);
+    llm.prompts.length = 0;
+    const { reconcileForReleasedIssue } = await import('../../src/memory/consolidation.js');
+    const result = await reconcileForReleasedIssue(projectId, id);
+    expect(result.skipped).toBe('issue-not-found');
+    expect(llm.prompts).toEqual([]);
+  });
 });
 
 describe('a Sentry regression on an archived closed issue', () => {

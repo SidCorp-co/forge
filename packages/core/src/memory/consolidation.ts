@@ -562,9 +562,11 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
       mergedAt: issues.mergedAt,
     })
     .from(issues)
-    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
+    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId), isNull(issues.archivedAt)))
     .limit(1);
-  if (!issueRow) return emptyReconcileResult('issue-not-found', 'issue not found in this project');
+  if (!issueRow) {
+    return emptyReconcileResult('issue-not-found', 'issue not found in this project, or archived');
+  }
 
   const issRef = (await issueRefFormatter(projectId))(issueRow.issSeq);
   const decisionRef = `reconcile:${canonicalIssueKey(issueRow.issSeq)}`;
