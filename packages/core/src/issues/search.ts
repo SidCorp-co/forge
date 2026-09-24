@@ -36,6 +36,7 @@ import {
   hydrateCreatorsForIssues,
 } from './creator.js';
 import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
+import { hydrateHeldForIssues } from './held-hydrator.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
@@ -379,10 +380,11 @@ searchRoutes.get(
       return c.json(withBuckets(listResponse(c, serialized, total, q)));
     }
 
-    const map = await hydrateAgentSessionsForIssues(
-      projectId,
-      serialized.map((r) => r.id as string),
-    );
+    const ids = serialized.map((r) => r.id as string);
+    const [map, heldMap] = await Promise.all([
+      hydrateAgentSessionsForIssues(projectId, ids),
+      hydrateHeldForIssues(ids),
+    ]);
     return c.json(
       withBuckets(
         listResponse(
@@ -393,6 +395,7 @@ searchRoutes.get(
               ...r,
               agentSessions: bucket?.agentSessions ?? [],
               agentStatus: bucket?.agentStatus ?? null,
+              held: heldMap.get(r.id as string) === true,
             };
           }),
           total,
