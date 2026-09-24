@@ -23,6 +23,7 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
+import { type RunGate, readRunGate } from '../devices/gate-report.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -127,9 +128,15 @@ export interface PipelineRunSummary {
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
   retrySummary: PipelineRunRetrySummary | null;
+  /** ISS-1192 — the box's declaration gate when this run opened; `null` where
+   *  the box reported none. The list row omits it: it carries a breakdown. */
+  gateAtOpen: RunGate | null;
 }
 
-export type PipelineRunListItem = Omit<PipelineRunSummary, 'steps' | 'attempts' | 'retrySummary'>;
+export type PipelineRunListItem = Omit<
+  PipelineRunSummary,
+  'steps' | 'attempts' | 'retrySummary' | 'gateAtOpen'
+>;
 
 const EMPTY_COST: PipelineRunCostSummary = {
   estimatedCost: 0,
@@ -373,6 +380,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     cost,
     attempts: attemptRollup.attempts,
     retrySummary: attemptRollup.retrySummary,
+    gateAtOpen: readRunGate(row.metadata, runId),
   };
 }
 

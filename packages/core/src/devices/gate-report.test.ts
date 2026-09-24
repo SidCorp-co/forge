@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  RUN_GATE_METADATA_KEY,
   readDeviceGate,
   readHeartbeatGate,
+  readRunGate,
   storedGateReport,
   WIRE_REASONS,
   WIRE_UNITS,
@@ -88,6 +90,32 @@ describe('readDeviceGate', () => {
 
 // Criterion 12. One planted tally — 24 marks over four hours, all one reason —
 // read here exactly as the box derived it.
+describe('readRunGate', () => {
+  const RUN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  it('reads back the condition the run was opened under', () => {
+    const read = readRunGate({ [RUN_GATE_METADATA_KEY]: condition() }, RUN);
+    expect(read).toMatchObject({ read: 'ok', condition: { verdict: 'failing_open' } });
+  });
+
+  it('reports none for a run whose box sent no condition, and for metadata of its own', () => {
+    expect(readRunGate({ runIssues: ['ISS-1'] }, RUN)).toBeNull();
+    expect(readRunGate(null, RUN)).toBeNull();
+    expect(readRunGate('not an object', RUN)).toBeNull();
+  });
+
+  /**
+   * Evidence core holds but cannot read is not the fact that none was sent. A
+   * reviewer told `null` for both cannot tell them apart, and the one that is
+   * version skew is the one somebody has to act on (ISS-1192 F1).
+   */
+  it('says a stored condition could not be read, rather than reading as none', () => {
+    const read = readRunGate({ [RUN_GATE_METADATA_KEY]: { count: 30 } }, RUN);
+    expect(read).toMatchObject({ read: 'unreadable' });
+    expect((read as { reason: string }).reason.length).toBeGreaterThan(0);
+  });
+});
+
 describe('the gate body the box sends', () => {
   it('is accepted, and its verdict, rate and window survive the crossing', () => {
     const read = readHeartbeatGate(onTheWire);

@@ -4,6 +4,7 @@
  * so the route layer can trust the shape it returns.
  */
 
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type SelectQueue = Array<unknown[] | unknown>;
@@ -196,6 +197,13 @@ const runRow = {
   updatedAt: new Date('2026-05-12T00:00:00.000Z'),
 };
 
+/** The gate both languages assert, read where the fixture holds it. */
+const GATE_AT_OPEN = (
+  JSON.parse(
+    readFileSync(new URL('../devices/gate-report.fixture.json', import.meta.url), 'utf8'),
+  ) as { degraded: Record<string, unknown> }
+).degraded;
+
 describe('loadPipelineRunSummary', () => {
   it('returns null when the run is missing', async () => {
     runRowQueue.push([]);
@@ -322,6 +330,23 @@ describe('loadPipelineRunSummary', () => {
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.lastSessionBeatAt).toBeNull();
+  });
+
+  // ISS-1192 criterion 18: without a reader here, "was the gate deciding while
+  // this ran" is answerable only by psql against production.
+  it('ISS-1192: returns the gate condition the run opened under', async () => {
+    runRowQueue.push([{ ...runRow, metadata: { gateAtOpen: GATE_AT_OPEN } }]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    const seen = (await loadPipelineRunSummary(RUN_ID))?.gateAtOpen;
+    expect(seen).toEqual({ read: 'ok', condition: GATE_AT_OPEN });
+  });
+
+  it('ISS-1192: a run opened by a box that sent no condition reports none', async () => {
+    runRowQueue.push([{ ...runRow, metadata: { runIssues: ['ISS-1'] } }]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    expect((await loadPipelineRunSummary(RUN_ID))?.gateAtOpen).toBeNull();
   });
 
   it('ISS-789: a run with no live jobs reads 0, so a dead run is distinguishable from a live one', async () => {
