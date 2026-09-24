@@ -52,7 +52,7 @@ export async function spawnPmSession(input: SpawnPmSessionInput): Promise<SpawnP
     .where(eq(pmConfig.projectId, input.projectId))
     .limit(1);
 
-  if (!config || !config.enabled) {
+  if (!config?.enabled) {
     return { ok: false, reason: 'disabled' };
   }
 

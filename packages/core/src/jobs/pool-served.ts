@@ -30,7 +30,6 @@ export function noPromptMessage(jobType: string): string {
   );
 }
 
-/** A payload with no usable prompt, in SQL — the CAS below re-checks the diagnosis it acts on. */
 const NO_PROMPT_SQL = sql`NOT COALESCE(
   jsonb_typeof(${jobs.payload} -> 'promptString') = 'string'
     AND (${jobs.payload} ->> 'promptString') ~ '[^[:space:]]',
@@ -38,8 +37,8 @@ const NO_PROMPT_SQL = sql`NOT COALESCE(
 )`;
 
 /**
- * Settled terminal, not through `finalizeFailedJob`: a retry or hold would re-mint the same
- * payload. `false` when the row moved or gained a prompt since it was read.
+ * Terminal, and not through `finalizeFailedJob`, whose retry or hold would re-mint the payload.
+ * The CAS re-checks the missing prompt, so `false` when the row moved or gained one.
  */
 export async function settleNoPromptJob(job: { id: string; type: string }): Promise<boolean> {
   const [settled] = await applyKernelTransition(db, {
