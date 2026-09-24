@@ -13,12 +13,16 @@
 
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
-import { ReleaseFinishInFlightError, ReleaseNotVerifiedError } from './errors.js';
+import {
+  ReleaseFinishFenceLostError,
+  ReleaseFinishInFlightError,
+  ReleaseNotVerifiedError,
+} from './errors.js';
 import { finishRefusal } from './refusals.js';
 import { assertFinishable, finishReleaseBatch, readReleaseRun } from './service.js';
 import { claimedCommit, notAWholeCommit } from './verify.js';
@@ -238,29 +242,22 @@ export async function acceptReleaseBatchFinish(
 
 // ── The worker ──────────────────────────────────────────────────────────────
 
-class LostOwnershipError extends Error {
-  constructor() {
-    super('RELEASE_FINISH_LEASE_LOST');
-    this.name = 'LostOwnershipError';
-  }
-}
-
 /**
  * One worker's hold on one attempt. Every write goes through `commit`, one at a
  * time, and the first one that finds the record moved ends the hold for good.
  */
-function holdAttempt(runId: string, start: ReleaseFinishRecord) {
+function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWorkerHooks = {}) {
   let current = start;
   let lost = false;
   let chain: Promise<unknown> = Promise.resolve();
 
   function commit(patch: (r: ReleaseFinishRecord) => Partial<ReleaseFinishRecord>) {
     const step = chain.then(async () => {
-      if (lost) throw new LostOwnershipError();
+      if (lost) throw new ReleaseFinishFenceLostError();
       const next = stamp(current, patch(current));
       if (!(await compareAndSet(runId, current.version, next))) {
         lost = true;
-        throw new LostOwnershipError();
+        throw new ReleaseFinishFenceLostError();
       }
       current = next;
       return next;
@@ -269,24 +266,27 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord) {
     return step;
   }
 
-  /** Read the record back and stop the hold if anybody else wrote it since this worker did. */
-  function assertHeld(): Promise<void> {
-    const step = chain.then(async () => {
-      if (lost) throw new LostOwnershipError();
-      const run = await readReleaseRun(runId);
-      const now = run ? readFinishRecord(run.metadata) : null;
-      if (!now || now.version !== current.version || now.owner !== current.owner) {
-        lost = true;
-        throw new LostOwnershipError();
-      }
-    });
-    chain = step.catch(() => {});
-    return step;
+  /**
+   * Inside a closing write's own transaction: hold the run row and refuse unless this worker still
+   * owns the attempt. A takeover rewrites the owner, and its compare-and-set waits on this lock.
+   */
+  async function fence(tx: Tx): Promise<void> {
+    if (lost) throw new ReleaseFinishFenceLostError();
+    const rows = await tx.execute<{ owner: string | null }>(sql`
+      SELECT ${pipelineRuns.metadata} -> 'finish' ->> 'owner' AS owner
+      FROM ${pipelineRuns} WHERE ${pipelineRuns.id} = ${runId}
+      FOR UPDATE
+    `);
+    if (rows[0]?.owner !== current.owner) {
+      lost = true;
+      throw new ReleaseFinishFenceLostError();
+    }
+    await hooks.afterFence?.();
   }
 
   return {
     commit,
-    assertHeld,
+    fence,
     get state() {
       return current.state;
     },
@@ -328,6 +328,8 @@ function refusalOf(err: unknown): FinishRefusal {
 export interface FinishWorkerHooks {
   /** Test seam: runs after the green verdict is committed and before the first close. */
   afterVerified?: () => Promise<void>;
+  /** Test seam: runs inside a closing write's transaction, after the fence passed. */
+  afterFence?: () => Promise<void>;
 }
 
 export async function runReleaseBatchFinish(
@@ -348,7 +350,7 @@ export async function runReleaseBatchFinish(
   if (!isInFlight(record) || leaseStands(record, Date.now())) return;
 
   const owner = randomUUID();
-  const hold = holdAttempt(runId, record);
+  const hold = holdAttempt(runId, record, hooks);
   try {
     await hold.commit((r) => ({
       owner,
@@ -373,7 +375,7 @@ export async function runReleaseBatchFinish(
         await hold.commit(() => ({ state: 'closing' }));
         await hooks.afterVerified?.();
       },
-      fence: () => hold.assertHeld(),
+      fence: hold.fence,
       onClosed: async (result) => {
         await hold.commit(() => ({
           state: 'finished',
@@ -386,7 +388,7 @@ export async function runReleaseBatchFinish(
       },
     });
   } catch (err) {
-    if (err instanceof LostOwnershipError || hold.lost) return;
+    if (err instanceof ReleaseFinishFenceLostError || hold.lost) return;
     if (hold.state === 'finished') {
       // The roster is closed and recorded; only the run's close failed, which the sweep retries.
       logger.error({ err, runId }, 'release-batch: a finished release could not close its run');

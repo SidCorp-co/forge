@@ -265,6 +265,46 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
     expect(await fx.runStatus(runId)).toBe('running');
   }, 30_000);
 
+  it('makes a takeover wait behind a close already fenced, then refuses the stale worker’s next write', async () => {
+    const first = await fx.insertIssue();
+    const second = await fx.insertIssue();
+    const { runId } = await fx.claim([first, second]);
+    await plant(runId, { state: 'closing', owner: 'dead-worker', leaseUntil: iso(-1_000) });
+    let takeover: Promise<Record<string, unknown>> | null = null;
+    let waitedBehindTheLock = false;
+
+    await job.runReleaseBatchFinish(runId, {
+      afterFence: async () => {
+        if (takeover) return;
+        const taken = (
+          await harness.db.execute(sql`
+          SELECT metadata -> 'finish' AS finish FROM pipeline_runs WHERE id = ${runId}
+        `)
+        )[0]?.finish as Record<string, unknown>;
+        let landed = false;
+        takeover = plant(runId, {
+          ...taken,
+          owner: 'thief',
+          leaseUntil: iso(60_000),
+          version: (taken.version as number) + 10,
+        }).then((r) => {
+          landed = true;
+          return r;
+        });
+        await new Promise((d) => setTimeout(d, 400));
+        waitedBehindTheLock = !landed;
+      },
+    });
+    const thief = await (takeover as unknown as Promise<Record<string, unknown>>);
+
+    expect(waitedBehindTheLock).toBe(true);
+    const statuses = [(await fx.stored(first)).status, (await fx.stored(second)).status].sort();
+    expect(statuses).toEqual(['closed', 'releasing']);
+    expect(await stored(runId)).toEqual(thief);
+    expect(await shipped(runId)).toBeNull();
+    expect(await fx.runStatus(runId)).toBe('running');
+  }, 30_000);
+
   it('keeps a finished record finished when only the run close failed, and the sweep closes the run', async () => {
     const { runId, issueId } = await batch();
     serving = PUSHED;

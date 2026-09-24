@@ -13,7 +13,7 @@
 // died without either outcome goes through.
 
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import {
   type IssueStatus,
   issues,
@@ -42,6 +42,7 @@ import {
   ClaimConflictError,
   NoReleaseGateError,
   ReleaseBatchAbortedError,
+  ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
@@ -250,8 +251,11 @@ export interface FinishReleaseBatchOptions {
   alreadyVerified?: boolean | undefined;
   /** Called once verification is green, before the first issue closes. */
   onVerified?: (() => Promise<void>) | undefined;
-  /** Called before every closing mutation; throws to stop the close where it stands. */
-  fence?: (() => Promise<void>) | undefined;
+  /**
+   * Run inside each closing write's own transaction, before it writes; throws to stop the close
+   * where it stands. It holds the run row, so a takeover waits until that write has committed.
+   */
+  fence?: ((tx: Tx) => Promise<void>) | undefined;
   /**
    * Called with the outcome before the run goes terminal. The run's close cascade ends the
    * release job's own session, so anything that must be written about this finish is written here.
@@ -354,8 +358,8 @@ export async function finishReleaseBatch(
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
 
+  const { fence } = options;
   for (const issue of claimed) {
-    await options.fence?.();
     try {
       await transitionIssueStatus(
         {
@@ -366,10 +370,11 @@ export async function finishReleaseBatch(
         },
         'closed',
         actor,
-        { viaReleasePath: true },
+        { viaReleasePath: true, ...(fence ? { beforeStatusWrite: fence } : {}) },
       );
       closed.push(issue.id);
     } catch (err) {
+      if (err instanceof ReleaseFinishFenceLostError) throw err;
       if (err instanceof TransitionError && err.code === 'NO_OP') {
         closed.push(issue.id);
       } else {
@@ -379,18 +384,24 @@ export async function finishReleaseBatch(
     }
   }
 
-  await options.fence?.();
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
     actorUserId: actor.type === 'user' ? actor.id : undefined,
     comment: true,
+    fence,
   });
 
   // The ship, stamped on the release row itself. It is not read back off the run's status because
   // `cancelConcludedRun` flips a `completed` run to `cancelled`, and a release that shipped and was
   // aborted afterwards is still the one whose bytes are live.
-  await options.fence?.();
-  await markReleaseShipped(runId);
+  if (fence) {
+    await db.transaction(async (tx) => {
+      await fence(tx);
+      await markReleaseShipped(runId, tx);
+    });
+  } else {
+    await markReleaseShipped(runId);
+  }
 
   const result = { closed, failed };
   await options.onClosed?.(result);

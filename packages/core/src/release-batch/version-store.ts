@@ -178,8 +178,8 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
  * Called by `finishReleaseBatch` once the probes agree the release is live, and by nothing else.
  * Idempotent by the `IS NULL` guard: the moment a release shipped is not a thing a retry may move.
  */
-export async function markReleaseShipped(runId: string): Promise<void> {
-  await db.execute(sql`
+export async function markReleaseShipped(runId: string, executor: Tx = db): Promise<void> {
+  await executor.execute(sql`
     UPDATE pipeline_runs
     SET release_released_at = now(), updated_at = now()
     WHERE id = ${runId}
