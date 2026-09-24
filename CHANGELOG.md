@@ -3094,6 +3094,8 @@
   set is now 59.
 
 ### Fixed
+- **A master stopped by a usage limit is asked again every five minutes.** It no longer sleeps until
+  the reset hour, so capacity restored by swapping or adding an account is used on the next pass.
 - **The Pipeline board says Running only when something is working the issue.** In-progress work
   nothing is holding sits under No check-in, showing when it last reported, if ever. Status menus
   name the status you would move to.

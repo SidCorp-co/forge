@@ -501,12 +501,67 @@ fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     h.finish()
 }
 
-fn nudge_due(prev: Option<Nudge>, digest: u64, now: Instant, since: SinceNudge) -> bool {
+/// Whether this master is owed a nudge now.
+///
+/// `held` is a master whose account refused its last turn for capacity. What
+/// its hooks say about that turn is no evidence the pass happened: a refused
+/// turn ends like one that ran, and the runs it dispatched die on the same
+/// limit without reporting their end, which reads as a pass still working. So a
+/// held master is asked again every refresh window whatever `since` says —
+/// capacity an operator restores out of band is seen only by a turn that tries
+/// (ISS-1248).
+fn nudge_due(
+    prev: Option<Nudge>,
+    digest: u64,
+    now: Instant,
+    since: SinceNudge,
+    held: bool,
+) -> bool {
     match prev {
         None => true,
         Some(last) if last.digest != digest => true,
-        Some(last) => now.saturating_duration_since(last.at) >= NUDGE_REFRESH && retry_owed(since),
+        Some(last) => {
+            now.saturating_duration_since(last.at) >= NUDGE_REFRESH && (held || retry_owed(since))
+        }
     }
+}
+
+/// The capacity refusal this master's pane is sitting behind, if any.
+///
+/// `newest` is the newest decisive record in the conversation `conversation`
+/// names. It holds the pane when it is a quota refusal and the pane's own hooks
+/// contradict neither half of that reading: they name no other conversation,
+/// and they report no turn begun after the refusal was written. Hooks that have
+/// reported nothing veto nothing — a daemon that has just adopted a pane has
+/// heard nothing from it yet, and that pane is exactly the one left parked.
+fn held_by_limit(
+    newest: Option<&master_limit::Decisive>,
+    conversation: Option<&str>,
+    seen: Option<&agent_activity::Activity>,
+) -> Option<master_limit::Refusal> {
+    let newest = newest?;
+    let refusal = master_limit::quota_refusal(newest)?;
+    if let Some(seen) = seen {
+        if let (Some(heard), Some(read)) = (seen.conversation.as_deref(), conversation) {
+            if heard != read {
+                return None;
+            }
+        }
+        let refused_at_ms = newest.at * 1000 + i64::from(newest.millis);
+        if seen.turn_started_at.is_some_and(|t| t > refused_at_ms) {
+            return None;
+        }
+    }
+    Some(refusal.clone())
+}
+
+/// Whether this master is a candidate for a nudge at all this sweep.
+///
+/// A pass the account refused is one the master still owes itself, and the
+/// runs that pass dispatched hold their issues out of the admissible set while
+/// they stand — so an empty set is no reason to leave a refused master unasked.
+fn asked_this_sweep(admissible: &[AdmissibleIssue], held: Option<&master_limit::Refusal>) -> bool {
+    !admissible.is_empty() || held.is_some()
 }
 
 impl Masters {
@@ -625,6 +680,7 @@ impl Masters {
         project_id: &str,
         digest: u64,
         seen: Option<&agent_activity::Activity>,
+        held: bool,
     ) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let Some(m) = reg.live.get_mut(project_id) else {
@@ -632,7 +688,7 @@ impl Masters {
         };
         let now = Instant::now();
         let since = since_nudge(seen, m.last_nudge.and_then(|n| n.prompts));
-        if !nudge_due(m.last_nudge, digest, now, since) {
+        if !nudge_due(m.last_nudge, digest, now, since, held) {
             return false;
         }
         m.last_nudge = Some(Nudge {
@@ -1111,12 +1167,16 @@ async fn sweep(
                 continue;
             }
         }
-        if let Some(said) = account_verdict(
+        let last_said = account_record(
             &resolved.repo_path,
             stored_conversation.as_deref(),
             now_unix,
-        ) {
-            account_said.push(said);
+        );
+        if let Some(said) = last_said
+            .as_ref()
+            .filter(|d| master_limit::is_fresh(d, now_unix))
+        {
+            account_said.push(said.clone());
         }
         if pane == PaneState::Resumed {
             let pane_boot = crate::runner::inflight::boot_identity().unwrap_or_default();
@@ -1137,7 +1197,16 @@ async fn sweep(
             }
         }
 
-        if admissible.is_empty() {
+        let reported = masters
+            .get(&runner.project_id)
+            .and_then(|(session_id, _)| activity.get(&session_id));
+        let held = held_by_limit(
+            last_said.as_ref(),
+            stored_conversation.as_deref(),
+            reported.as_ref(),
+        );
+
+        if !asked_this_sweep(&admissible, held.as_ref()) {
             continue;
         }
 
@@ -1149,15 +1218,13 @@ async fn sweep(
             continue;
         }
 
-        let reported = masters
-            .get(&runner.project_id)
-            .and_then(|(session_id, _)| activity.get(&session_id));
         if masters.claim_nudge(
             &runner.project_id,
             work_digest(&admissible),
             reported.as_ref(),
+            held.is_some(),
         ) {
-            nudge_master(masters, &runner.project_id, &resolved.slug).await;
+            nudge_master(masters, &runner.project_id, &resolved.slug, held.as_ref()).await;
         }
     }
 
@@ -1288,7 +1355,10 @@ fn report_job_capacity(
     );
 }
 
-fn account_verdict(
+/// The newest decisive record in this master's own conversation, however old.
+/// The report to core takes it only while it is fresh; the re-ask reads it
+/// whatever its age.
+fn account_record(
     repo: &std::path::Path,
     conversation: Option<&str>,
     now_unix: i64,
@@ -1296,7 +1366,22 @@ fn account_verdict(
     let id = conversation.filter(|c| !c.is_empty())?;
     let path = conversation_transcript(repo, id)?;
     let tail = master_limit::read_tail(&path)?;
-    master_limit::newest_decisive(&tail, now_unix)
+    master_limit::newest_record(&tail, now_unix)
+}
+
+/// The line a limit re-ask is announced by.
+///
+/// The reset is said and never waited on: the account can be swapped, topped
+/// up or re-planned before it, and only the turn this nudge starts can tell.
+fn limit_reask_line(slug: &str, pane: &str, refusal: &master_limit::Refusal) -> String {
+    let reset = match refusal.resets_in_seconds {
+        Some(secs) => format!("the account reports its reset in {secs}s"),
+        None => "the account reported no reset".to_string(),
+    };
+    format!(
+        "[master] {slug}: its last turn was refused ({}) — asking {pane} again; {reset}, and capacity restored before then is seen only by a turn that tries",
+        refusal.reason.wire()
+    )
 }
 
 const REPORT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -3030,11 +3115,24 @@ fn nudge() -> String {
     "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.".into()
 }
 
-async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
+/// Paste one nudge into this project's master. `held` is the capacity refusal
+/// the pane is parked behind, when that is why it is being asked; the nudge is
+/// the same line either way, and it submits straight through Claude Code's
+/// armed wait-for-reset (captured 2026-09-24: `Usage limit reached again after
+/// you continued`), so no key is sent ahead of it.
+async fn nudge_master(
+    masters: &Arc<Masters>,
+    project_id: &str,
+    slug: &str,
+    held: Option<&master_limit::Refusal>,
+) {
     let Some((_, name)) = masters.get(project_id) else {
         return;
     };
-    tracing::info!("[master] {slug}: admissible work — nudging {name}");
+    match held {
+        Some(refusal) => tracing::warn!("{}", limit_reask_line(slug, &name, refusal)),
+        None => tracing::info!("[master] {slug}: admissible work — nudging {name}"),
+    }
     if let Err(e) = terminal::send_line(&name, &nudge()).await {
         tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
     }
@@ -3200,7 +3298,7 @@ mod tests {
             .find("take_pool_job(")
             .expect("the sweep must claim from the JOBS pool");
         let admissible_empty = body
-            .find("if admissible.is_empty()")
+            .find("if !asked_this_sweep(&admissible,")
             .expect("the sweep still has its admissible branch");
         assert!(
             claim < admissible_empty,
@@ -5185,7 +5283,7 @@ mod give_back_tests {
     #[test]
     fn a_verdict_is_read_for_every_project_whose_pane_is_up() {
         assert!(
-            depth_of_call_in_sweep("account_verdict(").unwrap_or(0) > 1,
+            depth_of_call_in_sweep("account_record(").unwrap_or(0) > 1,
             "the read belongs inside the project loop; only the decision is device-wide"
         );
     }
@@ -5348,7 +5446,7 @@ mod give_back_tests {
 
     #[test]
     fn a_master_with_no_recorded_nudge_is_nudged() {
-        assert!(nudge_due(None, 7, Instant::now(), SinceNudge::Ran));
+        assert!(nudge_due(None, 7, Instant::now(), SinceNudge::Ran, false));
     }
 
     #[test]
@@ -5358,7 +5456,8 @@ mod give_back_tests {
             sent(7, now, Some(0)),
             7,
             now,
-            SinceNudge::NoTurn
+            SinceNudge::NoTurn,
+            false
         ));
     }
 
@@ -5371,7 +5470,7 @@ mod give_back_tests {
             SinceNudge::AwaitingPermission,
         ] {
             assert!(
-                nudge_due(sent(7, now, Some(3)), 8, now, since),
+                nudge_due(sent(7, now, Some(3)), 8, now, since, false),
                 "new work must reach the master however {since:?} reads"
             );
         }
@@ -5383,7 +5482,8 @@ mod give_back_tests {
             sent(7, a_while_ago(), Some(4)),
             7,
             Instant::now(),
-            SinceNudge::NoTurn
+            SinceNudge::NoTurn,
+            false
         ));
     }
 
@@ -5393,7 +5493,8 @@ mod give_back_tests {
             sent(7, a_while_ago(), None),
             7,
             Instant::now(),
-            SinceNudge::Unreported
+            SinceNudge::Unreported,
+            false
         ));
     }
 
@@ -5403,7 +5504,8 @@ mod give_back_tests {
             sent(7, a_while_ago(), Some(4)),
             7,
             Instant::now(),
-            SinceNudge::Failed
+            SinceNudge::Failed,
+            false
         ));
     }
 
@@ -5415,7 +5517,13 @@ mod give_back_tests {
             SinceNudge::AwaitingPermission,
         ] {
             assert!(
-                !nudge_due(sent(7, a_while_ago(), Some(4)), 7, Instant::now(), since),
+                !nudge_due(
+                    sent(7, a_while_ago(), Some(4)),
+                    7,
+                    Instant::now(),
+                    since,
+                    false
+                ),
                 "a master that {since:?} has answered this work already"
             );
         }
@@ -5501,7 +5609,8 @@ mod give_back_tests {
             sent(7, a_while_ago(), Some(0)),
             7,
             Instant::now(),
-            since_nudge(Some(&a), Some(0))
+            since_nudge(Some(&a), Some(0)),
+            false
         ));
     }
 
@@ -5524,6 +5633,330 @@ mod give_back_tests {
         ]);
         assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Failed);
         assert!(retry_owed(SinceNudge::Failed));
+    }
+
+    // ---- a master the account refused (ISS-1248) ------------------------------
+
+    const WAIT: &str = include_str!("../../assets/master-limit-wait.jsonl");
+    const WAIT_CONVERSATION: &str = "bc76beff-11f2-4d8d-bfef-7190d9d560cd";
+
+    fn wait_tail() -> String {
+        WAIT.lines().skip(1).collect::<Vec<_>>().join("\n")
+    }
+
+    /// The newest decisive record in epodsystem-core's captured conversation,
+    /// read `after_secs` past its second refusal.
+    fn parked(after_secs: i64) -> (master_limit::Decisive, i64) {
+        let tail = wait_tail();
+        let probe = master_limit::newest_record(&tail, 0).expect("the fixture holds a refusal");
+        let now = probe.at + after_secs;
+        (
+            master_limit::newest_record(&tail, now).expect("read at any age"),
+            now,
+        )
+    }
+
+    /// One session's hooks, each frame at its own millisecond and naming the
+    /// conversation given — fed through the real state machine.
+    fn heard(
+        conversation: Option<&str>,
+        frames: &[(agent_activity::Event, Option<&str>, i64)],
+    ) -> agent_activity::Activity {
+        let acts = agent_activity::Activities::new();
+        let mut last = None;
+        for (event, subject, at) in frames {
+            last = Some(acts.record(
+                "s1",
+                agent_activity::Report {
+                    event: *event,
+                    at: *at,
+                    subject: *subject,
+                    conversation,
+                    transcript: None,
+                },
+            ));
+        }
+        last.expect("a fixture needs at least one frame")
+    }
+
+    fn refusal(reason: master_limit::Reason, resets: Option<u64>) -> master_limit::Decisive {
+        master_limit::Decisive {
+            at: 1_000,
+            millis: 500,
+            uuid: "u-refused".into(),
+            verdict: master_limit::Verdict::Refused(master_limit::Refusal {
+                reason,
+                resets_in_seconds: resets,
+                detail: "You've hit your session limit".into(),
+            }),
+        }
+    }
+
+    #[test]
+    fn a_master_the_account_refused_is_asked_again_whatever_its_hooks_say_of_that_turn() {
+        for since in [
+            SinceNudge::Ran,
+            SinceNudge::Working,
+            SinceNudge::NoTurn,
+            SinceNudge::Failed,
+            SinceNudge::Unreported,
+        ] {
+            assert!(
+                nudge_due(
+                    sent(7, a_while_ago(), Some(4)),
+                    7,
+                    Instant::now(),
+                    since,
+                    true
+                ),
+                "a refused turn that reads {since:?} is no evidence the pass happened"
+            );
+        }
+    }
+
+    #[test]
+    fn a_refused_master_is_asked_once_per_refresh_window_and_not_every_sweep() {
+        let now = Instant::now();
+        assert!(
+            !nudge_due(sent(7, now, Some(4)), 7, now, SinceNudge::Ran, true),
+            "inside the window a held master waits like any other — the limited sweep is every five minutes, not every thirty seconds"
+        );
+        let just_inside = now
+            .checked_sub(NUDGE_REFRESH - Duration::from_secs(1))
+            .expect("clock older than the window");
+        assert!(!nudge_due(
+            sent(7, just_inside, Some(4)),
+            7,
+            now,
+            SinceNudge::Ran,
+            true
+        ));
+        assert!(
+            nudge_due(
+                sent(7, now.checked_sub(NUDGE_REFRESH).unwrap(), Some(4)),
+                7,
+                now,
+                SinceNudge::Ran,
+                true
+            ),
+            "at exactly one window it is asked"
+        );
+    }
+
+    #[test]
+    fn a_master_that_is_not_held_keeps_the_evidence_gate() {
+        for since in [
+            SinceNudge::Ran,
+            SinceNudge::Working,
+            SinceNudge::AwaitingPermission,
+        ] {
+            assert!(!nudge_due(
+                sent(7, a_while_ago(), Some(4)),
+                7,
+                Instant::now(),
+                since,
+                false
+            ));
+        }
+        let worked = master_limit::Decisive {
+            at: 1_000,
+            millis: 0,
+            uuid: "u-worked".into(),
+            verdict: master_limit::Verdict::Worked,
+        };
+        assert_eq!(
+            held_by_limit(Some(&worked), Some("c1"), None),
+            None,
+            "a turn that worked holds nobody"
+        );
+        assert_eq!(held_by_limit(None, Some("c1"), None), None);
+    }
+
+    #[test]
+    fn the_reset_the_account_names_never_moves_the_reask() {
+        let far = refusal(master_limit::Reason::UsageLimit, Some(4 * 3600));
+        let none = refusal(master_limit::Reason::UsageLimit, None);
+        let a = held_by_limit(Some(&far), None, None);
+        let b = held_by_limit(Some(&none), None, None);
+        assert!(a.is_some() && b.is_some());
+        let at = a_while_ago();
+        assert_eq!(
+            nudge_due(
+                sent(7, at, Some(4)),
+                7,
+                Instant::now(),
+                SinceNudge::Ran,
+                a.is_some()
+            ),
+            nudge_due(
+                sent(7, at, Some(4)),
+                7,
+                Instant::now(),
+                SinceNudge::Ran,
+                b.is_some()
+            ),
+            "the reset reaches the log line and nothing else"
+        );
+    }
+
+    #[test]
+    fn a_throttle_holds_and_a_credential_does_not() {
+        let throttle = refusal(master_limit::Reason::RateLimit, None);
+        assert!(held_by_limit(Some(&throttle), None, None).is_some());
+        let auth = refusal(master_limit::Reason::Auth, None);
+        assert_eq!(held_by_limit(Some(&auth), None, None), None);
+    }
+
+    #[test]
+    fn a_turn_begun_after_the_refusal_is_left_to_finish() {
+        let r = refusal(master_limit::Reason::UsageLimit, None);
+        let refused_ms = r.at * 1000 + i64::from(r.millis);
+        let after = heard(
+            Some("c1"),
+            &[(agent_activity::Event::PromptSubmitted, None, refused_ms + 1)],
+        );
+        assert_eq!(held_by_limit(Some(&r), Some("c1"), Some(&after)), None);
+
+        let same_instant = heard(
+            Some("c1"),
+            &[(agent_activity::Event::PromptSubmitted, None, refused_ms)],
+        );
+        assert!(
+            held_by_limit(Some(&r), Some("c1"), Some(&same_instant)).is_some(),
+            "the turn the refusal answered began at or before it"
+        );
+    }
+
+    #[test]
+    fn hooks_naming_another_conversation_veto_and_silent_hooks_do_not() {
+        let r = refusal(master_limit::Reason::UsageLimit, None);
+        let ended = |conv| {
+            heard(
+                conv,
+                &[
+                    (agent_activity::Event::PromptSubmitted, None, 1),
+                    (agent_activity::Event::Stopped, None, 2),
+                ],
+            )
+        };
+        assert_eq!(
+            held_by_limit(Some(&r), Some("c1"), Some(&ended(Some("c2")))),
+            None,
+            "the refusal was read from a file this pane is no longer writing"
+        );
+        assert!(held_by_limit(Some(&r), Some("c1"), Some(&ended(Some("c1")))).is_some());
+        assert!(held_by_limit(Some(&r), Some("c1"), Some(&ended(None))).is_some());
+        assert!(
+            held_by_limit(Some(&r), Some("c1"), None).is_some(),
+            "a daemon that has just adopted the pane has heard nothing, and that is the pane left parked"
+        );
+    }
+
+    #[test]
+    fn an_empty_admissible_set_does_not_leave_a_refused_master_unasked() {
+        let held = held_by_limit(
+            Some(&refusal(master_limit::Reason::UsageLimit, None)),
+            None,
+            None,
+        );
+        assert!(asked_this_sweep(&[], held.as_ref()));
+        assert!(!asked_this_sweep(&[], None));
+        assert!(asked_this_sweep(&[admiss("i1")], None));
+    }
+
+    #[test]
+    fn the_sweep_asks_a_held_master_before_the_empty_set_can_skip_it() {
+        let body = THIS_SOURCE
+            .split("\n#[cfg(test)]")
+            .next()
+            .and_then(|p| p.split("\nasync fn sweep(").nth(1))
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("sweep must be findable");
+        let read = body
+            .find("held_by_limit(")
+            .expect("the sweep reads the hold");
+        let gate = body
+            .find("if !asked_this_sweep(&admissible, held.as_ref()) {")
+            .expect("the empty-set skip is the one that also reads the hold");
+        let nudge = body.find("nudge_master(masters,").unwrap();
+        assert!(read < gate && gate < nudge);
+        assert!(
+            !body.contains("if admissible.is_empty() {\n            continue;"),
+            "a bare empty-set skip ahead of the nudge would leave a refused master unasked again"
+        );
+        assert!(body[gate..nudge].contains("held.is_some()"));
+    }
+
+    #[test]
+    fn the_reask_says_what_the_account_said_and_when_it_expects_to_reset() {
+        let r = master_limit::Refusal {
+            reason: master_limit::Reason::UsageLimit,
+            resets_in_seconds: Some(14_379),
+            detail: "x".into(),
+        };
+        let line = limit_reask_line("epodsystem-core", "forge-master-epodsystem-core", &r);
+        for part in [
+            "epodsystem-core:",
+            "forge-master-epodsystem-core",
+            "usage_limit",
+            "14379s",
+        ] {
+            assert!(line.contains(part), "{part} is missing from {line}");
+        }
+        let unknown = master_limit::Refusal {
+            resets_in_seconds: None,
+            ..r
+        };
+        assert!(limit_reask_line("p", "pane", &unknown).contains("reported no reset"));
+    }
+
+    /// The reproduction: epodsystem-core on 2026-09-24. Its last nudge was at
+    /// 16:36:28Z and started a turn that dispatched two runs; the account refused
+    /// at 16:54:18Z and again at 16:55:15Z, and the hooks' last word is a turn
+    /// that ended over a child whose end never came. The box never asked again.
+    #[test]
+    fn epodsystem_cores_parked_master_is_asked_again_where_it_was_not() {
+        let (last, now) = parked(15 * 60);
+        let refused_ms = last.at * 1000;
+        let hooks = heard(
+            Some(WAIT_CONVERSATION),
+            &[
+                (
+                    agent_activity::Event::PromptSubmitted,
+                    None,
+                    refused_ms - 18 * 60_000,
+                ),
+                (
+                    agent_activity::Event::SubagentStarted,
+                    Some("a4723aa61fd809a07"),
+                    refused_ms - 17 * 60_000,
+                ),
+                (agent_activity::Event::Stopped, None, refused_ms),
+            ],
+        );
+        let since = since_nudge(Some(&hooks), Some(0));
+        let last_nudge = sent(7, a_while_ago(), Some(0));
+
+        assert!(
+            !nudge_due(last_nudge, 7, Instant::now(), since, false),
+            "without the hold this is what the box decided that night: {since:?}, no retry owed"
+        );
+
+        let held = held_by_limit(Some(&last), Some(WAIT_CONVERSATION), Some(&hooks))
+            .expect("the pane is parked behind the second refusal");
+        assert_eq!(held.reason, master_limit::Reason::UsageLimit);
+        assert!(nudge_due(last_nudge, 7, Instant::now(), since, true));
+        assert!(
+            asked_this_sweep(&[], Some(&held)),
+            "its two runs still held ISS-254 and ISS-297 out of the set"
+        );
+
+        let (hours_later, later) = parked(3 * 3600);
+        assert!(later > now);
+        assert!(
+            held_by_limit(Some(&hours_later), Some(WAIT_CONVERSATION), Some(&hooks)).is_some(),
+            "past the report's freshness window the pane is still parked"
+        );
     }
 
     #[test]
@@ -5678,15 +6111,15 @@ mod give_back_tests {
         remember(&masters, "p1", &session);
 
         assert!(
-            masters.claim_nudge("p1", 7, None),
+            masters.claim_nudge("p1", 7, None, false),
             "the first sight of work nudges"
         );
         assert!(
-            !masters.claim_nudge("p1", 7, None),
+            !masters.claim_nudge("p1", 7, None, false),
             "the same work on the next sweep must not spend another pass"
         );
         assert!(
-            masters.claim_nudge("p1", 8, None),
+            masters.claim_nudge("p1", 8, None, false),
             "new work nudges at once"
         );
     }
@@ -5702,7 +6135,7 @@ mod give_back_tests {
         remember(&masters, "p1", &session);
 
         let before = reported(&[(agent_activity::Event::Stopped, None)]);
-        assert!(masters.claim_nudge("p1", 7, Some(&before)));
+        assert!(masters.claim_nudge("p1", 7, Some(&before), false));
         age_last_nudge(&masters, "p1");
 
         let answered = reported(&[
@@ -5711,14 +6144,14 @@ mod give_back_tests {
             (agent_activity::Event::Stopped, None),
         ]);
         assert!(
-            !masters.claim_nudge("p1", 7, Some(&answered)),
+            !masters.claim_nudge("p1", 7, Some(&answered), false),
             "the ceiling came round, the work is the same, and the master's own hooks say it ran the pass"
         );
 
         let wedged = reported(&[(agent_activity::Event::Stopped, None)]);
         age_last_nudge(&masters, "p1");
         assert!(
-            masters.claim_nudge("p1", 7, Some(&wedged)),
+            masters.claim_nudge("p1", 7, Some(&wedged), false),
             "no prompt submitted since the nudge is a pass that never ran, and the ceiling exists for exactly that"
         );
     }
@@ -5734,7 +6167,7 @@ mod give_back_tests {
     #[test]
     fn a_project_with_no_master_is_never_nudged() {
         let masters = Masters::new();
-        assert!(!masters.claim_nudge("nobody", 7, None));
+        assert!(!masters.claim_nudge("nobody", 7, None, false));
     }
 
     #[test]

@@ -384,10 +384,9 @@ mod tests {
     /// reason is the transport's own cause rather than the url it was sent to.
     #[tokio::test]
     async fn a_read_nobody_answered_has_no_status_and_says_why() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        drop(listener);
-        let failed = list(&client(format!("http://{addr}")), Some("p1"), 20)
+        // A privileged port: no unprivileged test in this suite can bind it, so
+        // the connect is refused rather than raced by whoever took a freed port.
+        let failed = list(&client("http://127.0.0.1:1".to_string()), Some("p1"), 20)
             .await
             .unwrap_err();
         assert_eq!(failed.status, None);
