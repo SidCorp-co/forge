@@ -6,6 +6,18 @@ export class NoReleaseGateError extends Error {
 }
 
 /**
+ * The call named no issue while issues wait at the gate: the caller's list,
+ * not the project's state, so no blocker names it and readiness never lists it.
+ * An empty gate is `RELEASE_ROSTER_EMPTY` instead, which the enumerator reports.
+ */
+export class ReleaseIssuesUnnamedError extends Error {
+  constructor() {
+    super('RELEASE_ISSUES_UNNAMED');
+    this.name = 'ReleaseIssuesUnnamedError';
+  }
+}
+
+/**
  * The project has no runner registered at all, so there is no box a release
  * could run on.
  *

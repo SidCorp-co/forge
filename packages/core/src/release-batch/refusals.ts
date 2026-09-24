@@ -14,22 +14,17 @@ import { HTTPException } from 'hono/http-exception';
 import {
   alsoBlocking,
   blockerHttpStatus,
+  blockersOf,
+  RELEASE_ROSTER_LIMIT,
   type ReleaseBlockerCode,
   releaseBlockerSentence,
 } from './blocker-sentences.js';
-import {
-  ReleaseCheckUnevaluatedError,
-  ReleaseProbesUnreadableError,
-  ReleaseRosterUnusableError,
-} from './blockers.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   ClaimConflictError,
   NoReleaseGateError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
-  ReleaseRecordMissingError,
-  ReleaseWorkUnmergedError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
 import { MethodMismatchError, MethodNotAnnouncedError } from './method.js';
@@ -72,6 +67,22 @@ export function releaseBlockerHttp(
   return new HTTPException(blockerHttpStatus(code), {
     message: releaseBlockerSentence(code, details),
     cause: Object.keys(body).length > 0 ? { code, details: body } : { code },
+  });
+}
+
+/**
+ * A report's first entry as readiness serialises it, the rest as `alsoBlocking`.
+ * Never rebuilt from the error's class, whose fields are fewer than the entry's
+ * (ISS-1127 criteria 1, 9). Null where no report rode on the error.
+ */
+export function reportedRefusal(err: unknown): HTTPException | null {
+  const [head, ...rest] = blockersOf(err);
+  if (!head) return null;
+  const details: Record<string, unknown> = { ...(head.details ?? {}) };
+  if (rest.length > 0) details.alsoBlocking = rest;
+  return new HTTPException(head.httpStatus, {
+    message: head.message,
+    cause: Object.keys(details).length > 0 ? { code: head.code, details } : { code: head.code },
   });
 }
 
@@ -118,6 +129,15 @@ export function undeclaredProbes(err?: unknown): HTTPException {
     'RELEASE_PROBES_UNDECLARED',
     releaseBlockerSentence('RELEASE_PROBES_UNDECLARED'),
   );
+}
+
+export function issuesUnnamed(): HTTPException {
+  return new HTTPException(400, {
+    message:
+      'This call names no issue to release, and issues are waiting at the release gate. Send the ids GET /api/projects/{projectId}/release-batches/roster lists, oldest merge first, at most ' +
+      `${RELEASE_ROSTER_LIMIT} in one release.`,
+    cause: { code: 'RELEASE_ISSUES_UNNAMED' },
+  });
 }
 
 export function undeclaredBranches(err?: unknown): HTTPException {
@@ -175,6 +195,8 @@ export function methodRefusal(err: unknown): HTTPException | null {
  * from a batch must not meet a second name for the same fact here.
  */
 export function recordRefusal(err: unknown): HTTPException {
+  const reported = reportedRefusal(err);
+  if (reported) return reported;
   const declined = declarationRefusal(err);
   if (declined) return declined;
 
@@ -185,15 +207,6 @@ export function recordRefusal(err: unknown): HTTPException {
     );
   }
   if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes(err);
-  if (err instanceof ReleaseProbesUnreadableError) {
-    return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { urls: err.urls });
-  }
-  if (err instanceof ReleaseCheckUnevaluatedError) {
-    return releaseBlockerHttp(err, 'RELEASE_CHECK_UNEVALUATED', { check: err.check });
-  }
-  if (err instanceof ReleaseRosterUnusableError) {
-    return releaseBlockerHttp(err, err.code, { waiting: err.waiting });
-  }
   if (err instanceof ReleaseNotVerifiedError) {
     return new HTTPException(409, {
       message: err.reason,
@@ -202,12 +215,6 @@ export function recordRefusal(err: unknown): HTTPException {
   }
   if (err instanceof ClaimConflictError) {
     return releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
-  }
-  if (err instanceof ReleaseRecordMissingError) {
-    return releaseBlockerHttp(err, 'RELEASE_RECORD_MISSING', { issueIds: err.issueIds });
-  }
-  if (err instanceof ReleaseWorkUnmergedError) {
-    return releaseBlockerHttp(err, 'RELEASE_WORK_UNMERGED', { issueIds: err.issueIds });
   }
   throw err;
 }

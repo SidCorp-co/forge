@@ -76,7 +76,11 @@ async function resolveRoster(
   issueIds: string[] | undefined,
   out: ReleaseBlocker[],
 ): Promise<RosterRead | undefined> {
-  if (issueIds) return { ids: issueIds, unclaimed: issueIds };
+  // Sized like the roster; an empty named list falls through to read the gate.
+  if (issueIds && issueIds.length > 0) {
+    if (issueIds.length > RELEASE_ROSTER_LIMIT) out.push(oversize(issueIds.length));
+    return { ids: issueIds, unclaimed: issueIds };
+  }
   const rows = await evaluate(
     'roster',
     async () =>
@@ -94,15 +98,14 @@ async function resolveRoster(
       blocker('RELEASE_ROSTER_EMPTY', nearGate === undefined ? undefined : { nearGate }, 'roster'),
     );
   } else if (ids.length > RELEASE_ROSTER_LIMIT) {
-    out.push(
-      blocker(
-        'RELEASE_ROSTER_OVERSIZE',
-        { waiting: ids.length, limit: RELEASE_ROSTER_LIMIT },
-        'roster',
-      ),
-    );
+    out.push(oversize(ids.length));
   }
+  if (issueIds) return { ids: [], unclaimed: [] };
   return { ids, unclaimed: rows.filter((r) => r.claimed === null).map((r) => r.id) };
+}
+
+function oversize(waiting: number): ReleaseBlocker {
+  return blocker('RELEASE_ROSTER_OVERSIZE', { waiting, limit: RELEASE_ROSTER_LIMIT }, 'roster');
 }
 
 /** Wrong status, wrong project, already claimed — the caller's own list only. */

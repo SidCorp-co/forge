@@ -5,11 +5,6 @@ import { z } from 'zod';
 import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import {
-  ReleaseCheckUnevaluatedError,
-  ReleaseProbesUnreadableError,
-  ReleaseRosterUnusableError,
-} from './blockers.js';
 import { resolveReleaseChannels } from './channel.js';
 import { openAttempt, readAttempt, recordAccount, settleAttempt } from './ledger.js';
 import { announceMethod } from './method.js';
@@ -20,11 +15,13 @@ import {
   conflict,
   declarationRefusal,
   holding,
+  issuesUnnamed,
   methodRefusal,
   notFound,
   recordRefusal,
   refuseMachineKeys,
   releaseBlockerHttp,
+  reportedRefusal,
   undeclaredBranches,
   undeclaredProbes,
 } from './refusals.js';
@@ -39,15 +36,12 @@ import {
   loadReleaseBatchContext,
   loadReleaseRoster,
   NoReleaseGateError,
-  NoRunnerOnlineError,
   ReleaseBatchAbortedError,
   ReleaseBranchesUndeclaredError,
+  ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
-  ReleasePoolEmptyError,
   ReleaseProbesUndeclaredError,
-  ReleaseRecordMissingError,
   ReleaseRecutRefusedError,
-  ReleaseRunnerUndeclaredError,
   ReleaseVersionConflictError,
   ReleaseVersionExhaustedError,
   ReleaseVersionMissingError,
@@ -60,7 +54,12 @@ const projectParamSchema = z.object({ projectId: z.uuid() });
 
 const createBodySchema = z
   .object({
-    issueIds: z.array(z.uuid()).min(1).max(50),
+    /**
+     * No size here: `collectReleaseBlockers` owns the limit and the empty gate,
+     * so both are refused by the code readiness lists them under rather than as
+     * a schema's `Invalid input` (ISS-1127 criterion 1).
+     */
+    issueIds: z.array(z.uuid()),
     /**
      * The version of a FAILED release being cut again, which raises the patch digit instead of the
      * minor. Not validated for shape here: `cutReleaseVersion` refuses a value that is not a
@@ -95,32 +94,20 @@ releaseBatchRoutes.post(
       const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf });
       return c.json(result, 201);
     } catch (err) {
+      // Every reason the enumerator found answers from its own entry, so the
+      // arms below are only for what is thrown after it: a race at the claim or
+      // the enqueue, a plan read, an empty list beside a gate that holds work.
+      const reported = reportedRefusal(err);
+      if (reported) throw reported;
       const declined = declarationRefusal(err);
       if (declined) throw declined;
       if (err instanceof NoReleaseGateError) throw releaseBlockerHttp(err, 'NO_RELEASE_GATE');
-      if (err instanceof ReleaseRunnerUndeclaredError) {
-        throw releaseBlockerHttp(err, 'RELEASE_RUNNER_UNDECLARED');
-      }
-      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes(err);
-      if (err instanceof ReleaseProbesUnreadableError) {
-        throw releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { urls: err.urls });
-      }
       if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
-      if (err instanceof ReleasePoolEmptyError) throw releaseBlockerHttp(err, 'RELEASE_POOL_EMPTY');
-      if (err instanceof NoRunnerOnlineError) throw releaseBlockerHttp(err, 'NO_RUNNER_ONLINE');
-      if (err instanceof ReleaseRosterUnusableError) {
-        throw releaseBlockerHttp(err, err.code, { waiting: err.waiting });
-      }
-      if (err instanceof ReleaseCheckUnevaluatedError) {
-        throw releaseBlockerHttp(err, 'RELEASE_CHECK_UNEVALUATED', { check: err.check });
-      }
       if (err instanceof ClaimConflictError) {
         throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
       }
-      if (err instanceof ReleaseRecordMissingError) {
-        throw releaseBlockerHttp(err, 'RELEASE_RECORD_MISSING', { issueIds: err.issueIds });
-      }
       if (err instanceof BatchInFlightError) throw releaseBlockerHttp(err, 'BATCH_IN_FLIGHT');
+      if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed();
       if (err instanceof ReleaseRecutRefusedError) {
         throw conflict('RELEASE_RECUT_REFUSED', err.message);
       }
@@ -229,7 +216,7 @@ const abortBodySchema = z.object({ reason: z.string().trim().max(2000).optional(
  */
 const releaseRecordBodySchema = z
   .object({
-    issueIds: z.array(z.uuid()).min(1).max(50),
+    issueIds: z.array(z.uuid()).min(1),
     commit: z.string().trim().min(1).max(200),
     account: z.string().trim().min(20).max(20_000),
     providerRef: z.string().trim().max(500).optional(),

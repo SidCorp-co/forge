@@ -1,9 +1,10 @@
 import type { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { releaseBlockerSentence } from './blocker-sentences.js';
+import { blocker, releaseBlockerError } from './blockers.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { declarationRefusal, undeclaredProbes } from './refusals.js';
+import { declarationRefusal, reportedRefusal, undeclaredProbes } from './refusals.js';
 import { ReleaseMultiChannelUnsupportedError } from './service.js';
 
 function body(err: HTTPException): string {
@@ -82,5 +83,59 @@ describe('undeclaredProbes', () => {
 
   it('says a binding declaring an unreadable verify takes no project default', () => {
     expect(body(undeclaredProbes())).toMatch(/takes NO project default/i);
+  });
+});
+
+function thrown(...entries: ReturnType<typeof blocker>[]) {
+  return releaseBlockerError({
+    projectId: 'p',
+    projectExists: true,
+    declaration: null,
+    channels: [],
+    blockers: entries,
+    warnings: [],
+  });
+}
+
+/**
+ * The create and record doors answer a report from its own first entry. Each
+ * code below is one whose error class carries less than its entry — the
+ * rebuild from that class is what lost the boxes and the run id (ISS-1127).
+ */
+describe('reportedRefusal — the entry readiness listed, not a rebuild of it', () => {
+  const runners = [
+    { deviceName: 'dev1', reason: 'never-connected', lastSeenSeconds: null, reporting: false },
+  ];
+
+  it.each([
+    ['NO_RUNNER_ONLINE', { runners }],
+    ['BATCH_IN_FLIGHT', { runId: 'run-9' }],
+    ['RELEASE_ROSTER_OVERSIZE', { waiting: 51, limit: 50 }],
+    ['RELEASE_ROSTER_EMPTY', { nearGate: 2 }],
+    ['RELEASE_RUNNER_UNDECLARED', undefined],
+  ] as const)('answers %s with its own status, message and details', (code, details) => {
+    const entry = blocker(code, details as Record<string, unknown> | undefined);
+
+    const refusal = reportedRefusal(thrown(entry)) as HTTPException;
+
+    expect(refusal.status).toBe(entry.httpStatus);
+    expect(refusal.message).toBe(entry.message);
+    expect(refusal.cause).toEqual(details ? { code, details } : { code });
+  });
+
+  it('carries every later entry, whole, as alsoBlocking', () => {
+    const head = blocker('RELEASE_RECORD_MISSING', { issueIds: ['a'] });
+    const rest = [blocker('RELEASE_POOL_EMPTY'), blocker('BATCH_IN_FLIGHT', { runId: 'r' })];
+
+    const refusal = reportedRefusal(thrown(head, ...rest)) as HTTPException;
+
+    expect(refusal.cause).toEqual({
+      code: 'RELEASE_RECORD_MISSING',
+      details: { issueIds: ['a'], alsoBlocking: rest },
+    });
+  });
+
+  it('answers null for an error no report rode on', () => {
+    expect(reportedRefusal(new Error('claim race'))).toBeNull();
   });
 });

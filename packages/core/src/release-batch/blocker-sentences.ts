@@ -9,7 +9,7 @@ import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
 import type { ReleaseDeclaration } from './gate.js';
 import type { ReleaseChannel } from './plan.js';
 
-/** The most issues one call may name; `createBodySchema` holds it too. */
+/** The most issues one release may carry; `resolveRoster` holds every door to it. */
 export const RELEASE_ROSTER_LIMIT = 50;
 
 export type ReleaseBlockerCode =

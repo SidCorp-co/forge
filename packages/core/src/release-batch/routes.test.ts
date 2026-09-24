@@ -52,7 +52,7 @@ const { ReleaseRunnerAmbiguousError } = await import('./channel.js');
 const { ReleaseMultiChannelUnsupportedError, ReleaseRecordMissingError } = await import(
   './service.js'
 );
-const { ReleaseCheckUnevaluatedError } = await import('./blockers.js');
+const { blocker, releaseBlockerError } = await import('./blockers.js');
 const { releaseBlockerSentence } = await import('./blocker-sentences.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -238,9 +238,22 @@ describe('POST /:projectId/release-batches — every reason at once', () => {
     expect(body.details?.alsoBlocking).toBeUndefined();
   });
 
+  /** What `createReleaseBatch` throws: the report's first entry's class, carrying the report. */
+  function reported(...entries: ReturnType<typeof blocker>[]) {
+    const err = releaseBlockerError({
+      projectId: PROJECT_ID,
+      projectExists: true,
+      declaration: null,
+      channels: [],
+      blockers: entries,
+      warnings: [],
+    });
+    createReleaseBatchMock.mockRejectedValueOnce(err);
+  }
+
   it('answers 503 for a check it could not run, rather than claiming a release may start', async () => {
     mockAdmin();
-    createReleaseBatchMock.mockRejectedValueOnce(new ReleaseCheckUnevaluatedError('runner-pool'));
+    reported(blocker('RELEASE_CHECK_UNEVALUATED', { check: 'runner-pool' }));
 
     const res = await createReq();
     const body = (await res.json()) as { code?: string; message?: string };
@@ -252,7 +265,7 @@ describe('POST /:projectId/release-batches — every reason at once', () => {
 
   it('says the same sentence the readiness answer said for the same code', async () => {
     mockAdmin();
-    refusedWith(new ReleaseRecordMissingError([ISSUE_ID]), 'RELEASE_RECORD_MISSING', []);
+    reported(blocker('RELEASE_RECORD_MISSING', { issueIds: [ISSUE_ID] }));
 
     const res = await createReq();
     const body = (await res.json()) as { message?: string };
@@ -260,6 +273,40 @@ describe('POST /:projectId/release-batches — every reason at once', () => {
     expect(body.message).toBe(
       releaseBlockerSentence('RELEASE_RECORD_MISSING', { issueIds: [ISSUE_ID] }),
     );
+  });
+
+  // The judging run's criterion-9 failure at 9fcf2d707: the class this code is
+  // thrown as carries no runners, and the door answered with the sentence for
+  // a reading nobody failed to take.
+  it('names the held boxes the report carried, rather than the no-reading fallback', async () => {
+    mockAdmin();
+    const runners = [
+      {
+        deviceName: 'judge-new-box',
+        reason: 'never-connected',
+        lastSeenSeconds: null,
+        reporting: false,
+      },
+    ];
+    reported(blocker('NO_RUNNER_ONLINE', { runners }));
+
+    const res = await createReq();
+    const body = (await res.json()) as { message?: string; details?: { runners?: unknown } };
+
+    expect(res.status).toBe(503);
+    expect(body.message).toBe(releaseBlockerSentence('NO_RUNNER_ONLINE', { runners }));
+    expect(body.message).toContain('judge-new-box');
+    expect(body.details?.runners).toEqual(runners);
+  });
+
+  it('carries the running batch id the report named', async () => {
+    mockAdmin();
+    reported(blocker('BATCH_IN_FLIGHT', { runId: 'run-9' }));
+
+    const res = await createReq();
+    const body = (await res.json()) as { details?: { runId?: string } };
+
+    expect(body.details?.runId).toBe('run-9');
   });
 });
 

@@ -42,6 +42,7 @@ import {
   ClaimConflictError,
   NoReleaseGateError,
   ReleaseBatchAbortedError,
+  ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
   ReleaseVersionMissingError,
@@ -92,6 +93,10 @@ export async function createReleaseBatch(
   if (!report.projectExists) throw new NoReleaseGateError();
   const refusal = releaseBlockerError(report);
   if (refusal) throw refusal;
+  // After the report, so every project reason outranks it. An empty gate is
+  // already `RELEASE_ROSTER_EMPTY` above; reaching here, issues are waiting and
+  // this call named none of them, which is the caller's list to fix.
+  if (issueIds.length === 0) throw new ReleaseIssuesUnnamedError();
 
   const gateStatus = RELEASE_GATE_STATUS;
   const plan = await resolveReleasePlan(projectId);
