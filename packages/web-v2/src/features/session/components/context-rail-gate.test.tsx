@@ -109,6 +109,14 @@ describe("the gate a run session opened under, on the session rail", () => {
 		expect(screen.queryByText(/reported no gate condition/)).toBeNull();
 	});
 
+	it("keeps a condition already read when a later refetch of the run fails", () => {
+		useRun.mockReturnValue({ data: { gateAtOpen: failingOpen }, isError: true, error: new Error("timeout") });
+		render(<ContextRail session={session("run_session")} items={[]} />);
+
+		expect(screen.getByText(/gate was failing open when this run opened/)).toBeTruthy();
+		expect(screen.queryByText(/gate condition is unknown/)).toBeNull();
+	});
+
 	it("shows no gate section for a pipeline session, whose run the box never opened", () => {
 		withGate(null);
 		render(<ContextRail session={session("pipeline")} items={[]} />);

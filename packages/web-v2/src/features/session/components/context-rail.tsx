@@ -127,11 +127,14 @@ export function ContextRail({
   // Only a run session's run is opened by the box with its gate condition (ISS-1192).
   const isRunSession = sessionKind(session) === "run_session";
   const runQ = useRun(session.pipelineRunId ?? undefined, isRunSession && !!session.pipelineRunId);
+  // A failed refetch keeps the data it already read, and that stays the answer.
   const gateNote = !isRunSession
     ? null
-    : runQ.isError
-      ? runGateUnfetched(runQ.error instanceof Error ? runQ.error.message : String(runQ.error))
-      : runGateNote(runQ.data?.gateAtOpen);
+    : runQ.data
+      ? runGateNote(runQ.data.gateAtOpen)
+      : runQ.isError
+        ? runGateUnfetched(runQ.error instanceof Error ? runQ.error.message : String(runQ.error))
+        : null;
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 
   // Resolve the runner the session is bound to. The device may not be in the
