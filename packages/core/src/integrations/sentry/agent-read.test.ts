@@ -246,6 +246,40 @@ describe('a read that reaches Sentry', () => {
     expect(listing.refused[0]?.belongsTo).toBe('forge-web');
   });
 
+  it('refuses a listing this target is scoped to none of, rather than calling it empty', async () => {
+    answerWith({ body: [sentryIssue({ id: '5002', project: { slug: 'forge-web' } })] });
+    const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
+    expect(refusal.reason).toBe('confined_out');
+    expect(refusal.message).toContain('FORGE-CORE-7');
+    expect(refusal.message).toContain('scoped to none of them');
+  });
+
+  it('takes the binding\u2019s tokens out of what Sentry itself reported', async () => {
+    const previous = 'sntryu_the_previous_token_value';
+    listBindingsForProject.mockResolvedValue([
+      pair({ connection: { secrets: { authToken: TOKEN, previousAuthToken: previous } } }),
+    ]);
+    answerWith({
+      body: [
+        sentryIssue({
+          title: `401 from Bearer ${TOKEN}`,
+          culprit: `retry with ${previous}`,
+          metadata: { value: `header: Bearer ${TOKEN}` },
+        }),
+      ],
+    });
+    const listing = await readProjectSentryIssues({ projectId: PROJECT });
+    const serialized = JSON.stringify(listing);
+    expect(serialized).not.toContain(TOKEN);
+    expect(serialized).not.toContain(previous);
+  });
+
+  it('takes the tokens out of one issue read by id too', async () => {
+    answerWith({ body: sentryIssue({ title: `Bearer ${TOKEN} was rejected` }) });
+    const issue = await readProjectSentryIssue({ projectId: PROJECT, issueId: '5001' });
+    expect(JSON.stringify(issue)).not.toContain(TOKEN);
+  });
+
   it('says so where Sentry still had more than the adapter walks', async () => {
     answerWith({
       body: [sentryIssue()],

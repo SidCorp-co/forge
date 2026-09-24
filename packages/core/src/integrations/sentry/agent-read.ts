@@ -16,7 +16,7 @@ import {
   listBindingsForProject,
 } from '../store.js';
 import { listSentryIssues, readSentryIssue, type SentryAdapterContext } from './issues.js';
-import { SentryListingFailed, type SentryListRefusal } from './listing.js';
+import { type SentryIssueListing, SentryListingFailed, type SentryListRefusal } from './listing.js';
 import { SentryRefusal } from './refusals.js';
 import { resolveSentryTargets } from './targets.js';
 import type { SentryConfig, SentryIssueDetail, SentrySecrets } from './types.js';
@@ -138,18 +138,33 @@ export async function resolveGrantedSentryBinding(
 }
 
 /**
- * Re-raise anything the adapter threw with this binding's token taken out of it.
+ * Take this binding's credentials out of third-party text, whichever way the call ended.
  *
- * Sentry's own error text is third-party input and the one string most likely to echo the
- * credential the call was made with, so it is scrubbed on the way out rather than trusted.
+ * Both tokens, because during a rotation the failing call may have been the retry. Sentry's text
+ * is third-party input on BOTH paths: an error quotes the request that failed, and an issue title
+ * or culprit is whatever the product put in the event it captured.
  */
-function rethrowScrubbed(err: unknown, ctx: SentryAdapterContext, bindingId: string): never {
-  // Both tokens: during a rotation the call that failed may have been the retry, so the credential
-  // likeliest to be quoted back in Sentry's own error text is the previous one.
+function scrubberFor(ctx: SentryAdapterContext): (text: string) => string {
   const secrets = [ctx.secrets?.authToken, ctx.secrets?.previousAuthToken].filter(
     (value): value is string => typeof value === 'string' && value.length > 0,
   );
-  const clean = (text: string) => scrubLogText(text, secrets);
+  return (text: string) => scrubLogText(text, secrets);
+}
+
+/** The free text Sentry filled, with this binding's credentials taken out of it. */
+function scrubIssue(issue: SentryIssueDetail, clean: (text: string) => string): SentryIssueDetail {
+  const text = (value: string | null) => (value === null ? null : clean(value));
+  return {
+    ...issue,
+    title: text(issue.title),
+    culprit: text(issue.culprit),
+    metadataValue: text(issue.metadataValue),
+    permalink: text(issue.permalink),
+  };
+}
+
+function rethrowScrubbed(err: unknown, ctx: SentryAdapterContext, bindingId: string): never {
+  const clean = scrubberFor(ctx);
   if (err instanceof SentryListingFailed) {
     const inner = err.refusal;
     throw new SentryRefusal(inner?.reason ?? 'sentry_unreachable', clean(err.message), {
@@ -181,6 +196,28 @@ function assertHasTargets(ctx: SentryAdapterContext, bindingId: string): void {
   }
 }
 
+/**
+ * Sentry answered, and this target is scoped to none of it.
+ *
+ * `issues: []` beside a populated confinement list is the one shape that breaks the promise the
+ * whole door rests on — that an empty listing means Sentry reported nothing. It also means the
+ * `project:` term the query carries did not bind, which is worth saying rather than reading as a
+ * quiet night.
+ */
+function assertNotAllConfinedOut(listing: SentryIssueListing, bindingId: string): void {
+  if (listing.issues.length > 0 || listing.refused.length === 0) return;
+  const named = listing.refused
+    .slice(0, 10)
+    .map((one) => one.shortId ?? one.issueId)
+    .join(', ');
+  const more = listing.refused.length > 10 ? `, and ${listing.refused.length - 10} more` : '';
+  throw new SentryRefusal(
+    'confined_out',
+    `sentry: Sentry answered with ${listing.refused.length} issue(s) and target "${listing.target.label}" is scoped to none of them — ${named}${more}. This target is confined to project ${listing.target.projectSlug}, so this is not an empty error stream.`,
+    { bindingId },
+  );
+}
+
 export async function readProjectSentryIssues(
   input: SentryAgentListRequest,
 ): Promise<SentryAgentListing> {
@@ -194,14 +231,16 @@ export async function readProjectSentryIssues(
       ...(input.window ? { statsPeriod: input.window } : {}),
       ...(input.limit === undefined ? {} : { limit: input.limit }),
     });
+    assertNotAllConfinedOut(listing, pair.binding.id);
+    const clean = scrubberFor(ctx);
     return {
       target: listing.target.label,
       organizationSlug: listing.target.organizationSlug,
       projectSlug: listing.target.projectSlug ?? null,
       query: listing.query,
       window: input.window ?? null,
-      issues: listing.issues,
-      refused: listing.refused,
+      issues: listing.issues.map((issue) => scrubIssue(issue, clean)),
+      refused: listing.refused.map((one) => ({ ...one, reason: clean(one.reason) })),
       pages: listing.pages,
       truncated: listing.truncated,
     };
@@ -221,7 +260,7 @@ export async function readProjectSentryIssue(
       issueId: input.issueId,
       ...(input.target ? { targetLabel: input.target } : {}),
     });
-    return call.issue;
+    return scrubIssue(call.issue, scrubberFor(ctx));
   } catch (err) {
     rethrowScrubbed(err, ctx, pair.binding.id);
   }

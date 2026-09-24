@@ -71,7 +71,9 @@ export const forgeSentryTool: ContextScopedMcpToolFactory = (ctx) => ({
     'so the reading is a floor. `refused` on a SUCCESSFUL answer is the per-issue confinement ' +
     'list: answers that belong to another Sentry project under the same organization, reported ' +
     'rather than dropped in silence. It is not a refusal of the call — a call that was refused ' +
-    'has `ok:false`, one `refusal` object, and no `issues` key at all. ' +
+    'has `ok:false`, one `refusal` object, and no `issues` key at all. A listing Sentry answered ' +
+    'where this target is scoped to NONE of the answers is itself refused, `confined_out`, naming ' +
+    'them: that is a project filter that did not bind, not a quiet night. ' +
     'Filters, all optional and all ANDed: `release` (core tags every event with the source commit, ' +
     'so this is how you ask whether the commit you just deployed is erroring), `window` (a relative ' +
     'Sentry period — 1h, 24h, 7d, up to 90d; a value Sentry does not take is REFUSED, never ' +
