@@ -1,9 +1,15 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { fetchDivergence, REMOTE_MAX_COMMITS, readRemoteDivergence } from './remote-divergence.js';
+import {
+  fetchDivergence,
+  REMOTE_FETCH_LIMITS,
+  REMOTE_MAX_COMMITS,
+  readRemoteDivergence,
+} from './remote-divergence.js';
 
 const root = mkdtempSync(join(tmpdir(), 'forge-remote-divergence-'));
 const env = { ...process.env, GIT_ALLOW_PROTOCOL: 'file' };
@@ -149,6 +155,74 @@ describe('fetchDivergence', () => {
     expect(d).toMatchObject({ ok: true, aheadBy: REMOTE_MAX_COMMITS + 1, complete: false });
     expect(d.ok && d.commits.length).toBe(REMOTE_MAX_COMMITS);
   }, 120_000);
+});
+
+describe('a fetch that outgrows its budget', () => {
+  let fat = '';
+
+  beforeAll(() => {
+    fat = join(root, 'fat');
+    git(root, 'init', '--quiet', '--initial-branch=master', fat);
+    git(fat, 'commit', '--quiet', '--allow-empty', '-m', 'root');
+    git(fat, 'checkout', '--quiet', '-b', 'staging');
+    writeFileSync(join(fat, 'blob.bin'), randomBytes(2 * 1024 * 1024));
+    git(fat, 'add', 'blob.bin');
+    git(fat, 'commit', '--quiet', '-m', 'a file the filter would have left behind');
+  });
+
+  function survivors(dir: string): string {
+    return spawnSync('pgrep', ['-af', dir]).stdout.toString().trim();
+  }
+
+  it('is stopped past the byte budget from a host that ignores the filter, and nothing it started survives', async () => {
+    const dir = scratch();
+    const d = await fetchDivergence(
+      `file://${fat}`,
+      env,
+      { baseRef: 'staging', liveRef: 'master' },
+      dir,
+      {
+        ...REMOTE_FETCH_LIMITS,
+        maxBytes: 256 * 1024,
+      },
+    );
+    expect(d).toEqual({
+      ok: false,
+      reason:
+        'fetching staging and master from the git host passed 256 KiB, the most one reading may fetch — the host may not honour the commits-only filter',
+    });
+    expect(survivors(dir)).toBe('');
+  });
+
+  it('is stopped past the time budget, and nothing it started survives', async () => {
+    const dir = scratch();
+    const d = await fetchDivergence(
+      `file://${fat}`,
+      env,
+      { baseRef: 'staging', liveRef: 'master' },
+      dir,
+      {
+        ...REMOTE_FETCH_LIMITS,
+        timeoutMs: 1,
+      },
+    );
+    expect(d).toEqual({
+      ok: false,
+      reason: 'fetching staging and master from the git host took longer than 0.001s',
+    });
+    expect(survivors(dir)).toBe('');
+  });
+
+  it('keeps the default budget above what the commits-only fetch of a real history costs', async () => {
+    const d = await fetchDivergence(
+      `file://${fat}`,
+      env,
+      { baseRef: 'staging', liveRef: 'master' },
+      scratch(),
+    );
+    expect(d).toMatchObject({ ok: true, aheadBy: 1, complete: true });
+    expect(REMOTE_FETCH_LIMITS).toEqual({ timeoutMs: 60_000, maxBytes: 256 * 1024 * 1024 });
+  });
 });
 
 describe('readRemoteDivergence', () => {
