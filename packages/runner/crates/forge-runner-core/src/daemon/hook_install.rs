@@ -1222,10 +1222,20 @@ mod tests {
         );
     }
 
+    /// The clean half of the guard's pair.
+    ///
+    /// The file the rewrite left has to name something THIS platform can run,
+    /// and a unix path written as a literal is not that: `/bin/sh` stands on
+    /// the box that wrote this case and on neither of the other two the runner
+    /// ships for, so a literal here asks Windows a question about a file it
+    /// does not have and reads the right refusal as a failure. The scratch
+    /// runner is a file that exists wherever this suite runs.
     #[test]
     fn a_rewrite_that_left_nothing_dead_reports_what_it_repaired() {
+        let (_home, stands) = scratch_runner("the-build-the-rewrite-named");
         let before = document_with_a_managed_hook_for("SessionStart", "/gone/forge-runner");
-        let after = document_with_a_managed_hook_for("SessionStart", "/bin/sh");
+        let after =
+            document_with_a_managed_hook_for("SessionStart", stands.to_str().expect("utf-8"));
 
         assert_eq!(
             repaired(&before, &after).expect("a clean rewrite"),
