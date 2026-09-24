@@ -85,7 +85,14 @@ function firstLine(s: string): string {
   return (line ?? '').slice(0, 300);
 }
 
-export async function testSshConnection(repoUrl: string, privateKey: string): Promise<SshConnTest> {
+/**
+ * Run `fn` with the environment git needs to reach an SSH remote as `privateKey` and nothing else:
+ * the key in a 0700 temp dir, a known_hosts of its own, no prompt, and the ssh transport only.
+ */
+export async function withDeployKey<T>(
+  privateKey: string,
+  fn: (env: NodeJS.ProcessEnv, dir: string) => Promise<T>,
+): Promise<T> {
   return withTempDir(async (dir) => {
     const keyPath = join(dir, 'id_deploy');
     await writeFile(keyPath, privateKey.endsWith('\n') ? privateKey : `${privateKey}\n`, {
@@ -109,14 +116,23 @@ export async function testSshConnection(repoUrl: string, privateKey: string): Pr
       '-o',
       'LogLevel=ERROR',
     ].join(' ');
+    return fn(
+      {
+        ...process.env,
+        GIT_SSH_COMMAND: sshCmd,
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ALLOW_PROTOCOL: 'ssh',
+      },
+      dir,
+    );
+  });
+}
+
+export async function testSshConnection(repoUrl: string, privateKey: string): Promise<SshConnTest> {
+  return withDeployKey(privateKey, async (env) => {
     try {
       const { stdout } = await execFileAsync('git', ['ls-remote', repoUrl, 'HEAD'], {
-        env: {
-          ...process.env,
-          GIT_SSH_COMMAND: sshCmd,
-          GIT_TERMINAL_PROMPT: '0',
-          GIT_ALLOW_PROTOCOL: 'ssh',
-        },
+        env,
         timeout: 20_000,
         maxBuffer: 1_000_000,
       });

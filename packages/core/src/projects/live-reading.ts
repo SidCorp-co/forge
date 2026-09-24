@@ -1,14 +1,11 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import {
-  GitHubClientError,
-  type GitHubRepoClient,
-  githubRepoClient,
-} from '../integrations/github/client.js';
-import { readLiveDivergence } from '../integrations/github/live-divergence.js';
+import type { BranchRefs } from '../git/remote-divergence.js';
+import type { LiveDivergence } from '../integrations/github/live-divergence.js';
 import { logger } from '../logger.js';
 import type { LiveReading } from './live-reach.js';
+import { readProjectDivergence } from './live-source.js';
 import { readableLiveBranch } from './release-model.js';
 
 /** How long one reading answers for a project before the next read takes another. */
@@ -17,11 +14,15 @@ export const LIVE_READING_HOLD_MS = 5 * 60_000;
 export const LIVE_READING_FIRST_WAIT_MS = 3_000;
 
 export interface LiveReadingDeps {
-  clientFor: (projectId: string) => Promise<GitHubRepoClient>;
+  /** The commits on base that live lacks, from whichever source the project holds. */
+  divergenceFor: (projectId: string, refs: BranchRefs) => Promise<LiveDivergence>;
   now: () => Date;
 }
 
-const defaultDeps: LiveReadingDeps = { clientFor: githubRepoClient, now: () => new Date() };
+const defaultDeps: LiveReadingDeps = {
+  divergenceFor: (projectId, refs) => readProjectDivergence(projectId, refs),
+  now: () => new Date(),
+};
 
 export interface ProjectReleaseRow {
   id: string;
@@ -83,8 +84,7 @@ export async function takeLiveReading(
     );
   }
   try {
-    const client = await deps.clientFor(row.id);
-    const d = await readLiveDivergence(client, { baseRef: baseBranch, liveRef: row.liveBranch });
+    const d = await deps.divergenceFor(row.id, { baseRef: baseBranch, liveRef: row.liveBranch });
     if (!d.ok) return refused(d.reason);
     const { baseSha, liveSha, aheadBy, commits, complete } = d;
     const liveBranch = row.liveBranch;
@@ -100,9 +100,7 @@ export async function takeLiveReading(
       startedAt,
     };
   } catch (err) {
-    if (!(err instanceof GitHubClientError)) {
-      logger.warn({ err, projectId: row.id }, 'live reading: comparing the branches failed');
-    }
+    logger.warn({ err, projectId: row.id }, 'live reading: comparing the branches failed');
     return refused(err instanceof Error ? err.message : String(err));
   }
 }

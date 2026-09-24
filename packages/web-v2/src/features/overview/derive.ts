@@ -23,6 +23,12 @@ export function formatElapsed(seconds: number | null): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+/** What a queue row or record shows for its age: nothing where it has none to give. */
+export function ageText(seconds: number | null): string | null {
+  if (seconds === null) return null;
+  return seconds === Number.MAX_SAFE_INTEGER ? "never ran" : formatElapsed(seconds);
+}
+
 export type SilenceMark = "calm" | "warn" | "alarm";
 
 /**
@@ -132,7 +138,7 @@ const ACTION_META: Record<ActionKey, { label: string; owner: ActionOwner; hint: 
   liveUnmeasured: {
     label: "Promote projects Forge could not fully compare",
     owner: "person",
-    hint: "A closed issue here is not placed against the live branch: the comparison failed, was cut short, or predates its merge.",
+    hint: "Forge cannot tell whether closed issues here reached the live branch: the comparison failed, was cut short, or was taken before they merged.",
   },
   neverRanProjects: {
     label: "Projects holding a backlog with no pipeline",
@@ -151,7 +157,8 @@ export interface ActionRecord {
   label: string;
   detail: string;
   href: string;
-  ageSeconds: number;
+  /** Null where the record has no age: a refused comparison says when it was read, not since when. */
+  ageSeconds: number | null;
 }
 
 export interface ActionRow {
@@ -163,7 +170,8 @@ export interface ActionRow {
   count: number;
   /** The records the response actually named — never more than `count`. */
   records: ActionRecord[];
-  oldestSeconds: number;
+  /** Null where no record under the row has an age. */
+  oldestSeconds: number | null;
 }
 
 const issueRecord = (i: PulseIssueIdentity): ActionRecord => ({
@@ -229,7 +237,7 @@ export function actionQueue(pulse: PulseResponse, nowMs: number): ActionRow[] {
         label: p.name,
         detail: p.reason,
         href: `/projects/${p.slug}`,
-        ageSeconds: 0,
+        ageSeconds: null,
       })),
     },
     neverRanProjects: {
@@ -251,12 +259,17 @@ export function actionQueue(pulse: PulseResponse, nowMs: number): ActionRow[] {
       ...ACTION_META[key],
       count: src.count,
       records: src.records,
-      oldestSeconds: src.records.reduce((max, r) => Math.max(max, r.ageSeconds), 0),
+      oldestSeconds: src.records.reduce<number | null>(
+        (max, r) => (r.ageSeconds === null ? max : Math.max(max ?? 0, r.ageSeconds)),
+        null,
+      ),
     });
   }
 
   return rows.sort((a, b) => {
-    if (a.oldestSeconds !== b.oldestSeconds) return b.oldestSeconds - a.oldestSeconds;
+    const ageA = a.oldestSeconds ?? -1;
+    const ageB = b.oldestSeconds ?? -1;
+    if (ageA !== ageB) return ageB - ageA;
     if (a.count !== b.count) return b.count - a.count;
     return ACTION_ORDER.indexOf(a.key) - ACTION_ORDER.indexOf(b.key);
   });

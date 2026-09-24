@@ -6,7 +6,7 @@ import {
   CardContent,
   SectionTitle,
 } from "@/design";
-import { actionQueue, formatElapsed } from "../derive";
+import { actionQueue, ageText } from "../derive";
 import type { ActionKey, ActionOwner } from "../derive";
 import type { PulseResponse } from "../types";
 import { RecordPanel } from "./record-panel";
@@ -42,10 +42,8 @@ export function ActionQueue({ pulse, nowMs }: ActionQueueProps) {
                 <button
                   type="button"
                   onClick={() => setOpen(open === row.key ? null : row.key)}
-                  aria-label={`${row.label}: ${row.count}, oldest ${
-                    row.oldestSeconds === Number.MAX_SAFE_INTEGER
-                      ? "never ran"
-                      : formatElapsed(row.oldestSeconds)
+                  aria-label={`${row.label}: ${row.count}${
+                    row.oldestSeconds === null ? "" : `, oldest ${ageText(row.oldestSeconds)}`
                   } — open the list`}
                   className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                 >
@@ -57,12 +55,11 @@ export function ActionQueue({ pulse, nowMs }: ActionQueueProps) {
                   <span className="fg-body-sm shrink-0 text-subtle">
                     {OWNER_TEXT[row.owner]}
                   </span>
-                  <span className="fg-body-sm shrink-0 tabular-nums text-subtle">
-                    oldest{" "}
-                    {row.oldestSeconds === Number.MAX_SAFE_INTEGER
-                      ? "never ran"
-                      : formatElapsed(row.oldestSeconds)}
-                  </span>
+                  {row.oldestSeconds === null ? null : (
+                    <span className="fg-body-sm shrink-0 tabular-nums text-subtle">
+                      oldest {ageText(row.oldestSeconds)}
+                    </span>
+                  )}
                 </button>
                 {open === row.key ? (
                   <RecordPanel
