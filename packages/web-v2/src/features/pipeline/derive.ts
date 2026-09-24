@@ -262,6 +262,11 @@ export function cardStatus(
       waitingReason: queued.gate?.detail ?? "",
     };
   }
+  const label = rowLabel(issue);
+  // Nothing holds the row, so any run the board kept for it is history, not what the card is now.
+  if (label === "stalled") {
+    return { status: LABEL_VIEW.stalled.status, label: LABEL_VIEW.stalled.label, domain: "issue", waitingReason: "" };
+  }
   if (run) {
     return {
       status: runStatusToStatusKey(run.status),
@@ -270,9 +275,8 @@ export function cardStatus(
       waitingReason: "",
     };
   }
-  const label = rowLabel(issue);
   return {
-    status: label === "stalled" ? LABEL_VIEW.stalled.status : statusToChip(issue.status as IssueStatus),
+    status: statusToChip(issue.status as IssueStatus),
     label: LABEL_VIEW[label].label,
     domain: "issue",
     waitingReason: "",
