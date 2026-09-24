@@ -230,7 +230,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
   const recentComments = await db
     .select({ body: comments.body, issueTitle: issues.title })
     .from(comments)
-    .innerJoin(issues, eq(comments.issueId, issues.id))
+    .innerJoin(issues, and(eq(comments.issueId, issues.id), isNull(issues.archivedAt)))
     .where(and(eq(issues.projectId, projectId), gte(comments.createdAt, since)))
     .orderBy(desc(comments.createdAt))
     .limit(MAX_SIGNAL_COMMENTS);
@@ -238,7 +238,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
   const statusChanges = await db
     .select({ payload: activityLog.payload, issueTitle: issues.title })
     .from(activityLog)
-    .innerJoin(issues, eq(activityLog.issueId, issues.id))
+    .innerJoin(issues, and(eq(activityLog.issueId, issues.id), isNull(issues.archivedAt)))
     .where(
       and(
         eq(issues.projectId, projectId),

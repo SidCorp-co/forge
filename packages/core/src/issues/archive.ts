@@ -51,17 +51,33 @@ const archivedIssueIds = (projectId: string) =>
   sql`(SELECT ai.id::text FROM issues ai WHERE ai.project_id = ${projectId} AND ai.archived_at IS NOT NULL)`;
 
 /**
- * A memory row that is not the text of an archived issue. `NOT IN` over the project's archived
+ * A memory row that is not the text of an archived issue, nor a fact extracted from one
+ * (`memory/extraction.ts` tags those `metadata.issueId`). `NOT IN` over the project's archived
  * ids is a hashed subplan, evaluated once per query rather than once per memory row.
  */
+function liveIssueMemory(cols: { source: SQL; sourceRef: SQL; metadata: SQL }, projectId: string) {
+  const archived = archivedIssueIds(projectId);
+  return sql`((${cols.source} <> 'issue' OR ${cols.sourceRef} NOT IN ${archived}) AND coalesce(${cols.metadata}->>'issueId', '') NOT IN ${archived})`;
+}
+
 export function memoryOfLiveIssue(projectId: string): SQL {
-  return sql`(${memories.source} <> 'issue' OR ${memories.sourceRef} NOT IN ${archivedIssueIds(projectId)})`;
+  const cols = {
+    source: sql`${memories.source}`,
+    sourceRef: sql`${memories.sourceRef}`,
+    metadata: sql`${memories.metadata}`,
+  };
+  return liveIssueMemory(cols, projectId);
 }
 
 /** The same condition for hand-written SQL that names the memories table by an alias. */
 export function memoryOfLiveIssueAs(tableAlias: string, projectId: string): SQL {
   const t = sql.raw(tableAlias);
-  return sql`(${t}.source <> 'issue' OR ${t}.source_ref NOT IN ${archivedIssueIds(projectId)})`;
+  const cols = {
+    source: sql`${t}.source`,
+    sourceRef: sql`${t}.source_ref`,
+    metadata: sql`${t}.metadata`,
+  };
+  return liveIssueMemory(cols, projectId);
 }
 
 const refList = z.array(z.string().trim().min(1).max(40)).max(10_000);
@@ -292,13 +308,14 @@ export async function runIssueArchive(input: {
   actor: Actor;
 }): Promise<IssueArchiveReport> {
   const { projectId, direction, filter, dryRun, actor } = input;
-  const refusals: IssueArchiveRefusal[] = [];
-  const keySeqs = await resolveRefs(projectId, 'keys', filter.keys, refusals);
-  const excludeSeqs = await resolveRefs(projectId, 'exclude', filter.exclude, refusals);
+  // Refusals about the filter itself, read once; refusals about rows are rebuilt per attempt.
+  const filterRefusals: IssueArchiveRefusal[] = [];
+  const keySeqs = await resolveRefs(projectId, 'keys', filter.keys, filterRefusals);
+  const excludeSeqs = await resolveRefs(projectId, 'exclude', filter.exclude, filterRefusals);
   if (direction === 'archive') {
     for (const status of filter.statuses ?? []) {
       if (ISSUE_TERMINAL_STATUSES.includes(status)) continue;
-      refusals.push({
+      filterRefusals.push({
         kind: 'status_not_terminal',
         status,
         message: `\`filter.statuses\` names \`${status}\`: only \`closed\` and \`dropped\` issues can be archived`,
@@ -309,6 +326,7 @@ export async function runIssueArchive(input: {
 
   return withDeadlockRetry(() =>
     db.transaction(async (tx) => {
+      const refusals = [...filterRefusals];
       const rows: Row[] = await tx
         .select({
           id: issues.id,

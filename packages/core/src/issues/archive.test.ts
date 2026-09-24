@@ -55,11 +55,12 @@ describe('the read-side predicates', () => {
     expect(render(issueArchiveSide(false)[0] as never).sql).toBe('"issues"."archived_at" is null');
   });
 
-  it('keeps every memory that is not an issue, and drops the text of the archived issues of this project', () => {
+  it('keeps every memory that is not an issue or from one, and drops the archived issues of this project', () => {
     const q = render(memoryOfLiveIssueAs('m', PROJECT));
     expect(q.sql).toContain("m.source <> 'issue' OR m.source_ref NOT IN");
+    expect(q.sql).toContain("coalesce(m.metadata->>'issueId', '') NOT IN");
     expect(q.sql).toContain('ai.archived_at IS NOT NULL');
-    expect(q.params).toEqual([PROJECT]);
+    expect(q.params).toEqual([PROJECT, PROJECT]);
   });
 });
 

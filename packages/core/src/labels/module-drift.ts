@@ -14,6 +14,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { issueLabels, issues, labels } from '../db/schema.js';
+import { issueArchiveSide } from '../issues/archive.js';
 
 export interface ModuleDriftNode {
   labelId: string;
@@ -98,7 +99,7 @@ export async function observedModuleEdges(projectId: string): Promise<ObservedMo
       right,
       and(eq(right.issueId, issueLabels.issueId), sql`${right.labelId} > ${issueLabels.labelId}`),
     )
-    .innerJoin(issues, eq(issues.id, issueLabels.issueId))
+    .innerJoin(issues, and(eq(issues.id, issueLabels.issueId), ...issueArchiveSide(false)))
     .innerJoin(
       leftModule,
       and(
