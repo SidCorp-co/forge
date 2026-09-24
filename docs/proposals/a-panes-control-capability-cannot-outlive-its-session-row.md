@@ -101,7 +101,17 @@ command's output rather than a line of policy, and so is a deliverable rather th
 recovery. Whoever takes it decides whether a box-level row belongs in that table at all or is
 derived from the per-project rows at print time.
 
-The second is the one the recovery cannot see. The box now establishes that a pane is gone —
+The second is a daemon restart. Where a placement mints a capability and then places no pane, the
+box withdraws the mint again — and a withdrawal that could not be written leaves the map saying
+`current` about a pane that was never replaced. The box holds that fact in the `Masters` registry
+and refuses to read that entry as evidence, so the verdict stays `stale` and the sweep goes on
+ending the pane until a placement works. That knowledge is in the process and nowhere else: a daemon
+restarted while an entry is still unwithdrawn reads the map at face value again and stops reporting
+the project deaf. The durable form of it is a capability whose entry can say what it is for, which
+is shape 1 from the same side as everything else on this page. What stops it being reached today is
+that the write that would record it is the write that just failed.
+
+The third is the one the recovery cannot see. The box now establishes that a pane is gone —
 `terminal::kill` answers for the session, and `terminal::ensure`'s `Ok(false)` is read as a second
 reading — and where neither holds, the capability minted on the way is withdrawn again so the stale
 verdict comes back rather than being buried under it. What none of that reaches is a pane that ends

@@ -136,6 +136,21 @@ struct Registry {
     /// identically by number. `None` once a sweep finds none, so a fleet that
     /// goes deaf a second time is news again.
     deaf_said: Option<String>,
+    /// Per project, a session whose capability this box minted for a pane it
+    /// then failed to place AND failed to withdraw.
+    ///
+    /// The map on disk is the detector, and a mint that could not be taken back
+    /// out of it says `current` about a pane that was never replaced. Nothing
+    /// on disk can correct that — the correction IS the write that failed — so
+    /// the box holds what it knows here and refuses to read that entry as
+    /// evidence until the withdrawal takes. The retry is the ordinary sweep:
+    /// the verdict stays `stale`, the pane is ended again, and a placement that
+    /// works clears this (ISS-1208, criterion 7).
+    ///
+    /// In this process only. A daemon restarted with an entry still unwithdrawn
+    /// reads the map at face value again, which is the residual named in
+    /// `docs/proposals/a-panes-control-capability-cannot-outlive-its-session-row.md`.
+    unwithdrawn: HashMap<String, String>,
 }
 
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -556,6 +571,27 @@ impl Masters {
     /// and the report was lost. ISS-1118's two reports route through
     /// `note_unplaced` for a reason of their own — they are about a project
     /// that reaches no pane at all — and that stands whichever way this answers.
+    /// Hold, or release, the knowledge that this project's capability map
+    /// names a session for a pane that was never placed.
+    fn note_unwithdrawn(&self, project_id: &str, session_id: Option<&str>) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match session_id {
+            Some(id) => reg
+                .unwithdrawn
+                .insert(project_id.to_string(), id.to_string()),
+            None => reg.unwithdrawn.remove(project_id),
+        };
+    }
+
+    fn unwithdrawn_for(&self, project_id: &str) -> Option<String> {
+        self.0
+            .lock()
+            .expect("masters poisoned")
+            .unwithdrawn
+            .get(project_id)
+            .cloned()
+    }
+
     fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let changed = reg.said.get(project_id) != Some(&said);
@@ -2169,6 +2205,32 @@ pub(crate) fn capability_act(verdict: &Capability, placement: Placement) -> Capa
     }
 }
 
+/// The capability map's answer, overruled where this box knows that answer came
+/// from a mint it could not take back.
+///
+/// `capability_of` reads the map, and the map is the only durable evidence
+/// there is. Where a placement minted an entry and then placed no pane, the
+/// withdrawal is what puts the map right — and a withdrawal that could not be
+/// written leaves `Current` standing about a pane that was never replaced. The
+/// box would then stop reporting the project deaf and go on nudging a pane that
+/// refuses every declaration it makes, which is this issue's own incident with
+/// the alarm taken out. Criterion 7 asks that the verdict STAY stale, which is
+/// a claim about every later sweep and not only the one that found it.
+///
+/// `Unknown` is never overruled. A map this box could not read is not evidence
+/// about any pane in either direction, and the rule that an unreadable map ends
+/// nothing is older than this one.
+pub(crate) fn verdict_over_unwithdrawn(
+    verdict: Capability,
+    unwithdrawn: Option<&str>,
+    session_id: &str,
+) -> Capability {
+    match (&verdict, unwithdrawn) {
+        (Capability::Current, Some(held)) if held == session_id => Capability::Stale,
+        _ => verdict,
+    }
+}
+
 /// What `ensure_master` is given to consult and to answer into: this box's own
 /// capability map, the sink the verdict about it goes to, and the sink for what
 /// was done where the verdict earned an act.
@@ -2247,7 +2309,11 @@ async fn ensure_master(
             remember(masters, project_id, &session);
         }
         let pane_now = terminal::incarnation(&name).await;
-        let verdict = capability_of(tokens, &session.session_id);
+        let verdict = verdict_over_unwithdrawn(
+            capability_of(tokens, &session.session_id),
+            masters.unwithdrawn_for(project_id).as_deref(),
+            &session.session_id,
+        );
         let act = capability_act(&verdict, placement);
         if let CapabilityAct::LeaveDeaf(why) = act {
             ports.deaf.set(
@@ -2463,6 +2529,11 @@ async fn ensure_master(
     // return between the kill and this line leaves it reading `ended`, which is
     // what was true (ISS-1208).
     ports.deaf.placed();
+    // And a pane is up carrying this session's capability, so the entry in the
+    // map is one a live pane holds rather than the residue of a placement that
+    // placed nothing. Held only while that is in doubt, or one failed
+    // withdrawal refuses this project for ever.
+    masters.note_unwithdrawn(project_id, None);
     // A pane this sweep started carries a capability minted for this very
     // session moments ago, so the verdict is not in doubt. It is written all the
     // same: the record has to say `current` for a replaced pane, or an operator
@@ -2683,6 +2754,10 @@ async fn deaf_pane_outlived_its_kill(
     ports: &CapabilityPorts<'_>,
 ) -> PaneState {
     let withdrawn = withdraw_unplaced_mint(ports.tokens, session_id);
+    // Held across sweeps where it failed, released where it took. This is what
+    // makes the verdict STAY stale: the map still says `current`, and nothing
+    // that could correct the map is available to a box that could not write it.
+    masters.note_unwithdrawn(project_id, withdrawn.as_ref().err().map(|_| session_id));
     match &withdrawn {
         Ok(()) => tracing::error!(
             "[master] {slug}: {name} was ended as a deaf pane and tmux still holds a session of that name, so nothing was replaced — the capability minted for {session_id} has been withdrawn rather than left standing as proof of a replacement this box did not make. The pane is still deaf and every declaration it makes is refused: `forge-runner master kill {slug}` is the same act by hand."
@@ -6184,7 +6259,7 @@ mod unplaced_tests {
     fn adopt_only_cannot_fall_through_to_the_spawn_when_the_pane_dies_mid_registration() {
         let body = ensure_master_body();
         let adopted = body
-            .find("let verdict = capability_of(")
+            .find("let verdict = verdict_over_unwithdrawn(")
             .expect("the adopt branch must judge the capability the pane holds");
         let spawn = body
             .find("install_skill(&resolved.repo_path)")
@@ -6862,6 +6937,165 @@ mod unplaced_tests {
         assert!(
             refused < acked,
             "the report comes before the ack, so a reader of the log sees why the `gone` it is about to read is not the whole truth"
+        );
+    }
+
+    /// Criterion 7 says the verdict STAYS stale, which is a claim about every
+    /// later sweep.
+    ///
+    /// A read-back that only tells the truth once leaves the map saying
+    /// `current` about a pane that was never replaced, and the sweep after it
+    /// believes the map. Raised on the recheck of F1.
+    #[test]
+    fn a_mint_this_box_could_not_take_back_is_never_read_as_evidence_again() {
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(Capability::Current, Some("sess-A"), "sess-A"),
+                Capability::Stale
+            ),
+            "the entry in the map is a mint for a pane that was never placed, so reading it as current is how the box stops recovering a project it has already reported deaf"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(Capability::Current, Some("sess-OLD"), "sess-A"),
+                Capability::Current
+            ),
+            "what this box could not withdraw was some other session's, and holding it against this one would refuse a pane that is perfectly reachable"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(Capability::Current, None, "sess-A"),
+                Capability::Current
+            ),
+            "every ordinary sweep on this box comes through here, and one that read a stale verdict would end a healthy master"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(Capability::Stale, Some("sess-A"), "sess-A"),
+                Capability::Stale
+            ),
+            "stale stays stale"
+        );
+        match verdict_over_unwithdrawn(
+            Capability::Unknown("no map".to_string()),
+            Some("sess-A"),
+            "sess-A",
+        ) {
+            Capability::Unknown(_) => {}
+            other => panic!(
+                "an unreadable map is not evidence about any pane in either direction, and {other:?} here would end one on the strength of a map nobody could read"
+            ),
+        }
+    }
+
+    /// The whole of criterion 7 over two sweeps, which is the unit the
+    /// criterion is actually about.
+    #[tokio::test]
+    async fn a_withdrawal_that_failed_keeps_the_verdict_stale_on_the_sweep_after_it() {
+        let path = temp_map("stays-stale");
+        let store = session_tokens::SessionTokens::at(path.clone());
+        let masters = Arc::new(Masters::new());
+        let dir = path.parent().expect("temp dir").to_path_buf();
+
+        store.mint("sess-core-serves-now").expect("mint");
+        let mut locked = std::fs::metadata(&dir).expect("dir mode").permissions();
+        #[cfg(unix)]
+        std::os::unix::fs::PermissionsExt::set_mode(&mut locked, 0o500);
+        std::fs::set_permissions(&dir, locked).expect("lock the dir");
+        let authority = AuthoritySink::default();
+        let deaf = DeafSink::default();
+        deaf_pane_outlived_its_kill(
+            &masters,
+            "proj-1",
+            "mowment",
+            "forge-master-mowment",
+            "sess-core-serves-now",
+            &CapabilityPorts {
+                tokens: Some(&store),
+                authority: &authority,
+                deaf: &deaf,
+            },
+        )
+        .await;
+        let mut open = std::fs::metadata(&dir).expect("dir mode").permissions();
+        #[cfg(unix)]
+        std::os::unix::fs::PermissionsExt::set_mode(&mut open, 0o700);
+        std::fs::set_permissions(&dir, open).expect("unlock the dir");
+
+        // The sweep after it, reading the same map.
+        assert!(
+            matches!(
+                capability_of(Some(&store), "sess-core-serves-now"),
+                Capability::Current
+            ),
+            "the map really does say current — the withdrawal could not be written, and nothing that could correct the map is available to a box that could not write it"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(
+                    capability_of(Some(&store), "sess-core-serves-now"),
+                    masters.unwithdrawn_for("proj-1").as_deref(),
+                    "sess-core-serves-now",
+                ),
+                Capability::Stale
+            ),
+            "and the box refuses to read it, so the project goes on being reported deaf and the pane goes on being ended — which is what `stays stale` means"
+        );
+        assert_eq!(
+            capability_act(&Capability::Stale, Placement::AdoptOrStart),
+            CapabilityAct::Replace,
+            "the retry is the ordinary sweep: a stale verdict with admissible work ends the pane again, and a placement that works clears what is held here"
+        );
+
+        // A withdrawal that DID take releases it, or the box refuses a project
+        // for ever over a mint it successfully took back.
+        let took = Arc::new(Masters::new());
+        let store2 = session_tokens::SessionTokens::at(temp_map("released"));
+        store2.mint("sess-B").expect("mint");
+        deaf_pane_outlived_its_kill(
+            &took,
+            "proj-2",
+            "sidpeak",
+            "forge-master-sidpeak",
+            "sess-B",
+            &CapabilityPorts {
+                tokens: Some(&store2),
+                authority: &AuthoritySink::default(),
+                deaf: &DeafSink::default(),
+            },
+        )
+        .await;
+        assert_eq!(
+            took.unwithdrawn_for("proj-2"),
+            None,
+            "the map was written, so there is nothing left to hold against this project"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_map_is_never_read_without_what_this_box_knows_about_its_own_mints() {
+        let body = ensure_master_body();
+        assert!(
+            !body.contains("let verdict = capability_of(tokens, &session.session_id);"),
+            "the adopt branch reads the map through `verdict_over_unwithdrawn`, or a mint this box could not take back is read back as proof the pane it never placed is reachable (ISS-1208)"
+        );
+        let read = body
+            .find("verdict_over_unwithdrawn(")
+            .expect("the adopt branch consults what this box knows about its own mints");
+        let judged = body
+            .find("capability_act(&verdict, placement)")
+            .expect("the adopt branch decides what to do through the named rule");
+        assert!(
+            read < judged,
+            "the overrule has to happen before the act is chosen, or the box acts on the map's answer and records the overruled one"
+        );
+        let placed = body
+            .find("masters.note_unwithdrawn(project_id, None)")
+            .expect("the placement path releases what was held, or one failed withdrawal refuses the project for ever — including after a pane carrying that very capability is up and answering");
+        assert!(
+            body[..placed].contains("ports.deaf.placed()"),
+            "it is released where a pane is actually up, not on the way to one"
         );
     }
 
