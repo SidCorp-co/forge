@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { AuthVars } from '../../src/middleware/auth.js';
 import {
   createTestProject,
   createTestProjectMember,
@@ -48,8 +49,8 @@ async function archive(keys: string[]) {
   });
 }
 
-async function get(path: string, routes: Hono, mount: string) {
-  const app = new Hono().route(mount, routes);
+async function get(path: string, routes: Hono<{ Variables: AuthVars }>, mount: string) {
+  const app = new Hono<{ Variables: AuthVars }>().route(mount, routes);
   const res = await app.request(path, { headers: { Authorization: `Bearer ${token}` } });
   expect(res.status).toBe(200);
   return res.json();
