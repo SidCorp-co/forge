@@ -2063,17 +2063,27 @@ impl AuthoritySink {
 /// was DONE about it and exists only for the projects where there was
 /// something to do. A pane replaced ends the sweep recorded `current`, so the
 /// authority row alone cannot afterwards say the box found it deaf at all.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Deaf {
     slug: String,
     pane: String,
     acted: DeafAct,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DeafAct {
     /// Ended, and its replacement placed in the same pass.
     Replaced,
+    /// Ended, and the placement that was to follow did not finish — the mint,
+    /// the skill install, the MCP config or tmux itself refused, each of which
+    /// already says so on its own.
+    ///
+    /// Not the same as leaving it standing and not the same as replacing it:
+    /// the project has no pane at all until the next sweep, which is a third
+    /// thing to tell a reader. This is what `end_deaf_pane` records, because
+    /// ending is all it did; the placement path below it is what upgrades the
+    /// answer once a pane is actually up.
+    EndedUnplaced,
     /// Left running, with the reason the box did not end it.
     LeftStanding(String),
 }
@@ -2089,6 +2099,21 @@ impl DeafSink {
             pane: pane.to_string(),
             acted,
         });
+    }
+
+    /// A pane is up where one was ended, so what the box did is a replacement
+    /// after all.
+    ///
+    /// Only over `EndedUnplaced`: a placement that followed no kill leaves the
+    /// sink empty and this a no-op, and one that answered `LeftStanding`
+    /// killed nothing to replace.
+    fn placed(&self) {
+        let mut held = self.0.lock().expect("deaf sink poisoned");
+        if let Some(d) = held.as_mut() {
+            if d.acted == DeafAct::EndedUnplaced {
+                d.acted = DeafAct::Replaced;
+            }
+        }
     }
 
     fn take(&self) -> Option<Deaf> {
@@ -2407,6 +2432,11 @@ async fn ensure_master(
     );
     remember(masters, project_id, &session);
     masters.clear_unplaced(project_id);
+    // A pane is up. Where this call ended a deaf one on its way here, that is
+    // the moment its account becomes a replacement rather than an ending; every
+    // return between the kill and this line leaves it reading `ended`, which is
+    // what was true (ISS-1208).
+    ports.deaf.placed();
     // A pane this sweep started carries a capability minted for this very
     // session moments ago, so the verdict is not in doubt. It is written all the
     // same: the record has to say `current` for a replaced pane, or an operator
@@ -2525,7 +2555,11 @@ async fn end_deaf_pane(name: &str, slug: &str, session_id: &str, deaf: &DeafSink
     tracing::error!(
         "[master] {slug}: ended the resident session {name} — it held a capability for a session this box no longer has, core's session for it is {session_id}, and a running pane cannot be handed a new one, so every declaration it made was refused. This is `forge-runner master kill {slug}` taken by the box instead of by a person, and it is taken only where a replacement would be placed in its stead, which this pass is about to do. Whatever that pane was running ended with it; the replacement resumes the same conversation."
     );
-    deaf.set(slug, name, DeafAct::Replaced);
+    // `EndedUnplaced` and not `Replaced`: this function ended a pane and that
+    // is the whole of what it knows. The placement below can still refuse —
+    // the mint, the skill, the MCP config, tmux — and an account that said
+    // `replaced` here would be telling a reader a pane is up that is not.
+    deaf.set(slug, name, DeafAct::EndedUnplaced);
     true
 }
 
@@ -2540,10 +2574,12 @@ fn deaf_fleet_report(found: &[Deaf]) -> Option<(bool, String)> {
         return None;
     }
     let mut replaced: Vec<&str> = Vec::new();
+    let mut unplaced: Vec<&str> = Vec::new();
     let mut standing: Vec<String> = Vec::new();
     for d in found {
         match &d.acted {
             DeafAct::Replaced => replaced.push(&d.slug),
+            DeafAct::EndedUnplaced => unplaced.push(&d.slug),
             DeafAct::LeftStanding(why) => standing.push(format!("{} ({why})", d.slug)),
         }
     }
@@ -2558,13 +2594,19 @@ fn deaf_fleet_report(found: &[Deaf]) -> Option<(bool, String)> {
             replaced.join(", ")
         ));
     }
+    if !unplaced.is_empty() {
+        out.push_str(&format!(
+            " Ended, and the pane that was to take their place did not start this pass — the line above this one says which step refused, and the next sweep tries again from no pane at all: {}.",
+            unplaced.join(", ")
+        ));
+    }
     if !standing.is_empty() {
         out.push_str(&format!(
             " Still running and still deaf, which no sweep will change: {}. `forge-runner master kill <slug>` is what ends each, and `forge-runner master status` says the same without this log.",
             standing.join("; ")
         ));
     }
-    Some((!standing.is_empty(), out))
+    Some((!standing.is_empty() || !unplaced.is_empty(), out))
 }
 
 /// What the latch is keyed on: which panes, and what was done about each.
@@ -2574,6 +2616,7 @@ fn deaf_digest(found: &[Deaf]) -> String {
         .map(|d| {
             let act = match &d.acted {
                 DeafAct::Replaced => "replaced".to_string(),
+                DeafAct::EndedUnplaced => "ended-unplaced".to_string(),
                 DeafAct::LeftStanding(why) => format!("standing:{why}"),
             };
             format!("{}={act}", d.pane)
@@ -6225,6 +6268,72 @@ mod unplaced_tests {
     }
 
     #[test]
+    fn a_pane_ended_and_never_replaced_is_a_third_answer_and_asks_for_a_person() {
+        let (needs_a_person, said) = deaf_fleet_report(&[deaf("mowment", DeafAct::EndedUnplaced)])
+            .expect("a project left with no pane at all is a thing that happened");
+        assert!(
+            needs_a_person,
+            "the box ended a pane and placed nothing: that project has no master until a sweep succeeds, which is not the state a warning describes"
+        );
+        assert!(
+            said.contains("mowment"),
+            "the record names the project, or the reader has three answers and no subjects: {said}"
+        );
+        assert_ne!(
+            deaf_digest(&[deaf("m", DeafAct::EndedUnplaced)]),
+            deaf_digest(&[deaf("m", DeafAct::Replaced)]),
+            "a pane ended and a pane replaced are two conditions, and a latch that read them as one would report only whichever came first"
+        );
+    }
+
+    #[test]
+    fn the_account_becomes_a_replacement_only_once_a_pane_is_up() {
+        let sink = DeafSink::default();
+        sink.set("mowment", "forge-master-mowment", DeafAct::EndedUnplaced);
+        sink.placed();
+        assert_eq!(
+            sink.take().expect("the sink held a pane").acted,
+            DeafAct::Replaced,
+            "a pane placed where one was ended is a replacement"
+        );
+
+        let refused = DeafSink::default();
+        refused.set(
+            "sidpeak",
+            "forge-master-sidpeak",
+            DeafAct::LeftStanding("nothing admissible".to_string()),
+        );
+        refused.placed();
+        assert_eq!(
+            refused.take().expect("the sink held a pane").acted,
+            DeafAct::LeftStanding("nothing admissible".to_string()),
+            "a pane left standing was never ended, so a placement elsewhere in the call does not make it a replacement"
+        );
+
+        let untouched = DeafSink::default();
+        untouched.placed();
+        assert!(
+            untouched.take().is_none(),
+            "every cold start runs this line; one that found no deaf pane must not invent a record of having replaced one"
+        );
+    }
+
+    #[test]
+    fn the_upgrade_is_taken_only_after_the_pane_is_actually_running() {
+        let body = ensure_master_body();
+        let started = body
+            .find("terminal::ensure(")
+            .expect("the placement path starts the pane through terminal::ensure");
+        let upgraded = body
+            .find("ports.deaf.placed()")
+            .expect("the placement path has to say a pane is up where one was ended");
+        assert!(
+            started < upgraded,
+            "read before the pane is running, the account says `replaced` about every return between the kill and here — the mint, the skill, the MCP config and tmux each refuse after the pane is already gone"
+        );
+    }
+
+    #[test]
     fn the_box_ends_a_deaf_pane_before_it_falls_through_to_the_placement() {
         let body = ensure_master_body();
         let judged = body
@@ -6254,8 +6363,12 @@ mod unplaced_tests {
             .find("if let Err(e) = terminal::kill(name).await {")
             .expect("tmux can refuse, and a daemon that assumed it did not would record a kill that never happened");
         let done = f
-            .find("DeafAct::Replaced")
-            .expect("a pane that WAS ended is recorded as replaced");
+            .find("DeafAct::EndedUnplaced")
+            .expect("a pane that WAS ended is recorded as ended, which is the whole of what this function knows");
+        assert!(
+            !f.contains("DeafAct::Replaced"),
+            "ending is not placing: a replacement is what the placement path below records once a pane is actually up, and claiming it here tells a reader a pane is running that may not be"
+        );
         assert!(
             refused < done && f[refused..done].contains("return false"),
             "a failed kill leaves the pane up, so the caller has to take the branch that records `stale` about a pane that is still running"
