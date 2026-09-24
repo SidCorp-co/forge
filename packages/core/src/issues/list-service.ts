@@ -1,6 +1,7 @@
 import { and, desc, eq, exists, gte, inArray, lt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues, type WaitingKind } from '../db/schema.js';
+import { issueArchiveSide } from './archive.js';
 import { resolveLabelIdsTolerant, resolveModuleIdsTolerant } from './label-service.js';
 import {
   buildIssueSearchCondition,
@@ -20,6 +21,8 @@ export type IssueListFilters = {
   search?: string | undefined;
   label?: readonly string[] | undefined;
   module?: readonly string[] | undefined;
+  /** ISS-1237 — archived issues are left out of the browse unless this is true. */
+  includeArchived?: boolean | undefined;
 };
 
 /**
@@ -42,6 +45,7 @@ export type IssueListRow = {
   mergedAt: Date | null;
   /** ISS-1126 — carried so the browse row can say whether the mark was observed or asserted. */
   mergedCommitSha: string | null;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   /** ISS-960 — present only when the query carried `search`. */
@@ -54,7 +58,7 @@ export async function listIssueRows(
   filters: IssueListFilters | undefined,
   limit: number,
 ): Promise<IssueListRow[]> {
-  const conds = [eq(issues.projectId, projectId)];
+  const conds = [eq(issues.projectId, projectId), ...issueArchiveSide(filters?.includeArchived)];
   if (filters?.status) conds.push(eq(issues.status, filters.status));
   if (filters?.statusNot) conds.push(ne(issues.status, filters.statusNot));
   if (filters?.priority) conds.push(eq(issues.priority, filters.priority));
@@ -97,6 +101,7 @@ export async function listIssueRows(
     reopenCount: issues.reopenCount,
     mergedAt: issues.mergedAt,
     mergedCommitSha: issues.mergedCommitSha,
+    archivedAt: issues.archivedAt,
     createdAt: issues.createdAt,
     updatedAt: issues.updatedAt,
   };

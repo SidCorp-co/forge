@@ -12,6 +12,7 @@
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
+import { issueArchiveSide } from '../issues/archive.js';
 
 export const PM_GRAPH_MAX_NODES = 200;
 export const PM_GRAPH_MAX_DEPTH = 5;
@@ -39,10 +40,12 @@ export type PmGraphQuery = {
 /** The project's dependency graph, whole or BFS'd out from one root. */
 export async function readPmGraph({ projectId, rootIssueId, depth }: PmGraphQuery) {
   if (!rootIssueId) {
+    // ISS-1237 — the whole-project view is discovery, so an archived issue is not a node of it.
+    const wholeGraph = and(eq(issues.projectId, projectId), ...issueArchiveSide(false));
     const [countRow] = (await db
       .select({ total: count() })
       .from(issues)
-      .where(eq(issues.projectId, projectId))) as Array<{ total: number } | undefined>;
+      .where(wholeGraph)) as Array<{ total: number } | undefined>;
 
     const totalNodes = Number(countRow?.total ?? 0);
     const truncated = totalNodes > PM_GRAPH_MAX_NODES;
@@ -56,7 +59,7 @@ export async function readPmGraph({ projectId, rootIssueId, depth }: PmGraphQuer
         assigneeId: issues.assigneeId,
       })
       .from(issues)
-      .where(eq(issues.projectId, projectId))
+      .where(wholeGraph)
       .limit(PM_GRAPH_MAX_NODES);
 
     const nodeIds = new Set(nodes.map((n) => n.id));
