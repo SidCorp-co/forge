@@ -25,7 +25,6 @@ export interface PulseLive {
 
 type MeasuredReading = Extract<LiveReading, { kind: 'measured' }>;
 
-/** The closed issues of one project that a measured reading places as not on its live branch. */
 async function closedNotOnLive(
   project: { id: string; slug: string; issuePrefix: string | null },
   reading: MeasuredReading,
