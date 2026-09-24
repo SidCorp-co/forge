@@ -3089,6 +3089,11 @@
 ### Fixed
 - **A job no runner can brief no longer blocks every job queued behind it.** PM runs and issue
   enrichment are refused by name until they have a prompt; a queued job without one fails, saying so.
+- **A machine whose record of failed queue reads is damaged no longer clears them from the
+  Runners page.** The page keeps what it last showed, and `forge-runner status` and `doctor` name
+  the damaged file.
+- **The Runners page keeps queue-read failures current while it stays open.** It rereads them
+  every 30 seconds, and a report the machine stopped renewing is dated instead of stated as now.
 - **Release refusals from the issue list match Release settings.** They blamed a check that never
   failed rather than the runner that is down, and over fifty issues got "Invalid input". Automatic
   releases carry the oldest fifty at a time.
