@@ -38,7 +38,8 @@ interface Held {
 }
 
 const held = new Map<string, Held>();
-const inFlight = new Map<string, { key: string; reading: Promise<LiveReading> }>();
+/** `stale` once a push arrived while it ran: it still answers whoever waits on it, and is never held. */
+const inFlight = new Map<string, { key: string; reading: Promise<LiveReading>; stale: boolean }>();
 
 function keyOf(row: ProjectReleaseRow): string {
   return [row.baseBranch, row.liveBranch ?? '', row.releaseStrategy ?? ''].join('\0');
@@ -47,7 +48,8 @@ function keyOf(row: ProjectReleaseRow): string {
 /** Drop what is held for a project, so the next read compares the branches again. */
 export function forgetLiveReading(projectId: string): void {
   held.delete(projectId);
-  inFlight.delete(projectId);
+  const running = inFlight.get(projectId);
+  if (running) running.stale = true;
 }
 
 /** Every held reading, dropped. For tests; nothing in the app calls it. */
@@ -105,21 +107,32 @@ export async function takeLiveReading(
   }
 }
 
+/** One comparison in flight per project: a stale or differently keyed one is waited out, not raced. */
 function start(
   row: ProjectReleaseRow & { liveBranch: string },
   deps: LiveReadingDeps,
 ): Promise<LiveReading> {
   const key = keyOf(row);
   const running = inFlight.get(row.id);
-  if (running && running.key === key) return running.reading;
-  const reading = takeLiveReading(row, deps).then((r) => {
-    if (inFlight.get(row.id)?.reading === reading) {
-      inFlight.delete(row.id);
-      held.set(row.id, { key, reading: r, expiresAt: deps.now().getTime() + LIVE_READING_HOLD_MS });
-    }
-    return r;
-  });
-  inFlight.set(row.id, { key, reading });
+  if (running && running.key === key && !running.stale) return running.reading;
+  const before = running ? running.reading.then(() => undefined) : Promise.resolve();
+  const reading = before
+    .then(() => takeLiveReading(row, deps))
+    .then((r) => {
+      const entry = inFlight.get(row.id);
+      if (entry?.reading === reading) {
+        inFlight.delete(row.id);
+        if (!entry.stale) {
+          held.set(row.id, {
+            key,
+            reading: r,
+            expiresAt: deps.now().getTime() + LIVE_READING_HOLD_MS,
+          });
+        }
+      }
+      return r;
+    });
+  inFlight.set(row.id, { key, reading, stale: false });
   return reading;
 }
 

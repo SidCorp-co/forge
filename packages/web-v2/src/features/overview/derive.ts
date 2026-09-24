@@ -130,9 +130,9 @@ const ACTION_META: Record<ActionKey, { label: string; owner: ActionOwner; hint: 
     hint: "Closed on a promotion that has not happened: a commit of each is on the base branch and not the live one.",
   },
   liveUnmeasured: {
-    label: "Promote projects Forge cannot compare",
+    label: "Promote projects Forge could not fully compare",
     owner: "person",
-    hint: "Forge could not read the base branch against the live one, so a closed issue here may not be live.",
+    hint: "A closed issue here is not placed against the live branch: the comparison failed, was cut short, or predates its merge.",
   },
   neverRanProjects: {
     label: "Projects holding a backlog with no pipeline",

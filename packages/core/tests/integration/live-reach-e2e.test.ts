@@ -37,6 +37,7 @@ const waiting = [
 
 const unbound = new Set<string>();
 let compares = 0;
+let aheadOverride: number | null = null;
 
 vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/integrations/github/client.js')>();
@@ -56,7 +57,7 @@ vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
           if (path.endsWith('/branches/staging')) return { commit: { sha: STAGING } };
           if (path.endsWith('/branches/master')) return { commit: { sha: MASTER } };
           compares += 1;
-          return { ahead_by: waiting.length, commits: waiting };
+          return { ahead_by: aheadOverride ?? waiting.length, commits: waiting };
         },
         publish: async () => {
           throw new Error('a live reading must not publish');
@@ -116,54 +117,55 @@ async function get<T>(path: string, token: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
+
+  const { issueProjectRoutes, issueRoutes } = await import('../../src/issues/routes.js');
+  const { mePulseRoutes } = await import('../../src/me/pulse-routes.js');
+  const { errorHandler } = await import('../../src/middleware/error.js');
+  const { requestId } = await import('../../src/middleware/request-id.js');
+  ({ signUserToken } = await import('../../src/auth/jwt.js'));
+  ({ forgetAllLiveReadings } = await import('../../src/projects/live-reading.js'));
+  ({ applyProjectedEvent } = await import('../../src/integrations/github/projection-events.js'));
+
+  app = new Hono<{ Variables: RequestIdVars }>();
+  app.use('*', requestId());
+  app.route('/api/projects', issueProjectRoutes);
+  app.route('/api/issues', issueRoutes);
+  app.route('/api/me', mePulseRoutes);
+  app.onError(errorHandler);
+}, 120_000);
+
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
+beforeEach(async () => {
+  await truncateAll(harness.db);
+  forgetAllLiveReadings();
+  unbound.clear();
+  compares = 0;
+  aheadOverride = null;
+});
+
+type Reach = {
+  state: string;
+  evidence?: Array<{ sha: string; via: string }>;
+  reason?: string;
+} | null;
+
 describe('a closed issue whose work never reached the live branch (ISS-1217)', () => {
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
-
-    const { issueProjectRoutes, issueRoutes } = await import('../../src/issues/routes.js');
-    const { mePulseRoutes } = await import('../../src/me/pulse-routes.js');
-    const { errorHandler } = await import('../../src/middleware/error.js');
-    const { requestId } = await import('../../src/middleware/request-id.js');
-    ({ signUserToken } = await import('../../src/auth/jwt.js'));
-    ({ forgetAllLiveReadings } = await import('../../src/projects/live-reading.js'));
-    ({ applyProjectedEvent } = await import('../../src/integrations/github/projection-events.js'));
-
-    app = new Hono<{ Variables: RequestIdVars }>();
-    app.use('*', requestId());
-    app.route('/api/projects', issueProjectRoutes);
-    app.route('/api/issues', issueRoutes);
-    app.route('/api/me', mePulseRoutes);
-    app.onError(errorHandler);
-  }, 120_000);
-
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
-
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    forgetAllLiveReadings();
-    unbound.clear();
-    compares = 0;
-  });
-
-  type Reach = {
-    state: string;
-    evidence?: Array<{ sha: string; via: string }>;
-    reason?: string;
-  } | null;
-
   it('places each of the eight rows off master, on both issue reads and in the pulse', async () => {
     const { user, token } = await signedIn();
     const desk = await project(user.id, 'promote');
@@ -276,5 +278,30 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     await applyProjectedEvent(ctx, 'push', { ref: 'refs/heads/master' });
     await get(`/api/issues/${row}`, token);
     expect(compares).toBe(2);
+  });
+});
+
+describe('a reading that cannot place every closed issue (ISS-1217)', () => {
+  it('names the project in the pulse when the list was cut short or an issue merged after the reading', async () => {
+    const { user, token } = await signedIn();
+    const desk = await project(user.id, 'promote');
+    await issue({ projectId: desk.id, userId: user.id, seq: 419 });
+    aheadOverride = 500;
+    let pulse = await get<PulseResponse>('/api/me/pulse', token);
+    expect(pulse.work.notOnLive.total).toBe(1);
+    expect(pulse.work.liveUnmeasured.shown[0]?.reason).toMatch(
+      /500 commits ahead of master and the reading listed only 8/,
+    );
+
+    aheadOverride = null;
+    forgetAllLiveReadings();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
+      VALUES (${randomUUID()}, ${desk.id}, 900, 'merged later', 'closed', ${user.id}, now() + interval '1 hour')
+    `);
+    pulse = await get<PulseResponse>('/api/me/pulse', token);
+    expect(pulse.work.liveUnmeasured.shown[0]?.reason).toMatch(
+      /^1 closed issue merged after the reading/,
+    );
   });
 });

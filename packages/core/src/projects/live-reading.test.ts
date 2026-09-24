@@ -93,6 +93,40 @@ describe('liveReadingForRow', () => {
     expect(compares).toBe(2);
   });
 
+  it('waits out a reading a push made stale rather than racing it, and never holds the stale one', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let calls = 0;
+    const d = deps(async () => {
+      calls += 1;
+      if (calls === 1) await gate;
+      return fakeClient();
+    });
+    const first = liveReadingForRow(row, d);
+    await Promise.resolve();
+    forgetLiveReading('p1');
+    const second = liveReadingForRow(row, d);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(calls).toBe(1);
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    expect(calls).toBe(2);
+    expect(b).not.toBe(a);
+    expect(await liveReadingForRow(row, d)).toBe(b);
+    expect(compares).toBe(2);
+  });
+
+  it('does not hold a reading a push arrived during, even when nobody read in between', async () => {
+    const d = deps(async () => fakeClient());
+    const first = liveReadingForRow(row, d);
+    forgetLiveReading('p1');
+    await first;
+    await liveReadingForRow(row, d);
+    expect(compares).toBe(2);
+  });
+
   it('takes a new reading when the branches it was taken for changed', async () => {
     const d = deps(async () => fakeClient());
     await liveReadingForRow(row, d);

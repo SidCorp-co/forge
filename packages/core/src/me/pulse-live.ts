@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, count, eq, gt, inArray, isNotNull, notInArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
@@ -77,8 +77,43 @@ async function closedNotOnLive(
 }
 
 /**
- * Closed issues whose work a reading places off the live branch, and the `promote` projects no
- * reading could be taken for — the second list is what keeps the first from reading as a zero.
+ * Why a measured reading still leaves closed issues of this project unplaced, or null where it
+ * places every one: a list cut short, or issues that merged after the reading started.
+ */
+async function measuredGap(
+  projectId: string,
+  reading: MeasuredReading,
+  placed: readonly string[],
+): Promise<string | null> {
+  const reasons: string[] = [];
+  if (!reading.complete) {
+    reasons.push(
+      `${reading.baseBranch} is ${reading.aheadBy} commits ahead of ${reading.liveBranch} and the reading listed only ${reading.commits.length}, so a closed issue it does not name is unplaced`,
+    );
+  }
+  const [late] = await db
+    .select({ n: count() })
+    .from(issues)
+    .where(
+      and(
+        eq(issues.projectId, projectId),
+        eq(issues.status, 'closed'),
+        gt(issues.mergedAt, reading.startedAt),
+        ...(placed.length > 0 ? [notInArray(issues.id, [...placed])] : []),
+      ),
+    );
+  const n = Number(late?.n ?? 0);
+  if (n > 0) {
+    reasons.push(
+      `${n} closed issue${n === 1 ? '' : 's'} merged after the reading of ${reading.startedAt.toISOString()}, which the next reading places`,
+    );
+  }
+  return reasons.length > 0 ? reasons.join('; ') : null;
+}
+
+/**
+ * Closed issues whose work a reading places off the live branch, and the `promote` projects whose
+ * reading could not place every closed issue — the second list keeps the first from reading as a zero.
  */
 export async function readPulseLive(
   projectIds: string[],
@@ -115,17 +150,24 @@ export async function readPulseLive(
   for (const { row, reading } of readings) {
     const project = byId.get(row.id);
     if (!reading || !project) continue;
+    let reason: string | null = reading.kind === 'measured' ? null : reading.reason;
     if (reading.kind === 'measured') {
-      notOnLive.push(...(await closedNotOnLive(project, reading, now)));
-      continue;
+      const placed = await closedNotOnLive(project, reading, now);
+      notOnLive.push(...placed);
+      reason = await measuredGap(
+        project.id,
+        reading,
+        placed.map((i) => i.documentId),
+      );
     }
+    if (reason === null) continue;
     gaps.push({
       id: project.id,
       slug: project.slug,
       name: project.name,
       baseBranch: reading.baseBranch,
       liveBranch: reading.liveBranch,
-      reason: reading.reason,
+      reason,
     });
   }
   notOnLive.sort((a, b) => b.ageSeconds - a.ageSeconds);
