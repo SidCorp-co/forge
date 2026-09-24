@@ -28,6 +28,7 @@ pub mod master;
 pub mod master_exit;
 pub mod master_limit;
 pub mod pool_jobs;
+pub mod pool_reads;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod run_exit;
@@ -96,6 +97,23 @@ use crate::transport::{heartbeat, lifecycle, CoreClient};
 use dispatch::resolve_repo;
 
 pub(crate) const POOL_SUPERVISE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// What core would not take off this box's heartbeat, said where an operator
+/// reads: a report core refuses is reaching nobody but this box.
+fn warn_refused(refused: &heartbeat::Refused) {
+    if let Some(r) = &refused.gate {
+        tracing::warn!(
+            "[gate] core refused this box's gate condition: {r} — the gate's state is reaching \
+             nobody but this box, which is the silence the report exists to end"
+        );
+    }
+    if let Some(r) = &refused.pool {
+        tracing::warn!(
+            "[pool] core refused this box's pool-read report: {r} — which projects this box \
+             cannot read is reaching nobody but this box's own status and log"
+        );
+    }
+}
 
 /// Say once, at a level somebody watches, that this box's declaration gate has
 /// started admitting work it never judged.
@@ -660,19 +678,16 @@ pub async fn run(
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
-                        let gate = control::config_dir()
-                            .map(|dir| degraded::report(&dir, agent_activity::now_ms()).degraded);
-                        if let Some(g) = gate.as_ref() {
+                        let conditions = heartbeat::Conditions::read(
+                            control::config_dir().as_deref(),
+                            agent_activity::now_ms(),
+                        );
+                        if let Some(g) = conditions.gate.as_ref() {
                             let _ = announce_gate(g, &mut shouted);
                         }
-                        match heartbeat::beat(&client, gate.as_ref()).await {
+                        match heartbeat::beat(&client, &conditions).await {
                             Err(e) => tracing::warn!("[heartbeat] {e}"),
-                            Ok(Some(refused)) => tracing::warn!(
-                                "[gate] core refused this box's gate condition: {refused} — the \
-                                 gate's state is reaching nobody but this box, which is the \
-                                 silence the report exists to end"
-                            ),
-                            Ok(None) => {}
+                            Ok(refused) => warn_refused(&refused),
                         }
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
@@ -1098,6 +1113,26 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ISS-1234 criterion 25. The tick sends what `Conditions::read` builds,
+    /// which is where the box's pool reads join the beat; a tick that built its
+    /// own body would leave them on disk and reaching nobody.
+    #[test]
+    fn the_heartbeat_tick_sends_the_conditions_read_off_the_box() {
+        let src = include_str!("mod.rs");
+        let tick = src
+            .split("// Heartbeat loop.")
+            .nth(1)
+            .and_then(|r| r.split("// Ctrl-C").next())
+            .unwrap_or_default();
+        let read = tick
+            .find("heartbeat::Conditions::read(")
+            .expect("the tick reads both conditions in one place");
+        let beat = tick
+            .find("heartbeat::beat(&client, &conditions)")
+            .expect("the tick sends what it read");
+        assert!(read < beat);
+    }
 
     fn gate_at(verdict: degraded::Verdict) -> degraded::Condition {
         degraded::Condition {

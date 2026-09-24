@@ -135,11 +135,50 @@ struct ClaimResponse {
     prepared: Option<PreparedJob>,
 }
 
+/// Why a read of the pool returned no list. A failed read is its own fact and
+/// never an empty pool (ISS-1234): `status` is the one the endpoint returned,
+/// or `None` where none came back at all, and `reason` names it by number.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadFailure {
+    pub status: Option<u16>,
+    pub reason: String,
+}
+
+impl std::fmt::Display for ReadFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.reason)
+    }
+}
+
+/// A response body as one short line: a gateway answers with a whole HTML page,
+/// and the status already says what it was.
+fn body_line(text: &str) -> String {
+    let one: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = one.chars();
+    let head: String = chars.by_ref().take(200).collect();
+    if chars.next().is_some() {
+        format!("{head}…")
+    } else {
+        head
+    }
+}
+
+/// `pool <status named>: <body>`, the shape every refused pool call prints.
+fn refused(what: &str, status: u16, text: &str) -> String {
+    let named = super::status::named(status);
+    let body = body_line(text);
+    if body.is_empty() {
+        format!("{what} {named}")
+    } else {
+        format!("{what} {named}: {body}")
+    }
+}
+
 pub async fn list(
     client: &CoreClient,
     project_id: Option<&str>,
     limit: u32,
-) -> Result<Vec<PoolEntry>> {
+) -> std::result::Result<Vec<PoolEntry>, ReadFailure> {
     let mut url = client.url(&format!("/api/devices/me/pool?limit={limit}"));
     if let Some(p) = project_id {
         url.push_str(&format!("&projectId={p}"));
@@ -150,19 +189,26 @@ pub async fn list(
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("pool request: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
+        .map_err(|e| ReadFailure {
+            status: None,
+            reason: format!("pool request: {e}"),
+        })?;
+    let status = resp.status().as_u16();
     if !resp.status().is_success() {
-        let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("pool {status}: {text}")));
+        let mut reason = refused("pool", status, &text);
+        if status == 401 {
+            reason.push_str(" — the device token was refused; `forge-runner login`");
+        }
+        return Err(ReadFailure {
+            status: Some(status),
+            reason,
+        });
     }
-    let parsed: PoolResponse = resp
-        .json()
-        .await
-        .map_err(|e| Error::Other(format!("pool decode: {e}")))?;
+    let parsed: PoolResponse = resp.json().await.map_err(|e| ReadFailure {
+        status: None,
+        reason: format!("pool decode: {e}"),
+    })?;
     Ok(parsed.items)
 }
 
@@ -217,9 +263,13 @@ async fn post(client: &CoreClient, path: &str, body: serde_json::Value) -> Resul
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let status = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("pool {path} {status}: {text}")));
+        return Err(Error::Other(refused(
+            &format!("pool {path}"),
+            status,
+            &text,
+        )));
     }
     resp.json()
         .await
@@ -229,6 +279,111 @@ async fn post(client: &CoreClient, path: &str, body: serde_json::Value) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::fake_core;
+
+    fn client(url: String) -> CoreClient {
+        CoreClient::new(url, "device-token")
+    }
+
+    const GATEWAY_PAGE: &str =
+        "<!DOCTYPE html>\n<html>\n  <head><title>525: SSL handshake failed</title></head>\n</html>";
+
+    /// Criteria 2 and 4 against the wire: the status the endpoint returned is
+    /// the one the failure carries, by number and name.
+    #[tokio::test]
+    async fn a_gateway_status_is_carried_by_number_and_named() {
+        for (line, code, gist) in [
+            (
+                "520 Origin Error",
+                520u16,
+                "the origin returned an unknown error",
+            ),
+            ("522 Timeout", 522, "the connection to the origin timed out"),
+            (
+                "525 Handshake",
+                525,
+                "the TLS handshake with the origin failed",
+            ),
+        ] {
+            let url = fake_core::serve_always(line, GATEWAY_PAGE).await;
+            let failed = list(&client(url), Some("p1"), 20)
+                .await
+                .expect_err("a gateway answer is a failed read, not a pool");
+            assert_eq!(failed.status, Some(code));
+            assert!(failed.reason.contains(gist), "{}", failed.reason);
+            assert!(
+                failed
+                    .reason
+                    .starts_with(&format!("pool {code} (gateway: ")),
+                "{}",
+                failed.reason
+            );
+            assert!(
+                !failed.reason.contains("unknown status code"),
+                "{}",
+                failed.reason
+            );
+            assert!(!failed.reason.contains('\n'), "one line: {}", failed.reason);
+        }
+    }
+
+    /// Criterion 3.
+    #[tokio::test]
+    async fn a_registered_status_carries_its_registered_phrase() {
+        let url = fake_core::serve_always("503 Whatever", "").await;
+        let failed = list(&client(url), Some("p1"), 20).await.unwrap_err();
+        assert_eq!(failed.status, Some(503));
+        assert_eq!(failed.reason, "pool 503 Service Unavailable");
+    }
+
+    /// Criterion 4: nothing answered, so there is no status to carry.
+    #[tokio::test]
+    async fn a_read_nobody_answered_has_no_status_and_says_why() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        let failed = list(&client(format!("http://{addr}")), Some("p1"), 20)
+            .await
+            .unwrap_err();
+        assert_eq!(failed.status, None);
+        assert!(
+            failed.reason.starts_with("pool request: "),
+            "{}",
+            failed.reason
+        );
+    }
+
+    #[tokio::test]
+    async fn a_body_that_will_not_decode_has_no_status_and_says_why() {
+        let url = fake_core::serve_always("200 OK", "not json").await;
+        let failed = list(&client(url), Some("p1"), 20).await.unwrap_err();
+        assert_eq!(failed.status, None);
+        assert!(
+            failed.reason.starts_with("pool decode: "),
+            "{}",
+            failed.reason
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_pool_is_an_empty_list_and_not_a_failure() {
+        let url = fake_core::serve_always("200 OK", r#"{"items":[]}"#).await;
+        assert!(list(&client(url), Some("p1"), 20).await.unwrap().is_empty());
+    }
+
+    /// Criterion 24, the naming half: a refused preparation names its status too.
+    #[tokio::test]
+    async fn a_refused_preparation_names_its_status() {
+        let url = fake_core::serve_always("520 Origin Error", GATEWAY_PAGE).await;
+        let Err(e) = prepare(&client(url), "j1", "s1").await else {
+            panic!("a gateway answer is not a preparation");
+        };
+        let said = e.to_string();
+        assert!(
+            said.starts_with("pool /api/devices/me/pool/prepare 520 (gateway: the origin returned an unknown error)"),
+            "{said}"
+        );
+    }
 
     #[test]
     fn a_release_row_with_no_issue_still_decodes() {
