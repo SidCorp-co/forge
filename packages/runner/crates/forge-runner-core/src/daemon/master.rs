@@ -509,7 +509,9 @@ fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
 /// limit without reporting their end, which reads as a pass still working. So a
 /// held master is asked again every refresh window whatever `since` says —
 /// capacity an operator restores out of band is seen only by a turn that tries
-/// (ISS-1248).
+/// (ISS-1248). The window binds it even when the work changed: every turn it is
+/// sent is refused until capacity returns, and the set a held master is asked
+/// over can swing every sweep while its own cut-short runs come and go.
 fn nudge_due(
     prev: Option<Nudge>,
     digest: u64,
@@ -517,12 +519,12 @@ fn nudge_due(
     since: SinceNudge,
     held: bool,
 ) -> bool {
+    let window_passed = |last: Nudge| now.saturating_duration_since(last.at) >= NUDGE_REFRESH;
     match prev {
         None => true,
+        Some(last) if held => window_passed(last),
         Some(last) if last.digest != digest => true,
-        Some(last) => {
-            now.saturating_duration_since(last.at) >= NUDGE_REFRESH && (held || retry_owed(since))
-        }
+        Some(last) => window_passed(last) && retry_owed(since),
     }
 }
 
@@ -5740,6 +5742,26 @@ mod give_back_tests {
                 true
             ),
             "at exactly one window it is asked"
+        );
+    }
+
+    #[test]
+    fn changed_work_does_not_ask_a_refused_master_twice_inside_one_window() {
+        let now = Instant::now();
+        assert!(
+            !nudge_due(sent(7, now, Some(4)), 8, now, SinceNudge::Ran, true),
+            "its own cut-short runs move the set every sweep, and every turn sent before capacity returns is refused"
+        );
+        assert!(nudge_due(
+            sent(7, now.checked_sub(NUDGE_REFRESH).unwrap(), Some(4)),
+            8,
+            now,
+            SinceNudge::Ran,
+            true
+        ));
+        assert!(
+            nudge_due(sent(7, now, Some(4)), 8, now, SinceNudge::Ran, false),
+            "a master that is not held still hears about new work at once"
         );
     }
 
