@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { gateConditionSchema } from './gate-report.js';
 import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
 import {
   heldWorktreeSchema,
@@ -31,6 +32,11 @@ const runSessionBodySchema = z.object({
   runId: z.string().uuid(),
   issueKeys: z.array(z.string().min(1)).min(1).max(16),
   name: z.string().min(1).max(60),
+  // Validated here rather than absorbed: a run is kernel, and a gate condition
+  // this route cannot read is a contract break the box is told about by name
+  // rather than a field quietly dropped. The heartbeat is the other way round,
+  // and for its own stated reason (ISS-1192).
+  gate: gateConditionSchema.optional(),
 });
 
 deviceRunSessionRoutes.post(
@@ -48,6 +54,7 @@ deviceRunSessionRoutes.post(
         issueKeys: body.issueKeys,
         name: body.name,
         boxRunId: body.runId,
+        ...(body.gate ? { gate: body.gate } : {}),
       });
       return c.json(session);
     } catch (err) {

@@ -128,6 +128,48 @@ and is replaced under the same name by something this box did not start, between
 `new-session`. It is narrow, nothing observed has hit it, and the reading that would close it is a
 pane identity carried through the placement — which is shape 1 again, from the other side.
 
+**A fifth residual, from the other end: a session the box never spawned is marked as if it had lost
+something.** The declaration gate's hook is installed per checkout —
+`hook_install::install` writes `<cwd>/.claude/settings.local.json` — so it runs in every Claude Code
+session whose working directory is a Forge checkout, while only panes the daemon spawned carry
+`FORGE_CONTROL_TOKEN`. Every other session reaches `answer`'s no-token branch in `cmd/gate.rs` and
+writes a `degraded` mark reading *this pane carries no control capability*. Measured on sid-xeon-1 on
+2026-09-24: **all 279 marks in `gate-marks.jsonl`, over 90.7 hours, carry that one reason and no
+other** — not one `undeclared`, not one `the daemon did not answer`, not one
+`refused the question itself`.
+
+Two populations reach that branch and **the hook cannot separate them**: a pane the daemon spawned
+whose mint never reached its environment, which is a real failure of this page's subject, and a
+session the daemon never spawned, which was never the gate's subject at all. Telling them apart needs
+the daemon's own spawn record — the same record shape 1 introduces, read by the hook rather than by
+`run_declare`. Which is why it is on this page: whoever builds shape 1 decides whether that record
+answers *whose pane is this* as well as *what is this capability for*, and the gate's marks are the
+second reader either way.
+
+ISS-1192 carried the condition off the box and deliberately did **not** decide this. It does not
+suppress the class — a class filtered out on a guess that it is benign is the silent substitution that
+issue exists to end — so what travels is the count broken down by reason, and a box whose whole count
+is one reason says so. What nobody can say yet is how much of that count is a real capability failure.
+
+**A sixth residual, and the same gap seen from the run's side: an undecided dispatch cannot be
+attributed to the run it belonged to.** ISS-1192 stamps the run's metadata with `gateAtOpen`, the
+BOX's gate condition at the moment the run session opened. A review of that change asked for more —
+per-dispatch evidence, so a reviewer could ask of one run "was THIS dispatch admitted undecided"
+rather than "what condition was the box in when this run started". It was refused, and the reason is
+this page's subject rather than a scoping judgement.
+
+A declared run is registered with core BEFORE the dispatch the gate then judges, so the aggregate
+stamped at open cannot contain that dispatch's own mark; and the mark is written by a process that,
+in the dominant class above, holds no control capability and therefore cannot reach the daemon, core,
+or any run id. `Mark` carries `Run::Declared` only on the daemon's own branches. Building per-dispatch
+attribution on that would produce evidence present for the minority class and absent for the one that
+wrote every observed mark — and absent evidence reads the same as a gate that decided, which is the
+substitution ISS-1192 exists to end, rebuilt inside its own fix.
+
+The reading that closes it is the same spawn record: a hook that can name the pane it runs in can
+name the declared run the pane holds, and the mark becomes per-dispatch evidence without needing the
+control socket that failed. Until then `gateAtOpen` says what it is, and says it is the box's.
+
 ## Honest costs
 
 What adopting shape 1 takes from whoever builds it. These are the prices of the choice, not the

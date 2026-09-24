@@ -32,6 +32,7 @@ import {
   insertOneShotRun,
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
+import type { GateCondition } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
@@ -48,6 +49,12 @@ export const RUN_ANNOUNCED_METADATA_KEY = 'runSessionAnnouncedAt';
 
 /** Where each issue's status AT OPEN lives, beside the group itself. */
 export const RUN_ISSUE_STATUSES_METADATA_KEY = 'runIssueStatuses';
+
+/**
+ * The BOX's gate condition when the run opened — not this dispatch's own admission,
+ * which a hook holding no control capability cannot attribute to a run (ISS-1192).
+ */
+export const RUN_GATE_METADATA_KEY = 'gateAtOpen';
 
 export interface RunSession {
   sessionId: string;
@@ -156,6 +163,7 @@ export async function openRunSession(args: {
   issueKeys: string[];
   name: string;
   boxRunId?: string;
+  gate?: GateCondition;
 }): Promise<RunSession> {
   if (args.issueKeys.length === 0) {
     throw new Error('openRunSession: a run session must carry at least one issue');
@@ -198,6 +206,7 @@ export async function openRunSession(args: {
       [RUN_ISSUES_METADATA_KEY]: canonical.keys,
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
       ...(args.boxRunId ? { [BOX_RUN_ID_METADATA_KEY]: args.boxRunId } : {}),
+      ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),
     },
   };
   const claimed = await db.transaction(async (tx) => {

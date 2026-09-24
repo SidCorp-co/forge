@@ -341,14 +341,20 @@ a `--` mark means the rule does not apply, `n/a` means it applies and was not an
 
 ## check-size-budget.mjs — file and function length
 
-`packages/core/biome.json` owns both length rules; this owns only the baseline biome lacks. 102 files
-are frozen in `.forge/size-baseline.json` — a file already over budget may stay over, it may not get
-worse. Frozen per file (its length and its longest function), so a reflow or a moved function is not
-a violation.
+`packages/core/biome.json` owns both length rules; this owns only the baseline biome lacks. The files
+frozen in `.forge/size-baseline.json` may stay over budget, they may not get worse. Frozen per file
+(its length and its longest function), so a reflow or a moved function is not a violation.
 
-Adding a `cm:` annotation to a file already at its frozen budget will trip this. Re-freeze with
-`--update-baseline`; the one-line growth shows up in the diff, which is how that escape hatch is
-meant to be used.
+**A frozen file has no headroom, and `--update-baseline` does not buy any.** One line added to a file
+already at its number — a `cm:` annotation, a column on `packages/core/src/db/schema.ts` — trips this,
+and re-freezing above it is then refused by `conformance-status`: the form axis declares
+`improves: down`, and `compareBaseline` in `scripts/lib/baseline-ratchet.mjs` faults on ANY per-key
+rise and on any per-area total rise. There is no waiver to buy and no amnesty to price. The way
+through is to make the file come in under the number it already holds — ISS-1136 moved the session
+vocabularies out to `packages/core/src/db/session-vocabulary.ts` to land two columns, ISS-1192 moved
+the device vocabularies out to `packages/core/src/db/device-vocabulary.ts` to land one, each
+re-exported so no importer changed. `--update-baseline` is for a baseline moving DOWN, which is the
+only direction the manifest allows.
 
 ### Adding a check
 

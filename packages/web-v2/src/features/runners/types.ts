@@ -32,6 +32,13 @@ export interface DeviceRow {
 	lastSeenAt: string | null;
 	pairedAt: string | null;
 	capabilities: unknown;
+	/**
+	 * This box's declaration gate, `null` where it has never reported one. The
+	 * gate admits a dispatch it could not judge rather than stopping the work,
+	 * and before this that admission was readable only by typing one command on
+	 * the box itself (ISS-1192).
+	 */
+	gate: DeviceGate | null;
 	/** Non-secret label set when a git push credential was provisioned (ISS-305). */
 	gitCredentialRef: string | null;
 	createdAt: string;
@@ -159,6 +166,82 @@ export function deviceBuildChip(device: {
 		return { label: "build unknown", title: title || "This build could not be compared", tone: "muted" };
 	}
 	return null;
+}
+
+/** What a box reported about its own declaration gate. */
+export interface DeviceGate {
+	verdict: "clear" | "marked" | "failing_open";
+	count: number;
+	trimmed: boolean;
+	perDay: number | null;
+	windowMs: number | null;
+	sinceLastMs: number | null;
+	byReason: Array<{ reason: string; count: number }>;
+	/** When core heard this, which is what says whether it is still the box's present condition. */
+	receivedAt: string;
+}
+
+export interface DeviceGateBanner {
+	count: number;
+	rate: string;
+	window: string;
+	reason: string | null;
+	/** Present where the report is old enough that it may no longer be true. */
+	stale: string | null;
+}
+
+/**
+ * Past this, a stored report is not the box's present condition. A box that
+ * stopped heartbeating leaves its last report standing, and a banner that read
+ * it as current would rebuild the very defect this reports (ISS-1192).
+ */
+const REPORT_FRESH_FOR_MS = 10 * 60 * 1000;
+
+function asSpan(ms: number | null): string {
+	if (ms === null) return "an unknown span";
+	const mins = Math.round(ms / 60_000);
+	if (mins < 60) return `${mins}m`;
+	const hours = Math.round(mins / 60);
+	if (hours < 48) return `${hours}h`;
+	return `${Math.round(hours / 24)}d`;
+}
+
+type ReasonCount = DeviceGate["byReason"][number];
+
+/**
+ * The largest count, taken rather than assumed. The box sorts its breakdown, but
+ * nothing between there and here declares that order, and a banner naming the
+ * wrong cause sends an operator at the wrong remedy (ISS-1192).
+ */
+function commonestReason(by: ReasonCount[]): ReasonCount | undefined {
+	return by.reduce<ReasonCount | undefined>((best, r) => {
+		if (best === undefined) return r;
+		if (r.count !== best.count) return r.count > best.count ? r : best;
+		return r.reason < best.reason ? r : best;
+	}, undefined);
+}
+
+/** The banner, or `null` for a box whose gate is deciding. */
+export function deviceGateBanner(
+	gate: DeviceGate | null,
+	now: number = Date.now(),
+): DeviceGateBanner | null {
+	if (gate?.verdict !== "failing_open") return null;
+	const age = now - Date.parse(gate.receivedAt);
+	const commonest = commonestReason(gate.byReason);
+	return {
+		count: gate.count,
+		rate: gate.perDay === null ? "at an unstated rate" : `${Math.round(gate.perDay)}/day`,
+		window: asSpan(gate.windowMs),
+		reason:
+			commonest?.count === gate.count
+				? `every one of them: ${commonest.reason}`
+				: (commonest?.reason ?? null),
+		stale:
+			Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS
+				? null
+				: `last reported ${asSpan(age)} ago, so this may no longer be true`,
+	};
 }
 
 /** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */

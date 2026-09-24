@@ -22,6 +22,7 @@ import {
 	type DeviceRow,
 	type DeviceRunnerAssignment,
 	deviceBuildChip,
+	deviceGateBanner,
 	deviceHealth,
 	runnerHealth,
 } from "../types";
@@ -47,9 +48,22 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 	const dirty = trimmed.length > 0 && trimmed !== device.name;
 	const revoked = device.status === "revoked";
 	const buildChip = deviceBuildChip(device);
+	const gate = deviceGateBanner(device.gate);
 
 	return (
 		<div className="flex flex-col gap-4">
+			{gate && (
+				<Banner tone="attention">
+					<span>
+						<strong>This box&rsquo;s declaration gate is failing open.</strong>{" "}
+						{gate.count} dispatch(es) went through without the gate deciding,{" "}
+						{gate.rate} over {gate.window}. Each ran with the declaration requirement
+						as advice.
+						{gate.reason ? ` Commonest reason — ${gate.reason}.` : ""}
+						{gate.stale ? ` ${gate.stale}.` : ""}
+					</span>
+				</Banner>
+			)}
 			<div className="flex items-end gap-2">
 				<div className="flex-1">
 					<Field label="Device name">
