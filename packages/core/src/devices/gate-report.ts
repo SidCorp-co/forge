@@ -98,6 +98,25 @@ export function heartbeatGate(
   return { ...(read.report ? { report: read.report } : {}), ack };
 }
 
+/** The run's own record of the gate it opened under, out of `pipeline_runs`.
+ *  `null` is the box having sent none; one core cannot read says so. */
+export type RunGate =
+  | { read: 'ok'; condition: GateCondition }
+  | { read: 'unreadable'; reason: string };
+
+export const RUN_GATE_METADATA_KEY = 'gateAtOpen';
+
+export function readRunGate(metadata: unknown, runId: string): RunGate | null {
+  if (metadata === null || typeof metadata !== 'object') return null;
+  const stored = (metadata as Record<string, unknown>)[RUN_GATE_METADATA_KEY];
+  if (stored === undefined) return null;
+  const parsed = conditionSchema.safeParse(stored);
+  if (parsed.success) return { read: 'ok', condition: parsed.data };
+  const reason = parsed.error.issues[0]?.message ?? 'not a gate condition core can read';
+  logger.warn({ runId, reason }, 'pipeline run: this run carries a gate core cannot read');
+  return { read: 'unreadable', reason };
+}
+
 export function withDeviceGate<T extends { gateReport?: unknown }>(
   rows: T[],
 ): Array<Omit<T, 'gateReport'> & { gate: DeviceGate | null }> {

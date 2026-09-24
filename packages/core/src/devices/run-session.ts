@@ -32,7 +32,7 @@ import {
   insertOneShotRun,
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
-import type { GateCondition } from './gate-report.js';
+import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
@@ -54,7 +54,7 @@ export const RUN_ISSUE_STATUSES_METADATA_KEY = 'runIssueStatuses';
  * The BOX's gate condition when the run opened — not this dispatch's own admission,
  * which a hook holding no control capability cannot attribute to a run (ISS-1192).
  */
-export const RUN_GATE_METADATA_KEY = 'gateAtOpen';
+export { RUN_GATE_METADATA_KEY } from './gate-report.js';
 
 export interface RunSession {
   sessionId: string;

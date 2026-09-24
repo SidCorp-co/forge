@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, cardStatus, median } from "./derive";
-import type { PipelineIssueRow, StepDurationRow } from "./types";
+import { aggregateStepCosts, cardStatus, median, runGateNote } from "./derive";
+import type { PipelineIssueRow, RunGateCondition, StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
   return {
@@ -156,4 +156,76 @@ describe("cardStatus", () => {
     expect(card.domain).toBe("issue");
     expect(card.label).toBe("label:in_progress");
   });
+});
+
+const runGate = (over: Partial<RunGateCondition> = {}): RunGateCondition => ({
+	verdict: "failing_open",
+	count: 30,
+	perDay: 144,
+	windowMs: 18_000_000,
+	byReason: [{ reason: "this pane carries no control capability", count: 30 }],
+	...over,
+});
+
+describe("runGateNote", () => {
+	it("names the count, the rate and the window of a gate that was failing open", () => {
+		const note = runGateNote({ read: "ok", condition: runGate() });
+		expect(note?.verdict).toBe("failing_open");
+		expect(note?.detail).toBe("30 dispatch(es) admitted without a decision, 144/day over 5h 00m");
+	});
+
+	it("says when one reason accounts for the whole count", () => {
+		expect(runGateNote({ read: "ok", condition: runGate() })?.reason).toBe(
+			"every one of them: this pane carries no control capability",
+		);
+	});
+
+	it("names only the commonest reason where the count is a mixture", () => {
+		const note = runGateNote({
+			read: "ok",
+			condition: runGate({
+				byReason: [
+					{ reason: "no control capability", count: 20 },
+					{ reason: "the daemon did not answer", count: 10 },
+				],
+			}),
+		});
+		expect(note?.reason).toBe("no control capability");
+	});
+
+	it("still states a gate that had marked without reaching failing open", () => {
+		const note = runGateNote({
+			read: "ok",
+			condition: runGate({ verdict: "marked", count: 2, perDay: 3 }),
+		});
+		expect(note?.verdict).toBe("marked");
+		expect(note?.headline).toContain("admitted undecided dispatches");
+	});
+
+	it("says nothing for a run whose box reported no condition, or a gate that was deciding", () => {
+		expect(runGateNote(null)).toBeNull();
+		expect(runGateNote(undefined)).toBeNull();
+		expect(
+			runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) }),
+		).toBeNull();
+	});
+
+	// A condition core holds but cannot read is evidence, and rendering nothing
+	// would tell the reviewer the box reported none (ISS-1192 F1).
+	it("says a stored condition could not be read, rather than showing nothing", () => {
+		const note = runGateNote({ read: "unreadable", reason: "gate.verdict: bad enum" });
+		expect(note?.verdict).toBe("unreadable");
+		expect(note?.headline).toContain("cannot be read");
+		expect(note?.detail).toContain("gate.verdict: bad enum");
+	});
+
+	it("does not invent a rate or a window the box did not state", () => {
+		const note = runGateNote({
+			read: "ok",
+			condition: runGate({ perDay: null, windowMs: null }),
+		});
+		expect(note?.detail).toBe(
+			"30 dispatch(es) admitted without a decision, at an unstated rate over an unknown span",
+		);
+	});
 });

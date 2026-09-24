@@ -14,6 +14,8 @@ import {
   type PipelineIssueRow,
   type PipelineRunListItem,
   type PipelineRunStatus,
+  type RunGate,
+  type RunGateCondition,
   type StepDurationRow,
 } from "./types";
 
@@ -193,6 +195,52 @@ export interface CardStatusView {
   domain: "session" | "issue";
   /** The gate sentence, for the card's tooltip + aria-label; "" when none. */
   waitingReason: string;
+}
+
+/** ISS-1192 — what a reviewer opening this run is told about the box's gate.
+ *  `null` where it was deciding, and where the box reported nothing. */
+export interface RunGateNote {
+  verdict: "marked" | "failing_open" | "unreadable";
+  headline: string;
+  detail: string;
+  reason: string | null;
+}
+
+/** The largest count, taken rather than assumed: nothing between the box and
+ *  here declares the breakdown's order, and the wrong cause sends a reader at
+ *  the wrong remedy. */
+function commonestReason(by: RunGateCondition["byReason"]) {
+  return by.reduce<RunGateCondition["byReason"][number] | undefined>((best, r) => {
+    if (best === undefined) return r;
+    if (r.count !== best.count) return r.count > best.count ? r : best;
+    return r.reason < best.reason ? r : best;
+  }, undefined);
+}
+
+export function runGateNote(gate: RunGate | null | undefined): RunGateNote | null {
+  if (!gate) return null;
+  if (gate.read === "unreadable") {
+    return {
+      verdict: "unreadable",
+      headline: "This run recorded a gate condition that cannot be read",
+      detail: `${gate.reason} — the run was not opened with no condition, so this is not "the gate was deciding".`,
+      reason: null,
+    };
+  }
+  const c = gate.condition;
+  if (c.verdict === "clear") return null;
+  const rate = c.perDay === null ? "at an unstated rate" : `${Math.round(c.perDay)}/day`;
+  const window = c.windowMs === null ? "an unknown span" : formatDurationMs(c.windowMs);
+  const top = commonestReason(c.byReason);
+  return {
+    verdict: c.verdict,
+    headline:
+      c.verdict === "failing_open"
+        ? "This box's gate was failing open when this run opened"
+        : "This box's gate had admitted undecided dispatches when this run opened",
+    detail: `${c.count} dispatch(es) admitted without a decision, ${rate} over ${window}`,
+    reason: top?.count === c.count ? `every one of them: ${top.reason}` : (top?.reason ?? null),
+  };
 }
 
 export function cardStatus(

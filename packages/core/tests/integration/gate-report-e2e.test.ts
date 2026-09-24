@@ -37,6 +37,15 @@ const fixture = JSON.parse(
 /** The gate body itself: the fixture carries the wire bounds beside it. */
 const onTheWire = { degraded: fixture.degraded };
 
+/** The run as a reviewer reads it: over its own route, as the project owner. */
+async function reviewerReads(baseUrl: string, runId: string, token: string) {
+  const res = await fetch(`${baseUrl}/api/pipeline-runs/${runId}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { gateAtOpen: unknown }).gateAtOpen;
+}
+
 describe('a box reports its declaration gate and core keeps it', () => {
   let harness: TestDatabase;
   let heartbeatPatch: typeof import('../../src/devices/heartbeat-patch.js').heartbeatPatch;
@@ -87,7 +96,7 @@ describe('a box reports its declaration gate and core keeps it', () => {
    * the difference between no report and a report of nothing.
    */
   async function boxThatReported({ reported = true }: { reported?: boolean } = {}) {
-    const user = await createTestUser(harness.db);
+    const user = await createTestUser(harness.db, { emailVerifiedAt: new Date() });
     const project = await createTestProject(harness.db, user.id);
     const device = await createTestDevice(harness.db, user.id);
     await harness.db.execute(sql`
@@ -144,7 +153,7 @@ describe('a box reports its declaration gate and core keeps it', () => {
   // then, or "was the gate deciding while this ran" is unanswerable the moment
   // the box's window rolls over.
   it('stamps a run session with the condition the box opened it under', async () => {
-    const { device, project } = await boxThatReported();
+    const { device, project, user } = await boxThatReported();
     const opened = await openRunSession({
       deviceId: device.id,
       projectId: project.id,
@@ -157,10 +166,16 @@ describe('a box reports its declaration gate and core keeps it', () => {
     `)) as unknown as Array<{ metadata: Record<string, unknown> }>;
     const stamped = rows[0]?.metadata?.[RUN_GATE_METADATA_KEY] as { verdict: string };
     expect(stamped.verdict).toBe('failing_open');
+    // A jsonb key no route returns is answerable only by psql (criterion 18).
+    const seen = await reviewerReads(server.baseUrl, opened.runId, await signUserToken(user.id));
+    expect(seen).toMatchObject({
+      read: 'ok',
+      condition: { verdict: 'failing_open', count: 24, perDay: 144 },
+    });
   });
 
   it('stamps none where the box sent none, rather than a gate that was clear', async () => {
-    const { device, project } = await boxThatReported({ reported: false });
+    const { device, project, user } = await boxThatReported({ reported: false });
     const opened = await openRunSession({
       deviceId: device.id,
       projectId: project.id,
@@ -171,6 +186,8 @@ describe('a box reports its declaration gate and core keeps it', () => {
       SELECT metadata FROM pipeline_runs WHERE id = ${opened.runId}
     `)) as unknown as Array<{ metadata: Record<string, unknown> }>;
     expect(rows[0]?.metadata).not.toHaveProperty(RUN_GATE_METADATA_KEY);
+    const token = await signUserToken(user.id);
+    expect(await reviewerReads(server.baseUrl, opened.runId, token)).toBeNull();
   });
 
   /**

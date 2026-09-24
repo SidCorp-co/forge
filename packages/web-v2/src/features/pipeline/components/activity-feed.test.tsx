@@ -64,6 +64,7 @@ function run(attempts: PipelineRunAttempt[]): PipelineRunSummary {
     lastSessionBeatAt: null,
     attempts,
     retrySummary: null,
+    gateAtOpen: null,
   };
 }
 

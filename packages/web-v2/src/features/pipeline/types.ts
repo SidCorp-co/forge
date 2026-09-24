@@ -110,13 +110,30 @@ export interface PipelineRunSummary {
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
   retrySummary: PipelineRunRetrySummary | null;
+  /** ISS-1192 — the box's declaration gate when this run opened; null where the
+   *  box reported none, and `unreadable` where core holds one it cannot read. */
+  gateAtOpen: RunGate | null;
+}
+
+/** ISS-1192 — the run's own record of the gate, as core reads it back. */
+export type RunGate =
+  | { read: "ok"; condition: RunGateCondition }
+  | { read: "unreadable"; reason: string };
+
+/** What a box said about its own declaration gate, as the run holds it. */
+export interface RunGateCondition {
+  verdict: "clear" | "marked" | "failing_open";
+  count: number;
+  perDay: number | null;
+  windowMs: number | null;
+  byReason: Array<{ reason: string; count: number }>;
 }
 
 /** `GET /api/projects/:id/pipeline-runs` list row — the summary minus the heavy
- *  per-step + per-attempt rollups (the list endpoint omits them). */
+ *  per-step + per-attempt rollups and the gate (the list endpoint omits them). */
 export type PipelineRunListItem = Omit<
   PipelineRunSummary,
-  "steps" | "attempts" | "retrySummary"
+  "steps" | "attempts" | "retrySummary" | "gateAtOpen"
 >;
 
 export interface PipelineIssueRow {
