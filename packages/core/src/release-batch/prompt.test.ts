@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { releaseBatchStatePrompt } from '../prompt/state-prompts/release-batch.js';
 import {
   defaultReleaseProcedure,
   RELEASE_BATCH_SKILL,
+  RELEASE_BATCH_TOOL,
   type ReleaseChannel,
   type ReleasePlan,
 } from './plan.js';
@@ -220,5 +222,39 @@ describe('the release runner preference the agent is told about', () => {
 
     expect(out).toContain('Read `releaseRunner` in the batch context');
     expect(out).not.toContain('is running somewhere else');
+  });
+});
+
+describe('the route a release run reaches Forge by (ISS-1211)', () => {
+  const prompts = () => [
+    buildReleaseBatchPrompt({ ...BASE, plan: plan() }),
+    releaseBatchStatePrompt,
+  ];
+
+  it('names forge_release_batch for the read, the announcement, finish and abort', () => {
+    for (const text of prompts()) {
+      for (const action of ['get', 'finish', 'abort']) {
+        expect(text).toMatch(new RegExp(`${RELEASE_BATCH_TOOL}[^\\n]*\\b${action}\\b`));
+      }
+    }
+    expect(buildReleaseBatchPrompt({ ...BASE, plan: plan() })).toMatch(
+      new RegExp(`${RELEASE_BATCH_TOOL}\\\` action \\\`method\\\``),
+    );
+  });
+
+  it('names no forge-runner api call and no REST path for the batch', () => {
+    for (const text of prompts()) {
+      expect(text).not.toContain('forge-runner api');
+      expect(text).not.toMatch(/release-batches\//);
+    }
+  });
+
+  it('tells the run to stop before any branch, tag or deployment when the tool is missing or refuses', () => {
+    for (const text of prompts()) {
+      expect(text).toMatch(
+        /not in your tool list, or refuses (your|the) first call, STOP before you touch any branch,\s+tag or deployment/,
+      );
+      expect(text).toContain('Do not look for another credential on this machine.');
+    }
   });
 });

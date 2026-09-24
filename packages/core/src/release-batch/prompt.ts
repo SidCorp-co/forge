@@ -4,7 +4,12 @@
 
 import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
 import { markUntrusted } from '../prompt/sanitize.js';
-import { defaultReleaseProcedure, RELEASE_BATCH_SKILL, type ReleasePlan } from './plan.js';
+import {
+  defaultReleaseProcedure,
+  RELEASE_BATCH_SKILL,
+  RELEASE_BATCH_TOOL,
+  type ReleasePlan,
+} from './plan.js';
 
 interface IssueSummary {
   id: string;
@@ -60,8 +65,23 @@ ${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderMethod()}${renderProcedure(plan, releaseModel, releaseStrategy)}
-Start by reading the batch context: \`forge-runner api projects/${projectId}/release-batches/${runId}\`.
+${renderReach(runId)}${renderMethod()}${renderProcedure(plan, releaseModel, releaseStrategy)}
+Start by reading the batch context: \`${RELEASE_BATCH_TOOL}\` action \`get\` with runId \`${runId}\`.
+`;
+}
+
+/**
+ * Every call this job makes to Forge goes through one tool, on the credential
+ * its pane was opened with — the one \`forge_coolify_deploy\` deploys on. A run
+ * that cannot reach it cannot record a release, so it is told to stop before
+ * the release rather than discover that at \`finish\` (ISS-1211).
+ */
+function renderReach(runId: string): string {
+  return `
+### How you reach Forge
+Every call below goes through the \`${RELEASE_BATCH_TOOL}\` MCP tool with runId \`${runId}\`: \`get\` reads the batch, \`method\` announces your method, \`finish\` records the release, \`abort\` gives the batch back. It runs on the credential this session was started with, the same one a deploy through Forge uses.
+
+If \`${RELEASE_BATCH_TOOL}\` is not in your tool list, or refuses your first call, STOP before you touch any branch, tag or deployment: nothing you did could be recorded. End the turn saying which of the two happened and the refusal's text. Do not look for another credential on this machine.
 `;
 }
 
@@ -77,7 +97,7 @@ Start by reading the batch context: \`forge-runner api projects/${projectId}/rel
 function renderMethod(): string {
   return `
 ### Your method
-Load it before the first step: run the \`${RELEASE_BATCH_SKILL}\` skill, then announce what you loaded with \`POST projects/{projectId}/release-batches/{runId}/method\`. \`finish\` refuses a run that announced none.
+Load it before the first step: run the \`${RELEASE_BATCH_SKILL}\` skill, then announce what you loaded with \`${RELEASE_BATCH_TOOL}\` action \`method\` (\`skill\`, \`loaded\`). \`finish\` refuses a run that announced none, and so does a deploy through \`forge_coolify_deploy\`.
 
 If the skill does not load, announce THAT — do not improvise a release out of this prompt. An announcement saying the method could not be loaded is a run a person can see; a release run with no method is not.
 `;

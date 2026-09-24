@@ -3092,6 +3092,8 @@
 - **Release refusals from the issue list match Release settings.** They blamed a check that never
   failed rather than the runner that is down, and over fifty issues got "Invalid input". Automatic
   releases carry the oldest fifty at a time.
+- **A job pane whose agent's own end was lost no longer reads as working forever.** A turn still
+  writing its conversation keeps its slot; one silent for an hour gives it back and says why.
 - **A finished job pane no longer reads as working forever because one subagent's end was lost.**
   A pane whose agent ended its turn waiting on one now says so, and gives its slot back
   after an hour of silence.

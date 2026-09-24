@@ -3,6 +3,9 @@ export const RELEASE_PROCEDURE_FACT = 'release-procedure';
 
 export const RELEASE_BATCH_SKILL = 'release-flow';
 
+/** The MCP tool a release run reads and records its batch through, on the credential its pane holds. */
+export const RELEASE_BATCH_TOOL = 'forge_release_batch';
+
 /** What the default procedure has to read to render: the two declared axes and the live set. */
 export interface DefaultProcedureInput {
   releaseModel: ReleaseModel;

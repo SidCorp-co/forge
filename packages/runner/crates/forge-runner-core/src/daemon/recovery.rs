@@ -84,7 +84,8 @@ pub struct Recovered {
     /// This run's own close loop cannot advance without someone taking its
     /// worktree back first, and nothing else on the box will.
     pub owed_release: bool,
-    pub owed_idle_exit: bool,
+    /// The box may end this run itself, for the cause named.
+    pub owed_exit: Option<run_exit::ExitCause>,
     pub owed_death_report: bool,
 }
 
@@ -125,14 +126,15 @@ pub async fn reconcile(
             let Some(id) = run.session_id.as_deref() else {
                 continue;
             };
-            if run_exit::verdict(watch.idle.reported(id).await, now_ms()) == Verdict::Exit {
+            if let Verdict::Exit(cause) = run_exit::verdict(watch.idle.reported(id).await, now_ms())
+            {
                 out.push(Recovered {
                     run_id: run.run_id.clone(),
                     project_id: run.project_id.clone(),
                     session_id: Some(id.to_string()),
                     state: close_loop::state(ledger, &run.run_id)?,
                     owed_release: false,
-                    owed_idle_exit: true,
+                    owed_exit: Some(cause),
                     owed_death_report: false,
                 });
                 continue;
@@ -174,7 +176,7 @@ pub async fn reconcile(
             session_id,
             state,
             owed_release,
-            owed_idle_exit: false,
+            owed_exit: None,
             owed_death_report,
         });
     }
@@ -306,6 +308,7 @@ mod tests {
         Reports(Reported {
             doing: crate::daemon::agent_activity::Doing::Idle,
             at: now_ms() - run_exit::RUN_IDLE_BEFORE_EXIT.as_millis() as i64 - 1,
+            written_at: None,
         })
     }
 
@@ -837,9 +840,45 @@ mod tests {
             beats.0.lock().unwrap()
         );
         assert_eq!(
-            done.iter().filter(|r| r.owed_idle_exit).count(),
+            done.iter()
+                .filter(|r| r.owed_exit == Some(run_exit::ExitCause::Idle))
+                .count(),
             1,
             "stopping the beat without naming the run leaves its process up with nothing on the box able to end it; got {done:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_run_whose_end_was_lost_is_named_for_the_silence_and_not_for_idleness() {
+        let mut led = seeded("run-1", "master-live", "boot-a", &["ISS-957"]);
+        let beats = Beats::default();
+        let silent_since = now_ms() - run_exit::RUN_SILENT_BEFORE_EXIT.as_millis() as i64 - 1;
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &beats,
+                idle: &Reports(Reported {
+                    doing: crate::daemon::agent_activity::Doing::Working,
+                    at: silent_since,
+                    written_at: Some(silent_since),
+                }),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(beats.0.lock().unwrap().is_empty());
+        assert_eq!(
+            done.iter().map(|r| r.owed_exit).collect::<Vec<_>>(),
+            vec![Some(run_exit::ExitCause::LeadSilent)],
+            "what the box tells core must be the evidence that ended the run, not a claim it went idle"
         );
     }
 
@@ -866,7 +905,7 @@ mod tests {
         .unwrap();
         assert_eq!(beats.0.lock().unwrap().as_slice(), ["core-sess-1"]);
         assert!(
-            !done.iter().any(|r| r.owed_idle_exit),
+            !done.iter().any(|r| r.owed_exit.is_some()),
             "silence is not idleness; got {done:?}"
         );
     }
