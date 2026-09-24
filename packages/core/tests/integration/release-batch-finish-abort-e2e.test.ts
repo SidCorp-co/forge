@@ -133,13 +133,13 @@ async function untilState(runId: string, state: string): Promise<void> {
   throw new Error(`the attempt never reached ${state}`);
 }
 
-/** Abort the batch while its attempt is verifying, then let the probe go green. */
-async function abortMidVerify(runId: string): Promise<void> {
+/** Abort the batch while its attempt is verifying, then let the probe go green or stay red. */
+async function abortMidVerify(runId: string, goesGreen = true): Promise<void> {
   await accept(runId, PUSHED);
   const working = job.runReleaseBatchFinish(runId);
   await untilState(runId, 'verifying');
   await abort(runId);
-  serving = PUSHED;
+  if (goesGreen) serving = PUSHED;
   await working;
 }
 
@@ -163,6 +163,18 @@ describe('a batch aborted while its finish attempt is verifying', () => {
       expect(await closesOf(id)).toBe(0);
     }
   }, 30_000);
+
+  it('ends the attempt as aborted, not unverified, when the probes never go green', async () => {
+    const { runId } = await twoIssueBatch();
+
+    await abortMidVerify(runId, false);
+
+    expect(await stored(runId)).toMatchObject({
+      state: 'failed',
+      refusal: { code: 'RELEASE_BATCH_ABORTED' },
+    });
+    expect(await shipped(runId)).toBeNull();
+  }, 40_000);
 
   it('answers a later finish on it with RELEASE_BATCH_ABORTED, with or without a commit', async () => {
     const { runId } = await twoIssueBatch();

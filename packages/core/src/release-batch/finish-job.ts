@@ -249,10 +249,9 @@ function mergeOutcome(
   return { closed, failed };
 }
 
-/** Refuse to go on with an attempt whose batch somebody aborted while it worked. */
-async function assertNotAborted(runId: string): Promise<void> {
-  const run = await readReleaseRun(runId);
-  if (run?.status === 'cancelled') throw new ReleaseBatchAbortedError();
+/** Whether somebody aborted this attempt's batch while it worked. */
+async function wasAborted(runId: string): Promise<boolean> {
+  return (await readReleaseRun(runId))?.status === 'cancelled';
 }
 
 export async function runReleaseBatchFinish(
@@ -295,13 +294,13 @@ export async function runReleaseBatchFinish(
       commit: record.commit ?? undefined,
       alreadyVerified: record.state === 'closing',
       onVerified: async () => {
-        await assertNotAborted(runId);
+        if (await wasAborted(runId)) throw new ReleaseBatchAbortedError();
         await hold.commit(() => ({ state: 'closing' }));
         await hooks.afterVerified?.();
       },
       fence: hold.fence,
       onRosterClosed: async (result) => {
-        const aborted = (await readReleaseRun(runId))?.status === 'cancelled';
+        const aborted = await wasAborted(runId);
         // On an aborted batch the issues this pass could not close are where the abort put them,
         // not failures of the release, so only what truly closed is kept.
         await hold.commit((r) => mergeOutcome(r, aborted ? { ...result, failed: [] } : result));
@@ -325,10 +324,13 @@ export async function runReleaseBatchFinish(
       logger.error({ err, runId }, 'release-batch: a finished release could not close its run');
       return;
     }
-    const refusal = refusalOf(err);
-    if (refusal.code === 'RELEASE_FINISH_ERRORED') {
+    const own = refusalOf(err);
+    if (own.code === 'RELEASE_FINISH_ERRORED') {
       logger.error({ err, runId }, 'release-batch: a finish stopped on an unexpected error');
     }
+    // An abort is why an aborted batch's attempt ended, whatever else it met first.
+    const aborted = await wasAborted(runId).catch(() => false);
+    const refusal = aborted ? refusalOf(new ReleaseBatchAbortedError()) : own;
     await hold
       .commit(() => ({
         state: 'failed',
