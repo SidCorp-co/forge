@@ -42,9 +42,9 @@ pub async fn serve_silent() -> String {
     format!("http://{addr}")
 }
 
-/// Answers `200` with headers promising a body, sends half of it, and stalls:
-/// the peer that is slow after the status line rather than before it.
-pub async fn serve_stalled_body() -> String {
+/// Answers `status` with headers promising a body, sends half of it, and
+/// stalls: the peer that is slow after the status line rather than before it.
+pub async fn serve_stalled_body(status: &'static str) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -54,7 +54,10 @@ pub async fn serve_stalled_body() -> String {
             let _ = sock.read(&mut buf).await;
             let _ = sock
                 .write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n{\"items\":[",
+                    format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n{{\"items\":["
+                    )
+                    .as_bytes(),
                 )
                 .await;
             held.push(sock);

@@ -431,7 +431,7 @@ mod tests {
     /// The boundary past the status line: headers arrived and the body stalled.
     #[tokio::test]
     async fn a_read_whose_body_stalls_fails_at_its_deadline() {
-        let url = fake_core::serve_stalled_body().await;
+        let url = fake_core::serve_stalled_body("200 OK").await;
         let failed = tokio::time::timeout(
             Duration::from_secs(10),
             list_within(&client(url), Some("p1"), 20, Duration::from_millis(300)),
@@ -459,6 +459,40 @@ mod tests {
         assert_eq!(
             e.to_string(),
             "pool /api/devices/me/pool/prepare: timed out after 300ms"
+        );
+    }
+
+    /// A refusal whose page stalls still returns inside the deadline, carrying
+    /// the status it did get: the body is garnish once the status is known.
+    #[tokio::test]
+    async fn a_refusal_whose_body_stalls_still_names_its_status_in_time() {
+        let url = fake_core::serve_stalled_body("503 Whatever").await;
+        let failed = tokio::time::timeout(
+            Duration::from_secs(10),
+            list_within(&client(url), Some("p1"), 20, Duration::from_millis(300)),
+        )
+        .await
+        .expect("a refusal's stalled body held the pool read past its deadline")
+        .expect_err("a 503 is a failed read");
+        assert_eq!(failed.status, Some(503));
+        assert_eq!(failed.reason, "pool 503 Service Unavailable");
+    }
+
+    /// And the claim's answer, when its body stalls after the status line.
+    #[tokio::test]
+    async fn a_preparation_whose_body_stalls_fails_at_its_deadline() {
+        let url = fake_core::serve_stalled_body("200 OK").await;
+        let Err(e) = tokio::time::timeout(
+            Duration::from_secs(10),
+            prepare_within(&client(url), "j1", "s1", Duration::from_millis(300)),
+        )
+        .await
+        .expect("a stalled body held the preparation past its deadline") else {
+            panic!("half a body is not a preparation");
+        };
+        assert_eq!(
+            e.to_string(),
+            "pool /api/devices/me/pool/prepare response: timed out after 300ms"
         );
     }
 
