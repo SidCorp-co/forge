@@ -5,6 +5,7 @@ import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
+import { readPulseLive } from './pulse-live.js';
 import { idList } from './pulse-sql.js';
 import type {
   PulseIssueIdentity,
@@ -194,17 +195,23 @@ export async function readPulseWork(
   thresholds: PulseThresholds,
   now: Date,
 ): Promise<PulseWork> {
-  const [statusRows, abandoned, releaseWaiting, humanBlockedAges, runRows] = await Promise.all([
-    db
-      .select({ projectId: issues.projectId, status: issues.status, n: sql<number>`count(*)::int` })
-      .from(issues)
-      .where(inArray(issues.projectId, projectIds))
-      .groupBy(issues.projectId, issues.status),
-    selectAbandoned(projectIds, thresholds, now),
-    selectReleaseWaiting(projectIds, thresholds, now),
-    selectHumanBlockedAges(projectIds, thresholds.identityCap, now),
-    selectProjectRuns(projectIds),
-  ]);
+  const [statusRows, abandoned, releaseWaiting, humanBlockedAges, runRows, live] =
+    await Promise.all([
+      db
+        .select({
+          projectId: issues.projectId,
+          status: issues.status,
+          n: sql<number>`count(*)::int`,
+        })
+        .from(issues)
+        .where(inArray(issues.projectId, projectIds))
+        .groupBy(issues.projectId, issues.status),
+      selectAbandoned(projectIds, thresholds, now),
+      selectReleaseWaiting(projectIds, thresholds, now),
+      selectHumanBlockedAges(projectIds, thresholds.identityCap, now),
+      selectProjectRuns(projectIds),
+      readPulseLive(projectIds, thresholds, now),
+    ]);
 
   const { total, byProject } = foldBuckets(
     statusRows.map((r) => ({ projectId: r.projectId, status: r.status, n: Number(r.n) })),
@@ -234,6 +241,8 @@ export async function readPulseWork(
     buckets: total,
     abandoned: { total: abandoned.total, shown: abandoned.shown },
     releaseWaiting,
+    notOnLive: live.notOnLive,
+    liveUnmeasured: live.liveUnmeasured,
     silentProjects: {
       total: silent.length,
       shown: silent.slice(0, thresholds.identityCap).map(asIdentity),

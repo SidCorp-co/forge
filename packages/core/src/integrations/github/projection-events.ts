@@ -2,6 +2,7 @@ import { db } from '../../db/client.js';
 import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
 import { hooks } from '../../pipeline/hooks.js';
+import { forgetLiveReading } from '../../projects/live-reading.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
 import { publishForStoredPullRequest } from './contract-check.js';
 import { resolveIssueForHeadRef } from './issue-link.js';
@@ -134,6 +135,7 @@ async function onPullRequest(ctx: DeliveryContext, payload: PullRequestPayload):
 }
 
 async function onPush(ctx: DeliveryContext, payload: PushPayload): Promise<number> {
+  forgetLiveReading(ctx.projectId);
   const branch = branchOfPush(payload);
   if (!branch) return 0;
   const rows = await openPullRequestsOnBase(ctx, branch);

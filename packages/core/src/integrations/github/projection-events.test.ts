@@ -49,6 +49,9 @@ vi.mock('./projection-refresh.js', () => ({
 
 vi.mock('./client.js', () => ({
   buildRepoClient: () => ({ bindingId: 'b', appId: '7', owner: 'o', repo: 'r' }),
+  githubRepoClient: async () => {
+    throw new Error('the live reading is handed its client by the test');
+  },
   GitHubClientError: class extends Error {},
 }));
 

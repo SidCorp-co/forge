@@ -34,6 +34,8 @@ const emptyWork = (): PulseWork => ({
   buckets: emptyBuckets(),
   abandoned: { total: 0, shown: [] },
   releaseWaiting: { total: 0, shown: [] },
+  notOnLive: { total: 0, shown: [] },
+  liveUnmeasured: { total: 0, shown: [] },
   silentProjects: { total: 0, shown: [] },
   neverRanProjects: { total: 0, shown: [] },
   humanBlockedAges: [],
