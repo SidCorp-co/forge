@@ -121,6 +121,26 @@ export interface ProjectRunner {
 	provisionedAt: string | null;
 	/** `undefined` on a core that does not serve the field; `null` is "none". */
 	residentMaster?: ResidentMaster | null;
+	/** This runner's failed reads of the project's job pool (ISS-1234). */
+	poolRead?: RunnerPoolRead | null;
+}
+
+/** Times are epoch milliseconds, on the box's own clock. */
+export interface RunnerPoolRead {
+	verdict: "blind" | "intermittent";
+	failures: number;
+	countIsFloor: boolean;
+	windowMs: number;
+	unreadSince: number | null;
+	consecutive: number;
+	recoveredAt: number | null;
+	lastFailure: {
+		at: number;
+		status: number | null;
+		what: string;
+		reason: string;
+	};
+	receivedAt: string;
 }
 
 /** What every surface says for a version nobody reported. Blank would read as a
