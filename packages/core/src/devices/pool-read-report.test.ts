@@ -70,6 +70,20 @@ describe('what core refuses, by name', () => {
     );
   });
 
+  it('refuses an intermittent project that claims consecutive failed reads', () => {
+    const bad = { ...structuredClone(fixture.pool.projects[1]), consecutive: 3 };
+    expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(
+      /^pool\.projects\.0\.consecutive: only a blind project/,
+    );
+  });
+
+  it('refuses a blind project that claims it recovered', () => {
+    const bad = { ...blind(), recoveredAt: 1 };
+    expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(
+      /^pool\.projects\.0\.recoveredAt: a blind project has not recovered/,
+    );
+  });
+
   it('refuses an intermittent project that claims an unreadSince', () => {
     const bad = { ...structuredClone(fixture.pool.projects[1]), unreadSince: 1 };
     expect(readHeartbeatPool({ projects: [bad] }).refused).toMatch(/unreadSince: only a blind/);

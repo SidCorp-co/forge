@@ -4,11 +4,18 @@
 // empty pool; the runner card is where the runner record is read, so it is where
 // a box that cannot see its queue says so.
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RunnerPoolRead } from "../types";
 
+const listProjectRunners = vi.fn(async () => []);
+vi.mock("../api", () => ({ runnersApi: { listProjectRunners } }));
+vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+
 const { PoolReadBanner } = await import("./pool-read");
+const { useProjectRunners } = await import("../hooks");
 
 const MIN = 60_000;
 
@@ -125,6 +132,21 @@ describe("a report the box stopped renewing", () => {
 		expect(text).toMatch(/last report,\s+2d ago/);
 	});
 
+	it("stops stating a report in the present tense on a page left open past renewal", () => {
+		vi.useFakeTimers();
+		try {
+			const { container } = render(<PoolReadBanner poolRead={blind()} />);
+			expect(container.textContent).toMatch(/cannot read the project's job pool/);
+			act(() => {
+				vi.advanceTimersByTime(6 * MIN);
+			});
+			expect(container.textContent).toMatch(/could not read the project's job pool when it last/);
+			expect(container.textContent).not.toMatch(/cannot read/);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("reads a report heard inside the renewal window as current", () => {
 		const { container } = render(
 			<PoolReadBanner
@@ -132,6 +154,31 @@ describe("a report the box stopped renewing", () => {
 			/>,
 		);
 		expect(container.textContent).not.toMatch(/last report/);
+	});
+});
+
+describe("the runners a page shows", () => {
+	it("are read again on the heartbeat's cadence, so a report stays as current as core's", async () => {
+		vi.useFakeTimers();
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const wrapper = ({ children }: { children: ReactNode }) => (
+			<QueryClientProvider client={qc}>{children}</QueryClientProvider>
+		);
+		try {
+			renderHook(() => useProjectRunners("p-1"), { wrapper });
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(0);
+			});
+			const first = listProjectRunners.mock.calls.length;
+			expect(first).toBe(1);
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(30_000);
+			});
+			expect(listProjectRunners.mock.calls.length).toBe(first + 1);
+		} finally {
+			qc.clear();
+			vi.useRealTimers();
+		}
 	});
 });
 
