@@ -195,6 +195,40 @@ describe('an edge written through forge_issues update beside an archive of its i
   });
 });
 
+describe('an expired edge naming an archived issue', () => {
+  const edgeWrite = async (from: string, to: string, validUntil?: string) => {
+    const { setIssueDependency } = await import('../../src/issues/dependency-service.js');
+    const writer = { actor: actor(), createdById: userId };
+    return setIssueDependency(
+      { projectId, fromIssueId: from, toIssueId: to, kind: 'relates', validUntil },
+      writer,
+    ).then(
+      () => 'written',
+      (err: Error) => err.message,
+    );
+  };
+  const past = () => new Date(Date.now() - 60_000).toISOString();
+
+  it('is refused when it would be written new, and retires one that already existed', async () => {
+    const [a, b, c] = [await seed(1, 'closed'), await seed(2, 'closed'), await seed(3, 'closed')];
+    expect(await edgeWrite(a, b)).toBe('written');
+    await archiveMod.runIssueArchive({
+      projectId,
+      direction: 'archive',
+      filter: { keys: ['ISS-1', 'ISS-2', 'ISS-3'] },
+      dryRun: false,
+      actor: actor(),
+    });
+    expect(await edgeWrite(a, c, past())).toMatch(/is archived/);
+    expect(await state(a, c)).toEqual({ archived: true, edges: 0 });
+    expect(await edgeWrite(a, b, past())).toBe('written');
+    const [row] = (await harness.db.execute(sql`
+      SELECT valid_until < now() AS retired FROM issue_dependencies
+       WHERE from_issue_id = ${a} AND to_issue_id = ${b}`)) as unknown as { retired: boolean }[];
+    expect(row).toEqual({ retired: true });
+  });
+});
+
 describe('an archive retried after a deadlock', () => {
   it('reports each refusal once, and drops one whose row settled between attempts', async () => {
     await seed(1, 'closed');

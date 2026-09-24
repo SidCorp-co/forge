@@ -64,6 +64,26 @@ export type IssueDependencyWriter = {
   createdById: string;
 };
 
+/** The edge this write names, by its unique key, or `undefined` where none exists yet. */
+async function findEdge(
+  ex: IssueDependencyExecutor,
+  input: SetIssueDependencyInput,
+): Promise<{ id: string } | undefined> {
+  const [edge] = await ex
+    .select({ id: issueDependencies.id })
+    .from(issueDependencies)
+    .where(
+      and(
+        eq(issueDependencies.projectId, input.projectId),
+        eq(issueDependencies.fromIssueId, input.fromIssueId),
+        eq(issueDependencies.toIssueId, input.toIssueId),
+        eq(issueDependencies.kind, input.kind),
+      ),
+    )
+    .limit(1);
+  return edge;
+}
+
 /** True when this write only retires the edge: `validUntil` already in the past. */
 const expiresEdge = (validUntil: string | undefined): boolean =>
   validUntil !== undefined && new Date(validUntil).getTime() <= Date.now();
@@ -126,10 +146,11 @@ export async function writeIssueDependency(
     if (s.projectId !== input.projectId) throw new IssueDependencyError('CROSS_PROJECT');
   }
   // ISS-1237 — an edge naming an archived issue would point at a row no reader can find. The
-  // `FOR SHARE` read waits on an archive holding either side, then reads what it committed.
-  if (!expiresEdge(input.validUntil)) {
-    const archived = await archivedAmong(ex, [input.fromIssueId, input.toIssueId], 'share');
-    if (archived[0]) throw new IssueDependencyError('ISSUE_ARCHIVED', archived[0].message);
+  // `FOR SHARE` read waits on an archive holding either side, then reads what it committed. Only
+  // retiring an edge that already exists passes; an edge first written already expired is new.
+  const [archived] = await archivedAmong(ex, [input.fromIssueId, input.toIssueId], 'share');
+  if (archived && !(expiresEdge(input.validUntil) && (await findEdge(ex, input)))) {
+    throw new IssueDependencyError('ISSUE_ARCHIVED', archived.message);
   }
 
   if (input.kind === 'blocks' && !expiresEdge(input.validUntil)) {
@@ -165,18 +186,7 @@ export async function writeIssueDependency(
     return { id, created: true, updated: false, effect: 'added' };
   }
 
-  const [existing] = await ex
-    .select({ id: issueDependencies.id })
-    .from(issueDependencies)
-    .where(
-      and(
-        eq(issueDependencies.projectId, input.projectId),
-        eq(issueDependencies.fromIssueId, input.fromIssueId),
-        eq(issueDependencies.toIssueId, input.toIssueId),
-        eq(issueDependencies.kind, input.kind),
-      ),
-    )
-    .limit(1);
+  const existing = await findEdge(ex, input);
   if (!existing) throw new IssueDependencyError('INTERNAL');
 
   const patch: { validUntil?: Date; reason?: string } = {};

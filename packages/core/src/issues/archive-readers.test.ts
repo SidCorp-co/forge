@@ -157,6 +157,7 @@ function stripComments(src: string): string {
 const READS_ISSUES = [
   /\.(?:from|innerJoin|leftJoin|rightJoin)\(\s*(?:schema\.)?issues\b/,
   /\b(?:from|join)\s+(?:"?public"?\.)?"?issues"?\b/i,
+  /\bquery\.issues\.find(?:First|Many)\b/,
 ];
 const DECIDES = /issueArchiveSide\(|memoryOfLiveIssue|is(?:Not)?Null\(\s*issues\.archivedAt\)/;
 
@@ -203,6 +204,7 @@ describe('every reader of issues decides about archived rows (ISS-1237)', () => 
     expect(classify('sql`SELECT 1 FROM issues i`')).toBe('reads-undecided');
     expect(classify('sql`select title from issues`')).toBe('reads-undecided');
     expect(classify('sql`SELECT 1 FROM issues_archive`')).toBe('no-read');
+    expect(classify('db.query.issues.findMany({})')).toBe('reads-undecided');
     expect(classify('sql`SELECT title FROM "public"."issues"`')).toBe('reads-undecided');
     expect(classify('db.select({ archivedAt: issues.archivedAt }).from(issues)')).toBe(
       'reads-undecided',
