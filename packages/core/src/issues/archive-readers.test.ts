@@ -64,6 +64,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/drop-unblock.ts': 'by issue id',
   'issues/entry-criteria.ts': 'by issue id',
   'issues/extras-routes.ts': 'by id; pipeline timing is an aggregate with no identity',
+  'issues/held-hydrator.ts': 'the ids passed in',
   'issues/list-projection.ts':
     'runs the where its callers build; the list and search routes compose the predicate into it',
   'issues/merge-record.ts': 'by issue id',
@@ -106,6 +107,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/issue-run-invariant.ts': 'reads only work-in-progress statuses',
   'pipeline/pipeline-config-service.ts': 'reads only stage statuses, all non-terminal',
   'pipeline/reconciler.ts': 'reads only entry and in-flight statuses',
+  'pipeline/lease-fanout.ts': 'reads only non-terminal rows, and counts claims per holder',
   'pipeline/recovery-verifier.ts': 'the issue of the job',
   'pipeline/release-coolify.ts': 'by issue id',
   'pipeline/release-hold.ts': 'the ids passed in',
