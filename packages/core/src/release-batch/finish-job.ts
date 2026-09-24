@@ -272,7 +272,9 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord) {
   return {
     commit,
     renew: () =>
-      commit(() => ({ leaseUntil: new Date(Date.now() + FINISH_LEASE_MS).toISOString() })),
+      IN_FLIGHT.has(current.state)
+        ? commit(() => ({ leaseUntil: new Date(Date.now() + FINISH_LEASE_MS).toISOString() }))
+        : Promise.resolve(current),
     get lost() {
       return lost;
     },
