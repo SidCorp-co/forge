@@ -123,6 +123,7 @@ export type Issue = typeof schema.issues.$inferSelect & {
   agentStatus?: 'running' | 'queued' | 'completed' | 'failed' | null;
   /** ISS-1213 — search endpoint only, under `?withAgentSessions`: is anything on the issue now. */
   held?: boolean;
+  lastCheckInAt?: string | null;
   /** ISS-437 — search endpoint only, under `?withCost=1`: per-issue usage rollup in USD,
    *  0 when the issue never produced any. */
   estimatedCost?: number;
