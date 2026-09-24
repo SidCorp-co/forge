@@ -305,6 +305,28 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
     expect(await fx.runStatus(runId)).toBe('running');
   }, 30_000);
 
+  it('keeps the roster outcome when the worker dies after the claims were released', async () => {
+    const { ReleaseFinishFenceLostError } = await import('../../src/release-batch/errors.js');
+    const { runId, issueId } = await batch();
+    await plant(runId, { state: 'closing', owner: 'dead-worker', leaseUntil: iso(-1_000) });
+
+    await job.runReleaseBatchFinish(runId, {
+      beforeFinishedWrite: async () => {
+        throw new ReleaseFinishFenceLostError();
+      },
+    });
+    const orphaned = (await stored(runId)) as Record<string, unknown>;
+    expect(orphaned).toMatchObject({ state: 'closing', closed: [issueId] });
+    expect((await fx.stored(issueId)).claim).toBeNull();
+    await plant(runId, { ...orphaned, leaseUntil: iso(-1_000) });
+
+    expect(await sweep()).toEqual([runId]);
+
+    expect(await stored(runId)).toMatchObject({ state: 'finished', closed: [issueId], failed: [] });
+    expect(await closesOf(issueId)).toBe(1);
+    expect(await fx.runStatus(runId)).toBe('completed');
+  }, 30_000);
+
   it('keeps a finished record finished when only the run close failed, and the sweep closes the run', async () => {
     const { runId, issueId } = await batch();
     serving = PUSHED;

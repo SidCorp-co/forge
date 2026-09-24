@@ -251,6 +251,8 @@ export interface FinishReleaseBatchOptions {
   alreadyVerified?: boolean | undefined;
   /** Called once verification is green, before the first issue closes. */
   onVerified?: (() => Promise<void>) | undefined;
+  /** Called with the roster's outcome before the claims are released, so it outlives them. */
+  onRosterClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
   /**
    * Run inside each closing write's own transaction, before it writes; throws to stop the close
    * where it stands. It holds the run row, so a takeover waits until that write has committed.
@@ -384,6 +386,7 @@ export async function finishReleaseBatch(
     }
   }
 
+  await options.onRosterClosed?.({ closed, failed });
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
     actorUserId: actor.type === 'user' ? actor.id : undefined,

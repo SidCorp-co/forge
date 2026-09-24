@@ -330,6 +330,23 @@ export interface FinishWorkerHooks {
   afterVerified?: () => Promise<void>;
   /** Test seam: runs inside a closing write's transaction, after the fence passed. */
   afterFence?: () => Promise<void>;
+  /** Test seam: runs after the claims are released and before `finished` is written. */
+  beforeFinishedWrite?: () => Promise<void>;
+}
+
+/**
+ * The roster outcome so far: what an earlier pass of this attempt checkpointed, and what this
+ * pass adds. A pass resumed after the claims were released finds none, and adds nothing.
+ */
+function mergeOutcome(
+  prev: ReleaseFinishRecord,
+  pass: { closed: string[]; failed: Array<{ id: string; reason: string }> },
+): Pick<ReleaseFinishRecord, 'closed' | 'failed'> {
+  const closed = [...new Set([...(prev.closed ?? []), ...pass.closed])];
+  const failed = [...(prev.failed ?? []), ...pass.failed].filter(
+    (f, i, all) => !closed.includes(f.id) && all.findIndex((g) => g.id === f.id) === i,
+  );
+  return { closed, failed };
 }
 
 export async function runReleaseBatchFinish(
@@ -376,11 +393,14 @@ export async function runReleaseBatchFinish(
         await hooks.afterVerified?.();
       },
       fence: hold.fence,
+      onRosterClosed: async (result) => {
+        await hold.commit((r) => mergeOutcome(r, result));
+      },
       onClosed: async (result) => {
-        await hold.commit(() => ({
+        await hooks.beforeFinishedWrite?.();
+        await hold.commit((r) => ({
+          ...mergeOutcome(r, result),
           state: 'finished',
-          closed: result.closed,
-          failed: result.failed,
           owner: null,
           leaseUntil: null,
           finishedAt: new Date().toISOString(),
