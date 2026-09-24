@@ -26,11 +26,11 @@ describe('toAutonomousLabel', () => {
   });
 
   // ISS-1213: eleven rows stood at `testing` for 5–12h with nothing on ten of them, all reading
-  // `running`. The same row with nothing on it reads `stalled`.
-  it('reads a row nothing holds as stalled, never as running', () => {
-    expect(toAutonomousLabel('testing', false)).toBe('stalled');
+  // `running`. The same row with nothing on it reads `unheld`.
+  it('reads a row nothing holds as unheld, never as running', () => {
+    expect(toAutonomousLabel('testing', false)).toBe('unheld');
     for (const status of IN_FLIGHT) {
-      expect([status, toAutonomousLabel(status, false)]).toEqual([status, 'stalled']);
+      expect([status, toAutonomousLabel(status, false)]).toEqual([status, 'unheld']);
     }
   });
 
@@ -74,7 +74,7 @@ describe('toAutonomousLabel', () => {
     expect(toAutonomousLabel('dropped', false)).toBe('dropped');
   });
 
-  it('reads either release park as its own label, not as running or stalled', () => {
+  it('reads either release park as its own label, not as running or unheld', () => {
     expect(toAutonomousLabel('awaiting_release', false)).toBe('awaiting_release');
     expect(toAutonomousLabel('tested', false)).toBe('awaiting_release');
   });
@@ -87,9 +87,9 @@ describe('toAutonomousLabel', () => {
 });
 
 describe('LABEL_TO_KERNEL', () => {
-  const writable = AUTONOMOUS_LABELS.filter((l): l is WritableLabel => l !== 'stalled');
+  const writable = AUTONOMOUS_LABELS.filter((l): l is WritableLabel => l !== 'unheld');
 
-  it('writes every label but stalled to a status the kernel enum defines', () => {
+  it('writes every label but unheld to a status the kernel enum defines', () => {
     expect(Object.keys(LABEL_TO_KERNEL).sort()).toEqual([...writable].sort());
     for (const label of writable) {
       expect(REGISTRY_ISSUE_STATUSES).toContain(LABEL_TO_KERNEL[label]);
@@ -114,8 +114,8 @@ describe('statusesForLabels', () => {
     ]);
   });
 
-  it('names the same statuses for running and for stalled, because a filter cannot see the holder', () => {
-    expect(statusesForLabels('stalled')).toEqual(statusesForLabels('running'));
+  it('names the same statuses for running and for unheld, because a filter cannot see the holder', () => {
+    expect(statusesForLabels('unheld')).toEqual(statusesForLabels('running'));
     expect([...statusesForLabels('running')].sort()).toEqual([...IN_FLIGHT].sort());
   });
 

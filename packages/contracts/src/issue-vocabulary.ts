@@ -6,7 +6,7 @@ export const AUTONOMOUS_LABELS = [
   'draft',
   'open',
   'running',
-  'stalled',
+  'unheld',
   'needs_human',
   'paused',
   'awaiting_release',
@@ -17,8 +17,8 @@ export const AUTONOMOUS_LABELS = [
 
 export type AutonomousLabel = (typeof AUTONOMOUS_LABELS)[number];
 
-/** Every label but `stalled`, which is read off a row that nothing holds and is never written. */
-export type WritableLabel = Exclude<AutonomousLabel, 'stalled'>;
+/** Every label but `unheld`, which is read off a row that nothing holds and is never written. */
+export type WritableLabel = Exclude<AutonomousLabel, 'unheld'>;
 
 /** The kernel status a label is written as. */
 export const LABEL_TO_KERNEL: Record<WritableLabel, KernelIssueStatus> = {
@@ -33,7 +33,10 @@ export const LABEL_TO_KERNEL: Record<WritableLabel, KernelIssueStatus> = {
   dropped: 'dropped',
 };
 
-/** `running` is only a held row's word; `toAutonomousLabel` reads the same status `stalled` unheld. */
+/**
+ * `running` is only a held row's word; `toAutonomousLabel` reads the same status `unheld` when nothing
+ * holds it. Not `stalled`: core cannot tell a quiet run it was never told about from a gone one.
+ */
 const KERNEL_TO_LABEL: Record<KernelIssueStatus, WritableLabel> = {
   draft: 'draft',
   open: 'open',
@@ -57,7 +60,7 @@ const KERNEL_TO_LABEL: Record<KernelIssueStatus, WritableLabel> = {
 /** `held` (the search row's own) is required: a status alone cannot say whether a run is behind it. */
 export function toAutonomousLabel(status: KernelIssueStatus, held: boolean): AutonomousLabel {
   const label = KERNEL_TO_LABEL[status];
-  return label === 'running' && !held ? 'stalled' : label;
+  return label === 'running' && !held ? 'unheld' : label;
 }
 
 /**

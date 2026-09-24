@@ -116,7 +116,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
               title={group.title}
               color={group.color}
               count={group.issues.length}
-              emptyHint={`No issues are ${group.title.toLowerCase()}.`}
+              emptyHint="No issues in this column."
             >
               {group.issues.map((issue) => {
                 const run = issue.id ? runIndex.get(issue.id) : undefined;
@@ -131,6 +131,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                     statusDomain={card.domain}
                     held={issue.status === "on_hold"}
                     {...(card.waitingReason ? { waitingReason: card.waitingReason } : {})}
+                    {...(card.note ? { note: card.note } : {})}
                     cost={
                       run && run.cost.estimatedCost > 0
                         ? formatUsd(run.cost.estimatedCost)
