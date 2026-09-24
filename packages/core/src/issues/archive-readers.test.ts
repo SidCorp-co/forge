@@ -129,6 +129,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'questions/read.ts': 'by issue id',
   'questions/write.ts': 'by issue id',
   'release-batch/blockers.ts': 'gate statuses, counted; claims by id',
+  'release-batch/finish-job.ts':
+    'counts rows of one release run: releasing, or closed by it, so never archived live work',
   'release-batch/queries.ts': 'reads only the gate status, or rows of one release run',
   'release-batch/recorded.ts': 'the ids passed in',
   'release-batch/releasing-recovery.ts': 'rows of one release run',
