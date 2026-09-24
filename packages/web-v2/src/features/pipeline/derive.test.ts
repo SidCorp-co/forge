@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aggregateStepCosts, cardStatus, median, runGateNote } from "./derive";
 import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
-import type { PipelineIssueRow, RunGateCondition, StepDurationRow } from "./types";
+import { PIPELINE_RUN_STATUSES, type PipelineIssueRow, type RunGateCondition, type StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
   return {
@@ -162,17 +162,11 @@ describe("cardStatus", () => {
     expect(card.status).not.toBe(statusToChip("testing"));
   });
 
-  it.each(["completed", "failed", "cancelled"] as const)(
-    "reads Stalled on a row nothing holds though its last run %s",
-    (status) => {
-      const card = cardStatus(issue({ status: "testing", held: false }), { status });
-      expect([card.label, card.status, card.domain]).toEqual([
-        "Stalled",
-        LABEL_VIEW.stalled.status,
-        "issue",
-      ]);
-    },
-  );
+  // A live run would have made the row held, so every run the board kept for an unheld row is history.
+  it.each(PIPELINE_RUN_STATUSES)("reads Stalled on a row nothing holds whatever its kept run (%s)", (status) => {
+    const card = cardStatus(issue({ status: "testing", held: false }), { status });
+    expect([card.label, card.status, card.domain]).toEqual(["Stalled", LABEL_VIEW.stalled.status, "issue"]);
+  });
 
   it("keeps a party's word on a row nothing holds, since no run was owed there", () => {
     const card = cardStatus(issue({ status: "needs_info", held: false }), undefined);
