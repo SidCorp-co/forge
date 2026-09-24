@@ -645,6 +645,12 @@ impl Masters {
 
     fn forget(&self, project_id: &str) -> Option<String> {
         let mut reg = self.0.lock().expect("masters poisoned");
+        // The unwithdrawn marker goes with it. It says one thing — this
+        // project's capability map names a session no pane holds — and a
+        // project this box is no longer tracking has no pane for it to be
+        // about. Left behind, it is a session id waiting to be matched by
+        // whatever core hands out next (ISS-1208).
+        reg.unwithdrawn.remove(project_id);
         reg.live.remove(project_id).map(|m| m.session_id)
     }
 
@@ -2763,7 +2769,7 @@ async fn deaf_pane_outlived_its_kill(
             "[master] {slug}: {name} was ended as a deaf pane and tmux still holds a session of that name, so nothing was replaced — the capability minted for {session_id} has been withdrawn rather than left standing as proof of a replacement this box did not make. The pane is still deaf and every declaration it makes is refused: `forge-runner master kill {slug}` is the same act by hand."
         ),
         Err(why) => tracing::error!(
-            "[master] {slug}: {name} was ended as a deaf pane and is still running, and the capability minted for {session_id} could NOT be withdrawn: {why}. This box will read {name} as current from the next sweep on, stop reporting it deaf, and go on nudging a pane that refuses every declaration it makes — no later sweep repairs that. `forge-runner master kill {slug}` is the only thing that does."
+            "[master] {slug}: {name} was ended as a deaf pane and is still running, and the capability minted for {session_id} could NOT be withdrawn: {why}. The map on disk now names a session no pane holds, so this daemon holds that fact itself and goes on reading {slug} as stale — it will report this and try the pane again every sweep, and a placement that works clears it. What it cannot survive is its own restart, which would read the map at face value again: fix whatever stopped this box writing its capability map, or `forge-runner master kill {slug}` and let the replacement mint cleanly."
         ),
     }
     ports.deaf.set(
@@ -2772,7 +2778,7 @@ async fn deaf_pane_outlived_its_kill(
         DeafAct::LeftStanding(match &withdrawn {
             Ok(()) => "this box ended it and tmux still holds a session of that name".to_string(),
             Err(why) => format!(
-                "this box ended it, tmux still holds a session of that name, and the capability minted for the replacement could not be withdrawn ({why}) — no later sweep will report this project again"
+                "this box ended it, tmux still holds a session of that name, and the capability minted for the replacement could not be withdrawn ({why}) — held in this daemon and retried every sweep, but not across a restart of it"
             ),
         }),
     );
@@ -7046,6 +7052,22 @@ mod unplaced_tests {
             CapabilityAct::Replace,
             "the retry is the ordinary sweep: a stale verdict with admissible work ends the pane again, and a placement that works clears what is held here"
         );
+        // And what the box SAYS about it has to be that, or an operator is told
+        // to intervene by hand on a state the daemon is in fact retrying every
+        // sweep. Raised as F3 on the review of ba415f04f.
+        match deaf.take().expect("the box met a deaf pane").acted {
+            DeafAct::LeftStanding(why) => {
+                assert!(
+                    why.contains("retried every sweep"),
+                    "the one box-level record is where a person reads this, and it has to say the daemon is still trying: {why}"
+                );
+                assert!(
+                    !why.contains("no later sweep"),
+                    "that was true before this box held the fact itself, and saying it now contradicts what the next sweep does: {why}"
+                );
+            }
+            other => panic!("a pane still running was recorded as {other:?}"),
+        }
 
         // A withdrawal that DID take releases it, or the box refuses a project
         // for ever over a mint it successfully took back.
@@ -7071,6 +7093,43 @@ mod unplaced_tests {
             "the map was written, so there is nothing left to hold against this project"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The marker says one thing — this project's capability map names a
+    /// session no pane holds — so it may not outlive the project it is about.
+    ///
+    /// Left behind, it is a session id sitting in wait for whatever core hands
+    /// out next, and a healthy master matched by it would be ended for being
+    /// healthy. Raised as F2 on the review of ba415f04f, where the worry was
+    /// that a session id alone is not an identity; this is the window it was
+    /// worried about, closed.
+    #[test]
+    fn a_project_this_box_stops_tracking_holds_nothing_against_its_next_session() {
+        let masters = Masters::new();
+        masters.remember_for_test("proj-1", "sess-A", "forge-master-mowment");
+        masters.note_unwithdrawn("proj-1", Some("sess-A"));
+        assert_eq!(
+            masters.unwithdrawn_for("proj-1"),
+            Some("sess-A".to_string())
+        );
+
+        masters.forget("proj-1");
+        assert_eq!(
+            masters.unwithdrawn_for("proj-1"),
+            None,
+            "the project is no longer this box's, so there is no pane for the marker to be about — and a later session that happened to carry the same id would be refused on the strength of it"
+        );
+        assert!(
+            matches!(
+                verdict_over_unwithdrawn(
+                    Capability::Current,
+                    masters.unwithdrawn_for("proj-1").as_deref(),
+                    "sess-A",
+                ),
+                Capability::Current
+            ),
+            "which is what stops a healthy master being ended for holding an id this box once could not withdraw"
+        );
     }
 
     #[test]

@@ -559,10 +559,34 @@ pub async fn kill(name: &str) -> Result<()> {
         Ok(out) => String::from_utf8_lossy(&out.stderr).trim().to_string(),
         Err(e) => e.to_string(),
     };
-    if alive(name).await {
-        return Err(Error::Other(format!("tmux kill-session {name}: {refused}")));
+    match still_there(name).await {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(Error::Other(format!("tmux kill-session {name}: {refused}"))),
+        Err(e) => Err(Error::Other(format!(
+            "tmux kill-session {name}: {refused}, and whether it is still there could not be established: {e}"
+        ))),
     }
-    Ok(())
+}
+
+/// Whether tmux holds a session by this name, with `could not ask` kept apart
+/// from `no`.
+///
+/// [`alive`] answers a `bool` and collapses the two, which is right for the
+/// callers asking whether to bother doing something. It is wrong for a
+/// postcondition: a probe that could not run, read as `absent`, is a kill this
+/// box reports as taken on the strength of a question nobody answered — the
+/// same shape as the discarded status this whole path exists to stop
+/// (ISS-1208).
+///
+/// A server that is not running is `Ok(false)`, not an error: no server holds
+/// no sessions, which is the outcome the caller wanted. `Err` is this box
+/// failing to run tmux at all.
+async fn still_there(name: &str) -> Result<bool> {
+    let target = session_target(name);
+    Ok(tmux(&["has-session", "-t", &target])
+        .await?
+        .status
+        .success())
 }
 
 pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> Vec<String> {
@@ -651,6 +675,38 @@ pub(crate) mod testing {
         }
     }
 
+    /// A tmux this box cannot run at all: every call comes back as a spawn
+    /// error rather than as an answer.
+    ///
+    /// The state `alive` cannot represent. It answers `false` here, and a
+    /// postcondition reading that as `the session is gone` reports a kill on
+    /// the strength of a question nobody answered.
+    pub(crate) struct UnaskableTmux {
+        _path: ScopedVar,
+        dir: std::path::PathBuf,
+    }
+
+    impl UnaskableTmux {
+        pub(crate) fn installed() -> Self {
+            let dir = std::env::temp_dir().join(format!("forge-unaskable-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).expect("shim dir");
+            // An empty PATH, so the spawn fails rather than the command
+            // answering something. `available()` was resolved at startup and
+            // is cached, which is the production shape of this: tmux was there
+            // when the daemon started and cannot be run now.
+            Self {
+                _path: ScopedVar::set("PATH", &dir),
+                dir,
+            }
+        }
+    }
+
+    impl Drop for UnaskableTmux {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
     /// A tmux that refuses `kill-session` and answers every other verb from the
     /// real server, for the one window `kill`'s postcondition is about.
     ///
@@ -707,7 +763,7 @@ pub(crate) mod testing {
 
 #[cfg(test)]
 mod tests {
-    use super::testing::{RefusingKill, ONE_AT_A_TIME};
+    use super::testing::{RefusingKill, UnaskableTmux, ONE_AT_A_TIME};
     use super::*;
     use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
 
@@ -978,6 +1034,21 @@ mod tests {
             assert!(
                 said.is_err(),
                 "tmux refused the kill and the session is still running; answering Ok here is what lets the box write down a replacement it never made, and then mint over the only evidence that it had not"
+            );
+        }
+
+        {
+            // And the state a `bool` cannot hold: not `the session is gone`,
+            // but `this box could not ask`. Raised as F1 on the review of
+            // ba415f04f.
+            let _unaskable = UnaskableTmux::installed();
+            assert!(
+                !alive(&name).await,
+                "this is the collapse the postcondition may not rest on: `alive` answers false for a probe that never ran, exactly as it does for a session that is gone"
+            );
+            assert!(
+                kill(&name).await.is_err(),
+                "a kill whose outcome could not be established is not a kill that took, and answering Ok here reports one on the strength of a question nobody answered"
             );
         }
 

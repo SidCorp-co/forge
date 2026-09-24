@@ -111,7 +111,16 @@ the project deaf. The durable form of it is a capability whose entry can say wha
 is shape 1 from the same side as everything else on this page. What stops it being reached today is
 that the write that would record it is the write that just failed.
 
-The third is the one the recovery cannot see. The box now establishes that a pane is gone —
+The third is a capability the box mints and then abandons. Between the mint and `terminal::ensure`
+sit the MCP-config write and tmux itself, and an exit there leaves the entry in the map with no pane
+holding it. It corrects itself where the next placement mints for the same session — `mint` retains
+and reinserts by session id, so the old entry goes — and where core hands out a different one it
+becomes exactly the `s1` residue this page already names as unswept. Nothing is confused by it in
+the meantime, because the exits it can be reached through follow a kill that TOOK, leaving no pane
+for the entry to be about. Routing those exits through the withdrawal would close it; whoever does
+should do it with the `s1` sweep rather than as a fourth caller of the same rollback.
+
+The fourth is the one the recovery cannot see. The box now establishes that a pane is gone —
 `terminal::kill` answers for the session, and `terminal::ensure`'s `Ok(false)` is read as a second
 reading — and where neither holds, the capability minted on the way is withdrawn again so the stale
 verdict comes back rather than being buried under it. What none of that reaches is a pane that ends
