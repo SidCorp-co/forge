@@ -10,6 +10,7 @@
 // a quiet night trains everyone to ignore it.
 
 import { logger } from '../logger.js';
+import { RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
 import {
   BatchInFlightError,
@@ -26,6 +27,8 @@ export interface ScheduledCutOutcome {
   status: 'success' | 'skipped' | 'failed';
   output: string;
   error?: string;
+  /** The issues this attempt named — at most one release's worth of what it was handed. */
+  named: string[];
 }
 
 // One classified `createReleaseBatch` attempt, shared with ISS-1117's sweep pass.
@@ -35,18 +38,20 @@ export async function cutWaitingRelease(args: {
   issueIds: string[];
 }): Promise<ScheduledCutOutcome> {
   if (args.issueIds.length === 0) {
-    return { status: 'skipped', output: 'nothing is waiting at the release gate' };
+    return { status: 'skipped', output: 'nothing is waiting at the release gate', named: [] };
   }
 
+  const named = args.issueIds.slice(0, RELEASE_ROSTER_LIMIT);
   try {
     const result = await createReleaseBatch({
       projectId: args.projectId,
-      issueIds: args.issueIds,
+      issueIds: named,
       userId: args.userId,
     });
     return {
       status: 'success',
       output: `cut ${result.issueIds.length} issue(s) as run ${result.runId}`,
+      named,
     };
   } catch (err) {
     if (
@@ -58,13 +63,14 @@ export async function cutWaitingRelease(args: {
       err instanceof ReleaseBranchesUndeclaredError ||
       err instanceof ReleaseRecordMissingError
     ) {
-      return { status: 'skipped', output: `no cut this tick: ${(err as Error).message}` };
+      return { status: 'skipped', output: `no cut this tick: ${(err as Error).message}`, named };
     }
     logger.error({ err, projectId: args.projectId }, 'schedule.release-batch: cut failed');
     return {
       status: 'failed',
       output: 'the scheduled cut failed',
       error: err instanceof Error ? err.message : String(err),
+      named,
     };
   }
 }
@@ -75,7 +81,7 @@ export async function runScheduledReleaseCut(args: {
 }): Promise<ScheduledCutOutcome> {
   const roster = await loadReleaseRoster(args.projectId);
   if (!roster.gateStatus) {
-    return { status: 'skipped', output: 'this project has no release gate' };
+    return { status: 'skipped', output: 'this project has no release gate', named: [] };
   }
 
   const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);

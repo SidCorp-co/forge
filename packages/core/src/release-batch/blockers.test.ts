@@ -161,7 +161,7 @@ describe('collectReleaseBlockers', () => {
     expect(inflight?.details).toMatchObject({ runId: 'run-9' });
   });
 
-  it('reports an empty roster as a reason, because a create over it is refused by the schema', async () => {
+  it('reports an empty roster as a reason, which a create over it is refused by', async () => {
     ready();
     selectRows.mockResolvedValue([]);
 
@@ -186,6 +186,49 @@ describe('collectReleaseBlockers', () => {
 
     expect(over?.details).toMatchObject({ waiting: 51, limit: 50 });
     expect(over?.message).toContain('50');
+  });
+
+  // The create door names its list; a named list answers to the same limit.
+  it('sizes a named list by the same limit, and names the count it was handed', async () => {
+    ready();
+    const named = Array.from({ length: 51 }, (_, i) => `named-${i}`);
+
+    const report = await collectReleaseBlockers(PROJECT_ID, { issueIds: named });
+    const over = report.blockers.find((b) => b.code === 'RELEASE_ROSTER_OVERSIZE');
+
+    expect(over?.details).toEqual({ waiting: 51, limit: 50 });
+    expect(over?.scope).toBe('roster');
+  });
+
+  it('holds fifty named issues to no size reason', async () => {
+    ready();
+    const named = Array.from({ length: 50 }, (_, i) => `named-${i}`);
+
+    const codes = (await collectReleaseBlockers(PROJECT_ID, { issueIds: named })).blockers.map(
+      (b) => b.code,
+    );
+
+    expect(codes).not.toContain('RELEASE_ROSTER_OVERSIZE');
+  });
+
+  it('answers an empty named list against an empty gate as the empty roster', async () => {
+    ready();
+    selectRows.mockResolvedValue([]);
+
+    const codes = (await collectReleaseBlockers(PROJECT_ID, { issueIds: [] })).blockers.map(
+      (b) => b.code,
+    );
+
+    expect(codes).toContain('RELEASE_ROSTER_EMPTY');
+  });
+
+  it('carries none of a waiting gate into an empty named list', async () => {
+    ready();
+
+    const report = await collectReleaseBlockers(PROJECT_ID, { issueIds: [] });
+
+    expect(report.blockers).toEqual([]);
+    expect(missingNotes).not.toHaveBeenCalled();
   });
 
   it('names a probe url that is not a url, without making a request', async () => {

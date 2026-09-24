@@ -86,6 +86,7 @@ describe('cutWaitingRelease', () => {
     expect(outcome).toEqual({
       status: 'skipped',
       output: 'nothing is waiting at the release gate',
+      named: [],
     });
     expect(createReleaseBatchMock).not.toHaveBeenCalled();
   });
@@ -116,6 +117,31 @@ describe('cutWaitingRelease', () => {
     expect(outcome.output).toContain('no cut this tick');
   });
 
+  // The enumerator refuses more than one release may carry, so the cut takes the
+  // oldest fifty the roster lists first and leaves the rest for the next tick.
+  it('names one release of the oldest merges when more are waiting than it may carry', async () => {
+    const waiting = Array.from({ length: 75 }, (_, i) => `iss-${i}`);
+
+    const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: waiting });
+
+    expect(createReleaseBatchMock).toHaveBeenCalledWith({
+      projectId: 'p1',
+      issueIds: waiting.slice(0, 50),
+      userId: 'u1',
+    });
+    expect(outcome.named).toEqual(waiting.slice(0, 50));
+  });
+
+  it('names the same fifty on a failure, so nothing reports on the tail it never sent', async () => {
+    createReleaseBatchMock.mockRejectedValueOnce(new Error('advisory lock timeout'));
+    const waiting = Array.from({ length: 75 }, (_, i) => `iss-${i}`);
+
+    const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: waiting });
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.named).toEqual(waiting.slice(0, 50));
+  });
+
   it('classifies an unrecognised error as failed, carrying the message', async () => {
     createReleaseBatchMock.mockRejectedValueOnce(new Error('advisory lock timeout'));
     const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
@@ -136,7 +162,11 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       issues: [],
     });
     const outcome = await runScheduledReleaseCut({ projectId: 'p1', userId: 'u1' });
-    expect(outcome).toEqual({ status: 'skipped', output: 'this project has no release gate' });
+    expect(outcome).toEqual({
+      status: 'skipped',
+      output: 'this project has no release gate',
+      named: [],
+    });
     expect(createReleaseBatchMock).not.toHaveBeenCalled();
   });
 
@@ -154,6 +184,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
     expect(outcome).toEqual({
       status: 'skipped',
       output: 'nothing is waiting at the release gate',
+      named: [],
     });
   });
 
@@ -195,6 +226,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       status: 'failed',
       output: 'the scheduled cut failed',
       error: 'boom',
+      named: ['iss-1'],
     });
   });
 });

@@ -184,16 +184,16 @@ async function sweepProject(projectId: string, result: AutomaticReleaseSweepResu
   const outcome = await cutWaitingRelease({ projectId, userId, issueIds: eligible });
   if (outcome.status === 'success') {
     result.projectsCut += 1;
-    result.issuesCut += eligible.length;
+    result.issuesCut += outcome.named.length;
     logger.info(
-      { projectId, cut: eligible.length, excluded: held.length },
+      { projectId, cut: outcome.named.length, excluded: held.length },
       `release-sweep: ${outcome.output}`,
     );
     return;
   }
   if (outcome.status === 'failed') {
     logger.error({ projectId, err: outcome.error }, `release-sweep: ${outcome.output}`);
-    await reportSweepFailure(eligible, userId, outcome.error ?? outcome.output);
+    await reportSweepFailure(outcome.named, userId, outcome.error ?? outcome.output);
     return;
   }
   logger.info({ projectId }, `release-sweep: ${outcome.output}`);

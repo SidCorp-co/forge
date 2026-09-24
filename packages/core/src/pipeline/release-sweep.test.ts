@@ -24,11 +24,20 @@ interface IssueState {
 /** Defaults every issue to untouched; a test overrides one entry to prove the claimed-already case. */
 let issueStateByIssue: Record<string, IssueState> = {};
 
+// `inArray` is read back as the ids it was handed, so a report aimed at the
+// wrong issues answers with the wrong rows rather than with every row.
+vi.mock('drizzle-orm', async (importActual) => ({
+  ...(await importActual<typeof import('drizzle-orm')>()),
+  inArray: (_column: unknown, ids: string[]) => ({ ids }),
+}));
+
 const selectFrom = vi.fn((columns: Record<string, unknown>) => ({
   from: (_table: unknown) => ({
-    where: async () => {
+    where: async (cond?: { ids?: string[] }) => {
       if ('status' in columns) {
-        return Object.entries(issueStateByIssue).map(([id, s]) => ({ id, ...s }));
+        return Object.entries(issueStateByIssue)
+          .filter(([id]) => !cond?.ids || cond.ids.includes(id))
+          .map(([id, s]) => ({ id, ...s }));
       }
       return Object.entries(existingCommentsByIssue).flatMap(([, bodies]) =>
         bodies.map((body) => ({ body })),
@@ -110,6 +119,7 @@ interface CutOutcome {
   status: 'success' | 'skipped' | 'failed';
   output: string;
   error?: string;
+  named: string[];
 }
 const cutWaitingReleaseMock = vi.fn(
   async (_args: {
@@ -119,6 +129,7 @@ const cutWaitingReleaseMock = vi.fn(
   }): Promise<CutOutcome> => ({
     status: 'success',
     output: 'cut 1 issue(s) as run run-1',
+    named: ['iss-1'],
   }),
 );
 vi.mock('../schedules/release-batch-run.js', () => ({
@@ -164,6 +175,7 @@ beforeEach(() => {
   cutWaitingReleaseMock.mockResolvedValue({
     status: 'success',
     output: 'cut 1 issue(s) as run run-1',
+    named: ['iss-1'],
   });
 });
 
@@ -312,6 +324,7 @@ describe('sweepAutomaticReleases — failure reporting', () => {
     cutWaitingReleaseMock.mockResolvedValueOnce({
       status: 'failed',
       output: 'the cut failed',
+      named: ['iss-1'],
       error: 'advisory lock timeout',
     });
 
@@ -323,6 +336,27 @@ describe('sweepAutomaticReleases — failure reporting', () => {
     expect(insertedComments[0]?.body).toContain('not claimed, not moved');
   });
 
+  it('names a failure only on the issues the cut named, not on the tail it left waiting', async () => {
+    const waiting = Array.from({ length: 75 }, (_, i) => `iss-${i}`);
+    candidateRows = [candidateRow('proj-1', 'iss-0', '2026-09-22T00:00:00Z')];
+    loadReleaseRosterMock.mockResolvedValueOnce({
+      issues: waiting.map((id) => ({ id, claimedByRunId: null })),
+    });
+    issueStateByIssue = Object.fromEntries(
+      waiting.map((id) => [id, { status: 'awaiting_release', releaseBatchRunId: null }]),
+    );
+    cutWaitingReleaseMock.mockResolvedValueOnce({
+      status: 'failed',
+      output: 'the cut failed',
+      error: 'advisory lock timeout',
+      named: waiting.slice(0, 50),
+    });
+
+    await sweepAutomaticReleases();
+
+    expect(new Set(insertedComments.map((c) => c.issueId))).toEqual(new Set(waiting.slice(0, 50)));
+  });
+
   it('never claims the issue is untouched when createReleaseBatch failed after claiming it', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
     loadReleaseRosterMock.mockResolvedValueOnce({
@@ -332,6 +366,7 @@ describe('sweepAutomaticReleases — failure reporting', () => {
     cutWaitingReleaseMock.mockResolvedValueOnce({
       status: 'failed',
       output: 'the cut failed',
+      named: ['iss-1'],
       error: 'enqueue failed after claiming issues',
     });
 
@@ -348,6 +383,7 @@ describe('sweepAutomaticReleases — failure reporting', () => {
     cutWaitingReleaseMock.mockResolvedValue({
       status: 'failed',
       output: 'the cut failed',
+      named: ['iss-1'],
       error: 'advisory lock timeout',
     });
 
@@ -367,6 +403,7 @@ describe('sweepAutomaticReleases — failure reporting', () => {
     cutWaitingReleaseMock.mockResolvedValueOnce({
       status: 'failed',
       output: 'the cut failed',
+      named: ['iss-1'],
       error: 'advisory lock timeout',
     });
     await sweepAutomaticReleases();
@@ -376,6 +413,7 @@ describe('sweepAutomaticReleases — failure reporting', () => {
     cutWaitingReleaseMock.mockResolvedValueOnce({
       status: 'failed',
       output: 'the cut failed',
+      named: ['iss-1'],
       error: 'a completely different failure',
     });
     await sweepAutomaticReleases();
@@ -392,6 +430,7 @@ describe('sweepAutomaticReleases — failure reporting', () => {
     cutWaitingReleaseMock.mockResolvedValueOnce({
       status: 'skipped',
       output: 'no cut this tick: no runner is online',
+      named: ['iss-1'],
     });
 
     await sweepAutomaticReleases();
