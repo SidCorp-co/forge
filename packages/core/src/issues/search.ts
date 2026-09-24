@@ -395,7 +395,7 @@ searchRoutes.get(
               ...r,
               agentSessions: bucket?.agentSessions ?? [],
               agentStatus: bucket?.agentStatus ?? null,
-              held: heldMap.get(r.id as string) === true,
+              held: heldMap.get(r.id as string),
             };
           }),
           total,

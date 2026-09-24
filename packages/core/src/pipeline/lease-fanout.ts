@@ -1,6 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { leaseHolderOf, leaseIsUnexpired } from './session-claim.js';
+import {
+  classifyLease,
+  type LeaseReading,
+  leaseHolderOf,
+  leaseIsUnexpired,
+} from './session-claim.js';
 
 /**
  * How many open issues each holder holds an unexpired claim on — `classifyLease`'s `shared` test.
@@ -29,4 +34,14 @@ export async function holderFanout(
     counts.set(holder, (counts.get(holder) ?? 0) + 1);
   }
   return counts;
+}
+
+/** One row's claim, read against the fanout {@link holderFanout} counted for the same page. */
+export function readClaim(
+  lease: unknown,
+  now: Date,
+  fanout: ReadonlyMap<string, number>,
+): LeaseReading {
+  const holder = leaseHolderOf(lease);
+  return classifyLease({ lease, now, fanout: holder === null ? 0 : (fanout.get(holder) ?? 1) });
 }

@@ -9,8 +9,7 @@
  *
  * This pass has two arms. One reads every non-terminal status that is not declared at rest, writes
  * what it found onto the row itself, and releases a lease that has lapsed by its own terms. The
- * other clears a finding that has stopped holding, so a row that recovered does not go on claiming
- * to be stuck.
+ * other clears a finding that has stopped holding, so a recovered row stops claiming to be stuck.
  */
 
 import { sql } from 'drizzle-orm';
@@ -22,10 +21,9 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
-import { holderFanout } from './lease-fanout.js';
+import { holderFanout, readClaim } from './lease-fanout.js';
 import { readReleaseHold } from './release-hold.js';
 import {
-  classifyLease,
   type LeaseReading,
   leaseHolderOf,
   leaseIsReleasable,
@@ -188,12 +186,7 @@ function judge(
   fanout: ReadonlyMap<string, number>,
   pooled: ReadonlySet<string>,
 ): { record: StrandRecord; lease: LeaseReading; unclassified: boolean } | null {
-  const holder = leaseHolderOf(row.lease);
-  const lease = classifyLease({
-    lease: row.lease,
-    now,
-    fanout: holder === null ? 0 : (fanout.get(holder) ?? 1),
-  });
+  const lease = readClaim(row.lease, now, fanout);
   if (leaseIsWorkInProgress(lease.verdict)) return null;
 
   const rule = strandRuleFor(row.status);
@@ -469,12 +462,7 @@ function stillStranded(
   if (!row.nothing_running) return false;
   const rule = strandRuleFor(row.status);
   if (rule !== null && !rule.watch) return false;
-  const holder = leaseHolderOf(row.lease);
-  const lease = classifyLease({
-    lease: row.lease,
-    now,
-    fanout: holder === null ? 0 : (fanout.get(holder) ?? 1),
-  });
+  const lease = readClaim(row.lease, now, fanout);
   // A row that has MOVED carries a finding written at the status it left, whose new clock has not
   // run out; holding the old finding through it shows progress as a standing failure. Asked of a
   // row standing still, or of one whose holder is gone, it reads progress that never happened.

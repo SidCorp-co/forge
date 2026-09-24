@@ -1,22 +1,22 @@
 /**
- * ISS-1213 — whether anything is on an issue now, which the lane's `running` needs to be true. It is
- * the negation of the strand pass's idle test (`pipeline/idle-issues.ts:judge`), built from the same
- * two pieces — the work-in-flight predicate, or a claim `classifyLease` reads `live` — so the board
- * and the sweep never disagree about one row.
+ * ISS-1213 — whether a box is on an issue now, which the lane's `running` needs to be true: a job
+ * the pipeline is moving, a running run, a held issue lease, or a claim read `live`. Narrower than
+ * the strand pass's idle test, which asks whether a row needs escalating, not whether it moves.
  */
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { holderFanout } from '../pipeline/lease-fanout.js';
-import { classifyLease, leaseHolderOf, leaseIsWorkInProgress } from '../pipeline/session-claim.js';
-import { issueWorkInFlightSql } from './issue-lease.js';
+import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
+import { leaseIsWorkInProgress } from '../pipeline/session-claim.js';
+import { issueWorkMovingSql } from './issue-lease.js';
 
 interface HeldRow {
   id: string;
   lease: unknown;
-  in_flight: boolean;
+  moving: boolean;
 }
 
+/** Refuses by name an id no row answers for, rather than reading it as not held. */
 export async function hydrateHeldForIssues(
   issueIds: readonly string[],
   now: Date = new Date(),
@@ -24,13 +24,13 @@ export async function hydrateHeldForIssues(
   const held = new Map<string, boolean>();
   if (issueIds.length === 0) return held;
 
-  const inFlight = issueWorkInFlightSql({
+  const moving = issueWorkMovingSql({
     issueId: sql`i.id`,
     projectId: sql`i.project_id`,
     issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
   });
   const rows = (await db.execute(sql`
-    SELECT i.id, i.session_context -> 'lease' AS lease, ${inFlight} AS in_flight
+    SELECT i.id, i.session_context -> 'lease' AS lease, ${moving} AS moving
       FROM issues i
      WHERE i.id IN (${sql.join(
        issueIds.map((id) => sql`${id}::uuid`),
@@ -43,13 +43,14 @@ export async function hydrateHeldForIssues(
     now,
   );
   for (const row of rows) {
-    const holder = leaseHolderOf(row.lease);
-    const claim = classifyLease({
-      lease: row.lease,
-      now,
-      fanout: holder === null ? 0 : (fanout.get(holder) ?? 1),
-    });
-    held.set(row.id, row.in_flight === true || leaseIsWorkInProgress(claim.verdict));
+    const claim = readClaim(row.lease, now, fanout);
+    held.set(row.id, row.moving === true || leaseIsWorkInProgress(claim.verdict));
+  }
+  const unanswered = issueIds.filter((id) => !held.has(id));
+  if (unanswered.length > 0) {
+    throw new Error(
+      `held-hydrator: no issue row answered for ${unanswered.join(', ')}, so whether a box is on it is unknown`,
+    );
   }
   return held;
 }

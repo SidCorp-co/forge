@@ -74,10 +74,33 @@ describe('hydrateHeldForIssues — what does not (ISS-1213)', () => {
     expect(await held(id)).toBe(false);
   });
 
+  // The board asks whether a box is moving the row, not whether it owes escalation (ISS-1213 F1).
+  it('does not hold a row whose only job is held, waiting on a person', async () => {
+    const id = await fx.seedIssue({ status: 'testing' });
+    const runId = await fx.seedLiveJob(id);
+    await fx.db.execute(sql`UPDATE jobs SET status='held' WHERE issue_id=${id}`);
+    await fx.db.execute(sql`UPDATE pipeline_runs SET status='completed' WHERE id=${runId}`);
+    expect(await held(id)).toBe(false);
+  });
+
+  it('does not hold a row whose only run is paused', async () => {
+    const id = await fx.seedIssue({ status: 'developed' });
+    await fx.seedRun(id, 'paused');
+    expect(await held(id)).toBe(false);
+  });
+
   it('answers only for the ids it was asked about', async () => {
     const { hydrateHeldForIssues } = await import('../../src/issues/held-hydrator.js');
-    await fx.seedIssue({ status: 'testing' });
-    expect((await hydrateHeldForIssues([], NOW)).size).toBe(0);
+    const asked = await fx.seedIssue({ status: 'testing' });
+    const other = await fx.seedIssue({ status: 'testing' });
+    await fx.seedRun(other, 'running');
+    expect([...(await hydrateHeldForIssues([asked], NOW))]).toEqual([[asked, false]]);
+  });
+
+  it('refuses by name an id no issue row answers for, rather than reading it as not held', async () => {
+    const { hydrateHeldForIssues } = await import('../../src/issues/held-hydrator.js');
+    const ghost = '00000000-0000-4000-8000-000000000123';
+    await expect(hydrateHeldForIssues([ghost], NOW)).rejects.toThrow(ghost);
   });
 });
 
