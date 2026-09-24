@@ -32,7 +32,18 @@ pub const IDLE_BEFORE_FINISHED: Duration = Duration::from_secs(15 * 60);
 /// Nothing reported since a boundary that ended NOTHING for this long. Longer
 /// than the one above, because a compaction is the one report `agent_activity`
 /// reads as idle while the agent may still be mid-turn behind it.
+///
+/// The same window bounds a lead that ended its turn over a child with no
+/// reported end: a background child still working and one whose end was lost
+/// read alike, so a live child silent past it is concluded too. That is the
+/// price, and a hook that fires while a child works is what would end it.
 pub const SILENT_BEFORE_ABANDONED: Duration = Duration::from_secs(60 * 60);
+
+/// A duration as every text about a job pane states it, so the line an
+/// operator reads at the ceiling and the reason core is told agree (ISS-1231).
+pub fn minutes(ms: i64) -> String {
+    format!("{}m", ms.max(0) / 60_000)
+}
 
 /// What one job's session last reported about itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +108,11 @@ pub enum Verdict {
     Silent {
         quiet_for: i64,
     },
+    /// The lead ended its turn over a child that never reported an end, and
+    /// nothing at all followed.
+    ChildrenSilent {
+        quiet_for: i64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +129,9 @@ pub enum KeepReason {
     RecentlyAsked,
     /// The last thing it reported was a compaction, inside the longer window.
     Compacting,
+    /// Its lead ended a turn over a child with no reported end, inside the
+    /// longer window.
+    AwaitingChildren,
 }
 
 pub fn verdict(watch: &Watch, reported: Option<Reported>, now: i64) -> Verdict {
@@ -141,6 +160,10 @@ pub fn verdict(watch: &Watch, reported: Option<Reported>, now: i64) -> Verdict {
         Doing::Working => Verdict::Keep(KeepReason::Working),
         Doing::AwaitingPermission if past(IDLE_BEFORE_FINISHED) => Verdict::Blocked { quiet_for },
         Doing::AwaitingPermission => Verdict::Keep(KeepReason::RecentlyAsked),
+        Doing::AwaitingChildren if past(SILENT_BEFORE_ABANDONED) => {
+            Verdict::ChildrenSilent { quiet_for }
+        }
+        Doing::AwaitingChildren => Verdict::Keep(KeepReason::AwaitingChildren),
         Doing::Idle if r.last_event == Event::Compacted => {
             if past(SILENT_BEFORE_ABANDONED) {
                 Verdict::Silent { quiet_for }
@@ -164,16 +187,20 @@ impl Verdict {
         Some(match self {
             Verdict::Keep(_) => return None,
             Verdict::Finished { quiet_for } => format!(
-                "the job's pane `{pane}` has reported nothing since its agent ended a turn {}s ago — a job pane is briefed once and has nothing left to do after its last turn, so the slot it held was holding a finished agent and not work in flight",
-                quiet_for / 1000
+                "the job's pane `{pane}` has reported nothing since its agent ended a turn {} ago — a job pane is briefed once and has nothing left to do after its last turn, so the slot it held was holding a finished agent and not work in flight",
+                minutes(quiet_for)
             ),
             Verdict::Blocked { quiet_for } => format!(
-                "the job's pane `{pane}` has been stopped on a question only a human can answer for {}s — nothing on this box answers a job pane's question, so that wait had no end of its own and the slot was holding it",
-                quiet_for / 1000
+                "the job's pane `{pane}` has been stopped on a question only a human can answer for {} — nothing on this box answers a job pane's question, so that wait had no end of its own and the slot was holding it",
+                minutes(quiet_for)
             ),
             Verdict::Silent { quiet_for } => format!(
-                "the job's pane `{pane}` has reported nothing since it compacted {}s ago — in that time its agent neither ended a turn nor asked anything, so this box can no longer call the slot work in flight",
-                quiet_for / 1000
+                "the job's pane `{pane}` has reported nothing since it compacted {} ago — in that time its agent neither ended a turn nor asked anything, so this box can no longer call the slot work in flight",
+                minutes(quiet_for)
+            ),
+            Verdict::ChildrenSilent { quiet_for } => format!(
+                "the job's pane `{pane}` ended its turn over a child it started that never reported an end, and has reported nothing for {} since — a child's end reaches this box by a hook that can be lost, so the slot was holding a claim of work nothing had confirmed in that time",
+                minutes(quiet_for)
             ),
         })
     }
@@ -189,9 +216,15 @@ pub fn holding_phrase(watch: &Watch, reported: Option<Reported>, now: i64) -> &'
         Verdict::Keep(KeepReason::RecentlyEnded) => "idle since its turn ended",
         Verdict::Keep(KeepReason::RecentlyAsked) => "stopped on a question a human owes",
         Verdict::Keep(KeepReason::Compacting) => "compacting",
+        Verdict::Keep(KeepReason::AwaitingChildren) => {
+            "its turn ended over a child that has reported no end"
+        }
         Verdict::Finished { .. } => "finished, and this sweep has not let it go yet",
         Verdict::Blocked { .. } => "blocked on a question, and this sweep has not let it go yet",
         Verdict::Silent { .. } => "silent since it compacted, and this sweep has not let it go yet",
+        Verdict::ChildrenSilent { .. } => {
+            "its turn ended over a child that never reported an end, silent since, and this sweep has not let it go yet"
+        }
     }
 }
 
@@ -413,11 +446,12 @@ mod tests {
     }
 
     #[test]
-    fn the_three_conclusions_say_three_different_things() {
+    fn the_four_conclusions_say_four_different_things() {
         let reasons: Vec<String> = [
-            Verdict::Finished { quiet_for: 1000 },
-            Verdict::Blocked { quiet_for: 1000 },
-            Verdict::Silent { quiet_for: 1000 },
+            Verdict::Finished { quiet_for: 60_000 },
+            Verdict::Blocked { quiet_for: 60_000 },
+            Verdict::Silent { quiet_for: 60_000 },
+            Verdict::ChildrenSilent { quiet_for: 60_000 },
         ]
         .into_iter()
         .map(|v| {
@@ -427,7 +461,7 @@ mod tests {
         .collect();
         for r in &reasons {
             assert!(r.contains("forge-job-abc"), "{r}");
-            assert!(r.contains("1s"), "{r}");
+            assert!(r.contains("1m"), "the unit the at-bound line states: {r}");
         }
         assert!(reasons[0].contains("ended a turn"), "{}", reasons[0]);
         assert!(
@@ -436,10 +470,15 @@ mod tests {
             reasons[1]
         );
         assert!(reasons[2].contains("compacted"), "{}", reasons[2]);
+        assert!(
+            reasons[3].contains("child") && reasons[3].contains("never reported an end"),
+            "{}",
+            reasons[3]
+        );
         let distinct: std::collections::BTreeSet<&String> = reasons.iter().collect();
         assert_eq!(
             distinct.len(),
-            3,
+            4,
             "an operator meeting one of these has no second source to ask what the pane was doing"
         );
     }
@@ -557,5 +596,91 @@ mod tests {
         ];
         let distinct: std::collections::BTreeSet<&&str> = phrases.iter().collect();
         assert_eq!(distinct.len(), 4, "{phrases:?}");
+    }
+
+    fn awaiting(at: i64) -> Option<Reported> {
+        reported(Doing::AwaitingChildren, Event::Stopped, at)
+    }
+
+    #[test]
+    fn a_lead_that_ended_over_an_unreported_child_keeps_its_slot_inside_the_longer_window() {
+        assert_eq!(
+            verdict(&hooked(), awaiting(NOW - SILENT + 1), NOW),
+            Verdict::Keep(KeepReason::AwaitingChildren),
+            "a background child may still be working behind a lead that stopped"
+        );
+        assert_eq!(
+            verdict(&hooked(), awaiting(NOW - IDLE), NOW),
+            Verdict::Keep(KeepReason::AwaitingChildren),
+            "the idle window is for a turn with nothing behind it, not this"
+        );
+    }
+
+    #[test]
+    fn a_lead_that_ended_over_an_unreported_child_is_concluded_at_the_longer_window() {
+        assert_eq!(
+            verdict(&hooked(), awaiting(NOW - SILENT), NOW),
+            Verdict::ChildrenSilent { quiet_for: SILENT },
+            "a child's end that never arrived must not hold a job slot for the life of the pane (ISS-1232)"
+        );
+        assert_eq!(
+            verdict(&hooked(), awaiting(NOW - SILENT * 72), NOW),
+            Verdict::ChildrenSilent {
+                quiet_for: SILENT * 72
+            },
+            "three days on it is still concluded, never kept as working"
+        );
+    }
+
+    #[test]
+    fn an_adopted_pane_awaiting_a_child_is_judged_on_the_same_window() {
+        let adopted = Watch::Adopted {
+            session_id: "sess-1".into(),
+        };
+        let r = Some(Reported {
+            doing: Doing::AwaitingChildren,
+            last_event: Event::Stopped,
+            at: NOW - SILENT,
+            prompts: 0,
+        });
+        assert_eq!(
+            verdict(&adopted, r, NOW),
+            Verdict::ChildrenSilent { quiet_for: SILENT }
+        );
+    }
+
+    #[test]
+    fn a_pane_awaiting_a_child_never_reads_as_working_at_the_ceiling() {
+        for at in [NOW, NOW - IDLE, NOW - SILENT, NOW - SILENT * 72] {
+            let phrase = holding_phrase(&hooked(), awaiting(at), NOW);
+            assert_ne!(phrase, "working", "at {at}");
+            assert!(phrase.contains("child"), "{phrase}");
+        }
+        assert_ne!(
+            holding_phrase(&hooked(), awaiting(NOW), NOW),
+            holding_phrase(&hooked(), awaiting(NOW - SILENT), NOW),
+            "inside and past the window are two different next acts"
+        );
+    }
+
+    #[test]
+    fn a_snapshot_awaiting_a_child_survives_the_round_trip_a_restart_puts_it_through() {
+        let r = Reported {
+            doing: Doing::AwaitingChildren,
+            last_event: Event::Stopped,
+            at: NOW,
+            prompts: 1,
+        };
+        assert_eq!(r.to_json()["doing"], "awaiting_children");
+        assert_eq!(Reported::from_json(&r.to_json()), Some(r));
+    }
+
+    #[test]
+    fn a_duration_reads_in_whole_minutes() {
+        assert_eq!(minutes(0), "0m");
+        assert_eq!(minutes(59_999), "0m");
+        assert_eq!(minutes(6_060_000), "101m");
+        assert_eq!(minutes(-5), "0m", "a clock that ran ahead reads as no time");
+        assert_eq!(minutes(i64::MAX), format!("{}m", i64::MAX / 60_000));
     }
 }

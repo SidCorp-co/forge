@@ -444,7 +444,12 @@ fn since_nudge(seen: Option<&agent_activity::Activity>, sent_at: Option<u64>) ->
         return SinceNudge::NoTurn;
     }
     match now.doing() {
-        agent_activity::Doing::Working => SinceNudge::Working,
+        // A master's children are its dispatched runs, and the next nudge's own
+        // prompt clears any whose end was lost, so for a master a lead that
+        // ended over them is still work in flight.
+        agent_activity::Doing::Working | agent_activity::Doing::AwaitingChildren => {
+            SinceNudge::Working
+        }
         agent_activity::Doing::AwaitingPermission => SinceNudge::AwaitingPermission,
         agent_activity::Doing::Idle => {
             if now.turn_ended_failed {
@@ -1260,13 +1265,17 @@ fn report_job_capacity(
                 job_unheard::Verdict::Unheard { .. } => job_unheard::HOLDING_PHRASE,
                 job_unheard::Verdict::Keep => job_exit::holding_phrase(&h.watch, seen, now),
             };
-            format!(
-                "{} in {} for {}m, {}",
-                h.job_id,
-                h.pane,
-                now.saturating_sub(h.noted_at) / 60_000,
-                phrase
-            )
+            // How long the slot has been held, from the pane's opening on its
+            // record. A record with none was written by an older daemon, and
+            // all this one can say is that the pane is older than its adoption.
+            let held_for = match h.opened_at {
+                Some(at) => job_exit::minutes(now.saturating_sub(at)),
+                None => format!(
+                    "at least {}",
+                    job_exit::minutes(now.saturating_sub(h.noted_at))
+                ),
+            };
+            format!("{} in {} for {held_for}, {}", h.job_id, h.pane, phrase)
         })
         .collect::<Vec<_>>()
         .join("; ");
@@ -3323,6 +3332,7 @@ mod tests {
                     - 1,
                 prompts: 1,
             }),
+            None,
         );
 
         // Nothing has been heard in THIS daemon: the pane went quiet before the
@@ -3339,6 +3349,65 @@ mod tests {
     }
 
     #[test]
+    fn a_ceiling_after_a_restart_times_the_slot_from_the_panes_opening() {
+        use crate::daemon::agent_activity::{Doing, Event};
+        use crate::daemon::turn_evidence::Watch;
+        let cfg = box_at(1);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        let now = agent_activity::now_ms();
+        panes.hold(
+            "oldtimer",
+            "forge-job-oldtimer",
+            Watch::Adopted {
+                session_id: "sess-1".into(),
+            },
+            Some(job_exit::Reported {
+                doing: Doing::Working,
+                last_event: Event::PromptSubmitted,
+                at: now - 3 * 60 * 60 * 1000,
+                prompts: 1,
+            }),
+            Some(now - 3 * 60 * 60 * 1000 - 30_000),
+        );
+
+        let out = give_back_tests::logged_while(|| {
+            report_job_capacity(&cfg, &panes, &agent_activity::Activities::new())
+        });
+
+        assert!(
+            out.contains("oldtimer in forge-job-oldtimer for 180m"),
+            "the person hunting a wedged box is told how long the slot has been held, not how long this daemon has counted it (ISS-1231): {out}"
+        );
+        assert!(!out.contains("for 0m"), "{out}");
+    }
+
+    #[test]
+    fn a_ceiling_over_a_record_with_no_opening_says_only_what_it_knows() {
+        use crate::daemon::turn_evidence::Watch;
+        let cfg = box_at(1);
+        let panes = std::sync::Arc::new(JobPanes::new());
+        panes.hold(
+            "j1",
+            "forge-job-j1",
+            Watch::Adopted {
+                session_id: "sess-1".into(),
+            },
+            None,
+            None,
+        );
+        panes.backdate("j1", agent_activity::now_ms() - 5 * 60_000 - 1_000);
+
+        let out = give_back_tests::logged_while(|| {
+            report_job_capacity(&cfg, &panes, &agent_activity::Activities::new())
+        });
+
+        assert!(
+            out.contains("j1 in forge-job-j1 for at least 5m"),
+            "a record an older daemon wrote carries no opening, and the pane is at least as old as its adoption: {out}"
+        );
+    }
+
+    #[test]
     fn a_pane_the_sweep_is_about_to_let_go_for_saying_nothing_reads_as_that() {
         use crate::daemon::turn_evidence::Watch;
         let cfg = box_at(1);
@@ -3349,6 +3418,7 @@ mod tests {
             Watch::Adopted {
                 session_id: "sess-1".into(),
             },
+            None,
             None,
         );
         panes.backdate(
@@ -5349,6 +5419,21 @@ mod give_back_tests {
         ]);
         assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Ran);
         assert!(!retry_owed(SinceNudge::Ran));
+    }
+
+    #[test]
+    fn a_master_that_ended_its_turn_over_a_dispatched_child_still_reads_as_working() {
+        let a = reported(&[
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::SubagentStarted, Some("child-1")),
+            (agent_activity::Event::Stopped, None),
+        ]);
+        assert_eq!(a.doing(), agent_activity::Doing::AwaitingChildren);
+        assert_eq!(
+            since_nudge(Some(&a), Some(0)),
+            SinceNudge::Working,
+            "a master's children are its runs in flight; ISS-1232 changed the job and run readings, not the nudge"
+        );
     }
 
     #[test]

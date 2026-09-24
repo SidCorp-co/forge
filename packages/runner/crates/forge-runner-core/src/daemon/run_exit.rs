@@ -21,6 +21,11 @@ use crate::daemon::agent_activity::Doing;
 
 pub const RUN_IDLE_BEFORE_EXIT: Duration = Duration::from_secs(15 * 60);
 
+/// Nothing reported for this long since a lead ended its turn over a child with
+/// no reported end. `job_exit::SILENT_BEFORE_ABANDONED`'s window and its price:
+/// a live child silent this long is ended with the run.
+pub const RUN_CHILDREN_SILENT_BEFORE_EXIT: Duration = Duration::from_secs(60 * 60);
+
 /// What a run's own session last reported about itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Reported {
@@ -46,23 +51,24 @@ pub enum StayReason {
     NeverReported,
     /// Idle, but not for long enough yet.
     RecentlyIdle,
+    /// The lead ended its turn over a child with no reported end, and not long
+    /// enough ago.
+    AwaitingChildren,
 }
 
 pub fn verdict(reported: Option<Reported>, now: i64) -> Verdict {
     let Some(r) = reported else {
         return Verdict::Stay(StayReason::NeverReported);
     };
+    let quiet_for = now.saturating_sub(r.at);
+    let past = |w: Duration| quiet_for >= w.as_millis() as i64;
     match r.doing {
         Doing::Working => Verdict::Stay(StayReason::Working),
         Doing::AwaitingPermission => Verdict::Stay(StayReason::AwaitingPermission),
-        Doing::Idle => {
-            let idle_for = now.saturating_sub(r.at);
-            if idle_for >= RUN_IDLE_BEFORE_EXIT.as_millis() as i64 {
-                Verdict::Exit
-            } else {
-                Verdict::Stay(StayReason::RecentlyIdle)
-            }
-        }
+        Doing::AwaitingChildren if past(RUN_CHILDREN_SILENT_BEFORE_EXIT) => Verdict::Exit,
+        Doing::AwaitingChildren => Verdict::Stay(StayReason::AwaitingChildren),
+        Doing::Idle if past(RUN_IDLE_BEFORE_EXIT) => Verdict::Exit,
+        Doing::Idle => Verdict::Stay(StayReason::RecentlyIdle),
     }
 }
 
@@ -136,6 +142,37 @@ mod tests {
         assert_eq!(
             verdict(idle_since(NOW + WINDOW), NOW),
             Verdict::Stay(StayReason::RecentlyIdle)
+        );
+    }
+
+    const CHILDREN: i64 = RUN_CHILDREN_SILENT_BEFORE_EXIT.as_millis() as i64;
+
+    fn awaiting_since(at: i64) -> Option<Reported> {
+        Some(Reported {
+            doing: Doing::AwaitingChildren,
+            at,
+        })
+    }
+
+    #[test]
+    fn a_run_awaiting_an_unreported_child_stays_inside_the_longer_window() {
+        assert_eq!(
+            verdict(awaiting_since(NOW - CHILDREN + 1), NOW),
+            Verdict::Stay(StayReason::AwaitingChildren)
+        );
+        assert_eq!(
+            verdict(awaiting_since(NOW - WINDOW), NOW),
+            Verdict::Stay(StayReason::AwaitingChildren),
+            "the idle window is for a turn with nothing behind it"
+        );
+    }
+
+    #[test]
+    fn a_run_awaiting_an_unreported_child_is_ended_at_the_longer_window() {
+        assert_eq!(
+            verdict(awaiting_since(NOW - CHILDREN), NOW),
+            Verdict::Exit,
+            "a child's end that never arrived must not hold a run pane for its whole life (ISS-1232)"
         );
     }
 }
