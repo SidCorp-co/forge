@@ -74,10 +74,7 @@ export function assertListLimit(limit: unknown): number {
 const SENTRY_MAX_STATS_PERIOD_MINUTES = 90 * 24 * 60;
 const STATS_PERIOD_MINUTES: Record<string, number> = { m: 1, h: 60, d: 1440, w: 10_080 };
 
-/**
- * The window as Sentry spells it, refused rather than dropped: a caller asking `did my deploy
- * break it` over the last hour and silently given Sentry's default answers a different question.
- */
+/** The window as Sentry spells it, refused rather than silently replaced by Sentry's default. */
 export function assertStatsPeriod(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   const bad = (why: string) =>
@@ -95,11 +92,8 @@ export function assertStatsPeriod(value: unknown): string | undefined {
 }
 
 /**
- * The caller's query, with the target's own project scoping appended rather than assumed.
- *
- * An absent query takes the default; an EMPTY one is a caller asking for no search terms, which is
- * what `status: 'any'` is. Reading the two as one restores `is:unresolved` under a caller who asked
- * for every status and answers a different question than the one put.
+ * An absent query takes the default; an EMPTY one asks for no search terms, which is what
+ * `status: 'any'` is. Reading the two as one answers "every status" with "unresolved".
  */
 export function listQuery(query: string | undefined, target: ResolvedSentryTarget): string {
   const asked = query?.trim();
