@@ -327,6 +327,36 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
     expect(await fx.runStatus(runId)).toBe('completed');
   }, 30_000);
 
+  it('carries what a failed attempt closed into the attempt that replaces it', async () => {
+    const { runId, issueId } = await batch();
+    await plant(runId, { state: 'closing', owner: 'dead-worker', leaseUntil: iso(-1_000) });
+
+    await job.runReleaseBatchFinish(runId, {
+      beforeFinishedWrite: async () => {
+        throw new Error('planted: the terminal write failed');
+      },
+    });
+    expect(await stored(runId)).toMatchObject({
+      state: 'failed',
+      closed: [issueId],
+      refusal: { code: 'RELEASE_FINISH_ERRORED' },
+    });
+
+    serving = PUSHED;
+    const again = await job.acceptReleaseBatchFinish(
+      runId,
+      { type: 'user', id: ownerId },
+      { commit: PUSHED },
+      async () => {},
+    );
+    expect(again.started).toBe(true);
+    await job.runReleaseBatchFinish(runId);
+
+    expect(await stored(runId)).toMatchObject({ state: 'finished', closed: [issueId], failed: [] });
+    expect(await closesOf(issueId)).toBe(1);
+    expect(await fx.runStatus(runId)).toBe('completed');
+  }, 30_000);
+
   it('keeps a finished record finished when only the run close failed, and the sweep closes the run', async () => {
     const { runId, issueId } = await batch();
     serving = PUSHED;

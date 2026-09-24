@@ -227,8 +227,9 @@ export async function acceptReleaseBatchFinish(
       owner: null,
       leaseUntil: null,
       workerStarts: 0,
-      closed: null,
-      failed: null,
+      // What an earlier attempt already closed stays this batch's outcome: its claims are gone.
+      closed: current?.closed ?? null,
+      failed: current?.failed ?? null,
       refusal: null,
       finishedAt: null,
     };
