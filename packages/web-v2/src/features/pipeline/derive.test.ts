@@ -222,8 +222,6 @@ describe("runGateNote", () => {
 		expect(runGateNote(undefined)).toBeNull();
 	});
 
-	// The API keeps "the box sent none" apart from "the gate was clear"; the
-	// screen used to render nothing for both and put them back together.
 	it("says a box reported no condition, and says it differently from a gate that was deciding", () => {
 		const none = runGateNote(null);
 		const clear = runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) });

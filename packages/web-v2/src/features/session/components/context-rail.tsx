@@ -32,7 +32,7 @@ import {
 } from "@/features/sessions/types";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
 import { isJobDriven, sessionKind } from "@/features/sessions/types";
-import { type RunGateNote, runGateNote } from "@/features/pipeline/derive";
+import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
 import { useRun } from "@/features/pipeline/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
@@ -127,7 +127,11 @@ export function ContextRail({
   // Only a run session's run is opened by the box with its gate condition (ISS-1192).
   const isRunSession = sessionKind(session) === "run_session";
   const runQ = useRun(session.pipelineRunId ?? undefined, isRunSession && !!session.pipelineRunId);
-  const gateNote = isRunSession ? runGateNote(runQ.data?.gateAtOpen) : null;
+  const gateNote = !isRunSession
+    ? null
+    : runQ.isError
+      ? runGateUnfetched(runQ.error instanceof Error ? runQ.error.message : String(runQ.error))
+      : runGateNote(runQ.data?.gateAtOpen);
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 
   // Resolve the runner the session is bound to. The device may not be in the

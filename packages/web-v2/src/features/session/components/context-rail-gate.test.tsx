@@ -100,6 +100,15 @@ describe("the gate a run session opened under, on the session rail", () => {
 		expect(screen.getByText(/gate\.verdict: bad enum/)).toBeTruthy();
 	});
 
+	it("says the condition is unknown when the run itself could not be read", () => {
+		useRun.mockReturnValue({ data: undefined, isError: true, error: new Error("503 Service Unavailable") });
+		render(<ContextRail session={session("run_session")} items={[]} />);
+
+		expect(screen.getByText(/could not be read, so its gate condition is unknown/)).toBeTruthy();
+		expect(screen.getByText("503 Service Unavailable")).toBeTruthy();
+		expect(screen.queryByText(/reported no gate condition/)).toBeNull();
+	});
+
 	it("shows no gate section for a pipeline session, whose run the box never opened", () => {
 		withGate(null);
 		render(<ContextRail session={session("pipeline")} items={[]} />);

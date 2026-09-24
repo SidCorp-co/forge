@@ -212,6 +212,16 @@ export interface RunGateNote {
   reason: string | null;
 }
 
+/** The run could not be fetched: the condition is unknown, which is not "none". */
+export function runGateUnfetched(message: string): RunGateNote {
+  return {
+    verdict: "unreadable",
+    headline: "This run's record could not be read, so its gate condition is unknown",
+    detail: message,
+    reason: null,
+  };
+}
+
 /** `undefined` is a response that did not carry the field, and says nothing. */
 export function runGateNote(gate: RunGate | null | undefined): RunGateNote | null {
   if (gate === undefined) return null;
