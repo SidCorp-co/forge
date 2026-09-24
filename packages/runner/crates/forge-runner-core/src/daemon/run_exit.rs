@@ -43,11 +43,45 @@ pub struct Reported {
     pub written_at: Option<i64>,
 }
 
-/// Why a run pane is being kept, or that it may be ended.
+/// Why a run pane is being kept, or why it may be ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
     Stay(StayReason),
-    Exit,
+    Exit(ExitCause),
+}
+
+/// What ended a run, carried to the words the box says about it, so a run
+/// ended on a silent transcript is never reported as one that went idle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExitCause {
+    /// Its turn ended and nothing followed for `RUN_IDLE_BEFORE_EXIT`.
+    Idle,
+    /// Its lead ended over a child with no reported end, and nothing was
+    /// reported or written for `RUN_SILENT_BEFORE_EXIT`.
+    ChildrenSilent,
+    /// Its turn never reported an end, and its transcript was written nothing
+    /// for `RUN_SILENT_BEFORE_EXIT`.
+    LeadSilent,
+}
+
+impl ExitCause {
+    /// What core is told, and the journal says, about a run ended for this.
+    pub fn reason(self) -> String {
+        match self {
+            Self::Idle => format!(
+                "its agent ended its turn and reported nothing for {}m after — a run is briefed once, so its work is done; the box ended it",
+                RUN_IDLE_BEFORE_EXIT.as_secs() / 60
+            ),
+            Self::ChildrenSilent => format!(
+                "its agent ended its turn over a child that never reported an end, and nothing was reported or written for {}m — a child's end reaches the box by a hook that can be lost; the box ended it",
+                RUN_SILENT_BEFORE_EXIT.as_secs() / 60
+            ),
+            Self::LeadSilent => format!(
+                "its agent's turn never reported an end and its transcript was written nothing for {}m — a turn's end reaches the box by a hook that can be lost, and a running turn writes as it works; the box ended it",
+                RUN_SILENT_BEFORE_EXIT.as_secs() / 60
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,12 +109,16 @@ pub fn verdict(reported: Option<Reported>, now: i64) -> Verdict {
     match r.doing {
         // No transcript to read is no evidence, and never silence.
         Doing::Working if r.written_at.is_none() => Verdict::Stay(StayReason::Working),
-        Doing::Working if past(silent_for, RUN_SILENT_BEFORE_EXIT) => Verdict::Exit,
+        Doing::Working if past(silent_for, RUN_SILENT_BEFORE_EXIT) => {
+            Verdict::Exit(ExitCause::LeadSilent)
+        }
         Doing::Working => Verdict::Stay(StayReason::Working),
         Doing::AwaitingPermission => Verdict::Stay(StayReason::AwaitingPermission),
-        Doing::AwaitingChildren if past(silent_for, RUN_SILENT_BEFORE_EXIT) => Verdict::Exit,
+        Doing::AwaitingChildren if past(silent_for, RUN_SILENT_BEFORE_EXIT) => {
+            Verdict::Exit(ExitCause::ChildrenSilent)
+        }
         Doing::AwaitingChildren => Verdict::Stay(StayReason::AwaitingChildren),
-        Doing::Idle if past(quiet_for, RUN_IDLE_BEFORE_EXIT) => Verdict::Exit,
+        Doing::Idle if past(quiet_for, RUN_IDLE_BEFORE_EXIT) => Verdict::Exit(ExitCause::Idle),
         Doing::Idle => Verdict::Stay(StayReason::RecentlyIdle),
     }
 }
@@ -102,12 +140,18 @@ mod tests {
 
     #[test]
     fn an_idle_run_past_the_window_is_ended() {
-        assert_eq!(verdict(idle_since(NOW - WINDOW - 1), NOW), Verdict::Exit);
+        assert_eq!(
+            verdict(idle_since(NOW - WINDOW - 1), NOW),
+            Verdict::Exit(ExitCause::Idle)
+        );
     }
 
     #[test]
     fn the_boundary_itself_ends_it() {
-        assert_eq!(verdict(idle_since(NOW - WINDOW), NOW), Verdict::Exit);
+        assert_eq!(
+            verdict(idle_since(NOW - WINDOW), NOW),
+            Verdict::Exit(ExitCause::Idle)
+        );
     }
 
     #[test]
@@ -188,7 +232,7 @@ mod tests {
     fn a_run_awaiting_an_unreported_child_is_ended_at_the_longer_window() {
         assert_eq!(
             verdict(awaiting_since(NOW - CHILDREN), NOW),
-            Verdict::Exit,
+            Verdict::Exit(ExitCause::ChildrenSilent),
             "a child's end that never arrived must not hold a run pane for its whole life (ISS-1232)"
         );
     }
@@ -205,7 +249,7 @@ mod tests {
     fn a_run_whose_end_was_lost_is_ended_once_its_transcript_has_been_still_for_the_window() {
         assert_eq!(
             verdict(began(NOW - CHILDREN * 72, Some(NOW - CHILDREN)), NOW),
-            Verdict::Exit,
+            Verdict::Exit(ExitCause::LeadSilent),
             "a lost Stop must not hold a run pane for its whole life (ISS-1244)"
         );
     }
@@ -239,5 +283,33 @@ mod tests {
             ),
             Verdict::Stay(StayReason::AwaitingChildren)
         );
+    }
+
+    #[test]
+    fn each_cause_says_what_ended_the_run_and_none_claims_another() {
+        let idle = ExitCause::Idle.reason();
+        let children = ExitCause::ChildrenSilent.reason();
+        let lead = ExitCause::LeadSilent.reason();
+        assert!(
+            idle.contains("ended its turn") && idle.contains("15m"),
+            "{idle}"
+        );
+        assert!(
+            children.contains("never reported an end") && children.contains("60m"),
+            "{children}"
+        );
+        assert!(
+            lead.contains("never reported an end") && lead.contains("transcript"),
+            "{lead}"
+        );
+        for silent in [&children, &lead] {
+            assert!(
+                !silent.contains("work is done"),
+                "a run ended on silence was never shown finished: {silent}"
+            );
+        }
+        let distinct: std::collections::BTreeSet<&String> =
+            [&idle, &children, &lead].into_iter().collect();
+        assert_eq!(distinct.len(), 3);
     }
 }

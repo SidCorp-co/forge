@@ -1585,7 +1585,7 @@ impl recovery::RunActivity for PaneActivity<'_> {
     }
 }
 
-async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
+async fn end_run(led: &mut Ledger, run_id: &str, cause: run_exit::ExitCause, world: &Reclaim<'_>) {
     let Ok(Some(run)) = led.run(run_id) else {
         return;
     };
@@ -1593,9 +1593,9 @@ async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
         return;
     };
     world.killer.kill(pid).await;
+    let why = cause.reason();
     tracing::info!(
-        "[master] run {run_id} reported idle for over {}m and its work is done — ending pid {pid}; its close loop starts on the next sweep",
-        run_exit::RUN_IDLE_BEFORE_EXIT.as_secs() / 60
+        "[master] run {run_id}: {why} — ending pid {pid}; its close loop starts on the next sweep"
     );
     let Some(session_id) = run.session_id.as_deref() else {
         return;
@@ -1605,7 +1605,7 @@ async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
         .close(
             session_id,
             close_loop::Outcome::KilledIdle,
-            "idle past the run's exit boundary; the box ended it",
+            &why,
             Some(checkpoint::reconstruct_within_budget(&run).await.to_json()),
         )
         .await
@@ -1638,8 +1638,8 @@ async fn give_back_lost_runs(
     match recovery::reconcile(led, boot_id, live, world.procs, closing, watch).await {
         Ok(done) => {
             for r in done {
-                if r.owed_idle_exit {
-                    end_idle_run(led, &r.run_id, world).await;
+                if let Some(cause) = r.owed_exit {
+                    end_run(led, &r.run_id, cause, world).await;
                     continue;
                 }
                 if r.owed_death_report {
