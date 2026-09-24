@@ -35,7 +35,7 @@ export interface ScheduledCutOutcome {
   reasons?: string[];
 }
 
-// A declined cut thrown without readiness blockers, by its operator-facing code.
+// Carrying a readiness blocker makes an error a refusal; these classes name one thrown without.
 const CLASSIFIED_REFUSALS: ReadonlyArray<readonly [new (...args: never[]) => Error, string]> = [
   [BatchInFlightError, 'BATCH_IN_FLIGHT'],
   [ClaimConflictError, 'CLAIM_CONFLICT'],
@@ -75,8 +75,6 @@ export async function cutWaitingRelease(args: {
       named,
     };
   } catch (err) {
-    // `releaseBlockerError` throws one class per readiness code, most of them outside the list
-    // above, so carrying a blocker is what makes an error a refusal; the class is the fallback.
     const code =
       blockersOf(err)[0]?.code ?? CLASSIFIED_REFUSALS.find(([cls]) => err instanceof cls)?.[1];
     if (code) {
