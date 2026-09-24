@@ -124,9 +124,10 @@ async function seed() {
     VALUES (${run}, ${project.id}, ${issue}, 'issue', 'running')
   `);
   await harness.db.execute(sql`
-    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by, queued_at)
+    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by, queued_at,
+                      payload)
     VALUES (${job}, ${project.id}, ${issue}, ${run}, 'code', 'queued', ${owner.id},
-            now() - interval '30 minutes')
+            now() - interval '30 minutes', '{"promptString":"do the step"}'::jsonb)
   `);
 
   return { owner, project, device, run, job, issue };
@@ -157,8 +158,10 @@ describe('master pool', () => {
     const { owner, project, device, run, issue } = await seed();
     const second = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by, queued_at)
-      VALUES (${second}, ${project.id}, ${issue}, ${run}, 'review', 'queued', ${owner.id}, now())
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by, queued_at,
+                        payload)
+      VALUES (${second}, ${project.id}, ${issue}, ${run}, 'review', 'queued', ${owner.id}, now(),
+              '{"promptString":"do the step"}'::jsonb)
     `);
     await harness.db.execute(sql`
       UPDATE jobs SET status = 'running' WHERE id IN (
@@ -258,9 +261,9 @@ describe('master pool — reaping, load and preparation', () => {
     }
     await harness.db.execute(sql`
       INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by, queued_at,
-                        held_by, held_at)
+                        held_by, held_at, payload)
       SELECT ${secondJob}, project_id, pipeline_run_id, 'review', 'queued', created_by, now(),
-             ${liveSession}, now()
+             ${liveSession}, now(), payload
       FROM jobs WHERE id = ${job}
     `);
     await harness.db.execute(sql`
@@ -322,9 +325,9 @@ describe('master pool — reaping, load and preparation', () => {
     `);
     await harness.db.execute(sql`
       INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by,
-                        queued_at, retry_of, attempts, agent_session_id)
+                        queued_at, retry_of, attempts, agent_session_id, payload)
       VALUES (${retry}, ${project.id}, ${issue}, ${run}, 'code', 'queued', ${owner.id}, now(),
-              ${job}, 1, NULL)
+              ${job}, 1, NULL, '{"promptString":"do the step"}'::jsonb)
     `);
 
     const result = await take(retry, device.id, randomUUID());

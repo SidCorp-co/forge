@@ -20,7 +20,6 @@ import {
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { buildVerifierPrompt } from '../skills/reconcile-service.js';
-import { enqueueJob, enqueueReconcileJob } from './enqueue.js';
 import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -455,20 +454,6 @@ export async function scheduleAutoRetryWithVerify(
 
   if (!created) throw new Error('retry: insert returned no row');
 
-  const startAfterSeconds = Math.max(0, Math.ceil((retryAfterAt.getTime() - Date.now()) / 1000));
-  try {
-    if (job.type === 'reconcile' || job.type === 'verify_skill') {
-      await enqueueReconcileJob(created.id, { startAfterSeconds });
-    } else {
-      await enqueueJob(
-        { jobId: created.id, issueId: job.issueId, type: job.type },
-        { startAfterSeconds },
-      );
-    }
-  } catch (err) {
-    logger.error({ err, jobId: created.id }, 'retry: enqueue failed; row persisted');
-  }
-
   if (job.agentSessionId) {
     try {
       await incrementAutoRetryCount(job.agentSessionId);
@@ -489,7 +474,7 @@ export async function scheduleAutoRetryWithVerify(
         attempt: job.attempts + 1,
         round: next.round,
         target: next.target,
-        cooldownUsed: startAfterSeconds,
+        cooldownUsed: cooldownMs / 1000,
       },
     });
   }
@@ -501,7 +486,7 @@ export async function scheduleAutoRetryWithVerify(
       round: next.round,
       target: next.target,
       tries: next.tries,
-      cooldownSec: startAfterSeconds,
+      cooldownSec: cooldownMs / 1000,
       reason,
     },
     'retry: auto-retry scheduled',

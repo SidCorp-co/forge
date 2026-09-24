@@ -37,11 +37,6 @@ vi.mock('../pipeline/wedge.js', () => ({
   resolvePipelineWedge: (...a: unknown[]) => resolveWedgeMock(...a),
 }));
 
-const enqueueMock = vi.fn(async (..._args: unknown[]) => {});
-vi.mock('./enqueue.js', () => ({
-  enqueueJob: (...args: unknown[]) => enqueueMock(...args),
-}));
-
 const verifyRecoveryMock = vi.fn(async (..._args: unknown[]) => 'pending');
 vi.mock('../pipeline/recovery-verifier.js', () => ({
   verifyRecovery: (...args: unknown[]) => verifyRecoveryMock(...(args as [never])),
@@ -154,10 +149,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     // born NULL so ensureAgentSessionForJob re-links + resets at dispatch.
     expect(inserted.agentSessionId).toBeUndefined();
     expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
-
-    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'j2' }), {
-      startAfterSeconds: 60,
-    });
   });
 
   it('ISS-434 — clone never inherits a (terminal) session even though stats still use the parent link', async () => {
@@ -184,7 +175,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     );
     const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 60_000));
-    expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 60 });
   });
 
   it('does NOT retry a `code` classification (non_retryable_terminal)', async () => {
@@ -229,7 +219,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       expect(auto.target).toBe('device-B'); // NOT device-A
       expect(auto.done).toContain('device-A');
       expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW)); // no cooldown
-      expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 0 });
     });
 
     it('text fallback (Unknown command) also routes to failover', async () => {
@@ -245,7 +234,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
         unknown
       >;
       expect(auto.target).toBe('device-B');
-      expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 0 });
     });
 
     it('falls back to same-device + standard cooldown when no other device is online', async () => {
@@ -264,7 +252,6 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       >;
       expect(auto.target).toBe('device-A');
       expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
-      expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 60 });
     });
 
     it('scopes the rotation sweep to the stage runner pool', async () => {
@@ -638,15 +625,5 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
       );
       expect(result.scheduled).toBe(true);
     });
-  });
-
-  it('swallows enqueue errors so the retry row is still created', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    enqueueMock.mockImplementationOnce(async () => {
-      throw new Error('pg-boss down');
-    });
-    const result = await run({}, 'crashed');
-    expect(result.scheduled).toBe(true);
-    expect(result.newJobId).toBe('j2');
   });
 });

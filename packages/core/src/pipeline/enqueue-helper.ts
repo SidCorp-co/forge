@@ -1,8 +1,6 @@
 import { db } from '../db/client.js';
 import { type JobType, jobs } from '../db/schema.js';
-import { enqueueJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { logger } from '../logger.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';
 import { setCurrentStep } from './runs.js';
@@ -34,13 +32,9 @@ interface InsertAndEnqueueArgs {
 }
 
 /**
- * Insert a `jobs` row, link its `currentStep` on the pipeline run, and
- * enqueue it on pg-boss. On unique-violation (concurrent insert with the
- * same (issueId, type) shape) throws `ActiveJobConflictError` so callers
- * can map to either 409 (manual) or debug-log + return (auto).
- *
- * pg-boss enqueue failures are logged but NOT thrown — the jobs row is
- * persisted and the next master to read the pool will pick it up.
+ * Insert a queued `jobs` row the pool will offer, link its `currentStep` on the
+ * run, and wake the project's masters. A unique-violation on (issueId, type)
+ * throws `ActiveJobConflictError`, which callers map to a 409 or a debug log.
  */
 export async function insertAndEnqueueJob(args: InsertAndEnqueueArgs): Promise<{ jobId: string }> {
   let insertedId: string | null = null;
@@ -72,15 +66,6 @@ export async function insertAndEnqueueJob(args: InsertAndEnqueueArgs): Promise<{
   if (!insertedId) throw new Error('jobs: insert returned no row');
 
   await setCurrentStep(args.pipelineRunId, args.type);
-
-  try {
-    await enqueueJob({ jobId: insertedId, issueId: args.issueId, type: args.type });
-  } catch (err) {
-    logger.error(
-      { err, jobId: insertedId },
-      'enqueue-helper: pg-boss enqueue failed; job row persisted',
-    );
-  }
 
   await wakeMastersForProject({
     projectId: args.projectId,

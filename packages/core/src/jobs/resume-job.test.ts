@@ -2,7 +2,7 @@
  * The resume service's refusals and its audit row, isolated from the DB.
  *
  * The interesting cases are all negative: a job that is not held, and a CAS
- * that lost. Both must leave nothing behind — no enqueue, no audit row — since
+ * that lost. Both must leave nothing behind — no requeue, no audit row — since
  * a resume that half-happens is a job the dispatcher has been told about twice.
  */
 
@@ -37,10 +37,6 @@ vi.mock('./intervention-event.js', () => ({
 }));
 
 vi.mock('../pipeline/wedge.js', () => ({ resolvePipelineWedge: async () => 0 }));
-vi.mock('./enqueue.js', () => ({
-  enqueueJob: async () => undefined,
-  enqueueReconcileJob: async () => undefined,
-}));
 vi.mock('./retry.js', () => ({ AUTO_RETRY_PAYLOAD_KEY: '_autoRetry' }));
 vi.mock('./budget-check.js', () => ({ checkMonthlyBudget: async () => ({ action: 'allow' }) }));
 vi.mock('../runners/select.js', () => ({ onlineCapableDeviceIds: async () => [] }));
@@ -136,7 +132,7 @@ describe('resumeHeldJob', () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
-  it('a CAS that matched nothing enqueues nothing', async () => {
+  it('a CAS that matched nothing requeues nothing', async () => {
     selectRows.mockReturnValue([heldJob()]);
     returningRows.mockReturnValue([]);
 

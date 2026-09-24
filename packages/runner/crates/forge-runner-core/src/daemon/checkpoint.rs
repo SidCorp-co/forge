@@ -319,6 +319,9 @@ mod tests {
             release_refusal: None,
             release_terminal_at: None,
             release_attempts: 0,
+            turn_ended_at_ms: None,
+            agent_transcript: None,
+            kept_notice: None,
         }
     }
 

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   insertReturning: vi.fn(),
-  enqueueJob: vi.fn(async () => {}),
   setCurrentStep: vi.fn(async () => {}),
 }));
 
@@ -19,10 +18,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-vi.mock('../jobs/enqueue.js', () => ({
-  enqueueJob: mocks.enqueueJob,
-}));
-
 vi.mock('./runs.js', () => ({
   setCurrentStep: mocks.setCurrentStep,
 }));
@@ -34,7 +29,7 @@ describe('insertAndEnqueueJob', () => {
     vi.clearAllMocks();
   });
 
-  it('inserts a job row, sets current step, enqueues pg-boss, and returns jobId', async () => {
+  it('inserts a job row, sets current step, wakes the masters, and returns jobId', async () => {
     mocks.insertReturning.mockResolvedValueOnce([{ id: 'j-1' }]);
 
     const result = await insertAndEnqueueJob({
@@ -50,8 +45,8 @@ describe('insertAndEnqueueJob', () => {
 
     expect(result).toEqual({ jobId: 'j-1' });
     expect(mocks.setCurrentStep).toHaveBeenCalledWith('r-1', 'plan');
-    expect(mocks.enqueueJob).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: 'j-1', issueId: 'i-1', type: 'plan' }),
+    expect(wakeMastersForProject).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'p-1', issueId: 'i-1' }),
     );
   });
 
@@ -81,7 +76,7 @@ describe('insertAndEnqueueJob', () => {
     expect((thrown as ActiveJobConflictError).type).toBe('plan');
     expect(resolveRacing).toHaveBeenCalledTimes(1);
     expect(mocks.setCurrentStep).not.toHaveBeenCalled();
-    expect(mocks.enqueueJob).not.toHaveBeenCalled();
+    expect(wakeMastersForProject).not.toHaveBeenCalled();
   });
 
   it('rethrows non-unique-violation errors', async () => {

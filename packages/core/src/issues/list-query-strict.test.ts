@@ -36,8 +36,6 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-vi.mock('../jobs/enqueue.js', () => ({ enqueueJob: vi.fn() }));
-
 const projectAccess = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),

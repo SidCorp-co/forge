@@ -56,7 +56,8 @@ fn gate_refusal(parsed: Option<GateAck>) -> Option<String> {
 pub struct Conditions {
     pub gate: Option<crate::daemon::degraded::Condition>,
     /// `None` sends no `pool` key, which core reads as "changes nothing"; a list,
-    /// even an empty one, is the box's whole picture.
+    /// even an empty one, is the box's whole picture. A record that exists and
+    /// cannot be read is no picture, so it is `None`, never an empty list.
     pub pool: Option<Vec<crate::daemon::pool_reads::Condition>>,
 }
 
@@ -69,7 +70,7 @@ impl Conditions {
         };
         Self {
             gate: Some(crate::daemon::degraded::report(dir, now_ms).degraded),
-            pool: Some(crate::daemon::pool_reads::report(dir, now_ms)),
+            pool: crate::daemon::pool_reads::report(dir, now_ms).ok(),
         }
     }
 }
@@ -433,6 +434,31 @@ mod tests {
         let none = heartbeat_body("0.17.18", None, &Conditions::read(None, NOW));
         assert!(none.get("pool").is_none(), "{none}");
         assert!(none.get("gate").is_none(), "{none}");
+    }
+
+    /// A record that exists and cannot be read is not a clean box. Sent as an
+    /// empty list it would clear at core every condition the box had reported,
+    /// so the beat carries no `pool` key and core keeps what it stored.
+    #[test]
+    fn a_record_that_cannot_be_read_sends_no_pool_key() {
+        let dir = scratch("corrupt");
+        planted_pool(&dir);
+        let path = crate::daemon::pool_reads::path(&dir);
+        std::fs::write(&path, "{\"projects\":{\"68567cd4").unwrap();
+        let corrupt = heartbeat_body("0.17.18", None, &Conditions::read(Some(&dir), NOW));
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        let unopenable = heartbeat_body("0.17.18", None, &Conditions::read(Some(&dir), NOW));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(corrupt.get("pool").is_none(), "a corrupt record: {corrupt}");
+        assert!(
+            corrupt.get("gate").is_some(),
+            "the gate still rides: {corrupt}"
+        );
+        assert!(
+            unopenable.get("pool").is_none(),
+            "an unopenable record: {unopenable}"
+        );
     }
 
     /// Criterion 18, the reading half: core's refusal of the pool report comes
