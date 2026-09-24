@@ -121,6 +121,26 @@ async function unannouncedBatch(issueIds: string[]): Promise<string> {
   return runId;
 }
 
+/**
+ * `finish` takes the attempt and answers; the job does the work. Here the job runs inline, and the
+ * verdict is read back the way a release run reads it: the tool's own `state` action.
+ */
+async function workDone(runId: string): Promise<{
+  state: string;
+  closed: string[] | null;
+  failed: unknown[] | null;
+}> {
+  const { runReleaseBatchFinish } = await import('../../src/release-batch/finish-job.js');
+  await runReleaseBatchFinish(runId);
+  const state = await call(workspaceToken, { action: 'state', runId });
+  expect(state.isError, state.text).toBe(false);
+  return state.structured?.finish as {
+    state: string;
+    closed: string[] | null;
+    failed: unknown[] | null;
+  };
+}
+
 describe('forge_release_batch over /mcp on the workspace credential', () => {
   it('is listed by the running server', async () => {
     const out = await rpc(workspaceToken, { jsonrpc: '2.0', id: 1, method: 'tools/list' });
@@ -136,9 +156,11 @@ describe('forge_release_batch over /mcp on the workspace credential', () => {
     const answer = await call(workspaceToken, { action: 'finish', runId });
 
     expect(answer.isError, answer.text).toBe(false);
-    const closed = (answer.structured?.closed ?? []) as string[];
-    expect(closed.sort()).toEqual([a, b].sort());
-    expect(answer.structured?.failed).toEqual([]);
+    expect(answer.structured).toMatchObject({ runId, finish: { state: 'accepted' } });
+    const verdict = await workDone(runId);
+    expect(verdict.state).toBe('finished');
+    expect((verdict.closed ?? []).sort()).toEqual([a, b].sort());
+    expect(verdict.failed).toEqual([]);
     for (const id of [a, b]) expect((await fx.stored(id)).status).toBe('closed');
   });
 
@@ -212,7 +234,7 @@ describe('forge_release_batch over /mcp on the workspace credential', () => {
 
     const finished = await call(workspaceToken, { action: 'finish', runId });
     expect(finished.isError, finished.text).toBe(false);
-    expect(finished.structured?.closed).toEqual([a]);
+    expect((await workDone(runId)).closed).toEqual([a]);
   });
 
   it('refuses finish with RELEASE_NOT_VERIFIED and the live reading when the probes disagree', async () => {

@@ -465,7 +465,8 @@ describe('a release run says what method it is working from', () => {
 
     const res = await finish(w);
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as { finish?: { state?: string } }).finish?.state).toBe('accepted');
   });
 
   it('reads a run that could not load its method as one that ran without one', async () => {
