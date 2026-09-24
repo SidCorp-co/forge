@@ -9,6 +9,7 @@
 import { Avatar, Badge, Button, MonoTag, Stat } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
+import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials } from "../derive";
@@ -274,6 +275,11 @@ export function PropertiesRail({
           )}
         </div>
       </Row>
+      {issue.liveReach && (
+        <Row label="Production">
+          <LiveReachValue reach={issue.liveReach} />
+        </Row>
+      )}
       <Row label="Cost">
         <Stat icon="dollar">
           {cost && cost.estimatedCost > 0 ? `$${cost.estimatedCost.toFixed(2)}` : "—"}

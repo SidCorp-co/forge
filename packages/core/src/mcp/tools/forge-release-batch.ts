@@ -1,0 +1,214 @@
+/**
+ * `forge_release_batch` — every call a `release_batch` job's prompt names, on
+ * the credential the job's pane already holds.
+ *
+ * A pool job opens in the project's provisioned checkout, whose `.mcp.json`
+ * carries the per-(device × project) workspace credential core minted at
+ * provision. The deploy half of a release rides it (`forge_coolify_deploy`),
+ * and so does the recording half here, so a box holding only what its daemon
+ * holds can say what it did to production (ISS-1211). The REST routes stay
+ * the door for a person's own token.
+ *
+ * `finish` and `abort` call the same service functions the REST routes call.
+ * This is a second door onto one close, not a second close.
+ */
+
+import type { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
+import {
+  announceMethod,
+  MethodMismatchError,
+  MethodNotAnnouncedError,
+} from '../../release-batch/method.js';
+import {
+  RELEASE_BATCH_SKILL,
+  RELEASE_BATCH_TOOL,
+  ReleaseBranchesUndeclaredError,
+} from '../../release-batch/plan.js';
+import { recordRefusal, undeclaredBranches } from '../../release-batch/refusals.js';
+import {
+  abortReleaseBatch,
+  findReleaseBatchRun,
+  finishReleaseBatch,
+  loadReleaseBatchContext,
+  ReleaseBatchAbortedError,
+  ReleaseNotVerifiedError,
+  ReleaseProbesUndeclaredError,
+  ReleaseVersionMissingError,
+} from '../../release-batch/service.js';
+import { readReleaseRunState } from '../../release-batch/state.js';
+import {
+  assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  principalActor,
+  resolveEffectiveProjectId,
+  zodToMcpSchema,
+} from './lib.js';
+
+const inputSchema = z
+  .object({
+    action: z.enum(['get', 'state', 'method', 'finish', 'abort']),
+    projectId: z.uuid().optional(),
+    runId: z.uuid(),
+    /** method: the skill the run loaded. */
+    skill: z.string().trim().min(1).max(200).optional(),
+    /** method: false when the skill would not load. */
+    loaded: z.boolean().optional(),
+    /** method: the run's own words about what it loaded, or why it could not. */
+    detail: z.string().trim().max(4_000).optional(),
+    /** finish: the SHA pushed to the production branch, for the probes to match. */
+    commit: z.string().trim().max(200).optional(),
+    /** abort: why. */
+    reason: z.string().trim().max(2_000).optional(),
+  })
+  .strict();
+
+type Input = z.infer<typeof inputSchema>;
+
+/** A refusal as MCP carries one: the code first, then the sentence, then what the REST body held. */
+function refusal(code: string, message: string, details?: unknown): Error {
+  const tail = details === undefined ? '' : `\n${JSON.stringify(details)}`;
+  return new Error(`${code}: ${message}${tail}`);
+}
+
+function fromHttp(err: HTTPException): Error {
+  const cause = (err.cause ?? {}) as { code?: string } & Record<string, unknown>;
+  const { code, ...rest } = cause;
+  return refusal(code ?? 'CONFLICT', err.message, Object.keys(rest).length > 0 ? rest : undefined);
+}
+
+/**
+ * A credential that can read this batch and not record its outcome is refused
+ * at the read. The read is the run's first act, so this is the refusal before
+ * production changes that the recording half would otherwise make after.
+ */
+function assertCanRecord(principal: McpPrincipal): void {
+  if (!principal.scopes.includes('write')) {
+    throw refusal(
+      'RELEASE_CREDENTIAL_CANNOT_RECORD',
+      'this token lacks the `write` scope, so it could read this batch and could not finish or abort it. ' +
+        'A release run records its outcome on the credential it starts on, or it does not start: change nothing, ' +
+        'and end the turn saying the credential cannot record the release.',
+    );
+  }
+}
+
+async function assertRunOfProject(runId: string, projectId: string): Promise<void> {
+  const run = await findReleaseBatchRun(runId);
+  if (!run || run.projectId !== projectId) {
+    throw new Error('NOT_FOUND: release batch not found in this project');
+  }
+}
+
+function methodRefusalHere(err: unknown): Error | null {
+  if (err instanceof MethodNotAnnouncedError) {
+    return refusal(
+      'RELEASE_METHOD_NOT_ANNOUNCED',
+      `this run never announced the method it was working from. Call ${RELEASE_BATCH_TOOL} action=method ` +
+        `with skill="${err.expected}" and loaded=true, or loaded=false with a detail if the skill would not load, then finish again.`,
+    );
+  }
+  if (err instanceof MethodMismatchError) {
+    return refusal(
+      'RELEASE_METHOD_MISMATCH',
+      `this run announced the method \`${err.announced}\` and its job names \`${err.expected}\`. ` +
+        `Announce \`${err.expected}\` with action=method, or abort with what you actually ran.`,
+    );
+  }
+  return null;
+}
+
+function finishRefusal(err: unknown): Error {
+  const method = methodRefusalHere(err);
+  if (method) return method;
+  if (err instanceof ReleaseNotVerifiedError || err instanceof ReleaseProbesUndeclaredError) {
+    return fromHttp(recordRefusal(err));
+  }
+  if (err instanceof ReleaseVersionMissingError) {
+    return refusal('RELEASE_VERSION_MISSING', err.message);
+  }
+  if (err instanceof ReleaseBatchAbortedError) {
+    return refusal(
+      'RELEASE_BATCH_ABORTED',
+      'this batch was aborted, so there is nothing left to finish: its claims were released. ' +
+        'If the release did land after all, that is a person’s call to make on each issue.',
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+async function run(principal: McpPrincipal, input: Input, projectId: string): Promise<unknown> {
+  const { runId } = input;
+  switch (input.action) {
+    case 'get': {
+      try {
+        return await loadReleaseBatchContext(runId);
+      } catch (err) {
+        if (err instanceof ReleaseBranchesUndeclaredError) throw fromHttp(undeclaredBranches(err));
+        throw err;
+      }
+    }
+    case 'state': {
+      const state = await readReleaseRunState(runId);
+      if (!state || state.projectId !== projectId) {
+        throw new Error('NOT_FOUND: release batch not found in this project');
+      }
+      return state;
+    }
+    case 'method': {
+      if (input.loaded === undefined) {
+        throw new Error(
+          `BAD_REQUEST: method needs \`loaded\` — true with skill="${RELEASE_BATCH_SKILL}", or false with a detail saying why it would not load`,
+        );
+      }
+      if (!input.skill) {
+        throw new Error(
+          `BAD_REQUEST: method needs \`skill\`, the name of the skill the run loaded`,
+        );
+      }
+      return announceMethod({
+        runId,
+        skill: input.skill,
+        loaded: input.loaded,
+        detail: input.detail,
+      });
+    }
+    case 'finish': {
+      try {
+        return await finishReleaseBatch(runId, principalActor(principal), { commit: input.commit });
+      } catch (err) {
+        throw finishRefusal(err);
+      }
+    }
+    case 'abort': {
+      const result = await abortReleaseBatch(
+        runId,
+        input.reason ?? 'aborted by agent',
+        principal.userId,
+      );
+      return { aborted: true, releasedIds: result.claimsCleared, ...result };
+    }
+  }
+}
+
+export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: RELEASE_BATCH_TOOL,
+  description:
+    'Read and record one release batch from inside the release_batch job that runs it — the calls its prompt names, ' +
+    'on the credential the job already holds. Actions: `get` (the batch context: roster, release notes, branches, deploy plan; ' +
+    'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
+    '`skill` + `loaded`, optional `detail`; finish refuses a run that announced none), `finish` (`commit` = the SHA pushed to ' +
+    'production; closes every claimed issue once the server-read probes agree), `abort` (`reason`; releases every claim, closes nothing). ' +
+    'Every action needs `runId`, and a token with the write scope: a credential that could read the batch but not record it is ' +
+    'refused at `get`, before anything changes.',
+  inputSchema: zodToMcpSchema(inputSchema),
+  handler: async (args) => {
+    const input = inputSchema.parse(args);
+    const projectId = await resolveEffectiveProjectId(ctx, input.projectId ?? null);
+    await assertPrincipalIsWriter(ctx.principal, projectId);
+    assertCanRecord(ctx.principal);
+    await assertRunOfProject(input.runId, projectId);
+    return run(ctx.principal, input, projectId);
+  },
+});
