@@ -71,3 +71,18 @@ export function assertMethodFor(method: ReleaseMethod | null, expected: string):
   if (method === null) throw new MethodNotAnnouncedError(expected);
   if (method.skill !== expected) throw new MethodMismatchError(method.skill, expected);
 }
+
+/**
+ * The method a release run announced, read by run id alone.
+ *
+ * `null` for a run that announced none and for a run that does not exist; the
+ * caller asking is one that has already established which run it holds.
+ */
+export async function readRunMethod(runId: string): Promise<ReleaseMethod | null> {
+  const [run] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  return readMethod(run?.metadata ?? null);
+}

@@ -36,6 +36,7 @@ const READ_ACTIONS: ReadonlySet<string> = new Set([
   'list_registrations',
   'sync_status',
   'status',
+  'state',
   'logs',
   'runtime-logs',
   'applications',
