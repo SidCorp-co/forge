@@ -6,6 +6,7 @@ import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveReleaseChannels } from './channel.js';
+import { acceptReleaseBatchFinish } from './finish-job.js';
 import { openAttempt, readAttempt, recordAccount, settleAttempt } from './ledger.js';
 import { announceMethod } from './method.js';
 import { loadReleaseReadiness } from './readiness.js';
@@ -14,16 +15,15 @@ import {
   badRequest,
   conflict,
   declarationRefusal,
+  finishRefusal,
   holding,
   issuesUnnamed,
-  methodRefusal,
   notFound,
   recordRefusal,
   refuseMachineKeys,
   releaseBlockerHttp,
   reportedRefusal,
   undeclaredBranches,
-  undeclaredProbes,
 } from './refusals.js';
 import {
   abortReleaseBatch,
@@ -31,20 +31,15 @@ import {
   ClaimConflictError,
   createReleaseBatch,
   findReleaseBatchRun,
-  finishReleaseBatch,
   getActiveReleaseBatch,
   loadReleaseBatchContext,
   loadReleaseRoster,
   NoReleaseGateError,
-  ReleaseBatchAbortedError,
   ReleaseBranchesUndeclaredError,
   ReleaseIssuesUnnamedError,
-  ReleaseNotVerifiedError,
-  ReleaseProbesUndeclaredError,
   ReleaseRecutRefusedError,
   ReleaseVersionConflictError,
   ReleaseVersionExhaustedError,
-  ReleaseVersionMissingError,
 } from './service.js';
 import { readServingDeployment } from './serving.js';
 import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
@@ -263,28 +258,18 @@ releaseBatchRoutes.post(
     await loadRunForProject(runId, projectId, userId);
 
     try {
+      const accepted = await acceptReleaseBatchFinish(
+        runId,
+        { type: 'user', id: userId },
+        c.req.valid('json'),
+      );
       return c.json(
-        await finishReleaseBatch(runId, { type: 'user', id: userId }, c.req.valid('json')),
+        { runId, finish: accepted.finish },
+        accepted.finish.state === 'finished' ? 200 : 202,
       );
     } catch (err) {
-      if (err instanceof ReleaseNotVerifiedError) {
-        throw new HTTPException(409, {
-          message: err.reason,
-          cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
-        });
-      }
-      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes(err);
-      if (err instanceof ReleaseVersionMissingError) {
-        throw conflict('RELEASE_VERSION_MISSING', err.message);
-      }
-      if (err instanceof ReleaseBatchAbortedError) {
-        throw conflict(
-          'RELEASE_BATCH_ABORTED',
-          'This batch was aborted, so there is nothing left to finish: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.',
-        );
-      }
-      const method = methodRefusal(err);
-      if (method) throw method;
+      const refused = finishRefusal(err);
+      if (refused) throw refused;
       throw err;
     }
   },

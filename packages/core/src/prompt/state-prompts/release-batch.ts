@@ -20,17 +20,22 @@ text. Do not look for another credential on this machine.
 2. Carry out the release procedure printed in your task prompt. That text is the authority
    on branches, versioning, changelog and deploy — this block is not, and you must not
    substitute a step it does not name.
-3. \`forge_release_batch\` action \`finish\` with \`commit\` → every claimed issue closes.
-   Report closed/failed. \`commit\` is the SHA you pushed to the production branch.
+3. \`forge_release_batch\` action \`finish\` with \`commit\` → answers at once with the attempt at
+   \`accepted\`; the server verifies and closes every claimed issue on its own. \`commit\` is the
+   SHA you pushed to the production branch.
+4. \`forge_release_batch\` action \`state\` → \`finish.state\` ends at \`finished\` (report its
+   closed/failed) or \`failed\` (report its \`refusal\`). Read it again while it says
+   \`accepted\`, \`verifying\` or \`closing\`.
 
 ### What finish means
 \`finish\` is the ONLY thing in Forge that writes \`closed\`, and writing it is a claim that
 this release happened. Call it after the procedure completed AND you read its result. Never
 call it because the steps ran without throwing, and never to tidy up a partial release.
 
-When the project declares verification probes, the SERVER reads them on \`finish\` and refuses
-with RELEASE_NOT_VERIFIED unless the live build both changed and matches your \`commit\`. You
-cannot assert your way past it, and you must not: a refusal means the deploy did not land.
+When the project declares verification probes, the SERVER reads them after \`finish\` and ends
+the attempt \`failed\` with RELEASE_NOT_VERIFIED unless the live build both changed and matches
+your \`commit\`. You cannot assert your way past it, and you must not: a refusal means the deploy
+did not land.
 
 On ANY failure — a conflict, a failed deploy, a step you could not complete, a procedure that
 does not fit what you actually found:
@@ -41,7 +46,8 @@ does not fit what you actually found:
 - Every issue in the batch closes together or none does. There is no partial finish.
 - The CHANGELOG entry is written in English. Everything else — comments, your report — goes in
   the language the project works in.
-- finish is idempotent: re-running finds no claimed issues and returns closed:[].
+- finish is idempotent: while an attempt is running, calling it again with the same \`commit\`
+  answers that attempt; once it has finished, it answers the recorded outcome.
 - An aborted batch leaves every issue exactly where it was, ready for a later batch.
 - If the deploy comes up dead, REPAIR FORWARD. Never roll back, never revert a shared branch and
   never restore an earlier build: from inside this session you cannot tell an outage you caused

@@ -53,7 +53,7 @@ import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } 
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
-import { readLiveCommit, verifyDeployed } from './verify.js';
+import { readLiveCommit, type VerifyConfig, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
 export * from './errors.js';
@@ -246,13 +246,26 @@ export interface FinishReleaseBatchResult {
 export interface FinishReleaseBatchOptions {
   /** The commit the release says it pushed, for the probes to match against. */
   commit?: string | undefined;
+  /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
+  alreadyVerified?: boolean | undefined;
+  /** Called once verification is green, before the first issue closes. */
+  onVerified?: (() => Promise<void>) | undefined;
+  /**
+   * Called with the outcome before the run goes terminal. The run's close cascade ends the
+   * release job's own session, so anything that must be written about this finish is written here.
+   */
+  onClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
 }
 
-export async function finishReleaseBatch(
-  runId: string,
-  actor: TransitionActor,
-  options: FinishReleaseBatchOptions = {},
-): Promise<FinishReleaseBatchResult> {
+export type ReleaseRunRow = {
+  projectId: string;
+  metadata: unknown;
+  status: PipelineRunStatus;
+  releaseVersion: string | null;
+};
+
+/** The run a finish is about, or `undefined` when there is no row under that id. */
+export async function readReleaseRun(runId: string): Promise<ReleaseRunRow | undefined> {
   const [run] = await db
     .select({
       projectId: pipelineRuns.projectId,
@@ -263,6 +276,48 @@ export async function finishReleaseBatch(
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
+  return run;
+}
+
+/**
+ * Every refusal a finish can decide from the database alone, and the probe declaration the
+ * verification will read. Nothing here makes an outbound request, so a door may call it inline.
+ */
+export async function assertFinishable(runId: string, run: ReleaseRunRow): Promise<VerifyConfig> {
+  if (run.status === 'cancelled') throw new ReleaseBatchAbortedError();
+  // A release closes its roster claiming a ship. Without a version nothing afterwards can name
+  // WHICH release carried these issues, which is the one thing this path exists to make true, so
+  // it is refused by name rather than closed anyway. `createReleaseBatch` cuts the number inside
+  // the transaction that inserts the row, so a release row reaching here without one was not
+  // opened by it.
+  if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
+
+  const [job] = await db
+    .select({ payload: jobs.payload })
+    .from(jobs)
+    .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
+    .orderBy(desc(jobs.queuedAt))
+    .limit(1);
+  const jobSkill = (job?.payload as { skillName?: unknown } | null)?.skillName;
+  assertMethodFor(
+    readMethod(run.metadata),
+    typeof jobSkill === 'string' && jobSkill.length > 0 ? jobSkill : RELEASE_BATCH_SKILL,
+  );
+
+  const channels = await resolveReleaseChannels(run.projectId);
+  const closeVerify = channels[0]?.verify ?? null;
+  if (channels.length === 0 || channels.some((c) => !c.verify) || !closeVerify) {
+    throw new ReleaseProbesUndeclaredError();
+  }
+  return closeVerify;
+}
+
+export async function finishReleaseBatch(
+  runId: string,
+  actor: TransitionActor,
+  options: FinishReleaseBatchOptions = {},
+): Promise<FinishReleaseBatchResult> {
+  const run = await readReleaseRun(runId);
 
   const claimed = await db
     .select({
@@ -274,42 +329,24 @@ export async function finishReleaseBatch(
     .from(issues)
     .where(eq(issues.releaseBatchRunId, runId));
 
-  if (run?.status === 'completed' && claimed.length === 0) return { closed: [], failed: [] };
-
-  if (run?.status === 'cancelled') throw new ReleaseBatchAbortedError();
+  if (run?.status === 'completed' && claimed.length === 0) {
+    const done = { closed: [], failed: [] };
+    await options.onClosed?.(done);
+    return done;
+  }
 
   if (run) {
-    // A release closes its roster claiming a ship. Without a version nothing afterwards can name
-    // WHICH release carried these issues, which is the one thing this path exists to make true, so
-    // it is refused by name rather than closed anyway. `createReleaseBatch` cuts the number inside
-    // the transaction that inserts the row, so a release row reaching here without one was not
-    // opened by it.
-    if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
-
-    const [job] = await db
-      .select({ payload: jobs.payload })
-      .from(jobs)
-      .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
-      .orderBy(desc(jobs.queuedAt))
-      .limit(1);
-    const jobSkill = (job?.payload as { skillName?: unknown } | null)?.skillName;
-    assertMethodFor(
-      readMethod(run.metadata),
-      typeof jobSkill === 'string' && jobSkill.length > 0 ? jobSkill : RELEASE_BATCH_SKILL,
-    );
-
-    const channels = await resolveReleaseChannels(run.projectId);
-    const closeVerify = channels[0]?.verify ?? null;
-    if (channels.length === 0 || channels.some((c) => !c.verify) || !closeVerify) {
-      throw new ReleaseProbesUndeclaredError();
+    const closeVerify = await assertFinishable(runId, run);
+    if (!options.alreadyVerified) {
+      const meta = (run.metadata ?? {}) as Record<string, unknown>;
+      const outcome = await verifyDeployed({
+        cfg: closeVerify,
+        commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
+        expected: options.commit ?? null,
+      });
+      if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
     }
-    const meta = (run.metadata ?? {}) as Record<string, unknown>;
-    const outcome = await verifyDeployed({
-      cfg: closeVerify,
-      commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
-      expected: options.commit ?? null,
-    });
-    if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
+    await options.onVerified?.();
   }
 
   const closed: string[] = [];
@@ -350,9 +387,11 @@ export async function finishReleaseBatch(
   // aborted afterwards is still the one whose bytes are live.
   await markReleaseShipped(runId);
 
+  const result = { closed, failed };
+  await options.onClosed?.(result);
   await closeRunIfOneShot(runId, 'completed');
 
-  return { closed, failed };
+  return result;
 }
 
 export interface AbortReleaseBatchResult {

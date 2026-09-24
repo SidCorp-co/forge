@@ -338,3 +338,49 @@ describe('a probe url that does not parse (ISS-1127)', () => {
     await expect(readLiveCommit(MALFORMED)).rejects.toThrow();
   });
 });
+
+// A host that accepts the connection and never answers. Real sockets, because
+// the property is about what `fetch` does when nothing comes back.
+describe('a probe that never answers', () => {
+  async function silentHost(): Promise<{ url: string; close: () => Promise<void> }> {
+    const { createServer } = await import('node:http');
+    const server = createServer(() => {});
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const { port } = server.address() as import('node:net').AddressInfo;
+    return {
+      url: `http://127.0.0.1:${port}/version`,
+      close: () =>
+        new Promise<void>((done) => {
+          server.closeAllConnections();
+          server.close(() => done());
+        }),
+    };
+  }
+
+  it('is read as unreachable once its budget runs out', async () => {
+    vi.unstubAllGlobals();
+    const { readProbe } = await import('./verify.js');
+    const host = await silentHost();
+    const started = Date.now();
+    const reading = await readProbe({ url: host.url }, 300);
+    await host.close();
+    expect(reading.kind).toBe('unreachable');
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it('lets a verify window close by its own deadline', async () => {
+    vi.unstubAllGlobals();
+    const host = await silentHost();
+    const started = Date.now();
+    const outcome = await verifyDeployed({
+      cfg: { probes: [{ url: host.url }], timeoutSeconds: 1, stableReads: 1 },
+      commitBefore: null,
+      expected: null,
+      sleep: async () => {},
+    });
+    await host.close();
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok ? null : outcome.health).toBe('down');
+    expect(Date.now() - started).toBeLessThan(2_500);
+  });
+});

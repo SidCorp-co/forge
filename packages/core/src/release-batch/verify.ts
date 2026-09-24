@@ -80,13 +80,20 @@ export function describeProbeReading(probe: VerifyProbe, r: ProbeReading): strin
   }
 }
 
-export async function readProbe(probe: VerifyProbe): Promise<ProbeReading> {
+export const PROBE_REQUEST_CAP_MS = 10_000;
+
+/** One probe, read as `unreachable` once `timeoutMs` (never more than the cap) runs out. */
+export async function readProbe(
+  probe: VerifyProbe,
+  timeoutMs: number = PROBE_REQUEST_CAP_MS,
+): Promise<ProbeReading> {
   const url = new URL(probe.url);
   url.searchParams.set('_forge_cb', String(Math.random()).slice(2));
   try {
     const res = await fetch(url, {
       headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
       redirect: 'follow',
+      signal: AbortSignal.timeout(Math.max(1, Math.min(timeoutMs, PROBE_REQUEST_CAP_MS))),
     });
     if (!res.ok) return { kind: 'http-error', status: res.status };
     const text = await res.text();
@@ -127,8 +134,11 @@ export interface LiveState {
  * answering, identity is every probe agreeing on one commit. A fleet half on
  * the new build is healthy and has no identity, so the two stay apart.
  */
-export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
-  const reads = await Promise.all(cfg.probes.map(readProbe));
+export async function readLiveState(
+  cfg: VerifyConfig,
+  timeoutMs: number = PROBE_REQUEST_CAP_MS,
+): Promise<LiveState> {
+  const reads = await Promise.all(cfg.probes.map((p) => readProbe(p, timeoutMs)));
   const readings = reads.map((r, i) => describeProbeReading(cfg.probes[i] as VerifyProbe, r));
   const unhealthy = reads
     .map((r, i) => (probeIsHealthy(r) ? null : (readings[i] ?? null)))
@@ -215,7 +225,7 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
   };
 
   while (now() < deadline) {
-    state = await readLiveState(cfg);
+    state = await readLiveState(cfg, deadline - now());
     if (expected != null && claim === null) {
       return { ...failureFor(state, commitBefore, null, expected), readings: state.readings };
     }
@@ -323,7 +333,7 @@ export function deploymentConfirms(claimed: string, reported: string): boolean {
 }
 
 /** The one sentence a claim that is not a whole object name is refused with. */
-function notAWholeCommit(raw: string, identity: string | null): string {
+export function notAWholeCommit(raw: string, identity: string | null): string {
   const reported = identity === null ? '' : ` The deployment reports \`${identity}\`.`;
   return (
     `\`${raw.trim()}\` is not a whole commit — a release names all 40 hexadecimal characters ` +

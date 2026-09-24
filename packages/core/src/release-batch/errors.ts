@@ -95,6 +95,21 @@ export class ReleaseBatchAbortedError extends Error {
   }
 }
 
+/**
+ * A finish is already running on this batch for another commit. A second commit
+ * is a different claim about what shipped, not a retry of the first.
+ */
+export class ReleaseFinishInFlightError extends Error {
+  constructor(
+    public readonly requestId: string,
+    public readonly inFlightCommit: string | null,
+    public readonly askedCommit: string | null,
+  ) {
+    super('RELEASE_FINISH_IN_FLIGHT');
+    this.name = 'ReleaseFinishInFlightError';
+  }
+}
+
 export class ClaimConflictError extends Error {
   constructor(public readonly issueIds: string[]) {
     super('CLAIM_CONFLICT');
