@@ -11,9 +11,12 @@ import {
   withoutAges,
 } from './release-hold.js';
 
+const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
+
 const REPORT = {
   issueId: 'iss-1',
   broken: [],
+  serving: SERVING,
   unearned: [
     {
       criterion: 1,
@@ -31,6 +34,37 @@ describe('the hold a row carries (ISS-1215)', () => {
     expect(hold.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(hold.reason).toContain('criterion 1: no runtime witnessed it');
     expect(hold.reason).toContain('criterion 3: no verdict was recorded for it');
+  });
+
+  it('owes a person, since nothing dispatched claims a row at awaiting_release', () => {
+    expect(criteriaHold(REPORT).owes).toBe('human');
+  });
+
+  it('states each reason once, with every criterion it holds', () => {
+    const never = 'no verdict was recorded for it';
+    const unearned = [1, 2, 3, 5].map((criterion) => ({
+      criterion,
+      verdict: null,
+      standing: null,
+      why: never,
+    }));
+    const witnessed = {
+      criterion: 4,
+      verdict: 'pass',
+      standing: 'unwitnessed' as const,
+      why: 'no runtime',
+    };
+    const { reason } = criteriaHold({ ...REPORT, unearned: [...unearned, witnessed] });
+    expect(reason.split(never)).toHaveLength(2);
+    expect(reason).toContain(`each of criteria 1, 2, 3 and 5: ${never}`);
+    expect(reason).toContain('criterion 4: no runtime');
+  });
+
+  it('names the deployment a verdict must be judged at, or says the issue records none', () => {
+    expect(criteriaHold(REPORT).reason).toContain(`serving it, \`${SERVING}\``);
+    const unserved = criteriaHold({ ...REPORT, serving: null }).reason;
+    expect(unserved).toContain('records no deployment serving it');
+    expect(unserved).not.toContain('serving it, `');
   });
 
   it('reads back what was stored, and refuses a shape it cannot read', () => {
@@ -64,7 +98,7 @@ describe('the hold a row carries (ISS-1215)', () => {
   it('writes a comment carrying the reason, who owes it and the code', () => {
     const body = releaseHoldComment(criteriaHold(REPORT));
     expect(body).toContain('criterion 3: no verdict was recorded for it');
-    expect(body).toContain('which an agent run owes');
+    expect(body).toContain('which a person owes');
     expect(body).toContain('`release-hold: RELEASE_CRITERIA_UNEARNED`');
   });
 });

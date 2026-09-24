@@ -92,6 +92,8 @@ export interface IssueCriteriaReport {
   readonly unearned: readonly UnearnedCriterion[];
   /** Named beside `unearned` so a reader gets the citation and not only the consequence. */
   readonly broken: readonly BrokenCitations[];
+  /** The deployment this issue records as serving it: the identity a `runtime:` verdict must name. */
+  readonly serving: string | null;
 }
 
 /** Every name the tracker holds an attachment under for this issue, its comments' included. */
@@ -166,12 +168,20 @@ interface CriteriaRow {
 
 async function reportFor(row: CriteriaRow): Promise<IssueCriteriaReport> {
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
+  const identities = issueIdentities(row);
   const numbers = acceptanceCriteriaNumbers(row.acceptanceCriteria);
-  if (numbers.length === 0) return { issueId: row.id, unearned: [], broken: [] };
+  if (numbers.length === 0) {
+    return { issueId: row.id, unearned: [], broken: [], serving: identities.serving };
+  }
   const latest = await latestCriterionVerdicts(row.id);
   const held = await heldAttachmentNames(row.id);
-  const found = findingsFor(numbers, latest, issueIdentities(row), held);
-  return { issueId: row.id, unearned: found.unearned, broken: found.broken };
+  const found = findingsFor(numbers, latest, identities, held);
+  return {
+    issueId: row.id,
+    unearned: found.unearned,
+    broken: found.broken,
+    serving: identities.serving,
+  };
 }
 
 /** Every criterion these issues cannot be shown to have earned, and why each one is not earned. */

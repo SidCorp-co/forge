@@ -60,17 +60,38 @@ export function sameReleaseHold(a: ReleaseHold | null, b: ReleaseHold): boolean 
   );
 }
 
+function criteriaNamed(numbers: readonly number[]): string {
+  if (numbers.length === 1) return `criterion ${numbers[0]}`;
+  return `each of criteria ${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`;
+}
+
+/** One clause per distinct reason, carrying every criterion it holds, in first-criterion order. */
+function reasonsByWhy(report: IssueCriteriaReport): string {
+  const byWhy = new Map<string, number[]>();
+  for (const c of report.unearned) byWhy.set(c.why, [...(byWhy.get(c.why) ?? []), c.criterion]);
+  return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
+}
+
+/**
+ * Owed by a person: nothing dispatched claims a row at `awaiting_release`, and the release that
+ * would is the one holding it, so every act that moves the row from here is somebody's by hand.
+ */
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
-  const named = report.unearned.map((c) => `criterion ${c.criterion}: ${c.why}`).join('; ');
+  const judge = report.serving
+    ? `record a verdict on each criterion named, judged at the deployment this issue records as ` +
+      `serving it, \`${report.serving}\``
+    : 'this issue records no deployment serving it, so no verdict can earn a criterion yet: record ' +
+      'where the change runs, then a verdict on each criterion named, judged there';
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:
       `The automatic release carries only an issue whose every acceptance criterion is earned, and ` +
-      `this one is not — ${named}. Record a verdict on each criterion named, judged at the runtime ` +
-      'this issue records as serving it, or move the issue out of `awaiting_release` if it is not ' +
-      'to ship.',
-    owes: 'agent',
-    waitingFor: 'a verdict on each criterion named, at the runtime serving it',
+      `this one is not — ${reasonsByWhy(report)}. A person clears this: ${judge}; or, having seen ` +
+      'the change running in production, close the issue by hand; or move it out of ' +
+      '`awaiting_release` if it is not to ship.',
+    owes: 'human',
+    waitingFor:
+      'a verdict on each criterion named at the running deployment, or the issue closed by hand',
   };
 }
 

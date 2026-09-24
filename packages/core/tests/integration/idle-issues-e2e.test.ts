@@ -573,4 +573,25 @@ describe('An automatic release hold decides what an awaiting_release strand says
     const plain = await strandOf(unheld);
     expect([plain?.owes, plain?.waitingFor]).toEqual(['human', 'a person to release it']);
   });
+
+  it('closes a hold reason that ends in a full stop with that one full stop', async () => {
+    const releaseHold = {
+      code: 'RELEASE_CRITERIA_UNEARNED',
+      reason: 'criterion 3: no verdict was recorded for it. A person clears this.',
+      owes: 'human',
+      waitingFor: 'a verdict on each criterion named at the running deployment',
+    };
+    await seedIssue({
+      status: 'awaiting_release',
+      mergedAt: '2026-09-14T00:00:00.000Z',
+      sessionContext: { releaseHold },
+    });
+
+    await mods.reconcileIdleIssues(NOW);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]?.body).toContain('A person clears this. It is waiting for');
+    expect(emitted[0]?.body).not.toContain('..');
+    expect(emitted[0]?.body).toContain('a person owes the next move');
+  });
 });
