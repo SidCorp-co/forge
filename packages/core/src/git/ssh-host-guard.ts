@@ -78,11 +78,29 @@ function hostBlocked(): HTTPException {
   });
 }
 
+/** A remote's host and the one public address a connection to it must use. */
+export interface PinnedSshHost {
+  host: string;
+  address: string;
+}
+
+/** A host name git and ssh may be handed on a command line: letters, digits, dots and dashes. */
+const HOST_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/;
+
+function hostUnresolved(host: string): HTTPException {
+  return new HTTPException(400, {
+    message: `the repository host ${host} could not be resolved`,
+    cause: { code: 'HOST_UNRESOLVED' },
+  });
+}
+
 /**
- * Throws 400 unless `repoUrl` is an SSH-form remote whose host resolves only
- * to public addresses. Call BEFORE handing `repoUrl` to `testSshConnection`.
+ * Resolves `repoUrl`'s host once and returns the address to connect to, refusing an SSH-form
+ * check failure, an unresolvable host, or any private/reserved address. The connection must use
+ * the returned address (`ssh -o HostName=`): resolving again when ssh connects is a second answer
+ * a rebinding DNS server can make private after this one was public.
  */
-export async function assertSafeSshRepoUrl(repoUrl: string): Promise<void> {
+export async function pinSafeSshHost(repoUrl: string): Promise<PinnedSshHost> {
   if (classifyGitRemote(repoUrl) !== 'ssh') {
     throw invalidTransport();
   }
@@ -92,17 +110,41 @@ export async function assertSafeSshRepoUrl(repoUrl: string): Promise<void> {
   }
   if (isIPv4(host) || isIPv6(host)) {
     if (isPrivateOrReservedAddress(host)) throw hostBlocked();
-    return;
+    return { host, address: host };
   }
+  if (!HOST_NAME.test(host)) throw invalidTransport();
   let addresses: string[];
   try {
     addresses = (await dns.lookup(host, { all: true })).map((a) => a.address);
   } catch {
-    // Unresolvable host — let testSshConnection's own git ls-remote surface
-    // the friendly `host_unreachable` result instead of failing the guard.
-    return;
+    throw hostUnresolved(host);
   }
+  const [address] = addresses;
+  if (!address) throw hostUnresolved(host);
   if (addresses.some((addr) => isPrivateOrReservedAddress(addr))) {
     throw hostBlocked();
+  }
+  return { host, address };
+}
+
+/** True where `err` is `pinSafeSshHost` finding no address for the host. */
+export function isHostUnresolved(err: unknown): boolean {
+  return (
+    err instanceof HTTPException &&
+    (err.cause as { code?: string } | undefined)?.code === 'HOST_UNRESOLVED'
+  );
+}
+
+/**
+ * Throws 400 unless `repoUrl` is an SSH-form remote whose host resolves only
+ * to public addresses. An unresolvable host passes, so a connection test can
+ * answer `host_unreachable` in its own words.
+ */
+export async function assertSafeSshRepoUrl(repoUrl: string): Promise<void> {
+  try {
+    await pinSafeSshHost(repoUrl);
+  } catch (err) {
+    if (isHostUnresolved(err)) return;
+    throw err;
   }
 }

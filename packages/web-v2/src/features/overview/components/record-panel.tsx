@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ActionRecord } from "../derive";
-import { formatElapsed } from "../derive";
+import { ageText } from "../derive";
 
 export interface RecordPanelProps {
   title: string;
@@ -46,11 +46,11 @@ export function RecordPanel({ title, total, records, onClose }: RecordPanelProps
               >
                 <span className="font-medium">{r.label}</span>
                 <span className="truncate text-muted">{r.detail}</span>
-                <span className="ml-auto shrink-0 tabular-nums text-subtle">
-                  {r.ageSeconds === Number.MAX_SAFE_INTEGER
-                    ? "never ran"
-                    : formatElapsed(r.ageSeconds)}
-                </span>
+                {r.ageSeconds === null ? null : (
+                  <span className="ml-auto shrink-0 tabular-nums text-subtle">
+                    {ageText(r.ageSeconds)}
+                  </span>
+                )}
               </Link>
             </li>
           ))}

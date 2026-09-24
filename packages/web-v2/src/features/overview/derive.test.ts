@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionQueue } from "./derive";
+import { actionQueue, ageText } from "./derive";
 import type { PulseResponse, PulseWork } from "./types";
 
 function pulse(work: Partial<PulseWork>): PulseResponse {
@@ -116,6 +116,36 @@ describe("the action queue's production rows (ISS-1217)", () => {
       detail: "this project has no active GitHub binding",
       href: "/projects/sid-desk",
     });
+    expect(row?.hint).toBe(
+      "Forge cannot tell whether closed issues here reached the live branch: the comparison failed, was cut short, or was taken before they merged.",
+    );
+  });
+
+  it("gives an uncomparable project no age, since a refusal's reading time is not how long it has failed", () => {
+    const rows = actionQueue(
+      pulse({
+        liveUnmeasured: {
+          total: 1,
+          shown: [
+            {
+              id: "p1",
+              slug: "sid-desk",
+              name: "Sid Desk",
+              baseBranch: "staging",
+              liveBranch: "master",
+              reason: "no deploy key",
+            },
+          ],
+        },
+      }),
+      NOW,
+    );
+    const row = rows.find((r) => r.key === "liveUnmeasured");
+    expect(row?.records[0]?.ageSeconds).toBeNull();
+    expect(row?.oldestSeconds).toBeNull();
+    expect(ageText(row?.oldestSeconds ?? null)).toBeNull();
+    expect(ageText(0)).toBe("0s");
+    expect(ageText(Number.MAX_SAFE_INTEGER)).toBe("never ran");
   });
 
   it("shows neither row while both lists are empty", () => {
