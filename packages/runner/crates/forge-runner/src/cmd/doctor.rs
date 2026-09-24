@@ -4,6 +4,7 @@ use clap::Args as ClapArgs;
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
 use forge_runner_core::error::Error;
+use forge_runner_core::transport::pool::{self, PoolEntry, ReadFailure};
 use forge_runner_core::transport::{heartbeat, mcp_servers, runners, CoreClient};
 use forge_runner_core::update;
 
@@ -154,6 +155,16 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
 
+    // What the daemon recorded about its own pool reads. History, not a check of
+    // this run: the live read of each project follows in the online section.
+    if let Some(dir) = forge_runner_core::daemon::control::config_dir() {
+        let now = forge_runner_core::daemon::agent_activity::now_ms();
+        let recorded = forge_runner_core::daemon::pool_reads::report(&dir, now);
+        for line in super::status::pool_lines(&recorded, &cfg, now) {
+            println!("• {line}");
+        }
+    }
+
     // End-to-end online checks: heartbeat (token + reachability) and the
     // server-side assignment reconciliation. Gated behind `--offline`.
     if args.offline {
@@ -288,6 +299,16 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                 if let Some(handle) = mcp_rows.remove(&r.project_id) {
                     failed |= print_mcp_row(handle.await.unwrap_or(None));
                 }
+
+                let read = tokio::time::timeout(
+                    ONLINE_TIMEOUT,
+                    pool::list(&client, Some(&r.project_id), 20),
+                )
+                .await
+                .ok();
+                let (ok, line) = pool_row(&r.slug, read);
+                println!("{} pool         {line}", if ok { "✔" } else { "✖" });
+                failed |= !ok;
             }
         }
         Ok(Err(Error::Unauthorized)) => {
@@ -322,6 +343,29 @@ fn spawn_mcp_rows(
             )
         })
         .collect()
+}
+
+/// One project's pool, read live now. A failed read is ✖ and names what the
+/// endpoint answered — never an empty pool (ISS-1234). `None` is no answer
+/// inside the budget.
+fn pool_row(
+    slug: &str,
+    read: Option<std::result::Result<Vec<PoolEntry>, ReadFailure>>,
+) -> (bool, String) {
+    match read {
+        Some(Ok(items)) => (true, format!("{slug}: read, {} row(s) listed", items.len())),
+        Some(Err(f)) => (
+            false,
+            format!("{slug}: cannot read the pool — {}", f.reason),
+        ),
+        None => (
+            false,
+            format!(
+                "{slug}: cannot read the pool — no answer within {}s",
+                ONLINE_TIMEOUT.as_secs()
+            ),
+        ),
+    }
 }
 
 /// Print one project's MCP row, in the caller's order. `true` when it is a
@@ -405,6 +449,50 @@ fn check_bin(bin: &str, label: &str) -> bool {
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// ISS-1234 criterion 12.
+    #[test]
+    fn a_failed_pool_read_is_a_cross_naming_what_the_endpoint_answered() {
+        let (ok, line) = pool_row(
+            "sid-desk",
+            Some(Err(ReadFailure {
+                status: Some(520),
+                reason: "pool 520 (gateway: the origin returned an unknown error)".into(),
+            })),
+        );
+        assert!(!ok);
+        assert_eq!(
+            line,
+            "sid-desk: cannot read the pool — pool 520 (gateway: the origin returned an unknown error)"
+        );
+    }
+
+    #[test]
+    fn a_pool_read_with_no_status_says_the_transports_reason() {
+        let (ok, line) = pool_row(
+            "sid-desk",
+            Some(Err(ReadFailure {
+                status: None,
+                reason: "pool request: connection refused".into(),
+            })),
+        );
+        assert!(!ok);
+        assert!(line.ends_with("pool request: connection refused"), "{line}");
+    }
+
+    #[test]
+    fn a_pool_that_answered_nothing_in_time_is_a_cross_too() {
+        let (ok, line) = pool_row("sid-desk", None);
+        assert!(!ok);
+        assert!(line.contains("no answer within 5s"), "{line}");
+    }
+
+    #[test]
+    fn an_empty_pool_that_was_read_is_a_tick() {
+        let (ok, line) = pool_row("sid-desk", Some(Ok(Vec::new())));
+        assert!(ok);
+        assert_eq!(line, "sid-desk: read, 0 row(s) listed");
+    }
 
     /// A core that answers every MCP request after `delay`, for `n` requests.
     async fn slow_core(n: usize, delay: std::time::Duration) -> String {

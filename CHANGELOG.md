@@ -112,6 +112,8 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A machine that cannot read a project's work queue now says so on the Runners page** — since
+  when, how often, and the exact error — instead of looking the same as a queue with nothing in it.
 - **A machine whose work-declaration check has stopped deciding now says so on the Runners page** —
   how many runs it let through unchecked, how fast, and over what window — instead of only on the
   machine itself.
