@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { aggregateStepCosts, cardStatus, median, runGateNote } from "./derive";
+import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
 import type { PipelineIssueRow, RunGateCondition, StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
@@ -81,7 +82,6 @@ describe("aggregateStepCosts — the job types that actually ran (ISS-999)", () 
 });
 
 describe("cardStatus", () => {
-  const label = (s: string) => `label:${s}`;
   const issue = (over: Partial<PipelineIssueRow> = {}): PipelineIssueRow =>
     ({
       id: "i",
@@ -92,6 +92,7 @@ describe("cardStatus", () => {
       priority: "high",
       assigneeId: null,
       agentStatus: null,
+      held: true,
       ...over,
     }) as PipelineIssueRow;
   const queuedHealth = (reason?: string) =>
@@ -113,7 +114,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale") }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("waiting");
     expect(card.label).toBe("No runner online");
@@ -125,7 +125,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth() }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("queued");
     expect(card.label).toBe("Queued");
@@ -136,7 +135,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "running" }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("running");
     expect(card.label).toBeUndefined();
@@ -146,15 +144,27 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "failed" }),
       { status: "running" },
-      label as never,
     );
     expect(card.label).toBe("No runner online");
   });
 
-  it("falls back to the issue's own lifecycle label with no run and nothing queued", () => {
-    const card = cardStatus(issue(), undefined, label as never);
+  it("falls back to the lane word a held row reads with no run and nothing queued", () => {
+    const card = cardStatus(issue(), undefined);
     expect(card.domain).toBe("issue");
-    expect(card.label).toBe("label:in_progress");
+    expect(card.label).toBe("Running");
+    expect(card.status).toBe(statusToChip("in_progress"));
+  });
+
+  // ISS-1213: rows stood at `testing` for hours with nothing on them, their cards reading Running.
+  it("reads Stalled, in the stalled chip, on a row nothing holds", () => {
+    const card = cardStatus(issue({ status: "testing", held: false }), undefined);
+    expect([card.label, card.status]).toEqual(["Stalled", LABEL_VIEW.stalled.status]);
+    expect(card.status).not.toBe(statusToChip("testing"));
+  });
+
+  it("keeps a party's word on a row nothing holds, since no run was owed there", () => {
+    const card = cardStatus(issue({ status: "needs_info", held: false }), undefined);
+    expect(card.label).toBe("Needs a human");
   });
 });
 

@@ -93,7 +93,7 @@ describe("the column headed STATUS prints the kernel status", () => {
   });
 
   it("tells apart every status the lane folds onto Running", () => {
-    const folded = ISSUE_STATUSES.filter((s) => laneLabel(s) === "Running");
+    const folded = ISSUE_STATUSES.filter((s) => laneLabel(s, true) === "Running");
     expect(folded.length).toBeGreaterThan(1);
     const words = folded.map(printed);
     expect(new Set(words).size).toBe(folded.length);
@@ -101,7 +101,7 @@ describe("the column headed STATUS prints the kernel status", () => {
   });
 
   it("tells apart every status the lane folds onto Needs a human", () => {
-    const folded = ISSUE_STATUSES.filter((s) => laneLabel(s) === "Needs a human");
+    const folded = ISSUE_STATUSES.filter((s) => laneLabel(s, true) === "Needs a human");
     expect(folded.length).toBeGreaterThan(1);
     const words = folded.map(printed);
     expect(new Set(words).size).toBe(folded.length);

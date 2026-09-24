@@ -115,7 +115,8 @@ export function boardColumns(
   const reachable = new Set<AutonomousLabel>();
   for (const status of REGISTRY_ISSUE_STATUSES) {
     if (excluded.includes(status)) continue;
-    reachable.add(toAutonomousLabel(status));
+    reachable.add(toAutonomousLabel(status, true));
+    reachable.add(toAutonomousLabel(status, false));
   }
   return AUTONOMOUS_LABELS.filter((l) => reachable.has(l));
 }
@@ -125,12 +126,17 @@ export function labelTone(label: AutonomousLabel): SemanticTone {
   return LABEL_VIEW[label].tone;
 }
 
-/** Group issues into the board's columns by the label their status reads as. */
+/** The lane label a board row reads: its status, and whether anything is on it now. */
+export function rowLabel(issue: PipelineIssueRow): AutonomousLabel {
+  return toAutonomousLabel(issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number], issue.held);
+}
+
+/** Group issues into the board's columns by the label each row reads as. */
 export function groupIssuesByLabel(issues: PipelineIssueRow[] | undefined): LabelGroup[] {
   const columns = boardColumns();
   const buckets = new Map<AutonomousLabel, PipelineIssueRow[]>(columns.map((l) => [l, []]));
   for (const issue of issues ?? []) {
-    const label = toAutonomousLabel(issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number]);
+    const label = rowLabel(issue);
     const bucket = buckets.get(label);
     if (bucket) bucket.push(issue);
     else buckets.set(label, [issue]);
@@ -246,7 +252,6 @@ export function runGateNote(gate: RunGate | null | undefined): RunGateNote | nul
 export function cardStatus(
   issue: PipelineIssueRow,
   run: { status: PipelineRunStatus } | undefined,
-  labelStatus: (s: IssueStatus) => string,
 ): CardStatusView {
   const queued = deriveQueuedStep(issue.pipelineHealth, hasLiveAgentSession(issue.agentStatus));
   if (queued) {
@@ -265,9 +270,10 @@ export function cardStatus(
       waitingReason: "",
     };
   }
+  const label = rowLabel(issue);
   return {
-    status: statusToChip(issue.status as IssueStatus),
-    label: labelStatus(issue.status as IssueStatus),
+    status: label === "stalled" ? LABEL_VIEW.stalled.status : statusToChip(issue.status as IssueStatus),
+    label: LABEL_VIEW[label].label,
     domain: "issue",
     waitingReason: "",
   };

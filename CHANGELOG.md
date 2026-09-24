@@ -3087,6 +3087,9 @@
   set is now 59.
 
 ### Fixed
+- **The Pipeline board says Running only when something is working the issue.** An issue that
+  nothing is working now sits in a new Stalled column instead, and status menus name the status
+  you would move to.
 - **Release refusals from the issue list match Release settings.** They blamed a check that never
   failed rather than the runner that is down, and over fifty issues got "Invalid input". Automatic
   releases carry the oldest fifty at a time.

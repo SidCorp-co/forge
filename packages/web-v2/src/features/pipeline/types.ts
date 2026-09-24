@@ -146,6 +146,9 @@ export interface PipelineIssueRow {
   assigneeId: string | null;
   /** Derived by the search hydrator with `?withAgentSessions=true`. */
   agentStatus?: "running" | "queued" | "completed" | "failed" | null;
+  /** Whether anything is on the issue now, from the same hydrator — the lane reads "Running" only
+   *  where this is true and "Stalled" where it is not (ISS-1213). */
+  held: boolean;
   pipelineHealth?: PipelineHealth;
   metadata?: ({ branchConfig?: { branch?: string } | null } & Record<string, unknown>) | null;
 }

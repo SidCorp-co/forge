@@ -38,7 +38,6 @@ import {
 import { groupedTransitions, transitionLabels } from "../derive";
 import { useStatusExits } from "../hooks";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
-import { useLaneLabeller } from "../vocabulary";
 import { sinceLastWrite } from "../waiting";
 import {
   ISSUE_COMPLEXITIES,
@@ -187,7 +186,6 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
-  const laneLabel = useLaneLabeller();
   const { exits, isPending, isError } = useStatusExits();
   const items: MenuItem[] = [
     { label: "Open issue", icon: "arrowRight", onSelect: open },
@@ -206,10 +204,7 @@ function useRowMenuItems(
   } else if (isError) {
     items.push({ label: "Couldn't load status moves", disabled: true, separatorBefore: true });
   }
-  const statusNames = transitionLabels(
-    grouped.map((g) => g.to),
-    laneLabel,
-  );
+  const statusNames = transitionLabels(grouped.map((g) => g.to));
   for (const [i, g] of grouped.entries()) {
     items.push({
       label: `Status: ${statusNames[i]}`,
