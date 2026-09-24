@@ -286,10 +286,17 @@ describe('what an archive refuses, writing nothing', () => {
     expect(await archivedAt('old')).toBeNull();
   });
 
-  it('refuses a non-terminal issue, naming it and its status', async () => {
-    const res = await archive('archive', { filter: { keys: ['ISS-1', 'ISS-3'] } });
+  it('refuses a non-terminal issue, naming it and its status, and reports no row changed', async () => {
+    const filter = { keys: ['ISS-1', 'ISS-3'] };
+    const res = await archive('archive', { filter });
     expect(res.status).toBe(409);
     expect(res.body.message).toContain('ISS-3 is `open`');
+    const none = { matched: ['ISS-1', 'ISS-3'], changed: [], unchanged: [] };
+    expect(res.body.details).toMatchObject(none);
+    const dry = await archive('archive', { filter, dryRun: true });
+    expect(dry.body).toMatchObject({ ...none, refusals: [expect.anything()] });
+    const viaMcp = await mcp(adminPat, { action: 'archive', archiveFilter: filter });
+    expect(viaMcp.error).toContain('"changed":[]');
     expect(await archivedAt('old')).toBeNull();
   });
 
@@ -338,6 +345,9 @@ describe('archiving', () => {
     const res = await archive('archive', { filter: { keys: ['ISS-5', 'ISS-6', 'ISS-7'] } });
     expect(res.status).toBe(200);
     expect(res.body.changed).toEqual(['ISS-5', 'ISS-6', 'ISS-7']);
+    const refused = await archive('unarchive', { filter: { keys: ['ISS-5', 'ISS-999'] } });
+    expect(refused.body.details).toMatchObject({ matched: ['ISS-5'], changed: [], unchanged: [] });
+    expect(await archivedAt('pairA')).not.toBeNull();
   });
 
   it('archives once, answers what it changed, and keeps the first stamp on a second call', async () => {
