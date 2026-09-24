@@ -3080,6 +3080,8 @@
   set is now 59.
 
 ### Fixed
+- **A box no longer stops taking work because of a job pane nothing can account for.** One the box
+  has heard nothing from since the daemon began watching gives its slot back after an hour.
 - **A box whose masters were left unreachable now puts itself right.** Each is restarted where work
   is waiting, and whatever is left standing is named once for the whole box.
 - **A runner that has replaced its own binary no longer installs hooks that cannot run.** Its
