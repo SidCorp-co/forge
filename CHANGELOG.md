@@ -3080,6 +3080,8 @@
   set is now 59.
 
 ### Fixed
+- **A box whose masters were left unreachable now puts itself right.** Each is restarted where work
+  is waiting, and whatever is left standing is named once for the whole box.
 - **A runner that has replaced its own binary no longer installs hooks that cannot run.** Its
   safety gate and its turn reports name a file that is really there, and settings already written
   with a dead one are repaired.

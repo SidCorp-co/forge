@@ -76,8 +76,18 @@ ISS-1099 landed two things that do not turn on the identity model, and they are 
   `forge-runner master status` as a fourth answer beside the pane, the standing and the runner row,
   with how long it has stood and the act that ends it. A pane the box cannot place is not nudged.
 
-Neither lets a pane keep its authority. A pane in this state is still recovered only by ending it,
-which is an operator action. The box now says so, once, by name, on a surface that is not a log.
+Neither lets a pane keep its authority. The box now says so, once, by name, on a surface that is not
+a log.
+
+ISS-1208 then landed the recovery, which is also not this. Ending a pane is no longer an operator
+action: where the verdict is `stale` and the sweep's own placement reading says a replacement would
+be placed, the daemon ends the pane and places one carrying a capability minted for the session core
+serves now, and a sweep that found any deaf master writes one record naming every project affected.
+That closes the loop without touching the identity model — a pane still cannot keep its authority
+across a re-mint, it is now replaced by the box instead of by a person. **The price it pays is the
+third row of the table below**, which it pays every time it acts: the subagents a deaf master is
+running die with its pane, exactly as they do under `forge-runner master kill`. Shape 1 is what stops
+that bill arriving at all, because a pane that keeps its authority is never ended for having lost it.
 
 ## Honest costs
 
