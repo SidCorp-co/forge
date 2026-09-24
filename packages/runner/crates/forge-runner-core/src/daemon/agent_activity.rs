@@ -209,6 +209,8 @@ impl Activities {
                 a.children.clear();
                 a.awaiting_permission = false;
                 a.lead_ended = false;
+                // The old conversation's file ages nothing about this one.
+                a.transcript = None;
             }
             a.conversation = Some(seen.to_string());
         }
@@ -797,6 +799,35 @@ mod tests {
                 .transcript
                 .as_deref(),
             Some("/h/p/b.jsonl")
+        );
+    }
+
+    #[test]
+    fn a_new_conversation_does_not_inherit_the_old_ones_transcript() {
+        let acts = Activities::new();
+        let say = |conversation, transcript| {
+            acts.record(
+                "s1",
+                Report {
+                    event: Event::PromptSubmitted,
+                    at: 0,
+                    subject: None,
+                    conversation: Some(conversation),
+                    transcript,
+                },
+            )
+        };
+        say("conv-a", Some("/h/p/conv-a.jsonl"));
+        assert_eq!(
+            say("conv-b", None).transcript,
+            None,
+            "aging conversation B by A's file would conclude B while it works"
+        );
+        assert_eq!(
+            say("conv-b", Some("/h/p/conv-b.jsonl"))
+                .transcript
+                .as_deref(),
+            Some("/h/p/conv-b.jsonl")
         );
     }
 

@@ -184,8 +184,7 @@ impl JobPanes {
 
     /// The same, carrying what a previous daemon's sweep read of this agent,
     /// where its conversation is written and when the pane was opened, where
-    /// anything knows. A transcript path once known is not unlearned by a
-    /// caller that knows none.
+    /// anything knows.
     pub fn hold(
         &self,
         job_id: &str,
@@ -204,9 +203,7 @@ impl JobPanes {
                 h.pane = pane.to_string();
                 h.watch = watch.clone();
                 h.seen = seen;
-                if transcript.is_some() {
-                    h.transcript = transcript.clone();
-                }
+                h.transcript = transcript.clone();
                 h.opened_at = h.opened_at.or(opened_at);
             })
             .or_insert_with(|| Held {
@@ -310,12 +307,23 @@ impl JobPanes {
     }
 }
 
-/// The newest write to a session's own transcript: the path this daemon heard
-/// its hooks name, and otherwise the one a record carries. `None` where there
-/// is no path or nothing under it can be read — no evidence, never silence.
+/// Where a session's conversation is written. What this daemon has heard wins
+/// outright, a path it holds none of included: a session heard here that names
+/// no transcript has moved to a conversation the record's path does not belong
+/// to, or never named one. Only a session this daemon has heard nothing from
+/// is answered off the record a previous daemon left.
+pub fn transcript_of(said: Option<&Activity>, recorded: Option<&str>) -> Option<String> {
+    match said {
+        Some(a) => a.transcript.clone(),
+        None => recorded.map(str::to_string),
+    }
+}
+
+/// The newest write to that transcript. `None` where there is no path or
+/// nothing under it can be read — no evidence, never silence.
 pub fn written_at(said: Option<&Activity>, recorded: Option<&str>) -> Option<i64> {
-    let path = said.and_then(|a| a.transcript.as_deref()).or(recorded)?;
-    transcript_age::last_written(Path::new(path))
+    let path = transcript_of(said, recorded)?;
+    transcript_age::last_written(Path::new(&path))
 }
 
 /// The pane name a job runs under, and the only shape `adopt` can read back.
@@ -719,10 +727,7 @@ pub async fn supervise(
         // restart and will never speak again. A pane with neither is a session
         // this box knows nothing about, and `job_exit` keeps it.
         let seen = said.as_ref().map(job_exit::Reported::of).or(live.seen);
-        let transcript = said
-            .as_ref()
-            .and_then(|a| a.transcript.clone())
-            .or_else(|| live.transcript.clone());
+        let transcript = transcript_of(said.as_ref(), live.transcript.as_deref());
         if seen != live.seen || transcript != live.transcript {
             records
                 .note(&Live {
@@ -740,7 +745,9 @@ pub async fn supervise(
                 live.opened_at,
             );
         }
-        let written_at = written_at(said.as_ref(), transcript.as_deref());
+        let written_at = transcript
+            .as_deref()
+            .and_then(|p| transcript_age::last_written(Path::new(p)));
         if let Some(reason) =
             job_exit::verdict(&live.watch, seen, written_at, now).reason(&live.pane)
         {
@@ -2303,6 +2310,43 @@ mod tests {
         assert!(
             w.rec.failed.lock().unwrap().is_empty(),
             "a child working in its own file is the turn still running"
+        );
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_new_conversation_is_never_aged_by_the_old_ones_transcript() {
+        use crate::daemon::agent_activity::{Event, Report};
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        let home = TempHome::new("conv-switch");
+        let old = transcript_written(&home, PAST_SILENT * 3);
+        w.registry.hold(
+            "j1",
+            "forge-job-j1",
+            hooked("sess-1", PAST_THE_WINDOW),
+            None,
+            Some(old.clone()),
+            None,
+        );
+        let acts = Activities::new();
+        began_and_lost_its_end(&acts, "sess-1", PAST_SILENT * 3, &old);
+        acts.record(
+            "sess-1",
+            Report {
+                event: Event::PromptSubmitted,
+                at: now_ms() - PAST_SILENT * 2,
+                subject: None,
+                conversation: Some("conv-b"),
+                transcript: None,
+            },
+        );
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "conversation B named no transcript, so nothing ages it — not A's still file, whether held in memory or on the record"
         );
         assert_eq!(w.registry.count(), 1);
     }
