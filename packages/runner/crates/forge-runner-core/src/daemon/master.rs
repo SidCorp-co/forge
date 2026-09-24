@@ -1385,7 +1385,11 @@ async fn take_pool_job(
         .ok()
         .map(|r| r.repo_path);
     let took = pool_jobs::take_one(
-        &pool_jobs::CorePool { client, limit: 20 },
+        &pool_jobs::CorePool {
+            client,
+            limit: 20,
+            deadline: crate::transport::pool::CALL_DEADLINE,
+        },
         &pool_jobs::TmuxPanes,
         &pool_jobs::CoreReport { client },
         job_records,

@@ -3087,6 +3087,8 @@
   set is now 59.
 
 ### Fixed
+- **A machine whose queue read hangs now reports it instead of looking healthy.** A read with no
+  answer within 15 seconds counts as failed, and the error names its cause, not the address.
 - **A subagent's worktree is no longer removed while it can still resume.** Its run ends when its
   master closes it or the master's pane ends. A subagent silent for an hour is named, and kept.
 - **A job no runner can brief no longer blocks every job queued behind it.** PM runs and issue

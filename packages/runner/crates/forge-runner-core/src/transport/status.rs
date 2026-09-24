@@ -40,6 +40,51 @@ fn gateway(code: u16) -> Option<&'static str> {
     })
 }
 
+/// A call that got no status at all, named by what went wrong and then by the
+/// innermost cause the transport gave. `reqwest::Error`'s `Display` is neither:
+/// it prints `error sending request for url (<the whole url>)` for a refused
+/// connection, a reset and a dead network alike, and drops the source that says
+/// which, so three faults read as one phrase with a query string in it — the
+/// same shape as the status codes above, one level down (ISS-1234).
+pub fn unanswered(e: &reqwest::Error, deadline: std::time::Duration) -> String {
+    if e.is_timeout() {
+        return format!("timed out after {}", span(deadline));
+    }
+    let what = if e.is_connect() {
+        "could not connect"
+    } else if e.is_decode() {
+        "the body did not decode"
+    } else if e.is_body() {
+        "the body did not arrive whole"
+    } else if e.is_redirect() {
+        "the redirect could not be followed"
+    } else {
+        "the request failed"
+    };
+    match innermost(e) {
+        Some(cause) => format!("{what}: {cause}"),
+        None => what.to_string(),
+    }
+}
+
+/// The deepest source's own words, which is where the fault is named: hyper
+/// and the socket sit under reqwest's wrapper, and the wrapper names the url.
+fn innermost(e: &(dyn std::error::Error + 'static)) -> Option<String> {
+    let mut deepest = e.source()?;
+    while let Some(next) = deepest.source() {
+        deepest = next;
+    }
+    Some(deepest.to_string())
+}
+
+fn span(d: std::time::Duration) -> String {
+    if d.subsec_millis() == 0 {
+        format!("{}s", d.as_secs())
+    } else {
+        format!("{}ms", d.as_millis())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

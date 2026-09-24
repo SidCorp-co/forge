@@ -28,6 +28,41 @@ pub async fn serve_always(status: &'static str, body: &'static str) -> String {
     format!("http://{addr}")
 }
 
+/// Accepts every connection and never answers it, holding the socket open for
+/// as long as the test runs: the peer a call with no deadline waits on forever.
+pub async fn serve_silent() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((sock, _)) = listener.accept().await {
+            held.push(sock);
+        }
+    });
+    format!("http://{addr}")
+}
+
+/// Answers `200` with headers promising a body, sends half of it, and stalls:
+/// the peer that is slow after the status line rather than before it.
+pub async fn serve_stalled_body() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((mut sock, _)) = listener.accept().await {
+            let mut buf = [0u8; 2048];
+            let _ = sock.read(&mut buf).await;
+            let _ = sock
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n{\"items\":[",
+                )
+                .await;
+            held.push(sock);
+        }
+    });
+    format!("http://{addr}")
+}
+
 /// Like [`serve_always`], and keeps every request body it was sent, so a test
 /// can read what a box actually put on the wire rather than what it built.
 pub async fn serve_recording(
