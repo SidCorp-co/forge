@@ -978,7 +978,10 @@ impl Records for FileRecords {
                     .as_ref()
                     .map(|v| &v["seen"])
                     .and_then(job_exit::Reported::from_json),
-                transcript: field("transcript"),
+                // Absolute or not at all, the rule `agent_activity` holds a
+                // hook to: a relative path would be read against this
+                // daemon's cwd and age some other file.
+                transcript: field("transcript").filter(|p| Path::new(p).is_absolute()),
                 opened_at: held.as_ref().and_then(|v| v["openedAt"].as_i64()),
             });
         }
@@ -2987,6 +2990,24 @@ mod tests {
                 transcript: Some("/h/.claude/projects/-w/conv.jsonl".into()),
             }],
             "what a restart reads back is what decides whether the pane is still work in flight"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_record_naming_a_relative_transcript_reads_back_with_none() {
+        let home = TempHome::new("relative-transcript");
+        std::fs::write(
+            home.path().join("j1.json"),
+            r#"{"pane":"forge-job-j1","session":"sess-1","transcript":"conv.jsonl"}"#,
+        )
+        .expect("write");
+        let r = FileRecords {
+            dir: home.path().to_path_buf(),
+        };
+        assert_eq!(
+            r.all().await[0].transcript,
+            None,
+            "a path no hook could have named is no evidence, and never another file's age"
         );
     }
 
