@@ -1060,7 +1060,7 @@ export const issues = pgTable(
       (): SQL =>
         sql`left(${issues.title} || ' ' || coalesce(${issues.description}, '') || ' ' || coalesce(${issues.plan}, '') || ' ' || coalesce(${issues.acceptanceCriteria}, ''), 100000)`,
     ),
-    // ISS-1237 — set = archived: out of every discovery read, still answered by key.
+    // ISS-1237 — set = archived; which reads still answer it is `issues/archive-readers.test.ts`.
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

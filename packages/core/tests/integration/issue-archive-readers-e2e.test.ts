@@ -3,15 +3,15 @@
  * plan's first inventory. Each case holds an archived issue and a live control that differ only in
  * `archived_at`, so a read that ignores the column answers both and goes red.
  *
- * Beside them, the one caller the archive guard reaches that must answer rather than throw: a
+ * Beside them, the nightly consolidation, which reads no memory of an archived issue into its
+ * prompt; and the one caller the archive guard reaches that must answer rather than throw: a
  * Sentry regression on an archived closed issue is refused by name, like one on a dropped issue.
  */
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { AuthVars } from '../../src/middleware/auth.js';
+import { type Env, Hono } from 'hono';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestProjectMember,
@@ -20,6 +20,16 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+
+const llm = vi.hoisted(() => ({ prompts: [] as string[] }));
+vi.mock('../../src/memory/llm.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/memory/llm.js')>()),
+  fastModelConfigured: () => true,
+  callFastModel: async (prompt: string) => {
+    llm.prompts.push(prompt);
+    return '{"create":[],"update":[],"archive":[]}';
+  },
+}));
 
 let harness: TestDatabase;
 let projectId: string;
@@ -49,8 +59,8 @@ async function archive(keys: string[]) {
   });
 }
 
-async function get(path: string, routes: Hono<{ Variables: AuthVars }>, mount: string) {
-  const app = new Hono<{ Variables: AuthVars }>().route(mount, routes);
+async function get<E extends Env>(path: string, routes: Hono<E>, mount: string) {
+  const app = new Hono<E>().route(mount, routes);
   const res = await app.request(path, { headers: { Authorization: `Bearer ${token}` } });
   expect(res.status).toBe(200);
   return res.json();
@@ -148,6 +158,31 @@ describe('the discovery reads outside the plan inventory', () => {
     const buckets = await import('../../src/me/attention-buckets.js');
     expect((await buckets.selectMentions(userId)).map((r) => r.issSeq)).toEqual([2]);
     expect((await buckets.selectFailedJobs(userId)).map((r) => r.issSeq)).toEqual([2]);
+  });
+});
+
+describe('the nightly consolidation', () => {
+  it('reads no fact extracted from an archived issue, and keeps one from a live issue', async () => {
+    const archived = await seed(1, 'closed');
+    const live = await seed(2, 'closed');
+    await harness.db.execute(sql`
+      INSERT INTO comments (issue_id, author_id, body) VALUES (${live}, ${userId}, 'recent signal')`);
+    for (const [ref, issueId] of [
+      ['fact:archived', archived],
+      ['fact:live', live],
+    ]) {
+      await harness.db.execute(sql`
+        INSERT INTO memories (project_id, source, source_ref, text_content, metadata)
+        VALUES (${projectId}, 'knowledge', ${ref}, ${`the text of ${ref}`},
+                ${JSON.stringify({ issueId })}::jsonb)`);
+    }
+    await archive(['ISS-1']);
+    llm.prompts.length = 0;
+    const { runConsolidationForProject } = await import('../../src/memory/consolidation.js');
+    await runConsolidationForProject(projectId);
+    expect(llm.prompts).toHaveLength(1);
+    expect(llm.prompts[0]).toContain('the text of fact:live');
+    expect(llm.prompts[0]).not.toContain('the text of fact:archived');
   });
 });
 
