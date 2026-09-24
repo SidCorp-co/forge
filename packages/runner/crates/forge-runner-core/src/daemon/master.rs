@@ -444,7 +444,12 @@ fn since_nudge(seen: Option<&agent_activity::Activity>, sent_at: Option<u64>) ->
         return SinceNudge::NoTurn;
     }
     match now.doing() {
-        agent_activity::Doing::Working => SinceNudge::Working,
+        // A master's children are its dispatched runs, and the next nudge's own
+        // prompt clears any whose end was lost, so for a master a lead that
+        // ended over them is still work in flight.
+        agent_activity::Doing::Working | agent_activity::Doing::AwaitingChildren => {
+            SinceNudge::Working
+        }
         agent_activity::Doing::AwaitingPermission => SinceNudge::AwaitingPermission,
         agent_activity::Doing::Idle => {
             if now.turn_ended_failed {
@@ -5349,6 +5354,21 @@ mod give_back_tests {
         ]);
         assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Ran);
         assert!(!retry_owed(SinceNudge::Ran));
+    }
+
+    #[test]
+    fn a_master_that_ended_its_turn_over_a_dispatched_child_still_reads_as_working() {
+        let a = reported(&[
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::SubagentStarted, Some("child-1")),
+            (agent_activity::Event::Stopped, None),
+        ]);
+        assert_eq!(a.doing(), agent_activity::Doing::AwaitingChildren);
+        assert_eq!(
+            since_nudge(Some(&a), Some(0)),
+            SinceNudge::Working,
+            "a master's children are its runs in flight; ISS-1232 changed the job and run readings, not the nudge"
+        );
     }
 
     #[test]

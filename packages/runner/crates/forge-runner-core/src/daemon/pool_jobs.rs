@@ -1876,6 +1876,68 @@ mod tests {
         assert!(failed[0].1.contains("compacted"), "{}", failed[0].1);
     }
 
+    /// A lead that submitted, started `child-1`, and stopped `ago` ms ago, the
+    /// child's own stop never arriving.
+    fn stopped_over_a_lost_child(acts: &Activities, session: &str, ago: i64) {
+        use crate::daemon::agent_activity::{Event, Report};
+        let at = now_ms() - ago;
+        for (event, subject) in [
+            (Event::PromptSubmitted, None),
+            (Event::SubagentStarted, Some("child-1")),
+            (Event::Stopped, None),
+        ] {
+            acts.record(
+                session,
+                Report {
+                    event,
+                    at,
+                    subject,
+                    conversation: None,
+                },
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_pane_whose_child_end_was_lost_keeps_its_slot_inside_the_longer_window() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        stopped_over_a_lost_child(&acts, "sess-1", PAST_IDLE);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_pane_whose_child_end_was_lost_gives_the_slot_back_past_the_longer_window() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        stopped_over_a_lost_child(&acts, "sess-1", PAST_SILENT);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(
+            failed.len(),
+            1,
+            "a lost SubagentStop must not hold the slot for the life of the pane (ISS-1232)"
+        );
+        assert!(
+            failed[0].1.contains("forge-job-j1") && failed[0].1.contains("never reported an end"),
+            "{}",
+            failed[0].1
+        );
+        assert_eq!(w.registry.count(), 0);
+    }
+
     #[tokio::test]
     async fn a_sweep_leaves_what_it_read_on_the_job_record() {
         use crate::daemon::agent_activity::{Doing, Event};

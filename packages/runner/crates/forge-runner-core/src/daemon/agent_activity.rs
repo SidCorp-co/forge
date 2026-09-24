@@ -100,6 +100,14 @@ pub enum Doing {
     Working,
     /// Stopped on a question a human owes an answer to.
     AwaitingPermission,
+    /// The lead ended its turn, and a child it started has reported no end.
+    ///
+    /// Not `Working`: a child's end reaches this box by a hook that can be
+    /// lost, and nothing this daemon registers fires while a child works, so a
+    /// background child still running and one whose `SubagentStop` never
+    /// arrived read identically here. Only silence tells them apart, and how
+    /// long a reader waits on it is the reader's policy (ISS-1232).
+    AwaitingChildren,
     /// Nothing running, nothing asked.
     Idle,
 }
@@ -115,6 +123,10 @@ pub struct Activity {
     /// The conversation these claims belong to (Claude Code's `session_id`).
     pub conversation: Option<String>,
     awaiting_permission: bool,
+    /// That the lead's last boundary this daemon saw ENDED its turn. Children
+    /// this daemon holds without having seen that are still `Working`: after a
+    /// restart the lead may be mid-turn behind them.
+    lead_ended: bool,
     /// Bumped by every accepted event, so a caller can prove a NEW turn began
     /// rather than reading a turn that was already running as its own.
     pub sequence: u64,
@@ -127,6 +139,7 @@ impl Doing {
         match self {
             Self::Working => "working",
             Self::AwaitingPermission => "awaiting_permission",
+            Self::AwaitingChildren => "awaiting_children",
             Self::Idle => "idle",
         }
     }
@@ -135,6 +148,7 @@ impl Doing {
         Some(match s {
             "working" => Self::Working,
             "awaiting_permission" => Self::AwaitingPermission,
+            "awaiting_children" => Self::AwaitingChildren,
             "idle" => Self::Idle,
             _ => return None,
         })
@@ -146,10 +160,14 @@ impl Activity {
         if self.awaiting_permission {
             return Doing::AwaitingPermission;
         }
-        if self.turn_started_at.is_some() || !self.children.is_empty() {
+        if self.turn_started_at.is_some() {
             return Doing::Working;
         }
-        Doing::Idle
+        match (self.children.is_empty(), self.lead_ended) {
+            (true, _) => Doing::Idle,
+            (false, true) => Doing::AwaitingChildren,
+            (false, false) => Doing::Working,
+        }
     }
 }
 
@@ -172,6 +190,7 @@ impl Activities {
             children: std::collections::BTreeSet::new(),
             conversation: None,
             awaiting_permission: false,
+            lead_ended: false,
             sequence: 0,
             turn_ended_failed: false,
             prompts: 0,
@@ -181,6 +200,7 @@ impl Activities {
                 a.turn_started_at = None;
                 a.children.clear();
                 a.awaiting_permission = false;
+                a.lead_ended = false;
             }
             a.conversation = Some(seen.to_string());
         }
@@ -200,6 +220,7 @@ impl Activities {
             Event::PromptSubmitted => {
                 a.turn_started_at = Some(at);
                 a.awaiting_permission = false;
+                a.lead_ended = false;
                 a.prompts += 1;
             }
             Event::PermissionRequested => a.awaiting_permission = true,
@@ -207,6 +228,8 @@ impl Activities {
                 a.turn_started_at = None;
                 a.awaiting_permission = false;
                 a.turn_ended_failed = event == Event::StoppedFailed;
+                // A compaction ends nothing, so it leaves the lead where it stood.
+                a.lead_ended |= event != Event::Compacted;
             }
             Event::SubagentStarted => {
                 if let Some(id) = r.subject {
@@ -301,13 +324,29 @@ mod tests {
     }
 
     #[test]
-    fn a_leads_stop_over_a_live_child_is_still_working() {
+    fn a_leads_stop_over_a_child_with_no_reported_end_awaits_it_rather_than_working() {
+        for end in [Event::Stopped, Event::StoppedFailed] {
+            let a = acts();
+            a.record("s1", lead(Event::PromptSubmitted, 10));
+            a.record("s1", child(Event::SubagentStarted, 11, "c1"));
+            let after = a.record("s1", lead(end, 20));
+            assert_eq!(
+                after.doing(),
+                Doing::AwaitingChildren,
+                "{end:?}: a lead that ended its turn is not working because a child's end has not arrived — it may never, the hook that carries it can be lost (ISS-1232)"
+            );
+            assert_eq!(after.children.len(), 1, "the claim is kept, not dropped");
+        }
+    }
+
+    #[test]
+    fn a_leads_stop_over_a_live_child_ends_when_the_child_does() {
         let a = acts();
         a.record("s1", lead(Event::PromptSubmitted, 10));
         a.record("s1", child(Event::SubagentStarted, 11, "c1"));
         assert_eq!(
             a.record("s1", lead(Event::Stopped, 20)).doing(),
-            Doing::Working,
+            Doing::AwaitingChildren,
             "the child outlives the lead's boundary"
         );
         assert_eq!(
@@ -318,13 +357,91 @@ mod tests {
     }
 
     #[test]
+    fn a_lead_mid_turn_is_working_whatever_its_children() {
+        let a = acts();
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        assert_eq!(
+            a.record("s1", child(Event::SubagentStarted, 11, "c1"))
+                .doing(),
+            Doing::Working
+        );
+        a.record("s1", lead(Event::Stopped, 20));
+        a.record("s1", lead(Event::PromptSubmitted, 30));
+        assert_eq!(
+            a.record("s1", child(Event::SubagentStarted, 31, "c2"))
+                .doing(),
+            Doing::Working,
+            "a new turn clears the lead's end, so its children are that turn's"
+        );
+    }
+
+    #[test]
+    fn children_this_daemon_never_saw_the_lead_end_over_are_still_working() {
+        let a = acts();
+        assert_eq!(
+            a.record("s1", child(Event::SubagentStarted, 10, "c1"))
+                .doing(),
+            Doing::Working,
+            "after a restart the lead may be mid-turn behind a child this daemon heard start"
+        );
+    }
+
+    #[test]
+    fn a_background_child_started_after_the_leads_stop_is_awaited() {
+        let a = acts();
+        a.record("s1", lead(Event::PromptSubmitted, 10));
+        a.record("s1", lead(Event::Stopped, 20));
+        assert_eq!(
+            a.record("s1", child(Event::SubagentStarted, 30, "c1"))
+                .doing(),
+            Doing::AwaitingChildren
+        );
+        assert_eq!(
+            a.record("s1", child(Event::SubagentStopped, 40, "c1"))
+                .doing(),
+            Doing::Idle
+        );
+    }
+
+    #[test]
+    fn a_new_conversation_forgets_that_the_old_lead_ended() {
+        let a = acts();
+        let r = |event, subject, conversation| Report {
+            event,
+            at: 0,
+            subject,
+            conversation: Some(conversation),
+        };
+        a.record("s1", r(Event::PromptSubmitted, None, "conv-a"));
+        a.record("s1", r(Event::Stopped, None, "conv-a"));
+        assert_eq!(
+            a.record("s1", r(Event::SubagentStarted, Some("c1"), "conv-b"))
+                .doing(),
+            Doing::Working,
+            "the lead of conv-b has ended nothing this daemon saw"
+        );
+    }
+
+    #[test]
+    fn every_doing_wire_name_round_trips() {
+        for d in [
+            Doing::Working,
+            Doing::AwaitingPermission,
+            Doing::AwaitingChildren,
+            Doing::Idle,
+        ] {
+            assert_eq!(Doing::from_wire(d.wire()), Some(d), "{}", d.wire());
+        }
+    }
+
+    #[test]
     fn a_child_only_boundary_does_not_outlive_the_leads_next_turn() {
         let a = acts();
         a.record("s1", lead(Event::PromptSubmitted, 10));
         a.record("s1", child(Event::SubagentStarted, 11, "c1"));
         assert_eq!(
             a.record("s1", lead(Event::Stopped, 20)).doing(),
-            Doing::Working
+            Doing::AwaitingChildren
         );
         // The child's `SubagentStop` never comes. The lead speaking again is
         // what proves the claim stale.
@@ -358,8 +475,8 @@ mod tests {
         assert_eq!(
             a.record("s1", child(Event::SubagentStopped, 30, "c1"))
                 .doing(),
-            Doing::Working,
-            "one child of two finishing leaves the other working"
+            Doing::AwaitingChildren,
+            "one child of two finishing leaves the other still awaited"
         );
         assert_eq!(
             a.record("s1", child(Event::SubagentStopped, 40, "c2"))
@@ -517,7 +634,7 @@ mod tests {
         a.record("s1", lead(Event::PromptSubmitted, 10));
         a.record("s1", child(Event::SubagentStarted, 11, "c1"));
         a.record("s1", lead(Event::Stopped, 20));
-        assert_eq!(a.get("s1").unwrap().doing(), Doing::Working);
+        assert_eq!(a.get("s1").unwrap().doing(), Doing::AwaitingChildren);
         assert_eq!(
             a.record("s1", child(Event::TeammateWentIdle, 30, "c1"))
                 .doing(),
@@ -548,7 +665,7 @@ mod tests {
         assert_eq!(
             a.record("s1", child(Event::TeammateWentIdle, 30, "c1"))
                 .doing(),
-            Doing::Working,
+            Doing::AwaitingChildren,
             "one of two children going idle leaves the other gating"
         );
     }
