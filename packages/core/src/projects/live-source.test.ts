@@ -1,4 +1,3 @@
-import { HTTPException } from 'hono/http-exception';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
@@ -33,7 +32,6 @@ function deps(over: Partial<LiveSourceDeps> & { row?: DeployKeyRow }): LiveSourc
     githubClient: over.githubClient ?? (async () => noBinding()),
     deployKey:
       over.deployKey ?? (async () => over.row ?? { repoUrl: GITLAB, privateKeyEnc: keyEnc }),
-    assertSafeUrl: over.assertSafeUrl ?? (async () => {}),
   };
 }
 
@@ -64,14 +62,12 @@ describe('resolveLiveSource', () => {
   });
 
   it('reads with the decrypted deploy key where the project has no binding and an SSH repository', async () => {
-    const assertSafeUrl = vi.fn(async () => {});
-    const s = await resolveLiveSource('p', deps({ assertSafeUrl }));
+    const s = await resolveLiveSource('p', deps({}));
     expect(s).toEqual({
       kind: 'deploy_key',
       repoUrl: GITLAB,
       privateKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nsid-desk\n',
     });
-    expect(assertSafeUrl).toHaveBeenCalledWith(GITLAB);
   });
 
   it('tells a GitLab-hosted project with no key where to attach one, and never to bind GitHub', async () => {
@@ -123,23 +119,6 @@ describe('resolveLiveSource', () => {
     vi.stubEnv('INTEGRATION_MASTER_KEY', '');
     const s = await resolveLiveSource('p', deps({}));
     expect(s.kind === 'refused' && s.reason).toMatch(/no secret vault configured/);
-  });
-
-  it('refuses a repository whose host resolves to a private address', async () => {
-    const s = await resolveLiveSource(
-      'p',
-      deps({
-        assertSafeUrl: async () => {
-          throw new HTTPException(400, {
-            message: 'that host resolves to a private/internal address',
-          });
-        },
-      }),
-    );
-    expect(s).toEqual({
-      kind: 'refused',
-      reason: `${GITLAB} cannot be read: that host resolves to a private/internal address`,
-    });
   });
 });
 

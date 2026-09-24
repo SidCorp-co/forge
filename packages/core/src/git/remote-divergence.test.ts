@@ -68,6 +68,29 @@ afterAll(() => {
 });
 
 describe('fetchDivergence', () => {
+  it('keeps a message byte for byte, whitespace and separator bytes included', async () => {
+    const odd = join(root, 'odd');
+    git(root, 'init', '--quiet', '--initial-branch=master', odd);
+    git(odd, 'commit', '--quiet', '--allow-empty', '-m', 'root');
+    const tree = git(odd, 'rev-parse', 'HEAD^{tree}');
+    const message = '  leading spaces\x1e (ISS-419)\n\n\ttrailing tab and spaces  ';
+    const sha = execFileSync('git', ['commit-tree', tree, '-p', git(odd, 'rev-parse', 'HEAD')], {
+      cwd: odd,
+      env: { ...process.env, ...author },
+      input: `${message}\n`,
+    })
+      .toString()
+      .trim();
+    git(odd, 'update-ref', 'refs/heads/staging', sha);
+    const d = await fetchDivergence(
+      `file://${odd}`,
+      env,
+      { baseRef: 'staging', liveRef: 'master' },
+      scratch(),
+    );
+    expect(d).toMatchObject({ ok: true, aheadBy: 1, commits: [{ sha, message }] });
+  });
+
   it('lists the commits on base that live lacks, each with its whole message', async () => {
     const d = await fetchDivergence(
       `file://${remote}`,
@@ -213,6 +236,37 @@ describe('a fetch that outgrows its budget', () => {
     expect(survivors(dir)).toBe('');
   });
 
+  it('keeps every file the fetch writes, together, within the byte budget', async () => {
+    const dir = scratch();
+    const budget = 2 * 1024 * 1024;
+    const many = join(root, 'many');
+    git(root, 'init', '--quiet', '--initial-branch=master', many);
+    git(many, 'commit', '--quiet', '--allow-empty', '-m', 'root');
+    git(many, 'checkout', '--quiet', '-b', 'staging');
+    for (let i = 0; i < 40; i += 1) {
+      writeFileSync(join(many, `f${i}.bin`), randomBytes(64 * 1024));
+    }
+    git(many, 'add', '.');
+    git(many, 'commit', '--quiet', '-m', 'forty files the filter would have left behind');
+    const d = await fetchDivergence(
+      `file://${many}`,
+      env,
+      { baseRef: 'staging', liveRef: 'master' },
+      dir,
+      {
+        ...REMOTE_FETCH_LIMITS,
+        maxBytes: budget,
+      },
+    );
+    expect(d.ok).toBe(false);
+    const total = Number(
+      execFileSync('du', ['-sb', join(dir, 'live-reading.git')])
+        .toString()
+        .split('\t')[0],
+    );
+    expect(total).toBeLessThanOrEqual(budget);
+  });
+
   it('keeps the default budget above what the commits-only fetch of a real history costs', async () => {
     const d = await fetchDivergence(
       `file://${fat}`,
@@ -226,12 +280,26 @@ describe('a fetch that outgrows its budget', () => {
 });
 
 describe('readRemoteDivergence', () => {
-  it('reaches a remote over ssh only, so no other transport is read with the deploy key', async () => {
+  it('refuses a remote that is not an SSH remote before git or the key is used', async () => {
     const d = await readRemoteDivergence(
       { repoUrl: `file://${remote}`, privateKey: 'not a key' },
       { baseRef: 'staging', liveRef: 'master' },
     );
-    expect(d.ok).toBe(false);
-    expect(!d.ok && d.reason).toMatch(/transport 'file' not allowed/);
+    expect(d).toEqual({
+      ok: false,
+      reason: `file://${remote} cannot be read: set an SSH clone URL (git@host:org/repo.git or ssh://host/…)`,
+    });
+  });
+
+  it('refuses a remote on a private address before connecting to it', async () => {
+    const d = await readRemoteDivergence(
+      { repoUrl: 'git@10.0.0.7:sid/desk.git', privateKey: 'not a key' },
+      { baseRef: 'staging', liveRef: 'master' },
+    );
+    expect(d).toEqual({
+      ok: false,
+      reason:
+        'git@10.0.0.7:sid/desk.git cannot be read: that host resolves to a private/internal address and cannot be probed',
+    });
   });
 });

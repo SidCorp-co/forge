@@ -1,10 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
 import { type BranchRefs, readRemoteDivergence } from '../git/remote-divergence.js';
-import { assertSafeSshRepoUrl } from '../git/ssh-host-guard.js';
 import {
   GitHubClientError,
   type GitHubRepoClient,
@@ -29,7 +27,6 @@ export interface DeployKeyRow {
 export interface LiveSourceDeps {
   githubClient: (projectId: string) => Promise<GitHubRepoClient>;
   deployKey: (projectId: string) => Promise<DeployKeyRow>;
-  assertSafeUrl: (repoUrl: string) => Promise<void>;
 }
 
 async function deployKeyRow(projectId: string): Promise<DeployKeyRow> {
@@ -46,7 +43,6 @@ async function deployKeyRow(projectId: string): Promise<DeployKeyRow> {
 const defaultDeps: LiveSourceDeps = {
   githubClient: githubRepoClient,
   deployKey: deployKeyRow,
-  assertSafeUrl: assertSafeSshRepoUrl,
 };
 
 /** The host a remote names, for a sentence; the URL itself where no host can be read from it. */
@@ -108,12 +104,6 @@ export async function resolveLiveSource(
       kind: 'refused',
       reason: `the deploy key attached to this project could not be decrypted (the vault master key may have rotated) — attach it again under ${GIT_ACCESS}`,
     };
-  }
-  try {
-    await deps.assertSafeUrl(repoUrl);
-  } catch (err) {
-    if (!(err instanceof HTTPException)) throw err;
-    return { kind: 'refused', reason: `${repoUrl} cannot be read: ${err.message}` };
   }
   return { kind: 'deploy_key', repoUrl, privateKey };
 }

@@ -3,6 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { HTTPException } from 'hono/http-exception';
+import { isHostUnresolved, pinSafeSshHost } from './ssh-host-guard.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -86,13 +88,17 @@ function firstLine(s: string): string {
 }
 
 /**
- * Run `fn` with the environment git needs to reach an SSH remote as `privateKey` and nothing else:
- * the key in a 0700 temp dir, a known_hosts of its own, no prompt, and the ssh transport only.
+ * Run `fn` with the environment git needs to reach `repoUrl` as `privateKey` and nothing else: the
+ * key in a 0700 temp dir, a known_hosts of its own, no prompt, the ssh transport only, and ssh
+ * pinned to the one public address the host guard resolved. Throws the guard's HTTPException for a
+ * remote it refuses, before any key is written.
  */
 export async function withDeployKey<T>(
   privateKey: string,
+  repoUrl: string,
   fn: (env: NodeJS.ProcessEnv, dir: string) => Promise<T>,
 ): Promise<T> {
+  const pin = await pinSafeSshHost(repoUrl);
   return withTempDir(async (dir) => {
     const keyPath = join(dir, 'id_deploy');
     await writeFile(keyPath, privateKey.endsWith('\n') ? privateKey : `${privateKey}\n`, {
@@ -115,6 +121,10 @@ export async function withDeployKey<T>(
       'ConnectTimeout=10',
       '-o',
       'LogLevel=ERROR',
+      '-o',
+      `HostName=${pin.address}`,
+      '-o',
+      `HostKeyAlias=${pin.host}`,
     ].join(' ');
     return fn(
       {
@@ -129,53 +139,61 @@ export async function withDeployKey<T>(
 }
 
 export async function testSshConnection(repoUrl: string, privateKey: string): Promise<SshConnTest> {
-  return withDeployKey(privateKey, async (env) => {
-    try {
-      const { stdout } = await execFileAsync('git', ['ls-remote', repoUrl, 'HEAD'], {
-        env,
-        timeout: 20_000,
-        maxBuffer: 1_000_000,
-      });
-      const headSha = stdout.trim().split(/\s+/)[0];
-      return {
-        ok: true,
-        code: 'authenticated',
-        message: 'Deploy key authenticated — the repository is reachable.',
-        ...(headSha ? { headSha } : {}),
-      };
-    } catch (err) {
-      const e = err as { stderr?: string | Buffer; killed?: boolean; signal?: string };
-      const stderr = (e.stderr ?? '').toString();
-      const low = stderr.toLowerCase();
-      if (e.killed || e.signal === 'SIGTERM') {
-        return { ok: false, code: 'timeout', message: 'Connection timed out after 20s.' };
-      }
-      if (low.includes('permission denied')) {
-        return {
-          ok: false,
-          code: 'auth_denied',
-          message:
-            'Permission denied — this deploy key is not authorised on the repository. Add the public key (with write access) to the repo.',
-        };
-      }
-      if (
-        low.includes('could not resolve hostname') ||
-        low.includes('connection timed out') ||
-        low.includes('network is unreachable') ||
-        low.includes('connection refused')
-      ) {
-        return { ok: false, code: 'host_unreachable', message: 'Could not reach the git host.' };
-      }
-      if (low.includes('repository not found') || low.includes('does not exist')) {
-        return {
-          ok: false,
-          code: 'not_found',
-          message: 'Repository not found — check the repo URL (or the key may lack access to it).',
-        };
-      }
-      return { ok: false, code: 'error', message: firstLine(stderr) || 'git ls-remote failed.' };
+  return withDeployKey(privateKey, repoUrl, (env) => lsRemote(repoUrl, env)).catch(
+    (err: unknown): SshConnTest => {
+      if (!(err instanceof HTTPException)) throw err;
+      const code = isHostUnresolved(err) ? 'host_unreachable' : 'error';
+      return { ok: false, code, message: err.message };
+    },
+  );
+}
+
+async function lsRemote(repoUrl: string, env: NodeJS.ProcessEnv): Promise<SshConnTest> {
+  try {
+    const { stdout } = await execFileAsync('git', ['ls-remote', repoUrl, 'HEAD'], {
+      env,
+      timeout: 20_000,
+      maxBuffer: 1_000_000,
+    });
+    const headSha = stdout.trim().split(/\s+/)[0];
+    return {
+      ok: true,
+      code: 'authenticated',
+      message: 'Deploy key authenticated — the repository is reachable.',
+      ...(headSha ? { headSha } : {}),
+    };
+  } catch (err) {
+    const e = err as { stderr?: string | Buffer; killed?: boolean; signal?: string };
+    const stderr = (e.stderr ?? '').toString();
+    const low = stderr.toLowerCase();
+    if (e.killed || e.signal === 'SIGTERM') {
+      return { ok: false, code: 'timeout', message: 'Connection timed out after 20s.' };
     }
-  });
+    if (low.includes('permission denied')) {
+      return {
+        ok: false,
+        code: 'auth_denied',
+        message:
+          'Permission denied — this deploy key is not authorised on the repository. Add the public key (with write access) to the repo.',
+      };
+    }
+    if (
+      low.includes('could not resolve hostname') ||
+      low.includes('connection timed out') ||
+      low.includes('network is unreachable') ||
+      low.includes('connection refused')
+    ) {
+      return { ok: false, code: 'host_unreachable', message: 'Could not reach the git host.' };
+    }
+    if (low.includes('repository not found') || low.includes('does not exist')) {
+      return {
+        ok: false,
+        code: 'not_found',
+        message: 'Repository not found — check the repo URL (or the key may lack access to it).',
+      };
+    }
+    return { ok: false, code: 'error', message: firstLine(stderr) || 'git ls-remote failed.' };
+  }
 }
 
 /**
