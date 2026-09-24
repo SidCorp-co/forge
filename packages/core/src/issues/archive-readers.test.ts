@@ -1,8 +1,8 @@
 /**
  * ISS-1237 — every query that reads `issues` decides about archived rows, checked rather than
- * remembered. A file reading the table must compose `issueArchiveSide(...)`, name
- * `issues.archivedAt`, or compose `memoryOfLiveIssue`; otherwise it is listed below with the
- * reason it may answer an archived issue.
+ * remembered. A file reading the table must compose `issueArchiveSide(...)`, filter on
+ * `issues.archivedAt` with `isNull`/`isNotNull`, or compose `memoryOfLiveIssue`; otherwise it is
+ * listed below with the reason it may answer an archived issue.
  *
  * A read may answer one when it is keyed by an id, key, seq, commit or run somebody named; when it
  * reads only statuses an archived issue never holds (archiving takes `closed` and `dropped` only);
@@ -64,6 +64,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/drop-unblock.ts': 'by issue id',
   'issues/entry-criteria.ts': 'by issue id',
   'issues/extras-routes.ts': 'by id; pipeline timing is an aggregate with no identity',
+  'issues/list-projection.ts':
+    'runs the where its callers build; the list and search routes compose the predicate into it',
   'issues/merge-record.ts': 'by issue id',
   'issues/merge-routes.ts': 'by issue id',
   'issues/merged-at.ts': 'by issue id, a guard',
@@ -154,9 +156,9 @@ function stripComments(src: string): string {
 
 const READS_ISSUES = [
   /\.(?:from|innerJoin|leftJoin|rightJoin)\(\s*(?:schema\.)?issues\b/,
-  /\b(?:from|join)\s+"?issues"?\b/i,
+  /\b(?:from|join)\s+(?:"?public"?\.)?"?issues"?\b/i,
 ];
-const DECIDES = /issueArchiveSide\(|issues\.archivedAt|memoryOfLiveIssue/;
+const DECIDES = /issueArchiveSide\(|memoryOfLiveIssue|is(?:Not)?Null\(\s*issues\.archivedAt\)/;
 
 type Reading = 'reads-and-decides' | 'reads-undecided' | 'no-read';
 
@@ -201,6 +203,13 @@ describe('every reader of issues decides about archived rows (ISS-1237)', () => 
     expect(classify('sql`SELECT 1 FROM issues i`')).toBe('reads-undecided');
     expect(classify('sql`select title from issues`')).toBe('reads-undecided');
     expect(classify('sql`SELECT 1 FROM issues_archive`')).toBe('no-read');
+    expect(classify('sql`SELECT title FROM "public"."issues"`')).toBe('reads-undecided');
+    expect(classify('db.select({ archivedAt: issues.archivedAt }).from(issues)')).toBe(
+      'reads-undecided',
+    );
+    expect(classify('db.select().from(issues).where(isNull(issues.archivedAt))')).toBe(
+      'reads-and-decides',
+    );
     expect(classify('db.select().from(issues).where(and(...issueArchiveSide(false)))')).toBe(
       'reads-and-decides',
     );
