@@ -22,13 +22,13 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { holderFanout } from './lease-fanout.js';
 import { readReleaseHold } from './release-hold.js';
 import {
   classifyLease,
   type LeaseReading,
   leaseHolderOf,
   leaseIsReleasable,
-  leaseIsUnexpired,
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
 } from './session-claim.js';
@@ -312,38 +312,6 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
     );
   }
   return rows;
-}
-
-/**
- * How many non-terminal issues each holder on this page holds an unexpired lease on.
- *
- * Counted here rather than in SQL because every field of the lease may be unreadable, and a cast
- * inside the query would throw on the first row this pass exists to name.
- */
-async function holderFanout(
-  leases: readonly unknown[],
-  now: Date,
-): Promise<ReadonlyMap<string, number>> {
-  const holders = [...new Set(leases.map(leaseHolderOf).filter((h): h is string => h !== null))];
-  const counts = new Map<string, number>();
-  if (holders.length === 0) return counts;
-
-  const rows = (await db.execute(sql`
-    SELECT i.session_context -> 'lease' AS lease
-      FROM issues i
-     WHERE i.status NOT IN ('closed', 'dropped')
-       AND i.session_context -> 'lease' ->> 'holder' IN (${sql.join(
-         holders.map((h) => sql`${h}`),
-         sql`, `,
-       )})
-  `)) as unknown as Array<{ lease: unknown }>;
-
-  for (const row of rows) {
-    const holder = leaseHolderOf(row.lease);
-    if (holder === null || !leaseIsUnexpired(row.lease, now)) continue;
-    counts.set(holder, (counts.get(holder) ?? 0) + 1);
-  }
-  return counts;
 }
 
 /** Which of these projects has a runner the job pool would admit — that module's own predicate. */
