@@ -150,11 +150,19 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
   let lost = false;
   let chain: Promise<unknown> = Promise.resolve();
 
-  function commit(patch: (r: ReleaseFinishRecord) => Partial<ReleaseFinishRecord>) {
+  type Patch = (r: ReleaseFinishRecord) => Partial<ReleaseFinishRecord>;
+
+  /** With `ifCancelled`, `patch` lands only on an open run and `ifCancelled` on a cancelled one. */
+  function commit(patch: Patch, ifCancelled?: Patch) {
     const step = chain.then(async () => {
       if (lost) throw new ReleaseFinishFenceLostError();
-      const next = stamp(current, patch(current));
-      if (!(await compareAndSet(runId, current.version, next))) {
+      let next = stamp(current, patch(current));
+      let landed = await compareAndSet(runId, current.version, next, { runOpen: !!ifCancelled });
+      if (!landed && ifCancelled) {
+        next = stamp(current, ifCancelled(current));
+        landed = await compareAndSet(runId, current.version, next);
+      }
+      if (!landed) {
         lost = true;
         throw new ReleaseFinishFenceLostError();
       }
@@ -328,17 +336,17 @@ export async function runReleaseBatchFinish(
     if (own.code === 'RELEASE_FINISH_ERRORED') {
       logger.error({ err, runId }, 'release-batch: a finish stopped on an unexpected error');
     }
-    // An abort is why an aborted batch's attempt ended, whatever else it met first.
-    const aborted = await wasAborted(runId).catch(() => false);
-    const refusal = aborted ? refusalOf(new ReleaseBatchAbortedError()) : own;
+    const failed = (refusal: FinishRefusal) => () => ({
+      state: 'failed' as const,
+      refusal,
+      owner: null,
+      leaseUntil: null,
+      finishedAt: new Date().toISOString(),
+    });
+    // An abort is why an aborted batch's attempt ended, whatever else it met first, and the
+    // run's status is read by the write itself, so an abort landing just before it still wins.
     await hold
-      .commit(() => ({
-        state: 'failed',
-        refusal,
-        owner: null,
-        leaseUntil: null,
-        finishedAt: new Date().toISOString(),
-      }))
+      .commit(failed(own), failed(refusalOf(new ReleaseBatchAbortedError())))
       .catch(() => {});
   } finally {
     clearInterval(heartbeat);

@@ -133,6 +133,20 @@ async function untilState(runId: string, state: string): Promise<void> {
   throw new Error(`the attempt never reached ${state}`);
 }
 
+/** Wait until a write to `pipeline_runs` in this database is blocked on a lock. */
+async function untilAWriteWaits(): Promise<void> {
+  for (let i = 0; i < 100; i += 1) {
+    const waiting = await harness.db.execute(sql`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'
+        AND query ILIKE 'update "pipeline_runs"%'
+    `);
+    if (Number(waiting[0]?.n ?? 0) > 0) return;
+    await new Promise((d) => setTimeout(d, 20));
+  }
+  throw new Error('no write to pipeline_runs ever waited on the held row');
+}
+
 /** Abort the batch while its attempt is verifying, then let the probe go green or stay red. */
 async function abortMidVerify(runId: string, goesGreen = true): Promise<void> {
   await accept(runId, PUSHED);
@@ -236,6 +250,41 @@ describe('a batch aborted after its verification went green', () => {
   }, 30_000);
 });
 
+describe('a batch aborted just before its attempt writes its refusal', () => {
+  it('ends the attempt as aborted rather than with the refusal it was about to write', async () => {
+    const { runId } = await twoIssueBatch();
+    serving = PUSHED;
+    await accept(runId, PUSHED);
+    let cancelling: Promise<void> | null = null;
+
+    // The run row is held as the attempt fails, so its terminal write waits behind the lock;
+    // the cancel then commits first, as an abort landing between the worker's last read and
+    // its write does.
+    await job.runReleaseBatchFinish(runId, {
+      beforeFinishedWrite: async () => {
+        let held!: () => void;
+        const locked = new Promise<void>((done) => {
+          held = done;
+        });
+        cancelling = harness.db.transaction(async (tx) => {
+          await tx.execute(sql`SELECT id FROM pipeline_runs WHERE id = ${runId} FOR UPDATE`);
+          held();
+          await untilAWriteWaits();
+          await tx.execute(sql`UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${runId}`);
+        });
+        await locked;
+        throw new Error('planted: the terminal write failed');
+      },
+    });
+    await (cancelling as unknown as Promise<void>);
+
+    expect(await stored(runId)).toMatchObject({
+      state: 'failed',
+      refusal: { code: 'RELEASE_BATCH_ABORTED' },
+    });
+  }, 30_000);
+});
+
 describe('a batch aborted while the door is taking its finish', () => {
   it('refuses the finish and writes no record when the abort lands between the read and the write', async () => {
     const { runId } = await twoIssueBatch();
@@ -247,15 +296,7 @@ describe('a batch aborted while the door is taking its finish', () => {
     await harness.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM pipeline_runs WHERE id = ${runId} FOR UPDATE`);
       answer = refusalCode(() => accept(runId, PUSHED));
-      for (let i = 0; i < 100; i += 1) {
-        const waiting = await harness.db.execute(sql`
-          SELECT count(*)::int AS n FROM pg_stat_activity
-          WHERE datname = current_database() AND wait_event_type = 'Lock'
-            AND query ILIKE 'update "pipeline_runs"%'
-        `);
-        if (Number(waiting[0]?.n ?? 0) > 0) break;
-        await new Promise((d) => setTimeout(d, 20));
-      }
+      await untilAWriteWaits();
       await tx.execute(sql`UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${runId}`);
     });
 
