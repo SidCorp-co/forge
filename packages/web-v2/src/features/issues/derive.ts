@@ -3,7 +3,6 @@ import {
 	type AutonomousLabel,
 	LABEL_TO_KERNEL,
 	statusesForLabels,
-	toAutonomousLabel,
 	type WritableLabel,
 } from "@forge/contracts/issue-vocabulary";
 import {
