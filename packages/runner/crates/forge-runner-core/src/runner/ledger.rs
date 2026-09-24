@@ -1786,8 +1786,9 @@ impl Ledger {
     /// master's close or its master's death ends a subagent run (ISS-1246).
     ///
     /// The newest stop wins, so a replayed or reordered hook cannot move the
-    /// time back; `transcript` is kept where a frame names none; and any notice
-    /// already given is cleared, because the silence it was about has ended.
+    /// time back; `transcript` is kept where a frame names none; and a notice
+    /// already given is cleared only by a stop newer than the one it was about,
+    /// so a replayed stop cannot have the same silence said twice.
     pub fn note_turn_end(
         &self,
         run_id: &str,
@@ -1799,7 +1800,8 @@ impl Ledger {
             .execute(
                 "UPDATE runs SET turn_ended_at_ms = MAX(COALESCE(turn_ended_at_ms, ?2), ?2),
                         agent_transcript = COALESCE(?3, agent_transcript),
-                        kept_notice = NULL
+                        kept_notice = CASE WHEN turn_ended_at_ms IS NULL OR ?2 > turn_ended_at_ms
+                                           THEN NULL ELSE kept_notice END
                   WHERE run_id = ?1 AND ended_by IS NULL",
                 params![run_id, at_ms, transcript],
             )
@@ -3374,6 +3376,28 @@ mod tests {
             led.note_kept("run-1", "quiet").unwrap(),
             "the next silence is said again"
         );
+    }
+
+    #[test]
+    fn a_replayed_stop_leaves_the_notice_standing_and_only_a_newer_one_clears_it() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.note_turn_end("run-1", 2_000, None).unwrap();
+        assert!(led.note_kept("run-1", "quiet").unwrap());
+        for replayed in [2_000, 1_000] {
+            led.note_turn_end("run-1", replayed, None).unwrap();
+            assert_eq!(
+                led.run("run-1").unwrap().unwrap().kept_notice.as_deref(),
+                Some("quiet"),
+                "a stop at {replayed} is the one already said, or older"
+            );
+            assert!(
+                !led.note_kept("run-1", "quiet").unwrap(),
+                "so it is not said again"
+            );
+        }
+        led.note_turn_end("run-1", 3_000, None).unwrap();
+        assert_eq!(led.run("run-1").unwrap().unwrap().kept_notice, None);
     }
 
     #[test]

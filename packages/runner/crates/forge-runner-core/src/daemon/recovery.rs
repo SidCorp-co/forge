@@ -1325,6 +1325,102 @@ mod tests {
         (led, wt, transcript)
     }
 
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    /// A repository with a remote, and the subagent's checkout a real git
+    /// worktree of it with its branch pushed, as the incident trees were. The
+    /// ISS-1217 tree kept its directory and lost its `.git/worktrees` entry, so
+    /// a plain directory cannot show the harm.
+    fn a_subagent_run_in_a_worktree(scratch: &Scratch) -> (Ledger, PathBuf, PathBuf, PathBuf) {
+        let root = scratch.0.join("repo");
+        std::fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q", "-b", "main"]);
+        git(&root, &["config", "user.email", "t@t"]);
+        git(&root, &["config", "user.name", "t"]);
+        std::fs::write(root.join("f.txt"), "base").unwrap();
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-q", "-m", "base"]);
+        let remote = scratch.0.join("remote.git");
+        std::fs::create_dir_all(&remote).unwrap();
+        git(&remote, &["init", "-q", "--bare", "-b", "main"]);
+        git(
+            &root,
+            &["remote", "add", "origin", &remote.to_string_lossy()],
+        );
+        git(&root, &["push", "-q", "-u", "origin", "main"]);
+        let wt = root
+            .join(".claude")
+            .join("worktrees")
+            .join("iss-1217-judge");
+        git(
+            &root,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                &wt.to_string_lossy(),
+                "-b",
+                "ISS-1217",
+            ],
+        );
+        std::fs::write(wt.join("verdict.md"), "judged").unwrap();
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "judge"]);
+        git(&wt, &["push", "-q", "-u", "origin", "ISS-1217"]);
+
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: MASTER.into(),
+            worktree_path: wt.clone(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1217".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        assert!(led.bind_agent("run-1", "a1217judge").unwrap());
+        let transcript = crate::daemon::transcript_age::child_transcript(
+            &scratch.0.join("conv.jsonl"),
+            "a1217judge",
+        )
+        .unwrap();
+        (led, root, wt, transcript)
+    }
+
+    /// Git still registers `wt` as a worktree of `root`: the half of a tree
+    /// the ISS-1217 judge found gone while its directory stood.
+    fn registered(root: &Path, wt: &Path) -> bool {
+        let Ok(want) = std::fs::canonicalize(wt) else {
+            return false;
+        };
+        git(root, &["worktree", "list", "--porcelain"])
+            .lines()
+            .filter_map(|l| l.strip_prefix("worktree "))
+            .any(|p| std::fs::canonicalize(p).ok().as_ref() == Some(&want))
+    }
+
+    struct NoProcess;
+    #[async_trait::async_trait]
+    impl crate::runner::terminate::ProcessGroup for NoProcess {
+        async fn kill(&self, _pid: u32) -> crate::runner::inflight::Reaped {
+            crate::runner::inflight::Reaped::NotFound
+        }
+    }
+
     fn stop_at(led: &Ledger, at_ms: i64, transcript: Option<&Path>) {
         let path = transcript.map(|p| p.to_string_lossy().into_owned());
         assert!(led.note_turn_end("run-1", at_ms, path.as_deref()).unwrap());
@@ -1379,7 +1475,7 @@ mod tests {
     #[tokio::test]
     async fn the_iss_1135_run_that_stopped_to_wait_on_its_monitor_keeps_its_tree_across_sweeps() {
         let scratch = Scratch::new("iss-1135");
-        let (mut led, wt, transcript) = a_subagent_run(&scratch);
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
         let beats = Beats::default();
         let stop = now_ms() - 2 * MIN_MS;
         transcript_written_at(&transcript, stop);
@@ -1391,6 +1487,10 @@ mod tests {
             let r = sweep(&mut led, &master_alive(), &beats).await;
             assert_still_held(&led, &r, &wt, &format!("resumed sweep {n}"));
         }
+        assert!(
+            registered(&root, &wt),
+            "git still knows the tree it is writing in"
+        );
         assert_eq!(
             kept(&led),
             None,
@@ -1406,7 +1506,7 @@ mod tests {
     #[tokio::test]
     async fn the_iss_1217_judge_that_finished_keeps_its_tree_until_its_master_closes_it() {
         let scratch = Scratch::new("iss-1217");
-        let (mut led, wt, transcript) = a_subagent_run(&scratch);
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
         let beats = Beats::default();
         let stop = now_ms() - 3 * 60 * MIN_MS;
         transcript_written_at(&transcript, stop);
@@ -1415,6 +1515,10 @@ mod tests {
             let r = sweep(&mut led, &master_alive(), &beats).await;
             assert_still_held(&led, &r, &wt, &format!("three hours quiet, sweep {n}"));
         }
+        assert!(
+            registered(&root, &wt),
+            "a dispatcher resuming it now finds a worktree git still knows, not a bare directory"
+        );
         assert_eq!(kept(&led).as_deref(), Some("quiet"), "and the box says so");
 
         led.end_run("run-1", "master", "its report is in").unwrap();
@@ -1424,6 +1528,52 @@ mod tests {
         assert!(
             r.owed_release,
             "its master's close is the one act that disowns a resume, so the tree goes back now: {r:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_iss_1217_judge_is_released_once_its_master_closes_it() {
+        let scratch = Scratch::new("iss-1217-release");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let stop = now_ms() - 3 * 60 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        stop_at(&led, stop, Some(&transcript));
+        sweep(&mut led, &master_alive(), &Beats::default()).await;
+        led.end_run("run-1", "master", "its report is in").unwrap();
+        let r = sweep(&mut led, &master_alive(), &Beats::default())
+            .await
+            .expect("owed");
+        assert!(r.owed_release, "{r:?}");
+
+        let leases = Leases(Mutex::new(HashSet::new()));
+        let released = crate::runner::terminate::release(
+            &mut led,
+            "run-1",
+            crate::runner::terminate::Forcing {
+                this_boot: "boot-a",
+                repo_root: &root,
+                base_branch: Some("main"),
+                by: "recovery",
+                reason: "its master closed it",
+            },
+            crate::runner::terminate::Ports {
+                procs: &NoProcess,
+                sessions: &Sessions,
+                leases: &leases,
+            },
+            now_ms() / 1000,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(released, crate::runner::terminate::Release::Done(_)),
+            "the release the close licensed is taken, not only owed: {released:?}"
+        );
+        assert!(!wt.exists(), "the tree is off the disk");
+        assert!(!registered(&root, &wt), "and out of git's registry");
+        assert!(
+            git(&root, &["branch", "--list", "ISS-1217"]).contains("ISS-1217"),
+            "the judge's branch, pushed before the close, is kept"
         );
     }
 
