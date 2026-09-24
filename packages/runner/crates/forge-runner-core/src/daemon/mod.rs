@@ -37,6 +37,7 @@ pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
 pub mod terminal;
+pub mod transcript_age;
 pub mod turn_evidence;
 
 /// Make this test binary's `tracing` events survive long enough to be captured.

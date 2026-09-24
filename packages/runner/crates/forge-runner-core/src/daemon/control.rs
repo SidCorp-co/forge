@@ -38,6 +38,19 @@ pub fn socket_path() -> Option<PathBuf> {
     Some(cfg.with_file_name("control.sock"))
 }
 
+/// What a hook payload names beside its event, carried from the pane's hook to
+/// the daemon as one value, so a field the payload gains is added in one place.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct HookNames {
+    /// `agent_id` for a child event; `teammate_name` on `TeammateIdle`.
+    pub agent_id: Option<String>,
+    /// Claude Code's own `session_id` — the conversation, not Forge's session.
+    pub conversation_id: Option<String>,
+    pub agent_type: Option<String>,
+    /// Claude Code's own `transcript_path`.
+    pub transcript_path: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
@@ -54,6 +67,9 @@ enum Request {
         conversation_id: Option<String>,
         #[serde(default)]
         agent_type: Option<String>,
+        /// Claude Code's own `transcript_path` — where that conversation is written.
+        #[serde(default)]
+        transcript_path: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     RunDeclare {
@@ -225,11 +241,12 @@ fn agent_event(
     ctl: &Arc<Control>,
     event: &str,
     at_ms: Option<i64>,
-    agent_id: Option<&str>,
-    conversation_id: Option<&str>,
-    agent_type: Option<&str>,
+    names: &HookNames,
     session_id: &str,
 ) -> ClaimReply {
+    let agent_id = names.agent_id.as_deref();
+    let conversation_id = names.conversation_id.as_deref();
+    let agent_type = names.agent_type.as_deref();
     let Some(parsed) = crate::daemon::agent_activity::Event::from_wire(event) else {
         return ClaimReply::refused(format!("unknown_event: {event}"));
     };
@@ -240,6 +257,7 @@ fn agent_event(
             at: at_ms.unwrap_or_else(crate::daemon::agent_activity::now_ms),
             subject: agent_id,
             conversation: conversation_id,
+            transcript: names.transcript_path.as_deref(),
         },
     );
     bind_or_release(ctl, parsed, agent_id, agent_type, session_id);
@@ -734,14 +752,18 @@ fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimRep
             agent_id,
             conversation_id,
             agent_type,
+            transcript_path,
             ..
         } => agent_event(
             ctl,
             &event,
             at_ms,
-            agent_id.as_deref(),
-            conversation_id.as_deref(),
-            agent_type.as_deref(),
+            &HookNames {
+                agent_id,
+                conversation_id,
+                agent_type,
+                transcript_path,
+            },
             session_id,
         ),
         Request::RunDeclare {
@@ -865,9 +887,7 @@ pub async fn request_agent_event(
     _path: &std::path::Path,
     _token: &str,
     _event: &str,
-    _agent_id: Option<&str>,
-    _conversation_id: Option<&str>,
-    _agent_type: Option<&str>,
+    _names: &HookNames,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }
@@ -894,19 +914,19 @@ pub async fn request_agent_event(
     path: &std::path::Path,
     token: &str,
     event: &str,
-    agent_id: Option<&str>,
-    conversation_id: Option<&str>,
-    agent_type: Option<&str>,
+    names: &HookNames,
 ) -> std::io::Result<ClaimReply> {
-    ask(
-        path,
-        serde_json::json!({
-            "op": "agent_event", "token": token, "event": event,
-            "agentId": agent_id, "conversationId": conversation_id,
-            "agentType": agent_type
-        }),
-    )
-    .await
+    ask(path, agent_event_frame(token, event, names)).await
+}
+
+/// The frame the pane's hook puts on the socket for one event, built where a
+/// test can decode it into `Request` without a socket.
+pub fn agent_event_frame(token: &str, event: &str, names: &HookNames) -> serde_json::Value {
+    serde_json::json!({
+        "op": "agent_event", "token": token, "event": event,
+        "agentId": names.agent_id, "conversationId": names.conversation_id,
+        "agentType": names.agent_type, "transcriptPath": names.transcript_path
+    })
 }
 
 /// The frame the pane's hook puts on the socket, built where a test can decode it
@@ -1006,6 +1026,50 @@ mod tests {
             Some("sess-a".to_string()),
             "a session that can name another session can describe it as working or stopped, and every liveness reader on the box believes it (ISS-964 criterion 30)"
         );
+    }
+
+    /// What a lead event of one conversation names, and nothing else.
+    fn conv(id: &str) -> HookNames {
+        HookNames {
+            conversation_id: Some(id.into()),
+            ..HookNames::default()
+        }
+    }
+
+    #[test]
+    fn the_frame_the_hook_sends_carries_the_transcript_path_the_daemon_decodes() {
+        let names = HookNames {
+            agent_id: None,
+            conversation_id: Some("conv-a".into()),
+            agent_type: None,
+            transcript_path: Some("/home/u/.claude/projects/-w/conv-a.jsonl".into()),
+        };
+        let frame = agent_event_frame("t1", "UserPromptSubmit", &names);
+        let req: Request = serde_json::from_value(frame).expect("the hook's own frame must decode");
+        let Request::AgentEvent {
+            transcript_path, ..
+        } = &req
+        else {
+            panic!("a frame whose op is `agent_event` must decode as one");
+        };
+        assert_eq!(
+            transcript_path.as_deref(),
+            Some("/home/u/.claude/projects/-w/conv-a.jsonl"),
+            "without it a turn whose end was lost has nothing the daemon can age (ISS-1244)"
+        );
+    }
+
+    #[test]
+    fn a_frame_from_a_hook_that_names_no_transcript_still_decodes() {
+        let frame = r#"{"op":"agent_event","token":"t1","event":"Stop","conversationId":"c"}"#;
+        let req: Request = serde_json::from_str(frame).expect("must decode");
+        let Request::AgentEvent {
+            transcript_path, ..
+        } = &req
+        else {
+            panic!("a frame whose op is `agent_event` must decode as one");
+        };
+        assert!(transcript_path.is_none());
     }
 
     fn declaring_control(session_id: &str, project_id: &str) -> (Arc<Control>, String) {
@@ -1913,7 +1977,7 @@ mod tests {
         fn a_master_pane_event_puts_that_pane_and_its_conversation_in_the_ledger() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
 
-            agent_event(&ctl, "Stop", None, None, Some("conv-abc"), None, "sess-a");
+            agent_event(&ctl, "Stop", None, &conv("conv-abc"), "sess-a");
 
             let held = ctl.ledger.lock().unwrap();
             let row = held
@@ -1929,8 +1993,8 @@ mod tests {
         fn an_event_without_a_conversation_leaves_the_stored_one_alone() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
 
-            agent_event(&ctl, "Stop", None, None, Some("conv-abc"), None, "sess-a");
-            agent_event(&ctl, "Stop", None, None, None, None, "sess-a");
+            agent_event(&ctl, "Stop", None, &conv("conv-abc"), "sess-a");
+            agent_event(&ctl, "Stop", None, &HookNames::default(), "sess-a");
 
             let held = ctl.ledger.lock().unwrap();
             let row = held
@@ -1946,18 +2010,28 @@ mod tests {
             );
         }
         #[test]
+        fn an_event_puts_the_transcript_its_hook_named_on_that_sessions_activity() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let names = HookNames {
+                transcript_path: Some("/h/.claude/projects/-w/conv-abc.jsonl".into()),
+                ..conv("conv-abc")
+            };
+
+            agent_event(&ctl, "UserPromptSubmit", None, &names, "sess-job");
+
+            assert_eq!(
+                ctl.activity
+                    .get("sess-job")
+                    .and_then(|a| a.transcript)
+                    .as_deref(),
+                Some("/h/.claude/projects/-w/conv-abc.jsonl")
+            );
+        }
+        #[test]
         fn a_session_that_is_not_a_registered_master_writes_no_row() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
 
-            agent_event(
-                &ctl,
-                "Stop",
-                None,
-                None,
-                Some("conv-zzz"),
-                None,
-                "some-other-session",
-            );
+            agent_event(&ctl, "Stop", None, &conv("conv-zzz"), "some-other-session");
 
             let held = ctl.ledger.lock().unwrap();
             let row = held.as_ref().unwrap().master_for_project("proj-1").unwrap();
