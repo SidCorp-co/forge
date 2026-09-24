@@ -272,11 +272,8 @@ mod tests {
     /// A relative `PATH` entry names a different file from a different
     /// directory, and what this feeds is written into a checkout and read from
     /// wherever git happens to run (consult ae035c F1).
-    #[cfg(unix)]
     #[test]
     fn a_match_under_a_relative_path_entry_comes_back_absolute() {
-        use std::os::unix::fs::PermissionsExt;
-
         struct UnderCwd(PathBuf);
         impl Drop for UnderCwd {
             fn drop(&mut self) {
@@ -290,7 +287,11 @@ mod tests {
         std::fs::create_dir_all(&here.0).expect("dir under cwd");
         let exe = here.0.join("forge-runner");
         std::fs::write(&exe, "#!/bin/sh\nexit 0\n").expect("write");
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
 
         let relative = PathBuf::from(&leaf);
         assert!(

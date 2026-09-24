@@ -1257,17 +1257,20 @@ mod hook_repair_tests {
         dir
     }
 
-    #[cfg(unix)]
+    /// A file `is_runnable` accepts, on every platform this crate builds for:
+    /// the sweep this proves reads and rewrites files, and has no shell in it.
     fn runnable(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let p = dir.join(name);
         std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write");
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
         p
     }
 
     /// A checkout whose settings file names a program nothing can run.
-    #[cfg(unix)]
     fn poisoned_checkout(root: &std::path::Path, slug: &str) -> std::path::PathBuf {
         let repo = root.join(slug);
         let settings = crate::daemon::hook_install::settings_path(&repo);
@@ -1282,7 +1285,6 @@ mod hook_repair_tests {
         repo
     }
 
-    #[cfg(unix)]
     #[test]
     fn every_bound_project_is_swept_and_not_only_the_one_being_dispatched_to() {
         let root = scratch("all-bindings");
@@ -1313,7 +1315,6 @@ mod hook_repair_tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_binding_whose_checkout_is_not_there_does_not_stop_the_rest_of_the_sweep() {
         let root = scratch("missing-checkout");

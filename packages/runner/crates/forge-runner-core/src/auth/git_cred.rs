@@ -344,7 +344,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_runner_this_can_write_is_named_exactly_as_it_stands() {
         let path = std::path::PathBuf::from("/opt/Forge Runner/forge-runner");

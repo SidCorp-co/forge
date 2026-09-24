@@ -251,6 +251,58 @@ mod tests {
             .unwrap()
     }
 
+    /// Which of this module's cases are hidden from a platform, and why.
+    ///
+    /// `#[cfg(unix)]` on a case whose subject has no platform in it does not
+    /// make that platform's job pass — it makes it silent, and a green over a
+    /// case that was never compiled is evidence of nothing. Nine of the cases
+    /// below carried one until the Windows job could not compile the helper
+    /// they shared and said so; that is the only reason anybody found out.
+    ///
+    /// So the exception set is named here rather than left to whoever reads a
+    /// diff. A tenth cannot be added quietly: this fails, and the way past it
+    /// is to say in this list what unix thing the new case needs.
+    #[test]
+    fn every_case_this_module_hides_from_a_platform_says_what_it_needs_unix_for() {
+        const SOURCE: &str = include_str!("hook_install.rs");
+
+        // name => the unix-only thing it cannot be written without.
+        const EARNED: [(&str, &str); 3] = [
+            (
+                "a_runner_under_a_path_with_a_space_is_what_the_hook_actually_invokes",
+                "runs the command through `sh`",
+            ),
+            (
+                "a_runner_under_a_path_holding_a_quote_is_still_invoked",
+                "runs the command through `sh`",
+            ),
+            (
+                "a_runner_under_a_path_that_is_not_utf8_is_refused_by_name",
+                "builds a path from bytes with OsStrExt, which only unix has",
+            ),
+        ];
+
+        let hidden = crate::platform_scope::tests_hidden_off_unix(SOURCE);
+
+        for name in &hidden {
+            assert!(
+                EARNED.iter().any(|(earned, _)| earned == name),
+                "{name} is hidden from every platform that is not unix and nothing says why. If \
+                 it needs a unix shell, a file mode or a non-UTF-8 path, add it to EARNED with \
+                 the reason; otherwise take the cfg off — what this module decides about a path \
+                 has no platform in it, and a case Windows never compiles makes that job's green \
+                 empty."
+            );
+        }
+        for (earned, why) in EARNED {
+            assert!(
+                hidden.iter().any(|name| name == earned),
+                "{earned} is listed as needing unix ({why}) and is not hidden any more — drop it \
+                 from EARNED so the list stays a list of live exceptions"
+            );
+        }
+    }
+
     #[test]
     fn every_event_the_daemon_understands_is_registered() {
         let out = merged_for(None, "/bin/fr", true).unwrap();
@@ -441,17 +493,26 @@ mod tests {
         dir
     }
 
-    /// A directory named `label`, holding a runner that proves it was invoked.
-    #[cfg(unix)]
+    /// A directory named `label`, holding a file `is_runnable` accepts.
+    ///
+    /// Cross-platform on purpose. What `install` and `repair` decide about a
+    /// path is not a property of the shell — `merged_for` takes the shell as an
+    /// argument precisely because this module serves both — so a helper only
+    /// unix could call is what hid nine of this module's own cases from the
+    /// Windows job. On unix it is a real shell script, which is what the two
+    /// cases that actually invoke it need; elsewhere it is a regular file,
+    /// which is the whole of what `is_runnable` asks there.
     fn scratch_runner(label: &str) -> (PathBuf, PathBuf) {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = scratch_dir("run").join(label);
-        std::fs::create_dir_all(&dir).expect("scratch");
-        let exe = dir.join("forge-runner");
+        let home = scratch_dir("run").join(label);
+        std::fs::create_dir_all(&home).expect("scratch");
+        let exe = home.join("forge-runner");
         std::fs::write(&exe, "#!/bin/sh\necho ran > \"$FORGE_HOOK_MARKER\"\n").expect("runner");
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        (dir, exe)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
+        (home, exe)
     }
 
     /// The command this daemon would install for a reporting event.
@@ -606,7 +667,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_path_no_file_stands_at_is_refused_by_name_and_installs_nothing() {
         let dir = scratch_dir("absent");
@@ -626,7 +686,6 @@ mod tests {
 
     /// The refusal is a refusal to WRITE, which is only visible where something
     /// was already there to be overwritten.
-    #[cfg(unix)]
     #[test]
     fn a_settings_file_already_standing_survives_that_refusal_byte_for_byte() {
         let dir = scratch_dir("absent-over-existing");
@@ -643,7 +702,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn the_program_a_managed_command_names_is_read_back_out_of_its_quoting() {
         for exe in [
@@ -679,7 +737,6 @@ mod tests {
     /// A path can carry the marker inside its own name, and a parser that goes
     /// looking for the marker cuts such a path in half and calls a healthy hook
     /// dead. Raised as F2 on consult 5542c8.
-    #[cfg(unix)]
     #[test]
     fn a_runner_whose_own_path_holds_the_marker_is_read_back_whole() {
         let exe = "/opt/runner hook --event tools/forge-runner";
@@ -694,10 +751,14 @@ mod tests {
         let home = dir.join("opt/runner hook --event tools");
         std::fs::create_dir_all(&home).expect("home");
         let installed = {
-            use std::os::unix::fs::PermissionsExt;
             let p = home.join("forge-runner");
             std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write");
-            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755))
+                    .expect("chmod");
+            }
             p
         };
         let repo = dir.join("repo");
@@ -718,7 +779,6 @@ mod tests {
 
     /// Raised as F3 on consult 5542c8: a read that failed is not a file whose
     /// hooks are fine, and the caller has nothing to report if this says so.
-    #[cfg(unix)]
     #[test]
     fn a_settings_file_that_cannot_be_read_is_refused_rather_than_called_healthy() {
         let dir = scratch_dir("unreadable");
@@ -740,7 +800,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_file_poisoned_by_an_earlier_daemon_is_rewritten_by_the_repair() {
         let dir = scratch_dir("repair");
@@ -768,7 +827,6 @@ mod tests {
         assert!(back.contains(good.to_str().unwrap()), "{back}");
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_file_whose_commands_all_run_is_left_exactly_as_it_stands() {
         let dir = scratch_dir("repair-healthy");
@@ -787,7 +845,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn the_repair_keeps_hooks_the_operator_wrote_themselves() {
         let dir = scratch_dir("repair-theirs");
@@ -814,7 +871,6 @@ mod tests {
         assert_eq!(back["permissions"]["allow"][0], "Bash");
     }
 
-    #[cfg(unix)]
     #[test]
     fn the_repair_reads_a_file_it_cannot_parse_as_a_refusal_rather_than_a_rewrite() {
         let dir = scratch_dir("repair-unparseable");

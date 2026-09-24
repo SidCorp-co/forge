@@ -6425,16 +6425,20 @@ mod own_exe_reporting_tests {
         dir
     }
 
-    #[cfg(unix)]
+    /// A file `is_runnable` accepts, on every platform this crate builds for:
+    /// what these cases are about is a journal line and a settings file, and
+    /// neither has a shell in it.
     fn runnable(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let p = dir.join(name);
         std::fs::write(&p, "#!/bin/sh\nexit 0\n").expect("write");
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
         p
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_replaced_binary_is_named_in_the_journal_with_the_project_and_both_paths() {
         let dir = scratch("replaced");
@@ -6468,7 +6472,6 @@ mod own_exe_reporting_tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_binary_that_is_gone_leaves_the_pane_unhooked_and_says_why() {
         let dir = scratch("gone");
@@ -6494,7 +6497,6 @@ mod own_exe_reporting_tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_binary_that_is_still_there_is_installed_with_nothing_said_about_a_fallback() {
         let dir = scratch("present");
