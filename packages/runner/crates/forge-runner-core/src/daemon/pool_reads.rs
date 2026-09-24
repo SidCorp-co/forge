@@ -36,9 +36,12 @@ pub const WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 /// is stated as a floor rather than left looking exact.
 pub const MAX_FAILURES: usize = 200;
 
-/// The most projects a heartbeat carries. The consumer declares the same
-/// number, and `pool-read.fixture.json` holds it for both sides.
-pub const MAX_PROJECTS: usize = 64;
+/// The most projects a heartbeat may carry; the consumer declares the same
+/// number and `pool-read-report.fixture.json` holds it for both sides. The box
+/// never truncates to it: the list is its whole picture, so a project cut from
+/// it would be cleared at core while it was failing. Past it core refuses the
+/// whole report by name and the box logs that refusal.
+pub const MAX_PROJECTS: usize = 256;
 
 /// `<config dir>/pool-reads.json`.
 pub fn path(config_dir: &Path) -> PathBuf {
@@ -281,7 +284,6 @@ pub fn report(config_dir: &Path, now_ms: i64) -> Vec<Condition> {
             .cmp(&(a.verdict == Verdict::Blind))
             .then_with(|| b.last_failure.at.cmp(&a.last_failure.at))
     });
-    out.truncate(MAX_PROJECTS);
     out
 }
 
@@ -454,6 +456,19 @@ mod tests {
         let r = report(&d, NOW);
         assert_eq!(r[0].project_id, "b-blind");
         assert_eq!(r[1].project_id, "a-intermittent");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Consult F1. However many projects failed, every one is reported: one cut
+    /// from the list would read at core as a project that read cleanly.
+    #[test]
+    fn every_failing_project_is_reported_and_none_is_cut() {
+        let d = dir("many");
+        let n = MAX_PROJECTS + 5;
+        for i in 0..n {
+            note(&d, &format!("p-{i:03}"), &gw525(), NOW - MIN);
+        }
+        assert_eq!(report(&d, NOW).len(), n);
         let _ = std::fs::remove_dir_all(&d);
     }
 

@@ -17,8 +17,11 @@ import { WIRE_UNITS } from './gate-report.js';
 export const poolReadVerdicts = ['blind', 'intermittent'] as const;
 export type PoolReadVerdict = (typeof poolReadVerdicts)[number];
 
-/** The most projects one heartbeat carries; `pool-read.fixture.json` holds the number for both sides. */
-export const WIRE_PROJECTS = 64;
+/**
+ * Both sides read this from `pool-read-report.fixture.json`. The box never truncates
+ * to it, since an omitted project is cleared: past it the whole report is refused.
+ */
+export const WIRE_PROJECTS = 256;
 
 const failureSchema = z
   .object({

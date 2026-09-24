@@ -1,6 +1,6 @@
 {
   "wire": {
-    "maxProjects": 64,
+    "maxProjects": 256,
     "units": 420
   },
   "pool": {

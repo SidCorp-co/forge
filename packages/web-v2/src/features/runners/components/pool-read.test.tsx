@@ -102,6 +102,39 @@ describe("a box that failed a read and reads again", () => {
 	});
 });
 
+describe("a report the box stopped renewing", () => {
+	const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString();
+
+	it("dates a blind report and does not state it in the present tense", () => {
+		const { container } = render(
+			<PoolReadBanner poolRead={blind({ receivedAt: twoDaysAgo })} />,
+		);
+		const text = container.textContent ?? "";
+		expect(text).toMatch(/could not read the project's job pool when it last reported/);
+		expect(text).not.toMatch(/cannot read/);
+		expect(text).toMatch(/This is the box's last report,\s+2d ago; nothing newer has arrived/);
+	});
+
+	it("dates an intermittent report and puts its window before that report", () => {
+		const { container } = render(
+			<PoolReadBanner poolRead={intermittent({ receivedAt: twoDaysAgo })} />,
+		);
+		const text = container.textContent ?? "";
+		expect(text).toMatch(/^3 failed pool read\(s\) in the 24h before its last report/);
+		expect(text).not.toMatch(/in the last 24h/);
+		expect(text).toMatch(/last report,\s+2d ago/);
+	});
+
+	it("reads a report heard inside the renewal window as current", () => {
+		const { container } = render(
+			<PoolReadBanner
+				poolRead={blind({ receivedAt: new Date(Date.now() - 60_000).toISOString() })}
+			/>,
+		);
+		expect(container.textContent).not.toMatch(/last report/);
+	});
+});
+
 describe("a box that reported no failed read", () => {
 	it("shows nothing at all, for null and for a core that does not serve the field", () => {
 		const a = render(<PoolReadBanner poolRead={null} />);
