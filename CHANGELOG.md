@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **An agent can now ask what the product is erroring on, not only whether the server is up.** It
+  reads the project's error stream, narrowed by release, window, route or request id, and changes
+  nothing there.
 - **A machine that cannot read a project's work queue now says so on the Runners page** — since
   when, how often, and the exact error — instead of looking the same as a queue with nothing in it.
 - **A machine whose work-declaration check has stopped deciding now says so on the Runners page** —
