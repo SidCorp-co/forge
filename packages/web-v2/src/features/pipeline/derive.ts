@@ -10,6 +10,7 @@ import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues/types";
 import { type StageKey, stageColor } from "@/design/stages";
 import { gateReasonLine } from "@/features/runners/types";
+import { formatElapsed } from "@/lib/utils/format";
 import {
   BOARD_EXCLUDED_STATUSES,
   type PipelineIssueRow,
@@ -201,6 +202,19 @@ export interface CardStatusView {
   domain: "session" | "issue";
   /** The gate sentence, for the card's tooltip + aria-label; "" when none. */
   waitingReason: string;
+  /** A line the card shows under its title; "" when none. */
+  note: string;
+}
+
+/**
+ * What the board can say about a row nothing holds: when anything last spoke for it. Core cannot
+ * tell a quiet run from a gone one, so the card gives the time and leaves the gap to the reader.
+ */
+export function checkInLine(lastCheckInAt: string | null, now: number): string {
+  if (lastCheckInAt === null) return "No check-in on record";
+  const at = new Date(lastCheckInAt);
+  const clock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  return `Last check-in ${clock} · ${formatElapsed(now - at.getTime())} ago`;
 }
 
 /** ISS-1192 — what a reviewer opening a run session is told about the box's
@@ -266,7 +280,20 @@ export function runGateNote(gate: RunGate | null | undefined): RunGateNote | nul
 export function cardStatus(
   issue: PipelineIssueRow,
   run: { status: PipelineRunStatus } | undefined,
+  now: number = Date.now(),
 ): CardStatusView {
+  const label = rowLabel(issue);
+  // Nothing holds the row, so a run or a queued step the board kept for it is history, not what
+  // the card is now: a queued job would have made the row held.
+  if (label === "unheld") {
+    return {
+      status: LABEL_VIEW.unheld.status,
+      label: LABEL_VIEW.unheld.label,
+      domain: "issue",
+      waitingReason: "",
+      note: checkInLine(issue.lastCheckInAt, now),
+    };
+  }
   const queued = deriveQueuedStep(issue.pipelineHealth, hasLiveAgentSession(issue.agentStatus));
   if (queued) {
     return {
@@ -274,12 +301,8 @@ export function cardStatus(
       label: queued.gate?.short ?? "Queued",
       domain: "session",
       waitingReason: queued.gate?.detail ?? "",
+      note: "",
     };
-  }
-  const label = rowLabel(issue);
-  // Nothing holds the row, so any run the board kept for it is history, not what the card is now.
-  if (label === "stalled") {
-    return { status: LABEL_VIEW.stalled.status, label: LABEL_VIEW.stalled.label, domain: "issue", waitingReason: "" };
   }
   if (run) {
     return {
@@ -287,6 +310,7 @@ export function cardStatus(
       label: undefined,
       domain: "session",
       waitingReason: "",
+      note: "",
     };
   }
   return {
@@ -294,5 +318,6 @@ export function cardStatus(
     label: LABEL_VIEW[label].label,
     domain: "issue",
     waitingReason: "",
+    note: "",
   };
 }

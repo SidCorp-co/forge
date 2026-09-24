@@ -123,7 +123,10 @@ The strand pass reads it, because a row carrying either does not need escalating
 `issueWorkMovingSql` asks whether a box is moving the issue now: only
 `UNHELD_LIVE_JOB_STATUSES` jobs and a `running` run count. The board's `held` reads
 it (ISS-1213), because a row whose only job waits on a person is not Running.
-Both count a held lease.
+Both count a held lease. A run the runner declared is held through the lease
+`openRunSession` takes; a run nobody declared has only its claim, so the board
+shows a row nothing holds as No check-in, with `lastCheckInAt` from the same
+hydrator, rather than claiming it stalled.
 
 ## What a refusal carries
 
