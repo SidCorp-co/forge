@@ -20,6 +20,7 @@ import {
   resolveLatestIssueRunId,
   tryDispatchCoolifyRelease,
 } from '../../pipeline/release-coolify.js';
+import { readRunMethod } from '../../release-batch/method.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../deliveries.js';
@@ -120,6 +121,17 @@ const shape = (outcome: DispatchOutcome) => ({
   ...(outcome.reason ? { reason: outcome.reason } : {}),
 });
 
+/**
+ * `finish` refuses a release run that announced no method. Refusing the same run
+ * here puts that refusal ahead of the deploy Forge performs rather than after
+ * it: the announcement is the first write a run makes to its batch, so a run
+ * that made it has shown its credential reaches the recording half (ISS-1211).
+ */
+export const RELEASE_DEPLOY_BEFORE_METHOD =
+  'RELEASE_METHOD_NOT_ANNOUNCED: this release run has announced no method, so nothing shows the credential ' +
+  'it runs on can record what this deploy would do. Announce it first with forge_release_batch action=method ' +
+  '(the tool and credential finish takes), then deploy. A release deploy is refused before production changes, never after.';
+
 export async function runCoolifyDeploy(input: {
   projectId: string;
   issueId?: string | undefined;
@@ -133,6 +145,9 @@ export async function runCoolifyDeploy(input: {
       throw new CoolifyCommandError(
         'pipelineRunId is not an open release-batch run for this project',
       );
+    }
+    if ((await readRunMethod(input.pipelineRunId)) === null) {
+      throw new CoolifyCommandError(RELEASE_DEPLOY_BEFORE_METHOD);
     }
     return shape(
       await tryDispatchCoolifyRelease({

@@ -142,6 +142,15 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     docs: `${REST}/actions/workflow-jobs#download-job-logs-for-a-workflow-run`,
   },
   {
+    path: '/repos/:p/:p/branches/:p',
+    method: 'GET',
+    auth: 'installation',
+    permission: 'contents',
+    level: 'read',
+    callSites: ['live-divergence.ts:headOf'],
+    docs: `${REST}/branches/branches#get-a-branch`,
+  },
+  {
     path: '/repos/:p/:p/branches/:p/protection',
     method: 'GET',
     auth: 'installation',
@@ -201,7 +210,10 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     auth: 'installation',
     permission: 'contents',
     level: 'read',
-    callSites: ['projection-refresh.ts:refreshPullRequestRow'],
+    callSites: [
+      'projection-refresh.ts:refreshPullRequestRow',
+      'live-divergence.ts:readLiveDivergence',
+    ],
     docs: `${REST}/commits/commits#compare-two-commits`,
   },
   {
