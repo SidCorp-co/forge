@@ -3087,6 +3087,8 @@
   set is now 59.
 
 ### Fixed
+- **A job no runner can brief no longer blocks every job queued behind it.** PM runs and issue
+  enrichment are refused by name until they have a prompt; a queued job without one fails, saying so.
 - **Release refusals from the issue list match Release settings.** They blamed a check that never
   failed rather than the runner that is down, and over fifty issues got "Invalid input". Automatic
   releases carry the oldest fifty at a time.

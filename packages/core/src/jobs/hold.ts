@@ -7,7 +7,6 @@ import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { checkMonthlyBudget } from './budget-check.js';
-import { enqueueJob, enqueueReconcileJob } from './enqueue.js';
 import { AUTO_RETRY_PAYLOAD_KEY } from './retry.js';
 import { resolveStageOverrides } from './stage-overrides.js';
 
@@ -186,22 +185,13 @@ export function buildRequeueUpdate(
   };
 }
 
-/** Clear the requeued job's hold wedge and hand it to the dispatcher. */
+/** Clear the requeued job's hold wedge; the pool offers the queued row on the box's next read. */
 export async function dispatchRequeuedJob(updated: {
   id: string;
   type: JobType;
   issueId: string | null;
 }): Promise<void> {
   await resolvePipelineWedge(updated.id);
-  try {
-    if (updated.type === 'reconcile' || updated.type === 'verify_skill') {
-      await enqueueReconcileJob(updated.id);
-    } else {
-      await enqueueJob({ jobId: updated.id, issueId: updated.issueId, type: updated.type });
-    }
-  } catch (err) {
-    logger.error({ err, jobId: updated.id }, 'hold: enqueue after release failed');
-  }
 }
 
 /**

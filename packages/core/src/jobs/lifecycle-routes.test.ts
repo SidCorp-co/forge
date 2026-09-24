@@ -91,12 +91,6 @@ vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
 }));
 
-const enqueueMock = vi.fn(async () => {});
-vi.mock('./enqueue.js', () => ({
-  enqueueJob: () => enqueueMock(),
-  enqueueReconcileJob: () => enqueueMock(),
-}));
-
 vi.mock('../pipeline/wedge.js', () => ({
   emitPipelineWedge: async () => undefined,
   resolvePipelineWedge: async () => 0,

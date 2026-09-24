@@ -1,10 +1,8 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs, pmConfig, pmDecisions, projects } from '../db/schema.js';
-import { enqueuePmJob } from '../jobs/enqueue.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
+import { pmConfig, pmDecisions } from '../db/schema.js';
+import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { logger } from '../logger.js';
-import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 
 export type SpawnCause =
   | 'job-failed'
@@ -21,15 +19,15 @@ export interface SpawnPmSessionInput {
   projectId: string;
   cause: SpawnCause;
   eventRef?: Record<string, unknown>;
-  // Set for 'operator' / 'operator-reply'. Becomes the `jobs.created_by`
-  // FK; for non-operator causes we fall back to the project creator
-  // (audit `projects.created_by`).
   actorUserId?: string;
 }
 
+/** What the operator route answers a `pool-job-no-prompt` refusal with. */
+export const PM_NO_PROMPT_MESSAGE = noPromptMessage('pm');
+
 export type SpawnPmSessionResult =
   | { ok: true; jobId: string }
-  | { ok: false; reason: 'disabled' | 'trigger-masked' | 'rate-limited' | 'already-active' };
+  | { ok: false; reason: 'disabled' | 'trigger-masked' | 'rate-limited' | 'pool-job-no-prompt' };
 
 const MASKABLE_CAUSE_TO_TRIGGER_KEY: Partial<Record<SpawnCause, string>> = {
   'job-failed': 'jobFailed',
@@ -41,18 +39,11 @@ const MASKABLE_CAUSE_TO_TRIGGER_KEY: Partial<Record<SpawnCause, string>> = {
 
 const RATE_LIMIT_BYPASS: ReadonlySet<SpawnCause> = new Set(['operator', 'operator-reply']);
 
-const DEFAULT_DEADLINE_MS = 120_000;
-
 /**
- * Central PM session spawn helper. Enforces the four guards in this order:
- * 1. `pm_config.enabled` (and existence)
- * 2. `event_triggers` mask (per-cause; cron + operator override)
- * 3. `max_runs_per_hour` against `pm_decisions` count (operator bypasses)
- * 4. Per-project active-PM dedup (Postgres unique index from Epic 1)
- *
- * Never throws on guard failures — returns a structured `{ ok:false, reason }`
- * so call sites (subscribers, sweepers, the operator endpoint) can branch
- * without try/catch.
+ * Three guards in order — `pm_config.enabled`, the per-cause trigger mask, the
+ * hourly rate limit (operators bypass it) — each answering by reason. A spawn
+ * past all three is refused `pool-job-no-prompt`: nothing builds a PM prompt,
+ * and the job pool runs only the prompt a job is minted with.
  */
 export async function spawnPmSession(input: SpawnPmSessionInput): Promise<SpawnPmSessionResult> {
   const [config] = await db
@@ -73,9 +64,6 @@ export async function spawnPmSession(input: SpawnPmSessionInput): Promise<SpawnP
     }
   }
 
-  // Operator causes bypass the rate limit so a human can always force a run
-  // (e.g. when triaging an outage). All other causes share the per-project
-  // budget.
   if (!RATE_LIMIT_BYPASS.has(input.cause)) {
     const [{ count } = { count: 0 }] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -95,57 +83,9 @@ export async function spawnPmSession(input: SpawnPmSessionInput): Promise<SpawnP
     }
   }
 
-  let createdBy = input.actorUserId;
-  if (!createdBy) {
-    const [project] = await db
-      .select({ createdBy: projects.createdBy })
-      .from(projects)
-      .where(eq(projects.id, input.projectId))
-      .limit(1);
-    if (!project) {
-      // Project gone (race with delete). Treat as disabled — nothing to spawn.
-      return { ok: false, reason: 'disabled' };
-    }
-    createdBy = project.createdBy;
-  }
-
-  const payload: Record<string, unknown> = {
-    cause: input.cause,
-    eventRef: input.eventRef ?? {},
-    deadlineMs: DEFAULT_DEADLINE_MS,
-    modelOverride: config.modelOverride ?? null,
-    customInstructions: config.customInstructions ?? null,
-  };
-
-  // ISS-101 — one-shot pipeline_run per PM coordinator job. On dedup or insert
-  // failure we close the run so we never leak open `kind='pm'` rows.
-  const pmRun = await openOneShotRun({ projectId: input.projectId, kind: 'pm' });
-  let jobId: string;
-  try {
-    const [row] = await db
-      .insert(jobs)
-      .values({
-        projectId: input.projectId,
-        issueId: null,
-        pipelineRunId: pmRun.id,
-        createdBy,
-        type: 'pm',
-        payload,
-        status: 'queued',
-      })
-      .returning({ id: jobs.id });
-    if (!row) throw new Error('spawnPmSession: insert returned no row');
-    jobId = row.id;
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      await closeRun(pmRun.id, 'cancelled');
-      return { ok: false, reason: 'already-active' };
-    }
-    await closeRun(pmRun.id, 'cancelled');
-    throw err;
-  }
-
-  await enqueuePmJob(jobId);
-  logger.info({ projectId: input.projectId, cause: input.cause, jobId }, 'pm.spawn');
-  return { ok: true, jobId };
+  logger.warn(
+    { projectId: input.projectId, cause: input.cause, code: POOL_JOB_NO_PROMPT },
+    `pm.spawn.refused: ${PM_NO_PROMPT_MESSAGE}`,
+  );
+  return { ok: false, reason: 'pool-job-no-prompt' };
 }

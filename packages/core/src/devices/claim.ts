@@ -22,6 +22,7 @@ import { jobs } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { endJobForBudgetBreach } from '../jobs/budget-breach.js';
 import { checkMonthlyBudget, shouldEmitWarn } from '../jobs/budget-check.js';
+import { poolPrompt, settleNoPromptJob } from '../jobs/pool-served.js';
 import {
   canNameItsAgent,
   type PreparedJob,
@@ -53,7 +54,8 @@ export type PrepareResult =
         | 'runner_withdrawn'
         | 'device_disabled'
         | 'runner_unbound'
-        | 'release_label_missing';
+        | 'release_label_missing'
+        | 'no_prompt';
     };
 
 export type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
@@ -94,6 +96,8 @@ export async function prepareJobForMaster(args: {
       'claim: release job taken by a box that does not carry the declared release label, because no eligible box does',
     );
   }
+
+  if (await refusedForNoPrompt(args.jobId)) return { ok: false, reason: 'no_prompt' };
 
   const claimed = await db.transaction(async (tx) => {
     const held = await tx
@@ -181,6 +185,22 @@ export async function prepareJobForMaster(args: {
         : formatIssueRef(await activeIssuePrefix(claimed.job.projectId), claimed.issSeq),
     prepared,
   };
+}
+
+/**
+ * A queued, unheld job the pool cannot brief is refused before it is held, and
+ * settled where it stands — given back instead, it would head its project's
+ * pool on every pass and nothing behind it would be reached.
+ */
+async function refusedForNoPrompt(jobId: string): Promise<boolean> {
+  const [job] = await db
+    .select({ id: jobs.id, type: jobs.type, payload: jobs.payload })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, 'queued'), isNull(jobs.heldBy)))
+    .limit(1);
+  if (!job || poolPrompt(job.payload) !== null) return false;
+  await settleNoPromptJob(job);
+  return true;
 }
 
 /**

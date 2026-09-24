@@ -40,12 +40,6 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const enqueueJobMock = vi.fn(async (..._args: unknown[]) => undefined);
-vi.mock('./enqueue.js', () => ({
-  enqueueJob: (...args: unknown[]) => enqueueJobMock(...args),
-  enqueueReconcileJob: (...args: unknown[]) => enqueueJobMock(...args),
-}));
-
 const budgetMock = vi.fn(async () => ({ action: 'allow' }) as { action: string });
 vi.mock('./budget-check.js', () => ({
   checkMonthlyBudget: () => budgetMock(),
@@ -204,7 +198,6 @@ describe('releaseHeldJobs', () => {
     capableMock.mockResolvedValue([]);
     expect(await releaseHeldJobs('p1')).toBe(0);
     expect(updateSet).not.toHaveBeenCalled();
-    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
   it('releases a time-checked hold once its backoff has passed, without consulting the fleet', async () => {
@@ -235,14 +228,13 @@ describe('releaseHeldJobs', () => {
     expect(AUTO_RELEASE_REASONS.has('verify_unavailable')).toBe(true);
   });
 
-  it('re-queues and enqueues once a capable runner is back', async () => {
+  it('re-queues once a capable runner is back', async () => {
     selectRows.mockReturnValue([heldRow()]);
     capableMock.mockResolvedValue(['dev-1']);
     expect(await releaseHeldJobs('p1')).toBe(1);
     const written = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(written.status).toBe('queued');
     expect(written.retryAfterAt).toBeNull();
-    expect(enqueueJobMock).toHaveBeenCalled();
   });
 
   it('drops the spent retry rotation from the released payload', async () => {

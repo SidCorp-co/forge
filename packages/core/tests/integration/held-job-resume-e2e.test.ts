@@ -3,7 +3,7 @@
  *
  * Two things here cannot be checked with a mocked db: the CAS on
  * `status='held'` (the only thing standing between two operators and a
- * double-enqueue) and the `issue_intervention_events` label, which migration
+ * double requeue) and the `issue_intervention_events` label, which migration
  * 0181 changed from a hardcoded `manual_cancel` to the row's own action. The
  * second is the whole reason the migration exists — a resume charted as a
  * cancel reads as an operator killing work they actually rescued.
@@ -20,15 +20,12 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+// A requeue clears its hold wedge exactly once — the one side effect a resume
+// has beyond the row, now the pool reads the queued row for itself.
+const requeueMock = vi.fn(async (..._args: unknown[]) => 0);
 vi.mock('../../src/pipeline/wedge.js', () => ({
   emitPipelineWedge: async () => undefined,
-  resolvePipelineWedge: async () => 0,
-}));
-
-const enqueueMock = vi.fn(async (..._args: unknown[]) => undefined);
-vi.mock('../../src/jobs/enqueue.js', () => ({
-  enqueueJob: (...a: unknown[]) => enqueueMock(...a),
-  enqueueReconcileJob: (...a: unknown[]) => enqueueMock(...a),
+  resolvePipelineWedge: (...a: unknown[]) => requeueMock(...a),
 }));
 
 vi.mock('../../src/ws/server.js', () => ({ roomManager: { publish: () => undefined } }));
@@ -70,7 +67,7 @@ describe('held job resume E2E', () => {
 
   beforeEach(async () => {
     await truncateAll(harness.db);
-    enqueueMock.mockClear();
+    requeueMock.mockClear();
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
     const project = await createTestProject(harness.db, owner.id);
@@ -121,10 +118,10 @@ describe('held job resume E2E', () => {
     expect(row?.failure_reason).toBeNull();
     expect(row?.failure_kind).toBeNull();
     expect(row?.payload.requiredCapabilities).toEqual({ git: true });
-    expect(enqueueMock).toHaveBeenCalledTimes(1);
+    expect(requeueMock).toHaveBeenCalledTimes(1);
   });
 
-  it('a second concurrent resume loses the CAS and enqueues nothing', async () => {
+  it('a second concurrent resume loses the CAS and requeues nothing', async () => {
     const jobId = await insertHeldJob();
 
     const results = await Promise.allSettled([
@@ -134,7 +131,7 @@ describe('held job resume E2E', () => {
 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
-    expect(enqueueMock).toHaveBeenCalledTimes(1);
+    expect(requeueMock).toHaveBeenCalledTimes(1);
     const events = await harness.db.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM job_events WHERE job_id = ${jobId} AND kind = 'intervention'`,
     );
@@ -152,7 +149,7 @@ describe('held job resume E2E', () => {
       sql`SELECT status FROM jobs WHERE id = ${jobId}`,
     );
     expect(row?.status).toBe('running');
-    expect(enqueueMock).not.toHaveBeenCalled();
+    expect(requeueMock).not.toHaveBeenCalled();
   });
 
   it('appears in the interventions view as manual_resume, not manual_cancel', async () => {
