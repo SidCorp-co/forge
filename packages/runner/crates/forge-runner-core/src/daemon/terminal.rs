@@ -651,13 +651,18 @@ pub(crate) mod testing {
             ));
             std::fs::create_dir_all(dir.join("forge-runner")).expect("isolated config dir");
             let xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
-            let sock = socket_path().expect("a socket inside the isolated config dir");
-            assert!(
-                sock.starts_with(&dir),
-                "this guard exists to keep a test off the box's own tmux server, and it did not take: {}",
-                sock.display()
-            );
             Self { _xdg: xdg, dir }
+        }
+
+        /// Whether the isolation took.
+        ///
+        /// `XDG_CONFIG_HOME` steers the config dir, and so the socket, only
+        /// where this box resolves one from it. Where it does not, the server
+        /// a test would reach is the box's own — which on this machine is the
+        /// one four live masters are running on — so a caller that gets
+        /// `false` runs nothing rather than running it there.
+        pub(crate) fn took(&self) -> bool {
+            socket_path().is_some_and(|sock| sock.starts_with(&self.dir))
         }
     }
 
@@ -1005,6 +1010,7 @@ mod tests {
     ///
     /// tmux does report it: `kill-session` exits 1 while `has-session` on the
     /// same name still exits 0. That status was the one being discarded.
+    #[cfg(unix)]
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_kill_tmux_refused_is_never_answered_as_one_that_took() {

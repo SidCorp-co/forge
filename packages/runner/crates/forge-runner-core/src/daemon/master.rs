@@ -5731,6 +5731,49 @@ mod unplaced_tests {
         &rest[..end]
     }
 
+    /// Make a directory unwritable, and say whether it took.
+    ///
+    /// A process with `CAP_DAC_OVERRIDE` — root in a container, which some CI
+    /// is — writes into a directory whose mode forbids it, so the mode alone
+    /// is not the plant. The probe is what establishes it, and a caller told
+    /// `false` runs nothing rather than asserting against a map that is still
+    /// perfectly writable.
+    fn seal(dir: &std::path::Path) -> bool {
+        #[cfg(unix)]
+        {
+            let mut locked = std::fs::metadata(dir).expect("dir mode").permissions();
+            std::os::unix::fs::PermissionsExt::set_mode(&mut locked, 0o500);
+            if std::fs::set_permissions(dir, locked).is_err() {
+                return false;
+            }
+            let probe = dir.join(".seal-probe");
+            if std::fs::write(&probe, b"x").is_ok() {
+                let _ = std::fs::remove_file(&probe);
+                unseal(dir);
+                return false;
+            }
+            true
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = dir;
+            false
+        }
+    }
+
+    fn unseal(dir: &std::path::Path) {
+        #[cfg(unix)]
+        {
+            if let Ok(meta) = std::fs::metadata(dir) {
+                let mut open = meta.permissions();
+                std::os::unix::fs::PermissionsExt::set_mode(&mut open, 0o700);
+                let _ = std::fs::set_permissions(dir, open);
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = dir;
+    }
+
     /// A capability map of this run's own, never this box's.
     fn temp_map(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -6645,6 +6688,7 @@ mod unplaced_tests {
     /// Here tmux genuinely refuses and the session genuinely survives, which is
     /// the pair tmux itself produces and which this test asserts before it
     /// asserts anything about us.
+    #[cfg(unix)]
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_deaf_pane_tmux_would_not_end_is_left_standing_on_the_record() {
@@ -6652,9 +6696,13 @@ mod unplaced_tests {
         let _env = crate::auth::cred_store::ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let _iso = terminal::testing::IsolatedServer::new("deafkill");
+        let iso = terminal::testing::IsolatedServer::new("deafkill");
         if !terminal::available() {
             eprintln!("tmux is not installed here — the transport this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
             return;
         }
         let dir = std::env::temp_dir().join(format!("forge-deafkill-{}", std::process::id()));
@@ -6895,15 +6943,13 @@ mod unplaced_tests {
         // meets when the disk fills between the mint and the rollback.
         store.mint("sess-core-serves-now").expect("re-mint");
         let dir = path.parent().expect("temp dir");
-        let mut locked = std::fs::metadata(dir).expect("dir mode").permissions();
-        #[cfg(unix)]
-        std::os::unix::fs::PermissionsExt::set_mode(&mut locked, 0o500);
-        std::fs::set_permissions(dir, locked).expect("lock the dir");
+        if !seal(dir) {
+            eprintln!("this box writes into a directory it has no write bit on — root, most likely — so the map cannot be made unwritable here and the plant is not the plant");
+            let _ = std::fs::remove_dir_all(dir);
+            return;
+        }
         let said = withdraw_unplaced_mint(Some(&store), "sess-core-serves-now");
-        let mut open = std::fs::metadata(dir).expect("dir mode").permissions();
-        #[cfg(unix)]
-        std::os::unix::fs::PermissionsExt::set_mode(&mut open, 0o700);
-        std::fs::set_permissions(dir, open).expect("unlock the dir");
+        unseal(dir);
 
         assert!(
             said.is_err(),
@@ -7004,10 +7050,11 @@ mod unplaced_tests {
         let dir = path.parent().expect("temp dir").to_path_buf();
 
         store.mint("sess-core-serves-now").expect("mint");
-        let mut locked = std::fs::metadata(&dir).expect("dir mode").permissions();
-        #[cfg(unix)]
-        std::os::unix::fs::PermissionsExt::set_mode(&mut locked, 0o500);
-        std::fs::set_permissions(&dir, locked).expect("lock the dir");
+        if !seal(&dir) {
+            eprintln!("this box writes into a directory it has no write bit on — root, most likely — so the map cannot be made unwritable here and the plant is not the plant");
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
         let authority = AuthoritySink::default();
         let deaf = DeafSink::default();
         deaf_pane_outlived_its_kill(
@@ -7023,10 +7070,7 @@ mod unplaced_tests {
             },
         )
         .await;
-        let mut open = std::fs::metadata(&dir).expect("dir mode").permissions();
-        #[cfg(unix)]
-        std::os::unix::fs::PermissionsExt::set_mode(&mut open, 0o700);
-        std::fs::set_permissions(&dir, open).expect("unlock the dir");
+        unseal(&dir);
 
         // The sweep after it, reading the same map.
         assert!(
