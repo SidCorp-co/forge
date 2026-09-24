@@ -72,6 +72,7 @@ describe("the Production row", () => {
     expect(screen.getByText("Production")).toBeInTheDocument();
     expect(screen.getByText("Not on production")).toBeInTheDocument();
     expect(screen.getByText("11d071b3 fix(desk): owner (ISS-442)")).toBeInTheDocument();
+    expect(screen.getByText("staging ffffffff vs master 52c66950 · read 2026-09-23 14:00")).toBeVisible();
   });
 
   it("shows the reason when the branches could not be compared", () => {
@@ -96,6 +97,7 @@ describe("the Production row", () => {
       "title",
       "staging at ffffffff against master at 52c66950, read 2026-09-23T14:00:00.000Z",
     );
+    expect(screen.getByText("staging ffffffff vs master 52c66950 · read 2026-09-23 14:00")).toBeVisible();
     expect(screen.queryByText(/on production/i)).not.toBeInTheDocument();
   });
 
