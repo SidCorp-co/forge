@@ -196,7 +196,19 @@ fn clamp_detail(detail: &str, reason: Reason) -> String {
     }
 }
 
-pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
+/// Whether a record is recent enough to speak for the account now — the one
+/// test the report to core applies to what `newest_record` read.
+pub(crate) fn is_fresh(d: &Decisive, now_unix: i64) -> bool {
+    now_unix.saturating_sub(d.at).unsigned_abs() <= FRESH_WITHIN.as_secs()
+}
+
+/// The newest record that says anything, however old.
+///
+/// Age decides whether a record may speak for the ACCOUNT, which other panes
+/// share and an operator can fix at any moment. It does not decide what the
+/// pane that wrote it is sitting behind: a refusal with nothing after it is the
+/// last thing that pane's account said to it, however long ago (ISS-1248).
+pub(crate) fn newest_record(tail: &str, now_unix: i64) -> Option<Decisive> {
     for line in tail.lines().rev() {
         let Ok(record) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -208,9 +220,6 @@ pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
             .get("timestamp")
             .and_then(Value::as_str)
             .and_then(unix_seconds)?;
-        if now_unix.saturating_sub(at).unsigned_abs() > FRESH_WITHIN.as_secs() {
-            return None;
-        }
         let uuid = record
             .get("uuid")
             .and_then(Value::as_str)
@@ -230,6 +239,20 @@ pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
         });
     }
     None
+}
+
+/// The quota refusal a record carries, and nothing for any other verdict.
+///
+/// A usage window or a provider throttle is capacity, which an operator can
+/// restore out of band and only a turn that tries can see restored. A
+/// credential refusal is not capacity and is not answered by asking again.
+pub(crate) fn quota_refusal(d: &Decisive) -> Option<&Refusal> {
+    match &d.verdict {
+        Verdict::Refused(r) if matches!(r.reason, Reason::UsageLimit | Reason::RateLimit) => {
+            Some(r)
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn read_tail(path: &std::path::Path) -> Option<String> {
@@ -372,6 +395,12 @@ mod tests {
     use super::*;
 
     const RECORDS: &str = include_str!("../../assets/master-limit-records.jsonl");
+
+    /// What the report to core reads from a tail: `newest_record` filtered by
+    /// `is_fresh`, the composition `sweep` makes.
+    fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
+        newest_record(tail, now_unix).filter(|d| is_fresh(d, now_unix))
+    }
 
     fn header() -> Value {
         serde_json::from_str(RECORDS.lines().next().unwrap()).unwrap()
@@ -1084,5 +1113,145 @@ mod tests {
             Action::Clear,
             "the same second is not the future: `now_unix` truncates, so a success written this second reads as equal"
         );
+    }
+
+    // ---- the pane a refusal parked (ISS-1248) ---------------------------------
+
+    const WAIT: &str = include_str!("../../assets/master-limit-wait.jsonl");
+
+    fn wait_record(label: &str) -> Value {
+        let header: Value = serde_json::from_str(WAIT.lines().next().unwrap()).unwrap();
+        let uuid = header["_labels"][label]
+            .as_str()
+            .unwrap_or_else(|| panic!("the wait fixture has no record labelled {label}"))
+            .to_string();
+        WAIT.lines()
+            .skip(1)
+            .map(|l| serde_json::from_str::<Value>(l).unwrap())
+            .find(|v| v["uuid"].as_str() == Some(uuid.as_str()))
+            .unwrap_or_else(|| panic!("{label} names a record id that is not in the file"))
+    }
+
+    fn wait_at(label: &str) -> i64 {
+        unix_seconds(wait_record(label)["timestamp"].as_str().unwrap()).unwrap()
+    }
+
+    fn wait_tail() -> String {
+        WAIT.lines().skip(1).collect::<Vec<_>>().join("\n")
+    }
+
+    #[test]
+    fn every_line_of_the_wait_fixture_is_labelled_and_in_file_order() {
+        let header: Value = serde_json::from_str(WAIT.lines().next().unwrap()).unwrap();
+        let labels = header["_labels"].as_object().unwrap();
+        assert_eq!(labels.len(), WAIT.lines().count() - 1);
+        let stamps: Vec<i64> = WAIT
+            .lines()
+            .skip(1)
+            .map(|l| {
+                let v: Value = serde_json::from_str(l).unwrap();
+                assert!(labels.values().any(|u| u == &v["uuid"]));
+                unix_seconds(v["timestamp"].as_str().unwrap()).unwrap()
+            })
+            .collect();
+        assert_eq!(
+            stamps.len(),
+            6,
+            "the six captured records, and nothing else"
+        );
+        assert!(
+            stamps.windows(2).all(|w| w[0] <= w[1]),
+            "a scan from the end reads the newest first only if the file is in the order it was written"
+        );
+    }
+
+    #[test]
+    fn a_refusal_hours_old_is_still_the_last_thing_the_pane_was_told() {
+        let tail = wait_tail();
+        let later = wait_at("refused_second") + 3 * 3600;
+        assert_eq!(
+            newest_decisive(&tail, later),
+            None,
+            "past FRESH_WITHIN the refusal may no longer speak for the account — the report to core stays as it was"
+        );
+        let last = newest_record(&tail, later).expect("the refusal is still in the file");
+        assert_eq!(
+            last.uuid,
+            wait_record("refused_second")["uuid"].as_str().unwrap(),
+            "the scan walks past the operator's cancel and the turn-duration record to the refusal under them"
+        );
+        let r = quota_refusal(&last).expect("a five-hour window is capacity");
+        assert_eq!(r.reason, Reason::UsageLimit);
+    }
+
+    #[test]
+    fn the_freshness_filter_is_the_only_difference_between_the_two_reads() {
+        let tail = wait_tail();
+        let inside = wait_at("refused_second") + FRESH_WITHIN.as_secs() as i64;
+        assert_eq!(newest_decisive(&tail, inside), newest_record(&tail, inside));
+        let outside = inside + 1;
+        assert_eq!(newest_decisive(&tail, outside), None);
+        assert!(newest_record(&tail, outside).is_some());
+    }
+
+    #[test]
+    fn a_throttle_is_capacity_and_a_credential_is_not() {
+        let now = at("429_five_hour");
+        let usage = seen("429_five_hour", now, "u-usage");
+        assert_eq!(
+            quota_refusal(&usage).map(|r| r.reason),
+            Some(Reason::UsageLimit)
+        );
+
+        let mut throttle = record("429_five_hour");
+        throttle["quotaLimits"]["status"] = Value::from("allowed_warning");
+        let throttle = Decisive {
+            at: now,
+            millis: 0,
+            uuid: "u-throttle".into(),
+            verdict: classify(&throttle, now).unwrap(),
+        };
+        assert_eq!(
+            quota_refusal(&throttle).map(|r| r.reason),
+            Some(Reason::RateLimit)
+        );
+
+        for label in ["authentication_failed", "403_oauth_org_not_allowed"] {
+            let auth = seen(label, now, "u-auth");
+            assert!(matches!(auth.verdict, Verdict::Refused(ref r) if r.reason == Reason::Auth));
+            assert_eq!(
+                quota_refusal(&auth),
+                None,
+                "{label}: a credential is fixed by a person, not by asking again"
+            );
+        }
+        assert_eq!(quota_refusal(&seen("successful_turn", now, "u-ok")), None);
+    }
+
+    #[test]
+    fn a_refusal_after_a_reask_is_reported_to_core_as_a_new_one() {
+        let first = wait_at("refused_first");
+        let second = wait_at("refused_second");
+        let first_uuid = wait_record("refused_first")["uuid"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let d = vec![Decisive {
+            at: second,
+            millis: 0,
+            uuid: wait_record("refused_second")["uuid"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+            verdict: classify(&wait_record("refused_second"), second).unwrap(),
+        }];
+        assert!(second > first);
+        match decide(&d, true, Some(&first_uuid), second) {
+            Action::Report(r, uuid) => {
+                assert_eq!(r.reason, Reason::UsageLimit);
+                assert_ne!(uuid, first_uuid, "the memo is per record, not per window");
+            }
+            other => panic!("a second refusal is news to core, got {other:?}"),
+        }
     }
 }
