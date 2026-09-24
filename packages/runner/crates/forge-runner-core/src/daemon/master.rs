@@ -2610,6 +2610,14 @@ fn deaf_fleet_report(found: &[Deaf]) -> Option<(bool, String)> {
 }
 
 /// What the latch is keyed on: which panes, and what was done about each.
+///
+/// Length-prefixed rather than joined on a separator, because one of the parts
+/// is a `LeftStanding` reason and that is an error string this code did not
+/// write — tmux's, or an io error's. A plain separator lets one pane carrying a
+/// reason that happens to contain the separator produce the same digest as two
+/// panes do, and a latch keyed on a colliding digest stays silent about a
+/// condition it has never reported. The length is what makes the encoding
+/// unambiguous whatever the reason says.
 fn deaf_digest(found: &[Deaf]) -> String {
     let mut parts: Vec<String> = found
         .iter()
@@ -2619,11 +2627,12 @@ fn deaf_digest(found: &[Deaf]) -> String {
                 DeafAct::EndedUnplaced => "ended-unplaced".to_string(),
                 DeafAct::LeftStanding(why) => format!("standing:{why}"),
             };
-            format!("{}={act}", d.pane)
+            let part = format!("{}={act}", d.pane);
+            format!("{}:{part}", part.len())
         })
         .collect();
     parts.sort();
-    parts.join("|")
+    parts.concat()
 }
 
 /// Say it, once per change of the set.
@@ -6264,6 +6273,27 @@ mod unplaced_tests {
             deaf_digest(&standing),
             deaf_digest(&replaced),
             "the same pane left standing and then ended are two different things to tell a reader, and a latch keyed on the panes alone would tell them only the first"
+        );
+    }
+
+    /// The reason in a `LeftStanding` is an error string this code did not
+    /// write, so it can hold whatever a separator would have meant.
+    #[test]
+    fn one_pane_carrying_a_reason_can_never_read_as_two_panes() {
+        // Exactly what the separator-joined encoding would have made of the
+        // two below, carried inside the reason of the one above it.
+        let one = vec![deaf(
+            "a",
+            DeafAct::LeftStanding("x|forge-master-b=replaced".to_string()),
+        )];
+        let two = vec![
+            deaf("a", DeafAct::LeftStanding("x".to_string())),
+            deaf("b", DeafAct::Replaced),
+        ];
+        assert_ne!(
+            deaf_digest(&one),
+            deaf_digest(&two),
+            "a digest two different fleets can share is a latch that stays silent about the second of them, and the reason is tmux's text rather than ours to constrain"
         );
     }
 
