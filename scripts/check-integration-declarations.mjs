@@ -123,7 +123,18 @@ if (!existsSync(CONTRACT)) die('packages/contracts/src/deploy-capability.ts not 
 const pkgRoot = packageRootOf(entrypoint);
 if (!pkgRoot) die(`${entrypointRel} sits under no package.json — the probe has no world to join`);
 
-const dir = mkdtempSync(join(pkgRoot, '.forge-declarations-'));
+// Under the package's node_modules, not beside its src. The probe has to sit
+// inside the package to resolve what the entrypoint imports, and `verify` runs
+// its checks concurrently — so a directory created and removed beside the
+// source is a directory another checker's tree walk can meet half-gone. That
+// is a red naming a file nobody wrote, on a run whose code is fine, and a gate
+// whose red does not mean what it says is worth less than one that is slower.
+// node_modules is the one place in the package every walker already skips.
+const probeHome = join(pkgRoot, 'node_modules');
+if (!existsSync(probeHome)) {
+  die(`${relative(ROOT, probeHome)} is absent — run: pnpm install --frozen-lockfile`);
+}
+const dir = mkdtempSync(join(probeHome, '.forge-declarations-'));
 const probe = join(dir, 'probe.mts');
 let result;
 try {

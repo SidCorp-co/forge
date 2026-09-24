@@ -100,9 +100,92 @@ pub fn merged_for(existing: Option<&str>, exe: &str, posix: bool) -> Result<Stri
     }));
     hooks.insert(GATE_EVENT.to_string(), Value::Array(gate));
 
+    drop_entries_this_build_cannot_serve(&mut hooks);
+
     root.insert("hooks".into(), Value::Object(hooks));
     serde_json::to_string_pretty(&Value::Object(root))
         .map_err(|e| Error::Other(format!("cannot serialize {SETTINGS}: {e}")))
+}
+
+/// Remove this daemon's own hook entries under every OTHER event key.
+///
+/// The marker is what makes an entry ours, and `unrunnable_in` reads it over
+/// every event present in the file. Rewriting only `Event::ALL` and the gate
+/// made the rewrite answer a narrower question than the scan, so an entry for
+/// any other event was counted as dead, triggered the repair, and was then
+/// left exactly as it was — the sweep naming a project repaired at every boot
+/// and after every update while the file kept commands nothing could run
+/// (ISS-1200).
+///
+/// Removed rather than repointed onto the build that stands. `cmd::hook` has
+/// one rule above every other — a hook may never break the agent that runs it
+/// — so a build handed an event it does not know exits 0, prints `{}` and
+/// drops the report. Repointing such an entry would leave a command that runs,
+/// says nothing and reports nothing, which is a worse lie than the dead one it
+/// replaced: the sweep would settle on it and call the project repaired. What
+/// this build cannot serve, it does not leave standing in its own name. The
+/// removal is named in the journal by `install`, never made quietly, and a
+/// daemon that can serve the event writes it back the next time it prepares a
+/// pane there.
+///
+/// Only this daemon's own entries go: the program comes off the front of the
+/// command exactly as `program_of` takes it, so what this removes and what
+/// `unrunnable_in` counts are one reading of the file and not two, and an
+/// operator's own hook under the same event is untouched.
+fn drop_entries_this_build_cannot_serve(hooks: &mut Map<String, Value>) {
+    let mut emptied: Vec<String> = Vec::new();
+    for (event, entries) in hooks.iter_mut() {
+        if installs(event) {
+            continue;
+        }
+        let Some(entries) = entries.as_array_mut() else {
+            continue;
+        };
+        entries.retain(|entry| !is_ours(entry));
+        if entries.is_empty() {
+            emptied.push(event.clone());
+        }
+    }
+    for event in emptied {
+        hooks.remove(&event);
+    }
+}
+
+/// Whether this build registers hooks for `event` itself.
+fn installs(event: &str) -> bool {
+    event == GATE_EVENT || Event::ALL.iter().any(|e| e.wire() == event)
+}
+
+/// Whether one entry holds a command this daemon wrote, by the same reading
+/// `unrunnable_in` counts one by.
+fn is_ours(entry: &Value) -> bool {
+    entry
+        .get("hooks")
+        .and_then(Value::as_array)
+        .is_some_and(|hs| {
+            hs.iter()
+                .filter_map(|h| h.get("command").and_then(Value::as_str))
+                .any(|c| program_of(c).is_some())
+        })
+}
+
+/// The events outside this build's own set whose entries a rewrite will take
+/// out, so the journal can name them rather than let them go quietly.
+pub fn served_by_no_event_this_build_installs(text: &str) -> Vec<String> {
+    let Ok(doc) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
+    };
+    let Some(hooks) = doc.get("hooks").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = hooks
+        .iter()
+        .filter(|(event, _)| !installs(event))
+        .filter(|(_, entries)| entries.as_array().is_some_and(|es| es.iter().any(is_ours)))
+        .map(|(event, _)| event.clone())
+        .collect();
+    found.sort();
+    found
 }
 
 pub fn settings_path(cwd: &Path) -> PathBuf {
@@ -125,14 +208,45 @@ pub fn install(cwd: &Path, exe: &Path) -> Result<PathBuf> {
     let exe = exe_text;
     let path = settings_path(cwd);
     let existing = std::fs::read_to_string(&path).ok();
+    if let Some(text) = existing.as_deref() {
+        let gone = served_by_no_event_this_build_installs(text);
+        if !gone.is_empty() {
+            tracing::warn!(
+                "[hooks] {} holds hooks of this runner's own under {}, which this build does not report on — removing them rather than leaving commands that run, say nothing and lose every report; a build that serves those events writes them back",
+                path.display(),
+                gone.join(", ")
+            );
+        }
+    }
     let next = merged(existing.as_deref(), exe)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
             .map_err(|e| Error::Other(format!("cannot create {}: {e}", dir.display())))?;
     }
-    std::fs::write(&path, next)
-        .map_err(|e| Error::Other(format!("cannot write {}: {e}", path.display())))?;
+    write_atomically(&path, &next)?;
     Ok(path)
+}
+
+/// Write beside the file and rename over it, the way `Config::save` writes.
+///
+/// A bare `std::fs::write` truncates in place, so a failure partway through
+/// leaves a checkout with no hooks AND a file every later sweep refuses as
+/// unreadable JSON — the one state this daemon cannot repair itself out of.
+/// ISS-1200's sweep made this write run over every binding at boot and again
+/// after every update, so how often that window is open went up a great deal.
+/// A rename is the replace the reader either sees or does not.
+fn write_atomically(path: &Path, body: &str) -> Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, body)
+        .map_err(|e| Error::Other(format!("cannot write {}: {e}", tmp.display())))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        Error::Other(format!(
+            "cannot move {} over {}: {e}",
+            tmp.display(),
+            path.display()
+        ))
+    })
 }
 
 /// The program a managed hook command invokes, unquoted, and `None` for a
@@ -232,12 +346,41 @@ pub fn repair(cwd: &Path, exe: &Path) -> Result<Vec<String>> {
         )))
         }
     };
-    let unrunnable = unrunnable_in(&text)?;
-    if unrunnable.is_empty() {
+    if unrunnable_in(&text)?.is_empty() {
         return Ok(Vec::new());
     }
-    install(cwd, exe)?;
-    Ok(unrunnable)
+    let path = install(cwd, exe)?;
+    let after = std::fs::read_to_string(&path).map_err(|e| {
+        Error::Other(format!(
+            "cannot read {} back after rewriting it ({e}), so whether its hooks can run now is unknown rather than fixed",
+            path.display()
+        ))
+    })?;
+    repaired(&text, &after)
+}
+
+/// What the rewrite actually repaired, or a refusal naming what it did not.
+///
+/// The list a caller reports is read off the file the rewrite LEFT, never off
+/// the scan that ran before it. Those were two derivations of the same
+/// question and they disagreed: `unrunnable_in` counted every event in the
+/// file while the rewrite covered only the events this build installs, and the
+/// journal printed the first one's answer as though it described the second
+/// one's work — a project named as repaired at every boot, forever, holding
+/// the same dead commands throughout (ISS-1200).
+///
+/// Keeping the check here rather than only fixing the rewrite is the point: it
+/// is what a later `Event::ALL`, a later marker or a later caller has to get
+/// past, and what it cannot get past quietly.
+fn repaired(before: &str, after: &str) -> Result<Vec<String>> {
+    let still = unrunnable_in(after)?;
+    if !still.is_empty() {
+        return Err(Error::Other(format!(
+            "the rewrite left hook commands naming {}, which nothing can run, so this checkout is NOT repaired — reporting it as repaired is what this refusal replaces",
+            still.join(", ")
+        )));
+    }
+    unrunnable_in(before)
 }
 
 #[cfg(test)]
@@ -286,7 +429,7 @@ mod tests {
         const SOURCE: &str = include_str!("hook_install.rs");
 
         // name => the unix-only thing it cannot be written without.
-        const EARNED: [(&str, &str); 3] = [
+        const EARNED: [(&str, &str); 4] = [
             (
                 "a_runner_under_a_path_with_a_space_is_what_the_hook_actually_invokes",
                 "runs the command through `sh`",
@@ -298,6 +441,10 @@ mod tests {
             (
                 "a_runner_under_a_path_that_is_not_utf8_is_refused_by_name",
                 "builds a path from bytes with OsStrExt, which only unix has",
+            ),
+            (
+                "the_settings_file_is_replaced_rather_than_written_over_in_place",
+                "reads st_ino, which is how a replace is told from a truncate in place",
             ),
         ];
 
@@ -951,6 +1098,210 @@ mod tests {
         assert!(
             !settings_path(&dir).exists(),
             "the repair wrote hooks into a project no pane has ever been prepared for"
+        );
+    }
+
+    /// A settings document carrying one of this daemon's markers under an
+    /// event this build does not install — what a newer daemon writes and an
+    /// older one then meets.
+    fn document_with_a_managed_hook_for(event: &str, exe: &str) -> String {
+        serde_json::to_string_pretty(&json!({
+            "hooks": {
+                event: [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": format!("'{exe}' hook --event {event}"),
+                    }]
+                }]
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_managed_hook_for_an_event_this_build_does_not_install_is_taken_out() {
+        let existing = document_with_a_managed_hook_for("SessionStart", "/old/forge-runner");
+
+        let out = merged_for(Some(&existing), "/new/forge-runner", true).unwrap();
+
+        let commands = commands_of(&out);
+        assert!(
+            !commands.iter().any(|c| c.contains("SessionStart")),
+            "an entry this build cannot report on was left standing in its own name: {commands:?}"
+        );
+        assert!(
+            !hooks_of(&out).contains_key("SessionStart"),
+            "the event key was left behind holding nothing: {out}"
+        );
+        assert!(
+            !commands.is_empty(),
+            "the events this build DOES install went with it: {out}"
+        );
+    }
+
+    #[test]
+    fn the_events_a_rewrite_will_take_out_are_named_before_it_runs() {
+        let existing = document_with_a_managed_hook_for("SessionStart", "/old/forge-runner");
+
+        assert_eq!(
+            served_by_no_event_this_build_installs(&existing),
+            vec!["SessionStart".to_string()],
+            "the journal cannot name what nothing tells it"
+        );
+        assert!(
+            served_by_no_event_this_build_installs(
+                &merged_for(None, "/new/forge-runner", true).unwrap()
+            )
+            .is_empty(),
+            "a file holding only what this build installs must name nothing"
+        );
+    }
+
+    #[test]
+    fn an_operators_own_hook_under_such_an_event_is_left_alone() {
+        let existing = serde_json::to_string_pretty(&json!({
+            "hooks": {
+                "SessionStart": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "/usr/bin/env notify-send 'my own hook'",
+                    }]
+                }]
+            }
+        }))
+        .unwrap();
+
+        let out = merged_for(Some(&existing), "/new/forge-runner", true).unwrap();
+
+        assert!(
+            commands_of(&out).contains(&"/usr/bin/env notify-send 'my own hook'".to_string()),
+            "the operator's own hook was taken out with this daemon's: {out}"
+        );
+    }
+
+    #[test]
+    fn what_the_rewrite_covers_is_what_the_scan_counts() {
+        let dir = scratch_dir("repair-outside-all");
+        let (_home, good) = scratch_runner("the-build-on-disk");
+        let gone = dir.join(format!("forge-runner{}", crate::exe::DELETED_SUFFIX));
+        std::fs::create_dir_all(settings_path(&dir).parent().unwrap()).unwrap();
+        std::fs::write(
+            settings_path(&dir),
+            document_with_a_managed_hook_for("Notification", gone.to_str().unwrap()),
+        )
+        .unwrap();
+
+        let rewritten = repair(&dir, &good).expect("repair");
+
+        assert_eq!(rewritten, vec![gone.to_str().unwrap().to_string()]);
+        let back = std::fs::read_to_string(settings_path(&dir)).unwrap();
+        assert!(
+            !back.contains(crate::exe::DELETED_SUFFIX),
+            "the repair reported a rewrite it had not made: {back}"
+        );
+        assert!(
+            repair(&dir, &good).expect("second pass").is_empty(),
+            "the repair reports the same project forever instead of settling"
+        );
+    }
+
+    /// The guard, driven at the only seam that can show it: a rewrite whose
+    /// result still holds a command nothing can run. No input reaches this
+    /// through `merged` any more — that is the point of the fix — so the case
+    /// hands `repaired` the file such a rewrite would leave.
+    #[test]
+    fn a_rewrite_that_left_a_dead_command_is_refused_rather_than_reported_repaired() {
+        let before = document_with_a_managed_hook_for("SessionStart", "/gone/forge-runner");
+
+        let e = repaired(&before, &before).expect_err("a residue must refuse");
+
+        let said = e.to_string();
+        assert!(
+            said.contains("/gone/forge-runner") && said.contains("NOT repaired"),
+            "the refusal does not name what survived: {said}"
+        );
+    }
+
+    /// The clean half of the guard's pair.
+    ///
+    /// The file the rewrite left has to name something THIS platform can run,
+    /// and a unix path written as a literal is not that: `/bin/sh` stands on
+    /// the box that wrote this case and on neither of the other two the runner
+    /// ships for, so a literal here asks Windows a question about a file it
+    /// does not have and reads the right refusal as a failure. The scratch
+    /// runner is a file that exists wherever this suite runs.
+    #[test]
+    fn a_rewrite_that_left_nothing_dead_reports_what_it_repaired() {
+        let (_home, stands) = scratch_runner("the-build-the-rewrite-named");
+        let before = document_with_a_managed_hook_for("SessionStart", "/gone/forge-runner");
+        let after =
+            document_with_a_managed_hook_for("SessionStart", stands.to_str().expect("utf-8"));
+
+        assert_eq!(
+            repaired(&before, &after).expect("a clean rewrite"),
+            vec!["/gone/forge-runner".to_string()],
+            "the journal is owed the programs that could not be run"
+        );
+    }
+
+    /// Installing over a settings file that already stands replaces it.
+    ///
+    /// `write_atomically` renames over the destination, and `std::fs::rename`
+    /// replaces an existing one on every platform this crate builds for —
+    /// `config::Config::save` has written that way in this crate since before
+    /// this change. A review round said Windows would refuse it; this box runs
+    /// only the unix leg, so rather than argue the point the case is stated
+    /// here for the other two legs to answer. It carries no `cfg`, no inode
+    /// and no mode: a platform where the rename does not replace fails HERE,
+    /// naming the rename, instead of somewhere downstream.
+    #[test]
+    fn installing_over_a_settings_file_that_already_stands_replaces_it() {
+        let dir = scratch_dir("replace-existing");
+        let (_first_home, first) = scratch_runner("the-build-that-was");
+        let (_second_home, second) = scratch_runner("the-build-that-stands");
+        install(&dir, &first).expect("the first install");
+
+        install(&dir, &second)
+            .expect("the rename did not replace the settings file that already stood there");
+
+        let back = std::fs::read_to_string(settings_path(&dir)).expect("read back");
+        let commands = commands_of(&back);
+        assert!(
+            !commands.is_empty(),
+            "the second install wrote no hook: {back}"
+        );
+        for command in &commands {
+            assert!(
+                command.contains(second.to_str().expect("utf-8")),
+                "a command still names the build that was replaced: {command}"
+            );
+        }
+    }
+
+    /// The settings file is replaced, never truncated in place: a failure
+    /// partway through a bare write leaves a checkout with no hooks and a file
+    /// the next sweep refuses as unreadable JSON. The inode is how a replace
+    /// is told from a truncate, and only unix has one to read.
+    #[test]
+    #[cfg(unix)]
+    fn the_settings_file_is_replaced_rather_than_written_over_in_place() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = scratch_dir("atomic");
+        let (_home, good) = scratch_runner("the-build-on-disk");
+        install(&dir, &good).expect("first install");
+        let first = std::fs::metadata(settings_path(&dir)).unwrap().ino();
+
+        install(&dir, &good).expect("second install");
+
+        assert_ne!(
+            std::fs::metadata(settings_path(&dir)).unwrap().ino(),
+            first,
+            "the file was written in place, so a reader can see it half-written"
+        );
+        assert!(
+            !settings_path(&dir).with_extension("json.tmp").exists(),
+            "the temporary file was left beside the settings file"
         );
     }
 }
