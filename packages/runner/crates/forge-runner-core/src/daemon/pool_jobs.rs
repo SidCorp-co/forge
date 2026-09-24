@@ -24,13 +24,15 @@ use crate::daemon::turn_evidence::{self, Evidence, Watch};
 use crate::daemon::{control, hook_install, session_tokens, terminal};
 use crate::error::{Error, Result};
 use crate::transport::events::{self, JobEventInput};
-use crate::transport::pool::{self, PoolEntry, Prepared, Started};
+use crate::transport::pool::{self, PoolEntry, Prepared, ReadFailure, Started};
 use crate::transport::{lifecycle, CoreClient};
 
 /// What the box may read, take, start and give back.
 #[async_trait::async_trait]
 pub trait Pool: Send + Sync {
-    async fn claimable(&self, project_id: &str) -> Result<Vec<PoolEntry>>;
+    /// A read that failed is a [`ReadFailure`] and never an empty list (ISS-1234).
+    async fn claimable(&self, project_id: &str)
+        -> std::result::Result<Vec<PoolEntry>, ReadFailure>;
     async fn prepare(&self, job_id: &str, session_id: &str) -> Result<Prepared>;
     async fn start(&self, job_id: &str, session_id: &str) -> Result<Started>;
     async fn release(&self, job_id: &str, session_id: &str) -> Result<()>;
@@ -394,8 +396,14 @@ pub async fn adopt(
 pub enum Took {
     Started(String),
     NothingClaimable,
+    /// The pool could not be read, so nothing is known about what it holds.
+    /// An empty pool is `NothingClaimable`; this is the box blind to its queue.
+    Unread(ReadFailure),
     AtBound,
     Refused(String),
+    /// The read succeeded and the preparation call failed; the reason names
+    /// its status. Nothing was held, so there is nothing to give back.
+    PrepareFailed(String),
     /// A preparation this box could not turn into a pane; the hold is back.
     GaveBack(String),
     /// The stamp neither succeeded nor was refused — the pane stays and the next
@@ -421,8 +429,10 @@ pub async fn take_one(
     let entries = match pool_ports.claimable(project_id).await {
         Ok(e) => e,
         Err(e) => {
-            tracing::warn!("[pool] {project_id}: cannot read the pool: {e}");
-            return Took::NothingClaimable;
+            tracing::warn!(
+                "[pool] {project_id}: cannot read the pool — its queue is UNREAD, not empty: {e}"
+            );
+            return Took::Unread(e);
         }
     };
     let Some(entry) = entries.into_iter().find(|e| e.held_by.is_none()) else {
@@ -441,7 +451,7 @@ pub async fn take_one(
         }
         Err(e) => {
             tracing::warn!("[pool] {project_id}: prepare failed: {e}");
-            return Took::NothingClaimable;
+            return Took::PrepareFailed(e.to_string());
         }
     };
 
@@ -764,7 +774,10 @@ pub struct CorePool<'a> {
 
 #[async_trait::async_trait]
 impl Pool for CorePool<'_> {
-    async fn claimable(&self, project_id: &str) -> Result<Vec<PoolEntry>> {
+    async fn claimable(
+        &self,
+        project_id: &str,
+    ) -> std::result::Result<Vec<PoolEntry>, ReadFailure> {
         pool::list(self.client, Some(project_id), self.limit).await
     }
 
@@ -1003,6 +1016,8 @@ mod tests {
 
     struct FakePool {
         entries: Vec<PoolEntry>,
+        read_fails: Mutex<Option<ReadFailure>>,
+        prepare_errs: std::sync::atomic::AtomicBool,
         prepare: Mutex<Option<Prepared>>,
         start: Mutex<Option<Started>>,
         start_errs: std::sync::atomic::AtomicBool,
@@ -1039,10 +1054,21 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Pool for FakePool {
-        async fn claimable(&self, _project_id: &str) -> Result<Vec<PoolEntry>> {
+        async fn claimable(
+            &self,
+            _project_id: &str,
+        ) -> std::result::Result<Vec<PoolEntry>, ReadFailure> {
+            if let Some(f) = self.read_fails.lock().unwrap().clone() {
+                return Err(f);
+            }
             Ok(self.entries.clone())
         }
         async fn prepare(&self, job_id: &str, _session_id: &str) -> Result<Prepared> {
+            if self.prepare_errs.load(Ordering::SeqCst) {
+                return Err(Error::Other(
+                    "pool /api/devices/me/pool/prepare 520 (gateway: the origin returned an unknown error)".into(),
+                ));
+            }
             if self
                 .entries
                 .iter()
@@ -1247,6 +1273,8 @@ mod tests {
             rec: rec.clone(),
             pool: FakePool {
                 entries,
+                read_fails: Mutex::new(None),
+                prepare_errs: std::sync::atomic::AtomicBool::new(false),
                 prepare: Mutex::new(prep),
                 start: Mutex::new(start),
                 start_errs: std::sync::atomic::AtomicBool::new(false),
@@ -1442,6 +1470,144 @@ mod tests {
             Took::Refused("release_label_missing".into())
         );
         assert!(w.rec.opened.lock().unwrap().is_empty());
+    }
+
+    /// ISS-1234 criterion 1. A read that failed is not an empty pool, and the
+    /// value says which failure it was.
+    #[tokio::test]
+    async fn a_failed_read_is_unread_and_never_nothing_claimable() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            None,
+        );
+        let failure = ReadFailure {
+            status: Some(525),
+            reason: "pool 525 (gateway: the TLS handshake with the origin failed)".into(),
+        };
+        *w.pool.read_fails.lock().unwrap() = Some(failure.clone());
+
+        let took = take(&w, 2).await;
+
+        assert_eq!(took, Took::Unread(failure));
+        assert_ne!(took, Took::NothingClaimable);
+        assert!(w.rec.opened.lock().unwrap().is_empty(), "no pane may open");
+        assert!(
+            w.pool.prepare.lock().unwrap().is_some(),
+            "nothing may be prepared off a pool nobody read"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_pool_is_still_nothing_claimable() {
+        let w = world(Vec::new(), None, None);
+        assert_eq!(take(&w, 2).await, Took::NothingClaimable);
+    }
+
+    /// ISS-1234 criterion 24. A failed preparation is its own answer, named by
+    /// status, and the read before it succeeded.
+    #[tokio::test]
+    async fn a_failed_preparation_is_not_nothing_claimable_and_the_read_counts() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            None,
+        );
+        w.pool.prepare_errs.store(true, Ordering::SeqCst);
+
+        let took = take(&w, 2).await;
+
+        let Took::PrepareFailed(why) = &took else {
+            panic!("a failed preparation reads as its own outcome, not {took:?}");
+        };
+        assert!(why.contains("520 (gateway: "), "{why}");
+        assert!(matches!(
+            crate::daemon::pool_reads::Outcome::of(&took),
+            Some(crate::daemon::pool_reads::Outcome::Read)
+        ));
+    }
+
+    /// ISS-1234 criterion 25, the crossing on the box. The pool route answers
+    /// 525 while the heartbeat route answers; the outcome `take_one` gives is
+    /// recorded the way `take_pool_job` records it, and the next heartbeat the
+    /// box sends carries the project blind. The pool then reads, and the next
+    /// one carries it intermittent. It is the body the recording core RECEIVED
+    /// that is read, not the one the test built.
+    #[tokio::test]
+    async fn a_pool_read_failing_while_heartbeat_answers_reaches_the_next_beat() {
+        use crate::transport::{fake_core, heartbeat};
+        let project = "68567cd4-0000-4000-8000-000000000001";
+        let home = TempHome::new("pool-crossing");
+        let w = world(Vec::new(), None, None);
+
+        let gateway =
+            fake_core::serve_always("525 Handshake", "<!DOCTYPE html><html></html>").await;
+        let (beat_url, received) =
+            fake_core::serve_recording("200 OK", r#"{"ok":true,"pool":{"accepted":true}}"#).await;
+        let reading = fake_core::serve_always("200 OK", r#"{"items":[]}"#).await;
+
+        let pass = |url: String| {
+            let registry = &w.registry;
+            let panes = &w.panes;
+            let report = &w.report;
+            let records = &w.records;
+            let tokens = &w.tokens;
+            async move {
+                let client = CoreClient::new(url, "device-token");
+                take_one(
+                    &CorePool {
+                        client: &client,
+                        limit: 20,
+                    },
+                    panes,
+                    report,
+                    records,
+                    registry,
+                    project,
+                    "master-session",
+                    Some(&box_repo()),
+                    2,
+                    Some(tokens),
+                )
+                .await
+            }
+        };
+        let beat = |at: i64| {
+            let dir = home.path().to_path_buf();
+            let url = beat_url.clone();
+            async move {
+                let client = CoreClient::new(url, "device-token");
+                let conditions = heartbeat::Conditions::read(Some(&dir), at);
+                heartbeat::beat(&client, &conditions)
+                    .await
+                    .expect("the heartbeat route answers throughout")
+            }
+        };
+        let sent = |i: usize| -> serde_json::Value {
+            serde_json::from_str(&received.lock().unwrap()[i]).expect("a json body")
+        };
+
+        let t0 = now_ms();
+        let took = pass(gateway).await;
+        assert!(
+            matches!(took, Took::Unread(ref f) if f.status == Some(525)),
+            "{took:?}"
+        );
+        crate::daemon::pool_reads::note(home.path(), project, &took, t0);
+        assert_eq!(beat(t0 + 1_000).await, heartbeat::Refused::default());
+        let first = &sent(0)["pool"]["projects"][0];
+        assert_eq!(first["projectId"], project);
+        assert_eq!(first["verdict"], "blind");
+        assert_eq!(first["lastFailure"]["status"], 525);
+
+        let took = pass(reading).await;
+        assert_eq!(took, Took::NothingClaimable);
+        crate::daemon::pool_reads::note(home.path(), project, &took, t0 + 10_000);
+        beat(t0 + 11_000).await;
+        let second = &sent(1)["pool"]["projects"][0];
+        assert_eq!(second["verdict"], "intermittent");
+        assert_eq!(second["failures"], 1);
+        assert_eq!(second["recoveredAt"], t0 + 10_000);
     }
 
     #[tokio::test]

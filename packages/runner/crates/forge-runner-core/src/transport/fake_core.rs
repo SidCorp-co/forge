@@ -28,6 +28,61 @@ pub async fn serve_always(status: &'static str, body: &'static str) -> String {
     format!("http://{addr}")
 }
 
+/// Like [`serve_always`], and keeps every request body it was sent, so a test
+/// can read what a box actually put on the wire rather than what it built.
+pub async fn serve_recording(
+    status: &'static str,
+    body: &'static str,
+) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let kept = seen.clone();
+    tokio::spawn(async move {
+        while let Ok((mut sock, _)) = listener.accept().await {
+            let kept = kept.clone();
+            tokio::spawn(async move {
+                let mut raw = Vec::new();
+                let mut buf = [0u8; 4096];
+                loop {
+                    let Ok(n) = sock.read(&mut buf).await else {
+                        return;
+                    };
+                    if n == 0 {
+                        break;
+                    }
+                    raw.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&raw);
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let len = text[..end]
+                            .lines()
+                            .find_map(|l| {
+                                let (k, v) = l.split_once(':')?;
+                                k.eq_ignore_ascii_case("content-length")
+                                    .then(|| v.trim().parse::<usize>().ok())
+                                    .flatten()
+                            })
+                            .unwrap_or(0);
+                        if raw.len() >= end + 4 + len {
+                            kept.lock().unwrap().push(
+                                String::from_utf8_lossy(&raw[end + 4..end + 4 + len]).into_owned(),
+                            );
+                            break;
+                        }
+                    }
+                }
+                let resp = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            });
+        }
+    });
+    (format!("http://{addr}"), seen)
+}
+
 /// `404` — the key names a prefix no project answers to.
 ///
 /// A deleted project leaves this state standing: `issue_prefix_aliases` keeps
