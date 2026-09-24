@@ -932,6 +932,8 @@ export const runners = pgTable(
     provisionRequestedAt: timestamp('provision_requested_at', { withTimezone: true }),
     // When provision last reached a terminal `ready`.
     provisionedAt: timestamp('provisioned_at', { withTimezone: true }),
+    // The box's failed reads of this project's job pool, off the heartbeat (ISS-1234).
+    poolRead: jsonb('pool_read'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

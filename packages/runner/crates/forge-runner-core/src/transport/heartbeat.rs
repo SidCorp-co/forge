@@ -4,6 +4,10 @@
 //! carrier because the degraded case is DEFINED by the control socket or the
 //! role list having failed, and neither is on this path — so it is up exactly
 //! when the thing being reported is down (ISS-1192).
+//!
+//! It carries this box's pool reads for the same reason: a read answered 520 at
+//! the gateway never reaches core, and this route answered normally around every
+//! one measured (ISS-1234).
 
 use super::CoreClient;
 use crate::error::{Error, Result};
@@ -18,6 +22,8 @@ struct HeartbeatResponse {
     server_time: Option<String>,
     #[serde(default)]
     gate: Option<GateAck>,
+    #[serde(default)]
+    pool: Option<GateAck>,
 }
 
 /// What core says it did with the gate condition. A refusal is carried back
@@ -44,26 +50,53 @@ fn gate_refusal(parsed: Option<GateAck>) -> Option<String> {
     })
 }
 
-/// `Ok(Some(reason))` where core refused the gate condition and took the
-/// heartbeat anyway.
-pub async fn beat(
-    client: &CoreClient,
-    gate: Option<&crate::daemon::degraded::Condition>,
-) -> Result<Option<String>> {
-    beat_with(client, gate).await.map(|(_, refused)| refused)
+/// What this box says about itself on every beat, read in one place so the
+/// tick and a test build the same body.
+#[derive(Debug, Default)]
+pub struct Conditions {
+    pub gate: Option<crate::daemon::degraded::Condition>,
+    /// `None` sends no `pool` key, which core reads as "changes nothing"; a list,
+    /// even an empty one, is the box's whole picture.
+    pub pool: Option<Vec<crate::daemon::pool_reads::Condition>>,
+}
+
+impl Conditions {
+    /// Both conditions off the files beside `config.toml`; nothing where there
+    /// is no such directory to read.
+    pub fn read(config_dir: Option<&std::path::Path>, now_ms: i64) -> Self {
+        let Some(dir) = config_dir else {
+            return Self::default();
+        };
+        Self {
+            gate: Some(crate::daemon::degraded::report(dir, now_ms).degraded),
+            pool: Some(crate::daemon::pool_reads::report(dir, now_ms)),
+        }
+    }
+}
+
+/// Core's reasons for refusing either condition while taking the heartbeat.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Refused {
+    pub gate: Option<String>,
+    pub pool: Option<String>,
+}
+
+pub async fn beat(client: &CoreClient, conditions: &Conditions) -> Result<Refused> {
+    beat_with(client, conditions)
+        .await
+        .map(|(_, refused)| refused)
 }
 
 /// Like [`beat`] but returns the core's `serverTime` so callers (e.g. `doctor`)
 /// can prove core reachability with a concrete value. `401` maps to a clear
 /// `UNAUTHORIZED` error so callers can prompt a re-login.
 pub async fn beat_verbose(client: &CoreClient) -> Result<String> {
-    beat_with(client, None).await.map(|(time, _)| time)
+    beat_with(client, &Conditions::default())
+        .await
+        .map(|(time, _)| time)
 }
 
-async fn beat_with(
-    client: &CoreClient,
-    gate: Option<&crate::daemon::degraded::Condition>,
-) -> Result<(String, Option<String>)> {
+async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(String, Refused)> {
     let url = client.url("/api/devices/heartbeat");
     // The RELEASED identity, not Cargo's — core compares a box against both halves,
     // and a box that answered with Cargo's number reported the same 0.17.0 as the
@@ -71,7 +104,7 @@ async fn beat_with(
     let body = heartbeat_body(
         crate::update::CURRENT_VERSION,
         crate::update::build_commit(),
-        gate,
+        conditions,
     );
     let resp = client
         .http()
@@ -93,7 +126,10 @@ async fn beat_with(
         .map_err(|e| Error::Other(format!("heartbeat decode: {e}")))?;
     Ok((
         parsed.server_time.unwrap_or_default(),
-        gate_refusal(parsed.gate),
+        Refused {
+            gate: gate_refusal(parsed.gate),
+            pool: gate_refusal(parsed.pool),
+        },
     ))
 }
 
@@ -107,19 +143,27 @@ pub fn gate_body(gate: &crate::daemon::degraded::Condition) -> serde_json::Value
 /// degraded half of the gate travels: `undeclared` shares the box's file, is a
 /// different fact with its own treatment owed, and sending it with nothing
 /// reading it would be the unread counter this ends (ISS-1192).
-fn heartbeat_body(
+pub(crate) fn heartbeat_body(
     version: &str,
     commit: Option<&str>,
-    gate: Option<&crate::daemon::degraded::Condition>,
+    conditions: &Conditions,
 ) -> serde_json::Value {
     let mut body = serde_json::json!({ "agentVersion": version });
     if let Some(commit) = commit {
         body["agentCommit"] = serde_json::Value::String(commit.to_string());
     }
-    if let Some(gate) = gate {
+    if let Some(gate) = &conditions.gate {
         body["gate"] = gate_body(gate);
     }
+    if let Some(pool) = &conditions.pool {
+        body["pool"] = pool_body(pool);
+    }
     body
+}
+
+/// The pool object exactly as it rides on the heartbeat body.
+pub fn pool_body(pool: &[crate::daemon::pool_reads::Condition]) -> serde_json::Value {
+    serde_json::json!({ "projects": pool })
 }
 
 #[cfg(test)]
@@ -201,11 +245,18 @@ mod tests {
     #[test]
     fn the_heartbeat_carries_the_gate_where_there_is_one_and_no_key_where_there_is_not() {
         let gate = condition(&planted(), NOW);
-        let with = heartbeat_body("0.17.17", Some("a67ad6ed4"), Some(&gate));
+        let with = heartbeat_body(
+            "0.17.17",
+            Some("a67ad6ed4"),
+            &Conditions {
+                gate: Some(gate.clone()),
+                pool: None,
+            },
+        );
         assert_eq!(with["agentVersion"], "0.17.17");
         assert_eq!(with["gate"], gate_body(&gate));
 
-        let without = heartbeat_body("0.17.17", Some("a67ad6ed4"), None);
+        let without = heartbeat_body("0.17.17", Some("a67ad6ed4"), &Conditions::default());
         assert!(
             without.get("gate").is_none(),
             "an absent gate is not an empty one: {without}"
@@ -277,6 +328,124 @@ mod tests {
             degraded.by_reason,
             planted().by_reason,
             "the fixture's breakdown must be one the writer actually produces"
+        );
+    }
+
+    // ---- ISS-1234: the pool reads ride the same beat ----
+
+    /// The fixture core's `pool-read-report.test.ts` parses. Same bytes on both
+    /// sides, so a shape change fails a test rather than parting producer and
+    /// consumer.
+    const POOL_FIXTURE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../core/src/devices/pool-read-report.fixture.json"
+    );
+
+    pub(crate) const BLIND_PROJECT: &str = "68567cd4-0000-4000-8000-000000000001";
+    pub(crate) const INTERMITTENT_PROJECT: &str = "2126d65a-d732-483b-a0ff-eb74fd88c53f";
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "forge-pool-body-{name}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).expect("scratch");
+        d
+    }
+
+    /// The planted record the fixture is of: one project blind on 525 for three
+    /// passes, one that failed 520 once and read again the pass after — the
+    /// shape of every occurrence measured on ISS-1234.
+    fn planted_pool(dir: &std::path::Path) {
+        use crate::daemon::pool_jobs::Took;
+        use crate::transport::pool::ReadFailure;
+        let f = |status: u16, reason: &str| {
+            Took::Unread(ReadFailure {
+                status: Some(status),
+                reason: reason.to_string(),
+            })
+        };
+        let t525 = f(
+            525,
+            "pool 525 (gateway: the TLS handshake with the origin failed): <!DOCTYPE html>",
+        );
+        let t520 = f(
+            520,
+            "pool 520 (gateway: the origin returned an unknown error): <!DOCTYPE html>",
+        );
+        let note = crate::daemon::pool_reads::note;
+        note(dir, INTERMITTENT_PROJECT, &t520, NOW - 60 * 60_000);
+        note(
+            dir,
+            INTERMITTENT_PROJECT,
+            &Took::NothingClaimable,
+            NOW - 60 * 60_000 + 10_000,
+        );
+        for i in 0..3 {
+            note(dir, BLIND_PROJECT, &t525, NOW - 30_000 + i * 10_000);
+        }
+    }
+
+    fn pool_fixture() -> serde_json::Value {
+        serde_json::from_str(
+            &std::fs::read_to_string(POOL_FIXTURE).expect("the pool fixture both languages read"),
+        )
+        .expect("the pool fixture is json")
+    }
+
+    /// Criterion 13. The body a box builds from a real record is the fixture.
+    #[test]
+    fn the_pool_body_on_the_wire_is_the_fixture_both_sides_read() {
+        let dir = scratch("fixture");
+        planted_pool(&dir);
+        let conditions = Conditions::read(Some(&dir), NOW);
+        let body = heartbeat_body("0.17.18", None, &conditions);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            body["pool"],
+            pool_fixture()["pool"],
+            "the box's pool body and the fixture core's tests parse have parted; \
+             regenerate the fixture and read what moved before you do:\n{}",
+            serde_json::to_string_pretty(&body["pool"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn the_pool_bounds_the_fixture_states_are_the_ones_this_box_emits() {
+        use crate::daemon::degraded::WIRE_UNITS_CEILING;
+        use crate::daemon::pool_reads::MAX_PROJECTS;
+        let wire = pool_fixture()["wire"].clone();
+        assert_eq!(wire["maxProjects"].as_u64(), Some(MAX_PROJECTS as u64));
+        assert_eq!(wire["units"].as_u64(), Some(WIRE_UNITS_CEILING as u64));
+    }
+
+    /// Criterion 13: a box with a config directory sends its whole picture,
+    /// an empty list included, because an omitted project is how core learns
+    /// it read cleanly; a box with none sends no key and changes nothing.
+    #[test]
+    fn a_clean_box_sends_an_empty_list_and_a_box_with_no_record_sends_no_key() {
+        let dir = scratch("clean");
+        let clean = heartbeat_body("0.17.18", None, &Conditions::read(Some(&dir), NOW));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(clean["pool"], serde_json::json!({ "projects": [] }));
+        let none = heartbeat_body("0.17.18", None, &Conditions::read(None, NOW));
+        assert!(none.get("pool").is_none(), "{none}");
+        assert!(none.get("gate").is_none(), "{none}");
+    }
+
+    /// Criterion 18, the reading half: core's refusal of the pool report comes
+    /// back apart from the gate's.
+    #[test]
+    fn a_refused_pool_report_comes_back_with_cores_reason() {
+        let r = decoded(
+            r#"{"ok":true,"gate":{"accepted":true},"pool":{"accepted":false,"reason":"pool.projects.0.verdict: bad enum"}}"#,
+        );
+        assert_eq!(gate_refusal(r.gate), None);
+        assert_eq!(
+            gate_refusal(r.pool).as_deref(),
+            Some("pool.projects.0.verdict: bad enum")
         );
     }
 }

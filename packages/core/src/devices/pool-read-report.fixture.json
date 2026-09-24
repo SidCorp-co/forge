@@ -1,0 +1,42 @@
+{
+  "wire": {
+    "maxProjects": 256,
+    "units": 420
+  },
+  "pool": {
+    "projects": [
+      {
+        "projectId": "68567cd4-0000-4000-8000-000000000001",
+        "verdict": "blind",
+        "failures": 3,
+        "countIsFloor": false,
+        "windowMs": 86400000,
+        "unreadSince": 1790236770000,
+        "consecutive": 3,
+        "recoveredAt": null,
+        "lastFailure": {
+          "at": 1790236790000,
+          "status": 525,
+          "what": "525 (gateway: the TLS handshake with the origin failed)",
+          "reason": "pool 525 (gateway: the TLS handshake with the origin failed): <!DOCTYPE html>"
+        }
+      },
+      {
+        "projectId": "2126d65a-d732-483b-a0ff-eb74fd88c53f",
+        "verdict": "intermittent",
+        "failures": 1,
+        "countIsFloor": false,
+        "windowMs": 86400000,
+        "unreadSince": null,
+        "consecutive": 0,
+        "recoveredAt": 1790233210000,
+        "lastFailure": {
+          "at": 1790233200000,
+          "status": 520,
+          "what": "520 (gateway: the origin returned an unknown error)",
+          "reason": "pool 520 (gateway: the origin returned an unknown error): <!DOCTYPE html>"
+        }
+      }
+    ]
+  }
+}
