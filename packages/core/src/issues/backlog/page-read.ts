@@ -11,6 +11,7 @@ import { and, asc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import type { SelectedFields } from 'drizzle-orm/pg-core';
 import { db } from '../../db/client.js';
 import { type IssueStatus, issues } from '../../db/schema.js';
+import { issueArchiveSide } from '../archive.js';
 
 export const CURSOR_AT = sql<
   string | null
@@ -21,8 +22,13 @@ export interface PageCursor {
   id: string;
 }
 
+/** ISS-1237 — neither stream reads an archived issue: not as a row to rank, not as an alike seed. */
 export function matchingIssues(projectId: string, statuses: IssueStatus[]) {
-  return and(eq(issues.projectId, projectId), inArray(issues.status, statuses));
+  return and(
+    eq(issues.projectId, projectId),
+    inArray(issues.status, statuses),
+    ...issueArchiveSide(false),
+  );
 }
 
 export async function countMatching(projectId: string, statuses: IssueStatus[]): Promise<number> {

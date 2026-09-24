@@ -25,10 +25,13 @@ import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import { issueArchiveSide } from './archive.js';
 import { AttachmentError } from './attachment-service.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { CREATE_ENTRY_STATUSES, createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
+import { toHttpDependencyError } from './dependency-routes.js';
+import { IssueDependencyError } from './dependency-service.js';
 import { serializeIssue } from './detail-projection.js';
 import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
@@ -134,6 +137,8 @@ export const issueFiltersSchema = paginationSchema
     key: issueKeyFilterSchema.optional(),
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     withAgentSessions: z.coerce.boolean().optional().default(false),
+    /** ISS-1237 — archived issues are left out unless asked for; a `key` is retrieval and always answers. */
+    includeArchived: z.stringbool().optional(),
   })
   .strict();
 
@@ -231,6 +236,7 @@ issueProjectRoutes.post(
 
 function toHttpCreateError(err: unknown): unknown {
   if (err instanceof BodyInvalidError) return bodyInvalidHttp(err);
+  if (err instanceof IssueDependencyError) return toHttpDependencyError(err);
   if (err instanceof LabelResolutionError) {
     return new HTTPException(400, {
       message: 'one or more labels do not exist in this project',
@@ -323,6 +329,7 @@ issueProjectRoutes.get(
       if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
       conditions.push(eq(issues.issSeq, parsed.issSeq));
     }
+    conditions.push(...issueArchiveSide(q.includeArchived === true || q.key !== undefined));
     const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);

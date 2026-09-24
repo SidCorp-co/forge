@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+vi.mock('./archive.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./archive.js')>()),
+  archivedAmong: vi.fn(async () => []),
+  archiveRefusalForTransition: vi.fn(async () => null),
+}));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
@@ -153,17 +158,13 @@ describe('POST /api/issues/:id/transition', () => {
     expect(res.status).toBe(403);
   });
 
-  it('400 on unknown body field (strict)', async () => {
+  it.each([
+    ['unknown body field (strict)', { toStatus: 'confirmed', bogus: 1 }],
+    ['invalid toStatus', { toStatus: 'nonsense' }],
+  ])('400 on %s', async (_label, body) => {
     const token = await signUserToken(USER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    const res = await req({ toStatus: 'confirmed', bogus: 1 }, token);
-    expect(res.status).toBe(400);
-  });
-
-  it('400 on invalid toStatus', async () => {
-    const token = await signUserToken(USER_ID);
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    const res = await req({ toStatus: 'nonsense' }, token);
+    const res = await req(body, token);
     expect(res.status).toBe(400);
   });
 

@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **An issue can be archived, and unarchived.** It leaves search, recall, the duplicate check and
+  every list but the pulse's undeployed work, and opens by key everywhere except the `forge` CLI
+  (forge-plugin ISS-2421). Unfinished work cannot be archived.
 - **An agent can now ask what the product is erroring on, not only whether the server is up.** It
   reads the project's error stream, narrowed by release, window, route or request id, and changes
   nothing there.
@@ -120,8 +123,9 @@
 - **A machine whose work-declaration check has stopped deciding now says so on the Runners page** —
   how many runs it let through unchecked, how fast, and over what window — instead of only on the
   machine itself.
-- **A run now says whether that check was deciding when it started.** Open a run and it names how
-  many runs the machine let through unchecked, how fast, over what window, and why.
+- **A run now says whether that check was deciding when it started.** Open the run's
+  session and its side panel names how many runs went through unchecked, how fast, over what
+  window and why, or that the machine reported nothing.
 - **A box can now ask a person, and read the answer back.** `forge-runner question ask` puts the
   question on the screen the person was pointed at; `forge-runner question answer` reads the reply.
 - **Asking about a whole backlog now costs one request, not one per issue.** Two new streamed

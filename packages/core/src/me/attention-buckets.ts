@@ -26,6 +26,7 @@ import {
   projects,
   reconcileRuns,
 } from '../db/schema.js';
+import { issueArchiveSide } from '../issues/archive.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
 import { ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
@@ -253,7 +254,7 @@ export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
     })
     .from(commentMentions)
     .innerJoin(comments, eq(comments.id, commentMentions.commentId))
-    .innerJoin(issues, eq(issues.id, comments.issueId))
+    .innerJoin(issues, and(eq(issues.id, comments.issueId), ...issueArchiveSide(false)))
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .leftJoin(
       notifications,
@@ -307,7 +308,10 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
         eq(jobs.status, 'failed'),
         sql`${jobs.createdAt} >= now() - interval '7 days'`,
         notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),
-        or(isNull(issues.id), notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES])),
+        or(
+          isNull(issues.id),
+          and(notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES]), ...issueArchiveSide(false)),
+        ),
       ),
     )
     .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))

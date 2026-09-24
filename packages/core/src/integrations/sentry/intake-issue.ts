@@ -2,7 +2,7 @@ import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { readThresholds } from '../../admin/thresholds.js';
 import { db } from '../../db/client.js';
 import { comments, issues, projects } from '../../db/schema.js';
-import { transitionIssueStatus } from '../../issues/apply-transition.js';
+import { TransitionError, transitionIssueStatus } from '../../issues/apply-transition.js';
 import { logger } from '../../logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './admission.js';
 import type { SentryIssueDetail } from './types.js';
@@ -340,7 +340,7 @@ async function reopenOnRegression(
     };
   }
 
-  await transitionIssueStatus(
+  const reopened = await transitionIssueStatus(
     {
       id: existing.id,
       projectId: existing.projectId,
@@ -356,7 +356,16 @@ async function reopenOnRegression(
     {
       transitionReason: `Sentry reports ${shortId} has regressed: this error is happening again after this issue was closed. Reopened rather than filed a second time — an error coming back is the same work, and the detector key holds at most one live issue for it.`,
     },
-  );
+  ).catch((err: unknown) => {
+    if (err instanceof TransitionError && err.code === 'ISSUE_ARCHIVED') return err;
+    throw err;
+  });
+  if (reopened instanceof TransitionError) {
+    return {
+      kind: 'refused',
+      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it is archived, so it is left where it is rather than reopened. ${reopened.detail}. Its counts were still refreshed.`,
+    };
+  }
 
   await db
     .update(issues)

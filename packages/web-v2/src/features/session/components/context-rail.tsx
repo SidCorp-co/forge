@@ -31,7 +31,9 @@ import {
   type SessionRow,
 } from "@/features/sessions/types";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
-import { isJobDriven } from "@/features/sessions/types";
+import { isJobDriven, sessionKind } from "@/features/sessions/types";
+import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
+import { useRun } from "@/features/pipeline/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
@@ -76,6 +78,14 @@ function fmtTime(iso: string | null | undefined): string {
   });
 }
 
+const GATE_TONE: Record<RunGateNote["verdict"], "info" | "attention" | "success"> = {
+  none: "info",
+  clear: "success",
+  marked: "attention",
+  failing_open: "attention",
+  unreadable: "attention",
+};
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
@@ -114,6 +124,17 @@ export function ContextRail({
   const files = deriveFilesChanged(items);
   const agentTasks = useMemo(() => deriveAgentTasks(items), [items]);
   const isPipeline = isJobDriven(session);
+  // Only a run session's run is opened by the box with its gate condition (ISS-1192).
+  const isRunSession = sessionKind(session) === "run_session";
+  const runQ = useRun(session.pipelineRunId ?? undefined, isRunSession && !!session.pipelineRunId);
+  // A failed refetch keeps the data it already read, and that stays the answer.
+  const gateNote = !isRunSession
+    ? null
+    : runQ.data
+      ? runGateNote(runQ.data.gateAtOpen)
+      : runQ.isError
+        ? runGateUnfetched(runQ.error instanceof Error ? runQ.error.message : String(runQ.error))
+        : null;
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 
   // Resolve the runner the session is bound to. The device may not be in the
@@ -190,6 +211,16 @@ export function ContextRail({
               )}
             </div>
           )}
+        </Section>
+      )}
+
+      {gateNote && (
+        <Section title="Declaration gate">
+          <Banner tone={GATE_TONE[gateNote.verdict]}>
+            <span className="font-semibold">{gateNote.headline}</span>
+            <span className="mt-0.5 block">{gateNote.detail}</span>
+            {gateNote.reason && <span className="mt-0.5 block">{gateNote.reason}</span>}
+          </Banner>
         </Section>
       )}
 
