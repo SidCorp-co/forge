@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, cardStatus, median, runGateNote } from "./derive";
-import type { PipelineIssueRow, RunGateCondition, StepDurationRow } from "./types";
+import { aggregateStepCosts, cardStatus, checkInLine, median, runGateNote } from "./derive";
+import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
+import { PIPELINE_RUN_STATUSES, type PipelineIssueRow, type RunGateCondition, type StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
   return {
@@ -81,7 +82,6 @@ describe("aggregateStepCosts — the job types that actually ran (ISS-999)", () 
 });
 
 describe("cardStatus", () => {
-  const label = (s: string) => `label:${s}`;
   const issue = (over: Partial<PipelineIssueRow> = {}): PipelineIssueRow =>
     ({
       id: "i",
@@ -92,6 +92,8 @@ describe("cardStatus", () => {
       priority: "high",
       assigneeId: null,
       agentStatus: null,
+      held: true,
+      lastCheckInAt: null,
       ...over,
     }) as PipelineIssueRow;
   const queuedHealth = (reason?: string) =>
@@ -113,7 +115,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale") }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("waiting");
     expect(card.label).toBe("No runner online");
@@ -125,7 +126,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth() }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("queued");
     expect(card.label).toBe("Queued");
@@ -136,7 +136,6 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "running" }),
       { status: "running" },
-      label as never,
     );
     expect(card.status).toBe("running");
     expect(card.label).toBeUndefined();
@@ -146,15 +145,65 @@ describe("cardStatus", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "failed" }),
       { status: "running" },
-      label as never,
     );
     expect(card.label).toBe("No runner online");
   });
 
-  it("falls back to the issue's own lifecycle label with no run and nothing queued", () => {
-    const card = cardStatus(issue(), undefined, label as never);
+  it("falls back to the lane word a held row reads with no run and nothing queued", () => {
+    const card = cardStatus(issue(), undefined);
     expect(card.domain).toBe("issue");
-    expect(card.label).toBe("label:in_progress");
+    expect(card.label).toBe("Running");
+    expect(card.status).toBe(statusToChip("in_progress"));
+  });
+
+  // ISS-1213: rows stood at `testing` for hours with nothing on them, their cards reading Running.
+  // Reopen 1: one of them was being worked by a run core was never told about, so the card says
+  // what core knows, not that the row is stalled.
+  it("reads No check-in, in the unheld chip, on a row nothing holds", () => {
+    const card = cardStatus(issue({ status: "testing", held: false }), undefined);
+    expect([card.label, card.status]).toEqual(["No check-in", LABEL_VIEW.unheld.status]);
+    expect(card.status).not.toBe(statusToChip("testing"));
+  });
+
+  // A live run would have made the row held, so every run the board kept for an unheld row is history.
+  it.each(PIPELINE_RUN_STATUSES)("reads No check-in on a row nothing holds whatever its kept run (%s)", (status) => {
+    const card = cardStatus(issue({ status: "testing", held: false }), { status });
+    expect([card.label, card.status, card.domain]).toEqual(["No check-in", LABEL_VIEW.unheld.status, "issue"]);
+  });
+
+  it("gives an unheld card the clock time of its last check-in and how long ago it was", () => {
+    const at = new Date(2026, 8, 24, 18, 50, 58);
+    const now = at.getTime() + 89 * 60_000;
+    const card = cardStatus(issue({ status: "in_progress", held: false, lastCheckInAt: at.toISOString() }), undefined, now);
+    expect(card.note).toBe("Last check-in 18:50 · 1h ago");
+  });
+
+  it("says no check-in is on record on an unheld card core has no time for", () => {
+    const card = cardStatus(issue({ status: "developed", held: false, lastCheckInAt: null }), undefined);
+    expect(card.note).toBe("No check-in on record");
+  });
+
+  // A queued job would have made the row held, so a queued step on an unheld row is history too.
+  it("reads No check-in with its time on an unheld row whose health still says queued", () => {
+    const at = new Date(2026, 8, 24, 18, 50, 58);
+    const row = issue({ held: false, lastCheckInAt: at.toISOString(), pipelineHealth: queuedHealth() });
+    const card = cardStatus(row, undefined, at.getTime() + 9 * 60_000);
+    expect([card.label, card.note]).toEqual(["No check-in", "Last check-in 18:50 · 9m ago"]);
+  });
+
+  it("reads No check-in on record on an unheld queued row core has no time for", () => {
+    const card = cardStatus(issue({ held: false, pipelineHealth: queuedHealth("runner_stale") }), undefined);
+    expect([card.label, card.note]).toEqual(["No check-in", "No check-in on record"]);
+  });
+
+  it("gives a held card no check-in line, whatever time it carries", () => {
+    const card = cardStatus(issue({ held: true, lastCheckInAt: new Date().toISOString() }), undefined);
+    expect(card.note).toBe("");
+  });
+
+  it("keeps a party's word on a row nothing holds, since no run was owed there", () => {
+    const card = cardStatus(issue({ status: "needs_info", held: false }), undefined);
+    expect(card.label).toBe("Needs a human");
   });
 });
 
@@ -180,7 +229,7 @@ describe("runGateNote", () => {
 		);
 	});
 
-	it("names only the commonest reason where the count is a mixture", () => {
+	it("names the commonest reason with its share where the count is a mixture", () => {
 		const note = runGateNote({
 			read: "ok",
 			condition: runGate({
@@ -190,7 +239,7 @@ describe("runGateNote", () => {
 				],
 			}),
 		});
-		expect(note?.reason).toBe("no control capability");
+		expect(note?.reason).toBe("20 of 30: no control capability");
 	});
 
 	it("still states a gate that had marked without reaching failing open", () => {
@@ -202,12 +251,19 @@ describe("runGateNote", () => {
 		expect(note?.headline).toContain("admitted undecided dispatches");
 	});
 
-	it("says nothing for a run whose box reported no condition, or a gate that was deciding", () => {
-		expect(runGateNote(null)).toBeNull();
+	it("says nothing where the response did not carry the field", () => {
 		expect(runGateNote(undefined)).toBeNull();
-		expect(
-			runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) }),
-		).toBeNull();
+	});
+
+	it("says a box reported no condition, and says it differently from a gate that was deciding", () => {
+		const none = runGateNote(null);
+		const clear = runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) });
+		expect(none?.verdict).toBe("none");
+		expect(none?.headline).toContain("reported no gate condition");
+		expect(clear?.verdict).toBe("clear");
+		expect(clear?.headline).toContain("was deciding");
+		expect(none?.headline).not.toBe(clear?.headline);
+		expect(none?.detail).not.toBe(clear?.detail);
 	});
 
 	// A condition core holds but cannot read is evidence, and rendering nothing
@@ -228,4 +284,16 @@ describe("runGateNote", () => {
 			"30 dispatch(es) admitted without a decision, at an unstated rate over an unknown span",
 		);
 	});
+});
+
+describe("checkInLine", () => {
+  it("counts minutes under an hour", () => {
+    const at = new Date(2026, 8, 24, 9, 5, 0);
+    expect(checkInLine(at.toISOString(), at.getTime() + 9 * 60_000)).toBe("Last check-in 09:05 · 9m ago");
+  });
+
+  it("counts days past a day", () => {
+    const at = new Date(2026, 8, 22, 23, 59, 0);
+    expect(checkInLine(at.toISOString(), at.getTime() + 50 * 3_600_000)).toBe("Last check-in 23:59 · 2d ago");
+  });
 });

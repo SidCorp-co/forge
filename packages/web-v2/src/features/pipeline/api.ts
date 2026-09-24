@@ -11,6 +11,27 @@ import type {
   ThroughputRow,
 } from "./types";
 
+/**
+ * Refuses a page whose rows do not say whether a box is on them, or when anything last checked in
+ * (ISS-1213): read as absent, either would put a guess on the board. A core older than this web
+ * build is the cause.
+ */
+export function requireHeld<P extends { items: PipelineIssueRow[] }>(page: P): P {
+  const missing = page.items
+    .filter((i) => typeof i.held !== "boolean" || !isCheckIn(i.lastCheckInAt))
+    .map((i) => i.displayId);
+  if (missing.length > 0) {
+    throw new Error(
+      `The issue search did not say whether anything is working ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ` and ${missing.length - 3} more` : ""}, or when it last checked in, so the board cannot place those rows. The server is older than this page and needs the release that reports both.`,
+    );
+  }
+  return page;
+}
+
+function isCheckIn(value: unknown): boolean {
+  return value === null || (typeof value === "string" && !Number.isNaN(Date.parse(value)));
+}
+
 /** Issues fetched for the kanban (one page is enough for a board view). */
 export const PIPELINE_ISSUES_PAGE_SIZE = 200;
 
@@ -66,6 +87,8 @@ export const pipelineApi = {
       sort: "updatedAt:desc",
     });
     for (const s of BOARD_EXCLUDED_STATUSES) params.append("statusNot", s);
-    return apiClientList<PipelineIssueRow>(`/projects/${projectId}/issues/search?${params}`);
+    return apiClientList<PipelineIssueRow>(`/projects/${projectId}/issues/search?${params}`).then(
+      requireHeld,
+    );
   },
 };

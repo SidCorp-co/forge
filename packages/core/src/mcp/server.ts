@@ -61,6 +61,7 @@ import { forgeReconcileTool } from './tools/forge-reconcile.js';
 import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSchedulesTool } from './tools/forge-schedules.js';
+import { forgeSentryTool } from './tools/forge-sentry.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
 import {
   forgeSkillsAdoptTool,
@@ -168,6 +169,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeMetricsSessionFailuresTool(ctx),
     // ISS-1074 wave — `forge_github` is the agent face of the GitHub integration (ISS-1062 layer 5).
     forgeGithubTool(ctx),
+    // ISS-1247 — `forge_sentry` is the read side of the Sentry integration, on demand.
+    forgeSentryTool(ctx),
     forgeGuideTool(ctx),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));

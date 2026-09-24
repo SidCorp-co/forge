@@ -10,6 +10,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
+import { issueArchiveSide } from './archive.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
@@ -237,7 +238,7 @@ projectActivityRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const conditions = [eq(issues.projectId, projectId)];
+    const conditions = [eq(issues.projectId, projectId), ...issueArchiveSide(false)];
     if (before) conditions.push(lt(activityLog.createdAt, before));
     if (type) conditions.push(like(activityLog.action, `${type}.%`));
 

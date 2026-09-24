@@ -167,11 +167,11 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
-      tools: [],
+      tools: ['forge_sentry'],
       serverName: 'sentry',
       previewSecrets: { authToken: '[redacted]' },
       justification:
-        'Self-hosted Sentry is reached only through its own MCP server, which the runner executes with the token in its environment; the hosted https MCP is OAuth-only and unusable for a self-hosted instance. Forge has no issue-search API of its own to mediate, so the token reaches the box or the agent cannot read an error at all.',
+        'Core mediates the issue read itself: `forge_sentry` answers `list` and `get` against this binding without the credential leaving core. Everything past an issue — events, traces, Seer, the search syntax Sentry keeps adding to — has no core-mediated route, and the hosted https MCP is OAuth-only and unusable against a self-hosted instance, so reaching any of it means the runner executing `npx @sentry/mcp-server` with the token in its environment.',
       buildEntry: (config, secrets) => {
         const authToken = secrets.authToken;
         if (typeof authToken !== 'string' || authToken.length === 0) return null;
@@ -191,8 +191,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     bindingConfigKeys: SENTRY_BINDING_CONFIG_KEYS,
   },
   usage: {
-    // No `hint`: the generic line is what Sentry rendered before ISS-1071 and this change is about
-    // WHERE the knowledge lives, not about rewriting what an agent is told.
+    hint: '`forge_sentry` reads this error stream on demand — `list` narrowed by release, window, path or request id, `get` for one issue. It changes nothing in Sentry and files nothing; the scheduled pull is what files.',
     renderExtra: (config) => {
       const targets = resolveSentryTargets(config as SentryConfig);
       return targets.length > 0 ? renderSentryTargetsLine(targets) : null;

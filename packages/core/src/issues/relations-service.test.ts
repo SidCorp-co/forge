@@ -41,6 +41,11 @@ vi.mock('./dependency-service.js', () => ({
   ) => emitEdgeSpy(input, written, writer, opts),
 }));
 
+const TX = { tx: 'the one transaction every edge is written in' };
+vi.mock('../db/client.js', () => ({
+  db: { transaction: async (cb: (tx: unknown) => unknown) => cb(TX) },
+}));
+
 const { applyIssueRelations } = await import('./relations-service.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -99,6 +104,14 @@ describe('applyIssueRelations — health publish is batched, never per edge', ()
       { kind: 'blocks', dependsOnId: BLOCKER_A },
     ]);
     expect(setEdgeSpy.mock.calls[0]?.[1]).toEqual(writer);
+  });
+
+  it('writes every edge inside one transaction', async () => {
+    await applyIssueRelations(writer, PROJECT_ID, ISSUE_ID, [
+      { kind: 'blocks', dependsOnId: BLOCKER_A },
+      { kind: 'relates', dependsOnId: BLOCKER_B },
+    ]);
+    expect(setEdgeSpy.mock.calls.map((c) => c[2])).toEqual([TX, TX]);
   });
 
   it('publishes nothing when no blocks edge landed', async () => {

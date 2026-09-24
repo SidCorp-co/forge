@@ -19,6 +19,7 @@ import { db } from '../db/client.js';
 import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
+import { archivedAmong } from './archive.js';
 import { detectCycle } from './cycle-detect.js';
 import { type DependencyKindEffect, describeDependencyKind } from './dependency-effects.js';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
@@ -32,11 +33,15 @@ export type IssueDependencyErrorCode =
   | 'CROSS_PROJECT'
   | 'CYCLE_DETECTED'
   | 'CYCLE_DEPTH_EXCEEDED'
+  | 'ISSUE_ARCHIVED'
   | 'INTERNAL';
 
 export class IssueDependencyError extends Error {
-  constructor(readonly code: IssueDependencyErrorCode) {
-    super(code);
+  constructor(
+    readonly code: IssueDependencyErrorCode,
+    readonly detail?: string,
+  ) {
+    super(detail ? `${code}: ${detail}` : code);
     this.name = 'IssueDependencyError';
   }
 }
@@ -58,6 +63,26 @@ export type IssueDependencyWriter = {
   actor: Actor;
   createdById: string;
 };
+
+/** The edge this write names, by its unique key, or `undefined` where none exists yet. */
+async function findEdge(
+  ex: IssueDependencyExecutor,
+  input: SetIssueDependencyInput,
+): Promise<{ id: string } | undefined> {
+  const [edge] = await ex
+    .select({ id: issueDependencies.id })
+    .from(issueDependencies)
+    .where(
+      and(
+        eq(issueDependencies.projectId, input.projectId),
+        eq(issueDependencies.fromIssueId, input.fromIssueId),
+        eq(issueDependencies.toIssueId, input.toIssueId),
+        eq(issueDependencies.kind, input.kind),
+      ),
+    )
+    .limit(1);
+  return edge;
+}
 
 /** True when this write only retires the edge: `validUntil` already in the past. */
 const expiresEdge = (validUntil: string | undefined): boolean =>
@@ -91,7 +116,8 @@ export async function setIssueDependency(
   writer: IssueDependencyWriter,
   opts?: { deferHealthPublish?: boolean },
 ): Promise<SetIssueDependencyResult> {
-  const written = await writeIssueDependency(input, writer);
+  // One transaction, so the `FOR SHARE` read of both sides holds until the edge commits.
+  const written = await db.transaction((tx) => writeIssueDependency(input, writer, tx));
   await emitIssueDependencyEffects(input, written, writer, opts);
   const effects = describeDependencyKind(input.kind);
   if (written.created) return { id: written.id, created: true, effects };
@@ -118,6 +144,13 @@ export async function writeIssueDependency(
   if (sides.length !== 2) throw new IssueDependencyError('NOT_FOUND');
   for (const s of sides) {
     if (s.projectId !== input.projectId) throw new IssueDependencyError('CROSS_PROJECT');
+  }
+  // ISS-1237 — an edge naming an archived issue would point at a row no reader can find. The
+  // `FOR SHARE` read waits on an archive holding either side, then reads what it committed. Only
+  // retiring an edge that already exists passes; an edge first written already expired is new.
+  const [archived] = await archivedAmong(ex, [input.fromIssueId, input.toIssueId], 'share');
+  if (archived && !(expiresEdge(input.validUntil) && (await findEdge(ex, input)))) {
+    throw new IssueDependencyError('ISSUE_ARCHIVED', archived.message);
   }
 
   if (input.kind === 'blocks' && !expiresEdge(input.validUntil)) {
@@ -153,18 +186,7 @@ export async function writeIssueDependency(
     return { id, created: true, updated: false, effect: 'added' };
   }
 
-  const [existing] = await ex
-    .select({ id: issueDependencies.id })
-    .from(issueDependencies)
-    .where(
-      and(
-        eq(issueDependencies.projectId, input.projectId),
-        eq(issueDependencies.fromIssueId, input.fromIssueId),
-        eq(issueDependencies.toIssueId, input.toIssueId),
-        eq(issueDependencies.kind, input.kind),
-      ),
-    )
-    .limit(1);
+  const existing = await findEdge(ex, input);
   if (!existing) throw new IssueDependencyError('INTERNAL');
 
   const patch: { validUntil?: Date; reason?: string } = {};

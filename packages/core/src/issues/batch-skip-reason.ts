@@ -13,6 +13,7 @@ export const BATCH_SKIP_BY_CODE = {
   RELEASE_RECORD_REQUIRED: 'release_record_required',
   CLOSE_REQUIRES_SHIPPED: 'close_requires_shipped',
   ENTRY_CRITERIA_UNMET: 'entry_criteria_unmet',
+  ISSUE_ARCHIVED: 'issue_archived',
 } as const satisfies Record<TransitionErrorCode, string>;
 
 export type BatchSkipReason =

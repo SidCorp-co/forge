@@ -23,7 +23,6 @@ import {
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
-import { useLaneLabeller } from "@/features/issues/vocabulary";
 import { boardColumns, cardStatus, formatUsd, groupIssuesByLabel, runsByIssue } from "../derive";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
@@ -50,7 +49,6 @@ interface Selection {
 export function PipelineBoard({ scope, embedded = false, canWrite = true }: PipelineBoardProps) {
   const { projectId, slug } = scope;
   const [selected, setSelected] = useState<Selection | null>(null);
-  const labelStatus = useLaneLabeller();
 
   // Live updates: this project's room invalidates the board's queries.
   useRoom(projectRoom(projectId));
@@ -118,11 +116,11 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
               title={group.title}
               color={group.color}
               count={group.issues.length}
-              emptyHint={`No issues are ${group.title.toLowerCase()}.`}
+              emptyHint="No issues in this column."
             >
               {group.issues.map((issue) => {
                 const run = issue.id ? runIndex.get(issue.id) : undefined;
-                const card = cardStatus(issue, run, labelStatus);
+                const card = cardStatus(issue, run);
                 return (
                   <KanbanCard
                     key={issue.id}
@@ -133,6 +131,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                     statusDomain={card.domain}
                     held={issue.status === "on_hold"}
                     {...(card.waitingReason ? { waitingReason: card.waitingReason } : {})}
+                    {...(card.note ? { note: card.note } : {})}
                     cost={
                       run && run.cost.estimatedCost > 0
                         ? formatUsd(run.cost.estimatedCost)
