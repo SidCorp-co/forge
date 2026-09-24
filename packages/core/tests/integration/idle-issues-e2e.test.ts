@@ -553,7 +553,7 @@ describe('An automatic release hold decides what an awaiting_release strand says
     const waitingFor = 'a verdict on each criterion named, at the runtime serving it';
     const releaseHold = {
       code: 'RELEASE_CRITERIA_UNEARNED',
-      reason: 'criterion 3: unjudged',
+      reason: 'criterion 3: unjudged. A person clears this.',
       owes: 'agent',
       waitingFor,
     };
@@ -572,5 +572,8 @@ describe('An automatic release hold decides what an awaiting_release strand says
     expect(String(strand?.reason)).toContain('(RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged');
     const plain = await strandOf(unheld);
     expect([plain?.owes, plain?.waitingFor]).toEqual(['human', 'a person to release it']);
+    const note = emitted.find((n) => n.body.includes('A person clears this'));
+    expect(note?.body).toContain('A person clears this. It is waiting for');
+    expect(note?.body).not.toContain('..');
   });
 });

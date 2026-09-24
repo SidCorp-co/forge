@@ -141,6 +141,29 @@ describe('cutWaitingRelease', () => {
     expect(outcome.reasons).toEqual(['No runner is online.', 'The probes are undeclared.']);
   });
 
+  // `releaseBlockerError` throws a class per readiness code, most of them outside the list above
+  // (`RELEASE_RUNNER_UNDECLARED` among them); what makes one a refusal is the blockers it carries.
+  it('classifies any error carrying readiness blockers as a refusal under the first code', async () => {
+    const sentence = 'This project declares a release model and no live deploy binding names one.';
+    const err = Object.assign(new Error('RELEASE_RUNNER_UNDECLARED'), {
+      releaseBlockers: [{ code: 'RELEASE_RUNNER_UNDECLARED', message: sentence }],
+    });
+    createReleaseBatchMock.mockRejectedValueOnce(err);
+    const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
+    expect(outcome.status).toBe('skipped');
+    expect(outcome.code).toBe('RELEASE_RUNNER_UNDECLARED');
+    expect(outcome.reasons).toEqual([sentence]);
+    expect(outcome.named).toEqual(['iss-1']);
+  });
+
+  it('keeps an error carrying an empty blocker list unclassified', async () => {
+    createReleaseBatchMock.mockRejectedValueOnce(
+      Object.assign(new Error('lock timeout'), { releaseBlockers: [] }),
+    );
+    const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
+    expect(outcome.status).toBe('failed');
+  });
+
   // The enumerator refuses more than one release may carry, so the cut takes the
   // oldest fifty the roster lists first and leaves the rest for the next tick.
   it('names one release of the oldest merges when more are waiting than it may carry', async () => {

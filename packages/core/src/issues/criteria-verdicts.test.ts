@@ -297,7 +297,24 @@ describe('unearnedCriteriaReports', () => {
   it('reports an issue with no numbered criteria as owing nothing', async () => {
     issueRows = [deployed('iss-no-criteria', 'prose with no numbered line')];
     expect(await unearnedCriteriaReports(['iss-no-criteria'])).toEqual([
-      { issueId: 'iss-no-criteria', unearned: [], broken: [] },
+      { issueId: 'iss-no-criteria', unearned: [], broken: [], serving: SERVING },
+    ]);
+  });
+
+  it('carries the deployment the issue records as serving it, or null where it records none', async () => {
+    issueRows = [
+      deployed('iss-served', '1. ok'),
+      {
+        id: 'iss-unserved',
+        acceptanceCriteria: '1. ok',
+        sessionContext: {},
+        mergedCommitSha: SOURCE,
+      },
+    ];
+    const reports = await unearnedCriteriaReports(['iss-served', 'iss-unserved']);
+    expect(reports.map((r) => [r.issueId, r.serving])).toEqual([
+      ['iss-served', SERVING],
+      ['iss-unserved', null],
     ]);
   });
 

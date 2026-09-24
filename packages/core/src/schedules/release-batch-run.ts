@@ -35,7 +35,7 @@ export interface ScheduledCutOutcome {
   reasons?: string[];
 }
 
-// A declined cut, by its operator-facing code; a carried blocker's code outranks the class.
+// Carrying a readiness blocker makes an error a refusal; these classes name one thrown without.
 const CLASSIFIED_REFUSALS: ReadonlyArray<readonly [new (...args: never[]) => Error, string]> = [
   [BatchInFlightError, 'BATCH_IN_FLIGHT'],
   [ClaimConflictError, 'CLAIM_CONFLICT'],
@@ -75,13 +75,14 @@ export async function cutWaitingRelease(args: {
       named,
     };
   } catch (err) {
-    const classified = CLASSIFIED_REFUSALS.find(([cls]) => err instanceof cls);
-    if (classified) {
+    const code =
+      blockersOf(err)[0]?.code ?? CLASSIFIED_REFUSALS.find(([cls]) => err instanceof cls)?.[1];
+    if (code) {
       return {
         status: 'skipped',
-        output: `no cut this tick: ${(err as Error).message}`,
+        output: `no cut this tick: ${err instanceof Error ? err.message : String(err)}`,
         named,
-        code: blockersOf(err)[0]?.code ?? classified[1],
+        code,
         reasons: reasonsOf(err),
       };
     }
