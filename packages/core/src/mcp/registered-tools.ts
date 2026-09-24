@@ -1,9 +1,9 @@
 /**
  * The MCP tool surface this server is DECLARED to register.
  *
- * Read by two tests: one asks the running server for its tool list and
- * compares, the other asks whether any bundled runner skill names something
- * absent from it.
+ * `integrations/github/agent-declaration.test.ts` reads it to refuse an integration that offers an
+ * agent a tool the server does not serve: such a declaration advertises, in every prompt, a call
+ * that answers `not_found`, which an agent reads as a credential fault and retries.
  */
 
 export const REGISTERED_TOOLS = [
@@ -49,6 +49,7 @@ export const REGISTERED_TOOLS = [
   'forge_release_batch',
   'forge_runners',
   'forge_schedules',
+  'forge_sentry',
   'forge_skill_facts.get',
   'forge_skill_facts.list',
   'forge_skills.adopt',
