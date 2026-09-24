@@ -196,7 +196,7 @@ describe("runGateNote", () => {
 		);
 	});
 
-	it("names only the commonest reason where the count is a mixture", () => {
+	it("names the commonest reason with its share where the count is a mixture", () => {
 		const note = runGateNote({
 			read: "ok",
 			condition: runGate({
@@ -206,7 +206,7 @@ describe("runGateNote", () => {
 				],
 			}),
 		});
-		expect(note?.reason).toBe("no control capability");
+		expect(note?.reason).toBe("20 of 30: no control capability");
 	});
 
 	it("still states a gate that had marked without reaching failing open", () => {
@@ -218,12 +218,21 @@ describe("runGateNote", () => {
 		expect(note?.headline).toContain("admitted undecided dispatches");
 	});
 
-	it("says nothing for a run whose box reported no condition, or a gate that was deciding", () => {
-		expect(runGateNote(null)).toBeNull();
+	it("says nothing where the response did not carry the field", () => {
 		expect(runGateNote(undefined)).toBeNull();
-		expect(
-			runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) }),
-		).toBeNull();
+	});
+
+	// The API keeps "the box sent none" apart from "the gate was clear"; the
+	// screen used to render nothing for both and put them back together.
+	it("says a box reported no condition, and says it differently from a gate that was deciding", () => {
+		const none = runGateNote(null);
+		const clear = runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) });
+		expect(none?.verdict).toBe("none");
+		expect(none?.headline).toContain("reported no gate condition");
+		expect(clear?.verdict).toBe("clear");
+		expect(clear?.headline).toContain("was deciding");
+		expect(none?.headline).not.toBe(clear?.headline);
+		expect(none?.detail).not.toBe(clear?.detail);
 	});
 
 	// A condition core holds but cannot read is evidence, and rendering nothing
