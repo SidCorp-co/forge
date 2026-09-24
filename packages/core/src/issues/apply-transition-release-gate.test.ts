@@ -29,6 +29,7 @@ const insertValues = vi.fn(async (_v: Record<string, unknown>) => undefined);
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
   archivedAmong: vi.fn(async () => []),
+  archiveRefusalForTransition: vi.fn(async () => null),
 }));
 
 vi.mock('../db/client.js', () => {

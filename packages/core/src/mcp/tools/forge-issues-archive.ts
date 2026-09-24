@@ -35,7 +35,10 @@ export async function runArchiveAction(input: {
       actor: principalHookActor(input.principal),
     });
   } catch (err) {
-    if (err instanceof IssueArchiveRefusedError) throw new Error(`ARCHIVE_REFUSED: ${err.message}`);
+    if (err instanceof IssueArchiveRefusedError) {
+      // The whole report rides with the refusal, as REST's `details` does: every refused key, not five.
+      throw new Error(`ARCHIVE_REFUSED: ${err.message}\n${JSON.stringify(err.report)}`);
+    }
     throw err;
   }
 }

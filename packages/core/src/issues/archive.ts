@@ -14,7 +14,18 @@
  * can see.
  */
 
-import { and, eq, inArray, isNull, lt, notInArray, or, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -198,15 +209,12 @@ async function loadBearingEdges(
       })
       .from(issueDependencies)
       .innerJoin(other, eq(other.id, theirs))
-      .where(
-        and(
-          eq(issueDependencies.projectId, projectId),
-          inArray(mine, ids),
-          live,
-          notInArray(other.status, [...ISSUE_TERMINAL_STATUSES]),
-        ),
-      );
+      .where(and(eq(issueDependencies.projectId, projectId), inArray(mine, ids), live))
+      .for('share', { of: other });
+    // Every counterpart is locked, terminal ones included: a terminal one left unlocked could be
+    // reopened alongside this archive, each reading the other's state from before either wrote.
     for (const e of edges) {
+      if (ISSUE_TERMINAL_STATUSES.includes(e.otherStatus)) continue;
       const key = keyOf(seqById.get(e.mine) ?? 0);
       const otherKey = keyOf(e.otherSeq);
       const verb = direction === 'outgoing' ? `${e.edgeKind} →` : `← ${e.edgeKind} from`;
@@ -338,6 +346,43 @@ export async function runIssueArchive(input: {
 /** The refusal an edge write or a transition gets when it names an archived issue. */
 export function archivedIssueSentence(key: string, projectId: string): string {
   return `${key} is archived. Unarchive it first — POST /api/projects/${projectId}/issues/unarchive with {"filter":{"keys":["${key}"]}} — then retry`;
+}
+
+/**
+ * Why a transition may not happen, where an archive stands in its way; `null` where none does.
+ * The row itself is locked `FOR UPDATE`. Leaving `closed`/`dropped` is also refused while an
+ * unexpired edge ties the row to an archived issue, since that edge would make the archived one
+ * load-bearing again; `loadBearingEdges` holds the same counterpart rows `FOR SHARE`, so the two
+ * cannot both pass on what each read before the other wrote.
+ */
+export async function archiveRefusalForTransition(
+  tx: Tx,
+  issueId: string,
+  toStatus: IssueStatus,
+): Promise<string | null> {
+  const [own] = await archivedAmong(tx, [issueId], 'update');
+  if (own) return own.message;
+  if (ISSUE_TERMINAL_STATUSES.includes(toStatus)) return null;
+  const other = alias(issues, 'archived_side');
+  const live = or(
+    isNull(issueDependencies.validUntil),
+    sql`${issueDependencies.validUntil} > now()`,
+  );
+  const [tied] = await tx
+    .select({ edgeKind: issueDependencies.kind, projectId: other.projectId, issSeq: other.issSeq })
+    .from(issueDependencies)
+    .innerJoin(
+      other,
+      or(
+        and(eq(issueDependencies.fromIssueId, issueId), eq(other.id, issueDependencies.toIssueId)),
+        and(eq(issueDependencies.toIssueId, issueId), eq(other.id, issueDependencies.fromIssueId)),
+      ),
+    )
+    .where(and(live, isNotNull(other.archivedAt)))
+    .limit(1);
+  if (!tied) return null;
+  const key = (await issueRefFormatter(tied.projectId))(tied.issSeq);
+  return `this issue cannot become \`${toStatus}\` while a live \`${tied.edgeKind}\` edge ties it to ${key}, which is archived and would be load-bearing again. Retract the edge, or: ${archivedIssueSentence(key, tied.projectId)}`;
 }
 
 /**

@@ -27,6 +27,7 @@ const dbSelect = vi.fn(() => ({ from: projectSelectFrom }));
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
   archivedAmong: vi.fn(async () => []),
+  archiveRefusalForTransition: vi.fn(async () => null),
 }));
 
 vi.mock('../db/client.js', () => {

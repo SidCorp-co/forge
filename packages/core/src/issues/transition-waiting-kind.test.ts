@@ -14,6 +14,7 @@ const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
   archivedAmong: vi.fn(async () => []),
+  archiveRefusalForTransition: vi.fn(async () => null),
 }));
 
 vi.mock('../config/env.js', () => ({

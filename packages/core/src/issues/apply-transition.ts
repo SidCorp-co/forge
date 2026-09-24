@@ -17,7 +17,7 @@ import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipelin
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
-import { archivedAmong } from './archive.js';
+import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { resolveAutonomousParkTarget } from './autonomous-park.js';
 import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
@@ -443,10 +443,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       // ISS-1107 — stamped before any write, so the trigger reads this transaction's marker
       // whichever statement moves the status.
       await stampKernelTxn(tx);
-      const [archivedNow] = await archivedAmong(tx, [issue.id], 'update');
-      if (archivedNow) {
-        throw new TransitionError('ISSUE_ARCHIVED', archivedNow.message, { to: toStatus });
-      }
+      const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
+      if (archiveRefusal)
+        throw new TransitionError('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
       await options.beforeStatusWrite?.(tx);
       if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
         await postTransitionReasonComment(

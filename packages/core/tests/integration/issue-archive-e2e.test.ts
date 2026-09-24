@@ -49,6 +49,7 @@ const memoryId: Record<string, string> = {};
 let search: typeof import('../../src/memory/search.js');
 let expandIssueRelations: typeof import('../../src/memory/expand-relations.js').expandIssueRelations;
 let runMemoryGet: typeof import('../../src/memory/get-service.js').runMemoryGet;
+type GetMemoryInput = import('../../src/memory/get-service.js').GetMemoryInput;
 let readPmGraph: typeof import('../../src/pm/graph-service.js').readPmGraph;
 let parseSseStream: typeof import('../../src/assistant/providers/sse.js').parseSseStream;
 
@@ -107,12 +108,8 @@ async function streamIds(path: string): Promise<string[]> {
   });
   const out: string[] = [];
   for await (const data of parseSseStream(res.body as ReadableStream<Uint8Array>)) {
-    const f = JSON.parse(data) as {
-      type: string;
-      id?: string;
-      issueId?: string;
-      hits?: { sourceRef: string }[];
-    };
+    type Item = { type: string; id?: string; issueId?: string; hits?: { sourceRef: string }[] };
+    const f = JSON.parse(data) as Item;
     if (f.type !== 'item') continue;
     out.push(f.issueId ?? f.id ?? '');
     for (const h of f.hits ?? []) out.push(h.sourceRef);
@@ -123,13 +120,9 @@ async function streamIds(path: string): Promise<string[]> {
 async function mcp(pat: string, args: Record<string, unknown>) {
   const ctx = await connectClientAsPat(pat);
   try {
-    const res = (await ctx.client.callTool({
-      name: 'forge_issues',
-      arguments: { projectId, ...args },
-    })) as {
-      isError?: boolean;
-      content: Array<{ type: string; text: string }>;
-    };
+    type Result = { isError?: boolean; content: Array<{ type: string; text: string }> };
+    const call = { name: 'forge_issues', arguments: { projectId, ...args } };
+    const res = (await ctx.client.callTool(call)) as Result;
     if (res.isError) return { error: res.content[0]?.text ?? '' };
     return { value: parseToolResult(res) as Record<string, unknown> };
   } finally {
@@ -150,15 +143,9 @@ const neighbourHit = () => ({
   embeddedAt: new Date(),
   stale: false,
 });
+const LIST = { source: 'issue', limit: 50, offset: 0, orderBy: 'createdAt', orderDir: 'desc' };
 const memoryList = () =>
-  runMemoryGet({
-    projectId,
-    source: 'issue',
-    limit: 50,
-    offset: 0,
-    orderBy: 'createdAt',
-    orderDir: 'desc',
-  });
+  runMemoryGet({ projectId, ...(LIST as Omit<GetMemoryInput, 'projectId'>) });
 
 const itemIds = (body: Record<string, unknown>) =>
   ((body.items ?? body.data ?? []) as { id: string }[]).map((r) => r.id);
@@ -328,6 +315,16 @@ describe('what an archive refuses, writing nothing', () => {
     expect((await mcp(memberPat, ask)).error).toMatch(/requires project admin access/);
   });
 
+  it('carries every refusal, not the first five, on REST and on MCP alike', async () => {
+    const keys = ['ISS-901', 'ISS-902', 'ISS-903', 'ISS-904', 'ISS-905', 'ISS-906'];
+    const rest = await archive('archive', { filter: { keys } });
+    const refused = (rest.body.details as { refusals: unknown[] }).refusals;
+    expect(refused).toHaveLength(6);
+    const viaMcp = await mcp(adminPat, { action: 'archive', archiveFilter: { keys } });
+    const report = JSON.parse(viaMcp.error?.slice(viaMcp.error.indexOf('\n') + 1) ?? '{}');
+    expect(report.refusals).toEqual(refused);
+  });
+
   it('answers the same report over MCP as over REST', async () => {
     const body = { keys: ['ISS-1', 'ISS-2'], statuses: ['closed'] };
     const rest = await archive('archive', { filter: body, dryRun: true });
@@ -439,6 +436,15 @@ describe('an archived issue still answers by key, and refuses becoming load-bear
       sql`SELECT status FROM issues WHERE id = ${id.old}`,
     )) as unknown as { status: string }[];
     expect(rows[0]?.status).toBe('closed');
+  });
+
+  it('refuses reopening a live issue a live edge ties to it, naming it', async () => {
+    const res = await api(`/api/issues/${id.neighbour}/transition`, {
+      method: 'POST',
+      body: JSON.stringify({ toStatus: 'open', reason: 'reopen the neighbour' }),
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/live `relates` edge ties it to ISS-1, which is archived/);
   });
 
   it('refuses a new edge naming it on either end, and still lets an existing edge be retracted', async () => {

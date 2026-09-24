@@ -96,7 +96,8 @@ export async function setIssueDependency(
   writer: IssueDependencyWriter,
   opts?: { deferHealthPublish?: boolean },
 ): Promise<SetIssueDependencyResult> {
-  const written = await writeIssueDependency(input, writer);
+  // One transaction, so the `FOR SHARE` read of both sides holds until the edge commits.
+  const written = await db.transaction((tx) => writeIssueDependency(input, writer, tx));
   await emitIssueDependencyEffects(input, written, writer, opts);
   const effects = describeDependencyKind(input.kind);
   if (written.created) return { id: written.id, created: true, effects };
