@@ -3088,9 +3088,9 @@
   set is now 59.
 
 ### Fixed
-- **The Pipeline board says Running only when something is working the issue.** An issue that
-  nothing is working now sits in a new Stalled column instead, and status menus name the status
-  you would move to.
+- **The Pipeline board says Running only when something is working the issue.** Any other issue
+  sits under No check-in, with the time something last reported on it. Status menus name the
+  status you would move to.
 - **A machine whose queue read hangs now reports it instead of looking healthy.** A read with no
   answer within 15 seconds counts as failed, and the error names its cause, not the address.
 - **A subagent's worktree is no longer removed while it can still resume.** Its run ends when its

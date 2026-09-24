@@ -19,6 +19,8 @@ export interface KanbanCardProps {
    *  hold so the dispatcher won't pick up new jobs (ISS-386). */
   held?: boolean;
   waitingReason?: string;
+  /** A line under the title, e.g. when a row nothing holds last checked in. */
+  note?: string;
   assignee?: { initials: string; hue?: AvatarHue };
   onClick?: () => void;
 }
@@ -32,6 +34,7 @@ export function KanbanCard({
   cost,
   held,
   waitingReason,
+  note,
   assignee,
   onClick,
 }: KanbanCardProps) {
@@ -39,7 +42,7 @@ export function KanbanCard({
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Open ${id} — ${title}${held ? " (on manual hold)" : ""}${waitingReason ? ` (waiting: ${waitingReason})` : ""}`}
+      aria-label={`Open ${id} — ${title}${held ? " (on manual hold)" : ""}${waitingReason ? ` (waiting: ${waitingReason})` : ""}${note ? ` (${note})` : ""}`}
       className="flex w-full flex-col gap-2.5 rounded-md border border-line bg-surface p-3 text-left shadow-xs transition-colors duration-[120ms] hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
     >
       <div className="flex items-center justify-between gap-2">
@@ -60,6 +63,7 @@ export function KanbanCard({
       <p className="fg-body-sm line-clamp-2 text-fg" style={{ fontWeight: 500 }}>
         {title}
       </p>
+      {note && <p className="fg-caption text-muted">{note}</p>}
       {/* Real status, visible WITHOUT opening the panel (ISS-436). */}
       <div className="flex items-center justify-between gap-2">
         <span title={waitingReason}>

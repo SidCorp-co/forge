@@ -363,9 +363,10 @@ describe("label helpers", () => {
 		expect(new Set(words).size).toBe(10);
 	});
 	// ISS-1213: a row nothing holds does not read Running, whatever its status.
-	it("reads Stalled, never Running, on a row nothing holds", () => {
-		expect(lane("testing", false)).toBe("Stalled");
-		expect(lane("developed", false)).toBe("Stalled");
+	it("reads No check-in, never Running or Stalled, on a row nothing holds", () => {
+		expect(lane("testing", false)).toBe("No check-in");
+		expect(lane("developed", false)).toBe("No check-in");
+		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("Stalled");
 		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("Running");
 	});
 	it("names each move target by its own status word, never by a lane word", () => {
@@ -376,11 +377,11 @@ describe("label helpers", () => {
 		]);
 		expect(transitionLabels([...ISSUE_STATUSES])).toEqual(ISSUE_STATUSES.map(statusLabel));
 	});
-	it("puts every status the lane reads as running or stalled on the agent tab", () => {
+	it("puts every status the lane reads as running or as no check-in on the agent tab", () => {
 		const agent = filterToQueryParams("agent").status ?? [];
 		for (const s of ISSUE_STATUSES) {
 			const word = lane(s, false);
-			if (word === "Stalled" || word === "Open") expect(agent, s).toContain(s);
+			if (word === "No check-in" || word === "Open") expect(agent, s).toContain(s);
 		}
 	});
 
