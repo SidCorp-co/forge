@@ -17,7 +17,8 @@ import { join } from "node:path";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { laneLabel, statusLabel } from "../derive";
+import { LABEL_VIEW, statusLabel } from "../derive";
+import { toAutonomousLabel } from "@forge/contracts/issue-vocabulary";
 import { ISSUE_STATUSES } from "../types";
 import type { IssueRow, IssueStatus } from "../types";
 import { StatusCell } from "./issue-row-actions";
@@ -93,7 +94,7 @@ describe("the column headed STATUS prints the kernel status", () => {
   });
 
   it("tells apart every status the lane folds onto Running", () => {
-    const folded = ISSUE_STATUSES.filter((s) => laneLabel(s, true) === "Running");
+    const folded = ISSUE_STATUSES.filter((s) => LABEL_VIEW[toAutonomousLabel(s, true)].label === "Running");
     expect(folded.length).toBeGreaterThan(1);
     const words = folded.map(printed);
     expect(new Set(words).size).toBe(folded.length);
@@ -101,7 +102,7 @@ describe("the column headed STATUS prints the kernel status", () => {
   });
 
   it("tells apart every status the lane folds onto Needs a human", () => {
-    const folded = ISSUE_STATUSES.filter((s) => laneLabel(s, true) === "Needs a human");
+    const folded = ISSUE_STATUSES.filter((s) => LABEL_VIEW[toAutonomousLabel(s, true)].label === "Needs a human");
     expect(folded.length).toBeGreaterThan(1);
     const words = folded.map(printed);
     expect(new Set(words).size).toBe(folded.length);
@@ -140,7 +141,7 @@ describe("the word the detail header prints", () => {
 
   it("labels the header chip with the kernel status and not the lane word", () => {
     expect(chip).toMatch(/label=\{statusLabel\(issue\.status\)\}/u);
-    expect(chip).not.toMatch(/laneLabel/u);
+    expect(chip).not.toMatch(/LABEL_VIEW|toAutonomousLabel/u);
   });
 
   // And the two surfaces then agree because one function answers for both.

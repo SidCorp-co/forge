@@ -76,6 +76,8 @@ const LABEL_WORDS: Record<AutonomousLabel, string> = {
 	dropped: "Dropped",
 };
 
+const PAUSED_CHIP = statusToChip(LABEL_TO_KERNEL.paused);
+
 /**
  * How each lane label is shown: its word, `StatusKey` and colour. The status→label map and the
  * order live in `@forge/contracts`. `stalled` is written as no status, so it takes paused's colour.
@@ -93,7 +95,7 @@ export const LABEL_VIEW: Record<
 			];
 		}),
 	) as Record<WritableLabel, { label: string; status: StatusKey; tone: SemanticTone }>),
-	stalled: { label: LABEL_WORDS.stalled, status: "blocked", tone: STATUS_KEY_TONE.blocked },
+	stalled: { label: LABEL_WORDS.stalled, status: PAUSED_CHIP, tone: STATUS_KEY_TONE[PAUSED_CHIP] },
 };
 
 export const PRIORITY_LABELS: Record<IssuePriority, string> = {
@@ -114,10 +116,6 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 
 /** The issue's own status, written out: one word per kernel status, all 17 distinct. Every surface that REPORTS a status takes this one. */
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
-
-/** The LANE word a row reads, `held` its search row's own. Lossy: not for a status or a move target. */
-export const laneLabel = (s: IssueStatus, held: boolean): string =>
-	LABEL_VIEW[toAutonomousLabel(s, held)]?.label ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;
 export const complexityLabel = (
@@ -238,14 +236,6 @@ export function groupedTransitions(
 	return out;
 }
 
-/**
- * The label each target is offered under, disambiguated WITHIN one menu.
- *
- * The autonomous vocabulary is many-to-one — `confirmed`, `in_progress`,
- * `developed` and `testing` all read "Running" — which the fifteen-item menu
- * hid in its own noise. A rung's real exits are few enough that two identical
- * rows are the whole list, so a repeated label carries its kernel status.
- */
 /** A move target has no holder, so it is named by its own status word, never "Running" (ISS-1213). */
 export function transitionLabels(targets: IssueStatus[]): string[] {
 	return targets.map(statusLabel);

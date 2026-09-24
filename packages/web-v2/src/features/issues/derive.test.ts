@@ -1,3 +1,4 @@
+import { toAutonomousLabel } from "@forge/contracts/issue-vocabulary";
 import { describe, expect, it } from "vitest";
 import {
 	REGISTRY_ISSUE_STATUSES,
@@ -35,7 +36,7 @@ import {
 	priorityLabel,
 	STATUS_LABELS,
 	statusLabel,
-	laneLabel,
+	LABEL_VIEW,
 	statusToChip,
 	statusToTone,
 	statusesFromParam,
@@ -43,6 +44,7 @@ import {
 } from "./derive";
 import type {
 	IssueDependencies,
+	IssueStatus,
 	IssueDependencyEdge,
 	IssueDetail,
 	IssueRow,
@@ -77,6 +79,10 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 	};
 }
 
+
+/** The word the board shows for a row: its lane label, held or not. */
+const lane = (s: IssueStatus, held: boolean): string => LABEL_VIEW[toAutonomousLabel(s, held)].label;
+
 describe("statusToChip", () => {
 	it("maps live agent status first", () => {
 		expect(statusToChip("approved", "running")).toBe("running");
@@ -102,7 +108,7 @@ describe("statusToChip", () => {
 		expect(new Set(kernel).size).toBe(folded.length);
 		expect(statusLabel("draft")).toMatch(/draft/i);
 		// The lane word does NOT separate them, which is why it may not label a status chip.
-		expect(new Set(folded.map((s) => laneLabel(s, true))).size).toBeLessThan(folded.length);
+		expect(new Set(folded.map((s) => lane(s, true))).size).toBeLessThan(folded.length);
 	});
 });
 
@@ -333,8 +339,8 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 describe("label helpers", () => {
 	it("humanizes status / priority / complexity (no raw enum leaks)", () => {
 		expect(statusLabel("in_progress")).toBe("In progress");
-		expect(laneLabel("in_progress", true)).toBe("Running");
-		expect(laneLabel("needs_info", true)).toBe("Needs a human");
+		expect(lane("in_progress", true)).toBe("Running");
+		expect(lane("needs_info", true)).toBe("Needs a human");
 
 		expect(statusLabel("needs_info")).toBe("Needs info");
 		expect(priorityLabel("critical")).toBe("Critical");
@@ -342,25 +348,25 @@ describe("label helpers", () => {
 		expect(complexityLabel("m")).toBe("Medium");
 	});
 	it("labels a deliberate pause as paused, never as needing a human", () => {
-		expect(laneLabel("on_hold", false)).toBe("Paused");
-		expect(laneLabel("on_hold", false)).not.toBe("Needs a human");
-		expect(laneLabel("waiting", false)).toBe("Needs a human");
-		expect(laneLabel("needs_info", false)).toBe("Needs a human");
+		expect(lane("on_hold", false)).toBe("Paused");
+		expect(lane("on_hold", false)).not.toBe("Needs a human");
+		expect(lane("waiting", false)).toBe("Needs a human");
+		expect(lane("needs_info", false)).toBe("Needs a human");
 	});
 	it("keeps the ten lane words for the surfaces that want ten buckets", () => {
-		expect(laneLabel("in_progress", true)).toBe("Running");
-		expect(laneLabel("developed", true)).toBe("Running");
-		expect(laneLabel("releasing", true)).toBe("Running");
-		expect(laneLabel("waiting", true)).toBe("Needs a human");
-		expect(laneLabel("needs_info", true)).toBe("Needs a human");
-		const words = ISSUE_STATUSES.flatMap((s) => [laneLabel(s, true), laneLabel(s, false)]);
+		expect(lane("in_progress", true)).toBe("Running");
+		expect(lane("developed", true)).toBe("Running");
+		expect(lane("releasing", true)).toBe("Running");
+		expect(lane("waiting", true)).toBe("Needs a human");
+		expect(lane("needs_info", true)).toBe("Needs a human");
+		const words = ISSUE_STATUSES.flatMap((s) => [lane(s, true), lane(s, false)]);
 		expect(new Set(words).size).toBe(10);
 	});
 	// ISS-1213: a row nothing holds does not read Running, whatever its status.
 	it("reads Stalled, never Running, on a row nothing holds", () => {
-		expect(laneLabel("testing", false)).toBe("Stalled");
-		expect(laneLabel("developed", false)).toBe("Stalled");
-		expect(ISSUE_STATUSES.map((s) => laneLabel(s, false))).not.toContain("Running");
+		expect(lane("testing", false)).toBe("Stalled");
+		expect(lane("developed", false)).toBe("Stalled");
+		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("Running");
 	});
 	it("names each move target by its own status word, never by a lane word", () => {
 		expect(transitionLabels(["in_progress", "developed", "testing"])).toEqual([
@@ -373,8 +379,8 @@ describe("label helpers", () => {
 	it("puts every status the lane reads as running or stalled on the agent tab", () => {
 		const agent = filterToQueryParams("agent").status ?? [];
 		for (const s of ISSUE_STATUSES) {
-			const lane = laneLabel(s, false);
-			if (lane === "Stalled" || lane === "Open") expect(agent, s).toContain(s);
+			const word = lane(s, false);
+			if (word === "Stalled" || word === "Open") expect(agent, s).toContain(s);
 		}
 	});
 
