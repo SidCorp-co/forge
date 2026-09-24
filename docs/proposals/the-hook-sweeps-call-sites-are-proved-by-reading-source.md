@@ -9,8 +9,9 @@ Two cases in the runner assert something about production source *text* instead 
 code does:
 
 - `daemon/mod.rs:the_sweep_runs_at_boot_and_again_the_moment_an_update_replaces_the_binary`
-  asserts that `mod.rs` contains the literal `repair_installed_hooks(&cfg, "boot")`, and that the
-  after-update call appears before `drain_to_idle` in the file.
+  asserts that `mod.rs` contains the literal `repair_installed_hooks(server.as_deref(), &cfg,
+  "boot")`, that the after-update call is handed what `list_me` returned, and that both appear
+  before `drain_to_idle` in the file.
 - `update/mod.rs:the_install_target_is_resolved_rather_than_read_off_proc_self_exe` asserts that
   `apply`'s body does not contain `current_exe()` and does contain `crate::exe::own()`.
 
@@ -39,9 +40,20 @@ so `daemon::run` can be entered and the update loop driven to its post-apply swe
 cases above become assertions about a journal line and a settings file, and both source reads are
 deleted rather than annotated.
 
+## What one of them could not see, measured
+
+The third judging run of ISS-1200 failed criterion 8 on the *set* the boot call passed, not on
+where it sat: `cfg.bindings` is the local fallback, and a project bound to this device from the web
+UI lives in the `runners` table alone, so a poisoned checkout was swept past in silence while the
+suite stayed green and the source read said the call was there. The reads now assert what each call
+is GIVEN as well as where it stands, which is the narrowest thing that would have caught it — and
+still a claim about spelling. A call handed a set derived correctly and then filtered wrongly
+somewhere downstream reads exactly the same.
+
 ## Honest costs
 
 | Cost | Who pays |
 |---|---|
 | A rename of `repair_installed_hooks` fails a case whose subject did not move | Whoever renames it, once |
 | Moving either call somewhere it never runs leaves the suite green | The next box whose hooks are never repaired, silently, which is the failure ISS-1200 exists to end |
+| Handing either call a set that is derived rather than spelled leaves the suite green | The same box, by the route that cost this issue its third round |

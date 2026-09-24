@@ -89,7 +89,7 @@ use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::inflight;
 use crate::runner::Runner;
 use crate::transport::frames::{job_id_of, session_id_of, Frame};
-use crate::transport::runners;
+use crate::transport::runners::{self, MeRunner};
 use crate::transport::ws::{self, RunnerRegistration, WsConfig};
 use crate::transport::{heartbeat, lifecycle, CoreClient};
 
@@ -229,14 +229,16 @@ where
 }
 
 /// Rewrite the hook commands of every project bound on this box that name a
-/// program nothing can run.
+/// program nothing can run. `server` is `/me/runners` as this box last read it,
+/// and `None` where it could not be asked at all — which the sweep reports,
+/// because the checkouts it then cannot see are exactly the ones it exists for.
 ///
 /// Fixing where the path comes from reaches only panes prepared from now on.
 /// A project this daemon does not dispatch to keeps whatever a pre-fix daemon
 /// wrote into it — a dead declaration gate and eight dead reporters — until
 /// somebody opens a session in it by hand. `when` names the moment this ran, so
 /// the journal distinguishes the sweep at boot from the one an update triggered.
-fn repair_installed_hooks(cfg: &Config, when: &str) {
+fn repair_installed_hooks(server: Option<&[MeRunner]>, cfg: &Config, when: &str) {
     let exe = match crate::exe::own() {
         Ok(exe) => exe,
         Err(e) => {
@@ -253,8 +255,20 @@ fn repair_installed_hooks(cfg: &Config, when: &str) {
             exe.path.display()
         );
     }
-    for (slug, binding) in &cfg.bindings {
-        match crate::daemon::hook_install::repair(&binding.repo_path, &exe.path) {
+    let bound = bound_checkouts(server.unwrap_or_default(), cfg);
+    if server.is_none() {
+        tracing::warn!(
+            "[hooks] {when}: this box could not ask core which projects are assigned to it, so the sweep covers only the {} checkout(s) config.toml names — a project bound from the web UI and absent from that file keeps whatever hooks it holds, a dead declaration gate included",
+            bound.checkouts.len()
+        );
+    }
+    for slug in &bound.pathless {
+        tracing::warn!(
+            "[hooks] {when}: {slug} is assigned to this box and names a checkout on neither side, so it has no settings file to sweep — `forge-runner bind {slug} --path <dir>`"
+        );
+    }
+    for (slug, repo) in &bound.checkouts {
+        match crate::daemon::hook_install::repair(repo, &exe.path) {
             Ok(unrunnable) if unrunnable.is_empty() => {}
             Ok(unrunnable) => tracing::warn!(
                 "[hooks] {when}: {slug}'s settings named {}, which nothing can run — that file's hook commands now name {}, and a session already open in that checkout keeps the dead ones until it is restarted, Claude Code having read the file at startup",
@@ -263,9 +277,62 @@ fn repair_installed_hooks(cfg: &Config, when: &str) {
             ),
             Err(e) => tracing::warn!(
                 "[hooks] {when}: {slug}'s hooks in {} could not be repaired: {e}",
-                binding.repo_path.display()
+                repo.display()
             ),
         }
+    }
+}
+
+/// Every checkout this box is bound to, and every assignment that names none.
+struct BoundCheckouts {
+    /// Slug and working directory, one per distinct path, sorted.
+    checkouts: Vec<(String, std::path::PathBuf)>,
+    /// Slugs assigned to this device that name a checkout on neither side, so
+    /// there is no settings file to sweep and the daemon cannot make one.
+    pathless: Vec<String>,
+}
+
+/// The checkouts a sweep has to cover: the server's assignments, resolved the
+/// way a dispatch resolves them, unioned with the local `config.toml` bindings.
+///
+/// `cfg.bindings` alone is not that set. `config.toml` is only a local fallback
+/// now (ISS-271): a project bound to this device from the web UI lives in the
+/// `runners` table with its `repo_path` and need never appear in that file, and
+/// `resolve_repo` prefers the server's path over a local binding's. A sweep
+/// over the fallback therefore reaches the projects this box happens to hold a
+/// local binding for rather than the ones it writes hooks into, and a
+/// server-bound checkout kept a dead `PreToolUse` gate through every boot with
+/// the journal never naming it (ISS-1200).
+///
+/// The union rather than the resolution alone, because both paths are ones this
+/// daemon has written hooks into: a project whose server path was set after a
+/// local binding already existed has a poisoned file at the old path too, and
+/// the sweep is the only thing that reaches a checkout no pane is prepared for.
+fn bound_checkouts(server: &[MeRunner], cfg: &Config) -> BoundCheckouts {
+    let mut checkouts: Vec<(String, std::path::PathBuf)> = Vec::new();
+    let mut pathless: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
+    for r in server {
+        match resolve_repo(server, cfg, &r.project_id) {
+            Ok(resolved) => {
+                if seen.insert(resolved.repo_path.clone()) {
+                    checkouts.push((resolved.slug, resolved.repo_path));
+                }
+            }
+            Err(slug) => pathless.push(slug),
+        }
+    }
+    for (slug, binding) in &cfg.bindings {
+        if seen.insert(binding.repo_path.clone()) {
+            checkouts.push((slug.clone(), binding.repo_path.clone()));
+        }
+    }
+    checkouts.sort();
+    pathless.sort();
+    pathless.dedup();
+    BoundCheckouts {
+        checkouts,
+        pathless,
     }
 }
 
@@ -298,15 +365,16 @@ pub async fn run(
     // truth for which projects route to this device and for their repo paths;
     // config.toml is only a local fallback now (ISS-271). Best-effort: an old
     // server or transient failure falls back to config-only behaviour.
-    let server = match runners::list_me(&client).await {
-        Ok(rows) => rows,
+    let server: Option<Vec<MeRunner>> = match runners::list_me(&client).await {
+        Ok(rows) => Some(rows),
         Err(e) => {
             tracing::warn!(
                 "[me/runners] discovery failed ({e}) — using local config bindings only"
             );
-            Vec::new()
+            None
         }
     };
+    let assigned: &[MeRunner] = server.as_deref().unwrap_or_default();
 
     // One runner registration per assigned project. Union the server
     // assignments (authoritative project_id + slug) with any local config
@@ -315,7 +383,7 @@ pub async fn run(
     let mut seen_project_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut registrations: Vec<RunnerRegistration> = Vec::new();
 
-    for r in &server {
+    for r in assigned {
         if seen_project_ids.insert(r.project_id.clone()) {
             registrations.push(RunnerRegistration {
                 project_id: r.project_id.clone(),
@@ -325,7 +393,7 @@ pub async fn run(
         }
         // AC 5 — warn when assigned on the server but no usable repo path
         // (neither server nor local), with the exact command to fix it.
-        if resolve_repo(&server, &cfg, &r.project_id).is_err() {
+        if resolve_repo(assigned, &cfg, &r.project_id).is_err() {
             tracing::warn!(
                 "[me/runners] project '{}' is assigned but has no local repo path — run `forge-runner bind {} --path <dir>`",
                 r.slug,
@@ -353,7 +421,7 @@ pub async fn run(
 
     // Before any pane is prepared: whatever the daemon this one replaced wrote
     // into these checkouts is still there, and this process CAN name itself.
-    repair_installed_hooks(&cfg, "boot");
+    repair_installed_hooks(server.as_deref(), &cfg, "boot");
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
@@ -416,6 +484,7 @@ pub async fn run(
         let inflight = inflight.clone();
         let runner = runner.clone();
         let bound = cfg.clone();
+        let assignments = client.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -448,7 +517,18 @@ pub async fn run(
                                     // So every bound checkout is repointed at
                                     // the build just installed, now, rather
                                     // than at the next pane preparation.
-                                    repair_installed_hooks(&bound, "after an update");
+                                    // Which checkouts those are is asked for
+                                    // again rather than carried from boot: an
+                                    // assignment made since is one this daemon
+                                    // has been preparing panes in, and its
+                                    // settings file names the binary this
+                                    // update just replaced.
+                                    let assigned = runners::list_me(&assignments).await.ok();
+                                    repair_installed_hooks(
+                                        assigned.as_deref(),
+                                        &bound,
+                                        "after an update",
+                                    );
                                     if drain_to_idle(&inflight, "update", live_run_sessions, || {
                                         close_parked_sessions(&runner)
                                     })
@@ -1338,7 +1418,7 @@ mod hook_repair_tests {
             },
         );
 
-        repair_installed_hooks(&cfg, "a test");
+        repair_installed_hooks(Some(&[]), &cfg, "a test");
 
         let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(
             &root.join("gamma"),
@@ -1387,7 +1467,7 @@ mod hook_repair_tests {
             );
         }
 
-        repair_installed_hooks(&cfg, "a test");
+        repair_installed_hooks(Some(&[]), &cfg, "a test");
 
         for slug in ["alpha", "beta", "gamma"] {
             let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(
@@ -1423,7 +1503,7 @@ mod hook_repair_tests {
             },
         );
 
-        repair_installed_hooks(&cfg, "a test");
+        repair_installed_hooks(Some(&[]), &cfg, "a test");
 
         let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(
             &root.join("present"),
@@ -1435,6 +1515,225 @@ mod hook_repair_tests {
         );
     }
 
+    /// One row of `/me/runners`: a project this device is assigned, with the
+    /// checkout the server holds for it.
+    fn assignment(project_id: &str, slug: &str, repo_path: Option<&std::path::Path>) -> MeRunner {
+        MeRunner {
+            project_id: project_id.into(),
+            runner_id: format!("runner-{slug}"),
+            slug: slug.into(),
+            base_branch: None,
+            repo_path: repo_path.map(|p| p.to_str().expect("utf-8").to_string()),
+            branch: None,
+            status: "online".into(),
+            workspace_setup: None,
+            master_policy: None,
+            rate_limited_for_seconds: None,
+            limit_reason: None,
+        }
+    }
+
+    /// Criterion 8's quantifier, at the shape the third judging run failed it
+    /// on: a project bound to this device from the web UI lives in the
+    /// `runners` table and need never appear in `config.toml`, so a sweep over
+    /// `cfg.bindings` alone leaves its declaration gate dead through every
+    /// boot — and the journal never names it.
+    #[test]
+    fn a_project_the_server_binds_and_config_does_not_is_swept() {
+        let root = scratch("server-bound");
+        let _installed = runnable(&root, "forge-runner");
+        let repo = poisoned_checkout(&root, "serverbound");
+        let cfg = Config::default();
+
+        repair_installed_hooks(
+            Some(&[assignment("p-1", "serverbound", Some(&repo))]),
+            &cfg,
+            "a test",
+        );
+
+        let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(&repo))
+            .expect("read back");
+        assert!(
+            !text.contains(crate::exe::DELETED_SUFFIX),
+            "a project this box is assigned, bound on the server and absent from config.toml, kept its dead commands: {text}"
+        );
+    }
+
+    /// What the sweep wrote to the journal while `f` ran.
+    fn logged_while(f: impl FnOnce()) -> String {
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        // Why a capture needs this: `crate::daemon::keep_tracing_capturable`.
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn binding(repo_path: std::path::PathBuf, project_id: Option<&str>) -> crate::config::Binding {
+        crate::config::Binding {
+            repo_path,
+            branch: None,
+            project_id: project_id.map(str::to_string),
+        }
+    }
+
+    /// The repair a sweep reports is read off the settings file, so a project
+    /// it never opened is indistinguishable from one that needed nothing —
+    /// which is how a dead declaration gate stood through every boot with the
+    /// journal green. The slug goes in the line that says what was rewritten.
+    #[test]
+    fn the_server_bound_project_it_repairs_is_named_in_the_journal() {
+        let root = scratch("server-bound-named");
+        let _installed = runnable(&root, "forge-runner");
+        let repo = poisoned_checkout(&root, "serverbound");
+        let cfg = Config::default();
+
+        let said = logged_while(|| {
+            repair_installed_hooks(
+                Some(&[assignment("p-1", "serverbound", Some(&repo))]),
+                &cfg,
+                "boot",
+            );
+        });
+
+        assert!(
+            said.contains("serverbound's settings named"),
+            "the project the sweep rewrote is not named, so a reader cannot tell it was reached: {said}"
+        );
+    }
+
+    /// A project the server binds and `config.toml` also binds, at two
+    /// different directories: a dispatch goes to the server's, but the local
+    /// one holds whatever a pre-fix daemon wrote there and no pane will ever
+    /// be prepared in it again.
+    #[test]
+    fn both_checkouts_are_swept_where_the_server_and_config_name_different_ones() {
+        let root = scratch("two-paths");
+        let _installed = runnable(&root, "forge-runner");
+        let on_server = poisoned_checkout(&root, "server-side");
+        let in_config = poisoned_checkout(&root, "config-side");
+        let mut cfg = Config::default();
+        cfg.bindings
+            .insert("acme".into(), binding(in_config.clone(), Some("p-1")));
+
+        repair_installed_hooks(
+            Some(&[assignment("p-1", "acme", Some(&on_server))]),
+            &cfg,
+            "a test",
+        );
+
+        for repo in [&on_server, &in_config] {
+            let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(repo))
+                .expect("read back");
+            assert!(
+                !text.contains(crate::exe::DELETED_SUFFIX),
+                "{} kept its dead commands: {text}",
+                repo.display()
+            );
+        }
+    }
+
+    /// The ordinary case — one project, one directory, named on both sides —
+    /// is one checkout and not two, so the journal does not report the same
+    /// repair twice and the file is not rewritten under itself.
+    #[test]
+    fn a_checkout_both_sides_name_is_swept_once() {
+        let root = scratch("one-path");
+        let repo = root.join("acme");
+        let mut cfg = Config::default();
+        cfg.bindings
+            .insert("acme".into(), binding(repo.clone(), Some("p-1")));
+
+        let bound = bound_checkouts(&[assignment("p-1", "acme", Some(&repo))], &cfg);
+
+        assert_eq!(
+            bound.checkouts,
+            vec![("acme".to_string(), repo)],
+            "one project at one path came back more than once"
+        );
+        assert!(bound.pathless.is_empty());
+    }
+
+    /// An assignment with no path on either side has no settings file to
+    /// sweep. It is named — the daemon cannot repair what it cannot find —
+    /// and the checkouts that do have one are still swept.
+    #[test]
+    fn an_assignment_naming_no_checkout_is_named_and_the_sweep_goes_on() {
+        let root = scratch("pathless");
+        let _installed = runnable(&root, "forge-runner");
+        let repo = poisoned_checkout(&root, "present");
+        let cfg = Config::default();
+
+        let said = logged_while(|| {
+            repair_installed_hooks(
+                Some(&[
+                    assignment("p-1", "unbound", None),
+                    assignment("p-2", "present", Some(&repo)),
+                ]),
+                &cfg,
+                "boot",
+            );
+        });
+
+        assert!(
+            said.contains("unbound is assigned to this box and names a checkout on neither side"),
+            "an assignment with nowhere to sweep went unsaid: {said}"
+        );
+        let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(&repo))
+            .expect("read back");
+        assert!(
+            !text.contains(crate::exe::DELETED_SUFFIX),
+            "an assignment with no checkout took the rest of the sweep down with it: {text}"
+        );
+    }
+
+    /// A sweep that could not ask which projects are assigned has covered the
+    /// local fallback and nothing else. Reporting that as a sweep is the same
+    /// silence this issue is about, one level up: the checkouts it cannot see
+    /// are exactly the ones it exists to reach.
+    #[test]
+    fn a_box_that_could_not_ask_what_is_assigned_says_the_sweep_is_partial() {
+        let root = scratch("no-discovery");
+        let _installed = runnable(&root, "forge-runner");
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "local".into(),
+            binding(poisoned_checkout(&root, "local"), Some("p-1")),
+        );
+
+        let said = logged_while(|| repair_installed_hooks(None, &cfg, "boot"));
+
+        assert!(
+            said.contains("could not ask core which projects are assigned to it"),
+            "the sweep reported a whole pass over a set it could not see: {said}"
+        );
+        let text = std::fs::read_to_string(crate::daemon::hook_install::settings_path(
+            &root.join("local"),
+        ))
+        .expect("read back");
+        assert!(
+            !text.contains(crate::exe::DELETED_SUFFIX),
+            "the local fallback was not swept either: {text}"
+        );
+    }
+
     /// The sweep exists to reach a project no pane is being prepared for, so
     /// where it is CALLED is the whole of what it buys. Both moments are read
     /// out of this module's own source: a call quietly dropped from either one
@@ -1443,8 +1742,8 @@ mod hook_repair_tests {
     fn the_sweep_runs_at_boot_and_again_the_moment_an_update_replaces_the_binary() {
         let src = production();
         assert!(
-            src.contains(r#"repair_installed_hooks(&cfg, "boot")"#),
-            "nothing sweeps at boot, so a file a pre-fix daemon poisoned is never repaired"
+            src.contains(r#"repair_installed_hooks(server.as_deref(), &cfg, "boot")"#),
+            "nothing sweeps at boot with the assignments this box just read, so a project bound only on the server is not in the set swept"
         );
 
         let applied = src
@@ -1452,11 +1751,22 @@ mod hook_repair_tests {
             .expect("the line the update writes once it has replaced the binary");
         let after_applied = &src[applied..];
         let next_sweep = after_applied
-            .find(r#"repair_installed_hooks(&bound, "after an update")"#)
+            .find(r#""after an update""#)
             .expect("nothing sweeps once the binary has been replaced under this process");
+        let asked = after_applied
+            .find("list_me(&assignments)")
+            .expect("the sweep after an update is handed the local bindings alone, so a server-bound checkout keeps the binary this update just deleted");
         let next_drain = after_applied
             .find("drain_to_idle")
             .expect("the drain the restart waits on");
+        assert!(
+            asked < next_sweep,
+            "the assignments are read after the sweep that needs them"
+        );
+        assert!(
+            after_applied[..next_sweep].contains("assigned.as_deref()"),
+            "the sweep after an update is not given what the request above it fetched"
+        );
         assert!(
             next_sweep < next_drain,
             "the sweep is behind the drain, which is the wait that never ends on a busy box — so it never runs"
