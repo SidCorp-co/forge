@@ -9,8 +9,7 @@
  *
  * This pass has two arms. One reads every non-terminal status that is not declared at rest, writes
  * what it found onto the row itself, and releases a lease that has lapsed by its own terms. The
- * other clears a finding that has stopped holding, so a row that recovered does not go on claiming
- * to be stuck.
+ * other clears a finding that has stopped holding, so a recovered row stops claiming to be stuck.
  */
 
 import { sql } from 'drizzle-orm';
@@ -22,13 +21,12 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { holderFanout, readClaim } from './lease-fanout.js';
 import { readReleaseHold } from './release-hold.js';
 import {
-  classifyLease,
   type LeaseReading,
   leaseHolderOf,
   leaseIsReleasable,
-  leaseIsUnexpired,
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
 } from './session-claim.js';
@@ -188,12 +186,7 @@ function judge(
   fanout: ReadonlyMap<string, number>,
   pooled: ReadonlySet<string>,
 ): { record: StrandRecord; lease: LeaseReading; unclassified: boolean } | null {
-  const holder = leaseHolderOf(row.lease);
-  const lease = classifyLease({
-    lease: row.lease,
-    now,
-    fanout: holder === null ? 0 : (fanout.get(holder) ?? 1),
-  });
+  const lease = readClaim(row.lease, now, fanout);
   if (leaseIsWorkInProgress(lease.verdict)) return null;
 
   const rule = strandRuleFor(row.status);
@@ -312,38 +305,6 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
     );
   }
   return rows;
-}
-
-/**
- * How many non-terminal issues each holder on this page holds an unexpired lease on.
- *
- * Counted here rather than in SQL because every field of the lease may be unreadable, and a cast
- * inside the query would throw on the first row this pass exists to name.
- */
-async function holderFanout(
-  leases: readonly unknown[],
-  now: Date,
-): Promise<ReadonlyMap<string, number>> {
-  const holders = [...new Set(leases.map(leaseHolderOf).filter((h): h is string => h !== null))];
-  const counts = new Map<string, number>();
-  if (holders.length === 0) return counts;
-
-  const rows = (await db.execute(sql`
-    SELECT i.session_context -> 'lease' AS lease
-      FROM issues i
-     WHERE i.status NOT IN ('closed', 'dropped')
-       AND i.session_context -> 'lease' ->> 'holder' IN (${sql.join(
-         holders.map((h) => sql`${h}`),
-         sql`, `,
-       )})
-  `)) as unknown as Array<{ lease: unknown }>;
-
-  for (const row of rows) {
-    const holder = leaseHolderOf(row.lease);
-    if (holder === null || !leaseIsUnexpired(row.lease, now)) continue;
-    counts.set(holder, (counts.get(holder) ?? 0) + 1);
-  }
-  return counts;
 }
 
 /** Which of these projects has a runner the job pool would admit — that module's own predicate. */
@@ -501,12 +462,7 @@ function stillStranded(
   if (!row.nothing_running) return false;
   const rule = strandRuleFor(row.status);
   if (rule !== null && !rule.watch) return false;
-  const holder = leaseHolderOf(row.lease);
-  const lease = classifyLease({
-    lease: row.lease,
-    now,
-    fanout: holder === null ? 0 : (fanout.get(holder) ?? 1),
-  });
+  const lease = readClaim(row.lease, now, fanout);
   // A row that has MOVED carries a finding written at the status it left, whose new clock has not
   // run out; holding the old finding through it shows progress as a standing failure. Asked of a
   // row standing still, or of one whose holder is gone, it reads progress that never happened.

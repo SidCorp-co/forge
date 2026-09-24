@@ -9,7 +9,6 @@ import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOptio
 import { groupedTransitions, statusLabel, statusToChip, transitionLabels } from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
 import { useStatusExits } from "../hooks";
-import { useLaneLabeller } from "../vocabulary";
 import type { IssueAgentStatus, IssueStatus } from "../types";
 
 interface InlineSelectProps {
@@ -77,7 +76,6 @@ interface StatusEditProps {
  * with no exit says so rather than opening empty (ISS-982).
  */
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
-  const laneLabel = useLaneLabeller();
   const { exits, isPending, isError } = useStatusExits();
   const grouped = groupedTransitions(exits, status);
   const held = heldByAgent(status, agentStatus);
@@ -91,10 +89,7 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size }
   } else if (grouped.length === 0) {
     items = [{ label: `No move from ${statusLabel(status)} — re-file instead`, disabled: true }];
   } else {
-    const names = transitionLabels(
-      grouped.map((g) => g.to),
-      laneLabel,
-    );
+    const names = transitionLabels(grouped.map((g) => g.to));
     items = grouped.map((g, i) => ({
       label: names[i],
       danger: g.kind === "discard",

@@ -823,6 +823,9 @@ async fn conclude(
 pub struct CorePool<'a> {
     pub client: &'a CoreClient,
     pub limit: u32,
+    /// How long a read or a preparation may take before it is a failure;
+    /// [`pool::CALL_DEADLINE`] everywhere but a test.
+    pub deadline: std::time::Duration,
 }
 
 #[async_trait::async_trait]
@@ -831,11 +834,11 @@ impl Pool for CorePool<'_> {
         &self,
         project_id: &str,
     ) -> std::result::Result<Vec<PoolEntry>, ReadFailure> {
-        pool::list(self.client, Some(project_id), self.limit).await
+        pool::list_within(self.client, Some(project_id), self.limit, self.deadline).await
     }
 
     async fn prepare(&self, job_id: &str, session_id: &str) -> Result<Prepared> {
-        pool::prepare(self.client, job_id, session_id).await
+        pool::prepare_within(self.client, job_id, session_id, self.deadline).await
     }
 
     async fn start(&self, job_id: &str, session_id: &str) -> Result<Started> {
@@ -1619,6 +1622,7 @@ mod tests {
                     &CorePool {
                         client: &client,
                         limit: 20,
+                        deadline: pool::CALL_DEADLINE,
                     },
                     panes,
                     report,
@@ -1669,6 +1673,95 @@ mod tests {
         assert_eq!(second["verdict"], "intermittent");
         assert_eq!(second["failures"], 1);
         assert_eq!(second["recoveredAt"], t0 + 10_000);
+    }
+
+    /// ISS-1234 criterion 4, the timeout the judge found unrecorded at
+    /// ca89a76df. A box already blind on a 525 meets a pool route that accepts
+    /// the connection and never answers. The read fails at its deadline instead
+    /// of holding the sweep, and the next heartbeat still carries the project
+    /// blind — one more consecutive failure, no status, the transport's reason.
+    /// Before the deadline the read never returned, nothing was noted, and the
+    /// beats in the meantime sent the stale record while the box went blinder.
+    #[tokio::test]
+    async fn a_pool_read_nobody_answers_keeps_the_box_blind_on_the_next_beat() {
+        use crate::transport::{fake_core, heartbeat};
+        let project = "68567cd4-0000-4000-8000-000000000002";
+        let home = TempHome::new("pool-silent");
+        let w = world(Vec::new(), None, None);
+
+        let gateway =
+            fake_core::serve_always("525 Handshake", "<!DOCTYPE html><html></html>").await;
+        let silent = fake_core::serve_silent().await;
+        let (beat_url, received) =
+            fake_core::serve_recording("200 OK", r#"{"ok":true,"pool":{"accepted":true}}"#).await;
+
+        let pass = |url: String| {
+            let registry = &w.registry;
+            let panes = &w.panes;
+            let report = &w.report;
+            let records = &w.records;
+            let tokens = &w.tokens;
+            async move {
+                let client = CoreClient::new(url, "device-token");
+                take_one(
+                    &CorePool {
+                        client: &client,
+                        limit: 20,
+                        deadline: std::time::Duration::from_millis(300),
+                    },
+                    panes,
+                    report,
+                    records,
+                    registry,
+                    project,
+                    "master-session",
+                    Some(&box_repo()),
+                    2,
+                    Some(tokens),
+                )
+                .await
+            }
+        };
+        let beat = |at: i64| {
+            let dir = home.path().to_path_buf();
+            let url = beat_url.clone();
+            async move {
+                let client = CoreClient::new(url, "device-token");
+                let conditions = heartbeat::Conditions::read(Some(&dir), at);
+                heartbeat::beat(&client, &conditions)
+                    .await
+                    .expect("the heartbeat route answers throughout")
+            }
+        };
+        let sent = |i: usize| -> serde_json::Value {
+            serde_json::from_str(&received.lock().unwrap()[i]).expect("a json body")
+        };
+
+        let t0 = now_ms();
+        let took = pass(gateway).await;
+        crate::daemon::pool_reads::note(home.path(), project, &took, t0);
+        beat(t0 + 1_000).await;
+        assert_eq!(sent(0)["pool"]["projects"][0]["verdict"], "blind");
+
+        let took = tokio::time::timeout(std::time::Duration::from_secs(10), pass(silent))
+            .await
+            .expect("a pool route that never answers held the sweep past the read's deadline");
+        let Took::Unread(ref failed) = took else {
+            panic!("a read nobody answered is Unread, not {took:?}");
+        };
+        assert_eq!(failed.status, None);
+        assert_eq!(failed.reason, "pool request: timed out after 300ms");
+        crate::daemon::pool_reads::note(home.path(), project, &took, t0 + 10_000);
+        beat(t0 + 11_000).await;
+        let second = &sent(1)["pool"]["projects"][0];
+        assert_eq!(second["projectId"], project);
+        assert_eq!(second["verdict"], "blind", "{second}");
+        assert_eq!(second["consecutive"], 2, "{second}");
+        assert_eq!(second["lastFailure"]["status"], serde_json::Value::Null);
+        assert_eq!(
+            second["lastFailure"]["reason"],
+            "pool request: timed out after 300ms"
+        );
     }
 
     #[tokio::test]

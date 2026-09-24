@@ -34,7 +34,7 @@ import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
 import { priorityLabel, statusToChip } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
-import { formatDurationMs, formatUsd, runGateNote, runStatusToStatusKey } from "../derive";
+import { formatDurationMs, formatUsd, runStatusToStatusKey } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
 import type {
@@ -122,7 +122,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   const activeStep = run?.steps.find((s) => s.status === "running") ?? null;
   const isPausing = run?.status === "paused" && !!activeStep;
   const isHalted = run?.status === "paused" && !activeStep;
-  const gateNote = runGateNote(run?.gateAtOpen);
 
   // "Stop now" is the only abort path (wired to the existing cancel mutation).
   // Guard the destructive click with a lightweight inline two-step confirm —
@@ -292,24 +291,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
             )}
             {isHalted && (
               <p className="fg-body-sm text-muted">Run halted — no active session.</p>
-            )}
-
-            {/* The box's declaration gate when this run opened (ISS-1192). A run
-                admitted without a decision reads like any other unless the run
-                itself says so. */}
-            {gateNote && (
-              <div
-                className="rounded-md px-3 py-2"
-                style={{
-                  background: "var(--amber-50)",
-                  border: "1px solid var(--amber-300)",
-                  color: "var(--amber-900)",
-                }}
-              >
-                <p className="fg-body-sm font-medium">{gateNote.headline}</p>
-                <p className="fg-body-sm">{gateNote.detail}</p>
-                {gateNote.reason && <p className="fg-body-sm text-muted">{gateNote.reason}</p>}
-              </div>
             )}
           </div>
 
