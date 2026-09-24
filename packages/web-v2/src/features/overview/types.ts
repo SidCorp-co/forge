@@ -32,6 +32,22 @@ export interface PulseIssueIdentity {
   ageSeconds: number;
 }
 
+/** A closed issue a reading of its project's branches places off the live branch (ISS-1217). */
+export interface PulseNotOnLiveIdentity extends PulseIssueIdentity {
+  liveBranch: string;
+  evidence: Array<{ sha: string; subject: string; via: "merged_commit" | "names_issue" }>;
+}
+
+/** A `promote` project whose base and live branches could not be compared, and why. */
+export interface PulseLiveGap {
+  id: string;
+  slug: string;
+  name: string;
+  baseBranch: string | null;
+  liveBranch: string;
+  reason: string;
+}
+
 export interface PulseProjectIdentity {
   id: string;
   slug: string;
@@ -87,6 +103,8 @@ export interface PulseWork {
   buckets: PulseWorkBuckets;
   abandoned: PulseCapped<PulseIssueIdentity>;
   releaseWaiting: PulseCapped<PulseIssueIdentity>;
+  notOnLive: PulseCapped<PulseNotOnLiveIdentity>;
+  liveUnmeasured: PulseCapped<PulseLiveGap>;
   silentProjects: PulseCapped<PulseProjectIdentity>;
   neverRanProjects: PulseCapped<PulseProjectIdentity>;
   humanBlockedAges: number[];
