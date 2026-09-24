@@ -152,15 +152,17 @@ function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-const READS_ISSUES =
-  /\.(?:from|innerJoin|leftJoin|rightJoin)\(\s*(?:schema\.)?issues\b|\b(?:FROM|JOIN)\s+"?issues"?\b/;
+const READS_ISSUES = [
+  /\.(?:from|innerJoin|leftJoin|rightJoin)\(\s*(?:schema\.)?issues\b/,
+  /\b(?:from|join)\s+"?issues"?\b/i,
+];
 const DECIDES = /issueArchiveSide\(|issues\.archivedAt|memoryOfLiveIssue/;
 
 type Reading = 'reads-and-decides' | 'reads-undecided' | 'no-read';
 
 function classify(source: string): Reading {
   const text = stripComments(source);
-  if (!READS_ISSUES.test(text)) return 'no-read';
+  if (!READS_ISSUES.some((re) => re.test(text))) return 'no-read';
   return DECIDES.test(text) ? 'reads-and-decides' : 'reads-undecided';
 }
 
@@ -197,6 +199,8 @@ describe('every reader of issues decides about archived rows (ISS-1237)', () => 
   it('sees a planted reader, and sees it decide', () => {
     expect(classify('db.select().from(issues).where(eq(issues.id, x))')).toBe('reads-undecided');
     expect(classify('sql`SELECT 1 FROM issues i`')).toBe('reads-undecided');
+    expect(classify('sql`select title from issues`')).toBe('reads-undecided');
+    expect(classify('sql`SELECT 1 FROM issues_archive`')).toBe('no-read');
     expect(classify('db.select().from(issues).where(and(...issueArchiveSide(false)))')).toBe(
       'reads-and-decides',
     );
