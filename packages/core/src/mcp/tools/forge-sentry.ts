@@ -63,19 +63,22 @@ export const forgeSentryTool: ContextScopedMcpToolFactory = (ctx) => ({
     'NO THRESHOLDS: the intake exists to decide what is worth FILING and applies minimum event and ' +
     'user counts; a read does not, so the error nobody has seen twice yet is answered like any ' +
     'other. ' +
-    'list: { ok:true, target, organizationSlug, projectSlug, query, window, issues[], confinedOut[],' +
+    'list: { ok:true, target, organizationSlug, projectSlug, query, window, issues[], refused[],' +
     ' pages, truncated }. Each issue is { id, shortId, title, culprit, metadataValue, level, ' +
     'status, substatus, count, userCount, firstSeen, lastSeen, permalink, projectSlug }. `query` is ' +
     'the search Sentry was actually asked, so a surprising answer can be read back to its question. ' +
     '`truncated:true` means Sentry still had more and this adapter stopped at its own page bound, ' +
-    'so the reading is a floor. `confinedOut` names answers that belong to another Sentry project ' +
-    'under the same organization — they are reported, never dropped in silence. ' +
+    'so the reading is a floor. `refused` on a SUCCESSFUL answer is the per-issue confinement ' +
+    'list: answers that belong to another Sentry project under the same organization, reported ' +
+    'rather than dropped in silence. It is not a refusal of the call — a call that was refused ' +
+    'has `ok:false`, one `refusal` object, and no `issues` key at all. ' +
     'Filters, all optional and all ANDed: `release` (core tags every event with the source commit, ' +
     'so this is how you ask whether the commit you just deployed is erroring), `window` (a relative ' +
     'Sentry period — 1h, 24h, 7d, up to 90d; a value Sentry does not take is REFUSED, never ' +
     'silently replaced by the default), `path`, `method`, `errorCode` and `requestId` (the ' +
     'http.path, http.method, error.code and request.id tags core sets on every captured event), ' +
-    '`status` (unresolved by default; `any` drops the status term), `limit` (1..100) and `query` ' +
+    '`status` (unresolved by default; `any` asks Sentry for every status, dropping the `is:` term ' +
+    'rather than falling back to unresolved), `limit` (1..100) and `query` ' +
     'for raw Sentry search syntax, which is ADDED to the filters rather than replacing them. ' +
     'get: one issue in the same shape, for an `issueId` list returned. An id belonging to another ' +
     'project under the same organization is refused and its detail is NOT in the answer. ' +

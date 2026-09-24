@@ -118,7 +118,10 @@ export async function callSentry(
       lastHealthAt: new Date(),
     });
     const reason = err instanceof Error ? err.message : 'unknown error';
-    throw new SentryRefusal('sentry_unreachable', `sentry: ${method} ${url} — ${reason}`);
+    throw new SentryRefusal(
+      'sentry_unreachable',
+      `sentry: could not reach Sentry — ${method} ${url} — ${reason}`,
+    );
   }
   await updateConnection(ctx.connectionId, {
     lastHealthStatus: res.kind === 'ok' ? 'ok' : res.health,

@@ -68,7 +68,7 @@ export interface SentryAgentListing {
   window: string | null;
   issues: SentryIssueDetail[];
   /** Answers Sentry gave that this target is not scoped to, named one by one. */
-  confinedOut: SentryListRefusal[];
+  refused: SentryListRefusal[];
   pages: number;
   /** True where Sentry still had more and the adapter stopped at its own page bound. */
   truncated: boolean;
@@ -144,8 +144,11 @@ export async function resolveGrantedSentryBinding(
  * credential the call was made with, so it is scrubbed on the way out rather than trusted.
  */
 function rethrowScrubbed(err: unknown, ctx: SentryAdapterContext, bindingId: string): never {
-  const token = ctx.secrets?.authToken;
-  const secrets = typeof token === 'string' && token.length > 0 ? [token] : [];
+  // Both tokens: during a rotation the call that failed may have been the retry, so the credential
+  // likeliest to be quoted back in Sentry's own error text is the previous one.
+  const secrets = [ctx.secrets?.authToken, ctx.secrets?.previousAuthToken].filter(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
   const clean = (text: string) => scrubLogText(text, secrets);
   if (err instanceof SentryListingFailed) {
     const inner = err.refusal;
@@ -198,7 +201,7 @@ export async function readProjectSentryIssues(
       query: listing.query,
       window: input.window ?? null,
       issues: listing.issues,
-      confinedOut: listing.refused,
+      refused: listing.refused,
       pages: listing.pages,
       truncated: listing.truncated,
     };

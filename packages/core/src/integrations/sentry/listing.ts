@@ -94,11 +94,18 @@ export function assertStatsPeriod(value: unknown): string | undefined {
   return value.trim();
 }
 
-/** The caller's query, with the target's own project scoping appended rather than assumed. */
+/**
+ * The caller's query, with the target's own project scoping appended rather than assumed.
+ *
+ * An absent query takes the default; an EMPTY one is a caller asking for no search terms, which is
+ * what `status: 'any'` is. Reading the two as one restores `is:unresolved` under a caller who asked
+ * for every status and answers a different question than the one put.
+ */
 export function listQuery(query: string | undefined, target: ResolvedSentryTarget): string {
-  const base = query?.trim() ? query.trim() : SENTRY_LIST_DEFAULT_QUERY;
+  const asked = query?.trim();
+  const base = asked === undefined ? SENTRY_LIST_DEFAULT_QUERY : asked;
   if (!target.projectSlug) return base;
-  return `${base} project:${target.projectSlug}`;
+  return base === '' ? `project:${target.projectSlug}` : `${base} project:${target.projectSlug}`;
 }
 
 export function confinementRefusal(

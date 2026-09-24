@@ -294,13 +294,11 @@ export async function listSentryIssues(
         }
         if (!Array.isArray(body)) {
           refused = turnedAway;
+          const unreadable = `sentry: could not read Sentry's answer — ${url} answered ${typeof body}, and an issue listing has to be an array`;
           throw new SentryListingFailed(
-            `sentry: ${url} answered ${typeof body}, and an issue listing has to be an array`,
+            unreadable,
             { pages, refused: turnedAway },
-            new SentryRefusal(
-              'sentry_unreachable',
-              `sentry: ${url} answered ${typeof body}, and an issue listing has to be an array`,
-            ),
+            new SentryRefusal('sentry_unreachable', unreadable),
           );
         }
         pages += 1;

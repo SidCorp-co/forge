@@ -242,8 +242,8 @@ describe('a read that reaches Sentry', () => {
     });
     const listing = await readProjectSentryIssues({ projectId: PROJECT });
     expect(listing.issues.map((i) => i.id)).toEqual(['5001']);
-    expect(listing.confinedOut).toHaveLength(1);
-    expect(listing.confinedOut[0]?.belongsTo).toBe('forge-web');
+    expect(listing.refused).toHaveLength(1);
+    expect(listing.refused[0]?.belongsTo).toBe('forge-web');
   });
 
   it('says so where Sentry still had more than the adapter walks', async () => {
@@ -260,6 +260,13 @@ describe('a read that reaches Sentry', () => {
     answerWith({ body: sentryIssue() });
     const issue = await readProjectSentryIssue({ projectId: PROJECT, issueId: '5001' });
     expect(issue.shortId).toBe('FORGE-CORE-7');
+  });
+
+  it('asks Sentry for every status where the caller asked for any', async () => {
+    await readProjectSentryIssues({ projectId: PROJECT, status: 'any' });
+    const query = new URL(calls[0] as string).searchParams.get('query');
+    expect(query).toBe('project:forge-core');
+    expect(query).not.toContain('is:unresolved');
   });
 
   it('records both actions as reads, and never a write, on the delivery log', async () => {
@@ -356,6 +363,23 @@ describe('what Sentry itself refused', () => {
     expect(second.message).not.toBe(first.message);
   });
 
+  it('names a transport failure as one rather than only quoting the exception', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('getaddrinfo ENOTFOUND logs.canawan.com');
+      }),
+    );
+    const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
+    expect(refusal.message).toContain('could not reach Sentry');
+  });
+
+  it('names an answer it could not read as one, rather than as no issues', async () => {
+    answerWith({ body: { detail: 'nope' } });
+    const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
+    expect(refusal.message).toContain("could not read Sentry's answer");
+  });
+
   it('takes the auth token out of anything it re-raises', async () => {
     vi.stubGlobal(
       'fetch',
@@ -365,6 +389,21 @@ describe('what Sentry itself refused', () => {
     );
     const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
     expect(refusal.message).not.toContain(TOKEN);
+  });
+
+  it('takes the rotation\u2019s previous token out of it too', async () => {
+    const previous = 'sntryu_the_previous_token_value';
+    listBindingsForProject.mockResolvedValue([
+      pair({ connection: { secrets: { authToken: TOKEN, previousAuthToken: previous } } }),
+    ]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error(`upstream rejected Bearer ${previous}`);
+      }),
+    );
+    const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
+    expect(refusal.message).not.toContain(previous);
   });
 });
 
