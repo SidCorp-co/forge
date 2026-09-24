@@ -1,0 +1,1 @@
+ALTER TABLE "runners" ADD COLUMN "pool_read" jsonb;
