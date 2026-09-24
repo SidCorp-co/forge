@@ -1,15 +1,11 @@
-// The two pure rules the verify window's termination rests on: what ONE
-// reading has to show for a gate to be satisfied, and what a batch can tell
-// about its own lateness at the moment it opens.
-//
-// Their own file because `verify.test.ts` drives the window and is already at
-// its line budget, and because these two answer without a probe, a clock or a
-// deadline — nothing here needs `fetch` stubbed at all (ISS-1199).
+// The two pure rules the verify window's termination rests on: what one reading
+// has to show, and what a batch can tell about its own lateness when it opens.
+// Apart from `verify.test.ts` because neither needs a probe, a clock or a
+// deadline — nothing here stubs `fetch` at all (ISS-1199).
 
 import { describe, expect, it } from 'vitest';
 import { liveCarriesRoster, readingSatisfies } from './verify.js';
 
-/** Whole object names. A claim under test may be nothing else. */
 const NEW = 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e';
 const OLD = 'a12b34c5d6e7f8091a2b3c4d5e6f708192a3b4c5';
 const SAME = 'c0ffee1234567890abcdef1234567890abcdef12';
@@ -23,9 +19,7 @@ describe('readingSatisfies', () => {
   });
 
   // What makes the window terminate: the claim is the one reading that could
-  // satisfy a claimed gate, and it always does. Were that to stop holding, the
-  // gate would be unsatisfiable and the poll would be back to spending 300s on
-  // a constant.
+  // satisfy a claimed gate, and it always does.
   it('is satisfied by the claim itself, which is why a claimed gate is never unsatisfiable', () => {
     for (const before of [null, OLD, NEW, SAME]) {
       expect(readingSatisfies(NEW, before, NEW)).toBe(true);

@@ -1,19 +1,15 @@
 /**
- * A release batch opened AFTER the release it is recording had already shipped.
+ * A release batch opened AFTER the release it records had already shipped.
  *
- * `createReleaseBatch` reads what is live at the instant the batch row is
- * written and keeps it as `commitBefore`. Where the promote landed first — any
- * recovery where an operator releases and records afterwards — that snapshot IS
- * the released commit, and the close gate then asked the deployment to move
- * away from the very commit it was asking it to arrive at. Five `finish`
- * attempts on `sidpeak`, five 300s windows, one refusal no future state of the
- * world could clear (ISS-1199).
+ * `createReleaseBatch` keeps what is live when the batch row is written as
+ * `commitBefore`. Where the promote landed first, that snapshot IS the released
+ * commit, and the close gate asked the deployment to move away from the commit
+ * it was asking it to arrive at: five `finish` attempts on `sidpeak`, five 300s
+ * windows, one refusal no future state of the world could clear (ISS-1199).
  *
- * Integration rather than unit because the failure is the create door and the
- * close door disagreeing about one value in the run's metadata, and a mocked
- * twin of either proves only itself. The seeding is
- * `tests/helpers/release-batch-fixture.ts`, shared with the finish and recovery
- * suites next door.
+ * Integration because the failure is the create door and the close door
+ * disagreeing about one value in the run's metadata, and a mocked twin of
+ * either proves only itself.
  */
 
 import { sql } from 'drizzle-orm';
@@ -64,14 +60,9 @@ describe('a release batch opened after its own release', () => {
 
   const actor = () => ({ type: 'user', id: ownerId }) as const;
 
-  /** The commit ISS-1199 was found on: cut, deployed, and only then batched. */
+  /** The commit this was found on: cut, deployed, and only then batched. */
   const RELEASED = '30bc56b16af665118ddcbd2e32bbc8b2bc0e5c0c';
 
-  // ISS-1199 — `commitBefore` is read when the batch OPENS, so a batch opened
-  // after its own release had already shipped held the released commit there.
-  // The gate then asked the deployment to move away from the very commit it
-  // was asking it to arrive at: five `finish` attempts, five 300s windows,
-  // one refusal that no future state of the world could clear.
   it('finishes a batch opened after its own release had already shipped', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     serve(RELEASED);

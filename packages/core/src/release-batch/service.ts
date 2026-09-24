@@ -454,13 +454,11 @@ export interface AbortReleaseBatchResult {
 /**
  * What an abort does with a roster whose run already promoted.
  *
- * `hold` is what every caller got before there was a choice, and stays the
- * default: the code is on production and no status here is true except
- * `releasing`. `return-to-gate` is the operator's route to terminal for a batch
- * that promoted and cannot verify — it puts the roster back where
- * `POST /release-records` can close it against what production is serving, with
- * an account, instead of leaving it somewhere only a hand-written UPDATE
- * reaches (ISS-1199).
+ * `hold` is the default: the code is on production and no status here is true
+ * except `releasing`. `return-to-gate` is the operator's route to terminal for
+ * a batch that promoted and cannot verify, putting the roster back where
+ * `POST /release-records` closes it against what production serves, with an
+ * account (ISS-1199).
  */
 export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 

@@ -43,11 +43,9 @@ export interface RecoverStrandedReleasingOptions {
   actorUserId?: string | undefined;
   /** Post a comment naming the reason. Off for a sweep nobody asked for. */
   comment?: boolean;
-  /**
-   * Settle a roster whose run promoted instead of holding it. A person's word and never a
-   * sweep's: the code IS on production, and what this buys is a batch that promoted and cannot
-   * verify reaching a status some door can close from (ISS-1199).
-   */
+  /** Settle a roster whose run promoted instead of holding it — a person's word and never a
+   *  sweep's, buying a batch that promoted and cannot verify a status some door closes from
+   *  (ISS-1199). */
   settlePromotedRoster?: boolean;
   /** Run inside each write's own transaction before it writes; throws to stop the recovery. */
   fence?: ((tx: Tx) => Promise<void>) | undefined;
@@ -167,9 +165,7 @@ export async function recoverStrandedReleasing(
   }
 
   // `promoted` and not `false`: a settled roster still came off a run that put
-  // code on production, and a result saying otherwise would be the one fact
-  // this whole path exists to keep true. On every other route it IS false, the
-  // early return above owning the only case where it is not.
+  // code on production, and this is the one fact the path exists to keep true.
   return {
     claimsCleared: claimed.map((r) => r.id),
     recovered,

@@ -189,13 +189,7 @@ export type VerifyOutcome =
       commit: string;
       health: 'up';
       identity: string;
-      /**
-       * Whether the verified identity differs from what was serving when the
-       * batch was opened. It compares against that snapshot and says nothing
-       * about WHEN the build changed: a deploy that landed between the open and
-       * the finish reads `true` having been watched by nobody. `false` is a
-       * release recorded after the fact (ISS-1199).
-       */
+      /** Differs from what the batch found serving when it opened (ISS-1199). */
       moved: boolean;
     }
   | {
@@ -218,21 +212,9 @@ export interface VerifyArgs {
   sleep?: (ms: number) => Promise<void>;
 }
 
-/**
- * Whether one reading of the deployment satisfies the gate.
- *
- * Where the release names a commit, that claim is the whole of the proof: the
- * identity every probe agrees on either confirms it or it does not, and where
- * it does, the deployment IS serving what was released — whether it arrived
- * while this batch watched or a day before the batch was opened. Only a gate
- * claiming no commit asks that the build moved off `commitBefore`, because
- * there the transition is the only evidence a deploy arrived at all.
- *
- * It used to ask for both. `commitBefore` is read when the batch is OPENED, so
- * a batch opened after its own release held one string in all three places and
- * no reading could satisfy the conjunction: the commit it waited to move away
- * from was the commit it waited to arrive at (ISS-1199).
- */
+/** Whether one reading satisfies the gate: a claim is the whole proof where one
+ *  is made, and only a claimless gate asks that the build left `commitBefore` —
+ *  asking both leaves a batch opened after its own release stuck (ISS-1199). */
 export function readingSatisfies(
   live: string | null,
   commitBefore: string | null,
@@ -263,12 +245,7 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
 
   while (now() < deadline) {
     state = await readLiveState(cfg, deadline - now());
-    // The one gate no reading could ever satisfy, so the window closes on it
-    // here rather than at the deadline: `deploymentConfirms` refuses a claim
-    // that is not a whole object name whatever the deployment reports, and
-    // waiting 300s for a constant is what hid ISS-1199 through five attempts.
-    // A claim that IS one and is merely not serving yet is satisfiable by the
-    // next read, so it keeps polling.
+    // The one gate no reading could satisfy, closed here, not at the deadline.
     if (expected != null && claim === null) {
       return { ...failureFor(state, commitBefore, null, expected), readings: state.readings };
     }
@@ -324,10 +301,13 @@ function failureFor(
       reason: `the application is healthy and no probe reported a commit (${state.unidentified.join('; ')}) — read this as a probe declaration that does not match what the application serves, not as a failed deploy`,
     };
   }
-  // Reached only where the claim, if there is one, does NOT confirm this
-  // identity: one that does is a green and never arrives here. So the sentence
-  // stays the diagnostic one — it names the state a stalled release is actually
-  // in — and carries the claim beside it where a release made one.
+  if (claim !== null && deploymentConfirms(claim, state.identity)) {
+    return {
+      ...base,
+      health: 'up',
+      reason: `the deployment reports ${state.identity}, which is the commit the release pushed, and the window closed before that reading held still long enough to be believed`,
+    };
+  }
   if (state.identity === commitBefore) {
     const pushed = claim === null ? '' : `, and the release pushed ${claim}`;
     return {
@@ -396,19 +376,8 @@ export function notAWholeCommit(raw: string, identity: string | null): string {
   );
 }
 
-/**
- * Whether what a batch found serving already carries the work it is claiming.
- *
- * ANY one roster merge being live answers it: one issue's merge on production
- * means this release's work has shipped, whoever pushed it. An issue with no
- * merge commit takes no part rather than counting against it, and which of the
- * two values may abbreviate stays {@link deploymentConfirms}'s rule.
- *
- * It is a sufficient signal and not a complete one: live having moved PAST the
- * roster's merges is the same late-opened batch and reads `false` here, because
- * nothing short of a git provider resolves ancestry — the residual `recorded.ts`
- * prices on ISS-1129 (ISS-1199).
- */
+/** Whether what a batch found serving already carries a roster issue's merge —
+ *  any one. Sufficient, not complete: ancestry needs ISS-1129's provider. */
 export function liveCarriesRoster(
   commitBefore: string | null,
   mergedCommits: Array<string | null>,
@@ -444,12 +413,10 @@ export type ServingNowOutcome =
 /**
  * Whether the application is serving this commit RIGHT NOW, in one read.
  *
- * {@link verifyDeployed} answers a different question — is the deployment this
- * batch is closing serving what the release named — so it polls for that commit
- * and holds the reading still before believing it. A release that already
- * happened has nothing to wait for: it either is live at the moment of the call
- * or the record is not earned. Polling here would turn a false claim into a
- * five-minute wait and then the same refusal.
+ * {@link verifyDeployed} polls for the commit a release named and holds the
+ * reading still first. A release that already happened has nothing to wait
+ * for: polling here turns a false claim into a five-minute wait and the same
+ * refusal.
  */
 export async function verifyServingNow(args: ServingNowArgs): Promise<ServingNowOutcome> {
   const state = await readLiveState(args.cfg);

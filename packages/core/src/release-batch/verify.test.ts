@@ -168,6 +168,22 @@ describe('verifyDeployed', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('blames the stable-read count, not the build, when the window closes on a confirmed claim', async () => {
+    answers(SAME);
+
+    const out = await verifyDeployed({
+      cfg: { ...CFG, stableReads: 2, timeoutSeconds: 1 },
+      commitBefore: SAME,
+      expected: SAME,
+      now: ticking(),
+      sleep: noSleep,
+    });
+
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toContain('held still');
+    expect(out.ok === false && out.reason).not.toContain('pre-release');
+  });
+
   it('still refuses a claim the deployment does not confirm, naming both, when the build never moved', async () => {
     answers(SAME, SAME);
 
