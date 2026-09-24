@@ -19,6 +19,13 @@
  * agent's own hooks REPORTED it did. `turn_evidence` reads the same record for
  * the question one step earlier — whether a turn ever began at all — and the
  * two stay separate readings because they are separate questions.
+ *
+ * A hook can be lost, and a lost `Stop` leaves a pane reporting a turn that
+ * never ends. Nothing this daemon registers fires while a lead works on tools
+ * alone, so the last hook cannot age a live turn; the conversation's own
+ * transcript can, because a running turn writes it (`transcript_age`). Every
+ * window below that concludes a pane on silence measures that silence from the
+ * later of the last hook and the last write (ISS-1244).
  */
 
 use std::time::Duration;
@@ -29,14 +36,15 @@ use crate::daemon::turn_evidence::Watch;
 /// Nothing reported since a turn ENDED for this long: the agent is done.
 pub const IDLE_BEFORE_FINISHED: Duration = Duration::from_secs(15 * 60);
 
-/// Nothing reported since a boundary that ended NOTHING for this long. Longer
-/// than the one above, because a compaction is the one report `agent_activity`
-/// reads as idle while the agent may still be mid-turn behind it.
+/// Nothing reported and nothing written since a boundary that ended NOTHING for
+/// this long. Longer than the one above, because a compaction is the one report
+/// `agent_activity` reads as idle while the agent may still be mid-turn behind
+/// it.
 ///
-/// The same window bounds a lead that ended its turn over a child with no
-/// reported end: a background child still working and one whose end was lost
-/// read alike, so a live child silent past it is concluded too. That is the
-/// price, and a hook that fires while a child works is what would end it.
+/// The same window bounds a turn whose end never arrived, and a lead that ended
+/// its turn over a child with no reported end. Each is kept while its
+/// transcript, or a child's, is still being written; the price is a single tool
+/// call that writes nothing for the whole window, which is concluded with it.
 pub const SILENT_BEFORE_ABANDONED: Duration = Duration::from_secs(60 * 60);
 
 /// A duration as every text about a job pane states it, so the line an
@@ -113,6 +121,11 @@ pub enum Verdict {
     ChildrenSilent {
         quiet_for: i64,
     },
+    /// The last report began a turn, no end ever arrived, and the conversation
+    /// has written nothing since.
+    LeadSilent {
+        quiet_for: i64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,8 +134,12 @@ pub enum KeepReason {
     Unreported,
     /// It has reported, and no turn has begun.
     NoTurnYet,
-    /// A turn is running, or a child of it is.
+    /// A turn is running, or a child of it is, and its transcript says so.
     Working,
+    /// The agent's hooks say a turn is running and this box has no transcript
+    /// it can read to age that by. Kept, because the claim is not disproved,
+    /// and named, because nothing bounds it.
+    WorkingUnaged,
     /// A turn ended, and not long enough ago.
     RecentlyEnded,
     /// Stopped on a question, and not long enough ago.
@@ -134,7 +151,14 @@ pub enum KeepReason {
     AwaitingChildren,
 }
 
-pub fn verdict(watch: &Watch, reported: Option<Reported>, now: i64) -> Verdict {
+/// `written_at` is the newest write this box can read to the session's own
+/// transcript (`transcript_age::last_written`), `None` where it can read none.
+pub fn verdict(
+    watch: &Watch,
+    reported: Option<Reported>,
+    written_at: Option<i64>,
+    now: i64,
+) -> Verdict {
     let Some(r) = reported else {
         return Verdict::Keep(KeepReason::Unreported);
     };
@@ -155,23 +179,37 @@ pub fn verdict(watch: &Watch, reported: Option<Reported>, now: i64) -> Verdict {
     // passed at all and keeps the pane. Every window below is compared
     // inclusively, so the boundary instant itself concludes it.
     let quiet_for = now.saturating_sub(r.at);
-    let past = |w: Duration| quiet_for >= w.as_millis() as i64;
+    // The longer window reads the agent's latest sign of life, whichever of
+    // the two channels carried it: a transcript written after the last hook is
+    // a turn still running, and one written before it says nothing newer.
+    let silent_for = now.saturating_sub(written_at.map_or(r.at, |w| w.max(r.at)));
+    let past = |q: i64, w: Duration| q >= w.as_millis() as i64;
     match r.doing {
+        Doing::Working if written_at.is_none() => Verdict::Keep(KeepReason::WorkingUnaged),
+        Doing::Working if past(silent_for, SILENT_BEFORE_ABANDONED) => Verdict::LeadSilent {
+            quiet_for: silent_for,
+        },
         Doing::Working => Verdict::Keep(KeepReason::Working),
-        Doing::AwaitingPermission if past(IDLE_BEFORE_FINISHED) => Verdict::Blocked { quiet_for },
+        Doing::AwaitingPermission if past(quiet_for, IDLE_BEFORE_FINISHED) => {
+            Verdict::Blocked { quiet_for }
+        }
         Doing::AwaitingPermission => Verdict::Keep(KeepReason::RecentlyAsked),
-        Doing::AwaitingChildren if past(SILENT_BEFORE_ABANDONED) => {
-            Verdict::ChildrenSilent { quiet_for }
+        Doing::AwaitingChildren if past(silent_for, SILENT_BEFORE_ABANDONED) => {
+            Verdict::ChildrenSilent {
+                quiet_for: silent_for,
+            }
         }
         Doing::AwaitingChildren => Verdict::Keep(KeepReason::AwaitingChildren),
         Doing::Idle if r.last_event == Event::Compacted => {
-            if past(SILENT_BEFORE_ABANDONED) {
-                Verdict::Silent { quiet_for }
+            if past(silent_for, SILENT_BEFORE_ABANDONED) {
+                Verdict::Silent {
+                    quiet_for: silent_for,
+                }
             } else {
                 Verdict::Keep(KeepReason::Compacting)
             }
         }
-        Doing::Idle if past(IDLE_BEFORE_FINISHED) => Verdict::Finished { quiet_for },
+        Doing::Idle if past(quiet_for, IDLE_BEFORE_FINISHED) => Verdict::Finished { quiet_for },
         Doing::Idle => Verdict::Keep(KeepReason::RecentlyEnded),
     }
 }
@@ -179,10 +217,9 @@ pub fn verdict(watch: &Watch, reported: Option<Reported>, now: i64) -> Verdict {
 impl Verdict {
     /// What core is told where this verdict ends the job. `None` is a keep.
     ///
-    /// The three read differently on purpose: an operator meeting one of these
-    /// in a journal has no second source to ask what the pane was doing, and a
-    /// finished agent, an unanswerable question and a compaction that went
-    /// quiet want three different next acts.
+    /// Each reads differently on purpose: an operator meeting one of these in
+    /// a journal has no second source to ask what the pane was doing, and each
+    /// wants a different next act.
     pub fn reason(self, pane: &str) -> Option<String> {
         Some(match self {
             Verdict::Keep(_) => return None,
@@ -202,17 +239,29 @@ impl Verdict {
                 "the job's pane `{pane}` ended its turn over a child it started that never reported an end, and has reported nothing for {} since — a child's end reaches this box by a hook that can be lost, so the slot was holding a claim of work nothing had confirmed in that time",
                 minutes(quiet_for)
             ),
+            Verdict::LeadSilent { quiet_for } => format!(
+                "the job's pane `{pane}` last reported a turn beginning, never reported it ending, and has written nothing to its transcript for {} — a turn's end reaches this box by a hook that can be lost, and a turn still running writes its transcript as it works, so the slot was holding a turn nothing had shown running in that time",
+                minutes(quiet_for)
+            ),
         })
     }
 }
 
 /// What to say about a pane that is holding a slot, for the one line an
 /// operator reads when this box can take no more work.
-pub fn holding_phrase(watch: &Watch, reported: Option<Reported>, now: i64) -> &'static str {
-    match verdict(watch, reported, now) {
+pub fn holding_phrase(
+    watch: &Watch,
+    reported: Option<Reported>,
+    written_at: Option<i64>,
+    now: i64,
+) -> &'static str {
+    match verdict(watch, reported, written_at, now) {
         Verdict::Keep(KeepReason::Unreported) => "its agent has reported nothing",
         Verdict::Keep(KeepReason::NoTurnYet) => "its prompt is delivered and no turn has begun",
         Verdict::Keep(KeepReason::Working) => "working",
+        Verdict::Keep(KeepReason::WorkingUnaged) => {
+            "working by its own report, with no transcript this box can read to age that claim by"
+        }
         Verdict::Keep(KeepReason::RecentlyEnded) => "idle since its turn ended",
         Verdict::Keep(KeepReason::RecentlyAsked) => "stopped on a question a human owes",
         Verdict::Keep(KeepReason::Compacting) => "compacting",
@@ -224,6 +273,9 @@ pub fn holding_phrase(watch: &Watch, reported: Option<Reported>, now: i64) -> &'
         Verdict::Silent { .. } => "silent since it compacted, and this sweep has not let it go yet",
         Verdict::ChildrenSilent { .. } => {
             "its turn ended over a child that never reported an end, silent since, and this sweep has not let it go yet"
+        }
+        Verdict::LeadSilent { .. } => {
+            "its turn never reported an end and its transcript has been still since, and this sweep has not let it go yet"
         }
     }
 }
@@ -245,6 +297,16 @@ mod tests {
         }
     }
 
+    /// The verdict with no transcript to read, which is what every case below
+    /// is about unless it passes a write time of its own.
+    fn judge(watch: &Watch, reported: Option<Reported>, now: i64) -> Verdict {
+        verdict(watch, reported, None, now)
+    }
+
+    fn phrase(watch: &Watch, reported: Option<Reported>, now: i64) -> &'static str {
+        holding_phrase(watch, reported, None, now)
+    }
+
     fn reported(doing: Doing, last_event: Event, at: i64) -> Option<Reported> {
         Some(Reported {
             doing,
@@ -261,7 +323,7 @@ mod tests {
     #[test]
     fn a_pane_whose_turn_ended_past_the_window_is_finished() {
         assert_eq!(
-            verdict(&hooked(), ended(NOW - IDLE - 1), NOW),
+            judge(&hooked(), ended(NOW - IDLE - 1), NOW),
             Verdict::Finished {
                 quiet_for: IDLE + 1
             }
@@ -271,7 +333,7 @@ mod tests {
     #[test]
     fn the_boundary_instant_itself_concludes_the_pane() {
         assert_eq!(
-            verdict(&hooked(), ended(NOW - IDLE), NOW),
+            judge(&hooked(), ended(NOW - IDLE), NOW),
             Verdict::Finished { quiet_for: IDLE }
         );
     }
@@ -279,27 +341,194 @@ mod tests {
     #[test]
     fn a_turn_that_ended_a_moment_ago_keeps_its_slot() {
         assert_eq!(
-            verdict(&hooked(), ended(NOW - IDLE + 1), NOW),
+            judge(&hooked(), ended(NOW - IDLE + 1), NOW),
             Verdict::Keep(KeepReason::RecentlyEnded)
         );
     }
 
     #[test]
-    fn a_turn_still_running_keeps_its_slot_however_long_it_has_run() {
+    fn a_turn_still_writing_keeps_its_slot_however_long_ago_it_began() {
         assert_eq!(
             verdict(
                 &hooked(),
                 reported(Doing::Working, Event::PromptSubmitted, NOW - SILENT * 10),
+                Some(NOW - 60_000),
                 NOW
             ),
             Verdict::Keep(KeepReason::Working)
         );
     }
 
+    fn began(at: i64) -> Option<Reported> {
+        reported(Doing::Working, Event::PromptSubmitted, at)
+    }
+
+    #[test]
+    fn a_turn_whose_end_was_lost_is_concluded_once_its_transcript_has_been_still_for_the_window() {
+        assert_eq!(
+            verdict(
+                &hooked(),
+                began(NOW - SILENT * 72),
+                Some(NOW - SILENT * 72),
+                NOW
+            ),
+            Verdict::LeadSilent {
+                quiet_for: SILENT * 72
+            },
+            "three days after a lost Stop the pane must not still read as working (ISS-1244)"
+        );
+    }
+
+    #[test]
+    fn the_boundary_instant_of_a_still_transcript_concludes_the_turn() {
+        assert_eq!(
+            verdict(&hooked(), began(NOW - SILENT * 3), Some(NOW - SILENT), NOW),
+            Verdict::LeadSilent { quiet_for: SILENT }
+        );
+        assert_eq!(
+            verdict(
+                &hooked(),
+                began(NOW - SILENT * 3),
+                Some(NOW - SILENT + 1),
+                NOW
+            ),
+            Verdict::Keep(KeepReason::Working),
+            "one millisecond inside the window is a turn still running"
+        );
+    }
+
+    #[test]
+    fn a_hook_newer_than_the_last_write_is_the_sign_of_life_the_window_counts_from() {
+        assert_eq!(
+            verdict(
+                &hooked(),
+                reported(Doing::Working, Event::SubagentStarted, NOW - SILENT + 1),
+                Some(NOW - SILENT * 10),
+                NOW
+            ),
+            Verdict::Keep(KeepReason::Working),
+            "the later of the two channels is the agent's latest sign of life"
+        );
+    }
+
+    #[test]
+    fn a_working_claim_with_no_transcript_to_read_is_kept_and_says_so() {
+        assert_eq!(
+            verdict(&hooked(), began(NOW - SILENT * 72), None, NOW),
+            Verdict::Keep(KeepReason::WorkingUnaged),
+            "no evidence is not silence: concluding here would decide on the absence of an event"
+        );
+        let said = holding_phrase(&hooked(), began(NOW - SILENT * 72), None, NOW);
+        assert!(said.contains("no transcript"), "{said}");
+        assert_ne!(
+            said,
+            holding_phrase(&hooked(), began(NOW), Some(NOW), NOW),
+            "an operator must be able to tell a claim this box can age from one it cannot"
+        );
+    }
+
+    #[test]
+    fn a_write_stamped_in_the_future_concludes_no_turn() {
+        assert_eq!(
+            verdict(&hooked(), began(NOW - SILENT * 72), Some(NOW + SILENT), NOW),
+            Verdict::Keep(KeepReason::Working)
+        );
+    }
+
+    #[test]
+    fn a_write_time_no_clock_could_have_produced_does_not_panic_the_sweep() {
+        assert!(matches!(
+            verdict(&hooked(), began(i64::MIN), Some(i64::MIN), NOW),
+            Verdict::LeadSilent { .. }
+        ));
+        assert_eq!(
+            verdict(&hooked(), began(i64::MIN), Some(i64::MAX), NOW),
+            Verdict::Keep(KeepReason::Working)
+        );
+    }
+
+    #[test]
+    fn an_adopted_pane_whose_end_was_lost_is_concluded_on_the_same_window() {
+        let adopted = Watch::Adopted {
+            session_id: "sess-1".into(),
+        };
+        let seen_before_the_restart = Some(Reported {
+            doing: Doing::Working,
+            last_event: Event::PromptSubmitted,
+            at: NOW - SILENT * 5,
+            prompts: 0,
+        });
+        assert_eq!(
+            verdict(
+                &adopted,
+                seen_before_the_restart,
+                Some(NOW - SILENT * 5),
+                NOW
+            ),
+            Verdict::LeadSilent {
+                quiet_for: SILENT * 5
+            }
+        );
+    }
+
+    #[test]
+    fn a_lead_awaiting_a_child_that_is_still_writing_keeps_its_slot_past_the_hook_silence() {
+        assert_eq!(
+            verdict(
+                &hooked(),
+                reported(Doing::AwaitingChildren, Event::Stopped, NOW - SILENT * 72),
+                Some(NOW - 60_000),
+                NOW
+            ),
+            Verdict::Keep(KeepReason::AwaitingChildren),
+            "a background child writing its own transcript is work in flight, not a lost end"
+        );
+        assert_eq!(
+            verdict(
+                &hooked(),
+                reported(Doing::AwaitingChildren, Event::Stopped, NOW - SILENT * 72),
+                Some(NOW - SILENT),
+                NOW
+            ),
+            Verdict::ChildrenSilent { quiet_for: SILENT }
+        );
+    }
+
+    #[test]
+    fn a_compaction_followed_by_writes_keeps_its_slot_past_the_hook_silence() {
+        assert_eq!(
+            verdict(
+                &hooked(),
+                reported(Doing::Idle, Event::Compacted, NOW - SILENT * 72),
+                Some(NOW - 60_000),
+                NOW
+            ),
+            Verdict::Keep(KeepReason::Compacting)
+        );
+        assert_eq!(
+            verdict(
+                &hooked(),
+                reported(Doing::Idle, Event::Compacted, NOW - SILENT * 72),
+                Some(NOW - SILENT),
+                NOW
+            ),
+            Verdict::Silent { quiet_for: SILENT }
+        );
+    }
+
+    #[test]
+    fn a_write_after_a_turn_ended_does_not_move_the_idle_window() {
+        assert_eq!(
+            verdict(&hooked(), ended(NOW - IDLE), Some(NOW), NOW),
+            Verdict::Finished { quiet_for: IDLE },
+            "the short window is about a turn that ENDED, which a later write does not undo"
+        );
+    }
+
     #[test]
     fn a_failed_turn_ends_a_turn_as_surely_as_a_clean_one() {
         assert_eq!(
-            verdict(
+            judge(
                 &hooked(),
                 reported(Doing::Idle, Event::StoppedFailed, NOW - IDLE),
                 NOW
@@ -315,7 +544,7 @@ mod tests {
         // one of them is `Working` and is kept by the arm above.
         for event in [Event::SubagentStopped, Event::TeammateWentIdle] {
             assert_eq!(
-                verdict(&hooked(), reported(Doing::Idle, event, NOW - IDLE), NOW),
+                judge(&hooked(), reported(Doing::Idle, event, NOW - IDLE), NOW),
                 Verdict::Finished { quiet_for: IDLE },
                 "{event:?}"
             );
@@ -323,6 +552,7 @@ mod tests {
                 verdict(
                     &hooked(),
                     reported(Doing::Working, event, NOW - IDLE * 10),
+                    Some(NOW),
                     NOW
                 ),
                 Verdict::Keep(KeepReason::Working),
@@ -334,7 +564,7 @@ mod tests {
     #[test]
     fn a_question_a_human_owes_is_blocked_rather_than_finished() {
         assert_eq!(
-            verdict(&hooked(),
+            judge(&hooked(),
                 reported(
                     Doing::AwaitingPermission,
                     Event::PermissionRequested,
@@ -350,7 +580,7 @@ mod tests {
     #[test]
     fn a_question_asked_a_moment_ago_keeps_its_slot() {
         assert_eq!(
-            verdict(
+            judge(
                 &hooked(),
                 reported(
                     Doing::AwaitingPermission,
@@ -366,7 +596,7 @@ mod tests {
     #[test]
     fn a_compaction_is_not_a_turn_that_ended_and_outlives_the_idle_window() {
         assert_eq!(
-            verdict(
+            judge(
                 &hooked(),
                 reported(Doing::Idle, Event::Compacted, NOW - SILENT + 1),
                 NOW
@@ -379,7 +609,7 @@ mod tests {
     #[test]
     fn a_pane_silent_since_it_compacted_is_concluded_on_the_longer_window() {
         assert_eq!(
-            verdict(
+            judge(
                 &hooked(),
                 reported(Doing::Idle, Event::Compacted, NOW - SILENT),
                 NOW
@@ -391,7 +621,7 @@ mod tests {
     #[test]
     fn a_session_that_has_reported_nothing_is_never_concluded_here() {
         assert_eq!(
-            verdict(&hooked(), None, NOW),
+            judge(&hooked(), None, NOW),
             Verdict::Keep(KeepReason::Unreported)
         );
     }
@@ -405,7 +635,7 @@ mod tests {
             prompts: 0,
         });
         assert_eq!(
-            verdict(&hooked(), no_turn, NOW),
+            judge(&hooked(), no_turn, NOW),
             Verdict::Keep(KeepReason::NoTurnYet),
             "whether a turn ever began is turn_evidence's question, and only it may conclude a pane on that"
         );
@@ -423,7 +653,7 @@ mod tests {
             reported(Doing::Idle, Event::Compacted, NOW + SILENT),
         ] {
             assert!(
-                matches!(verdict(&hooked(), r, NOW), Verdict::Keep(_)),
+                matches!(judge(&hooked(), r, NOW), Verdict::Keep(_)),
                 "a clock that ran ahead must not conclude a pane: {r:?}"
             );
         }
@@ -436,22 +666,23 @@ mod tests {
         // inside the supervision task, which would take every other job pane's
         // accounting down with it.
         assert!(matches!(
-            verdict(&hooked(), ended(i64::MIN), NOW),
+            judge(&hooked(), ended(i64::MIN), NOW),
             Verdict::Finished { .. }
         ));
         assert!(matches!(
-            verdict(&hooked(), ended(i64::MAX), NOW),
+            judge(&hooked(), ended(i64::MAX), NOW),
             Verdict::Keep(KeepReason::RecentlyEnded)
         ));
     }
 
     #[test]
-    fn the_four_conclusions_say_four_different_things() {
+    fn the_five_conclusions_say_five_different_things() {
         let reasons: Vec<String> = [
             Verdict::Finished { quiet_for: 60_000 },
             Verdict::Blocked { quiet_for: 60_000 },
             Verdict::Silent { quiet_for: 60_000 },
             Verdict::ChildrenSilent { quiet_for: 60_000 },
+            Verdict::LeadSilent { quiet_for: 60_000 },
         ]
         .into_iter()
         .map(|v| {
@@ -475,10 +706,16 @@ mod tests {
             "{}",
             reasons[3]
         );
+        assert!(
+            reasons[4].contains("never reported it ending")
+                && reasons[4].contains("a hook that can be lost"),
+            "{}",
+            reasons[4]
+        );
         let distinct: std::collections::BTreeSet<&String> = reasons.iter().collect();
         assert_eq!(
             distinct.len(),
-            4,
+            5,
             "an operator meeting one of these has no second source to ask what the pane was doing"
         );
     }
@@ -531,7 +768,7 @@ mod tests {
             prompts: 0,
         });
         assert_eq!(
-            verdict(
+            judge(
                 &Watch::Adopted {
                     session_id: "sess-1".into()
                 },
@@ -552,12 +789,12 @@ mod tests {
             prompts: 0,
         });
         assert_eq!(
-            verdict(&hooked(), no_turn, NOW),
+            judge(&hooked(), no_turn, NOW),
             Verdict::Keep(KeepReason::NoTurnYet),
             "whether a turn ever began is turn_evidence's question, and it can only answer it for a pane this daemon delivered to"
         );
         assert_eq!(
-            verdict(&Watch::Unhooked, no_turn, NOW),
+            judge(&Watch::Unhooked, no_turn, NOW),
             Verdict::Keep(KeepReason::RecentlyEnded),
             "a pane this daemon did not brief is judged on the boundary it reported"
         );
@@ -576,6 +813,7 @@ mod tests {
                     at: NOW - SILENT * 10,
                     prompts: 0,
                 }),
+                Some(NOW),
                 NOW
             ),
             Verdict::Keep(KeepReason::Working)
@@ -585,10 +823,10 @@ mod tests {
     #[test]
     fn what_holds_a_slot_reads_differently_in_every_state() {
         let phrases = [
-            holding_phrase(&hooked(), None, NOW),
-            holding_phrase(&hooked(), ended(NOW), NOW),
-            holding_phrase(&hooked(), ended(NOW - IDLE), NOW),
-            holding_phrase(
+            phrase(&hooked(), None, NOW),
+            phrase(&hooked(), ended(NOW), NOW),
+            phrase(&hooked(), ended(NOW - IDLE), NOW),
+            phrase(
                 &hooked(),
                 reported(Doing::Working, Event::PromptSubmitted, NOW),
                 NOW,
@@ -605,12 +843,12 @@ mod tests {
     #[test]
     fn a_lead_that_ended_over_an_unreported_child_keeps_its_slot_inside_the_longer_window() {
         assert_eq!(
-            verdict(&hooked(), awaiting(NOW - SILENT + 1), NOW),
+            judge(&hooked(), awaiting(NOW - SILENT + 1), NOW),
             Verdict::Keep(KeepReason::AwaitingChildren),
             "a background child may still be working behind a lead that stopped"
         );
         assert_eq!(
-            verdict(&hooked(), awaiting(NOW - IDLE), NOW),
+            judge(&hooked(), awaiting(NOW - IDLE), NOW),
             Verdict::Keep(KeepReason::AwaitingChildren),
             "the idle window is for a turn with nothing behind it, not this"
         );
@@ -619,12 +857,12 @@ mod tests {
     #[test]
     fn a_lead_that_ended_over_an_unreported_child_is_concluded_at_the_longer_window() {
         assert_eq!(
-            verdict(&hooked(), awaiting(NOW - SILENT), NOW),
+            judge(&hooked(), awaiting(NOW - SILENT), NOW),
             Verdict::ChildrenSilent { quiet_for: SILENT },
             "a child's end that never arrived must not hold a job slot for the life of the pane (ISS-1232)"
         );
         assert_eq!(
-            verdict(&hooked(), awaiting(NOW - SILENT * 72), NOW),
+            judge(&hooked(), awaiting(NOW - SILENT * 72), NOW),
             Verdict::ChildrenSilent {
                 quiet_for: SILENT * 72
             },
@@ -644,7 +882,7 @@ mod tests {
             prompts: 0,
         });
         assert_eq!(
-            verdict(&adopted, r, NOW),
+            judge(&adopted, r, NOW),
             Verdict::ChildrenSilent { quiet_for: SILENT }
         );
     }
@@ -652,13 +890,13 @@ mod tests {
     #[test]
     fn a_pane_awaiting_a_child_never_reads_as_working_at_the_ceiling() {
         for at in [NOW, NOW - IDLE, NOW - SILENT, NOW - SILENT * 72] {
-            let phrase = holding_phrase(&hooked(), awaiting(at), NOW);
+            let phrase = phrase(&hooked(), awaiting(at), NOW);
             assert_ne!(phrase, "working", "at {at}");
             assert!(phrase.contains("child"), "{phrase}");
         }
         assert_ne!(
-            holding_phrase(&hooked(), awaiting(NOW), NOW),
-            holding_phrase(&hooked(), awaiting(NOW - SILENT), NOW),
+            phrase(&hooked(), awaiting(NOW), NOW),
+            phrase(&hooked(), awaiting(NOW - SILENT), NOW),
             "inside and past the window are two different next acts"
         );
     }

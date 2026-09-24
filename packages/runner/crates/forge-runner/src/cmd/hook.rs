@@ -28,20 +28,21 @@ fn drain_and_ack() -> Vec<u8> {
     sink
 }
 
-fn named_in(payload: &[u8]) -> (Option<String>, Option<String>, Option<String>) {
+fn named_in(payload: &[u8]) -> control::HookNames {
     let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) else {
-        return (None, None, None);
+        return control::HookNames::default();
     };
     let field = |k: &str| {
         v.get(k)
             .and_then(serde_json::Value::as_str)
             .map(str::to_string)
     };
-    (
-        field("agent_id").or_else(|| field("teammate_name")),
-        field("session_id"),
-        field("agent_type"),
-    )
+    control::HookNames {
+        agent_id: field("agent_id").or_else(|| field("teammate_name")),
+        conversation_id: field("session_id"),
+        agent_type: field("agent_type"),
+        transcript_path: field("transcript_path"),
+    }
 }
 
 pub async fn run(args: Args) {
@@ -56,16 +57,8 @@ pub async fn run(args: Args) {
     if !sock.exists() {
         return;
     }
-    let (subject, conversation, role) = named_in(&payload);
-    let _ = control::request_agent_event(
-        &sock,
-        &token,
-        &args.event,
-        subject.as_deref(),
-        conversation.as_deref(),
-        role.as_deref(),
-    )
-    .await;
+    let names = named_in(&payload);
+    let _ = control::request_agent_event(&sock, &token, &args.event, &names).await;
 }
 
 #[cfg(test)]
@@ -97,6 +90,7 @@ mod tests {
     }
 
     use super::named_in;
+    use forge_runner_core::daemon::control;
 
     const SUBAGENT_START: &str = r#"{"agent_id":"acf9b1721de184fa7","agent_type":"general-purpose","hook_event_name":"SubagentStart","prompt_id":"6a830af5-8553-45a9-9ebe-e5353e72481e","session_id":"f3115c20-8b4b-4fcd-b27d-fefd1ac163f5"}"#;
     const SUBAGENT_STOP: &str = r#"{"agent_id":"acf9b1721de184fa7","agent_type":"general-purpose","hook_event_name":"SubagentStop","prompt_id":"6a830af5-8553-45a9-9ebe-e5353e72481e","session_id":"f3115c20-8b4b-4fcd-b27d-fefd1ac163f5","stop_hook_active":false}"#;
@@ -104,8 +98,13 @@ mod tests {
 
     #[test]
     fn a_childs_events_name_the_same_child_on_both_sides_of_its_life() {
-        let (start, conv, role) = named_in(SUBAGENT_START.as_bytes());
-        let (stop, _, _) = named_in(SUBAGENT_STOP.as_bytes());
+        let started = named_in(SUBAGENT_START.as_bytes());
+        let (start, conv, role) = (
+            started.agent_id,
+            started.conversation_id,
+            started.agent_type,
+        );
+        let stop = named_in(SUBAGENT_STOP.as_bytes()).agent_id;
         assert_eq!(start.as_deref(), Some("acf9b1721de184fa7"));
         assert_eq!(
             start, stop,
@@ -122,30 +121,49 @@ mod tests {
 
     #[test]
     fn a_lead_event_names_no_child() {
-        let (subject, conv, _) = named_in(LEAD_STOP.as_bytes());
-        assert!(subject.is_none(), "got {subject:?}");
-        assert!(conv.is_some(), "the conversation is still named");
+        let named = named_in(LEAD_STOP.as_bytes());
+        assert!(named.agent_id.is_none(), "got {:?}", named.agent_id);
+        assert!(
+            named.conversation_id.is_some(),
+            "the conversation is still named"
+        );
     }
 
     #[test]
     fn a_teammates_name_stands_in_as_the_subject() {
-        let (subject, _, _) = named_in(
+        let subject = named_in(
             br#"{"hook_event_name":"TeammateIdle","teammate_name":"reviewer","session_id":"s1"}"#,
-        );
+        )
+        .agent_id;
         assert_eq!(subject.as_deref(), Some("reviewer"));
     }
 
     #[test]
     fn an_unparseable_payload_names_nothing_rather_than_guessing() {
-        assert_eq!(named_in(b"not json at all"), (None, None, None));
-        assert_eq!(named_in(b""), (None, None, None));
+        assert_eq!(named_in(b"not json at all"), control::HookNames::default());
+        assert_eq!(named_in(b""), control::HookNames::default());
     }
 
     #[test]
     fn a_subject_that_is_not_a_string_is_not_a_subject() {
         assert_eq!(
-            named_in(br#"{"agent_id":42,"session_id":null,"agent_type":42}"#),
-            (None, None, None)
+            named_in(br#"{"agent_id":42,"session_id":null,"agent_type":42,"transcript_path":7}"#),
+            control::HookNames::default()
+        );
+    }
+
+    /// Claude Code's `Stop` payload as it arrives, with the common fields every
+    /// hook event carries.
+    const LEAD_STOP_WHOLE: &str = r#"{"session_id":"f3115c20-8b4b-4fcd-b27d-fefd1ac163f5","transcript_path":"/home/dev/.claude/projects/-w/f3115c20-8b4b-4fcd-b27d-fefd1ac163f5.jsonl","cwd":"/w","permission_mode":"bypassPermissions","hook_event_name":"Stop","stop_hook_active":false}"#;
+
+    #[test]
+    fn a_lead_event_names_the_transcript_its_conversation_is_written_to() {
+        assert_eq!(
+            named_in(LEAD_STOP_WHOLE.as_bytes())
+                .transcript_path
+                .as_deref(),
+            Some("/home/dev/.claude/projects/-w/f3115c20-8b4b-4fcd-b27d-fefd1ac163f5.jsonl"),
+            "the one thing the daemon can age while a turn runs (ISS-1244)"
         );
     }
 }
