@@ -29,6 +29,7 @@ import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
+import { heartbeatPool } from './pool-read-report.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -78,6 +79,7 @@ const heartbeatBodySchema = z
     // Read by `heartbeatGate`, not here: a malformed gate field must not 400 a
     // heartbeat and take the box offline with it (ISS-1192).
     gate: z.unknown().optional(),
+    pool: z.unknown().optional(),
   })
   .strict();
 
@@ -410,6 +412,7 @@ deviceAuthRoutes.post(
       .returning({ id: devices.id });
 
     if (!updated) throw unauth();
+    const pool = await heartbeatPool(input.pool, device.id);
 
     const transitioned = await mirrorHeartbeatToRunners(device.id);
     for (const r of transitioned) {
@@ -431,7 +434,7 @@ deviceAuthRoutes.post(
       });
     }
 
-    return c.json({ ok: true, serverTime: new Date().toISOString(), ...gate.ack });
+    return c.json({ ok: true, serverTime: new Date().toISOString(), ...gate.ack, ...pool.ack });
   },
 );
 

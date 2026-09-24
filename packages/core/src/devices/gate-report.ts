@@ -71,8 +71,8 @@ export function readHeartbeatGate(gate: unknown): {
   const parsed = gateReportSchema.safeParse(gate);
   if (parsed.success) return { report: parsed.data };
   const first = parsed.error.issues[0];
-  const at = first?.path.length ? first.path.join('.') : 'gate';
-  return { refused: `gate.${at}: ${first?.message ?? 'not a gate condition core can read'}` };
+  const at = first?.path.length ? `gate.${first.path.join('.')}` : 'gate';
+  return { refused: `${at}: ${first?.message ?? 'not a gate condition core can read'}` };
 }
 
 /**
