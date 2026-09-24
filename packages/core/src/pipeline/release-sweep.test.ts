@@ -301,7 +301,7 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
     expect(held?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(held?.reason).toContain('criterion 13');
     expect(held?.reason).toContain('this issue now stands at');
-    expect(held?.owes).toBe('agent');
+    expect(held?.owes).toBe('human');
     expect(holds['iss-1139']?.authorId).toBe('owner-1');
     expect(result).toEqual({ ...NO_HOLDS, issuesExcluded: 1, holdsWritten: 1 });
   });
@@ -391,6 +391,7 @@ describe('sweepAutomaticReleases — declined cuts', () => {
 
   it.each([
     ['NO_RUNNER_ONLINE', 'human'],
+    ['RELEASE_RUNNER_UNDECLARED', 'human'],
     ['BATCH_IN_FLIGHT', 'agent'],
   ])('writes a %s refusal with every reason standing, owed by %s', async (code, owes) => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];

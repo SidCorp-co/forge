@@ -141,9 +141,12 @@ describe('a held row says why, once per reason', () => {
     expect(written?.status).toBe('awaiting_release');
     expect(String(written?.reason)).toContain('criterion 1');
     expect(String(written?.reason)).not.toContain('criterion 2');
+    expect(written?.owes).toBe('human');
+    expect(String(written?.reason)).toContain(`serving it, \`${SERVING}\``);
     const comments = await holdComments(id);
     expect(comments).toHaveLength(1);
     expect(comments[0]).toContain('criterion 1');
+    expect(comments[0]).toContain('which a person owes');
 
     const second = await sweep();
     expect(second.holdsWritten).toBe(0);

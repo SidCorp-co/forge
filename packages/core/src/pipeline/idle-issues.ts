@@ -533,6 +533,11 @@ function graceSpent(updatedAt: string, graceMs: number, now: Date): boolean {
   return now.getTime() - Date.parse(updatedAt) >= graceMs;
 }
 
+/** A reason closed by one full stop: a release hold's reason already ends in its own. */
+function asSentence(reason: string): string {
+  return /[.!?]$/.test(reason.trimEnd()) ? reason.trimEnd() : `${reason}.`;
+}
+
 async function surface(args: {
   row: CandidateRow;
   record: StrandRecord;
@@ -563,7 +568,7 @@ async function surface(args: {
     groupTitle: 'Issues in a live status with no live work behind them',
     title: headline,
     body:
-      `${opening} ${record.reason}. ` +
+      `${opening} ${asSentence(record.reason)} ` +
       `It is waiting for ${record.waitingFor}, and ${record.owes === 'human' ? 'a person' : 'an agent'} owes the next move. ` +
       'Nothing was moved: the finding is on the issue itself, under `strand`.',
   });
