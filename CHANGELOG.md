@@ -3087,6 +3087,9 @@
   set is now 59.
 
 ### Fixed
+- **A machine whose record of failed queue reads is damaged no longer clears them from the
+  Runners page.** The page keeps what it last showed, and `forge-runner status` and `doctor` name
+  the damaged file.
 - **Release refusals from the issue list match Release settings.** They blamed a check that never
   failed rather than the runner that is down, and over fifty issues got "Invalid input". Automatic
   releases carry the oldest fifty at a time.

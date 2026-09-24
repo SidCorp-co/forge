@@ -149,19 +149,39 @@ fn prune(p: &mut Project, now_ms: i64) {
 /// its sweep is sequential, but a test harness is not.
 static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// An absent file is no record. One that will not parse is said, then read as
-/// none: the next failure starts a fresh record rather than none being kept.
-fn load(config_dir: &Path) -> Record {
-    let Ok(body) = std::fs::read_to_string(path(config_dir)) else {
-        return Record::default();
+/// A record that exists and cannot be read: unopenable, or not the shape this
+/// box writes. It is not the empty record an absent file is — read as one, the
+/// heartbeat would clear at core every condition the box had reported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unreadable {
+    pub path: PathBuf,
+    pub reason: String,
+}
+
+impl std::fmt::Display for Unreadable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} cannot be read ({})",
+            self.path.display(),
+            self.reason
+        )
+    }
+}
+
+/// An absent file is no record; any other failure to read it is [`Unreadable`].
+fn load(config_dir: &Path) -> Result<Record, Unreadable> {
+    let at = path(config_dir);
+    let unreadable = |reason: String| Unreadable {
+        path: at.clone(),
+        reason,
     };
-    serde_json::from_str(&body).unwrap_or_else(|e| {
-        tracing::warn!(
-            "[pool] {} does not parse ({e}) — read as no record, and replaced by the next failed read",
-            path(config_dir).display()
-        );
-        Record::default()
-    })
+    let body = match std::fs::read_to_string(&at) {
+        Ok(body) => body,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Record::default()),
+        Err(e) => return Err(unreadable(e.to_string())),
+    };
+    serde_json::from_str(&body).map_err(|e| unreadable(format!("does not parse: {e}")))
 }
 
 /// Written whole, through a sibling file and a rename, so `status` reading
@@ -174,13 +194,26 @@ fn save(config_dir: &Path, r: &Record) -> std::io::Result<()> {
     std::fs::rename(&tmp, path(config_dir))
 }
 
-/// Record what one pass learned about `project_id`'s pool.
+/// Record what one pass learned about `project_id`'s pool. An unreadable
+/// record is left as it stands: replaced by a fresh one, the next beat would
+/// carry this failure alone and clear at core every project recorded before.
 pub fn note(config_dir: &Path, project_id: &str, took: &Took, now_ms: i64) {
     let Some(outcome) = Outcome::of(took) else {
         return;
     };
     let _held = WRITE.lock().unwrap_or_else(|e| e.into_inner());
-    let mut r = load(config_dir);
+    let mut r = match load(config_dir) {
+        Ok(r) => r,
+        Err(e) => {
+            if let Outcome::Failed(f) = outcome {
+                tracing::warn!(
+                    "[pool] {project_id}: a failed read ({}) is not recorded — {e}; remove the file to start a fresh record",
+                    crate::daemon::degraded::clip(&f.reason)
+                );
+            }
+            return;
+        }
+    };
     let known = r.projects.contains_key(project_id);
     if !known && matches!(outcome, Outcome::Read) {
         return;
@@ -272,8 +305,8 @@ fn condition(project_id: &str, p: &Project, now_ms: i64) -> Option<Condition> {
 
 /// Every project that failed a read inside the window, blind ones first.
 /// A project absent from this list read cleanly all window, or was never read.
-pub fn report(config_dir: &Path, now_ms: i64) -> Vec<Condition> {
-    let r = load(config_dir);
+pub fn report(config_dir: &Path, now_ms: i64) -> Result<Vec<Condition>, Unreadable> {
+    let r = load(config_dir)?;
     let mut out: Vec<Condition> = r
         .projects
         .iter()
@@ -284,7 +317,7 @@ pub fn report(config_dir: &Path, now_ms: i64) -> Vec<Condition> {
             .cmp(&(a.verdict == Verdict::Blind))
             .then_with(|| b.last_failure.at.cmp(&a.last_failure.at))
     });
-    out
+    Ok(out)
 }
 
 /// What a reader is told a failure was: its status by number and name, or the
@@ -302,6 +335,11 @@ mod tests {
 
     const NOW: i64 = 1_790_236_800_000;
     const MIN: i64 = 60_000;
+
+    /// Every case but the unreadable ones reads a record this module wrote.
+    fn report(d: &Path, now_ms: i64) -> Vec<Condition> {
+        super::report(d, now_ms).expect("a record this module wrote")
+    }
 
     fn dir(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
@@ -472,17 +510,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// A record that exists and cannot be read is said to be unreadable, never
+    /// read as empty, and a failed read does not overwrite it: a fresh record
+    /// holding that failure alone would clear at core every project before it.
     #[test]
-    fn a_file_that_will_not_parse_reads_as_no_record() {
+    fn a_file_that_will_not_parse_is_unreadable_and_is_not_overwritten() {
         let d = dir("junk");
         std::fs::write(path(&d), "{not json").unwrap();
-        assert!(report(&d, NOW).is_empty());
+        let e = super::report(&d, NOW).expect_err("junk is not an empty record");
+        assert_eq!(e.path, path(&d));
+        assert!(e.reason.starts_with("does not parse"), "{e}");
         note(&d, "p1", &gw525(), NOW);
-        assert_eq!(
-            report(&d, NOW).len(),
-            1,
-            "the next failure starts a fresh record"
-        );
+        assert_eq!(std::fs::read_to_string(path(&d)).unwrap(), "{not json");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_path_that_cannot_be_opened_is_unreadable_and_an_absent_one_is_empty() {
+        let d = dir("unopenable");
+        assert_eq!(super::report(&d, NOW), Ok(vec![]), "no file is no record");
+        std::fs::create_dir(path(&d)).unwrap();
+        let e = super::report(&d, NOW).expect_err("a directory is not a record");
+        assert!(!e.reason.starts_with("does not parse"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
 }

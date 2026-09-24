@@ -156,12 +156,15 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     }
 
     // What the daemon recorded about its own pool reads. History, not a check of
-    // this run: the live read of each project follows in the online section.
+    // this run: the live read of each project follows in the online section. A
+    // record that cannot be read fails the check — the box is reporting nothing.
     if let Some(dir) = forge_runner_core::daemon::control::config_dir() {
         let now = forge_runner_core::daemon::agent_activity::now_ms();
         let recorded = forge_runner_core::daemon::pool_reads::report(&dir, now);
+        let mark = if recorded.is_err() { "✖" } else { "•" };
+        failed |= recorded.is_err();
         for line in super::status::pool_lines(&recorded, &cfg, now) {
-            println!("• {line}");
+            println!("{mark} {line}");
         }
     }
 
