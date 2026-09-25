@@ -2068,6 +2068,16 @@ impl Ledger {
         Ok(n == 1)
     }
 
+    /// Make [`Ledger::issues`] fail while every other read still answers, by
+    /// renaming the one column it selects. A ledger a box cannot read is what
+    /// a caller has to be able to plant to prove it is not swallowed.
+    #[cfg(test)]
+    pub fn break_issue_keys_for_test(&self) -> Result<()> {
+        self.conn
+            .execute_batch("ALTER TABLE run_issues RENAME COLUMN issue_key TO issue_key_gone")
+            .map_err(sql_err)
+    }
+
     pub fn end_run(&self, run_id: &str, ended_by: &str, reason: &str) -> Result<()> {
         self.conn
             .execute(

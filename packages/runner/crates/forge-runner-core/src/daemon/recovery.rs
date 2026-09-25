@@ -158,9 +158,13 @@ pub async fn reconcile(
         // over since the run opened.
         let kept_subagent = !orphaned && run.agent_id.is_some() && run.pid.is_none();
         let issues_over = if kept_subagent {
+            // `?` and never a default: a ledger this box cannot read is a
+            // silence on our own side of the line, and an empty list here
+            // reads as *not over*, which keeps the run and beats its session
+            // with nothing said. That is the state this change exists to end,
+            // recreated by the failure to measure it.
             let keys: Vec<String> = ledger
-                .issues(&run.run_id)
-                .unwrap_or_default()
+                .issues(&run.run_id)?
                 .into_iter()
                 .map(|m| m.issue_key)
                 .collect();
@@ -3035,6 +3039,50 @@ mod tests {
         assert!(
             wt.join("unsaved.txt").exists(),
             "with the work still in it: {said}"
+        );
+    }
+
+    /// ISS-1245 — a ledger this box cannot read is not *no issues*.
+    ///
+    /// `every_issue_over` answers `false` for an issue whose status is unknown,
+    /// which is right: not known to be over is not over. Reading a LEDGER
+    /// failure the same way is not: it keeps the run, beats its session and
+    /// says nothing, which is the state this change exists to end, recreated by
+    /// the failure to measure it. Only `Ledger::issues` is broken here — the
+    /// column it selects is renamed and every other read still answers — so
+    /// what the sweep does is decided by this read and not by an earlier one.
+    #[tokio::test]
+    async fn a_ledger_read_that_fails_stops_the_sweep_rather_than_reading_as_no_issues() {
+        let mut led = seeded("run-1", MASTER, "boot-a", &["ISS-1217"]);
+        assert!(led.bind_agent("run-1", "a1217judge").unwrap());
+        led.break_issue_keys_for_test().unwrap();
+        let beats = Beats::default();
+
+        let out = reconcile(
+            &mut led,
+            "boot-a",
+            &master_alive(),
+            &nothing_refuted(),
+            Closing {
+                sessions: &SessionCoreStillHolds,
+                leases: &LeasesOver::with(&["ISS-1217"]),
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &beats,
+                idle: &NeverReports,
+            },
+        )
+        .await;
+
+        assert!(
+            out.is_err(),
+            "a ledger the box cannot read is said, not absorbed: {out:?}"
+        );
+        assert!(
+            beats.0.lock().unwrap().is_empty(),
+            "and nothing is kept alive on the strength of a read that did not happen: {:?}",
+            beats.0.lock().unwrap()
         );
     }
 }
