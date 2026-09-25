@@ -1,9 +1,16 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { delimiter, join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+const lookup = vi.hoisted(() => vi.fn());
+vi.mock('node:dns', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:dns')>()),
+  promises: { lookup: (...a: unknown[]) => lookup(...a) },
+}));
+
 import {
   fetchDivergence,
   REMOTE_FETCH_LIMITS,
@@ -280,6 +287,37 @@ describe('a fetch that outgrows its budget', () => {
 });
 
 describe('readRemoteDivergence', () => {
+  it('names the host the URL names and where the key lives when the git host refuses the key', async () => {
+    lookup.mockResolvedValue([{ address: '172.65.251.78', family: 4 }]);
+    const bin = join(root, 'refusing-ssh');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(bin, 'ssh'),
+      [
+        '#!/bin/sh',
+        'for a in "$@"; do case "$a" in HostName=*) host=$(printf %s "$a" | cut -d= -f2);; esac; done',
+        'echo "git@$host: Permission denied (publickey)." >&2',
+        'exit 255',
+      ].join('\n'),
+    );
+    chmodSync(join(bin, 'ssh'), 0o755);
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}${delimiter}${path ?? ''}`;
+    try {
+      const d = await readRemoteDivergence(
+        { repoUrl: 'git@gitlab.com:sid/desk.git', privateKey: 'not a key' },
+        { baseRef: 'staging', liveRef: 'master' },
+      );
+      expect(d).toEqual({
+        ok: false,
+        reason:
+          "the git host refused the deploy key attached to this project (git@gitlab.com: Permission denied (publickey).) — give its public key read access to the repository; the key is the one attached under the project's Settings → Runners → Git access",
+      });
+    } finally {
+      process.env.PATH = path;
+    }
+  });
+
   it('refuses a remote that is not an SSH remote before git or the key is used', async () => {
     const d = await readRemoteDivergence(
       { repoUrl: `file://${remote}`, privateKey: 'not a key' },
