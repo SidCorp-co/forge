@@ -3104,7 +3104,7 @@
 - **A runner restarting after a self-update stops taking new work while it waits, and says what it is waiting on.** `forge-runner status` now shows the build the daemon is actually serving, not only the file on disk.
 - **A run whose issues have all closed no longer stays open on a box for ever.** Its leases go back and its checkout is asked for, or the release refuses by name and keeps both.
 
-- **A run nothing on the box can close now says so once, naming what is outstanding and the act that ends it**, instead of repeating one unactionable warning every sweep.
+- **A run nothing on the box can close now says so once, naming what is outstanding and what it is waiting on**, instead of repeating one unactionable warning every sweep. It no longer names a command that refuses it.
 
 - **A release refusal the world overtook is settled on the run's record** rather than standing open for ever, so "which runs are stranded" has an answer.
 

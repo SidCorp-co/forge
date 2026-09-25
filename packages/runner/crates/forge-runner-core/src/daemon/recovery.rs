@@ -292,7 +292,14 @@ pub async fn reconcile(
             // speaks. Before this arm the combination fell here silently and
             // that line was printed on every sweep for as long as the box
             // lived: 4,632 times over two days for one run.
-            Some(Standing::OverAtTheBox)
+            //
+            // What lands here is narrow and knowable, which is what lets the
+            // line name an ask rather than a guess. `agent_gone` holds over
+            // this whole arm, so a run reaching it with the session still open
+            // has `ended_by` set — `owed_death_report` would have taken it
+            // otherwise — and one reaching it with the session over has its
+            // checkout back, or `owed_release` would have.
+            Some(Standing::AwaitingCore)
         };
         let standing_said =
             standing.is_some_and(|s| say_standing(ledger, &run, boot_id, &state, s));
@@ -505,10 +512,15 @@ enum Standing {
     /// Its release was decided terminal and its checkout stays by decision;
     /// only its leases are still being chased.
     Decided,
-    /// This box has nothing left to do for it. What is outstanding is a mark
-    /// somebody else sets — core calling its session over, or a lease core has
-    /// not yet handed back — and no sweep here will move either.
-    OverAtTheBox,
+    /// Every mark it has left is one core sets — a session core has not called
+    /// over, or a lease core has not handed back — and this box is asking core
+    /// for it on every sweep. Reaching this arm with the session still open
+    /// means `ended_by` is set and `session_terminal_at` is not, which is
+    /// exactly the population `run_record::close_ended_runs` retries; reaching
+    /// it with the session over means the checkout is back and only leases are
+    /// left, which `close_loop::close` asks for on every pass. So the run is
+    /// waiting on an answer, not on a keystroke.
+    AwaitingCore,
 }
 
 /// Say once, in the journal and on the row, why this run stands and what ends
@@ -528,8 +540,8 @@ fn say_standing(
         Standing::Unanswered => "awaiting-leases",
         Standing::ForeignBoot => "foreign-boot",
         Standing::Decided => "decided",
-        Standing::OverAtTheBox if !state.session_terminal => "over-awaiting-session",
-        Standing::OverAtTheBox => "over-awaiting-leases",
+        Standing::AwaitingCore if !state.session_terminal => "core-awaiting-session",
+        Standing::AwaitingCore => "core-awaiting-leases",
     };
     match ledger.note_standing(&run.run_id, notice) {
         Ok(false) => return true,
@@ -617,29 +629,50 @@ fn say_standing(
             run.run_id
         )
         }
-        Standing::OverAtTheBox => {
+        Standing::AwaitingCore => {
             // The two marks this box cannot set itself, said apart: a session
             // core still holds open and a lease core has not handed back are
             // different facts and a line covering both names no act (ISS-1239).
+            //
+            // Neither says an ask has stopped, so neither names a verb that
+            // restarts one. `forge-runner run release` is the `Decided` arm's
+            // act and is correct there because that arm's condition is
+            // `release_terminal_at` SET; this arm is only reached while it is
+            // NULL, which is the very condition `cmd/run.rs::retract` bails on
+            // — so naming it here names an act nobody can take, and an
+            // operator who takes it once, on a line said once, is told nothing
+            // again. What the reader is pointed at instead is the ask that is
+            // running and the line that carries core's refusal, which repeats
+            // on every sweep and so is still there when they look. That the
+            // ask is in the sweep at all is held by `master.rs`'s own
+            // `depth_of_call_in_sweep("run_record::close_ended_runs(")`.
             let what_ends_it = if !state.session_terminal {
                 format!(
-                    "core's session row for {} is still open, and nothing on this box sets that \
-                     mark — it ends when core calls the session over",
+                    "core's session row for {} is not over yet, and this box asks core to close \
+                     it again on every sweep, so the run ends within a sweep of core taking that \
+                     close; where core refuses, `[run-record] run {}: core would not take the \
+                     close` carries the reason, every sweep",
                     run.session_id.as_deref().unwrap_or("this run"),
+                    run.run_id,
                 )
             } else {
                 format!(
-                    "its checkout is back and {}/{} of its leases are; the rest end when core \
-                     hands them back",
-                    state.leases_returned, state.leases_total
+                    "its checkout is back and {}/{} of its leases are, and this box asks core for \
+                     the rest on every sweep, so the run ends within a sweep of core handing them \
+                     back; where core refuses, `[close] run={} <issue>: lease release refused` \
+                     carries the reason, every sweep",
+                    state.leases_returned, state.leases_total, run.run_id,
                 )
             };
             tracing::warn!(
-                "[recovery] run {} ({issues}) is partially closed ({holds}): this box has nothing \
-                 left to do for it — {what_ends_it}. `forge-runner run release {}` is the act that \
-                 takes it up again. Said once, not every sweep",
+                "[recovery] run {} ({issues}) is partially closed ({holds}): every mark it has \
+                 left is core's to set and this box is still asking — {what_ends_it}. There is no \
+                 act for an operator here and no command to run: wait a sweep. Where core keeps \
+                 refusing, the act is whatever that refusal names — a 401 is this box's pairing, \
+                 which `forge-runner login` restores. Not `run release`: this run carries no \
+                 release this box gave up on, and that verb refuses it by name. Said once, not \
+                 every sweep",
                 run.run_id,
-                run.run_id
             )
         }
     }
@@ -2832,7 +2865,7 @@ mod tests {
             "three sweeps over one unchanged standing say it once: {said}"
         );
         assert!(
-            said.contains("this box has nothing left to do for it"),
+            said.contains("every mark it has left is core's to set"),
             "the line says which branch it took, rather than repeating the three marks: {said}"
         );
         assert!(
@@ -2840,8 +2873,106 @@ mod tests {
             "it names the mark that is outstanding: {said}"
         );
         assert!(
-            said.contains("forge-runner run release run-1"),
-            "and the act that takes the run up again: {said}"
+            said.contains("this box asks core to close it again on every sweep"),
+            "and that the ask is running, which is what makes waiting the right thing to do: {said}"
+        );
+        assert!(
+            said.contains("[run-record] run run-1: core would not take the close"),
+            "and where core's own refusal is printed, which is the act's subject: {said}"
+        );
+        assert!(
+            said.contains(
+                "There is no act for an operator here and no command to run: wait a \
+                 sweep"
+            ),
+            "it answers what the operator is to do, in words, rather than leaving them to infer \
+             it from a mark: {said}"
+        );
+        assert!(
+            said.contains("`forge-runner login`"),
+            "and the act that refusal earns where it is a 401: {said}"
+        );
+    }
+
+    /// ISS-1239 — a standing may only name a verb the row it is printed for
+    /// would be accepted by.
+    ///
+    /// `forge-runner run release` retracts a release this box gave up on, and
+    /// `cmd/run.rs::retract` refuses on two reads of the row: no
+    /// `release_refusal` ("carries no refused release, so there is nothing
+    /// here to retract") and no `release_terminal_at` ("refused but not given
+    /// up on"). `Standing::Decided` is the arm whose condition is
+    /// `release_terminal_at` SET, so it may name the verb; every other
+    /// standing is reached only while it is NULL, so naming it there names an
+    /// act that exits 1. It was named there, and the harm is the latch: the
+    /// line is said once, the operator takes the only act it gives, gets the
+    /// refusal, and is never told again.
+    #[test]
+    fn a_standing_names_run_release_only_where_that_verb_would_take_the_row() {
+        let scratch = Scratch::new("act-matches-row");
+        let (mut decided, _root, _wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        decided
+            .note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        decided
+            .conclude_release_refusal(
+                "run-1",
+                1_790_000_300,
+                "recovery",
+                "the diff was not preserved",
+            )
+            .unwrap();
+        let said_of_decided = logged_while(|| {
+            block_on(async {
+                let done = reconcile(
+                    &mut decided,
+                    "boot-a",
+                    &NoRegistryEntry,
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &Sessions,
+                        leases: &LeasesRefused,
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap();
+                assert!(done[0].standing_said, "{:?}", done[0]);
+            })
+        });
+        let row = decided.run("run-1").unwrap().unwrap();
+        assert!(
+            row.release_refusal.is_some() && row.release_terminal_at.is_some(),
+            "the row the verb is named for is one retract() takes: {row:?}"
+        );
+        assert!(
+            said_of_decided.contains("forge-runner run release run-1"),
+            "so the decided standing keeps naming it: {said_of_decided}"
+        );
+
+        let said_of_awaiting = logged_while(|| {
+            block_on(async {
+                let mut led = seeded("run-1", "master-gone", "boot-a", &["ISS-1239"]);
+                led.end_run("run-1", "subagent", "its subagent ended its turn")
+                    .unwrap();
+                let r = sweep_ended_run(&mut led, &Leases(Mutex::new(HashSet::new())))
+                    .await
+                    .expect("an orphaned run is always answered for");
+                assert!(r.standing_said, "{r:?}");
+                let row = led.run("run-1").unwrap().unwrap();
+                assert!(
+                    row.release_refusal.is_none() && row.release_terminal_at.is_none(),
+                    "this is the row retract() bails on, by both of its reads: {row:?}"
+                );
+            })
+        });
+        assert!(
+            !said_of_awaiting.contains("forge-runner run release"),
+            "so the standing said over it carries no invocation of it: {said_of_awaiting}"
         );
     }
 
