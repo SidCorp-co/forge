@@ -3,7 +3,7 @@
 // ISS-1217 — the rail says whether a merged issue's work reached the live branch.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IssueDetail, LiveReach } from "../types";
@@ -91,7 +91,7 @@ describe("the Production row", () => {
   });
 
   it("says only that nothing is waiting when no waiting commit is this issue's", () => {
-    render(rail({ ...measured, state: "none_waiting" }));
+    render(rail({ ...measured, state: "none_waiting", unowned: [] }));
     const value = screen.getByText("Nothing waiting for master");
     expect(value).toHaveAttribute(
       "title",
@@ -99,6 +99,41 @@ describe("the Production row", () => {
     );
     expect(screen.getByText("staging ffffffff vs master 52c66950 · read 2026-09-23 14:00")).toBeVisible();
     expect(screen.queryByText(/on production/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/belongs? to no issue/)).not.toBeInTheDocument();
+  });
+
+  it("counts the waiting commits that belong to no issue, and opens onto them from its summary", () => {
+    render(
+      rail({
+        ...measured,
+        state: "none_waiting",
+        unowned: [
+          { sha: "d06bf1db".padEnd(40, "0"), subject: "style(client): satisfy pint" },
+          { sha: "07002be8".padEnd(40, "0"), subject: "fix(campaign): stop resetting status" },
+        ],
+      }),
+    );
+    expect(screen.getByText("Nothing waiting for master")).toBeInTheDocument();
+    const summary = screen.getByText("2 waiting commits belong to no issue");
+    expect(summary.tagName).toBe("SUMMARY");
+    const disclosure = summary.closest("details") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(summary);
+    expect(disclosure.open).toBe(true);
+    expect(screen.getByText("d06bf1db style(client): satisfy pint")).toBeVisible();
+    expect(screen.getByText("07002be8 fix(campaign): stop resetting status")).toBeVisible();
+    expect(screen.queryByText(/on production/i)).not.toBeInTheDocument();
+  });
+
+  it("says one waiting commit belongs to no issue in the singular", () => {
+    render(
+      rail({
+        ...measured,
+        state: "none_waiting",
+        unowned: [{ sha: "d06bf1db".padEnd(40, "0"), subject: "style(client): satisfy pint" }],
+      }),
+    );
+    expect(screen.getByText("1 waiting commit belongs to no issue")).toBeInTheDocument();
   });
 
   it("shows no Production row where core gives no reading", () => {

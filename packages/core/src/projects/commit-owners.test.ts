@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { WaitingCommit } from '../integrations/github/live-divergence.js';
-import { commitOwners, declaredIssueSeqs } from './commit-owners.js';
+import {
+  commitOwners,
+  declaredIssueSeqs,
+  type IssueWorkRecord,
+  readingOwnership,
+  unclaimedShas,
+} from './commit-owners.js';
 import { issueRefPattern } from './live-reach.js';
 
 const pattern = issueRefPattern(['SD']);
@@ -201,5 +207,85 @@ describe('commitOwners', () => {
     expect(commitOwners(commits, pattern, 'develop')).not.toBe(
       commitOwners(commits, pattern, 'staging'),
     );
+  });
+});
+
+const branches = { baseBranch: 'stg', liveBranch: 'master' };
+const rec = (over: Partial<IssueWorkRecord> & { issSeq: number }): IssueWorkRecord => ({
+  mergedCommitSha: null,
+  head: null,
+  base: 'cut',
+  branch: 'topic-work',
+  ...over,
+});
+const portal = [
+  c('bb4', 'fix(deploy): report the running build commit from every deployed surface', '441'),
+  c('441', 'fix(client): stop new catalog rows adopting orphaned clients (ISS-60 AC8/AC11)', 'd06'),
+  c('d06', 'style(client): satisfy pint on the lines this change introduced', 'live'),
+];
+const ownedBy = (commits: WaitingCommit[], records: IssueWorkRecord[]) => {
+  const got = readingOwnership(commits, pattern, branches, records);
+  return {
+    owners: Object.fromEntries([...got.owners].map(([sha, m]) => [sha, Object.fromEntries(m)])),
+    ownerless: got.ownerless.map((x) => x.sha),
+  };
+};
+
+describe('readingOwnership', () => {
+  it('gives a keyless commit no merge brought in to the issue whose recorded head it is', () => {
+    const got = ownedBy(portal, [rec({ issSeq: 71, head: 'BB4', base: 'ea0' })]);
+    expect(got.owners.bb4).toEqual({ 71: 'recorded_head' });
+    expect(got.ownerless).toEqual(['d06']);
+  });
+
+  it('gives one recorded head to every issue that recorded it', () => {
+    const got = ownedBy(portal, [
+      rec({ issSeq: 71, head: 'bb4' }),
+      rec({ issSeq: 72, head: 'bb4' }),
+    ]);
+    expect(got.owners.bb4).toEqual({ 71: 'recorded_head', 72: 'recorded_head' });
+  });
+
+  it('never lets a recorded head outrank a key the commit declares', () => {
+    const got = ownedBy(portal, [rec({ issSeq: 71, head: '441' })]);
+    expect(got.owners['441']).toEqual({ 60: 'declares_issue' });
+  });
+
+  it('never lets a recorded head outrank the merge that brought the commit in', () => {
+    const got = ownedBy(
+      [c('m1', 'Merge branch SD-2-b into stg (SD-2)', 'live', 'b1'), c('b1', 'wip on b', 'live')],
+      [rec({ issSeq: 7, head: 'b1' })],
+    );
+    expect(got.owners.b1).toEqual({ 2: 'merged_in' });
+  });
+
+  it("never gives a head that is another issue's recorded merged commit, nor calls it ownerless", () => {
+    const got = ownedBy(portal, [
+      rec({ issSeq: 71, head: 'bb4' }),
+      rec({ issSeq: 80, mergedCommitSha: 'BB4' }),
+    ]);
+    expect(got.owners.bb4).toBeUndefined();
+    expect(got.ownerless).toEqual(['d06']);
+  });
+
+  it('ignores a capture that recorded no work of its own or stood on the base or live branch', () => {
+    const got = ownedBy(portal, [
+      rec({ issSeq: 71, head: 'bb4', base: 'bb4' }),
+      rec({ issSeq: 72, head: 'bb4', base: null }),
+      rec({ issSeq: 73, head: 'bb4', branch: 'stg' }),
+      rec({ issSeq: 74, head: 'bb4', branch: 'master' }),
+      rec({ issSeq: 75, head: 'bb4', branch: null }),
+      rec({ issSeq: 76, head: 'bb4', branch: '' }),
+    ]);
+    expect(got.owners.bb4).toBeUndefined();
+    expect(got.ownerless).toEqual(['bb4', 'd06']);
+  });
+
+  it('lists every commit no source owns, in the reading order', () => {
+    expect(ownedBy(portal, []).ownerless).toEqual(['bb4', 'd06']);
+  });
+
+  it('names as unclaimed only the commits no subject or merge gives to anyone', () => {
+    expect(unclaimedShas(portal, pattern, 'stg')).toEqual(['bb4', 'd06']);
   });
 });

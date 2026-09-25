@@ -43,7 +43,7 @@ export interface PulseNotOnLiveIdentity extends PulseIssueIdentity {
   evidence: Array<{
     sha: string;
     subject: string;
-    via: 'merged_commit' | 'declares_issue' | 'merged_in';
+    via: 'merged_commit' | 'declares_issue' | 'merged_in' | 'recorded_head';
   }>;
 }
 

@@ -1,7 +1,10 @@
 import type { WaitingCommit } from '../integrations/github/live-divergence.js';
 
-/** `declares_issue` — read by `declaredIssueSeqs`; `merged_in` — given by `carry`. */
-export type OwnerVia = 'declares_issue' | 'merged_in';
+/**
+ * `declares_issue` — read by `declaredIssueSeqs`; `merged_in` — given by `carry`; `recorded_head` —
+ * given by `readingOwnership` to a commit the other two leave to nobody.
+ */
+export type OwnerVia = 'declares_issue' | 'merged_in' | 'recorded_head';
 
 /** Every issue each waiting commit is the work of, keyed by the commit's lower-cased sha. */
 export type CommitOwners = ReadonlyMap<string, ReadonlyMap<number, OwnerVia>>;
@@ -170,4 +173,79 @@ export function commitOwners(
     byKey.set(key, owners);
   }
   return owners;
+}
+
+/**
+ * What the tracker holds of one issue that can claim a waiting commit: its recorded merged commit,
+ * and the `head`, `base` and `branch` its last pushed capture wrote to `sessionContext.worklog`.
+ */
+export interface IssueWorkRecord {
+  issSeq: number;
+  mergedCommitSha: string | null;
+  head: string | null;
+  base: string | null;
+  branch: string | null;
+}
+
+export interface ReadingOwnership {
+  owners: CommitOwners;
+  /** The waiting commits no source gives to any issue, in the reading's order. */
+  ownerless: WaitingCommit[];
+}
+
+/** A capture recorded work of its own: it moved past where it was cut, on a branch of its own. */
+function headOf(r: IssueWorkRecord, branches: readonly string[]): string | null {
+  const head = r.head?.trim().toLowerCase();
+  const base = r.base?.trim().toLowerCase();
+  if (!head || !base || head === base) return null;
+  if (!r.branch || branches.includes(r.branch)) return null;
+  return head;
+}
+
+/**
+ * Every waiting commit's issues. `commitOwners` first; then a commit that no record's merged commit
+ * is and that `commitOwners` gives to nobody goes to each issue whose recorded work head it is. The
+ * head never outranks a subject or a merge: runs capture heads on other issues' commits, so it
+ * answers only where nothing else does.
+ */
+export function readingOwnership(
+  commits: readonly WaitingCommit[],
+  pattern: RegExp,
+  branches: { baseBranch: string; liveBranch: string },
+  records: readonly IssueWorkRecord[],
+): ReadingOwnership {
+  const byRule = commitOwners(commits, pattern, branches.baseBranch);
+  const merged = new Set(
+    records.map((r) => r.mergedCommitSha?.trim().toLowerCase()).filter((s): s is string => !!s),
+  );
+  const heads = new Map<string, number[]>();
+  const refs = [branches.baseBranch, branches.liveBranch];
+  for (const r of records) {
+    const head = headOf(r, refs);
+    if (head) heads.set(head, [...(heads.get(head) ?? []), r.issSeq]);
+  }
+  let owners: Map<string, ReadonlyMap<number, OwnerVia>> | null = null;
+  const ownerless: WaitingCommit[] = [];
+  for (const c of commits) {
+    const sha = c.sha.toLowerCase();
+    if ((byRule.get(sha)?.size ?? 0) > 0 || merged.has(sha)) continue;
+    const seqs = heads.get(sha);
+    if (!seqs) {
+      ownerless.push(c);
+      continue;
+    }
+    owners ??= new Map(byRule);
+    owners.set(sha, new Map(seqs.map((s) => [s, 'recorded_head' as const])));
+  }
+  return { owners: owners ?? byRule, ownerless };
+}
+
+/** The waiting commits a subject or a merge gives to nobody: the only ones a work record can claim. */
+export function unclaimedShas(
+  commits: readonly WaitingCommit[],
+  pattern: RegExp,
+  baseBranch: string,
+): string[] {
+  const byRule = commitOwners(commits, pattern, baseBranch);
+  return commits.map((c) => c.sha.toLowerCase()).filter((s) => (byRule.get(s)?.size ?? 0) === 0);
 }
