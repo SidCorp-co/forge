@@ -73,14 +73,15 @@ on failure rather than filling it with an error shaped like an answer.
 **Credential.** `api` speaks with a **personal access token**, not the device
 token — a device token names a machine, and REST fences a caller by the
 projects its credential may speak for. Mint one in the web UI under
-Settings → Access tokens, then either:
+Settings → API Tokens, then either:
 
 ```
 forge-runner login --pat forge_pat_…   # stored beside the device token
 export FORGE_PAT=forge_pat_…           # or per-shell, which wins over the store
 ```
 
-`forge-runner doctor` reports whether one is present.
+The same token is what every job the box starts hands its Forge tools, so a
+box holding none refuses its jobs, and `forge-runner doctor` fails on it.
 
 **Reach.** A token bound to a project reaches that project and 404s on every
 other — the same answer a project that does not exist gives, so a token cannot
