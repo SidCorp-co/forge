@@ -3096,6 +3096,14 @@
 ### Fixed
 - **A master stopped by a usage limit is asked again every five minutes.** It no longer sleeps until
   the reset hour, so capacity restored by swapping or adding an account is used on the next pass.
+
+- **A release recorded after it shipped can now be finished.** A batch opened once the deploy was
+  already live could never pass its own check. What proves a release now is that production is
+  serving the commit the release names.
+
+- **A release stuck mid-flight has a way out.** Issues left part-way through a release that had
+  already reached production can now be handed back and recorded against what is serving.
+
 - **The Pipeline board says Running only when something is working the issue.** In-progress work
   nothing is holding sits under No check-in, showing when it last reported, if ever. Status menus
   name the status you would move to.

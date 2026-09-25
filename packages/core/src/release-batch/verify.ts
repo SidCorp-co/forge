@@ -184,7 +184,14 @@ export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> 
 }
 
 export type VerifyOutcome =
-  | { ok: true; commit: string; health: 'up'; identity: string }
+  | {
+      ok: true;
+      commit: string;
+      health: 'up';
+      identity: string;
+      /** Differs from what the batch found serving when it opened (ISS-1199). */
+      moved: boolean;
+    }
   | {
       ok: false;
       reason: string;
@@ -203,6 +210,18 @@ export interface VerifyArgs {
   /** Injected so the poll loop is testable without real time. */
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+}
+
+/** Whether one reading satisfies the gate: a claim is the whole proof where one
+ *  is made, and only a claimless gate asks that the build left `commitBefore` —
+ *  asking both leaves a batch opened after its own release stuck (ISS-1199). */
+export function readingSatisfies(
+  live: string | null,
+  commitBefore: string | null,
+  claim: string | null,
+): boolean {
+  if (live === null) return false;
+  return claim === null ? live !== commitBefore : deploymentConfirms(claim, live);
 }
 
 export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
@@ -226,16 +245,22 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
 
   while (now() < deadline) {
     state = await readLiveState(cfg, deadline - now());
+    // The one gate no reading could satisfy, closed here, not at the deadline.
     if (expected != null && claim === null) {
       return { ...failureFor(state, commitBefore, null, expected), readings: state.readings };
     }
     const live = state.identity;
-    const acceptable =
-      live != null && live !== commitBefore && (claim === null || deploymentConfirms(claim, live));
+    const acceptable = readingSatisfies(live, commitBefore, claim);
     stable = acceptable && live === last ? stable + 1 : acceptable ? 1 : 0;
     last = live;
     if (stable >= needed && live != null) {
-      return { ok: true, commit: live, health: 'up', identity: live };
+      return {
+        ok: true,
+        commit: live,
+        health: 'up',
+        identity: live,
+        moved: live !== commitBefore,
+      };
     }
     if (now() >= deadline) break;
     await sleep(5000);
@@ -276,11 +301,19 @@ function failureFor(
       reason: `the application is healthy and no probe reported a commit (${state.unidentified.join('; ')}) — read this as a probe declaration that does not match what the application serves, not as a failed deploy`,
     };
   }
-  if (state.identity === commitBefore) {
+  if (claim !== null && deploymentConfirms(claim, state.identity)) {
     return {
       ...base,
       health: 'up',
-      reason: `the live build is unchanged (${state.identity}) — the site is healthy and still serving the pre-release commit`,
+      reason: `the deployment reports ${state.identity}, which is the commit the release pushed, and the window closed before that reading held still long enough to be believed`,
+    };
+  }
+  if (state.identity === commitBefore) {
+    const pushed = claim === null ? '' : `, and the release pushed ${claim}`;
+    return {
+      ...base,
+      health: 'up',
+      reason: `the live build is unchanged (${state.identity}) — the site is healthy and still serving the pre-release commit${pushed}`,
     };
   }
   if (unusableClaim !== null) {
@@ -343,6 +376,16 @@ export function notAWholeCommit(raw: string, identity: string | null): string {
   );
 }
 
+/** Whether what a batch found serving already carries a roster issue's merge —
+ *  any one. Sufficient, not complete: ancestry needs ISS-1129's provider. */
+export function liveCarriesRoster(
+  commitBefore: string | null,
+  mergedCommits: Array<string | null>,
+): boolean {
+  if (commitBefore === null) return false;
+  return mergedCommits.some((sha) => sha !== null && deploymentConfirms(sha, commitBefore));
+}
+
 export interface ServingNowArgs {
   cfg: VerifyConfig;
   /** The whole sha the caller says production is serving. */
@@ -370,12 +413,10 @@ export type ServingNowOutcome =
 /**
  * Whether the application is serving this commit RIGHT NOW, in one read.
  *
- * {@link verifyDeployed} answers a different question — did the deploy this run
- * started arrive — so it polls, and it refuses an identity equal to what was
- * serving before. A release that already happened has no before and nothing to
- * wait for: it either is live at the moment of the call or the record is not
- * earned. Polling here would turn a false claim into a five-minute wait and
- * then the same refusal.
+ * {@link verifyDeployed} polls for the commit a release named and holds the
+ * reading still first. A release that already happened has nothing to wait
+ * for: polling here turns a false claim into a five-minute wait and the same
+ * refusal.
  */
 export async function verifyServingNow(args: ServingNowArgs): Promise<ServingNowOutcome> {
   const state = await readLiveState(args.cfg);

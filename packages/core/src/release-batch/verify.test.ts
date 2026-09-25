@@ -41,6 +41,17 @@ const FLAP = 'f1a99109876543210fedcba9876543210fedcba9';
 const nowFake = () => 0;
 const noSleep = async () => undefined;
 
+/**
+ * A clock that advances on every read, so a window that CANNOT go green still
+ * closes on its own deadline. A frozen clock is only safe where the case is
+ * green, and a case asserting a green is exactly the one that has to terminate
+ * while the green is still missing.
+ */
+const ticking = () => {
+  let t = 0;
+  return () => (t += 600);
+};
+
 describe('parseVerifyConfig', () => {
   it('reads nothing out of a project that declared nothing', () => {
     expect(parseVerifyConfig(undefined)).toBeNull();
@@ -93,7 +104,7 @@ describe('verifyDeployed', () => {
       sleep: noSleep,
     });
 
-    expect(out).toEqual({ ok: true, commit: NEW, health: 'up', identity: NEW });
+    expect(out).toEqual({ ok: true, commit: NEW, health: 'up', identity: NEW, moved: true });
   });
 
   it('goes red when the site is healthy and still serving the pre-release build', async () => {
@@ -114,13 +125,72 @@ describe('verifyDeployed', () => {
     expect(out.ok === false && out.reason).toContain('unchanged');
   });
 
-  it('goes red when the release reports the commit that was already serving', async () => {
+  // ISS-1199 — `commitBefore` is read when the batch is OPENED, so a batch
+  // opened after its own deploy shipped captured the released commit. This case
+  // asserted the contradiction that made of — `live !== commitBefore` against a
+  // claim equal to `commitBefore` — as though it were the rule, which is how
+  // five identical `finish` attempts each spent 300s proving a constant false.
+  it('goes green when the deployment is already serving the commit the release names', async () => {
     answers(SAME, SAME);
+    const slept = vi.fn(noSleep);
 
     const out = await verifyDeployed({
       cfg: { ...CFG, timeoutSeconds: 1 },
       commitBefore: SAME,
       expected: SAME,
+      now: ticking(),
+      sleep: slept,
+    });
+
+    expect(out).toEqual({
+      ok: true,
+      commit: SAME,
+      health: 'up',
+      identity: SAME,
+      moved: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(slept).not.toHaveBeenCalled();
+  });
+
+  it('holds an already-serving reading still as long as any other before believing it', async () => {
+    answers(SAME, SAME);
+
+    const out = await verifyDeployed({
+      cfg: { ...CFG, stableReads: 2, timeoutSeconds: 100 },
+      commitBefore: SAME,
+      expected: SAME,
+      now: ticking(),
+      sleep: noSleep,
+    });
+
+    expect(out.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('blames the stable-read count, not the build, when the window closes on a confirmed claim', async () => {
+    answers(SAME);
+
+    const out = await verifyDeployed({
+      cfg: { ...CFG, stableReads: 2, timeoutSeconds: 1 },
+      commitBefore: SAME,
+      expected: SAME,
+      now: ticking(),
+      sleep: noSleep,
+    });
+
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toContain('held still');
+    expect(out.ok === false && out.reason).not.toContain('pre-release');
+  });
+
+  it('still refuses a claim the deployment does not confirm, naming both, when the build never moved', async () => {
+    answers(SAME, SAME);
+
+    const out = await verifyDeployed({
+      cfg: { ...CFG, timeoutSeconds: 1 },
+      commitBefore: SAME,
+      expected: NEW,
       now: (() => {
         let t = 0;
         return () => (t += 600);
@@ -129,6 +199,41 @@ describe('verifyDeployed', () => {
     });
 
     expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toContain(SAME);
+    expect(out.ok === false && out.reason).toContain(NEW);
+  });
+
+  it('keeps reading for a claimed commit the deployment is not serving yet', async () => {
+    answers(OLD, NEW);
+
+    const out = await verifyDeployed({
+      cfg: { ...CFG, timeoutSeconds: 100 },
+      commitBefore: OLD,
+      expected: NEW,
+      now: ticking(),
+      sleep: noSleep,
+    });
+
+    expect(out).toEqual({ ok: true, commit: NEW, health: 'up', identity: NEW, moved: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('goes red where the release claims no commit and the live build never moved', async () => {
+    answers(OLD, OLD, OLD, OLD);
+
+    const out = await verifyDeployed({
+      cfg: { ...CFG, timeoutSeconds: 1 },
+      commitBefore: OLD,
+      expected: null,
+      now: (() => {
+        let t = 0;
+        return () => (t += 600);
+      })(),
+      sleep: noSleep,
+    });
+
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toContain('unchanged');
   });
 
   it('goes red when the live build is not the one the release pushed', async () => {
@@ -193,7 +298,7 @@ describe('verifyDeployed', () => {
       sleep: noSleep,
     });
 
-    expect(out).toEqual({ ok: true, commit: NEW, health: 'up', identity: NEW });
+    expect(out).toEqual({ ok: true, commit: NEW, health: 'up', identity: NEW, moved: true });
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });

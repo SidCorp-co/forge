@@ -176,7 +176,7 @@ describe('the door answers inside its own bound (the reproduction)', () => {
     expect(after.finish?.state).toBe('failed');
     expect(after.finish?.refusal).toEqual({
       code: 'RELEASE_NOT_VERIFIED',
-      reason: `the live build is unchanged (${BEFORE}) — the site is healthy and still serving the pre-release commit`,
+      reason: `the live build is unchanged (${BEFORE}) — the site is healthy and still serving the pre-release commit, and the release pushed ${PUSHED}`,
       live: BEFORE,
     });
     expect(after.runStatus).toBe('running');
