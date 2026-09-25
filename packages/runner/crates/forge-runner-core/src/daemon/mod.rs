@@ -278,6 +278,37 @@ fn pid_alive(_pid: u32) -> bool {
     false
 }
 
+/// Run `check` now and then once every `every`, measured from the start of
+/// each check, until `cancel` says stop.
+///
+/// The wait comes before the check, so the interval's first tick — which
+/// completes at once — is the first check and not a second one straight after
+/// it. Checked the other way round, a first check whose drain gave up after two
+/// hours was followed at once by another, which downloaded the release again
+/// and was refused by the reopen interval the line before it had announced
+/// (ISS-1223).
+async fn update_checks<F, Fut>(
+    every: std::time::Duration,
+    mut cancel: watch::Receiver<bool>,
+    mut check: F,
+) where
+    F: FnMut(tokio::time::Instant) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let mut tick = tokio::time::interval(every);
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {}
+            _ = cancel.changed() => {
+                if *cancel.borrow() { break; }
+                continue;
+            }
+        }
+        check(tokio::time::Instant::now()).await;
+    }
+}
+
 /// Rewrite the hook commands of every project bound on this box that name a
 /// program nothing can run. `server` is `/me/runners` as this box last read it,
 /// and `None` where it could not be asked at all — which the sweep reports,
@@ -540,12 +571,19 @@ pub async fn run(
         let runner = runner.clone();
         let bound = cfg.clone();
         let assignments = client.clone();
-        let mut cancel_rx = cancel_rx.clone();
+        let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            let mut tick = tokio::time::interval(UPDATE_CHECK_INTERVAL);
-            loop {
-                let checked_at = tokio::time::Instant::now();
+            update_checks(UPDATE_CHECK_INTERVAL, cancel_rx, move |checked_at| {
+                let (url, inflight, drain, runner, bound, assignments) = (
+                    url.clone(),
+                    inflight.clone(),
+                    drain.clone(),
+                    runner.clone(),
+                    bound.clone(),
+                    assignments.clone(),
+                );
+                async move {
                 match crate::update::fetch_manifest(&url).await {
                     Ok(m)
                         if crate::update::is_newer(&m.version, crate::update::CURRENT_VERSION) =>
@@ -633,11 +671,9 @@ pub async fn run(
                     Ok(_) => tracing::debug!("[update] up to date"),
                     Err(e) => tracing::debug!("[update] check failed: {e}"),
                 }
-                tokio::select! {
-                    _ = tick.tick() => {}
-                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
                 }
-            }
+            })
+            .await;
         });
     }
 
@@ -657,9 +693,12 @@ pub async fn run(
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
-            tick.tick().await; // skip the immediate tick
-                               // What this loop last said about a drain it could not start, so a
-                               // refusal it meets every thirty seconds is said once.
+            // The interval's first tick completes at once; this loop waits a
+            // full thirty seconds before its first look.
+            tick.tick().await;
+
+            // What this loop last said about a drain it could not start, so a
+            // refusal it meets every thirty seconds is said once.
             let mut said: Option<String> = None;
             loop {
                 tokio::select! {
@@ -1539,6 +1578,56 @@ mod tests {
             "a run pane has a process the drain can ask; the subagent reading is not its rule"
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Review finding 3: one check per interval, the first at once, however
+    /// long a check (a drain that gives up after two hours) takes.
+    #[tokio::test(start_paused = true)]
+    async fn the_update_loop_checks_once_per_interval_even_after_a_long_drain() {
+        const EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
+        const DRAIN: std::time::Duration = std::time::Duration::from_secs(2 * 3600);
+        let started = tokio::time::Instant::now();
+        let at = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = at.clone();
+        let (_cancel_tx, cancel) = watch::channel(false);
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(13 * 3600),
+            update_checks(EVERY, cancel, move |checked_at| {
+                seen.lock().unwrap().push(checked_at - started);
+                tokio::time::sleep(DRAIN)
+            }),
+        )
+        .await;
+        let hours: Vec<u64> = at
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|d| d.as_secs() / 3600)
+            .collect();
+        assert_eq!(
+            hours,
+            [0, 6, 12],
+            "a check at start and one every six hours; a second check straight after the first drain is the double check"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_update_loop_stops_when_cancelled() {
+        let (cancel_tx, cancel) = watch::channel(false);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let n = calls.clone();
+        let run = tokio::spawn(update_checks(
+            std::time::Duration::from_secs(60),
+            cancel,
+            move |_| {
+                n.fetch_add(1, Ordering::AcqRel);
+                std::future::ready(())
+            },
+        ));
+        tokio::time::sleep(std::time::Duration::from_secs(90)).await;
+        cancel_tx.send(true).unwrap();
+        run.await.unwrap();
+        assert_eq!(calls.load(Ordering::Acquire), 2);
     }
 
     #[test]
