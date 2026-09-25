@@ -377,9 +377,21 @@ pub async fn remove_at(repo: &str, worktree: &std::path::Path, why: &str) -> Res
     .await?;
     if !out.status.success() {
         let said = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        // Whether anything is still standing is read, not assumed: git refuses
+        // a path it has no record of just as it refuses one it will not give
+        // up, and those two leave opposite directories behind. A sentence that
+        // asserted the wrong one would be this issue's own defect — a claim
+        // about state nobody measured — committed by the line written to end it
+        // (consult 09d909 F1).
+        let standing = worktree.exists();
         tracing::warn!(
-            "[worktree] {repo}: git would not remove {} ({said}) — the directory is still there",
-            worktree.display()
+            "[worktree] {repo}: git would not remove {} ({said}) — {}",
+            worktree.display(),
+            if standing {
+                "the directory is still there"
+            } else {
+                "and there is no directory at that path either"
+            }
         );
         return Err(Error::Other(format!("git worktree remove failed: {said}")));
     }
@@ -599,6 +611,40 @@ pub(crate) mod tests {
         );
     }
 
+    /// The other half of that conditional: git refuses a LOCKED checkout, and
+    /// that directory really is still standing. Without this the branch saying
+    /// so is never executed, and a sentence no test reaches is a sentence that
+    /// can quietly become wrong again.
+    #[test]
+    fn a_removal_git_refuses_over_a_lock_says_the_directory_stands() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let root = rt.block_on(repo("logheld"));
+        let r = root.to_string_lossy().to_string();
+        let held = root.join(".worktrees/ISS-locked");
+        rt.block_on(run(
+            &root,
+            &["worktree", "add", &held.to_string_lossy(), "-b", "ISS-locked"],
+        ));
+        rt.block_on(run(&root, &["worktree", "lock", &held.to_string_lossy()]));
+
+        let said = logged_while(|| {
+            let out = rt.block_on(remove_at(&r, &held, "run run-9 is over"));
+            assert!(out.is_err(), "git will not remove a locked checkout");
+        });
+        let there = held.exists();
+        let _ = rt.block_on(run(&root, &["worktree", "unlock", &held.to_string_lossy()]));
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(there, "the fixture must leave the directory standing");
+        assert!(
+            said.contains("the directory is still there"),
+            "a refusal over a lock leaves the checkout, and the line must say so: {said}"
+        );
+    }
+
     #[test]
     fn a_removal_git_will_not_take_is_said_too() {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -619,6 +665,15 @@ pub(crate) mod tests {
             said.contains(&never.display().to_string()),
             "a directory still standing because git refused is not a directory nobody asked \
              about: {said}"
+        );
+        assert!(
+            said.contains("no directory at that path either"),
+            "git refused a path it never registered and nothing is there, so the line may not \
+             say one is: {said}"
+        );
+        assert!(
+            !said.contains("the directory is still there"),
+            "the standing claim must be measured, not assumed: {said}"
         );
     }
 
