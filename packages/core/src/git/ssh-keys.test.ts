@@ -14,9 +14,12 @@ describe('withDeployKey', () => {
     lookup
       .mockResolvedValueOnce([{ address: '172.65.251.78', family: 4 }])
       .mockResolvedValue([{ address: '10.0.0.7', family: 4 }]);
-    const cmd = await withDeployKey('key', 'git@gitlab.com:sid/desk.git', async (env) => {
-      return env.GIT_SSH_COMMAND ?? '';
-    });
+    const [cmd, pin] = await withDeployKey(
+      'key',
+      'git@gitlab.com:sid/desk.git',
+      async (env, _dir, handed) => [env.GIT_SSH_COMMAND ?? '', handed] as const,
+    );
+    expect(pin).toEqual({ host: 'gitlab.com', address: '172.65.251.78' });
     expect(cmd).toContain('-o HostName=172.65.251.78');
     expect(cmd).toContain('-o HostKeyAlias=gitlab.com');
     expect(cmd).not.toContain('10.0.0.7');

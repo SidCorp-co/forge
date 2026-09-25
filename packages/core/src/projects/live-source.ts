@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
-import { type BranchRefs, readRemoteDivergence } from '../git/remote-divergence.js';
+import { type BranchRefs, GIT_ACCESS, readRemoteDivergence } from '../git/remote-divergence.js';
 import {
   GitHubClientError,
   type GitHubRepoClient,
@@ -10,8 +10,6 @@ import {
 } from '../integrations/github/client.js';
 import { type LiveDivergence, readLiveDivergence } from '../integrations/github/live-divergence.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
-
-const GIT_ACCESS = "the project's Settings → Runners → Git access";
 
 /** Where a project's branches are read from, or why they cannot be. */
 export type LiveSource =

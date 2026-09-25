@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { HTTPException } from 'hono/http-exception';
-import { isHostUnresolved, pinSafeSshHost } from './ssh-host-guard.js';
+import { isHostUnresolved, type PinnedSshHost, pinSafeSshHost } from './ssh-host-guard.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -90,13 +90,13 @@ function firstLine(s: string): string {
 /**
  * Run `fn` with the environment git needs to reach `repoUrl` as `privateKey` and nothing else: the
  * key in a 0700 temp dir, a known_hosts of its own, no prompt, the ssh transport only, and ssh
- * pinned to the one public address the host guard resolved. Throws the guard's HTTPException for a
- * remote it refuses, before any key is written.
+ * pinned to the one public address the host guard resolved, which `fn` is handed with the host it
+ * stands for. Throws the guard's HTTPException for a remote it refuses, before any key is written.
  */
 export async function withDeployKey<T>(
   privateKey: string,
   repoUrl: string,
-  fn: (env: NodeJS.ProcessEnv, dir: string) => Promise<T>,
+  fn: (env: NodeJS.ProcessEnv, dir: string, pin: PinnedSshHost) => Promise<T>,
 ): Promise<T> {
   const pin = await pinSafeSshHost(repoUrl);
   return withTempDir(async (dir) => {
@@ -134,6 +134,7 @@ export async function withDeployKey<T>(
         GIT_ALLOW_PROTOCOL: 'ssh',
       },
       dir,
+      pin,
     );
   });
 }

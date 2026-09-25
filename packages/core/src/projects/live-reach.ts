@@ -25,7 +25,7 @@ export type LiveReading =
 export interface LiveReachEvidence {
   sha: string;
   subject: string;
-  /** `merged_commit` — the issue's own observed merge; `names_issue` — a commit message names its key. */
+  /** `merged_commit` — the issue's own observed merge; `names_issue` — a commit's subject line names its key. */
   via: 'merged_commit' | 'names_issue';
 }
 
@@ -55,21 +55,27 @@ function escapeRe(s: string): string {
 /** The pattern matching a reference under any of `prefixes` or the shared legacy one. */
 export function issueRefPattern(prefixes: readonly string[]): RegExp {
   const all = [...new Set([...prefixes, LEGACY_ISSUE_PREFIX].map((p) => p.toUpperCase()))];
-  return new RegExp(`(?<![A-Za-z0-9])(?:${all.map(escapeRe).join('|')})-(\\d{1,10})(?!\\d)`, 'gi');
-}
-
-/** Every issue sequence a message names. */
-export function namedIssueSeqs(message: string, pattern: RegExp): Set<number> {
-  const seqs = new Set<number>();
-  for (const m of message.matchAll(pattern)) seqs.add(Number(m[1]));
-  return seqs;
+  return new RegExp(
+    `(?<![A-Za-z0-9])(?:${all.map(escapeRe).join('|')})-(\\d{1,10})(?![A-Za-z0-9])`,
+    'gi',
+  );
 }
 
 export function subjectOf(message: string): string {
   return message.split('\n', 1)[0]?.trim() ?? '';
 }
 
-/** The waiting commits that are this issue's merge or name it, in the reading's order. */
+/**
+ * Every issue sequence a commit's subject line names. The body is never read: it is where a commit
+ * cites other issues' decisions, and a citation is not that issue's work.
+ */
+export function subjectIssueSeqs(message: string, pattern: RegExp): Set<number> {
+  const seqs = new Set<number>();
+  for (const m of subjectOf(message).matchAll(pattern)) seqs.add(Number(m[1]));
+  return seqs;
+}
+
+/** The waiting commits that are this issue's merge or name it in their subject, in the reading's order. */
 export function evidenceFor(
   issue: LiveReachIssue,
   commits: readonly WaitingCommit[],
@@ -80,7 +86,7 @@ export function evidenceFor(
   for (const c of commits) {
     if (own !== '' && c.sha.toLowerCase() === own) {
       out.push({ sha: c.sha, subject: subjectOf(c.message), via: 'merged_commit' });
-    } else if (namedIssueSeqs(c.message, pattern).has(issue.issSeq)) {
+    } else if (subjectIssueSeqs(c.message, pattern).has(issue.issSeq)) {
       out.push({ sha: c.sha, subject: subjectOf(c.message), via: 'names_issue' });
     }
   }

@@ -4,9 +4,13 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { HTTPException } from 'hono/http-exception';
 import type { LiveDivergence, WaitingCommit } from '../integrations/github/live-divergence.js';
+import type { PinnedSshHost } from './ssh-host-guard.js';
 import { withDeployKey } from './ssh-keys.js';
 
 const execFileAsync = promisify(execFile);
+
+/** Where in Forge a project's deploy key is attached, for a sentence telling an operator to fix it. */
+export const GIT_ACCESS = "the project's Settings → Runners → Git access";
 
 /** Waiting commits listed per reading. A longer wait than this is reported as cut short. */
 export const REMOTE_MAX_COMMITS = 1000;
@@ -57,7 +61,7 @@ function fetchRefusal(err: GitFailure): string {
   const missing = stderr.match(/couldn't find remote ref (?:refs\/heads\/)?(\S+)/i);
   if (missing?.[1]) return `the repository has no branch ${missing[1]}, so it cannot be compared`;
   if (/permission denied|access denied|not authori[sz]ed/i.test(stderr)) {
-    return `the git host refused the deploy key attached to this project (${firstLine(stderr)}) — give its public key read access to the repository`;
+    return `the git host refused the deploy key attached to this project (${firstLine(stderr)}) — give its public key read access to the repository; the key is the one attached under ${GIT_ACCESS}`;
   }
   return `the git host answered the fetch with: ${firstLine(stderr) || `git exited ${String(err.code ?? 'abnormally')}`}`;
 }
@@ -221,13 +225,26 @@ export async function fetchDivergence(
   }
 }
 
+/**
+ * ssh writes `user@<HostName>`, and the connection is pinned to an address, so git's own words name
+ * that address; an operator knows the repository by the host its URL names.
+ */
+function namingTheHost(reason: string, pin: PinnedSshHost): string {
+  return pin.address === pin.host ? reason : reason.replaceAll(pin.address, pin.host);
+}
+
 /** The same reading over SSH, as the project's deploy key and nothing else. */
 export async function readRemoteDivergence(
   source: { repoUrl: string; privateKey: string },
   refs: BranchRefs,
 ): Promise<LiveDivergence> {
-  return withDeployKey(source.privateKey, source.repoUrl, (env, dir) =>
-    fetchDivergence(source.repoUrl, env, refs, dir),
+  return withDeployKey(
+    source.privateKey,
+    source.repoUrl,
+    async (env, dir, pin): Promise<LiveDivergence> => {
+      const d = await fetchDivergence(source.repoUrl, env, refs, dir);
+      return d.ok ? d : { ok: false, reason: namingTheHost(d.reason, pin) };
+    },
   ).catch((err: unknown): LiveDivergence => {
     if (!(err instanceof HTTPException)) throw err;
     return { ok: false, reason: `${source.repoUrl} cannot be read: ${err.message}` };
