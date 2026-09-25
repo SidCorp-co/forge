@@ -173,11 +173,26 @@ pub async fn reconcile(
         // release path every sweep for ever — which is the loop that held its
         // leases in the first place (ISS-1188). The one act that puts it back
         // is an operator's `run release`.
-        let owed_release = agent_gone
+        //
+        // A master this box has no entry for is never read as gone, so on its
+        // own it licenses nothing, and nothing else on the box can close a run
+        // it declared: the pane that could is not here and no other project's
+        // pane may. The bound is the way out, and it licenses only the
+        // release, which keeps the work before the checkout goes (ISS-1220).
+        let unanswered = if master == MasterPresence::Unknown {
+            over_and_silent(&run, now_ms())
+        } else {
+            None
+        };
+        let owed_release = (agent_gone || unanswered.is_some())
             && run.boot_id == boot_id
             && state.session_terminal
             && !state.checkout_returned
             && run.release_terminal_at.is_none();
+        let first_owed = owed_release && !agent_gone && run.release_refused_at.is_none();
+        if let Some(over_ms) = unanswered.filter(|_| first_owed) {
+            say_why_released(ledger, &run, over_ms);
+        }
         let owed_death_report = agent_gone
             && run.ended_by.is_none()
             && run.boot_id == boot_id
@@ -194,6 +209,70 @@ pub async fn reconcile(
         });
     }
     Ok(out)
+}
+
+/// How long a run no master on this box answers for may stand with its session
+/// over at core, and its subagent silent, before it is released.
+///
+/// A registry miss is not a pane that ended: a daemon restart empties the
+/// registry until adoption refills it, and a project that left `/me/runners`
+/// is never re-adopted while its pane may still run (c41f9e7a3). So the miss
+/// alone licenses nothing, and an hour is the price of waiting it out: the
+/// same hour `run_exit` already reads as a silent run being over. What it
+/// costs the other way is bounded by what the release does — a subagent still
+/// working in a pane this box cannot see, past an hour of both silences, has
+/// its branch published, its commits named by a ref and an unsaved diff
+/// salvaged or refused, never dropped.
+pub const UNANSWERED_RELEASE_AFTER: std::time::Duration = subagent_end::SUBAGENT_QUIET;
+
+/// How long `run`'s session has been over at core, where that is at least
+/// [`UNANSWERED_RELEASE_AFTER`] and its subagent's own transcript was not
+/// written inside the same window. `None` otherwise.
+///
+/// The session is read off the stamp an earlier sweep wrote, never this
+/// sweep's: the sweep that first sees it over starts the clock. An unreadable
+/// transcript is no evidence either way, so only the session's clock decides.
+fn over_and_silent(run: &Run, now_ms: i64) -> Option<i64> {
+    let bound = UNANSWERED_RELEASE_AFTER.as_millis() as i64;
+    let over_ms = now_ms.saturating_sub(run.session_terminal_at?.saturating_mul(1000));
+    if over_ms < bound {
+        return None;
+    }
+    let written = run
+        .agent_transcript
+        .as_deref()
+        .and_then(|p| transcript_age::written_at(Path::new(p)));
+    if written.is_some_and(|w| now_ms.saturating_sub(w) < bound) {
+        return None;
+    }
+    Some(over_ms)
+}
+
+/// Say, on the sweep that first owes it, why a run nobody here answers for is
+/// being released and what it holds. Said once: from the next sweep either the
+/// run is closed or its refusal streak is standing and says its own piece.
+fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
+    let issues = ledger
+        .issues(&run.run_id)
+        .map(|m| {
+            m.iter()
+                .map(|i| i.issue_key.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    tracing::warn!(
+        "[recovery] run {} ({issues}): no master on this box answers for it (it answered to {}), \
+         core has called its session over for {}m and its subagent has written nothing inside \
+         the last {}m — releasing {} now. Its commits are kept before the checkout goes; a \
+         release that refuses says why next, and is decided after {}s",
+        run.run_id,
+        run.master_session_id,
+        over_ms / 60_000,
+        UNANSWERED_RELEASE_AFTER.as_secs() / 60,
+        run.worktree_path.display(),
+        crate::runner::terminate::RELEASE_GRACE_SECS
+    );
 }
 
 /// Say once, in the journal and on the row, why a subagent run that looks
@@ -1674,6 +1753,273 @@ mod tests {
             kept(&led),
             None,
             "nothing is said about keeping a run the box is giving back"
+        );
+    }
+
+    // ISS-1220: a subagent run whose master this box holds no registry entry
+    // for. Nothing on the box can close it, so the bound is what does.
+
+    const HOUR_MS: i64 = 60 * MIN_MS;
+
+    /// A run past the bound: its session was seen over `over_ms` ago and its
+    /// subagent last wrote `silent_ms` ago.
+    fn over_for(led: &Ledger, transcript: &Path, over_ms: i64, silent_ms: i64) {
+        let written = now_ms() - silent_ms;
+        transcript_written_at(transcript, written);
+        stop_at(led, written, Some(transcript));
+        led.backdate_session_terminal("run-1", (now_ms() - over_ms) / 1000)
+            .unwrap();
+    }
+
+    async fn release_at(
+        led: &mut Ledger,
+        root: &Path,
+        at_secs: i64,
+    ) -> crate::runner::terminate::Release {
+        crate::runner::terminate::release(
+            led,
+            "run-1",
+            crate::runner::terminate::Forcing {
+                this_boot: "boot-a",
+                repo_root: root,
+                base_branch: Some("main"),
+                by: "recovery",
+                reason: "no master answers for it",
+            },
+            crate::runner::terminate::Ports {
+                procs: &NoProcess,
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+            },
+            at_secs,
+        )
+        .await
+        .unwrap()
+    }
+
+    /// The same capture `close_loop.rs` carries, local to the log it reads.
+    fn logged_while(f: impl FnOnce()) -> String {
+        use std::sync::Arc;
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
+    #[tokio::test]
+    async fn an_unanswered_run_over_at_core_and_silent_past_the_bound_is_owed_its_release() {
+        let scratch = Scratch::new("unanswered");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("an orphan is always answered for");
+        assert!(
+            r.state.session_terminal && !r.state.checkout_returned,
+            "the state under test is b4e955c2's, got {:?}",
+            r.state
+        );
+        assert!(
+            r.owed_release,
+            "no master on this box answers for it, core ended its session two hours ago and its subagent has written nothing since, so nothing but this sweep will ever give its checkout back: {r:?}"
+        );
+        assert!(
+            !r.owed_death_report,
+            "the bound licenses the release, which keeps the work, and never a death"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unanswered_run_inside_the_bound_is_owed_nothing_yet() {
+        let scratch = Scratch::new("unanswered-young");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(
+            !r.owed_release,
+            "the sweep that first sees the session over starts the clock and is not past it: {r:?}"
+        );
+        over_for(
+            &led,
+            &transcript,
+            UNANSWERED_RELEASE_AFTER.as_millis() as i64 - MIN_MS,
+            2 * HOUR_MS,
+        );
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(
+            !r.owed_release,
+            "a minute short of the bound is short of it: {r:?}"
+        );
+        over_for(
+            &led,
+            &transcript,
+            UNANSWERED_RELEASE_AFTER.as_millis() as i64,
+            2 * HOUR_MS,
+        );
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(r.owed_release, "and at the bound it is owed: {r:?}");
+    }
+
+    #[tokio::test]
+    async fn an_unanswered_run_whose_subagent_wrote_inside_the_bound_is_kept() {
+        let scratch = Scratch::new("unanswered-writing");
+        let (mut led, _root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 3 * HOUR_MS, 5 * MIN_MS);
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(
+            !r.owed_release,
+            "a subagent that wrote five minutes ago is working in a pane this box cannot see, however long core has called its session over: {r:?}"
+        );
+        assert!(wt.is_dir());
+    }
+
+    #[tokio::test]
+    async fn a_subagent_run_under_a_live_master_is_kept_however_long_its_session_is_over() {
+        let scratch = Scratch::new("live-master-over");
+        let (mut led, _root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 30 * 24 * HOUR_MS, 30 * 24 * HOUR_MS);
+        let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+        assert_still_held(&led, &r, &wt, "thirty days over under a live master");
+    }
+
+    #[test]
+    fn the_release_the_bound_licenses_is_said_once_naming_what_it_holds() {
+        let scratch = Scratch::new("unanswered-said");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        git(&wt, &["checkout", "-q", "--detach"]);
+        std::fs::write(wt.join("jest-results.json"), "{}").unwrap();
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+
+        let first = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+            })
+        });
+        for said in [
+            "run-1",
+            "ISS-1217",
+            &wt.display().to_string(),
+            MASTER,
+            "120m",
+        ] {
+            assert!(
+                first.contains(said),
+                "the line an operator reads names {said:?}, so nobody greps `worktree-reap` to find the tree: {first}"
+            );
+        }
+
+        let now = now_ms() / 1000;
+        let refused = block_on(release_at(&mut led, &root, now));
+        assert!(
+            matches!(
+                refused,
+                crate::runner::terminate::Release::Refusing { .. }
+            ),
+            "a detached checkout with an unsaved file has no salvage to run, so the release refuses rather than dropping it: {refused:?}"
+        );
+        assert!(wt.is_dir(), "and the checkout stays");
+
+        let second = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "still owed while the refusal stands: {r:?}");
+            })
+        });
+        assert!(
+            !second.contains("no master on this box answers"),
+            "said once: the refusal streak is standing and says its own piece: {second}"
+        );
+
+        let decided = block_on(release_at(
+            &mut led,
+            &root,
+            now + crate::runner::terminate::RELEASE_GRACE_SECS,
+        ));
+        assert!(
+            matches!(decided, crate::runner::terminate::Release::Terminal { .. }),
+            "past the window the refusal is decided, not retried for ever: {decided:?}"
+        );
+        assert!(
+            wt.join("jest-results.json").is_file(),
+            "decided terminal with the unsaved file still on disk"
+        );
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "and the run leaves the sweep, so nothing logs about it again"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_run_released_on_the_bound_gives_its_checkout_back_and_keeps_its_commits() {
+        let scratch = Scratch::new("unanswered-release");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        git(&wt, &["checkout", "-q", "--detach"]);
+        std::fs::write(wt.join("unpushed.md"), "local only").unwrap();
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "on no remote, on no branch"]);
+        let unpushed = git(&wt, &["rev-parse", "HEAD"]).trim().to_string();
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(r.owed_release, "{r:?}");
+        let released = release_at(&mut led, &root, now_ms() / 1000).await;
+        assert!(
+            matches!(released, crate::runner::terminate::Release::Done(_)),
+            "the release the bound licensed is taken: {released:?}"
+        );
+        assert!(!wt.exists(), "the tree is off the disk");
+        assert!(!registered(&root, &wt), "and out of git's registry");
+        assert!(
+            git(&root, &["branch", "--list", "ISS-1217"]).contains("ISS-1217"),
+            "the pushed branch is kept"
+        );
+        let holders = git(&root, &["for-each-ref", "--contains", &unpushed]);
+        assert!(
+            !holders.trim().is_empty(),
+            "the commit only the checkout's own HEAD named is given a ref before the checkout goes: {holders}"
+        );
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "and the run is closed, so the partially-closed line has nothing left to say"
         );
     }
 }

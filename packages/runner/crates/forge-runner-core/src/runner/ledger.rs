@@ -1279,6 +1279,19 @@ impl Ledger {
         Ok(())
     }
 
+    /// Stand a run's terminal-session observation at `at_secs`, so a test can
+    /// put a run past a bound measured from it without waiting that long.
+    #[cfg(test)]
+    pub fn backdate_session_terminal(&self, run_id: &str, at_secs: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET session_terminal_at = ?2 WHERE run_id = ?1",
+                params![run_id, at_secs],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     pub fn mark_session_terminal_observed(&self, run_id: &str) -> Result<()> {
         self.stamp("session_terminal_at", run_id)
     }
