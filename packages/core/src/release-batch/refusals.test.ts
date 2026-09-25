@@ -9,9 +9,11 @@ import {
   ReleaseFinishInFlightError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
+import { MethodNotAnnouncedError } from './method.js';
 import {
   declarationRefusal,
   finishRefusal,
+  issuesUnnamed,
   reportedRefusal,
   undeclaredProbes,
 } from './refusals.js';
@@ -187,9 +189,57 @@ describe('finishRefusal — what the abort did to this batch', () => {
     expect(said('released')).toMatch(/its claims were released/);
   });
 
+  it('names each issue a finish closed before the abort beside a released roster', () => {
+    const refusal = finishRefusal(
+      new ReleaseBatchAbortedError('released', 'proj-7', ['iss-a', 'iss-b']),
+    );
+    expect(refusal?.cause).toEqual({
+      code: 'RELEASE_BATCH_ABORTED',
+      details: { account: 'released', closed: ['iss-a', 'iss-b'] },
+    });
+    expect(refusal?.message).toMatch(
+      /already closed issues iss-a, iss-b before the abort, and they stay closed/,
+    );
+    expect(refusal?.message).toMatch(/the rest of its roster is back/);
+  });
+
+  it('names the one issue a finish closed beside a held roster, and the rest at releasing', () => {
+    const message =
+      finishRefusal(new ReleaseBatchAbortedError('held', 'proj-7', ['iss-a']))?.message ?? '';
+    expect(message).toMatch(/closed issue iss-a before the abort, and it stays closed/);
+    expect(message).toMatch(/every other issue stays at `releasing`/);
+  });
+
+  it('keeps the whole-roster sentence and carries an empty list where nothing had closed', () => {
+    const refusal = finishRefusal(new ReleaseBatchAbortedError('released', 'proj-7', []));
+    expect(refusal?.cause).toEqual({
+      code: 'RELEASE_BATCH_ABORTED',
+      details: { account: 'released', closed: [] },
+    });
+    expect(refusal?.message).toBe(said('released'));
+  });
+
   it('names no destination for a roster when no abort recorded one', () => {
     expect(said('unrecorded')).not.toMatch(/released|`releasing`|closed|gate/);
     expect(said('unrecorded')).toMatch(/each issue’s own status and notes are the account/);
+  });
+});
+
+describe('methodRefusal and issuesUnnamed — the paths they send are real', () => {
+  it('names the batch’s method path and the skill its job names', () => {
+    const message =
+      finishRefusal(
+        new MethodNotAnnouncedError('house-release', { projectId: 'proj-7', runId: 'run-7' }),
+      )?.message ?? '';
+    expect(message).toContain('POST /api/projects/proj-7/release-batches/run-7/method');
+    expect(message).toContain('{"skill":"house-release","loaded":true}');
+    expect(message).not.toMatch(/\{projectId\}|\{runId\}/);
+  });
+
+  it('names the project’s roster path', () => {
+    const message = issuesUnnamed('proj-7').message;
+    expect(message).toContain('GET /api/projects/proj-7/release-batches/roster');
+    expect(message).not.toMatch(/\{projectId\}/);
   });
 });
 

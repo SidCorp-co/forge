@@ -9,13 +9,16 @@ import { ReleaseFinishFenceLostError } from './errors.js';
 import { resolveReleaseGate } from './gate.js';
 
 export interface RecoverStrandedReleasingResult {
-  /** Issues whose claim was cleared, whatever their status. */
+  /** Issues whose claim was cleared, closed ones included: the claim is a lock, not a status. */
   claimsCleared: string[];
+  /** Claimed issues already `closed` when the roster was read: a finish closed them, and they stay. */
+  alreadyClosed: string[];
   /** Issues that were still at `releasing` and were moved off it. */
   recovered: string[];
   /** Where the recovered issues went, or `null` when nothing moved. */
   destination: IssueStatus | null;
-  /** True when the run recorded a promotion, so nothing was moved at all. */
+  /** True when the run recorded a promotion. On its own it does not say the roster stayed put:
+   *  `settlePromotedRoster` settles one anyway, and `destination` is what moved. */
   promoted: boolean;
 }
 
@@ -34,6 +37,15 @@ export async function runRecordedPromotion(runId: string): Promise<boolean> {
     .where(and(eq(releaseAttempts.runId, runId), eq(releaseAttempts.stage, 'promote')))
     .limit(1);
   return row !== undefined;
+}
+
+/** The issues still claimed by `runId` that are `closed`: what its finish closed and nothing moved. */
+export async function closedOnRoster(runId: string, executor: Tx = db): Promise<string[]> {
+  const rows = await executor
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(eq(issues.releaseBatchRunId, runId), eq(issues.status, 'closed')));
+  return rows.map((r) => r.id);
 }
 
 export interface RecoverStrandedReleasingOptions {
@@ -73,15 +85,17 @@ export async function recoverStrandedReleasing(
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.releaseBatchRunId, runId));
 
+  const alreadyClosed = claimed.filter((r) => r.status === 'closed').map((r) => r.id);
   const promoted = await runRecordedPromotion(runId);
   if (promoted && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },
       'release-batch: this run promoted, so its roster stays at `releasing` for a person to settle',
     );
-    await noteOnRoster(claimed, options, PROMOTED_NOTE);
+    await noteOnRoster(claimed, options, promotedNote(runId));
     return {
       claimsCleared: [],
+      alreadyClosed,
       recovered: [],
       destination: null,
       promoted: true,
@@ -102,7 +116,7 @@ export async function recoverStrandedReleasing(
           issueId: issue.id,
           authorId: options.actorUserId,
           body: promoted
-            ? `${options.reason}. ${settledNote(destination)}`
+            ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
             : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
         });
       } catch (err) {
@@ -168,6 +182,7 @@ export async function recoverStrandedReleasing(
   // code on production, and this is the one fact the path exists to keep true.
   return {
     claimsCleared: claimed.map((r) => r.id),
+    alreadyClosed,
     recovered,
     destination: recovered.length > 0 ? destination : null,
     promoted,
@@ -175,26 +190,28 @@ export async function recoverStrandedReleasing(
 }
 
 /** What a roster is told when an operator settles it although this run promoted. */
-function settledNote(destination: IssueStatus): string {
+function settledNote(projectId: string, destination: IssueStatus): string {
   return (
     `This batch recorded a promotion, so the code it carried is on production, and an operator ` +
     `settled the roster rather than leave it at \`releasing\` — the issue is back at ` +
     `\`${destination}\`. Record the release that happened with ` +
-    `POST /api/projects/{projectId}/release-records, naming the commit production is serving and ` +
+    `POST /api/projects/${projectId}/release-records, naming the commit production is serving and ` +
     `how it was released; that closes it against evidence instead of by hand.`
   );
 }
 
-const PROMOTED_NOTE =
-  'This batch recorded a promotion, so its issues stay at `releasing` and stay claimed: the code is on production and no status here is true except that one. Read the run with `GET /api/projects/{projectId}/release-batches/{runId}/state`, then either finish it if the release did land or settle each issue by hand.';
+function promotedNote(runId: string): (projectId: string) => string {
+  return (projectId) =>
+    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code is on production and no status here is true except that one. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`, then either finish it if the release did land or settle each issue by hand.`;
+}
 
 /**
  * Say on each issue what happened, without moving it.
  */
 async function noteOnRoster(
-  claimed: Array<{ id: string; status: string }>,
+  claimed: Array<{ id: string; status: string; projectId: string }>,
   options: RecoverStrandedReleasingOptions,
-  note: string,
+  note: (projectId: string) => string,
 ): Promise<void> {
   if (!options.comment || !options.actorUserId) return;
   for (const issue of claimed) {
@@ -203,7 +220,7 @@ async function noteOnRoster(
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: options.actorUserId,
-        body: `${options.reason}. ${note}`,
+        body: `${options.reason}. ${note(issue.projectId)}`,
       });
     } catch (err) {
       logger.warn({ err, issueId: issue.id }, 'release-batch: promotion note failed');

@@ -219,7 +219,8 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
     '`skill` + `loaded`, optional `detail`; finish refuses a run that announced none), `finish` (`commit` = the SHA pushed to ' +
     'production; answers at once with the attempt at `accepted`, and the server then reads the probes and closes every claimed issue ' +
-    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why), `abort` (`reason`; releases every claim, closes nothing — ' +
+    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why), `abort` (`reason`; releases every claim, closes nothing, ' +
+    'and leaves closed the issues a finish already closed, which it answers as `alreadyClosed` beside the `recovered` it moved — ' +
     'a roster whose run already promoted is left at `releasing` still claimed unless `promotedRoster: "return-to-gate"` names the settlement, which returns it ' +
     'to the release gate for `POST /release-records` to close against what production is serving). ' +
     'Every action needs `runId`, and a token with the write scope: a credential that could read the batch but not record it is ' +

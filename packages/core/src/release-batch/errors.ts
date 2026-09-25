@@ -98,6 +98,8 @@ export class ReleaseBatchAbortedError extends Error {
   constructor(
     public readonly account: AbortAccount,
     public readonly projectId: string,
+    /** The roster issues its finish had closed before the abort; `null` where nothing recorded it. */
+    public readonly closed: string[] | null = null,
   ) {
     super('RELEASE_BATCH_ABORTED');
     this.name = 'ReleaseBatchAbortedError';
