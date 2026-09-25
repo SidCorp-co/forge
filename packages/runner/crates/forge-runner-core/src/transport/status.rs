@@ -40,6 +40,30 @@ fn gateway(code: u16) -> Option<&'static str> {
     })
 }
 
+/// A response body as one short line: a gateway answers with a whole HTML page,
+/// and the status already says what it was.
+fn body_line(text: &str) -> String {
+    let one: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = one.chars();
+    let head: String = chars.by_ref().take(200).collect();
+    if chars.next().is_some() {
+        format!("{head}…")
+    } else {
+        head
+    }
+}
+
+/// `<what> <status named>: <body>`, the shape every refused call to core prints.
+pub(crate) fn refused(what: &str, status: u16, text: &str) -> String {
+    let named = named(status);
+    let body = body_line(text);
+    if body.is_empty() {
+        format!("{what} {named}")
+    } else {
+        format!("{what} {named}: {body}")
+    }
+}
+
 /// A call that got no status at all, named by what went wrong and then by the
 /// innermost cause the transport gave. `reqwest::Error`'s `Display` is neither:
 /// it prints `error sending request for url (<the whole url>)` for a refused
