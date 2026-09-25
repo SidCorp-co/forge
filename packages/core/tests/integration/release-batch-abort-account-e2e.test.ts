@@ -112,6 +112,18 @@ async function refused(runId: string): Promise<{ message: string; details: unkno
   throw new Error('the finish was not refused');
 }
 
+/** The key a person knows this issue by, read off its own row and project. */
+async function keyOf(issueId: string): Promise<string> {
+  const rows = await harness.db.execute(sql`
+    SELECT coalesce(p.issue_prefix, 'ISS') || '-' || i.iss_seq AS key
+    FROM issues i JOIN projects p ON p.id = i.project_id WHERE i.id = ${issueId}
+  `);
+  return String(rows[0]?.key);
+}
+
+/** A key as a whole word, so ISS-1 is not found inside ISS-12. */
+const named = (key: string) => new RegExp(`\\b${key}\\b`);
+
 async function storedFinish(runId: string): Promise<Record<string, unknown> | null> {
   const rows = await harness.db.execute(sql`
     SELECT metadata -> 'finish' AS finish FROM pipeline_runs WHERE id = ${runId}
@@ -188,9 +200,12 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     });
     const answer = await refused(runId);
     expect(answer.message).not.toMatch(/its claims were released and its roster is back/);
-    for (const id of closed) expect(answer.message).toContain(id);
+    for (const id of closed) {
+      expect(answer.message).toMatch(named(await keyOf(id)));
+      expect(answer.message).not.toContain(id);
+    }
     expect(answer.message).toMatch(/they stay closed/);
-    expect(answer.message).not.toContain(returned);
+    expect(answer.message).not.toMatch(named(await keyOf(returned)));
     expect(answer.details).toEqual({ account: 'released', closed });
 
     expect([...aborted.alreadyClosed].sort()).toEqual(closed);
@@ -211,7 +226,10 @@ describe('a batch aborted after its finish closed part of the roster', () => {
 
     const answer = await refused(runId);
     expect(answer.details).toEqual({ account: 'held', closed });
-    for (const id of closed) expect(answer.message).toContain(id);
+    for (const id of closed) {
+      expect(answer.message).toMatch(named(await keyOf(id)));
+      expect(answer.message).not.toContain(id);
+    }
     expect(answer.message).toMatch(/they stay closed\. Every other issue stays at `releasing`/);
   }, 40_000);
 
@@ -223,7 +241,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     expect(again.alreadyClosed).toEqual([]);
     const answer = await refused(runId);
     expect(answer.details).toEqual({ account: 'released', closed });
-    for (const id of closed) expect(answer.message).toContain(id);
+    for (const id of closed) expect(answer.message).toMatch(named(await keyOf(id)));
   }, 40_000);
 
   it('names a closed issue no finish record holds when a second abort runs inside the first', async () => {

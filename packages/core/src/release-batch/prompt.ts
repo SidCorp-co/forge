@@ -153,5 +153,5 @@ function renderRepairForward(plan: ReleasePlan): string {
   return `### If the deploy comes up dead
 REPAIR FORWARD, and never roll back. You may push a fix and deploy again. You may NOT \`git revert\`, \`reset --hard\` or force-push a shared branch, and you may NOT restore an earlier build — not by hand, not through Coolify, not by redeploying an older tag. From inside this session you cannot tell an outage you caused from one that was already there, and undoing reviewed work does not end an outage that survives it.
 
-Where you cannot repair forward inside this run: \`abort\` with the reason, and comment on each issue with what failed and what state production is in. Nothing closes. Rolling back is a human decision and this is how you hand it to one.${declared}`;
+Where you cannot repair forward inside this run: \`abort\` with the reason, and comment on each issue with what failed and what state production is in. The abort closes nothing, and its answer says where each issue now is. Rolling back is a human decision and this is how you hand it to one.${declared}`;
 }

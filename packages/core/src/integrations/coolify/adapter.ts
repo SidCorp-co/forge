@@ -387,7 +387,8 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     `Deploy the coolify channel(s) — ${namedChannels} — with \`forge_coolify_deploy { action:'deploy', pipelineRunId: runId }\`.
    Poll \`forge_coolify_deploy { action:'status' }\` in the FOREGROUND until every target is
    'ok' or 'failed' — never end the turn while polling. pendingHumanConfirm:true → abort.
-   Any 'failed' → abort.`,
+   Any 'failed' → repair forward and deploy again, as "If the deploy comes up dead" below says;
+   abort only where it cannot be repaired forward inside this run.`,
   presentation: {
     label: 'Coolify',
     // Coolify is stage-split by design, so even a single binding keys by stage.

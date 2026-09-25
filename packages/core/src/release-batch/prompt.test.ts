@@ -311,4 +311,42 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
     expect(releaseBatchStatePrompt).toMatch(/a deploy that will not land,/);
     expect(releaseBatchStatePrompt).not.toMatch(/On ANY failure|a failed deploy/);
   });
+
+  // The judge at 93e2f8e: the block routed a deploy that will not land to abort, and then told
+  // the agent the abort released every claim and left each issue where it was — the opposite of
+  // what a promoted roster and a part-closed one get.
+  it('describes the abort the way it answers: closed stay closed, a promoted roster held', () => {
+    expect(releaseBatchStatePrompt).toMatch(/finish already closed stays closed \(`alreadyClosed`\)/);
+    expect(releaseBatchStatePrompt).toMatch(
+      /recorded a promotion, the code may already be on\s+production, so the roster keeps its claims and stays at `releasing`/,
+    );
+    expect(releaseBatchStatePrompt).toMatch(/back to the release gate for\s+a later batch/);
+  });
+
+  // The coolify step said 'Any failed → abort' above the section that says repair forward, so an
+  // agent reading top-down met the abort first (the judge at 93e2f8e).
+  it('sends a failed coolify deploy to repair forward before it offers abort', () => {
+    const text = buildReleaseBatchPrompt({ ...BASE, plan: probed });
+    expect(text).not.toMatch(/Any 'failed' → abort/);
+    const step = text.indexOf("Any 'failed' → repair forward and deploy again");
+    expect(step).toBeGreaterThan(-1);
+    expect(text.indexOf('abort only', step)).toBeGreaterThan(step);
+    expect(text.indexOf('### If the deploy comes up dead')).toBeGreaterThan(step);
+  });
+
+  it('says in the repair-forward section that the abort closes nothing and answers where issues are', () => {
+    const text = buildReleaseBatchPrompt({ ...BASE, plan: probed });
+    expect(text).toMatch(/The abort closes nothing, and its answer says where each issue now is/);
+    expect(text).not.toMatch(/Nothing closes\./);
+  });
+
+  it('carries none of the abort and all-or-none claims the running core contradicts', () => {
+    expect(releaseBatchStatePrompt).not.toMatch(/claims released, NOTHING closed/);
+    expect(releaseBatchStatePrompt).not.toMatch(/exactly where it was/);
+    expect(releaseBatchStatePrompt).not.toMatch(/closes together or none does|no partial finish/);
+  });
+
+  it('says a finished attempt reports what it closed and what failed to close', () => {
+    expect(releaseBatchStatePrompt).toMatch(/lists what it `closed` and what `failed` to close/);
+  });
 });

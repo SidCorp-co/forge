@@ -277,7 +277,7 @@ export function finishedForSentence(err: ReleaseFinishedForOtherCommitError): st
 export function abortedSentence(err: ReleaseBatchAbortedError): string {
   const none = 'This batch was aborted, so there is nothing left to finish';
   const closed = err.closed ?? [];
-  const kept = closed.length > 0 ? ` ${closedBeforeAbort(closed)}` : '';
+  const kept = closed.length > 0 ? ` ${closedBeforeAbort(closed, err.shown)}` : '';
   switch (err.account) {
     case 'shipped':
       return `${none}: its release had already shipped, so the issues its finish closed stay closed, and the abort moved none of them.`;
@@ -299,8 +299,11 @@ export function abortedSentence(err: ReleaseBatchAbortedError): string {
   }
 }
 
-/** The issues a finish closed before the abort landed, which the abort did not move. */
-function closedBeforeAbort(ids: string[]): string {
+/** The issues a finish closed before the abort landed, by the key a person knows each by. */
+function closedBeforeAbort(ids: string[], shown: ReadonlyMap<string, string>): string {
   const one = ids.length === 1;
-  return `Its finish had already closed ${one ? 'issue' : 'issues'} ${ids.join(', ')} before the abort, and ${one ? 'it stays' : 'they stay'} closed.`;
+  const names = ids
+    .map((id) => shown.get(id) ?? id)
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  return `Its finish had already closed ${names.join(', ')} before the abort, and ${one ? 'it stays' : 'they stay'} closed.`;
 }

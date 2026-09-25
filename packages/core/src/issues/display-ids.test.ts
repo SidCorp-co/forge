@@ -43,6 +43,18 @@ describe('issueDisplayIds', () => {
     expect(out.has('u-gone')).toBe(false);
   });
 
+  it('reads on the transaction it is handed, not beside it on the pool', async () => {
+    const txRows = vi.fn(async () => [{ id: 'u-1', issSeq: 3, issuePrefix: 'FD' }]);
+    const tx = {
+      select: () => ({ from: () => ({ innerJoin: () => ({ where: () => txRows() }) }) }),
+    } as unknown as Parameters<typeof issueDisplayIds>[1];
+    rows.mockClear();
+
+    expect(await issueDisplayIds(['u-1'], tx)).toEqual(new Map([['u-1', 'FD-3']]));
+    expect(txRows).toHaveBeenCalledTimes(1);
+    expect(rows).not.toHaveBeenCalled();
+  });
+
   it('falls back to the legacy prefix where the project declares none', async () => {
     rows.mockResolvedValue([{ id: 'u-1', issSeq: 7, issuePrefix: null }]);
 
