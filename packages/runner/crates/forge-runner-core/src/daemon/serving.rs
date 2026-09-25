@@ -498,7 +498,7 @@ fn beside_a_gone_record(gone: String, probe: &Probe) -> Vec<String> {
     match unrecorded(probe) {
         Unrecorded::Answering(bodies) => {
             let mut out = vec![format!(
-                "daemon     the record is stale — {gone}; what is running here instead:"
+                "daemon     the record is stale — {gone}; what else is running on this box:"
             )];
             out.extend(bodies.into_iter().map(|b| format!("{INDENT}{b}")));
             out
