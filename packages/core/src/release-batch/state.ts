@@ -28,13 +28,9 @@ export interface ReleaseRunState {
   finish: ReleaseFinishRecord | null;
 }
 
-/**
- * The whole of one release run, or `null` when the run is not one.
- */
-export async function readReleaseRunState(runId: string): Promise<ReleaseRunState | null> {
+async function readRun(runId: string) {
   const [run] = await db
     .select({
-      id: pipelineRuns.id,
       projectId: pipelineRuns.projectId,
       status: pipelineRuns.status,
       metadata: pipelineRuns.metadata,
@@ -43,17 +39,28 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
-  if (!run) return null;
-  const meta = (run.metadata ?? {}) as Record<string, unknown>;
-  if (meta.source !== 'release-batch') return null;
+  return run;
+}
 
-  const channels = await resolveReleaseChannels(run.projectId);
+/**
+ * The whole of one release run, or `null` when the run is not one. The run row is read again
+ * once the probes answer, so a probe that holds the call for its whole cap cannot hand back a
+ * finish record or a run status from before it.
+ */
+export async function readReleaseRunState(runId: string): Promise<ReleaseRunState | null> {
+  const first = await readRun(runId);
+  if (!first) return null;
+  if ((first.metadata as { source?: unknown } | null)?.source !== 'release-batch') return null;
+
+  const channels = await resolveReleaseChannels(first.projectId);
   const verify = channels[0]?.verify ?? null;
   const [roster, attempts, live] = await Promise.all([
-    loadReleaseRoster(run.projectId),
+    loadReleaseRoster(first.projectId),
     listAttempts(runId),
     verify ? readLiveState(verify) : Promise.resolve(null),
   ]);
+  const run = (await readRun(runId)) ?? first;
+  const meta = (run.metadata ?? {}) as Record<string, unknown>;
   const method = readMethod(meta);
 
   return {

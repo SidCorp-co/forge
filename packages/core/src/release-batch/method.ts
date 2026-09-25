@@ -12,8 +12,17 @@ export interface ReleaseMethod {
   announcedAt: string;
 }
 
+/** The batch a refusal is about, so its sentence can name the batch's own paths. */
+export interface ReleaseRunPlace {
+  projectId: string;
+  runId: string;
+}
+
 export class MethodNotAnnouncedError extends Error {
-  constructor(public readonly expected: string) {
+  constructor(
+    public readonly expected: string,
+    public readonly where: ReleaseRunPlace,
+  ) {
     super('RELEASE_METHOD_NOT_ANNOUNCED');
     this.name = 'MethodNotAnnouncedError';
   }
@@ -67,8 +76,12 @@ export function readMethod(metadata: unknown): ReleaseMethod | null {
  * Refuse a run that never announced a method, and one that announced another
  * skill than the job it is running names.
  */
-export function assertMethodFor(method: ReleaseMethod | null, expected: string): void {
-  if (method === null) throw new MethodNotAnnouncedError(expected);
+export function assertMethodFor(
+  method: ReleaseMethod | null,
+  expected: string,
+  where: ReleaseRunPlace,
+): void {
+  if (method === null) throw new MethodNotAnnouncedError(expected, where);
   if (method.skill !== expected) throw new MethodMismatchError(method.skill, expected);
 }
 

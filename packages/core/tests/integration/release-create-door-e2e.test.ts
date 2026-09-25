@@ -282,6 +282,9 @@ describe('what the create door refuses that readiness does not list', () => {
 
     expect(refused.status).toBe(400);
     expect(refused.body.code).toBe('RELEASE_ISSUES_UNNAMED');
+    expect(refused.body.message).toContain(
+      `GET /api/projects/${w.projectId}/release-batches/roster`,
+    );
     expect(await readiness(w)).toEqual([]);
   });
 

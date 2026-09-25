@@ -8,7 +8,7 @@ import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type AbortAccount, ReleaseBatchAbortedError } from './errors.js';
-import { runRecordedPromotion } from './releasing-recovery.js';
+import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
 
 export interface AbortStamp {
   id: string;
@@ -17,6 +17,7 @@ export interface AbortStamp {
   by: string;
   /** `returning` until the recovery has put the roster back and released its claims. */
   roster: 'held' | 'returning' | 'released';
+  closed: string[] | null;
 }
 
 export function readAbortStamp(metadata: unknown): AbortStamp | null {
@@ -30,6 +31,9 @@ export function readAbortStamp(metadata: unknown): AbortStamp | null {
     reason: typeof r.reason === 'string' ? r.reason : '',
     by: typeof r.by === 'string' ? r.by : '',
     roster: r.roster,
+    closed: Array.isArray(r.closed)
+      ? r.closed.filter((id): id is string => typeof id === 'string')
+      : null,
   };
 }
 
@@ -42,7 +46,8 @@ export const RUN_NOT_ABORTED = sql`(${pipelineRuns.status} <> 'cancelled' AND ${
 
 /**
  * Stamp the abort before anything else it does. A later abort rewrites the stamp, because the
- * last abort is the one that decided where the roster went.
+ * last abort is the one that decided where the roster went — keeping the closed issues an earlier
+ * one recorded, whose claims it released.
  */
 export async function stampAbort(
   runId: string,
@@ -55,33 +60,70 @@ export async function stampAbort(
     reason: stamp.reason,
     by: stamp.by,
     roster: held ? 'held' : 'returning',
+    closed: null,
   };
   await db.execute(sql`
     UPDATE pipeline_runs
-    SET metadata = coalesce(metadata, '{}'::jsonb) || ${JSON.stringify({ abort: record })}::jsonb,
+    SET metadata = coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
+          ${JSON.stringify(record)}::jsonb
+          || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb))),
         updated_at = now()
     WHERE id = ${runId}
   `);
   return record.id;
 }
 
-/** Once the recovery has returned, what it did — onto its own stamp only, never a later abort's. */
+/**
+ * Once the recovery has returned, what it did — onto its own stamp only, never a later abort's.
+ * `closed` joins what the stamp already held: the recovery read the roster after the stamp
+ * committed and every close refuses a stamped run, so no close comes after it.
+ */
 export async function settleAbortStamp(
   runId: string,
   stampId: string,
-  roster: 'held' | 'released',
+  settled: { roster: 'held' | 'released'; closed: string[] },
 ): Promise<void> {
   await db.execute(sql`
     UPDATE pipeline_runs
-    SET metadata = jsonb_set(metadata, '{abort,roster}', ${JSON.stringify(roster)}::jsonb),
+    SET metadata = jsonb_set(metadata, '{abort}', (metadata -> 'abort') || jsonb_build_object(
+          'roster', ${settled.roster}::text,
+          'closed', (SELECT coalesce(jsonb_agg(DISTINCT id), '[]'::jsonb) FROM jsonb_array_elements_text(
+            (CASE WHEN jsonb_typeof(metadata -> 'abort' -> 'closed') = 'array'
+                  THEN metadata -> 'abort' -> 'closed' ELSE '[]'::jsonb END)
+            || ${JSON.stringify(settled.closed)}::jsonb) AS t(id)))),
         updated_at = now()
     WHERE id = ${runId} AND metadata -> 'abort' ->> 'id' = ${stampId}
   `);
 }
 
-export function abortAccount(run: { metadata: unknown; shipped: boolean }): AbortAccount {
-  if (run.shipped) return 'shipped';
-  return readAbortStamp(run.metadata)?.roster ?? 'unrecorded';
+/** The closed issues the run recorded: its last finish attempt's, and those its claim releases wrote. */
+function recordedClosed(metadata: unknown): string[] {
+  const m = metadata as { finish?: { closed?: unknown }; rosterClosed?: unknown } | null;
+  return [m?.finish?.closed, m?.rosterClosed].flatMap((list) =>
+    Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : [],
+  );
+}
+
+function union(...lists: string[][]): string[] {
+  return [...new Set(lists.flat())].sort();
+}
+
+/** What the abort did, and the roster issues closed before it: the stamp's, the run's records,
+ *  and a held roster's still-claimed ones; `null` where nothing recorded them. */
+export function abortAccount(run: { metadata: unknown; shipped: boolean; heldClosed: string[] }): {
+  account: AbortAccount;
+  closed: string[] | null;
+} {
+  if (run.shipped) return { account: 'shipped', closed: null };
+  const stamp = readAbortStamp(run.metadata);
+  if (!stamp) return { account: 'unrecorded', closed: null };
+  if (stamp.roster === 'returning') return { account: 'returning', closed: null };
+  const known = union(stamp.closed ?? [], recordedClosed(run.metadata));
+  if (stamp.roster === 'held') return { account: 'held', closed: union(known, run.heldClosed) };
+  return {
+    account: 'released',
+    closed: stamp.closed === null && known.length === 0 ? null : known,
+  };
 }
 
 /** The refusal for a finish on an aborted batch, carrying what the abort did to it. */
@@ -97,5 +139,7 @@ export async function abortedError(
   );
   const row = rows[0];
   if (!row) throw new Error(`release batch ${runId} not found`);
-  return new ReleaseBatchAbortedError(abortAccount(row), row.project_id);
+  const heldClosed = await closedOnRoster(runId, executor);
+  const { account, closed } = abortAccount({ ...row, heldClosed });
+  return new ReleaseBatchAbortedError(account, row.project_id, closed);
 }

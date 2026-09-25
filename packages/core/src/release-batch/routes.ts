@@ -102,7 +102,7 @@ releaseBatchRoutes.post(
         throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
       }
       if (err instanceof BatchInFlightError) throw releaseBlockerHttp(err, 'BATCH_IN_FLIGHT');
-      if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed();
+      if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed(projectId);
       if (err instanceof ReleaseRecutRefusedError) {
         throw conflict('RELEASE_RECUT_REFUSED', err.message);
       }

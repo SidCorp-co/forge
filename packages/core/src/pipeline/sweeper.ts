@@ -46,6 +46,10 @@ import {
   reapJoblessRuns,
 } from './runs-concluded.js';
 import {
+  reapStaleReleaseBatchClaims,
+  type StaleReleaseBatchClaimsResult,
+} from './stale-release-claims.js';
+import {
   detectOwedCloses,
   detectStrandedIssues,
   type StrandedIssuesResult,
@@ -82,10 +86,6 @@ export interface IssueRunReapResult {
 
 export interface IdleChatCloseResult {
   closed: number;
-}
-
-export interface StaleReleaseBatchClaimsResult {
-  released: number;
 }
 
 export interface SweepResult {
@@ -644,30 +644,6 @@ export async function reapOrphanedIssueRuns(
   }
 
   return { reaped };
-}
-
-export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchClaimsResult> {
-  try {
-    const released = await db.execute<{ id: string }>(sql`
-      UPDATE issues
-      SET release_batch_run_id = NULL, updated_at = now()
-      WHERE release_batch_run_id IS NOT NULL
-        AND EXISTS (
-          SELECT 1 FROM pipeline_runs r
-          WHERE r.id = issues.release_batch_run_id
-            AND r.status NOT IN ('running', 'paused')
-        )
-      RETURNING id
-    `);
-    const count = Array.isArray(released) ? released.length : 0;
-    if (count > 0) {
-      logger.info({ count }, 'pipeline-sweeper: stale release-batch claims cleared');
-    }
-    return { released: count };
-  } catch (err) {
-    logger.error({ err }, 'pipeline-sweeper: stale release-batch claim reap failed (skipped)');
-    return { released: 0 };
-  }
 }
 
 let registered = false;

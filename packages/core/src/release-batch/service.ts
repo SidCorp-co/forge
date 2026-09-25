@@ -52,7 +52,10 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { assertMethodFor, readMethod } from './method.js';
 import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
-import { recoverStrandedReleasing } from './releasing-recovery.js';
+import {
+  type RecoverStrandedReleasingResult,
+  recoverStrandedReleasing,
+} from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { liveCarriesRoster, readLiveCommit, type VerifyConfig, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
@@ -328,6 +331,7 @@ export async function assertFinishable(runId: string, run: ReleaseRunRow): Promi
   assertMethodFor(
     readMethod(run.metadata),
     typeof jobSkill === 'string' && jobSkill.length > 0 ? jobSkill : RELEASE_BATCH_SKILL,
+    { projectId: run.projectId, runId },
   );
 
   const channels = await resolveReleaseChannels(run.projectId);
@@ -438,14 +442,8 @@ export async function finishReleaseBatch(
   return result;
 }
 
-export interface AbortReleaseBatchResult {
-  claimsCleared: string[];
-  /** Where the roster went, or `null` when nothing moved. */
-  destination: IssueStatus | null;
-  /** True when the run had promoted. On its own it no longer says the roster stayed put:
-   *  `promotedRoster: 'return-to-gate'` settles one anyway, and `destination` is what moved. */
-  promoted: boolean;
-  /** What the abort did to the run row, in its own words. */
+/** What the recovery did to the roster, and what the abort did to the run row. */
+export interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
   run: {
     status: PipelineRunStatus | null;
     wasAlreadyTerminal: boolean;
@@ -482,24 +480,23 @@ export async function abortReleaseBatch(
     by: actorUserId,
     holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
   });
-  const { claimsCleared, destination, promoted } = await recoverStrandedReleasing(runId, {
+  const recovery = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
     actorUserId,
     comment: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
   await options.afterRosterRecovered?.();
-  const held = promoted && options.promotedRoster !== 'return-to-gate';
-  await settleAbortStamp(runId, stampId, held ? 'held' : 'released');
+  const held = recovery.promoted && options.promotedRoster !== 'return-to-gate';
+  const roster = held ? 'held' : 'released';
+  await settleAbortStamp(runId, stampId, { roster, closed: recovery.alreadyClosed });
 
   await closeRunIfOneShot(runId, 'cancelled');
 
   const after = await cancelConcludedRun(runId);
 
   return {
-    claimsCleared,
-    destination,
-    promoted,
+    ...recovery,
     run: {
       status: after.cancelled ? 'cancelled' : after.was,
       wasAlreadyTerminal: after.cancelled,

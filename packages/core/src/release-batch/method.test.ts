@@ -15,6 +15,8 @@ const { assertMethodFor, MethodMismatchError, MethodNotAnnouncedError, readMetho
   './method.js'
 );
 
+const where = { projectId: 'proj-3', runId: 'run-5' };
+
 const announced = (over: Record<string, unknown> = {}) => ({
   method: { skill: 'release-flow', loaded: true, detail: null, announcedAt: 'now', ...over },
 });
@@ -43,22 +45,22 @@ describe('readMethod', () => {
 
 describe('assertMethodFor', () => {
   it('passes a run that announced the skill its job names', () => {
-    expect(() => assertMethodFor(readMethod(announced()), 'release-flow')).not.toThrow();
+    expect(() => assertMethodFor(readMethod(announced()), 'release-flow', where)).not.toThrow();
   });
 
   it('refuses a run that announced nothing, naming the skill it owes', () => {
     try {
-      assertMethodFor(null, 'release-flow');
+      assertMethodFor(null, 'release-flow', where);
       expect.unreachable('a run with no announcement must be refused');
     } catch (err) {
       expect(err).toBeInstanceOf(MethodNotAnnouncedError);
-      expect(err).toMatchObject({ expected: 'release-flow' });
+      expect(err).toMatchObject({ expected: 'release-flow', where });
     }
   });
 
   it('refuses a run whose announcement names another skill, naming both', () => {
     try {
-      assertMethodFor(readMethod(announced({ skill: 'issue-flow' })), 'release-flow');
+      assertMethodFor(readMethod(announced({ skill: 'issue-flow' })), 'release-flow', where);
       expect.unreachable('a run working from another method must be refused');
     } catch (err) {
       expect(err).toBeInstanceOf(MethodMismatchError);
@@ -68,7 +70,7 @@ describe('assertMethodFor', () => {
 
   it('admits a run that announced it could NOT load its method, which is the priced amnesty', () => {
     expect(() =>
-      assertMethodFor(readMethod(announced({ loaded: false })), 'release-flow'),
+      assertMethodFor(readMethod(announced({ loaded: false })), 'release-flow', where),
     ).not.toThrow();
   });
 });
