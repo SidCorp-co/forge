@@ -1,15 +1,17 @@
 /**
  * What a composer will stage, and what it says about a file it will not.
  *
- * Each policy mirrors one of core's own allow-lists (`lib/attachment-mime.ts`),
- * so the server never refuses what this staged and the person never loses a
- * file to a rule nobody printed.
+ * The types come from `@forge/contracts`, which is the same list core enforces
+ * at the upload door — not a copy of it, so the server never refuses what this
+ * staged and the person never loses a file to a rule nobody printed.
  */
+
+import { CONVERSATION_MIMES, SESSION_MIMES } from "@forge/contracts";
 
 export interface AttachmentPolicy {
   /** The target this surface uploads under, named in the refusal. */
   target: "conversation" | "session";
-  /** Mime types core's allow-list for that target holds. */
+  /** The mime types core's own allow-list for that target holds. */
   mimes: readonly string[];
   /** Advisory only — `accept` hints the native dialog and guarantees nothing. */
   extensions: readonly string[];
@@ -21,7 +23,7 @@ export interface AttachmentPolicy {
 
 export const CONVERSATION_ATTACHMENTS: AttachmentPolicy = {
   target: "conversation",
-  mimes: ["image/png", "image/jpeg", "image/gif", "image/webp"],
+  mimes: CONVERSATION_MIMES,
   extensions: [".png", ".jpg", ".jpeg", ".gif", ".webp"],
   maxBytes: 10 * 1024 * 1024,
   maxFiles: 10,
@@ -30,17 +32,7 @@ export const CONVERSATION_ATTACHMENTS: AttachmentPolicy = {
 
 export const SESSION_ATTACHMENTS: AttachmentPolicy = {
   target: "session",
-  mimes: [
-    "image/png",
-    "image/jpeg",
-    "image/gif",
-    "image/webp",
-    "image/svg+xml",
-    "text/html",
-    "application/pdf",
-    "text/plain",
-    "text/markdown",
-  ],
+  mimes: SESSION_MIMES,
   extensions: [
     ".png",
     ".jpg",

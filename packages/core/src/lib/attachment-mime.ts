@@ -1,3 +1,5 @@
+import { CONVERSATION_MIMES, SESSION_MIMES } from '@forge/contracts';
+
 export type AttachmentTarget = 'issue' | 'comment' | 'session' | 'conversation';
 
 const ISSUE_MIMES = [
@@ -20,26 +22,6 @@ const ISSUE_MIMES = [
 ] as const;
 
 const COMMENT_MIMES = ISSUE_MIMES.filter((m) => !m.startsWith('video/'));
-
-const SESSION_MIMES = [
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'text/html',
-  'application/pdf',
-  'text/plain',
-  'text/markdown',
-] as const;
-
-/**
- * A conversation takes pictures and nothing else: `assistant/vision.ts` is what
- * reads its files and it re-sends images, so anything else would reach no
- * reader (settled on ISS-1146). `image/svg+xml` is out too — markup, not a
- * picture, and it carries script.
- */
-const CONVERSATION_MIMES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
 
 const ALLOWED_BY_TARGET: Record<AttachmentTarget, ReadonlySet<string>> = {
   issue: new Set(ISSUE_MIMES),
