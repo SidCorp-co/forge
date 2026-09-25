@@ -3,12 +3,8 @@ import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import {
-  evidenceFor,
-  issueRefPattern,
-  type LiveReading,
-  subjectIssueSeqs,
-} from '../projects/live-reach.js';
+import { commitOwners } from '../projects/commit-owners.js';
+import { evidenceFor, issueRefPattern, type LiveReading } from '../projects/live-reach.js';
 import { liveReadingForRow, projectReleaseRows } from '../projects/live-reading.js';
 import { ageSeconds } from './pulse-folds.js';
 import type {
@@ -33,8 +29,8 @@ async function closedNotOnLive(
   if (reading.commits.length === 0) return [];
   const pattern = issueRefPattern(await heldIssuePrefixes(project.id));
   const seqs = new Set<number>();
-  for (const c of reading.commits) {
-    for (const s of subjectIssueSeqs(c.message, pattern)) seqs.add(s);
+  for (const owned of commitOwners(reading.commits, pattern, reading.baseBranch).values()) {
+    for (const s of owned.keys()) seqs.add(s);
   }
   const shas = reading.commits.map((c) => c.sha);
   const match =
@@ -61,7 +57,7 @@ async function closedNotOnLive(
     );
   const out: PulseNotOnLiveIdentity[] = [];
   for (const r of rows) {
-    const evidence = evidenceFor(r, reading.commits, pattern);
+    const evidence = evidenceFor(r, reading, pattern);
     if (evidence.length === 0) continue;
     out.push({
       documentId: r.id,

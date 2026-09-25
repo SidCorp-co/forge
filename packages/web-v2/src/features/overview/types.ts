@@ -35,7 +35,7 @@ export interface PulseIssueIdentity {
 /** A closed issue a reading of its project's branches places off the live branch (ISS-1217). */
 export interface PulseNotOnLiveIdentity extends PulseIssueIdentity {
   liveBranch: string;
-  evidence: Array<{ sha: string; subject: string; via: "merged_commit" | "names_issue" }>;
+  evidence: Array<{ sha: string; subject: string; via: "merged_commit" | "declares_issue" | "merged_in" }>;
 }
 
 /** A `promote` project whose base and live branches could not be compared, and why. */

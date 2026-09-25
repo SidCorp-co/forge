@@ -66,7 +66,7 @@ describe("the Production row", () => {
       rail({
         ...measured,
         state: "not_on_live",
-        evidence: [{ sha: "11d071b3".padEnd(40, "0"), subject: "fix(desk): owner (ISS-442)", via: "names_issue" }],
+        evidence: [{ sha: "11d071b3".padEnd(40, "0"), subject: "fix(desk): owner (ISS-442)", via: "declares_issue" }],
       }),
     );
     expect(screen.getByText("Production")).toBeInTheDocument();

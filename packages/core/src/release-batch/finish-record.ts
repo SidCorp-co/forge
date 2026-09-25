@@ -1,11 +1,12 @@
 // The finish record a release run carries (`pipeline_runs.metadata.finish`): its
 // shape, how it is read off the run, and the compare-and-set that writes it.
 
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
+import { RUN_NOT_ABORTED } from './abort-stamp.js';
 
 export type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 
@@ -104,7 +105,7 @@ export function isInFlight(record: ReleaseFinishRecord | null): boolean {
 /**
  * Write `next` over the record whose version was `expected` (`null` = the run
  * carries no record). `false` when somebody else wrote in between, or, with
- * `runOpen`, when the run was cancelled in between.
+ * `runOpen`, when the run was aborted in between: cancelled, or stamped by an abort under way.
  */
 export async function compareAndSet(
   runId: string,
@@ -116,7 +117,7 @@ export async function compareAndSet(
     expected === null
       ? sql`${pipelineRuns.metadata} -> 'finish' IS NULL`
       : sql`(${pipelineRuns.metadata} -> 'finish' ->> 'version')::int = ${expected}`;
-  const guard = runOpen ? and(version, ne(pipelineRuns.status, 'cancelled')) : version;
+  const guard = runOpen ? and(version, RUN_NOT_ABORTED) : version;
   const rows = await db
     .update(pipelineRuns)
     .set({

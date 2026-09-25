@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { issueRefPattern, type LiveReading, liveReachOf, subjectIssueSeqs } from './live-reach.js';
+import { issueRefPattern, type LiveReading, liveReachOf } from './live-reach.js';
 
 const STARTED = new Date('2026-09-23T14:00:00Z');
 const BEFORE = '2026-09-23T04:22:00Z';
@@ -17,8 +17,12 @@ function measured(over: Partial<Extract<LiveReading, { kind: 'measured' }>> = {}
     liveSha: '52c66950'.padEnd(40, '0'),
     aheadBy: 2,
     commits: [
-      { sha: OWN, message: 'Merge pull request #88 from sid/feature-x' },
-      { sha: 'e'.repeat(40), message: 'fix(desk): the queue shows the owner (SD-442)\n\nbody' },
+      { sha: OWN, message: 'Merge pull request #88 from sid/feature-x', parents: [] },
+      {
+        sha: 'e'.repeat(40),
+        message: 'fix(desk): the queue shows the owner (SD-442)\n\nbody',
+        parents: [],
+      },
     ],
     complete: true,
     startedAt: STARTED,
@@ -35,23 +39,6 @@ const issue = (
   ...over,
 });
 
-describe('subjectIssueSeqs', () => {
-  it('reads every held prefix and the shared legacy one, case-blind, on whole references only', () => {
-    const msg = 'SD-1 iss-2 Merge from sid/ISS-3-slug; XSD-4 SD-55x SD-6789 (SD-7)';
-    expect([...subjectIssueSeqs(msg, pattern)].sort((a, b) => a - b)).toEqual([1, 2, 3, 7, 6789]);
-  });
-
-  it('does not read a reference whose number runs on into more digits or a letter as a shorter one', () => {
-    expect(subjectIssueSeqs('SD-4420', pattern).has(442)).toBe(false);
-    expect(subjectIssueSeqs('chore: SD-442X', pattern).has(442)).toBe(false);
-  });
-
-  it('reads the subject line and never the body', () => {
-    const msg = 'fix(desk): the owner (SD-442)\n\nkeeps the SD-170 decision; Refs: SD-9';
-    expect([...subjectIssueSeqs(msg, pattern)]).toEqual([442]);
-  });
-});
-
 describe('liveReachOf', () => {
   it('places an issue off live when its observed merge commit is waiting', () => {
     const r = liveReachOf(issue({ mergedCommitSha: OWN.toUpperCase() }), measured(), pattern);
@@ -65,11 +52,13 @@ describe('liveReachOf', () => {
     });
   });
 
-  it('places an issue with only a claimed mark off live when a waiting commit names its key', () => {
+  it('places an issue with only a claimed mark off live when a waiting commit declares its key', () => {
     const r = liveReachOf(issue({ issSeq: 442 }), measured(), pattern);
     expect(r).toMatchObject({
       state: 'not_on_live',
-      evidence: [{ subject: 'fix(desk): the queue shows the owner (SD-442)', via: 'names_issue' }],
+      evidence: [
+        { subject: 'fix(desk): the queue shows the owner (SD-442)', via: 'declares_issue' },
+      ],
     });
   });
 
@@ -80,6 +69,7 @@ describe('liveReachOf', () => {
           sha: 'c'.repeat(40),
           message:
             'fix(qc-agent): strip every confusable bracket (SD-451)\n\ndeliberately-unshared copy of safeField (SD-170 decision keeps it unshared)',
+          parents: [],
         },
       ],
     });
@@ -87,7 +77,51 @@ describe('liveReachOf', () => {
     expect(liveReachOf(issue({ issSeq: 451 }), cites, pattern)).toMatchObject({
       state: 'not_on_live',
       evidence: [
-        { subject: 'fix(qc-agent): strip every confusable bracket (SD-451)', via: 'names_issue' },
+        {
+          subject: 'fix(qc-agent): strip every confusable bracket (SD-451)',
+          via: 'declares_issue',
+        },
+      ],
+    });
+  });
+
+  it('does not place an issue whose key a waiting subject cites mid-description', () => {
+    const cites = measured({
+      commits: [
+        {
+          sha: 'd7'.padEnd(40, '0'),
+          message:
+            'feat(logger): say at boot when the retention window is below the seven days ISS-401 asks for (ISS-435)',
+          parents: [],
+        },
+      ],
+    });
+    expect(liveReachOf(issue({ issSeq: 401 }), cites, pattern)?.state).toBe('none_waiting');
+    expect(liveReachOf(issue({ issSeq: 435 }), cites, pattern)?.state).toBe('not_on_live');
+  });
+
+  it('places an issue on a commit its declaring merge brought in, saying so', () => {
+    const merge = 'fb'.padEnd(40, '0');
+    const carried = 'c1'.padEnd(40, '0');
+    const r = liveReachOf(
+      issue({ issSeq: 434 }),
+      measured({
+        commits: [
+          {
+            sha: merge,
+            message: 'Merge branch SD-434-logsize into staging (SD-434, SD-435)',
+            parents: ['live', carried],
+          },
+          { sha: carried, message: 'fix(logger): read the size in bytes', parents: ['live'] },
+        ],
+      }),
+      pattern,
+    );
+    expect(r).toMatchObject({
+      state: 'not_on_live',
+      evidence: [
+        { sha: merge, via: 'declares_issue' },
+        { sha: carried, subject: 'fix(logger): read the size in bytes', via: 'merged_in' },
       ],
     });
   });
@@ -98,6 +132,7 @@ describe('liveReachOf', () => {
         {
           sha: 'c'.repeat(40),
           message: "Merge branch 'SD-170' into 'staging'\n\nSee merge request sid/desk!42",
+          parents: [],
         },
       ],
     });

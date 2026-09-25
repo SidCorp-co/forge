@@ -1,5 +1,6 @@
 import type { WaitingCommit } from '../integrations/github/live-divergence.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
+import { commitOwners, type OwnerVia, subjectOf } from './commit-owners.js';
 
 interface ReadingBranches {
   /** Null only on a refusal: a project naming no base branch has nothing to compare. */
@@ -25,8 +26,8 @@ export type LiveReading =
 export interface LiveReachEvidence {
   sha: string;
   subject: string;
-  /** `merged_commit` — the issue's own observed merge; `names_issue` — matched by `subjectIssueSeqs`. */
-  via: 'merged_commit' | 'names_issue';
+  /** `merged_commit` — the issue's own observed merge; the others as `commitOwners` counted it. */
+  via: 'merged_commit' | OwnerVia;
 }
 
 type Measured = ReadingBranches & {
@@ -61,34 +62,19 @@ export function issueRefPattern(prefixes: readonly string[]): RegExp {
   );
 }
 
-export function subjectOf(message: string): string {
-  return message.split('\n', 1)[0]?.trim() ?? '';
-}
-
-/**
- * Every issue sequence a commit's subject line names. The body is never read: it is where a commit
- * cites other issues' decisions, and a citation is not that issue's work.
- */
-export function subjectIssueSeqs(message: string, pattern: RegExp): Set<number> {
-  const seqs = new Set<number>();
-  for (const m of subjectOf(message).matchAll(pattern)) seqs.add(Number(m[1]));
-  return seqs;
-}
-
-/** The waiting commits that are this issue's merge or name it in their subject, in the reading's order. */
+/** The waiting commits that are this issue's merge or its work by `commitOwners`, in the reading's order. */
 export function evidenceFor(
   issue: LiveReachIssue,
-  commits: readonly WaitingCommit[],
+  reading: { commits: readonly WaitingCommit[]; baseBranch: string },
   pattern: RegExp,
 ): LiveReachEvidence[] {
   const own = (issue.mergedCommitSha ?? '').trim().toLowerCase();
+  const owners = commitOwners(reading.commits, pattern, reading.baseBranch);
   const out: LiveReachEvidence[] = [];
-  for (const c of commits) {
-    if (own !== '' && c.sha.toLowerCase() === own) {
-      out.push({ sha: c.sha, subject: subjectOf(c.message), via: 'merged_commit' });
-    } else if (subjectIssueSeqs(c.message, pattern).has(issue.issSeq)) {
-      out.push({ sha: c.sha, subject: subjectOf(c.message), via: 'names_issue' });
-    }
+  for (const c of reading.commits) {
+    const sha = c.sha.toLowerCase();
+    const via = own !== '' && sha === own ? 'merged_commit' : owners.get(sha)?.get(issue.issSeq);
+    if (via) out.push({ sha: c.sha, subject: subjectOf(c.message), via });
   }
   return out;
 }
@@ -125,7 +111,7 @@ export function liveReachOf(
     baseSha: reading.baseSha,
     liveSha: reading.liveSha,
   };
-  const evidence = evidenceFor(issue, reading.commits, pattern);
+  const evidence = evidenceFor(issue, reading, pattern);
   if (evidence.length > 0) return { ...measured, state: 'not_on_live', evidence };
   if (!reading.complete) {
     return {
