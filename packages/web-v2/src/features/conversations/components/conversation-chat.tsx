@@ -19,7 +19,8 @@ import {
   ProjectLoader,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
-import { Composer, ReadOnlyComposerNote } from "@/features/session/components/composer";
+import { CONVERSATION_ATTACHMENTS } from "@/features/chat/attachments";
+import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
 import {
   TurnStage,
   turnStageOf,
@@ -35,11 +36,13 @@ import {
   useAcceptedMessages,
   useConversationProgress,
   useSendMessage,
+  useStopConversation,
+  useUploadAttachment,
   useWithdrawnDrafts,
 } from "../hooks";
 import { composerRefusal } from "../membership";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
-import { ConversationModeToggle } from "./conversation-mode-toggle";
+import { ConversationModeControl, modePlaceholder } from "./mode-control";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
 import { ScopeNotice } from "./scope-notice";
@@ -81,6 +84,8 @@ export function ConversationChat({
   const streamedChars = useMemo(() => JSON.stringify(progress?.entry ?? null).length, [progress]);
   const open = useOpenConversation();
   const send = useSendMessage();
+  const upload = useUploadAttachment();
+  const stop = useStopConversation();
 
   const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
   const sending = useRef(false);
@@ -120,6 +125,9 @@ export function ConversationChat({
   });
 
   const settled = Boolean(roomQ.data && (roomQ.data.mode !== null || messages.length > 0));
+  const settledMode: ConversationMode | null = settled
+    ? (roomQ.data?.mode ?? "assistant")
+    : null;
   const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
   const agentOffer =
     roomQ.data?.agentMode ??
@@ -136,8 +144,11 @@ export function ConversationChat({
     streamedChars,
   });
 
-  const handleSend = async (message: string) => {
-    setOutbox((o) => [...o, { id: crypto.randomUUID(), content: message, state: "queued" }]);
+  const handleSend = async (message: string, files: File[]) => {
+    setOutbox((o) => [
+      ...o,
+      { id: crypto.randomUUID(), content: message, state: "queued", ...(files.length ? { files } : {}) },
+    ]);
   };
 
   const retry = useCallback((id: string) => {
@@ -160,11 +171,17 @@ export function ConversationChat({
           onConversationActive?.(id);
         }
         const fresh = !settled && messages.length === 0;
+        const attachmentIds: string[] = [];
+        for (const file of next.files ?? []) {
+          const stored = await upload.mutateAsync({ conversationId: id, file });
+          attachmentIds.push(stored.id);
+        }
         await send.mutateAsync({
           conversationId: id,
           content: next.content,
           ...(fresh ? { mode: pick } : {}),
           clientToken: next.id,
+          ...(attachmentIds.length ? { attachmentIds } : {}),
         });
         setOutbox((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
@@ -177,7 +194,18 @@ export function ConversationChat({
         sending.current = false;
       }
     })();
-  }, [outbox, resolvedId, projectId, open, send, onConversationActive, settled, messages.length, pick]);
+  }, [
+    outbox,
+    resolvedId,
+    projectId,
+    open,
+    send,
+    upload,
+    onConversationActive,
+    settled,
+    messages.length,
+    pick,
+  ]);
 
   const header = (
     <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
@@ -186,9 +214,6 @@ export function ConversationChat({
           <PageTitle className="fg-h2 truncate">
             {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
           </PageTitle>
-          <p className="fg-body-sm hidden text-muted @[560px]:block">
-            Ask the agent about this project — it reads the project, not the repository.
-          </p>
         </div>
         {onOpenHistory && (
           <IconButton
@@ -285,17 +310,24 @@ export function ConversationChat({
           <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
         </div>
       ) : canWrite ? (
-        <>
-          {!settled && (
-            <ConversationModeToggle
+        <ChatComposer
+          onSend={handleSend}
+          busy={busy}
+          queueWhileBusy
+          sticky={false}
+          attachments={CONVERSATION_ATTACHMENTS}
+          placeholder={modePlaceholder(settledMode ?? pick)}
+          {...(progress ? { onStop: () => stop.mutate(resolvedId as string), stopping: stop.isPending } : {})}
+          footerControl={
+            <ConversationModeControl
               value={pick}
               onChange={setPick}
               offer={agentOffer}
+              settled={settledMode}
               disabled={busy}
             />
-          )}
-          <Composer onSend={handleSend} busy={busy} queueWhileBusy sticky={false} />
-        </>
+          }
+        />
       ) : (
         <ReadOnlyComposerNote sticky={false} />
       )}

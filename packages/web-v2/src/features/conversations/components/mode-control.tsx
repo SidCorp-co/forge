@@ -1,0 +1,276 @@
+"use client";
+
+// What this conversation is talking to, picked by the person typing in it.
+//
+// It lives in the composer's footer row rather than in a band of its own,
+// because a control belongs on the same column as the thing it controls. It is
+// live only while the room is empty — the first send writes the room's mode and
+// there is no changing it afterwards (ISS-1039) — so once that is settled this
+// becomes a label, which is the one thing the band it replaces never did.
+//
+// The markup is a radiogroup and stays one: `fieldset` + `legend.sr-only` +
+// `input[type=radio]`, one tab stop with the arrows moving between options.
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { Icon } from "@/design";
+import type { AgentModeOffer, ConversationMode } from "../types";
+
+interface ModeMeta {
+  mode: ConversationMode;
+  label: string;
+  hint: string;
+}
+
+/** What each mode is, in the words a person picking between them needs. */
+export const MODES: ModeMeta[] = [
+  {
+    mode: "assistant",
+    label: "Assistant",
+    hint: "Reads this project — its issues, progress, knowledge and memory. No repository.",
+  },
+  {
+    mode: "agent",
+    label: "Agent",
+    hint: "A session on a paired box with the repository checked out and a shell.",
+  },
+];
+
+/** The box's own placeholder, so the mode is readable while typing too. */
+export function modePlaceholder(mode: ConversationMode | null): string {
+  if (mode === "agent") return "Message Agent — it has the repository and a shell…";
+  if (mode === "assistant") return "Message Assistant — it reads this project, not the repository…";
+  return "Ask the agent about this project…";
+}
+
+function labelOf(mode: ConversationMode): string {
+  return MODES.find((m) => m.mode === mode)?.label ?? mode;
+}
+
+/**
+ * Why Agent cannot be picked, and the way out of it. Pressable rather than
+ * greyed out: a control with a condition names the condition.
+ */
+function BlockedPanel({ reason, onClose }: { reason: string | null; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      id="conversation-mode-blocked"
+      role="dialog"
+      aria-label="Agent is unavailable"
+      data-testid="mode-blocked-panel"
+      className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-md border border-line bg-surface p-3 shadow-lg"
+    >
+      <p className="fg-body-sm font-semibold text-fg">Agent needs a paired box</p>
+      <p className="fg-caption mt-1 text-muted">
+        {reason ?? "no box is paired with this project"}.
+      </p>
+      <Link
+        href="/pair"
+        className="fg-body-sm mt-2.5 inline-flex items-center gap-1.5 rounded-sm text-link hover:underline"
+      >
+        <Icon name="link" size={14} />
+        Pair a box
+      </Link>
+    </div>
+  );
+}
+
+/** The two options as a radiogroup on one track. */
+function ModeTrack({
+  value,
+  onChange,
+  blocked,
+  disabled,
+  onBlockedPress,
+  describedBy,
+}: {
+  value: ConversationMode;
+  onChange: (mode: ConversationMode) => void;
+  blocked: boolean;
+  disabled: boolean | undefined;
+  onBlockedPress: () => void;
+  describedBy: string | undefined;
+}) {
+  return (
+    <fieldset
+      className="flex items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5"
+      data-testid="conversation-mode-toggle"
+    >
+      <legend className="sr-only">What this conversation talks to</legend>
+      {MODES.map(({ mode, label, hint }) => {
+        const isBlocked = mode === "agent" && blocked;
+        const selected = value === mode;
+        return (
+          <label
+            key={mode}
+            data-mode={mode}
+            data-blocked={isBlocked ? "true" : undefined}
+            className={[
+              "inline-flex cursor-pointer items-center gap-1.5 rounded-sm px-2.5 py-1 text-13 font-semibold",
+              "transition-colors focus-within:shadow-[var(--shadow-focus)]",
+              selected ? "bg-surface text-fg shadow-xs" : "text-muted hover:text-fg",
+            ].join(" ")}
+          >
+            <input
+              type="radio"
+              name="conversation-mode"
+              className="sr-only"
+              value={mode}
+              checked={selected}
+              disabled={disabled}
+              aria-describedby={isBlocked ? describedBy : undefined}
+              title={isBlocked ? undefined : hint}
+              onChange={() => (isBlocked ? onBlockedPress() : onChange(mode))}
+            />
+            {label}
+            {isBlocked && (
+              <span
+                aria-hidden="true"
+                data-testid="mode-condition-dot"
+                className="size-1.5 rounded-full bg-amber"
+              />
+            )}
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+/** The same choice where the footer is too narrow for a track. */
+function ModeMenu({
+  value,
+  onChange,
+  blocked,
+  disabled,
+  onBlockedPress,
+}: {
+  value: ConversationMode;
+  onChange: (mode: ConversationMode) => void;
+  blocked: boolean;
+  disabled: boolean | undefined;
+  onBlockedPress: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        data-testid="conversation-mode-menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-line bg-sunken px-2.5 py-1.5 text-13 font-semibold text-fg"
+      >
+        {labelOf(value)}
+        <Icon name="chevronDown" size={13} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          data-testid="conversation-mode-menu"
+          className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-md border border-line bg-surface p-1 shadow-lg"
+        >
+          {MODES.map(({ mode, label, hint }) => {
+            const isBlocked = mode === "agent" && blocked;
+            return (
+              <button
+                key={mode}
+                type="button"
+                role="menuitemradio"
+                aria-checked={value === mode}
+                onClick={() => {
+                  setOpen(false);
+                  if (isBlocked) onBlockedPress();
+                  else onChange(mode);
+                }}
+                className="flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left hover:bg-sunken"
+              >
+                <span className="fg-body-sm font-semibold text-fg">{label}</span>
+                <span className="fg-caption text-muted">{hint}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ConversationModeControl({
+  value,
+  onChange,
+  offer,
+  settled,
+  narrow,
+  disabled,
+}: {
+  value: ConversationMode;
+  onChange: (mode: ConversationMode) => void;
+  /** Whether Agent may be picked at all, and why not where it may not. */
+  offer: AgentModeOffer;
+  /** The mode this room already answers in, or null while it is still a choice. */
+  settled: ConversationMode | null;
+  /** The composer is too narrow for a track, so the choice becomes a menu. */
+  narrow?: boolean;
+  /** The whole control, while a send is in flight. */
+  disabled?: boolean;
+}) {
+  const [blockedOpen, setBlockedOpen] = useState(false);
+
+  if (settled) {
+    return (
+      <span
+        data-testid="conversation-mode-settled"
+        className="inline-flex items-center gap-1.5 rounded-md bg-sunken px-2.5 py-1 text-13 font-semibold text-muted"
+      >
+        <Icon name="agent" size={13} />
+        {labelOf(settled)}
+      </span>
+    );
+  }
+
+  const blocked = !offer.available;
+  return (
+    <div className="relative">
+      {narrow ? (
+        <ModeMenu
+          value={value}
+          onChange={onChange}
+          blocked={blocked}
+          disabled={disabled}
+          onBlockedPress={() => setBlockedOpen(true)}
+        />
+      ) : (
+        <ModeTrack
+          value={value}
+          onChange={onChange}
+          blocked={blocked}
+          disabled={disabled}
+          onBlockedPress={() => setBlockedOpen(true)}
+          describedBy={blockedOpen ? "conversation-mode-blocked" : undefined}
+        />
+      )}
+      {blockedOpen && (
+        <BlockedPanel reason={offer.reason} onClose={() => setBlockedOpen(false)} />
+      )}
+    </div>
+  );
+}

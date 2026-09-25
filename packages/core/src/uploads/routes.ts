@@ -11,6 +11,10 @@ import {
   persistCommentAttachment,
 } from '../comments/attachment-service.js';
 import {
+  ConversationAttachmentError,
+  persistConversationAttachment,
+} from '../conversations/attachment-service.js';
+import {
   AttachmentError as IssueAttachmentError,
   persistIssueAttachment,
 } from '../issues/attachment-service.js';
@@ -73,6 +77,14 @@ uploadRoutes.put(
           uploaderId: ticket.uploaderId,
           uploaderAgency: 'human',
         });
+      } else if (ticket.targetType === 'conversation') {
+        persisted = await persistConversationAttachment({
+          conversationId: ticket.targetId,
+          name: ticket.name,
+          mime: ticket.mime,
+          bytes,
+          uploaderId: ticket.uploaderId,
+        });
       } else if (ticket.targetType === 'session') {
         persisted = await persistSessionAttachment({
           sessionId: ticket.targetId,
@@ -99,7 +111,8 @@ uploadRoutes.put(
       if (
         err instanceof IssueAttachmentError ||
         err instanceof CommentAttachmentError ||
-        err instanceof SessionAttachmentError
+        err instanceof SessionAttachmentError ||
+        err instanceof ConversationAttachmentError
       ) {
         throw badRequest(err.message, err.code, err.details);
       }

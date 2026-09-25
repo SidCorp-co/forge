@@ -112,6 +112,8 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **You can now attach a picture when you talk to the agent on the web, see what you are typing as
+  the box grows, stop an answer mid-flow, and still read which mode the room is in.**
 - **Stopping a box driving a project now asks why, and so does starting it again.** Both refuse an
   empty reason and show the shape of a good one. Every stop a box has held is kept, not overwritten.
 - **An issue can be archived, and unarchived.** It leaves search, recall, the duplicate check and

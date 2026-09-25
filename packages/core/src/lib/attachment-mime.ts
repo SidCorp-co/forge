@@ -1,4 +1,4 @@
-export type AttachmentTarget = 'issue' | 'comment' | 'session';
+export type AttachmentTarget = 'issue' | 'comment' | 'session' | 'conversation';
 
 const ISSUE_MIMES = [
   'image/png',
@@ -33,10 +33,19 @@ const SESSION_MIMES = [
   'text/markdown',
 ] as const;
 
+/**
+ * A conversation takes pictures and nothing else: `assistant/vision.ts` is what
+ * reads its files and it re-sends images, so anything else would reach no
+ * reader (settled on ISS-1146). `image/svg+xml` is out too — markup, not a
+ * picture, and it carries script.
+ */
+const CONVERSATION_MIMES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
+
 const ALLOWED_BY_TARGET: Record<AttachmentTarget, ReadonlySet<string>> = {
   issue: new Set(ISSUE_MIMES),
   comment: new Set(COMMENT_MIMES),
   session: new Set(SESSION_MIMES),
+  conversation: new Set(CONVERSATION_MIMES),
 };
 
 const EXT_MIME: Record<string, string> = {
@@ -174,24 +183,16 @@ export interface ResolveAttachmentMimeInput {
 }
 
 /**
- * Decide an attachment's stored type from its bytes and its name.
+ * Decide an attachment's stored type from its bytes and its name. Two
+ * questions, in order: does the target allow the candidate type, and did the
+ * client CLAIM that type or did this module guess it from the name?
  *
- * Two questions, in order: does the target allow the candidate type, and did
- * the client CLAIM that type or did this module guess it from the name?
- *
- * A claim is binding. A type the target allows is believed — an uncompressed
- * PDF is all ASCII, and retyping it because it happens to decode would be a
- * silent substitution of the worst kind. A type the target refuses is refused
- * by name rather than quietly stored as something else.
- *
- * A guess is not binding, because the client never said it — and
- * `application/octet-stream` is a guess whoever it came from. When the guess is
- * a type this target does not take, text bytes still land as `text/plain`.
- * That is what makes `.log`, `.sql` and every unmapped extension attach, and
- * `mimeFromName` returning `text/plain` by default is the other half of it.
- *
- * Either way a text type must carry text, which is what stops `.log` becoming
- * a new way to store a blob.
+ * A claim is binding — an allowed type is believed, a refused one is refused by
+ * name rather than quietly stored as something else. A guess is not, because
+ * the client never said it, so text bytes under an unmapped extension land as
+ * `text/plain` — but only where the target takes text at all, which is what
+ * stops them walking into a target whose allow-list is pictures only. Either
+ * way a text type must carry text, so `.log` is no way to store a blob.
  */
 export function resolveAttachmentMime(input: ResolveAttachmentMimeInput): MimeResolution {
   const allowed = ALLOWED_BY_TARGET[input.target];
@@ -205,7 +206,7 @@ export function resolveAttachmentMime(input: ResolveAttachmentMimeInput): MimeRe
       : { ok: true, mime: candidate };
   }
 
-  if (declared || looksBinary(input.bytes)) {
+  if (declared || looksBinary(input.bytes) || !allowed.has('text/plain')) {
     return { ok: false, reason: 'not-allowed', mime: candidate };
   }
   return { ok: true, mime: 'text/plain' };

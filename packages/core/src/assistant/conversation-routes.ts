@@ -22,6 +22,7 @@ import {
   conversationAgentDeviceAvailable,
   readConversationAgentTurns,
 } from '../agent-sessions/conversation-agent.js';
+import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   assertPersonReachesScope,
@@ -56,6 +57,8 @@ import {
   writableConversation,
 } from './conversation-access.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
+import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
+import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { withDisplayNames } from './conversation-people.js';
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
@@ -114,19 +117,27 @@ const patchSchema = z
 
 const sendSchema = z
   .object({
-    content: z.string().min(1).max(40_000),
+    content: z.string().max(40_000),
     mode: z.enum(conversationModes).optional(),
     /**
      * The caller's own id for this message, echoed on `conversation.accepted`.
      */
     clientToken: z.string().min(1).max(200).optional(),
+    /**
+     * Files already uploaded to THIS room, staged in its composer (ISS-1146).
+     */
+    attachmentIds: z.array(z.uuid()).max(10).optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.content.trim().length > 0 || (v.attachmentIds?.length ?? 0) > 0, {
+    error:
+      'a message carries text, a file, or both — this one carries neither, so there is nothing to say',
+  });
 
 /** A room's name, taken from the first thing said in it. */
 const ROOM_NAME_MAX = 80;
-function roomNameFrom(content: string): string {
-  const line = content.trim().split('\n')[0]?.trim() ?? '';
+function roomNameFrom(content: string, attached: readonly { name: string }[]): string {
+  const line = content.trim().split('\n')[0]?.trim() || (attached[0]?.name ?? '');
   return line.length > ROOM_NAME_MAX ? `${line.slice(0, ROOM_NAME_MAX - 1)}…` : line;
 }
 
@@ -140,6 +151,7 @@ export const conversationRoutes = new Hono<{ Variables: AuthVars }>();
 conversationRoutes.use('*', requireAuth(), assertEmailVerified());
 
 conversationRoutes.route('/', conversationMemberRoutes);
+conversationRoutes.route('/', conversationAttachmentRoutes);
 
 /**
  * The one project a web turn runs under.
@@ -363,7 +375,7 @@ conversationRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { content, mode, clientToken } = c.req.valid('json');
+    const { content, mode, clientToken, attachmentIds } = c.req.valid('json');
     const userId = c.get('userId');
 
     const conversation = await writableConversation(id, userId);
@@ -392,6 +404,15 @@ conversationRoutes.post(
       });
     }
 
+    const attached = await listConversationAttachmentsByIds(id, attachmentIds ?? []);
+    const foreign = foreignAttachmentIds(attachmentIds ?? [], attached);
+    if (foreign.length > 0) {
+      throw new HTTPException(409, {
+        message: `attachment ${foreign.join(', ')} ${foreign.length === 1 ? 'is' : 'are'} not on conversation ${id}, so this message was not taken in — upload the file to this room and send its id, rather than citing one from another`,
+        cause: { code: 'CONVERSATION_ATTACHMENT_FOREIGN', details: { attachmentIds: foreign } },
+      });
+    }
+
     const [me] = await db
       .select({ displayName: users.displayName, email: users.email })
       .from(users)
@@ -413,6 +434,7 @@ conversationRoutes.post(
         mode: asking,
         namedMode: mode !== undefined,
         ...(clientToken ? { clientToken } : {}),
+        ...(attached.length > 0 ? { images: imagesFromAttachments(attached) } : {}),
       });
     } catch (err) {
       if (err instanceof ConversationModeSettledError) {
@@ -425,7 +447,7 @@ conversationRoutes.post(
     }
 
     if (conversation.title === null && sent.seq === 0) {
-      await renameConversation(id, roomNameFrom(content));
+      await renameConversation(id, roomNameFrom(content, attached));
     }
 
     const [messages, windows, agentTurns] = await Promise.all([

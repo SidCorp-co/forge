@@ -157,6 +157,12 @@ export interface ConversationTurnRequest {
     result: ExternalChatTurnResult,
     ctx: TurnHookContext,
   ) => Promise<TurnReply | null>;
+  /**
+   * A stop from outside the turn — a person ending it from the room it runs in.
+   * Aborting it ends the turn without an answer and without an apology in the
+   * thread, which is not what a timeout or a crash does (ISS-1146).
+   */
+  externalStop?: AbortSignal | undefined;
   /** Released once the turn is over, however it ended. */
   dispose?: () => Promise<void>;
   log?: Record<string, unknown>;
@@ -167,6 +173,7 @@ export interface ConversationTurnRequest {
  */
 export type TurnOutcome =
   | { kind: 'delivered'; messageId: string | null }
+  | { kind: 'stopped'; reason: string }
   | { kind: 'superseded'; reason: string }
   | { kind: 'diverted'; reason: string }
   | { kind: 'declined'; reason: string }
@@ -338,6 +345,8 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
   timer.unref?.();
+  const onExternalStop = () => abort.abort();
+  req.externalStop?.addEventListener('abort', onExternalStop, { once: true });
   let phase = 'start';
   let reply: TurnReply;
   try {
@@ -354,6 +363,12 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     );
   } catch (err) {
     abort.abort();
+    if (req.externalStop?.aborted) {
+      clearTimeout(timer);
+      await req.dispose?.();
+      logger.info({ ...req.log, phase }, 'conversations: a person stopped this turn');
+      return { kind: 'stopped', reason: 'stopped-by-a-person' };
+    }
     const timedOut = err instanceof TurnTimeoutError;
     logger.error({ err, ...req.log, phase, timedOut }, 'conversations: turn failed');
     Sentry.captureException(err, {
@@ -376,6 +391,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     }
   } finally {
     clearTimeout(timer);
+    req.externalStop?.removeEventListener('abort', onExternalStop);
     await req.dispose?.();
   }
 

@@ -302,3 +302,66 @@ describe('the name byte budget', () => {
     );
   });
 });
+
+describe('the conversation target', () => {
+  it('takes the four raster types vision re-sends', () => {
+    for (const mime of ['image/png', 'image/jpeg', 'image/gif', 'image/webp']) {
+      expect(
+        resolveAttachmentMime({
+          target: 'conversation',
+          name: 'shot',
+          declaredMime: mime,
+          bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        }),
+      ).toEqual({ ok: true, mime });
+    }
+  });
+
+  it('refuses a PDF by name, which the session target takes', () => {
+    const input = {
+      name: 'spec.pdf',
+      declaredMime: 'application/pdf',
+      bytes: Buffer.from([0x25, 0x50, 0x44, 0x46]),
+    };
+    expect(resolveAttachmentMime({ target: 'conversation', ...input })).toEqual({
+      ok: false,
+      reason: 'not-allowed',
+      mime: 'application/pdf',
+    });
+    expect(resolveAttachmentMime({ target: 'session', ...input })).toEqual({
+      ok: true,
+      mime: 'application/pdf',
+    });
+  });
+
+  it('refuses an SVG, which is markup and not a picture vision can read', () => {
+    expect(
+      resolveAttachmentMime({
+        target: 'conversation',
+        name: 'mark.svg',
+        declaredMime: 'image/svg+xml',
+        bytes: Buffer.from('<svg/>'),
+      }),
+    ).toEqual({ ok: false, reason: 'not-allowed', mime: 'image/svg+xml' });
+  });
+
+  it('does not let an unmapped extension of plain text in as text/plain', () => {
+    expect(
+      resolveAttachmentMime({
+        target: 'conversation',
+        name: 'runner.log',
+        declaredMime: '',
+        bytes: Buffer.from('a line of log'),
+      }),
+    ).toEqual({ ok: false, reason: 'not-allowed', mime: 'text/plain' });
+  });
+
+  it('prints what it does take, so a refusal can name it', () => {
+    const allowed = allowedSetForTarget('conversation');
+    expect(allowed.mimes.sort()).toEqual(
+      ['image/gif', 'image/jpeg', 'image/png', 'image/webp'].sort(),
+    );
+    expect(allowed.extensions).toContain('.webp');
+    expect(allowed.extensions).not.toContain('.pdf');
+  });
+});
