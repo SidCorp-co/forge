@@ -91,7 +91,7 @@ describe("the Production row", () => {
   });
 
   it("says only that nothing is waiting when no waiting commit is this issue's", () => {
-    render(rail({ ...measured, state: "none_waiting" }));
+    render(rail({ ...measured, state: "none_waiting", unowned: [] }));
     const value = screen.getByText("Nothing waiting for master");
     expect(value).toHaveAttribute(
       "title",
@@ -99,6 +99,38 @@ describe("the Production row", () => {
     );
     expect(screen.getByText("staging ffffffff vs master 52c66950 · read 2026-09-23 14:00")).toBeVisible();
     expect(screen.queryByText(/on production/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/belongs? to no issue/)).not.toBeInTheDocument();
+  });
+
+  it("counts the waiting commits that belong to no issue, and names them on hover", () => {
+    render(
+      rail({
+        ...measured,
+        state: "none_waiting",
+        unowned: [
+          { sha: "d06bf1db".padEnd(40, "0"), subject: "style(client): satisfy pint" },
+          { sha: "07002be8".padEnd(40, "0"), subject: "fix(campaign): stop resetting status" },
+        ],
+      }),
+    );
+    expect(screen.getByText("Nothing waiting for master")).toBeInTheDocument();
+    const count = screen.getByText("2 waiting commits belong to no issue");
+    expect(count).toHaveAttribute(
+      "title",
+      "d06bf1db style(client): satisfy pint\n07002be8 fix(campaign): stop resetting status",
+    );
+    expect(screen.queryByText(/on production/i)).not.toBeInTheDocument();
+  });
+
+  it("says one waiting commit belongs to no issue in the singular", () => {
+    render(
+      rail({
+        ...measured,
+        state: "none_waiting",
+        unowned: [{ sha: "d06bf1db".padEnd(40, "0"), subject: "style(client): satisfy pint" }],
+      }),
+    );
+    expect(screen.getByText("1 waiting commit belongs to no issue")).toBeInTheDocument();
   });
 
   it("shows no Production row where core gives no reading", () => {

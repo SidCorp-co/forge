@@ -147,6 +147,39 @@ describe('liveReachOf', () => {
       measuredAt: STARTED.toISOString(),
       baseSha: 'b'.repeat(40),
       liveSha: '52c66950'.padEnd(40, '0'),
+      unowned: [{ sha: OWN, subject: 'Merge pull request #88 from sid/feature-x' }],
+    });
+  });
+
+  it('places an issue on its recorded work head where no subject or merge gives that commit to anyone', () => {
+    const record = {
+      issSeq: 71,
+      mergedCommitSha: null,
+      head: OWN,
+      base: 'a'.repeat(40),
+      branch: 'SD-71-work',
+    };
+    const r = liveReachOf(issue({ issSeq: 71 }), measured(), pattern, [record]);
+    expect(r).toMatchObject({
+      state: 'not_on_live',
+      evidence: [{ sha: OWN, via: 'recorded_head' }],
+    });
+    expect(liveReachOf(issue(), measured(), pattern, [record])).toMatchObject({
+      state: 'none_waiting',
+      unowned: [],
+    });
+  });
+
+  it('never places an issue on a recorded head that a waiting subject declares for another', () => {
+    const record = {
+      issSeq: 71,
+      mergedCommitSha: null,
+      head: 'e'.repeat(40),
+      base: 'a'.repeat(40),
+      branch: 'SD-71-work',
+    };
+    expect(liveReachOf(issue({ issSeq: 71 }), measured(), pattern, [record])).toMatchObject({
+      state: 'none_waiting',
     });
   });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/design";
-import type { LiveReach } from "../types";
+import type { LiveReach, LiveReachCommit } from "../types";
 
 function short(sha: string): string {
   return sha.slice(0, 8);
@@ -13,6 +13,20 @@ function Compared({ reach }: { reach: Extract<LiveReach, { baseSha: string }> })
     <span className="fg-caption font-mono">
       {reach.baseBranch} {short(reach.baseSha)} vs {reach.liveBranch} {short(reach.liveSha)} · read{" "}
       {reach.measuredAt.slice(0, 16).replace("T", " ")}
+    </span>
+  );
+}
+
+/**
+ * Waiting commits core could give to no issue. "Nothing waiting" is only as good as that
+ * attribution, so a reader is told how many commits it could not attribute, and which.
+ */
+function Unowned({ commits }: { commits: LiveReachCommit[] }) {
+  if (commits.length === 0) return null;
+  const n = commits.length;
+  return (
+    <span className="fg-caption" title={commits.map((c) => `${short(c.sha)} ${c.subject}`).join("\n")}>
+      {n} waiting commit{n === 1 ? "" : "s"} belong{n === 1 ? "s" : ""} to no issue
     </span>
   );
 }
@@ -46,6 +60,7 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
         >
           Nothing waiting for {reach.liveBranch}
         </span>
+        <Unowned commits={reach.unowned} />
         <Compared reach={reach} />
       </div>
     );
