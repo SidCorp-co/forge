@@ -3100,7 +3100,7 @@
 ### Fixed
 - **A refused release no longer sends you to abort a shipped batch.** A closed issue says it is closed, a leftover claim says the sweep clears it, a release record is named as one. The regression line matches its readings.
 - **An abort names every issue its batch already closed, and a refused release says why.** An abort after a finished batch no longer answers that nothing closed. A refused release names each claimed or misplaced issue, and what frees it.
-- **A box running out of room now says so before it runs out.** It reads free bytes and free inodes on every filesystem runs write scratch to, names the shortest, and says the worktree sweep will not reclaim it.
+- **A box running out of room says so before it runs out**, and keeps saying so once that filesystem stops answering. It reads free bytes and free inodes wherever runs write scratch, and says the sweep will not reclaim it.
 - **A release agent is told what an abort really does.** Closed issues stay closed, and a promoted roster stays held for a person. A failed deploy is repaired forward before any abort, and refusals name closed issues by key.
 - **`forge-runner doctor` no longer fails a box whose projects have no master pane running.** A second integration binding sharing a server name reads Shadowed, instead of asking you to replace a credential that works.
 - **A runner whose credential file cannot be read is told to repair it, not to sign in again.** `doctor` names that file, and the network checks stop rather than reporting the box as never paired.
