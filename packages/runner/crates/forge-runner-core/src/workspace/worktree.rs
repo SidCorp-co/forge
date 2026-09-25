@@ -360,23 +360,47 @@ pub async fn residence_of(repo: &Path, worktree: &Path) -> Residence {
     }
 }
 
-pub async fn remove_at(repo: &str, worktree: &std::path::Path) -> Result<()> {
+/// Give a linked checkout back, and say so.
+///
+/// `why` is the caller's reason and is not decoration: a removal that logs
+/// nothing leaves exactly the evidence a KEEP leaves — an empty directory —
+/// and two of those on this box took four hours of an operator's day to tell
+/// apart, with the answer never established from the journal at all
+/// (ISS-1250). The refusal is said too, for the same reason in reverse: a
+/// directory still standing because git would not take it is not a directory
+/// nobody asked about.
+pub async fn remove_at(repo: &str, worktree: &std::path::Path, why: &str) -> Result<()> {
     let out = git(
         repo,
         &["worktree", "remove", &worktree.to_string_lossy(), "--force"],
     )
     .await?;
     if !out.status.success() {
-        return Err(Error::Other(format!(
-            "git worktree remove failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        )));
+        let said = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        // Whether anything is still standing is read, not assumed: git refuses
+        // a path it has no record of just as it refuses one it will not give
+        // up, and those two leave opposite directories behind. A sentence that
+        // asserted the wrong one would be this issue's own defect — a claim
+        // about state nobody measured — committed by the line written to end it
+        // (consult 09d909 F1).
+        let standing = worktree.exists();
+        tracing::warn!(
+            "[worktree] {repo}: git would not remove {} ({said}) — {}",
+            worktree.display(),
+            if standing {
+                "the directory is still there"
+            } else {
+                "and there is no directory at that path either"
+            }
+        );
+        return Err(Error::Other(format!("git worktree remove failed: {said}")));
     }
+    tracing::info!("[worktree] {repo}: removed {} — {why}", worktree.display());
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     async fn run(dir: &Path, args: &[&str]) {
@@ -522,6 +546,143 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Capture what `tracing` was told while `f` ran, the way
+    /// `runner/close_loop.rs` does it — a journal line is the deliverable here,
+    /// so asserting on the return value would prove nothing about it.
+    pub(crate) fn logged_while(f: impl FnOnce()) -> String {
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    /// ISS-1250 — a keep and a removal left the same evidence.
+    ///
+    /// Two checkouts went from this box inside one sweep and what took them
+    /// was never established: the journal held a line saying each was kept and
+    /// no line saying either was removed. The reason travels with the path
+    /// because "removed X" alone does not tell a person whether their work
+    /// went with it.
+    #[test]
+    fn a_removal_names_the_path_it_took_and_why() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let root = rt.block_on(repo("logremove"));
+        let r = root.to_string_lossy().to_string();
+        let wt = rt.block_on(create(&r, "ISS-11", None)).unwrap();
+
+        let said = logged_while(|| {
+            rt.block_on(remove_at(
+                &r,
+                &wt,
+                "run run-7 is over and its commits are on origin",
+            ))
+            .expect("git takes it");
+        });
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            said.contains(&wt.display().to_string()),
+            "a removal that names no path is indistinguishable from a keep: {said}"
+        );
+        assert!(
+            said.contains("run run-7 is over and its commits are on origin"),
+            "and the reason is the caller's, carried through: {said}"
+        );
+    }
+
+    /// The other half of that conditional: git refuses a LOCKED checkout, and
+    /// that directory really is still standing. Without this the branch saying
+    /// so is never executed, and a sentence no test reaches is a sentence that
+    /// can quietly become wrong again.
+    #[test]
+    fn a_removal_git_refuses_over_a_lock_says_the_directory_stands() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let root = rt.block_on(repo("logheld"));
+        let r = root.to_string_lossy().to_string();
+        let held = root.join(".worktrees/ISS-locked");
+        rt.block_on(run(
+            &root,
+            &[
+                "worktree",
+                "add",
+                &held.to_string_lossy(),
+                "-b",
+                "ISS-locked",
+            ],
+        ));
+        rt.block_on(run(&root, &["worktree", "lock", &held.to_string_lossy()]));
+
+        let said = logged_while(|| {
+            let out = rt.block_on(remove_at(&r, &held, "run run-9 is over"));
+            assert!(out.is_err(), "git will not remove a locked checkout");
+        });
+        let there = held.exists();
+        rt.block_on(run(&root, &["worktree", "unlock", &held.to_string_lossy()]));
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(there, "the fixture must leave the directory standing");
+        assert!(
+            said.contains("the directory is still there"),
+            "a refusal over a lock leaves the checkout, and the line must say so: {said}"
+        );
+    }
+
+    #[test]
+    fn a_removal_git_will_not_take_is_said_too() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let root = rt.block_on(repo("logrefuse"));
+        let r = root.to_string_lossy().to_string();
+        let never = root.join(".worktrees/ISS-never-registered");
+
+        let said = logged_while(|| {
+            let out = rt.block_on(remove_at(&r, &never, "run run-8 is over"));
+            assert!(out.is_err(), "git registers nothing at this path");
+        });
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            said.contains(&never.display().to_string()),
+            "a directory still standing because git refused is not a directory nobody asked \
+             about: {said}"
+        );
+        assert!(
+            said.contains("no directory at that path either"),
+            "git refused a path it never registered and nothing is there, so the line may not \
+             say one is: {said}"
+        );
+        assert!(
+            !said.contains("the directory is still there"),
+            "the standing claim must be measured, not assumed: {said}"
+        );
+    }
+
     #[tokio::test]
     async fn only_a_removal_git_took_part_in_reads_as_gone() {
         let root = repo("removed").await;
@@ -529,7 +690,9 @@ mod tests {
         let wt = create(&r, "ISS-8", None).await.unwrap();
         assert_eq!(residence_of(&root, &wt).await, Residence::Linked);
 
-        remove_at(&r, &wt).await.expect("git takes it");
+        remove_at(&r, &wt, "this test is done with it")
+            .await
+            .expect("git takes it");
         assert_eq!(
             residence_of(&root, &wt).await,
             Residence::Gone,
