@@ -3,8 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { releaseBlockerSentence } from './blocker-sentences.js';
 import { blocker, releaseBlockerError } from './blockers.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
+import {
+  type AbortAccount,
+  ReleaseBatchAbortedError,
+  ReleaseFinishInFlightError,
+} from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { declarationRefusal, reportedRefusal, undeclaredProbes } from './refusals.js';
+import {
+  declarationRefusal,
+  finishRefusal,
+  reportedRefusal,
+  undeclaredProbes,
+} from './refusals.js';
 import { ReleaseMultiChannelUnsupportedError } from './service.js';
 
 function body(err: HTTPException): string {
@@ -137,5 +147,61 @@ describe('reportedRefusal — the entry readiness listed, not a rebuild of it', 
 
   it('answers null for an error no report rode on', () => {
     expect(reportedRefusal(new Error('claim race'))).toBeNull();
+  });
+});
+
+/**
+ * ISS-1190: a finish on an aborted batch said its claims were released whatever the abort did,
+ * and the finish record stored that sentence. Each account now says only what happened.
+ */
+describe('finishRefusal — what the abort did to this batch', () => {
+  const said = (account: AbortAccount) =>
+    finishRefusal(new ReleaseBatchAbortedError(account, 'proj-7'))?.message ?? '';
+
+  it('answers every account under RELEASE_BATCH_ABORTED, carrying the account', () => {
+    for (const account of ['shipped', 'held', 'returning', 'released', 'unrecorded'] as const) {
+      const refusal = finishRefusal(new ReleaseBatchAbortedError(account, 'proj-7'));
+      expect(refusal?.status).toBe(409);
+      expect(refusal?.cause).toEqual({ code: 'RELEASE_BATCH_ABORTED', details: { account } });
+    }
+  });
+
+  it('says a held promoted roster stays at releasing, claimed, with the routes to settle it', () => {
+    expect(said('held')).toMatch(/kept its claims, and its issues stay at `releasing`/);
+    expect(said('held')).toContain('POST /api/projects/proj-7/release-records');
+    expect(said('held')).toContain('"return-to-gate"');
+    expect(said('held')).not.toMatch(/claims were released/);
+  });
+
+  it('says a batch that shipped before the abort keeps the issues its finish closed', () => {
+    expect(said('shipped')).toMatch(/already shipped, so the issues its finish closed stay closed/);
+    expect(said('shipped')).not.toMatch(/claims were released/);
+  });
+
+  it('says a roster the abort is still returning has not been released yet', () => {
+    expect(said('returning')).toMatch(/had not finished putting its roster back/);
+    expect(said('returning')).not.toMatch(/claims were released/);
+  });
+
+  it('says a released roster had its claims released', () => {
+    expect(said('released')).toMatch(/its claims were released/);
+  });
+
+  it('names no destination for a roster when no abort recorded one', () => {
+    expect(said('unrecorded')).not.toMatch(/released|`releasing`|closed|gate/);
+    expect(said('unrecorded')).toMatch(/each issue’s own status and notes are the account/);
+  });
+});
+
+describe('finishRefusal — a finish already in flight', () => {
+  it('names the batch’s real state path, not placeholders', () => {
+    const refusal = finishRefusal(
+      new ReleaseFinishInFlightError('r-1', 'a'.repeat(40), null, {
+        projectId: 'proj-7',
+        runId: 'run-7',
+      }),
+    );
+    expect(refusal?.message).toContain('GET /api/projects/proj-7/release-batches/run-7/state');
+    expect(refusal?.message).not.toMatch(/\{projectId\}|\{runId\}/);
   });
 });

@@ -35,13 +35,13 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
+import { abortedError, batchAborted, settleAbortStamp, stampAbort } from './abort-stamp.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import { resolveReleaseChannels, resolveReleasePlan } from './channel.js';
 import {
   BatchInFlightError,
   ClaimConflictError,
   NoReleaseGateError,
-  ReleaseBatchAbortedError,
   ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
@@ -266,6 +266,7 @@ export interface FinishReleaseBatchOptions {
   commit?: string | undefined;
   /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
   alreadyVerified?: boolean | undefined;
+  whileVerifying?: (() => Promise<void>) | undefined;
   /** Called once verification is green, before the first issue closes. */
   onVerified?: (() => Promise<void>) | undefined;
   /** Called with the roster's outcome before the claims are released, so it outlives them. */
@@ -309,7 +310,7 @@ export async function readReleaseRun(runId: string): Promise<ReleaseRunRow | und
  * verification will read. Nothing here makes an outbound request, so a door may call it inline.
  */
 export async function assertFinishable(runId: string, run: ReleaseRunRow): Promise<VerifyConfig> {
-  if (run.status === 'cancelled') throw new ReleaseBatchAbortedError();
+  if (batchAborted(run)) throw await abortedError(runId);
   // A release closes its roster claiming a ship. Without a version nothing afterwards can name
   // WHICH release carried these issues, which is the one thing this path exists to make true, so
   // it is refused by name rather than closed anyway. `createReleaseBatch` cuts the number inside
@@ -368,6 +369,7 @@ export async function finishReleaseBatch(
         cfg: closeVerify,
         commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
         expected: options.commit ?? null,
+        checkpoint: options.whileVerifying,
       });
       if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
       if (!outcome.moved) {
@@ -464,6 +466,8 @@ export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 
 export interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
+  /** Test seam: runs after the roster is recovered and before its account is settled. */
+  afterRosterRecovered?: (() => Promise<void>) | undefined;
 }
 
 export async function abortReleaseBatch(
@@ -472,12 +476,21 @@ export async function abortReleaseBatch(
   actorUserId: string,
   options: AbortReleaseBatchOptions = {},
 ): Promise<AbortReleaseBatchResult> {
+  // First, so a finish sees the abort before the recovery and the cancel below (abort-stamp.ts).
+  const stampId = await stampAbort(runId, {
+    reason,
+    by: actorUserId,
+    holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
+  });
   const { claimsCleared, destination, promoted } = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
     actorUserId,
     comment: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
+  await options.afterRosterRecovered?.();
+  const held = promoted && options.promotedRoster !== 'return-to-gate';
+  await settleAbortStamp(runId, stampId, held ? 'held' : 'released');
 
   await closeRunIfOneShot(runId, 'cancelled');
 
