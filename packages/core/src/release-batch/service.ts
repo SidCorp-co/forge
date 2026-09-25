@@ -35,12 +35,18 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
-import { abortedError, batchAborted, settleAbortStamp, stampAbort } from './abort-stamp.js';
+import {
+  abortedError,
+  batchAborted,
+  closedBeforeAbort,
+  settleAbortStamp,
+  stampAbort,
+} from './abort-stamp.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import { resolveReleaseChannels, resolveReleasePlan } from './channel.js';
+import { claimConflictAt } from './claim-conflicts.js';
 import {
   BatchInFlightError,
-  ClaimConflictError,
   NoReleaseGateError,
   ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
@@ -183,7 +189,7 @@ export async function createReleaseBatch(
 
   if (claimed.length !== issueIds.length) {
     await closeRunIfOneShot(run.id, 'cancelled');
-    throw new ClaimConflictError(issueIds.filter((id) => !claimed.some((r) => r.id === id)));
+    throw await claimConflictAt(projectId, gateStatus, issueIds, claimed);
   }
 
   for (const id of claimed.map((r) => r.id)) {
@@ -442,7 +448,8 @@ export async function finishReleaseBatch(
   return result;
 }
 
-/** What the recovery did to the roster, and what the abort did to the run row. */
+/** What the recovery did to the roster, and what the abort did to the run row. `alreadyClosed` is
+ *  every roster issue closed when the abort ran, claimed or not (`closedBeforeAbort`). */
 export interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
   run: {
     status: PipelineRunStatus | null;
@@ -489,7 +496,8 @@ export async function abortReleaseBatch(
   await options.afterRosterRecovered?.();
   const held = recovery.promoted && options.promotedRoster !== 'return-to-gate';
   const roster = held ? 'held' : 'released';
-  await settleAbortStamp(runId, stampId, { roster, closed: recovery.alreadyClosed });
+  const alreadyClosed = await closedBeforeAbort(runId, recovery.alreadyClosed);
+  await settleAbortStamp(runId, stampId, { roster, closed: alreadyClosed });
 
   await closeRunIfOneShot(runId, 'cancelled');
 
@@ -497,6 +505,7 @@ export async function abortReleaseBatch(
 
   return {
     ...recovery,
+    alreadyClosed,
     run: {
       status: after.cancelled ? 'cancelled' : after.was,
       wasAlreadyTerminal: after.cancelled,

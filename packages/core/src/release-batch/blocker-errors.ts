@@ -5,6 +5,7 @@ import type {
   ReleaseBlockerReport,
 } from './blocker-sentences.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
+import { readClaimConflictDetails } from './claim-conflicts.js';
 import {
   BatchInFlightError,
   ClaimConflictError,
@@ -85,7 +86,7 @@ function errorFor(
         (first.details?.releaseModel as 'promote' | 'publish') ?? 'publish',
       );
     case 'CLAIM_CONFLICT':
-      return new ClaimConflictError(ids);
+      return new ClaimConflictError(ids, readClaimConflictDetails(first.details));
     case 'RELEASE_ROSTER_EMPTY':
     case 'RELEASE_ROSTER_OVERSIZE':
       return new ReleaseRosterUnusableError(first.code, Number(first.details?.waiting ?? 0));

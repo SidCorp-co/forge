@@ -4,9 +4,9 @@
 // aborted to a finish from that write on.
 
 import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { pipelineRuns } from '../db/schema.js';
+import { issues, pipelineRuns } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { type AbortAccount, ReleaseBatchAbortedError } from './errors.js';
 import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
@@ -107,6 +107,33 @@ function recordedClosed(metadata: unknown): string[] {
 
 function union(...lists: string[][]): string[] {
   return [...new Set(lists.flat())].sort();
+}
+
+/**
+ * The roster issues closed when an abort ran: those its recovery found claimed and closed, and
+ * those the run recorded closing — its finish attempt, its claim releases, an earlier abort — whose
+ * claims are gone. Each is read back at its status now, so one reopened since is not answered.
+ */
+export async function closedBeforeAbort(
+  runId: string,
+  claimedClosed: string[],
+  executor: Tx = db,
+): Promise<string[]> {
+  const rows = await executor.execute<{ metadata: unknown }>(
+    sql`SELECT metadata FROM pipeline_runs WHERE id = ${runId}`,
+  );
+  const metadata = rows[0]?.metadata;
+  const candidates = union(
+    claimedClosed,
+    readAbortStamp(metadata)?.closed ?? [],
+    recordedClosed(metadata),
+  );
+  if (candidates.length === 0) return [];
+  const closed = await executor
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(inArray(issues.id, candidates), eq(issues.status, 'closed')));
+  return closed.map((r) => r.id).sort();
 }
 
 /** What the abort did, and the roster issues closed before it: the stamp's, the run's records,

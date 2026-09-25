@@ -99,7 +99,7 @@ releaseBatchRoutes.post(
       if (err instanceof NoReleaseGateError) throw releaseBlockerHttp(err, 'NO_RELEASE_GATE');
       if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
       if (err instanceof ClaimConflictError) {
-        throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
+        throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', err.details ?? { issueIds: err.issueIds });
       }
       if (err instanceof BatchInFlightError) throw releaseBlockerHttp(err, 'BATCH_IN_FLIGHT');
       if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed(projectId);

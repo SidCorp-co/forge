@@ -1,3 +1,5 @@
+import type { ClaimConflictDetails } from './claim-conflicts.js';
+
 export class NoReleaseGateError extends Error {
   constructor() {
     super('NO_RELEASE_GATE');
@@ -150,7 +152,11 @@ export class ReleaseFinishFenceLostError extends Error {
 }
 
 export class ClaimConflictError extends Error {
-  constructor(public readonly issueIds: string[]) {
+  /** Each refused issue's standing, where the door read them, so the sentence names what frees it. */
+  constructor(
+    public readonly issueIds: string[],
+    public readonly details: ClaimConflictDetails | null = null,
+  ) {
     super('CLAIM_CONFLICT');
     this.name = 'ClaimConflictError';
   }

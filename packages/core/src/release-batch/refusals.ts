@@ -218,7 +218,7 @@ export function recordRefusal(err: unknown): HTTPException {
     });
   }
   if (err instanceof ClaimConflictError) {
-    return releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
+    return releaseBlockerHttp(err, 'CLAIM_CONFLICT', err.details ?? { issueIds: err.issueIds });
   }
   throw err;
 }
