@@ -274,10 +274,16 @@ impl std::fmt::Display for Unplaced {
                 slug,
                 pane,
             } => {
-                write!(f, "its master was stood down by {by}")?;
-                if let Some(w) = why {
-                    write!(f, " ({w})")?;
-                }
+                // Always a reason in parentheses, never an absent one. A line
+                // that says only who stood it down reads as a stand-down whose
+                // reason the reader has not found yet, rather than one that was
+                // never recorded — and telling those two apart is the whole of
+                // ISS-1238.
+                write!(
+                    f,
+                    "its master was stood down by {by} ({})",
+                    why.as_deref().unwrap_or(MasterStanding::NO_REASON)
+                )?;
                 match pane {
                     None => write!(
                         f,
@@ -419,14 +425,43 @@ fn stood_down_reason(
     }
 }
 
-/// How long a lifted stand-down held, for the pane placed after it. `None`
-/// while it still stands, and `None` on a row whose two stamps cannot make an
-/// interval — a clock that went backwards is not a fact to tell a master.
-fn stood_down_interval(standing: &MasterStanding) -> Option<Duration> {
+/// What a pane placed after a lifted stand-down is told about the episode it
+/// is following.
+///
+/// The interval alone was what this carried until ISS-1238, and an interval
+/// says a gap happened without saying what the gap was for. The two reasons
+/// travel with it because the pane is the one reader who was not there.
+pub(crate) struct Lifted {
+    pub held_for: Duration,
+    /// The reason recorded on the way down, or `None` on an episode written
+    /// before a reason was required.
+    pub why: Option<String>,
+    /// The argument the lift was taken on, or `None` on an episode lifted
+    /// before one was required.
+    pub lifted_on: Option<String>,
+}
+
+/// The lifted episode a pane placed now has to be told about, where there is
+/// one.
+///
+/// `None` while it still stands, `None` once a pane has been told — being told
+/// is what spends it, and telling the next pane the same gap again is the same
+/// defect as never telling the first — and `None` on a row whose two stamps
+/// cannot make an interval, because a clock that went backwards is not a fact
+/// to tell a master.
+fn lifted_from(standing: &MasterStanding) -> Option<Lifted> {
+    if standing.told_at.is_some() {
+        return None;
+    }
     let up = standing.stood_up_at?;
-    u64::try_from(up - standing.stood_down_at)
+    let held_for = u64::try_from(up - standing.stood_down_at)
         .ok()
-        .map(Duration::from_secs)
+        .map(Duration::from_secs)?;
+    Some(Lifted {
+        held_for,
+        why: standing.why.clone(),
+        lifted_on: standing.stood_up_why.clone(),
+    })
 }
 
 fn placement_under(standing: Option<&MasterStanding>, pane_alive: bool) -> Placed {
@@ -1045,7 +1080,7 @@ async fn sweep(
             Placed::Contradicted => continue,
         }
         let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
-        let lifted_interval = standing.as_ref().and_then(stood_down_interval);
+        let lifted_episode = standing.as_ref().and_then(lifted_from);
 
         let admissible = admissible::admissible(client, Some(&runner.project_id))
             .await
@@ -1105,7 +1140,7 @@ async fn sweep(
             &Carryover {
                 conversation: stored_conversation.as_deref(),
                 inherited: &inherited,
-                stood_down_for: lifted_interval,
+                lifted: lifted_episode.as_ref(),
                 stood_down_told: &told,
             },
             placement,
@@ -1133,9 +1168,9 @@ async fn sweep(
         }
         if told.load(std::sync::atomic::Ordering::Relaxed) {
             if let Some(led) = ledger.as_ref() {
-                if let Err(e) = led.forget_lifted_standing(&runner.project_id) {
+                if let Err(e) = led.note_standing_told(&runner.project_id) {
                     tracing::warn!(
-                        "[master] {}: cannot clear the lifted stand-down a pane has now been told about: {e} — the next pane placed will be told the same interval again",
+                        "[master] {}: cannot mark the lifted stand-down a pane has now been told about: {e} — the next pane placed will be told the same interval again",
                         resolved.slug
                     );
                 }
@@ -1969,22 +2004,38 @@ pub(crate) struct InheritedRun {
 /// resumed conversation carries a transcript that ends mid-work. Without this,
 /// a master stood down for nine hours wakes believing it was driving the whole
 /// time (ISS-1118).
-pub(crate) fn stood_up_brief(stood_down_for: Duration) -> String {
-    let mins = stood_down_for.as_secs() / 60;
+///
+/// The two reasons are here because the interval alone tells a master that
+/// something happened and nothing about what. A pane that knows the box was
+/// waiting on four outstanding writes, and that the wait ended because one of
+/// them landed, can read the board knowing what it is looking for (ISS-1238).
+pub(crate) fn stood_up_brief(lifted: &Lifted) -> String {
+    let mins = lifted.held_for.as_secs() / 60;
     let span = if mins >= 120 {
         format!("{} hours", mins / 60)
     } else if mins >= 1 {
         format!("{mins} minutes")
     } else {
-        format!("{} seconds", stood_down_for.as_secs())
+        format!("{} seconds", lifted.held_for.as_secs())
     };
-    format!(
+    let mut out = format!(
         "\nThis project was STOOD DOWN for {span} and has just been stood up again. This box \
 placed no master for it over that interval and nudged none, so nothing you remember doing \
 happened during it — whatever was decided about this project in that time was decided by \
 somebody else, and the tracker is where it is written rather than in anything you recall. Read \
 the board before you act on any intention you are carrying from before the gap.\n"
-    )
+    );
+    out.push_str(&format!(
+        "\nIt was stood down because: {}\n",
+        lifted.why.as_deref().unwrap_or(MasterStanding::NO_REASON)
+    ));
+    out.push_str(&match lifted.lifted_on.as_deref() {
+        Some(on) => format!("It was stood up because: {on}\n"),
+        None => "No argument was recorded for standing it up — that episode predates the \
+requirement, so what ended the wait is not on this box's record.\n"
+            .to_string(),
+    });
+    out
 }
 
 pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun]) -> String {
@@ -2225,18 +2276,19 @@ pub(crate) fn placement_for(admissible: &[AdmissibleIssue]) -> Placement {
 
 /// What a pane this sweep places carries over from whatever stood before it:
 /// the conversation it resumes, the runs that conversation holds, and the
-/// interval its project spent stood down.
+/// stand-down its project has just come out of.
 pub(crate) struct Carryover<'a> {
     conversation: Option<&'a str>,
     inherited: &'a [InheritedRun],
     /// Set only for a pane placed after a stand-down was lifted, so a resumed
-    /// conversation is not told merely that it is master again (ISS-1118).
-    stood_down_for: Option<Duration>,
-    /// Raised when the brief carrying `stood_down_for` actually reached a
-    /// pane. The sweep forgets the lifted record only on this, because a pane
-    /// that was adopted rather than started was sent no brief at all, and one
-    /// whose brief failed to land was told nothing — forgetting on either
-    /// would drop the interval undelivered.
+    /// conversation is not told merely that it is master again (ISS-1118), and
+    /// carrying the two reasons as well as the interval (ISS-1238).
+    lifted: Option<&'a Lifted>,
+    /// Raised when the brief carrying `lifted` actually reached a pane. The
+    /// sweep stamps the lifted episode told only on this, because a pane that
+    /// was adopted rather than started was sent no brief at all, and one whose
+    /// brief failed to land was told nothing — stamping on either would spend
+    /// the episode undelivered.
     stood_down_told: &'a std::sync::atomic::AtomicBool,
 }
 
@@ -2829,15 +2881,16 @@ surface it reads",
         Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited)),
         None => brief,
     };
-    let brief = match carry.stood_down_for {
-        Some(down) => format!("{brief}{}", stood_up_brief(down)),
+    let brief = match carry.lifted {
+        Some(lifted) => format!("{brief}{}", stood_up_brief(lifted)),
         None => brief,
     };
     match terminal::brief_new_pane(&name, &brief).await {
-        Ok(()) => carry.stood_down_told.store(
-            carry.stood_down_for.is_some(),
-            std::sync::atomic::Ordering::Relaxed,
-        ),
+        Ok(()) => {
+            let carried = carry.lifted.is_some();
+            let order = std::sync::atomic::Ordering::Relaxed;
+            carry.stood_down_told.store(carried, order);
+        }
         Err(e) => tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug),
     }
     match resume {
@@ -8538,7 +8591,7 @@ mod servers_refusal_walk_tests {
             &Carryover {
                 conversation: None,
                 inherited: &[],
-                stood_down_for: None,
+                lifted: None,
                 stood_down_told: &told,
             },
             Placement::AdoptOrStart,
@@ -8833,18 +8886,24 @@ mod stand_down_tests {
 
     fn stood_down() -> MasterStanding {
         MasterStanding {
+            episode: 1,
             project_id: "proj-1".into(),
             slug: "forge-dev".into(),
             stood_down_at: 1_000,
             stood_down_by: "owner".into(),
             why: Some("a human is driving it".into()),
             stood_up_at: None,
+            stood_up_by: None,
+            stood_up_why: None,
+            told_at: None,
         }
     }
 
     fn lifted() -> MasterStanding {
         MasterStanding {
             stood_up_at: Some(5_000),
+            stood_up_by: Some("owner".into()),
+            stood_up_why: Some("the human handed it back".into()),
             ..stood_down()
         }
     }
@@ -9304,6 +9363,89 @@ mod stand_down_tests {
         );
     }
 
+    /// Criterion 24. The interval alone tells a master that a gap happened and
+    /// nothing about what it was for. A pane that knows the box was waiting on
+    /// four writes, and that the wait ended because one landed, can read the
+    /// board knowing what it is looking for.
+    #[test]
+    fn a_pane_placed_after_a_lift_is_told_both_halves_of_the_episode() {
+        let brief = stood_up_brief(&Lifted {
+            held_for: Duration::from_secs(9 * 3600),
+            why: Some("four writes to the release path are outstanding".into()),
+            lifted_on: Some("ISS-1186 removed the path they guarded".into()),
+        });
+        assert!(brief.contains("STOOD DOWN for 9 hours"), "the gap: {brief}");
+        assert!(
+            brief.contains("four writes to the release path are outstanding"),
+            "what the box was waiting for: {brief}"
+        );
+        assert!(
+            brief.contains("ISS-1186 removed the path they guarded"),
+            "and what ended the wait, which is the half nothing could say: {brief}"
+        );
+    }
+
+    /// The same brief for an episode a binary older than ISS-1238 wrote. It
+    /// says the reason is missing rather than leaving the sentence off, because
+    /// a master that is told nothing cannot tell a silent stand-down from one
+    /// whose reason it has not been shown.
+    #[test]
+    fn a_pane_following_an_episode_from_before_the_requirement_is_told_so() {
+        let brief = stood_up_brief(&Lifted {
+            held_for: Duration::from_secs(120),
+            why: None,
+            lifted_on: None,
+        });
+        assert!(
+            brief.contains(MasterStanding::NO_REASON),
+            "the missing reason is named: {brief}"
+        );
+        assert!(
+            brief.contains("No argument was recorded for standing it up"),
+            "and so is the missing argument: {brief}"
+        );
+    }
+
+    /// Criterion 25. Being told is what spends an episode. Telling the next
+    /// pane the same gap again is the same defect as never telling the first,
+    /// and it is what the DELETE used to prevent.
+    #[test]
+    fn an_episode_a_pane_has_already_been_told_about_is_not_carried_again() {
+        let mut row = lifted();
+        assert!(
+            lifted_from(&row).is_some(),
+            "a lift nobody has been told about is what the next pane placed carries"
+        );
+        row.told_at = Some(6_000);
+        assert!(
+            lifted_from(&row).is_none(),
+            "and once a pane has been told, the next one is not told the same gap over again"
+        );
+        assert!(
+            lifted_from(&stood_down()).is_none(),
+            "a stand-down that still stands is not a gap anybody has come out of"
+        );
+        let mut backwards = lifted();
+        backwards.stood_up_at = Some(0);
+        assert!(
+            lifted_from(&backwards).is_none(),
+            "and a clock that went backwards is not a fact to tell a master"
+        );
+    }
+
+    /// The reason carried into the brief is the episode's own, so the two
+    /// surfaces cannot drift.
+    #[test]
+    fn the_carried_episode_is_the_row_the_ledger_holds() {
+        let carried = lifted_from(&lifted()).expect("a lift not yet told is carried");
+        assert_eq!(carried.why.as_deref(), Some("a human is driving it"));
+        assert_eq!(
+            carried.lifted_on.as_deref(),
+            Some("the human handed it back")
+        );
+        assert_eq!(carried.held_for, Duration::from_secs(4_000));
+    }
+
     #[test]
     fn the_unplaced_reason_names_the_act_that_reverses_it() {
         let why = Unplaced::StoodDown {
@@ -9331,6 +9473,10 @@ mod stand_down_tests {
         assert!(
             bare.contains("stand-up forge-dev") && !bare.contains("()"),
             "a stand-down with no reason given still names the way back, and does not print an empty one: {bare}"
+        );
+        assert!(
+            bare.contains(MasterStanding::NO_REASON),
+            "and it says the reason was never recorded rather than printing nothing, because a line carrying no reason reads as one the reader has not found yet (ISS-1238): {bare}"
         );
     }
 }

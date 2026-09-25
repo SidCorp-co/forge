@@ -69,8 +69,13 @@ exactly where it is now — `placement_under` in `daemon/master.rs`, off the led
 
 ## What already exists to build against
 
-- `Ledger::stand_down_master` / `stand_up_master` / `master_standing`, and the `master_standing`
-  table, in `packages/runner/crates/forge-runner-core/src/runner/ledger.rs`.
+- `Ledger::stand_down_master` / `stand_up_master` / `master_standing` / `standing_history`, and the
+  `master_standing` table, in `packages/runner/crates/forge-runner-core/src/runner/ledger.rs`. It is
+  an append-only log of episodes since ISS-1238, not one row per project, and both ends carry a
+  reason: a stand-down cannot be taken without one and a lift records the argument that ended it.
+  **A control core can set inherits that requirement.** A screen that writes a stand-down with no
+  reason puts the box straight back in the state ISS-1238 closed, and the two `--why` values are
+  two different sentences — what is being waited for, and what made the wait safe to end.
 - `placement_under` and `Unplaced::StoodDown` in
   `packages/runner/crates/forge-runner-core/src/daemon/master.rs` — the whole decision, pure, and
   the reason a pane is absent, in words that name the act that reverses it.
