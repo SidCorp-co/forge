@@ -631,6 +631,24 @@ pub(crate) mod testing {
     /// one's pane.
     pub(crate) static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+    /// Set by a test run that installed tmux and can give a test a server of
+    /// its own — CI's Linux leg. There, a tmux-reaching test that cannot run
+    /// has lost its subject, and returning would pass it green having
+    /// asserted nothing.
+    pub(crate) const REQUIRE_TMUX: &str = "FORGE_TEST_REQUIRE_TMUX";
+
+    /// Why a tmux-reaching test is not running. Under [`REQUIRE_TMUX`] that is
+    /// a failure naming `why`; anywhere else it is printed, and the caller
+    /// returns.
+    pub(crate) fn cannot_run(why: &str) {
+        if std::env::var_os(REQUIRE_TMUX).is_some_and(|v| !v.is_empty()) {
+            panic!(
+                "{why} — and {REQUIRE_TMUX} is set, so this run promised tmux and a server of this test's own; returning here would pass the test without running it"
+            );
+        }
+        eprintln!("{why}");
+    }
+
     /// A tmux server of this test's own, addressed the way production
     /// addresses the box's: through the config dir.
     ///
@@ -751,7 +769,7 @@ pub(crate) mod testing {
 
 #[cfg(test)]
 mod tests {
-    use super::testing::{RefusingKill, UnaskableTmux, ONE_AT_A_TIME};
+    use super::testing::{cannot_run, RefusingKill, UnaskableTmux, ONE_AT_A_TIME};
     use super::*;
     use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
 
@@ -859,6 +877,29 @@ mod tests {
                 .is_ok_and(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
     }
 
+    /// A run that promised tmux turns a skip into a failure naming both the
+    /// reason and the promise; one that did not prints it and returns, which
+    /// is what a developer box without tmux still gets.
+    #[test]
+    fn a_skip_is_a_failure_only_where_the_run_promised_tmux() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        {
+            let _promised = ScopedVar::set(super::testing::REQUIRE_TMUX, "1");
+            let failed = std::panic::catch_unwind(|| cannot_run("tmux is not installed here"))
+                .expect_err("a promised tmux that is absent must fail the test");
+            let said = failed.downcast_ref::<String>().cloned().unwrap_or_default();
+            assert!(
+                said.contains("tmux is not installed here")
+                    && said.contains(super::testing::REQUIRE_TMUX),
+                "the failure names what was missing and what promised it: {said}"
+            );
+        }
+        {
+            let _unpromised = ScopedVar::unset(super::testing::REQUIRE_TMUX);
+            cannot_run("tmux is not installed here");
+        }
+    }
+
     #[test]
     fn a_pane_target_is_not_a_session_target() {
         assert_eq!(session_target("m"), "=m");
@@ -910,11 +951,11 @@ mod tests {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(_sandbox) = Sandbox::new("incarnation") else {
-            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
             return;
         };
         if !available() {
-            eprintln!("tmux is not installed here — the transport test cannot run");
+            cannot_run("tmux is not installed here — the transport test cannot run");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("terminal-inc");
@@ -1001,11 +1042,11 @@ mod tests {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(_sandbox) = Sandbox::new("kill-refused") else {
-            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
             return;
         };
         if !available() {
-            eprintln!("tmux is not installed here — the transport test cannot run");
+            cannot_run("tmux is not installed here — the transport test cannot run");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("terminal-kr");
@@ -1063,11 +1104,11 @@ mod tests {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(_sandbox) = Sandbox::new("panes") else {
-            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
             return;
         };
         if !available() {
-            eprintln!("tmux is not installed here — the transport test cannot run");
+            cannot_run("tmux is not installed here — the transport test cannot run");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("terminal");
@@ -1137,11 +1178,11 @@ mod tests {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(_sandbox) = Sandbox::new("panes") else {
-            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
             return;
         };
         if !available() {
-            eprintln!("tmux is not installed here — the residency test cannot run");
+            cannot_run("tmux is not installed here — the residency test cannot run");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("resident");
@@ -1758,8 +1799,14 @@ mod tests {
     async fn a_cold_start_hit_by_several_panes_at_once_places_one_server_and_loses_no_pane() {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        if !available() || !can_place_a_unit().await {
-            eprintln!("no tmux or no systemd user manager here — the placement property does not exist on this box");
+        if !available() {
+            cannot_run("tmux is not installed here — the placement test cannot run");
+            return;
+        }
+        if !can_place_a_unit().await {
+            eprintln!(
+                "no systemd user manager here — the placement property does not exist on this box"
+            );
             return;
         }
         let home = ConfigHome::new("coldstart");

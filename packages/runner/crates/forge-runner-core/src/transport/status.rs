@@ -40,9 +40,57 @@ fn gateway(code: u16) -> Option<&'static str> {
     })
 }
 
-/// A response body as one short line: a gateway answers with a whole HTML page,
-/// and the status already says what it was.
+/// A response body as one short line. A gateway answers with a whole HTML page
+/// whose markup says nothing the status has not, so a page is said as what it
+/// is — its title, or its size where it has none — rather than pasted.
 fn body_line(text: &str) -> String {
+    html_page(text).unwrap_or_else(|| one_line(text))
+}
+
+/// `Some` where `text` is an HTML document: past any leading comments it opens
+/// with a doctype or an `<html` element. Case is ignored, and a mention of
+/// `<html` anywhere else — inside a comment, after other text — is not one.
+fn html_page(text: &str) -> Option<String> {
+    let page = text.trim_start();
+    // ASCII lowercasing keeps every byte where it was, so an offset found in
+    // `lower` indexes `page` too.
+    let lower = page.to_ascii_lowercase();
+    if !opens_a_document(&lower) {
+        return None;
+    }
+    let title = lower
+        .find("<title")
+        .and_then(|open| {
+            let start = open + lower[open..].find('>')? + 1;
+            let end = start + lower[start..].find("</title")?;
+            Some(one_line(&page[start..end]))
+        })
+        .filter(|t| !t.is_empty());
+    Some(match title {
+        Some(t) => format!("an HTML page titled \"{t}\""),
+        None => format!("an HTML page ({} bytes)", text.len()),
+    })
+}
+
+fn opens_a_document(lower: &str) -> bool {
+    let mut rest = lower.trim_start();
+    while let Some(comment) = rest.strip_prefix("<!--") {
+        let Some(end) = comment.find("-->") else {
+            return false;
+        };
+        rest = comment[end + 3..].trim_start();
+    }
+    rest.starts_with("<!doctype")
+        || rest.strip_prefix("<html").is_some_and(|after| {
+            after
+                .chars()
+                .next()
+                .is_some_and(|c| c == '>' || c == '/' || c.is_whitespace())
+        })
+}
+
+/// Whitespace collapsed and cut at 200 characters.
+fn one_line(text: &str) -> String {
     let one: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut chars = one.chars();
     let head: String = chars.by_ref().take(200).collect();
@@ -130,6 +178,65 @@ mod tests {
         }
         let distinct: std::collections::BTreeSet<&String> = names.iter().collect();
         assert_eq!(distinct.len(), 3, "{names:?}");
+    }
+
+    /// Criterion 19 (ISS-1235): a gateway's page is said by its title, not
+    /// pasted into the line an operator reads.
+    #[test]
+    fn a_gateway_page_is_said_by_its_title_rather_than_pasted() {
+        let page = "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6\"> <![endif]-->\n<head>\n<title>forge-beta-api.sidcorp.co | 520: Web server is returning an unknown error</title>\n<meta charset=\"UTF-8\" /></head><body>error code: 520</body></html>";
+        let said = refused("me/mcp-servers", 520, page);
+        assert_eq!(
+            said,
+            "me/mcp-servers 520 (gateway: the origin returned an unknown error): an HTML page titled \"forge-beta-api.sidcorp.co | 520: Web server is returning an unknown error\""
+        );
+        assert!(!said.contains('<'), "no markup reaches the line: {said}");
+    }
+
+    #[test]
+    fn a_page_with_no_title_is_said_by_its_size() {
+        let page = "  <HTML><body>error code: 525</body></HTML>";
+        assert_eq!(
+            body_line(page),
+            format!("an HTML page ({} bytes)", page.len())
+        );
+        assert_eq!(
+            body_line("<html><head><title>  </title></head></html>"),
+            "an HTML page (43 bytes)",
+            "a blank title is no title"
+        );
+    }
+
+    /// The boundary: a body that is not a document is still carried as it
+    /// was, a JSON refusal and a line that merely mentions a tag included.
+    #[test]
+    fn a_body_that_is_not_a_page_is_carried_as_it_was() {
+        assert_eq!(
+            body_line(r#"{"error":"device not bound"}"#),
+            r#"{"error":"device not bound"}"#
+        );
+        assert_eq!(
+            body_line("refused: expected <html> nowhere"),
+            "refused: expected <html> nowhere"
+        );
+        assert_eq!(body_line("<p>not a document</p>"), "<p>not a document</p>");
+        assert_eq!(
+            body_line("<!-- diagnostic mentions <html --> connection refused"),
+            "<!-- diagnostic mentions <html --> connection refused",
+            "a comment naming the tag opens no document"
+        );
+        assert_eq!(
+            body_line("<htmlish>refused</htmlish>"),
+            "<htmlish>refused</htmlish>"
+        );
+    }
+
+    #[test]
+    fn a_page_behind_leading_comments_is_still_a_page() {
+        assert_eq!(
+            body_line("<!-- edge --> <html><head><title>Bad gateway</title></head></html>"),
+            "an HTML page titled \"Bad gateway\""
+        );
     }
 
     #[test]

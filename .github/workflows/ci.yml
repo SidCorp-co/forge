@@ -428,10 +428,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner
+      # The tests that drive a master pane through a real tmux server return early where tmux is
+      # absent, and a return passes green having asserted nothing — so whether this gate caught
+      # the ensure_master mutants they exist for rested on what the image happened to carry
+      # (ISS-1235). Linux installs tmux (the ubuntu image carries it today; nothing promises
+      # that) and sets FORGE_TEST_REQUIRE_TMUX, under which such a test fails naming what it
+      # lacked instead of returning. macOS resolves the config dir, and so the socket, outside
+      # XDG_CONFIG_HOME, so a test there cannot get a server of its own and still skips;
+      # Windows does not compile the module.
       - name: Lockfile sync + fmt + clippy + test
         working-directory: packages/runner
         shell: bash
+        env:
+          FORGE_TEST_REQUIRE_TMUX: ${{ runner.os == 'Linux' && '1' || '' }}
         run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get update -q && sudo apt-get install -y -q tmux
+            tmux -V
+          fi
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check
           cargo clippy --workspace --all-targets
