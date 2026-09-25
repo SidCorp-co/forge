@@ -151,30 +151,6 @@ impl std::fmt::Display for ReadFailure {
     }
 }
 
-/// A response body as one short line: a gateway answers with a whole HTML page,
-/// and the status already says what it was.
-fn body_line(text: &str) -> String {
-    let one: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut chars = one.chars();
-    let head: String = chars.by_ref().take(200).collect();
-    if chars.next().is_some() {
-        format!("{head}…")
-    } else {
-        head
-    }
-}
-
-/// `pool <status named>: <body>`, the shape every refused pool call prints.
-fn refused(what: &str, status: u16, text: &str) -> String {
-    let named = super::status::named(status);
-    let body = body_line(text);
-    if body.is_empty() {
-        format!("{what} {named}")
-    } else {
-        format!("{what} {named}: {body}")
-    }
-}
-
 /// How long one pool call may take before it is a failed call rather than a
 /// wait. The client carries no deadline of its own, so a peer that accepts the
 /// connection and never answers held the read, and the sweep behind it, for as
@@ -216,7 +192,7 @@ pub async fn list_within(
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
-        let mut reason = refused("pool", status, &text);
+        let mut reason = super::status::refused("pool", status, &text);
         if status == 401 {
             reason.push_str(" — the device token was refused; `forge-runner login`");
         }
@@ -306,7 +282,7 @@ async fn post(
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(refused(
+        return Err(Error::Other(super::status::refused(
             &format!("pool {path}"),
             status,
             &text,
