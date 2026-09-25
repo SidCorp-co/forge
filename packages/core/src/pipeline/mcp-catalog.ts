@@ -34,10 +34,10 @@ export function isKnownMcpServerName(name: string): boolean {
 }
 
 export function collectDeclaredMcpNames(pipelineConfig: {
-  mcpServers?: Record<string, unknown> | null;
+  mcpServers?: Record<string, unknown> | null | undefined;
   states?: Record<
     string,
-    { mcpServers?: Record<string, unknown> | null } | null | undefined
+    { mcpServers?: Record<string, unknown> | null | undefined } | null | undefined
   > | null;
 }): Set<string> {
   const names = new Set<string>();

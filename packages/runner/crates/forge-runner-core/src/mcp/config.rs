@@ -198,6 +198,16 @@ pub fn session_dir() -> PathBuf {
     mcp_config_dir()
 }
 
+/// The file this box writes one project's session MCP servers to.
+///
+/// What an operator asks after being told an integration is delivered is *where*, and the answer
+/// is not the checkout's `.mcp.json` — that holds the `forge` server and nothing else, which is
+/// the reading that cost ISS-1191's reporter three wrong conclusions. The surface that says
+/// delivered names this path.
+pub fn session_path(slug: &str) -> PathBuf {
+    session_path_in(&mcp_config_dir(), slug)
+}
+
 fn mcp_config_dir() -> PathBuf {
     let base = dirs_next::config_dir()
         .map(|d| d.join("forge-runner"))

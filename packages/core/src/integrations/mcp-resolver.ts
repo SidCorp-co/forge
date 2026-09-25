@@ -60,6 +60,17 @@ export async function resolveGrantedMcpEntries(
   return entries;
 }
 
+/** What {@link applyGrantedMcpServers} laid down, and under which names. */
+export interface GrantedMcpApplication {
+  map: Record<string, unknown> | null;
+  /**
+   * The names this pass produced. A binding that is active, credentialed, granted and unshadowed
+   * can still yield nothing here — an undecryptable credential, a `buildEntry` returning null — so
+   * this is the answer to "did it deliver" and those four conditions are only the explanation.
+   */
+  names: string[];
+}
+
 /**
  * Lay this project's granted integration entries over a resolved `mcpServers` map.
  *
@@ -69,10 +80,11 @@ export async function resolveGrantedMcpEntries(
 export async function applyGrantedMcpServers(
   projectId: string,
   current: Record<string, unknown> | null,
-): Promise<Record<string, unknown> | null> {
+): Promise<GrantedMcpApplication> {
   const entries = await resolveGrantedMcpEntries(projectId);
-  if (Object.keys(entries).length === 0) return current;
-  return { ...(current ?? {}), ...entries };
+  const names = Object.keys(entries);
+  if (names.length === 0) return { map: current, names };
+  return { map: { ...(current ?? {}), ...entries }, names };
 }
 
 export function declaredServerNames(

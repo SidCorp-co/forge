@@ -420,8 +420,14 @@ export interface ConnectionDirectoryItem extends ConnectionSummary {
 export interface ConnectionListResponse {
   items: ConnectionDirectoryItem[];
 }
-/** List envelope for project bindings (`GET /:projectId/integrations`). */
+/**
+ * List envelope for project bindings (`GET /:projectId/integrations`).
+ *
+ * `bindings` and `items` carry the same rows; `items` is a compatibility alias for the `forge` CLI
+ * and the runner, and goes once those readers name `bindings` (ISS-1191).
+ */
 export interface BindingListResponse {
+  bindings: BindingSummary[];
   items: BindingSummary[];
 }
 /** List envelope for delivery rows (`GET .../integrations/:id/deliveries`). */
@@ -429,22 +435,40 @@ export interface IntegrationDeliveryListResponse {
   items: IntegrationDeliveryRow[];
 }
 
-/** List envelope for a connection's bindings (`GET /integration-connections/:id/bindings`). */
+/** A connection's bindings (`GET /integration-connections/:id/bindings`), keyed as {@link BindingListResponse}. */
 export interface ConnectionBindingsResponse {
+  bindings: BindingSummary[];
   items: BindingSummary[];
 }
 
+/**
+ * Which of the two sources put a server in an agent's set: a granted integration binding, or the
+ * project's own `pipelineConfig.mcpServers`.
+ */
+export type McpServerSource = 'integration' | 'project';
+
+export type McpServerPreviewReason =
+  | 'ok'
+  | 'not_configured'
+  | 'disabled'
+  | 'no_credential'
+  | 'shadowed'
+  | 'not_granted'
+  | 'not_resolved';
+
 export interface McpServerPreviewEntry {
-  provider: IntegrationProvider;
+  source: McpServerSource;
+  /** The provider behind an integration row — null for a project-declared one. */
+  provider: IntegrationProvider | null;
   serverName: string;
-  /** Binding id backing this entry — null for the synthetic not_configured row. */
+  /** Binding id backing this entry — null for a project row and the synthetic not_configured one. */
   bindingId: string | null;
   role: BindingRole | null;
   stages: DeployStage[];
   configured: boolean;
   active: boolean;
   willInject: boolean;
-  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed' | 'not_granted';
+  reason: McpServerPreviewReason;
   url: string | null;
   headers: Record<string, string> | null;
   lastHealthStatus: string | null;
@@ -454,6 +478,13 @@ export interface McpServerPreviewEntry {
 /** Envelope for `GET /:projectId/integrations/mcp-preview`. */
 export interface McpPreviewResponse {
   servers: McpServerPreviewEntry[];
+  /** Names `pipelineConfig.mcpServers` declares that resolution did not supply. */
+  droppedNames: string[];
+  /**
+   * Names declared only under a `pipelineConfig.states.*.mcpServers` override, deduplicated across
+   * every state. A project-wide session does not carry them, so they are named rather than omitted.
+   */
+  stateOnlyNames: string[];
 }
 
 /**

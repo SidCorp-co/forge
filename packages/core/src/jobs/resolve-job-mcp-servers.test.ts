@@ -17,7 +17,10 @@ vi.mock('../logger.js', () => ({
 // test here. ISS-1071 collapsed three per-provider `apply*McpServers` mocks into this one, which is
 // the point: there is one registry-driven resolver now, so a new provider adds no mock here.
 const applyGrantedMcpServers = vi.fn(
-  async (_projectId: string, current: Record<string, unknown> | null) => current,
+  async (_projectId: string, current: Record<string, unknown> | null) => ({
+    map: current,
+    names: [] as string[],
+  }),
 );
 vi.mock('../integrations/mcp-resolver.js', () => ({ applyGrantedMcpServers }));
 
@@ -29,7 +32,10 @@ beforeEach(() => {
   limitResults.length = 0;
   limit.mockClear();
   applyGrantedMcpServers.mockClear();
-  applyGrantedMcpServers.mockImplementation(async (_p, current) => current);
+  applyGrantedMcpServers.mockImplementation(async (_p, current) => ({
+    map: current,
+    names: [] as string[],
+  }));
 });
 
 describe('resolveJobMcpServers (ISS-683)', () => {
@@ -124,8 +130,8 @@ describe('resolveJobMcpServers (ISS-683)', () => {
   it('a granted binding supplies its server by name, after the stage merge (ISS-1071)', async () => {
     limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
     applyGrantedMcpServers.mockImplementation(async (_p, current) => ({
-      ...(current ?? {}),
-      sentry: { type: 'http', url: 'https://sentry.example' },
+      map: { ...(current ?? {}), sentry: { type: 'http', url: 'https://sentry.example' } },
+      names: ['sentry'],
     }));
     const out = await resolveJobMcpServers({
       projectId: 'p-1',
@@ -152,8 +158,8 @@ describe('resolveJobMcpServers (ISS-683)', () => {
   it('a stage `false` beats a GRANTED integration server too (ISS-1038)', async () => {
     limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: {} } } }]);
     applyGrantedMcpServers.mockImplementation(async (_p, current) => ({
-      ...(current ?? {}),
-      sentry: { type: 'http', url: 'https://sentry.example' },
+      map: { ...(current ?? {}), sentry: { type: 'http', url: 'https://sentry.example' } },
+      names: ['sentry'],
     }));
     const out = await resolveJobMcpServers({
       projectId: 'p-1',
