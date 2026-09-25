@@ -3099,7 +3099,7 @@
 
 ### Fixed
 - **A box running two runners is no longer told the second is serving the first.** Where `forge-runner status` cannot name the daemon's build, it now names a process only if it serves the configuration you asked about, and guesses nothing.
-- **`forge-runner update --restart` now restarts a runner still serving an older build.** It stopped at "up to date" before reading `--restart` — the state a deferred restart leaves. It now asks the daemon, and says when it cannot tell.
+- **`forge-runner update --restart` now restarts a runner still serving an older build.** It stopped at "up to date" first. It now asks the daemon, never cuts into a restart already under way, and restarts only the unit running that daemon.
 - **A refused release no longer sends you to abort a shipped batch.** A closed issue says it is closed, a leftover claim says the sweep clears it, a release record is named as one. The regression line matches its readings.
 - **An abort names every issue its batch already closed, and a refused release says why.** An abort after a finished batch no longer answers that nothing closed. A refused release names each claimed or misplaced issue, and what frees it.
 - **A box running out of room says so before it runs out**, and keeps saying so once that filesystem stops answering. It reads free bytes and free inodes wherever runs write scratch, and says the sweep will not reclaim it.

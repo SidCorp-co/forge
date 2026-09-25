@@ -76,23 +76,145 @@ fn restart_if_the_daemon_lags() {
         println!("  no config directory resolves on this box, so which build the daemon serves cannot be read — restart the service by hand if it lags");
         return;
     };
+    let hedge = |unverified: bool| {
+        if unverified {
+            " (this platform cannot confirm that pid is still that daemon)"
+        } else {
+            ""
+        }
+    };
     match serving::turnover(
         &serving::read(&dir),
         &serving::Probe::this_box(),
         update::CURRENT_VERSION,
         update::BUILD_COMMIT,
     ) {
-        Turnover::Already { pid } => {
-            println!("  the daemon on this box (pid {pid}) already serves this build — nothing to restart")
+        Turnover::Already { pid, unverified } => {
+            println!(
+                "  the daemon on this box (pid {pid}) already serves this build — nothing to restart{}",
+                hedge(unverified)
+            )
         }
-        Turnover::Owed { pid, build } => {
-            println!("  but the daemon on this box (pid {pid}) is serving {build}, not this build — restarting it");
-            restart_service();
+        // The daemon is already restarting itself and is waiting for the work
+        // it holds. Restarting the unit now would stop exactly that work.
+        Turnover::Draining {
+            pid,
+            cause,
+            outstanding,
+        } => {
+            println!("  the daemon on this box (pid {pid}) is draining for {cause} and turns itself over once it is idle — not restarting it");
+            if outstanding.is_empty() {
+                println!("  it is waiting on nothing this command can see; `forge-runner status` says how long it has waited");
+            } else {
+                println!(
+                    "  restarting it now would stop the {} it is waiting for:",
+                    if outstanding.len() == 1 {
+                        "one piece of work".to_string()
+                    } else {
+                        format!("{} pieces of work", outstanding.len())
+                    }
+                );
+                for holder in &outstanding {
+                    println!("    {holder}");
+                }
+            }
+        }
+        Turnover::Owed {
+            pid,
+            build,
+            unverified,
+        } => {
+            println!(
+                "  but the daemon on this box (pid {pid}) is serving {build}, not this build{}",
+                hedge(unverified)
+            );
+            restart_the_unit_running(pid);
         }
         Turnover::Unknown(why) => {
             println!("  which build the daemon serves cannot be read from here: {why}");
             println!("  `forge-runner status` says which case holds; restart the service by hand if it lags");
         }
+    }
+}
+
+/// Restart the unit whose main process IS the daemon that lags, and no other.
+///
+/// `restart_service` restarts whatever single `forge-runner*.service` the box
+/// has, which is right after an update this command just applied to this
+/// binary. It is wrong here: the pid came from ONE configuration's record, and
+/// on a box running a second daemon under its own `XDG_CONFIG_HOME` — the box
+/// this whole change exists for — the unit is not the process that lagged.
+/// Restarting it would leave the lagging daemon lagging and stop a daemon that
+/// was fine, mid-job. So the unit is required to answer for that pid, and an
+/// unproven one is refused by name rather than restarted anyway.
+#[cfg(target_os = "linux")]
+fn restart_the_unit_running(pid: u32) {
+    let units = match list_forge_runner_units() {
+        Ok(u) => u,
+        Err(e) => {
+            println!(
+                "  could not list forge-runner units ({e}) — restart the one running pid {pid} by name: systemctl --user restart <unit>"
+            );
+            return;
+        }
+    };
+    let mine: Vec<&String> = units
+        .iter()
+        .filter(|u| unit_main_pid(u) == Some(pid))
+        .collect();
+    match mine.as_slice() {
+        [unit] => {
+            let mut cmd = systemctl();
+            cmd.args(["restart", unit]);
+            match cmd.status() {
+                Ok(s) if s.success() => println!("  ✔ restarted {unit}, whose main process was pid {pid}"),
+                _ => println!("  ⚠ could not restart {unit} — run: systemctl --user restart {unit}"),
+            }
+        }
+        [] if units.is_empty() => println!(
+            "  no forge-runner*.service unit runs on this box, so pid {pid} was started some other way — stop and start it however it was started"
+        ),
+        [] => {
+            println!(
+                "  refusing to restart: pid {pid} is the main process of none of this box's forge-runner units, so restarting one would leave that daemon lagging and stop another mid-job. The units here are:"
+            );
+            for unit in &units {
+                match unit_main_pid(unit) {
+                    Some(p) => println!("    {unit} (main process pid {p})"),
+                    None => println!("    {unit} (its main process could not be read)"),
+                }
+            }
+            println!("  stop and start pid {pid} however it was started.");
+        }
+        many => {
+            println!("  ⚠ {} units claim pid {pid} as their main process, which cannot be — refusing to guess:", many.len());
+            for unit in many {
+                println!("    {unit}");
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn restart_the_unit_running(pid: u32) {
+    println!("  restart the service running pid {pid} manually to turn it over.");
+}
+
+/// The pid systemd says is a unit's main process, or `None` where it cannot be
+/// read — which is never treated as a match.
+#[cfg(target_os = "linux")]
+fn unit_main_pid(unit: &str) -> Option<u32> {
+    let out = systemctl()
+        .args(["show", "-p", "MainPID", "--value", unit])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    match String::from_utf8_lossy(&out.stdout).trim().parse::<u32>() {
+        // systemd answers 0 for a unit that is not running.
+        Ok(0) | Err(_) => None,
+        Ok(pid) => Some(pid),
     }
 }
 

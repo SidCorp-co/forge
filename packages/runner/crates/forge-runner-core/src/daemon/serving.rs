@@ -188,15 +188,28 @@ const CONFIG_DIR_NAME: &str = "forge-runner";
 /// environment can be read from, and elsewhere `dirs_next` follows the
 /// platform's own convention rather than this one.
 ///
-/// One case parts from `dirs_next` deliberately: with neither variable set it
-/// falls back to the passwd entry, and this answers `None`. A caller cannot
-/// read another process's passwd lookup, and answering `None` makes the scan
-/// say it cannot attribute that process rather than attribute it wrongly.
+/// It takes `OsString` rather than `String` because an environment is bytes: a
+/// `HOME` that is not UTF-8 read lossily becomes a path with U+FFFD in it,
+/// which equals no real directory and so reads as ANOTHER configuration —
+/// stated as fact. Every departure from `dirs_next` here answers `None`, which
+/// the scan reads as *cannot be told*, rather than naming a directory:
+///
+/// - **Neither variable set.** `dirs_next` falls back to the passwd entry. A
+///   caller cannot do another process's passwd lookup, so this answers `None`.
+/// - **An empty `HOME`.** `dirs_next` treats it as unset and falls back the
+///   same way; joining it would give the relative path `.config/forge-runner`,
+///   which is not a configuration directory at all.
+///
+/// A relative `XDG_CONFIG_HOME` is not a departure: `dirs_next` ignores it and
+/// falls back to `HOME` too, which is what the `_ =>` arm does.
 #[cfg(target_os = "linux")]
-fn config_dir_in(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+fn config_dir_in(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
     let base = match var("XDG_CONFIG_HOME") {
         Some(x) if Path::new(&x).is_absolute() => PathBuf::from(x),
-        _ => PathBuf::from(var("HOME")?).join(".config"),
+        _ => match var("HOME") {
+            Some(h) if !h.is_empty() => PathBuf::from(h).join(".config"),
+            _ => return None,
+        },
     };
     Some(base.join(CONFIG_DIR_NAME))
 }
@@ -215,21 +228,23 @@ fn serves(proc_pid: &Path, ours: Option<&Path>) -> Serves {
             return Serves::Unknown(format!("its environment cannot be read ({e})"));
         }
     };
-    let pairs: Vec<String> = raw
-        .split(|b| *b == 0)
-        .filter(|a| !a.is_empty())
-        .map(|a| String::from_utf8_lossy(a).into_owned())
-        .collect();
+    // Bytes, not a lossy String: a value that is not UTF-8 read lossily is a
+    // path with U+FFFD in it, which matches no directory and would read as
+    // another configuration rather than as one that cannot be told.
+    use std::os::unix::ffi::OsStrExt;
+    let pairs: Vec<&[u8]> = raw.split(|b| *b == 0).filter(|a| !a.is_empty()).collect();
     let var = |key: &str| {
-        pairs
-            .iter()
-            .find_map(|kv| kv.strip_prefix(key)?.strip_prefix('=').map(str::to_string))
+        pairs.iter().find_map(|kv| {
+            let rest = kv.strip_prefix(key.as_bytes())?;
+            let value = rest.strip_prefix(b"=")?;
+            Some(std::ffi::OsStr::from_bytes(value).to_os_string())
+        })
     };
     match config_dir_in(var) {
         Some(dir) if dir == ours => Serves::This,
         Some(dir) => Serves::Other(dir),
         None => Serves::Unknown(
-            "its environment names neither XDG_CONFIG_HOME nor HOME, so it resolves no configuration directory".into(),
+            "its environment names no absolute XDG_CONFIG_HOME and no non-empty HOME, so it resolves no configuration directory this command can compare".into(),
         ),
     }
 }
@@ -351,8 +366,9 @@ fn file_clause(r: &Running) -> String {
 enum Unrecorded {
     /// This platform has no way to look at all.
     Blind,
-    /// Processes that answer for this configuration, or that might.
-    Answering(Vec<String>),
+    /// Processes that answer for this configuration, or that might, and the
+    /// configurations the rest of them serve.
+    Answering(Vec<String>, Vec<PathBuf>),
     /// None of them answers for this configuration; the others are named by the
     /// configuration each serves instead.
     NoneHere(Vec<PathBuf>),
@@ -384,18 +400,17 @@ fn unrecorded(probe: &Probe) -> Unrecorded {
             Serves::Other(_) => {}
         }
     }
+    let elsewhere: Vec<PathBuf> = found
+        .into_iter()
+        .filter_map(|r| match r.serves {
+            Serves::Other(dir) => Some(dir),
+            _ => None,
+        })
+        .collect();
     if bodies.is_empty() {
-        return Unrecorded::NoneHere(
-            found
-                .into_iter()
-                .filter_map(|r| match r.serves {
-                    Serves::Other(dir) => Some(dir),
-                    _ => None,
-                })
-                .collect(),
-        );
+        return Unrecorded::NoneHere(elsewhere);
     }
-    Unrecorded::Answering(bodies)
+    Unrecorded::Answering(bodies, elsewhere)
 }
 
 fn elsewhere_clause(dirs: &[PathBuf]) -> String {
@@ -422,10 +437,19 @@ fn unrecorded_lines(probe: &Probe) -> Vec<String> {
             "daemon     no record, and no `forge-runner start` process on this box serves this configuration — no daemon is serving it{}",
             elsewhere_clause(&elsewhere)
         )],
-        Unrecorded::Answering(bodies) => bodies
-            .into_iter()
-            .map(|b| format!("daemon     no record — {b}"))
-            .collect(),
+        Unrecorded::Answering(bodies, elsewhere) => {
+            let mut out: Vec<String> = bodies
+                .into_iter()
+                .map(|b| format!("daemon     no record — {b}"))
+                .collect();
+            if !elsewhere.is_empty() {
+                out.push(format!(
+                    "{INDENT}and{}",
+                    elsewhere_clause(&elsewhere).trim_start_matches('.')
+                ));
+            }
+            out
+        }
     }
 }
 
@@ -528,18 +552,29 @@ fn listed(names: &[String]) -> String {
 /// it never wrote. So the processes are read here too.
 fn beside_a_gone_record(gone: String, probe: &Probe) -> Vec<String> {
     match unrecorded(probe) {
-        Unrecorded::Answering(bodies) => {
+        Unrecorded::Answering(bodies, elsewhere) => {
             let mut out = vec![format!(
                 "daemon     the record is stale — {gone}; what else is running on this box:"
             )];
             out.extend(bodies.into_iter().map(|b| format!("{INDENT}{b}")));
+            if !elsewhere.is_empty() {
+                out.push(format!(
+                    "{INDENT}and{}",
+                    elsewhere_clause(&elsewhere).trim_start_matches('.')
+                ));
+            }
             out
         }
         Unrecorded::NoneHere(elsewhere) => vec![format!(
             "daemon     not running — {gone}, and no `forge-runner start` process on this box serves this configuration{}",
             elsewhere_clause(&elsewhere)
         )],
-        Unrecorded::Blind => vec![format!("daemon     not running — {gone}")],
+        // Nothing was looked at, so "not running" would be a claim about a box
+        // this command never read. A daemon that predates the record is exactly
+        // what would be running here, and it is the state ISS-1223 is about.
+        Unrecorded::Blind => vec![format!(
+            "daemon     the record is stale — {gone}, and this platform gives no way to look for a daemon that predates the record, so whether one is serving cannot be said from here"
+        )],
     }
 }
 
@@ -553,11 +588,20 @@ pub fn lines(
 ) -> Vec<String> {
     let record = match read {
         Err(u) => {
-            return vec![format!(
+            let mut out = vec![format!(
                 "daemon     UNREADABLE — {}: {}. Which build the daemon serves cannot be said from here; it rewrites the file at its next start or drain",
                 u.path.display(),
                 u.reason
-            )]
+            )];
+            // The record is the only thing that names a build, and it is gone.
+            // The processes are the only evidence left that anything is
+            // serving at all, so this is the case that needs them most.
+            out.extend(
+                unrecorded_lines(probe)
+                    .into_iter()
+                    .map(|l| format!("{INDENT}{}", l.trim_start_matches("daemon     "))),
+            );
+            return out;
         }
         Ok(None) => return unrecorded_lines(probe),
         Ok(Some(r)) => r,
@@ -617,9 +661,21 @@ pub fn lines(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Turnover {
     /// A live daemon of this configuration serves another build.
-    Owed { pid: u32, build: String },
+    Owed {
+        pid: u32,
+        build: String,
+        /// This platform cannot confirm the pid is still that daemon.
+        unverified: bool,
+    },
     /// A live daemon of this configuration already serves this one.
-    Already { pid: u32 },
+    Already { pid: u32, unverified: bool },
+    /// It is turning itself over already, and a restart now would stop the
+    /// very work it is waiting for.
+    Draining {
+        pid: u32,
+        cause: String,
+        outstanding: Vec<String>,
+    },
     /// It cannot be said from here, and why.
     Unknown(String),
 }
@@ -646,30 +702,54 @@ pub fn turnover(
         Ok(None) => {
             return Turnover::Unknown(match replaced_daemon(probe) {
                 Some((pid, true)) => format!(
-                    "no daemon record stands for this configuration, and pid {pid} is running from a file that has since been replaced"
+                    "no daemon record stands for this configuration, and pid {pid}, which serves it, is running from a file that has since been replaced"
                 ),
-                _ => "no daemon record stands for this configuration".to_string(),
+                Some((pid, false)) => format!(
+                    "no daemon record stands for this configuration, and pid {pid} is running from a file that has since been replaced — whether it serves this configuration could not be told"
+                ),
+                None => "no daemon record stands for this configuration".to_string(),
             })
         }
         Ok(Some(r)) => r,
     };
-    match liveness(record, probe) {
+    let unverified = match liveness(record, probe) {
         Liveness::Gone => {
-            Turnover::Unknown(format!("the daemon recorded, pid {}, is gone", record.pid))
+            return Turnover::Unknown(format!("the daemon recorded, pid {}, is gone", record.pid))
         }
-        Liveness::Reused => Turnover::Unknown(format!(
-            "pid {} is now a different process from the daemon recorded there",
-            record.pid
-        )),
-        Liveness::Same | Liveness::Unverified => {
-            if record.version == this_version && record.commit == this_commit {
-                Turnover::Already { pid: record.pid }
-            } else {
-                Turnover::Owed {
-                    pid: record.pid,
-                    build: record.build(),
-                }
-            }
+        Liveness::Reused => {
+            return Turnover::Unknown(format!(
+                "pid {} is now a different process from the daemon recorded there",
+                record.pid
+            ))
+        }
+        Liveness::Unverified => true,
+        Liveness::Same => false,
+    };
+    // A drain under way is the daemon restarting ITSELF, holding admission shut
+    // until the runs it waits on end. Restarting the unit here would stop
+    // exactly those runs — the one thing the drain exists to prevent — so the
+    // build comparison is not even reached. A drain that GAVE UP is the
+    // opposite case: nothing will turn the box over now but a restart.
+    if let Some(DrainState::Draining {
+        cause, outstanding, ..
+    }) = &record.drain
+    {
+        return Turnover::Draining {
+            pid: record.pid,
+            cause: cause.clone(),
+            outstanding: outstanding.clone(),
+        };
+    }
+    if record.version == this_version && record.commit == this_commit {
+        Turnover::Already {
+            pid: record.pid,
+            unverified,
+        }
+    } else {
+        Turnover::Owed {
+            pid: record.pid,
+            build: record.build(),
+            unverified,
         }
     }
 }
@@ -882,6 +962,60 @@ mod tests {
         );
     }
 
+    /// Review findings F5, F6 and F9: the three places a line said more, or
+    /// less, than what was looked at.
+    #[test]
+    fn what_is_running_is_said_in_every_case_that_looked_and_in_none_that_did_not() {
+        let mut p = live_same();
+        p.daemons = || {
+            Some(vec![
+                Running {
+                    pid: 111,
+                    exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
+                    replaced: Some(true),
+                    serves: Serves::This,
+                },
+                Running {
+                    pid: 222,
+                    exe: "/home/dev/.local/bin/forge-runner".into(),
+                    replaced: Some(false),
+                    serves: Serves::Other("/srv/other/forge-runner".into()),
+                },
+            ])
+        };
+
+        // F5: an unreadable record is the one case where the processes are the
+        // only evidence left, and the README says status looks at them.
+        let unreadable = joined(
+            Err(Unreadable {
+                path: "/x/serving.json".into(),
+                reason: "does not parse: EOF".into(),
+            }),
+            &p,
+        );
+        assert!(unreadable.contains("UNREADABLE"), "{unreadable}");
+        assert!(
+            unreadable.contains("pid 111") && unreadable.contains("serves this configuration"),
+            "{unreadable}"
+        );
+
+        // F9: the other configuration is named whether or not one of ours
+        // answered, so a two-runner box reads the same both ways.
+        let answered = joined(Ok(None), &p);
+        assert!(answered.contains("pid 111"), "{answered}");
+        assert!(answered.contains("/srv/other/forge-runner"), "{answered}");
+
+        // F6: nothing was looked at, so nothing is claimed about the box.
+        let mut blind = probe(|_| false, |_| None);
+        blind.daemons = || None;
+        let out = joined(Ok(Some(rec("0.17.9", None))), &blind);
+        assert!(
+            out.contains("gives no way to look"),
+            "a platform that cannot look does not report an empty box: {out}"
+        );
+        assert!(!out.contains("not running —"), "{out}");
+    }
+
     /// Review finding 2: with no record, an older daemon serving a replaced
     /// binary is told apart from no daemon, and from one whose file stands.
     #[test]
@@ -949,58 +1083,95 @@ mod tests {
     /// `config.rs` is held by another run, so nothing there was changed and
     /// this test is the whole of the agreement.
     ///
-    /// Sibling tests in this binary move `XDG_CONFIG_HOME` process-wide through
-    /// `ScopedVar`, and `dirs_next` reads it afresh on every call, so the two
-    /// reads below can straddle such a move. That is the environment changing
-    /// and not the rule disagreeing, so the read is bracketed and retried; a
-    /// window that never settles fails loudly rather than passing unmeasured.
+    /// It takes `ENV_TEST_LOCK`, which every env-moving test in this crate
+    /// takes, because sibling tests move `XDG_CONFIG_HOME` process-wide and
+    /// `dirs_next` reads it afresh on every call. Without the lock the two
+    /// reads below can straddle a sibling's set-and-drop and disagree about an
+    /// environment that never moved for either of them — a red that says
+    /// nothing. `var_os`, not `var`: a value that is not UTF-8 is one
+    /// `dirs_next` uses and `var` would drop.
     #[cfg(target_os = "linux")]
     #[test]
     fn the_environment_rule_lands_where_this_process_own_config_path_does() {
-        let snapshot = || {
-            (
-                std::env::var_os("XDG_CONFIG_HOME"),
-                std::env::var_os("HOME"),
-            )
-        };
-        for _ in 0..64 {
-            let before = snapshot();
-            let ours = crate::config::Config::path().unwrap();
-            let dir = config_dir_in(|k| std::env::var(k).ok()).expect("this process has a HOME");
-            if before != snapshot() {
-                continue;
-            }
-            assert_eq!(Some(dir.as_path()), ours.parent());
-            return;
-        }
-        panic!("the environment moved under every one of 64 reads, so nothing was measured");
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let ours = crate::config::Config::path().unwrap();
+        let dir = config_dir_in(|k| std::env::var_os(k)).expect("this process has a HOME");
+        assert_eq!(Some(dir.as_path()), ours.parent());
     }
 
+    /// Every case where this rule answers, and every case where it refuses.
+    /// The refusals are the load-bearing half: each of them is an environment
+    /// `dirs_next` resolves by asking passwd, which no caller can do for
+    /// another process, so naming a directory here would be a claim with
+    /// nothing behind it.
     #[cfg(target_os = "linux")]
     #[test]
-    fn an_absolute_xdg_config_home_wins_and_a_relative_one_is_ignored() {
-        let env = |xdg: Option<&str>| {
-            let xdg = xdg.map(str::to_string);
+    fn the_rule_answers_only_where_it_can_and_refuses_the_rest() {
+        use std::ffi::OsString;
+        let env = |xdg: Option<&str>, home: Option<&str>| {
+            let xdg = xdg.map(OsString::from);
+            let home = home.map(OsString::from);
             move |k: &str| match k {
                 "XDG_CONFIG_HOME" => xdg.clone(),
-                "HOME" => Some("/home/ada".to_string()),
+                "HOME" => home.clone(),
                 _ => None,
             }
         };
         assert_eq!(
-            config_dir_in(env(Some("/srv/cfg"))),
+            config_dir_in(env(Some("/srv/cfg"), Some("/home/ada"))),
             Some(PathBuf::from("/srv/cfg/forge-runner"))
         );
         assert_eq!(
-            config_dir_in(env(Some("cfg"))),
+            config_dir_in(env(Some("cfg"), Some("/home/ada"))),
             Some(PathBuf::from("/home/ada/.config/forge-runner")),
             "a relative XDG_CONFIG_HOME is not a base, the same way dirs_next reads it"
         );
         assert_eq!(
-            config_dir_in(env(None)),
+            config_dir_in(env(None, Some("/home/ada"))),
             Some(PathBuf::from("/home/ada/.config/forge-runner"))
         );
-        assert_eq!(config_dir_in(|_| None), None, "no HOME resolves nothing");
+        assert_eq!(
+            config_dir_in(env(None, None)),
+            None,
+            "no HOME is a passwd lookup this command cannot make for another process"
+        );
+        assert_eq!(
+            config_dir_in(env(None, Some(""))),
+            None,
+            "an empty HOME is unset to dirs_next; joining it would name the relative path .config/forge-runner, which is no configuration at all"
+        );
+        assert_eq!(
+            config_dir_in(env(Some("cfg"), Some(""))),
+            None,
+            "a relative XDG_CONFIG_HOME falls back to HOME, and an empty HOME refuses there too"
+        );
+    }
+
+    /// An environment is bytes. Read lossily, a `HOME` that is not UTF-8
+    /// becomes a path with U+FFFD in it, which equals no real directory — so
+    /// this configuration's own daemon would read as another's, and `status`
+    /// would say no daemon is serving while one is. That is ISS-1223's failure
+    /// inverted, so the bytes are carried through rather than repaired.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_home_that_is_not_utf8_resolves_to_the_directory_it_really_names() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+        let home = OsString::from_vec(b"/home/d\xffev".to_vec());
+        let want = PathBuf::from(OsString::from_vec(
+            b"/home/d\xffev/.config/forge-runner".to_vec(),
+        ));
+        let got = config_dir_in(|k| match k {
+            "HOME" => Some(home.clone()),
+            _ => None,
+        });
+        assert_eq!(got, Some(want));
+        assert!(
+            !format!("{:?}", got).contains('\u{fffd}'),
+            "no replacement character reached the path: {got:?}"
+        );
     }
 
     /// Criterion 18, the failure this repair answers: a second daemon serving
@@ -1046,6 +1217,41 @@ mod tests {
         let none = joined(Ok(None), &p);
         assert!(!none.contains("4126309"), "{none}");
         assert!(none.contains("no daemon is serving it"), "{none}");
+
+        // Review finding F1: `replaced_daemon` drops every process whose file
+        // still stands BEFORE it reads `Serves`, so a `replaced: Some(false)`
+        // fixture asserts nothing about the attribution — the assertion holds
+        // with the filter removed. The replaced case is the one that pins it,
+        // and it is also the shape this issue was opened about: a daemon on a
+        // deleted inode, here belonging to somebody else's configuration.
+        let mut deleted = probe(|_| false, |_| None);
+        deleted.daemons = || {
+            Some(vec![Running {
+                pid: 4126309,
+                exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
+                replaced: Some(true),
+                serves: Serves::Other("/srv/other/forge-runner".into()),
+            }])
+        };
+        assert_eq!(
+            version_note(&Ok(None), &deleted, "0.17.9", "abc1234"),
+            None,
+            "--version says nothing about another configuration's daemon, even on a replaced binary"
+        );
+        assert_eq!(
+            version_note(
+                &Ok(Some(rec("0.17.9", None))),
+                &deleted,
+                "0.17.9",
+                "abc1234"
+            ),
+            None,
+            "nor beside a record whose own daemon is gone"
+        );
+        assert!(
+            !joined(Ok(None), &deleted).contains("4126309"),
+            "and status does not name it either"
+        );
 
         assert_eq!(
             version_note(&Ok(None), &p, "0.17.9", "abc1234"),
@@ -1145,7 +1351,8 @@ mod tests {
             ),
             Turnover::Owed {
                 pid: 4242,
-                build: "0.17.8 (abc1234)".into()
+                build: "0.17.8 (abc1234)".into(),
+                unverified: false
             }
         );
         assert_eq!(
@@ -1155,7 +1362,10 @@ mod tests {
                 "0.17.9",
                 "abc1234"
             ),
-            Turnover::Already { pid: 4242 }
+            Turnover::Already {
+                pid: 4242,
+                unverified: false
+            }
         );
         let gone = turnover(
             &Ok(Some(rec("0.17.8", None))),
@@ -1163,9 +1373,104 @@ mod tests {
             "0.17.9",
             "abc1234",
         );
-        assert!(matches!(gone, Turnover::Unknown(w) if w.contains("is gone")),);
+        assert!(matches!(gone, Turnover::Unknown(w) if w.contains("is gone")));
         let nothing = turnover(&Ok(None), &live_same(), "0.17.9", "abc1234");
         assert!(matches!(nothing, Turnover::Unknown(w) if w.contains("no daemon record")));
+    }
+
+    /// Review finding F2: a drain under way is the daemon restarting ITSELF,
+    /// waiting for the runs it holds. `update --restart` reaching for systemctl
+    /// there would stop exactly those runs — the one thing the drain exists to
+    /// prevent — so the build comparison is never reached. A drain that GAVE UP
+    /// is the opposite: nothing will turn the box over now but a restart.
+    #[test]
+    fn a_restart_does_not_cut_into_a_drain_that_is_under_way() {
+        let draining = DrainState::Draining {
+            cause: "update 0.17.8 → 0.17.9".into(),
+            since_ms: NOW - 7 * 60_000,
+            bound_secs: 7200,
+            outstanding: vec!["run r-1 (ISS-7)".into(), "run r-2 (ISS-8)".into()],
+        };
+        assert_eq!(
+            turnover(
+                &Ok(Some(rec("0.17.8", Some(draining)))),
+                &live_same(),
+                "0.17.9",
+                "abc1234"
+            ),
+            Turnover::Draining {
+                pid: 4242,
+                cause: "update 0.17.8 → 0.17.9".into(),
+                outstanding: vec!["run r-1 (ISS-7)".into(), "run r-2 (ISS-8)".into()],
+            },
+            "a restart here would kill the runs the drain is waiting for"
+        );
+
+        let deferred = DrainState::Deferred {
+            cause: "update 0.17.8 → 0.17.9".into(),
+            gave_up_at_ms: NOW - 30 * 60_000,
+            outstanding: vec!["run r-1 (ISS-7)".into()],
+            next_attempt: "the next update check".into(),
+            next_attempt_at_ms: NOW + 3_600_000,
+        };
+        assert!(
+            matches!(
+                turnover(
+                    &Ok(Some(rec("0.17.8", Some(deferred)))),
+                    &live_same(),
+                    "0.17.9",
+                    "abc1234"
+                ),
+                Turnover::Owed { .. }
+            ),
+            "a drain that gave up leaves the restart to a person"
+        );
+    }
+
+    /// Review finding F7: where the identity cannot be confirmed, `status`
+    /// hedges and the remedy must hedge with it rather than state it and act.
+    #[test]
+    fn an_unconfirmable_identity_is_carried_into_what_the_remedy_says() {
+        let mut r = rec("0.17.8", None);
+        r.start_ticks = None;
+        let p = probe(|_| true, |_| None);
+        assert_eq!(
+            turnover(&Ok(Some(r.clone())), &p, "0.17.9", "abc1234"),
+            Turnover::Owed {
+                pid: 4242,
+                build: "0.17.8 (abc1234)".into(),
+                unverified: true
+            }
+        );
+        let mut same = r.clone();
+        same.version = "0.17.9".into();
+        assert_eq!(
+            turnover(&Ok(Some(same)), &p, "0.17.9", "abc1234"),
+            Turnover::Already {
+                pid: 4242,
+                unverified: true
+            }
+        );
+    }
+
+    /// Review finding F7 again: the remedy names the replaced-binary process
+    /// `--version` names, including the one it could not attribute.
+    #[test]
+    fn the_remedy_names_a_replaced_binary_process_it_could_not_attribute() {
+        let mut p = live_same();
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 5150,
+                exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
+                replaced: Some(true),
+                serves: Serves::Unknown("its environment cannot be read".into()),
+            }])
+        };
+        let out = turnover(&Ok(None), &p, "0.17.9", "abc1234");
+        assert!(
+            matches!(&out, Turnover::Unknown(w) if w.contains("pid 5150") && w.contains("could not be told")),
+            "{out:?}"
+        );
     }
 
     /// Delta review (b): after a rollback, a newer record whose daemon is gone
@@ -1289,6 +1594,46 @@ mod tests {
                 Serves::Unknown(_)
             ),
             "a command with no configuration of its own attributes nothing to it"
+        );
+    }
+
+    /// The scan reads the environment as bytes, not as a lossy string: a
+    /// daemon whose own `HOME` is not UTF-8 serves THIS configuration, and read
+    /// lossily its path picks up a U+FFFD, matches nothing, and reads as
+    /// another configuration's — so `status` would say no daemon is serving
+    /// while this configuration's daemon runs. That is ISS-1223's failure
+    /// inverted, which is why it is pinned here and not only on the rule.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_daemon_whose_environment_is_not_utf8_is_still_attributed_to_it() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+        let root = crate::test_scratch::Scratch::new("serving-proc-bytes");
+        let d = root.join("300");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("cmdline"), "forge-runner\0start\0").unwrap();
+        std::os::unix::fs::symlink("/x/forge-runner", d.join("exe")).unwrap();
+        let mut environ = b"LANG=C\0HOME=/home/d".to_vec();
+        environ.push(0xff);
+        environ.extend_from_slice(b"ev\0");
+        std::fs::write(d.join("environ"), environ).unwrap();
+
+        let ours = PathBuf::from(OsString::from_vec(
+            b"/home/d\xffev/.config/forge-runner".to_vec(),
+        ));
+        let found = scan(&root, 1, Some(&ours)).expect("the planted root lists");
+        assert_eq!(
+            found[0].serves,
+            Serves::This,
+            "read as bytes it is this configuration's daemon; read lossily it is nobody's"
+        );
+
+        let elsewhere = PathBuf::from("/srv/other/forge-runner");
+        let found = scan(&root, 1, Some(&elsewhere)).expect("the planted root lists");
+        assert_eq!(
+            found[0].serves,
+            Serves::Other(ours),
+            "and against another configuration it names the directory it really serves"
         );
     }
 

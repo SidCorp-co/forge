@@ -208,9 +208,20 @@ can (ISS-1223).
 
 `forge-runner update --restart` asks the daemon, not the file. The file on disk
 being the latest is exactly the state a deferred drain leaves — updated, not yet
-turned over — so `--restart` there restarts the service when the daemon is
-serving an older build, says there is nothing to restart when it already serves
-this one, and says which case holds when it cannot tell.
+turned over — so `--restart` there restarts the daemon when it is serving an
+older build, says there is nothing to restart when it already serves this one,
+and says which case holds when it cannot tell. Two things it will not do:
+
+- **It never cuts into a drain that is under way.** A draining daemon is
+  restarting itself and waiting for the work it holds, so a restart there would
+  stop exactly that work. It names the cause and every holder instead, and
+  leaves the box to turn itself over. A drain that gave up is the opposite case
+  and is restarted.
+- **It restarts only the unit whose main process is that daemon.** The pid comes
+  from one configuration's record, and on a box running a second daemon the
+  single `forge-runner*.service` unit need not be it — restarting that one would
+  leave the daemon that lagged lagging and stop another mid-job. Where no unit
+  answers for the pid, it refuses by name and lists what each unit is running.
 
 Control it without editing TOML:
 
