@@ -289,6 +289,16 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     expect(servers.find((s) => s.bindingId === 'b-only')?.reason).toBe('not_resolved');
   });
 
+  it('answers rows for a project with nothing configured at all', async () => {
+    // Why the panel needs no empty state, measured rather than argued: every `direct-mcp` provider
+    // the registry holds contributes a `not_configured` row, so the servers list is never empty
+    // for any project. Delete that row and this goes red before the panel renders a bare list.
+    resolvedAs({ resolvedNames: [] });
+    const { servers } = await buildMcpPreview(PROJECT);
+    expect(servers.length).toBeGreaterThan(0);
+    expect(servers.every((s) => s.reason === 'not_configured')).toBe(true);
+  });
+
   it('never reads a spec out of the credential-bearing map the resolver returns', async () => {
     resolvedAs({ resolvedNames: ['playwright'] });
     const { servers } = await buildMcpPreview(PROJECT);
